@@ -4,8 +4,7 @@ use crate::{
 };
 use anyhow::{bail, Context as _, Result};
 use clap::Parser;
-use connlib_client_shared::{keypair, ConnectArgs, LoginUrl};
-use connlib_shared::callbacks::ResourceDescription;
+use connlib_model::ResourceView;
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
@@ -16,6 +15,7 @@ use futures::{
     task::{Context, Poll},
     Future as _, SinkExt as _, Stream as _,
 };
+use phoenix_channel::LoginUrl;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
@@ -26,9 +26,9 @@ use url::Url;
 
 pub mod ipc;
 use backoff::ExponentialBackoffBuilder;
-use connlib_shared::{get_user_agent, messages::ResourceId};
+use connlib_model::ResourceId;
 use ipc::{Server as IpcServer, ServiceId};
-use phoenix_channel::PhoenixChannel;
+use phoenix_channel::{get_user_agent, PhoenixChannel};
 use secrecy::Secret;
 
 #[cfg(target_os = "linux")]
@@ -92,11 +92,12 @@ pub enum ServerMsg {
     /// The IPC service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
     ConnectResult(Result<(), Error>),
+    DisconnectedGracefully,
     OnDisconnect {
         error_msg: String,
         is_authentication_error: bool,
     },
-    OnUpdateResources(Vec<ResourceDescription>),
+    OnUpdateResources(Vec<ResourceView>),
     /// The IPC service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -211,7 +212,10 @@ async fn ipc_listen(
 ) -> Result<()> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
-    device_id::get_or_create().context("Failed to read / create device ID")?;
+    let firezone_id = device_id::get_or_create()
+        .context("Failed to read / create device ID")?
+        .id;
+    firezone_telemetry::configure_scope(|scope| scope.set_tag("firezone_id", &firezone_id));
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController { dns_control_method };
     let telemetry = Telemetry::default();
@@ -455,14 +459,17 @@ impl<'a> Handler<'a> {
                     .context("Failed to send `ConnectResult`")?
             }
             ClientMsg::Disconnect => {
-                let Some(session) = self.session.take() else {
-                    tracing::error!("Error - Got Disconnect when we're already not connected");
-                    return Ok(());
-                };
-
-                // Identical to dropping it, but looks nicer.
-                session.connlib.disconnect();
-                self.dns_controller.deactivate()?;
+                if let Some(session) = self.session.take() {
+                    // Identical to dropping it, but looks nicer.
+                    session.connlib.disconnect();
+                    self.dns_controller.deactivate()?;
+                }
+                // Always send `DisconnectedGracefully` even if we weren't connected,
+                // so this will be idempotent.
+                self.ipc_tx
+                    .send(&ServerMsg::DisconnectedGracefully)
+                    .await
+                    .context("Failed to send `DisconnectedGracefully`")?;
             }
             ClientMsg::ReloadLogFilter => {
                 let filter = spawn_blocking(get_log_filter).await??;
@@ -498,9 +505,11 @@ impl<'a> Handler<'a> {
 
                 session.connlib.set_disabled_resources(disabled_resources);
             }
-            ClientMsg::StartTelemetry { environment } => self
-                .telemetry
-                .start(environment, firezone_telemetry::IPC_SERVICE_DSN),
+            ClientMsg::StartTelemetry { environment } => self.telemetry.start(
+                &environment,
+                firezone_bin_shared::git_version!("gui-client-*"),
+                firezone_telemetry::IPC_SERVICE_DSN,
+            ),
             ClientMsg::StopTelemetry => self.telemetry.stop(),
         }
         Ok(())
@@ -519,30 +528,23 @@ impl<'a> Handler<'a> {
         let transaction = firezone_telemetry::start_transaction(ctx);
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
-        let (private_key, public_key) = keypair();
 
         let url = LoginUrl::client(
             Url::parse(api_url).map_err(|e| Error::UrlParse(e.to_string()))?,
             &token,
             device_id.id,
             None,
-            public_key.to_bytes(),
+            device_id::device_info(),
         )
         .map_err(|e| Error::LoginUrl(e.to_string()))?;
 
         self.last_connlib_start_instant = Some(Instant::now());
         let (cb_tx, cb_rx) = mpsc::channel(1_000);
         let callbacks = CallbackHandler { cb_tx };
-        let args = ConnectArgs {
-            tcp_socket_factory: Arc::new(tcp_socket_factory),
-            udp_socket_factory: Arc::new(udp_socket_factory),
-            private_key,
-            callbacks,
-        };
 
         // Synchronous DNS resolution here
         let phoenix_span = transaction.start_child("phoenix", "Resolve DNS for PhoenixChannel");
-        let portal = PhoenixChannel::connect(
+        let portal = PhoenixChannel::disconnected(
             Secret::new(url),
             get_user_agent(None, env!("CARGO_PKG_VERSION")),
             "client",
@@ -558,7 +560,9 @@ impl<'a> Handler<'a> {
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
         let connlib = connlib_client_shared::Session::connect(
-            args,
+            Arc::new(tcp_socket_factory),
+            Arc::new(udp_socket_factory),
+            callbacks,
             portal,
             tokio::runtime::Handle::current(),
         );

@@ -6,11 +6,11 @@ mod tun;
 
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
-use connlib_client_shared::{
-    keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, Session, V4RouteList, V6RouteList,
-};
-use connlib_shared::{callbacks::ResourceDescription, get_user_agent};
+use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
+use connlib_model::ResourceView;
 use ip_network::{Ipv4Network, Ipv6Network};
+use phoenix_channel::get_user_agent;
+use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use std::{
@@ -48,6 +48,7 @@ mod ffi {
             log_dir: String,
             log_filter: String,
             callback_handler: CallbackHandler,
+            device_info: String,
         ) -> Result<WrappedSession, String>;
 
         fn reset(&mut self);
@@ -138,7 +139,7 @@ impl Callbacks for CallbackHandler {
         );
     }
 
-    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
+    fn on_update_resources(&self, resource_list: Vec<ResourceView>) {
         self.inner.on_update_resources(
             serde_json::to_string(&resource_list)
                 .expect("developer error: failed to serialize resource list"),
@@ -187,19 +188,20 @@ impl WrappedSession {
         log_dir: String,
         log_filter: String,
         callback_handler: ffi::CallbackHandler,
+        device_info: String,
     ) -> Result<Self> {
         let logger = init_logging(log_dir.into(), log_filter)?;
         install_rustls_crypto_provider();
 
         let secret = SecretString::from(token);
+        let device_info = serde_json::from_str(&device_info).unwrap();
 
-        let (private_key, public_key) = keypair();
         let url = LoginUrl::client(
             api_url.as_str(),
             &secret,
             device_id,
             device_name_override,
-            public_key.to_bytes(),
+            device_info,
         )?;
 
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -209,15 +211,7 @@ impl WrappedSession {
             .build()?;
         let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
-        let args = ConnectArgs {
-            private_key,
-            callbacks: CallbackHandler {
-                inner: Arc::new(callback_handler),
-            },
-            tcp_socket_factory: Arc::new(socket_factory::tcp),
-            udp_socket_factory: Arc::new(socket_factory::udp),
-        };
-        let portal = PhoenixChannel::connect(
+        let portal = PhoenixChannel::disconnected(
             Secret::new(url),
             get_user_agent(os_version_override, env!("CARGO_PKG_VERSION")),
             "client",
@@ -227,7 +221,15 @@ impl WrappedSession {
                 .build(),
             Arc::new(socket_factory::tcp),
         )?;
-        let session = Session::connect(args, portal, runtime.handle().clone());
+        let session = Session::connect(
+            Arc::new(socket_factory::tcp),
+            Arc::new(socket_factory::udp),
+            CallbackHandler {
+                inner: Arc::new(callback_handler),
+            },
+            portal,
+            runtime.handle().clone(),
+        );
         session.set_tun(Box::new(Tun::new()?));
 
         Ok(Self {

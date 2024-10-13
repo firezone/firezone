@@ -1,7 +1,12 @@
 use base64::{engine::general_purpose::STANDARD, Engine};
 use secrecy::{CloneableSecret, ExposeSecret as _, SecretString, Zeroize};
+use serde::Deserialize;
 use sha2::Digest as _;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::{
+    iter,
+    marker::PhantomData,
+    net::{Ipv4Addr, Ipv6Addr},
+};
 use url::Url;
 use uuid::Uuid;
 
@@ -17,17 +22,28 @@ use uuid::Uuid;
 #[cfg(not(target_os = "windows"))]
 const HOST_NAME_MAX: usize = 256;
 
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct DeviceInfo {
+    pub device_uuid: Option<String>,
+    pub device_serial: Option<String>,
+    pub identifier_for_vendor: Option<String>,
+    pub firebase_installation_id: Option<String>,
+}
+
 #[derive(Clone)]
-pub struct LoginUrl {
+pub struct LoginUrl<TFinish> {
     url: Url,
 
     // Invariant: Must stay the same as the host in `url`.
     // This is duplicated here because `Url::host` is fallible.
     // If we don't duplicate it, we'd have to do extra error handling in several places instead of just one place.
     host: String,
+    port: u16,
+
+    phantom: PhantomData<TFinish>,
 }
 
-impl Zeroize for LoginUrl {
+impl<TFinish> Zeroize for LoginUrl<TFinish> {
     fn zeroize(&mut self) {
         let placeholder = Url::parse("http://a.com")
             .expect("placeholder URL should always be valid, it's hard-coded");
@@ -35,15 +51,37 @@ impl Zeroize for LoginUrl {
     }
 }
 
-impl CloneableSecret for LoginUrl {}
+pub struct PublicKeyParam(pub [u8; 32]);
 
-impl LoginUrl {
+impl IntoIterator for PublicKeyParam {
+    type Item = (&'static str, String);
+    type IntoIter = std::iter::Once<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        iter::once(("public_key", STANDARD.encode(self.0)))
+    }
+}
+
+pub struct NoParams;
+
+impl IntoIterator for NoParams {
+    type Item = (&'static str, String);
+    type IntoIter = std::iter::Empty<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        std::iter::empty()
+    }
+}
+
+impl<TFinish> CloneableSecret for LoginUrl<TFinish> where TFinish: Clone {}
+
+impl LoginUrl<PublicKeyParam> {
     pub fn client<E>(
         url: impl TryInto<Url, Error = E>,
         firezone_token: &SecretString,
         device_id: String,
         device_name: Option<String>,
-        public_key: [u8; 32],
+        device_info: DeviceInfo,
     ) -> Result<Self, LoginUrlError<E>> {
         let external_id = hex::encode(sha2::Sha256::digest(device_id));
         let device_name = device_name
@@ -54,17 +92,21 @@ impl LoginUrl {
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             firezone_token,
             "client",
-            Some(public_key),
             Some(external_id),
             Some(device_name),
             None,
             None,
             None,
+            device_info,
         )?;
 
+        let (host, port) = parse_host(&url)?;
+
         Ok(LoginUrl {
-            host: parse_host(&url)?,
+            host,
+            port,
             url,
+            phantom: PhantomData,
         })
     }
 
@@ -73,7 +115,6 @@ impl LoginUrl {
         firezone_token: &SecretString,
         device_id: String,
         device_name: Option<String>,
-        public_key: [u8; 32],
     ) -> Result<Self, LoginUrlError<E>> {
         let external_id = hex::encode(sha2::Sha256::digest(device_id));
         let device_name = device_name
@@ -84,20 +125,26 @@ impl LoginUrl {
             url.try_into().map_err(LoginUrlError::InvalidUrl)?,
             firezone_token,
             "gateway",
-            Some(public_key),
             Some(external_id),
             Some(device_name),
             None,
             None,
             None,
+            Default::default(),
         )?;
 
+        let (host, port) = parse_host(&url)?;
+
         Ok(LoginUrl {
-            host: parse_host(&url)?,
+            host,
+            port,
             url,
+            phantom: PhantomData,
         })
     }
+}
 
+impl LoginUrl<NoParams> {
     pub fn relay<E>(
         url: impl TryInto<Url, Error = E>,
         firezone_token: &SecretString,
@@ -111,37 +158,50 @@ impl LoginUrl {
             firezone_token,
             "relay",
             None,
-            None,
             device_name,
             Some(listen_port),
             ipv4_address,
             ipv6_address,
+            Default::default(),
         )?;
 
+        let (host, port) = parse_host(&url)?;
+
         Ok(LoginUrl {
-            host: parse_host(&url)?,
+            host,
+            port,
             url,
+            phantom: PhantomData,
         })
     }
+}
 
-    // TODO: Only temporarily public until we delete other phoenix-channel impl.
-    pub fn inner(&self) -> &Url {
-        &self.url
+impl<TFinish> LoginUrl<TFinish>
+where
+    TFinish: IntoIterator<Item = (&'static str, String)>,
+{
+    pub fn to_url(&self, params: TFinish) -> Url {
+        let mut url = self.url.clone();
+
+        url.query_pairs_mut().extend_pairs(params);
+
+        url
     }
+}
 
-    // TODO: Only temporarily public until we delete other phoenix-channel impl.
-    pub fn host(&self) -> &str {
-        &self.host
+impl<TFinish> LoginUrl<TFinish> {
+    pub fn host_and_port(&self) -> (&str, u16) {
+        (&self.host, self.port)
     }
 }
 
 /// Parse the host from a URL, including port if present. e.g. `example.com:8080`.
-fn parse_host<E>(url: &Url) -> Result<String, LoginUrlError<E>> {
+fn parse_host<E>(url: &Url) -> Result<(String, u16), LoginUrlError<E>> {
     let host = url.host_str().ok_or(LoginUrlError::MissingHost)?;
 
     Ok(match url.port() {
-        Some(p) => format!("{host}:{p}"),
-        None => host.to_owned(),
+        Some(p) => (host.to_owned(), p),
+        None => (host.to_owned(), 443),
     })
 }
 
@@ -177,12 +237,12 @@ fn get_websocket_path<E>(
     mut api_url: Url,
     token: &SecretString,
     mode: &str,
-    public_key: Option<[u8; 32]>,
     external_id: Option<String>,
     name: Option<String>,
     port: Option<u16>,
     ipv4_address: Option<Ipv4Addr>,
     ipv6_address: Option<Ipv6Addr>,
+    device_info: DeviceInfo,
 ) -> Result<Url, LoginUrlError<E>> {
     set_ws_scheme(&mut api_url)?;
 
@@ -201,9 +261,6 @@ fn get_websocket_path<E>(
         query_pairs.clear();
         query_pairs.append_pair("token", token.expose_secret());
 
-        if let Some(public_key) = public_key {
-            query_pairs.append_pair("public_key", &STANDARD.encode(public_key));
-        }
         if let Some(external_id) = external_id {
             query_pairs.append_pair("external_id", &external_id);
         }
@@ -218,6 +275,18 @@ fn get_websocket_path<E>(
         }
         if let Some(port) = port {
             query_pairs.append_pair("port", &port.to_string());
+        }
+        if let Some(device_serial) = device_info.device_serial {
+            query_pairs.append_pair("device_serial", &device_serial);
+        }
+        if let Some(device_uuid) = device_info.device_uuid {
+            query_pairs.append_pair("device_uuid", &device_uuid);
+        }
+        if let Some(identifier_for_vendor) = device_info.identifier_for_vendor {
+            query_pairs.append_pair("identifier_for_vendor", &identifier_for_vendor);
+        }
+        if let Some(firebase_installation_id) = device_info.firebase_installation_id {
+            query_pairs.append_pair("firebase_installation_id", &firebase_installation_id);
         }
     }
 

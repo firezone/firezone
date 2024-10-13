@@ -2,9 +2,11 @@ use arc_swap::ArcSwapOption;
 use std::time::Duration;
 
 pub use sentry::{
-    add_breadcrumb, capture_error, end_session, end_session_with_status, start_transaction,
-    types::protocol::v7::SessionStatus, Breadcrumb, TransactionContext,
+    add_breadcrumb, capture_error, capture_message, configure_scope, end_session,
+    end_session_with_status, start_transaction, types::protocol::v7::SessionStatus, Breadcrumb,
+    Hub, Level, TransactionContext,
 };
+pub use sentry_anyhow::capture_anyhow;
 
 pub struct Dsn(&'static str);
 
@@ -42,22 +44,42 @@ impl Clone for Telemetry {
 }
 
 impl Telemetry {
-    pub fn start(&self, environment: String, dsn: Dsn) {
+    pub fn start(&self, api_url: &str, release: &'static str, dsn: Dsn) {
         // Since it's `arc_swap` and not `Option`, there is a TOCTOU here,
         // but in practice it should never trigger
         if self.inner.load().is_some() {
             return;
         }
+
+        // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
+        // <https://docs.sentry.io/platforms/rust/configuration/environments/>
+        let environment = match api_url {
+            "wss://api.firezone.dev" | "wss://api.firezone.dev/" => "production",
+            "wss://api.firez.one" | "wss://api.firez.one/" => "staging",
+            _ => "self-hosted",
+        };
+
         tracing::info!("Starting telemetry");
         let inner = sentry::init((
             dsn.0,
             sentry::ClientOptions {
                 environment: Some(environment.into()),
-                release: sentry::release_name!(),
+                // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
+                release: Some(release.into()),
                 traces_sample_rate: 1.0,
                 ..Default::default()
             },
         ));
+        // Configure scope on the main hub so that all threads will get the tags
+        sentry::Hub::main().configure_scope(|scope| {
+            scope.set_tag("api_url", api_url);
+            let ctx = sentry::integrations::contexts::utils::device_context();
+            scope.set_context("device", ctx);
+            let ctx = sentry::integrations::contexts::utils::os_context().unwrap();
+            scope.set_context("os", ctx);
+            let ctx = sentry::integrations::contexts::utils::rust_context();
+            scope.set_context("rust", ctx);
+        });
         self.inner.swap(Some(inner.into()));
         sentry::start_session();
     }
@@ -82,6 +104,8 @@ impl Telemetry {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    const ENV: &str = "unit test";
 
     // To avoid problems with global mutable state, we run unrelated tests in the same test case.
     #[test]
@@ -110,7 +134,7 @@ mod tests {
             // Expect no telemetry because the telemetry module needs to be enabled before it can do anything
             negative_error("X7X4CKH3");
 
-            tele.start("test".to_string(), HEADLESS_DSN);
+            tele.start("test", ENV, HEADLESS_DSN);
             // Expect telemetry because the user opted in.
             sentry::add_breadcrumb(sentry::Breadcrumb {
                 ty: "test_crumb".into(),
@@ -123,7 +147,7 @@ mod tests {
             // Expect no telemetry because the user opted back out.
             negative_error("2RSIYAPX");
 
-            tele.start("test".to_string(), HEADLESS_DSN);
+            tele.start("test", ENV, HEADLESS_DSN);
             // Cycle one more time to be sure.
             error("S672IOBZ");
             tele.stop();
@@ -137,12 +161,12 @@ mod tests {
             {
                 let tele = Telemetry::default();
                 negative_error("4H7HFTNX");
-                tele.start("test".to_string(), HEADLESS_DSN);
+                tele.start("test", ENV, HEADLESS_DSN);
             }
             {
                 negative_error("GF46D6IL");
                 let tele = Telemetry::default();
-                tele.start("test".to_string(), HEADLESS_DSN);
+                tele.start("test", ENV, HEADLESS_DSN);
                 error("OKOEUKSW");
             }
         }

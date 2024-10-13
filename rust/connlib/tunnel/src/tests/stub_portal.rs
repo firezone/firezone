@@ -4,11 +4,13 @@ use super::{
     sim_net::Host,
     strategies::{resolved_ips, subdomain_records},
 };
-use crate::proptest::*;
-use connlib_shared::{
-    messages::{client, gateway, DnsServer, GatewayId, ResourceId},
+use crate::{client, proptest::*};
+use crate::{
+    messages::{gateway, DnsServer},
     DomainName,
 };
+use connlib_model::GatewayId;
+use connlib_model::{ResourceId, SiteId};
 use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use proptest::{
@@ -25,13 +27,15 @@ use std::{
 #[derive(Clone, derivative::Derivative)]
 #[derivative(Debug)]
 pub(crate) struct StubPortal {
-    gateways_by_site: BTreeMap<client::SiteId, BTreeSet<GatewayId>>,
+    gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>>,
 
     #[derivative(Debug = "ignore")]
-    sites_by_resource: BTreeMap<ResourceId, client::SiteId>,
-    cidr_resources: BTreeMap<ResourceId, client::ResourceDescriptionCidr>,
-    dns_resources: BTreeMap<ResourceId, client::ResourceDescriptionDns>,
-    internet_resource: client::ResourceDescriptionInternet,
+    sites_by_resource: BTreeMap<ResourceId, SiteId>,
+
+    // TODO: Maybe these should use the `messages` types to cover the conversions and to model that that is what we receive from the portal?
+    cidr_resources: BTreeMap<ResourceId, client::CidrResource>,
+    dns_resources: BTreeMap<ResourceId, client::DnsResource>,
+    internet_resource: client::InternetResource,
 
     #[derivative(Debug = "ignore")]
     gateway_selector: Selector,
@@ -39,11 +43,11 @@ pub(crate) struct StubPortal {
 
 impl StubPortal {
     pub(crate) fn new(
-        gateways_by_site: BTreeMap<client::SiteId, BTreeSet<GatewayId>>,
+        gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>>,
         gateway_selector: Selector,
-        cidr_resources: BTreeSet<client::ResourceDescriptionCidr>,
-        dns_resources: BTreeSet<client::ResourceDescriptionDns>,
-        internet_resource: client::ResourceDescriptionInternet,
+        cidr_resources: BTreeSet<client::CidrResource>,
+        dns_resources: BTreeSet<client::DnsResource>,
+        internet_resource: client::InternetResource,
     ) -> Self {
         let cidr_resources = cidr_resources
             .into_iter()
@@ -96,18 +100,18 @@ impl StubPortal {
         }
     }
 
-    pub(crate) fn all_resources(&self) -> Vec<client::ResourceDescription> {
+    pub(crate) fn all_resources(&self) -> Vec<client::Resource> {
         self.cidr_resources
             .values()
             .cloned()
-            .map(client::ResourceDescription::Cidr)
+            .map(client::Resource::Cidr)
             .chain(
                 self.dns_resources
                     .values()
                     .cloned()
-                    .map(client::ResourceDescription::Dns),
+                    .map(client::Resource::Dns),
             )
-            .chain(iter::once(client::ResourceDescription::Internet(
+            .chain(iter::once(client::Resource::Internet(
                 self.internet_resource.clone(),
             )))
             .collect()
@@ -118,7 +122,7 @@ impl StubPortal {
         &self,
         resource: ResourceId,
         _connected_gateway_ids: BTreeSet<GatewayId>,
-    ) -> (GatewayId, client::SiteId) {
+    ) -> (GatewayId, SiteId) {
         let site_id = self
             .sites_by_resource
             .get(&resource)

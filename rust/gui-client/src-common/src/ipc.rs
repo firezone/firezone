@@ -53,13 +53,6 @@ impl Client {
         Ok(())
     }
 
-    pub async fn disconnect_from_firezone(&mut self) -> Result<()> {
-        self.send_msg(&IpcClientMsg::Disconnect)
-            .await
-            .context("Couldn't send Disconnect")?;
-        Ok(())
-    }
-
     pub async fn send_msg(&mut self, msg: &IpcClientMsg) -> Result<()> {
         self.tx
             .send(msg)

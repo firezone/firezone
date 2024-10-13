@@ -8,7 +8,8 @@ defmodule Web.Groups.Show do
            Actors.fetch_group_by_id(id, socket.assigns.subject,
              preload: [
                provider: [],
-               created_by_identity: [:actor]
+               created_by_identity: [:actor],
+               created_by_actor: []
              ]
            ) do
       socket =

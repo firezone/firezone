@@ -24,7 +24,7 @@ pub fn new(
         multiplier: backoff::default::MULTIPLIER,
         max_interval: Duration::from_millis(backoff::default::MAX_INTERVAL_MILLIS),
         start_time: now,
-        max_elapsed_time: Some(Duration::from_secs(60)),
+        max_elapsed_time: Some(Duration::from_secs(10)),
         clock: ManualClock { now },
     }
 }
@@ -33,7 +33,7 @@ pub fn new(
 ///
 /// The current strategy is multiplying the previous interval by 1.5 and adding them up.
 #[cfg(test)]
-pub fn steps(start: Instant) -> [Instant; 8] {
+pub fn steps(start: Instant) -> [Instant; 4] {
     fn secs(secs: f64) -> Duration {
         Duration::from_nanos((secs * 1_000_000_000.0) as u64)
     }
@@ -43,9 +43,5 @@ pub fn steps(start: Instant) -> [Instant; 8] {
         start + secs(1.0 + 1.5),
         start + secs(1.0 + 1.5 + 2.25),
         start + secs(1.0 + 1.5 + 2.25 + 3.375),
-        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625),
-        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625 + 7.59375),
-        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625 + 7.59375 + 11.390625),
-        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625 + 7.59375 + 11.390625 + 17.0859375),
     ]
 }

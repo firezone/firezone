@@ -5,11 +5,8 @@
 
 use crate::tun::Tun;
 use backoff::ExponentialBackoffBuilder;
-use connlib_client_shared::{
-    keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, LoginUrlError, Session,
-    V4RouteList, V6RouteList,
-};
-use connlib_shared::{callbacks::ResourceDescription, get_user_agent, messages::ResourceId};
+use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
+use connlib_model::{ResourceId, ResourceView};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -17,7 +14,9 @@ use jni::{
     sys::jlong,
     JNIEnv, JavaVM,
 };
+use phoenix_channel::get_user_agent;
 use phoenix_channel::PhoenixChannel;
+use phoenix_channel::{LoginUrl, LoginUrlError};
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{collections::BTreeSet, io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
@@ -225,7 +224,7 @@ impl Callbacks for CallbackHandler {
         .expect("onUpdateRoutes callback failed");
     }
 
-    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
+    fn on_update_resources(&self, resource_list: Vec<ResourceView>) {
         self.env(|mut env| {
             let resource_list = env
                 .new_string(serde_json::to_string(&resource_list)?)
@@ -332,6 +331,7 @@ fn connect(
     log_dir: JString,
     log_filter: JString,
     callback_handler: GlobalRef,
+    device_info: JString,
 ) -> Result<SessionWrapper, ConnectError> {
     let api_url = string_from_jstring!(env, api_url);
     let secret = SecretString::from(string_from_jstring!(env, token));
@@ -340,6 +340,9 @@ fn connect(
     let os_version = string_from_jstring!(env, os_version);
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);
+    let device_info = string_from_jstring!(env, device_info);
+
+    let device_info = serde_json::from_str(&device_info).unwrap();
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
     install_rustls_crypto_provider();
@@ -350,13 +353,12 @@ fn connect(
         handle,
     };
 
-    let (private_key, public_key) = keypair();
     let url = LoginUrl::client(
         api_url.as_str(),
         &secret,
         device_id,
         Some(device_name),
-        public_key.to_bytes(),
+        device_info,
     )?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -368,13 +370,7 @@ fn connect(
 
     let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(callbacks.clone()));
 
-    let args = ConnectArgs {
-        tcp_socket_factory: tcp_socket_factory.clone(),
-        udp_socket_factory: Arc::new(protected_udp_socket_factory(callbacks.clone())),
-        private_key,
-        callbacks,
-    };
-    let portal = PhoenixChannel::connect(
+    let portal = PhoenixChannel::disconnected(
         Secret::new(url),
         get_user_agent(Some(os_version), env!("CARGO_PKG_VERSION")),
         "client",
@@ -384,7 +380,13 @@ fn connect(
             .build(),
         tcp_socket_factory,
     )?;
-    let session = Session::connect(args, portal, runtime.handle().clone());
+    let session = Session::connect(
+        Arc::new(protected_tcp_socket_factory(callbacks.clone())),
+        Arc::new(protected_udp_socket_factory(callbacks.clone())),
+        callbacks,
+        portal,
+        runtime.handle().clone(),
+    );
 
     Ok(SessionWrapper {
         inner: session,
@@ -407,6 +409,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
     log_dir: JString,
     log_filter: JString,
     callback_handler: JObject,
+    device_info: JString,
 ) -> *const SessionWrapper {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else {
         return std::ptr::null();
@@ -423,6 +426,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
             log_dir,
             log_filter,
             callback_handler,
+            device_info,
         )
     });
 

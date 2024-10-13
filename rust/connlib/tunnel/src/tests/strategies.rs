@@ -1,20 +1,8 @@
-use super::{
-    sim_dns::{dns_server_id, ref_dns_host, DnsServerId, RefDns},
-    sim_net::Host,
-    sim_relay::ref_relay_host,
-    stub_portal::StubPortal,
-};
-use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
+use crate::client::{CidrResource, DnsResource, InternetResource, IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::proptest::*;
-use connlib_shared::{
-    messages::{
-        client::{
-            ResourceDescriptionCidr, ResourceDescriptionDns, ResourceDescriptionInternet, Site,
-        },
-        DnsServer, RelayId,
-    },
-    DomainName,
-};
+use crate::{messages::DnsServer, DomainName};
+use connlib_model::{RelayId, Site};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
@@ -109,39 +97,36 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
         )
 }
 
-pub(crate) fn relays() -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
-    collection::btree_map(relay_id(), ref_relay_host(), 1..=2)
+pub(crate) fn relays(
+    id: impl Strategy<Value = RelayId>,
+) -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
+    collection::btree_map(id, ref_relay_host(), 1..=2)
 }
 
 /// Sample a list of DNS servers.
 ///
 /// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
-pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeMap<DnsServerId, Host<RefDns>>> {
+pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
     let ip4_dns_servers = collection::btree_set(
-        any::<Ipv4Addr>().prop_map(|ip| SocketAddr::from((ip, 53))),
+        any::<Ipv4Addr>()
+            .prop_filter("must not be in sentinel IP range", |ip| {
+                !crate::client::DNS_SENTINELS_V4.contains(*ip)
+            })
+            .prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
     let ip6_dns_servers = collection::btree_set(
-        any::<Ipv6Addr>().prop_map(|ip| SocketAddr::from((ip, 53))),
+        any::<Ipv6Addr>()
+            .prop_filter("must not be in sentinel IP range", |ip| {
+                !crate::client::DNS_SENTINELS_V6.contains(*ip)
+            })
+            .prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
 
-    (ip4_dns_servers, ip6_dns_servers).prop_flat_map(|(ip4_dns_servers, ip6_dns_servers)| {
-        let servers = Vec::from_iter(ip4_dns_servers.into_iter().chain(ip6_dns_servers));
-
-        // First, generate a unique number of IDs, one for each DNS server.
-        let ids = collection::btree_set(dns_server_id(), servers.len());
-
-        (ids, Just(servers))
-            .prop_flat_map(move |(ids, servers)| {
-                let ids = ids.into_iter();
-
-                // Second, zip the IDs and addresses together.
-                ids.zip(servers)
-                    .map(|(id, addr)| (Just(id), ref_dns_host(addr)))
-                    .collect::<Vec<_>>()
-            })
-            .prop_map(BTreeMap::from_iter) // Third, turn the `Vec` of tuples into a `BTreeMap`.
+    (ip4_dns_servers, ip6_dns_servers).prop_map(|(mut v4, v6)| {
+        v4.extend(v6);
+        v4
     })
 }
 
@@ -151,7 +136,7 @@ fn any_site(sites: BTreeSet<Site>) -> impl Strategy<Value = Site> {
 
 fn cidr_resource_outside_reserved_ranges(
     sites: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionCidr> {
+) -> impl Strategy<Value = CidrResource> {
     cidr_resource(any_ip_network(8), sites.prop_map(|s| vec![s]))
         .prop_filter(
             "tests doesn't support yet CIDR resources overlapping DNS resources",
@@ -168,22 +153,20 @@ fn cidr_resource_outside_reserved_ranges(
         .prop_filter("resource must not be in the documentation range because we use those for host addresses and DNS IPs", |r| !r.address.is_documentation())
 }
 
-fn internet_resource(
-    site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionInternet> {
+fn internet_resource(site: impl Strategy<Value = Site>) -> impl Strategy<Value = InternetResource> {
     crate::proptest::internet_resource(site.prop_map(|s| vec![s]))
 }
 
 fn non_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionDns> {
+) -> impl Strategy<Value = DnsResource> {
     dns_resource(site.prop_map(|s| vec![s]))
 }
 
 fn star_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionDns> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| ResourceDescriptionDns {
+) -> impl Strategy<Value = DnsResource> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| DnsResource {
         address: format!("*.{}", r.address),
         ..r
     })
@@ -191,8 +174,8 @@ fn star_wildcard_dns_resource(
 
 fn double_star_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionDns> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| ResourceDescriptionDns {
+) -> impl Strategy<Value = DnsResource> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| DnsResource {
         address: format!("**.{}", r.address),
         ..r
     })
@@ -261,20 +244,20 @@ pub(crate) fn documentation_ip6s(subnet: u16, num_ips: usize) -> impl Strategy<V
     sample::select(ips)
 }
 
-pub(crate) fn system_dns_servers(
-    dns_servers: Vec<Host<RefDns>>,
-) -> impl Strategy<Value = Vec<IpAddr>> {
-    let max = dns_servers.len();
+pub(crate) fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
+    dns_servers().prop_flat_map(|dns_servers| {
+        let max = dns_servers.len();
 
-    sample::subsequence(dns_servers, ..=max)
-        .prop_map(|seq| seq.into_iter().map(|h| h.single_socket().ip()).collect())
+        sample::subsequence(Vec::from_iter(dns_servers), ..=max)
+            .prop_map(|seq| seq.into_iter().map(|h| h.ip()).collect())
+    })
 }
 
-pub(crate) fn upstream_dns_servers(
-    dns_servers: Vec<Host<RefDns>>,
-) -> impl Strategy<Value = Vec<DnsServer>> {
-    let max = dns_servers.len();
+pub(crate) fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
+    dns_servers().prop_flat_map(|dns_servers| {
+        let max = dns_servers.len();
 
-    sample::subsequence(dns_servers, ..=max)
-        .prop_map(|seq| seq.into_iter().map(|h| h.single_socket().into()).collect())
+        sample::subsequence(Vec::from_iter(dns_servers), ..=max)
+            .prop_map(|seq| seq.into_iter().map(|h| h.into()).collect())
+    })
 }

@@ -4,9 +4,10 @@ members = [
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",
-  "connlib/shared",
+  "connlib/model",
   "connlib/snownet",
   "connlib/tunnel",
+  "dns-over-tcp",
   "gateway",
   "gui-client/src-common",
   "gui-client/src-tauri",
@@ -20,7 +21,7 @@ members = [
   "telemetry",
   "tests/gui-smoke-test",
   "tests/http-test-server",
-  "tun"
+  "tun",
 ]
 
 resolver = "2"
@@ -51,8 +52,9 @@ firezone-bin-shared = { path = "bin-shared" }
 firezone-logging = { path = "logging" }
 firezone-telemetry = { path = "telemetry" }
 snownet = { path = "connlib/snownet" }
+dns-over-tcp = { path = "dns-over-tcp" }
 firezone-relay = { path = "relay" }
-connlib-shared = { path = "connlib/shared" }
+connlib-model = { path = "connlib/model" }
 firezone-tunnel = { path = "connlib/tunnel" }
 phoenix-channel = { path = "phoenix-channel" }
 ip-packet = { path = "ip-packet" }
@@ -78,8 +80,8 @@ boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master"
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
-proptest = { git = "https://github.com/proptest-rs/proptest", branch = "master" }
-proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "master" }
+proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" }
+proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "main" }
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.23" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.

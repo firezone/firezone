@@ -1,8 +1,9 @@
+mod get_user_agent;
 mod heartbeat;
 mod login_url;
 
 use std::collections::{HashSet, VecDeque};
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::{fmt, future, marker::PhantomData};
@@ -27,9 +28,10 @@ use tokio_tungstenite::{
 };
 use url::{Host, Url};
 
-pub use login_url::{LoginUrl, LoginUrlError};
+pub use get_user_agent::get_user_agent;
+pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
 
-pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
+pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes, TFinish> {
     state: State,
     waker: Option<Waker>,
     pending_messages: VecDeque<String>,
@@ -43,7 +45,8 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     pending_join_requests: HashSet<OutboundRequestId>,
 
     // Stored here to allow re-connecting.
-    url: Secret<LoginUrl>,
+    url_prototype: Secret<LoginUrl<TFinish>>,
+    last_url: Option<Url>,
     user_agent: String,
     reconnect_backoff: ExponentialBackoff,
 
@@ -64,7 +67,7 @@ enum State {
 
 impl State {
     fn connect(
-        url: Secret<LoginUrl>,
+        url: Url,
         user_agent: String,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
@@ -73,11 +76,13 @@ impl State {
 }
 
 async fn create_and_connect_websocket(
-    url: Secret<LoginUrl>,
+    url: Url,
     user_agent: String,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
-    let socket = make_socket(url.expose_secret().inner(), &*socket_factory).await?;
+    tracing::debug!(host = %url.host().unwrap(), %user_agent, "Connecting to portal");
+
+    let socket = make_socket(&url, &*socket_factory).await?;
 
     let (stream, _) = client_async_tls(make_request(url, user_agent), socket)
         .await
@@ -212,18 +217,22 @@ impl fmt::Display for OutboundRequestId {
 #[error("Cannot close websocket while we are connecting")]
 pub struct Connecting;
 
-impl<TInitReq, TInboundMsg, TOutboundRes> PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>
+impl<TInitReq, TInboundMsg, TOutboundRes, TFinish>
+    PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes, TFinish>
 where
     TInitReq: Serialize + Clone,
     TInboundMsg: DeserializeOwned,
     TOutboundRes: DeserializeOwned,
+    TFinish: IntoIterator<Item = (&'static str, String)>,
 {
-    /// Creates a new [PhoenixChannel] to the given endpoint.
+    /// Creates a new [PhoenixChannel] to the given endpoint in the `disconnected` state.
+    ///
+    /// You must explicitly call [`PhoenixChannel::connect`] to establish a connection.
     ///
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
-    pub fn connect(
-        url: Secret<LoginUrl>,
+    pub fn disconnected(
+        url: Secret<LoginUrl<TFinish>>,
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,
@@ -237,19 +246,16 @@ where
         // We expose them to other components that deal with DNS stuff to ensure our domain always resolves to these IPs.
         let resolved_addresses = url
             .expose_secret()
-            .inner()
-            .socket_addrs(|| None)?
-            .iter()
+            .host_and_port()
+            .to_socket_addrs()?
             .map(|addr| addr.ip())
             .collect();
 
-        tracing::debug!(host = %url.expose_secret().host(), %user_agent, "Connecting to portal");
-
         Ok(Self {
             reconnect_backoff,
-            url: url.clone(),
-            user_agent: user_agent.clone(),
-            state: State::connect(url, user_agent, socket_factory.clone()),
+            url_prototype: url,
+            user_agent,
+            state: State::Closed,
             socket_factory,
             waker: None,
             pending_messages: Default::default(),
@@ -264,6 +270,7 @@ where
             login,
             init_req,
             resolved_addresses,
+            last_url: None,
         })
     }
 
@@ -274,7 +281,7 @@ where
 
     /// The host we are connecting / connected to.
     pub fn server_host(&self) -> &str {
-        self.url.expose_secret().host()
+        self.url_prototype.expose_secret().host_and_port().0
     }
 
     /// Join the provided room.
@@ -295,15 +302,16 @@ where
         id
     }
 
-    /// Reconnects to the portal.
-    pub fn reconnect(&mut self) {
+    /// Establishes a new connection, dropping the current one if any exists.
+    pub fn connect(&mut self, params: TFinish) {
         // 1. Reset the backoff.
         self.reconnect_backoff.reset();
 
         // 2. Set state to `Connecting` without a timer.
-        let url = self.url.clone();
+        let url = self.url_prototype.expose_secret().to_url(params);
         let user_agent = self.user_agent.clone();
-        self.state = State::connect(url, user_agent, self.socket_factory.clone());
+        self.state = State::connect(url.clone(), user_agent, self.socket_factory.clone());
+        self.last_url = Some(url);
 
         // 3. In case we were already re-connecting, we need to wake the suspended task.
         if let Some(waker) = self.waker.take() {
@@ -356,7 +364,7 @@ where
                         self.heartbeat.reset();
                         self.state = State::Connected(stream);
 
-                        let host = self.url.expose_secret().host();
+                        let (host, _) = self.url_prototype.expose_secret().host_and_port();
 
                         tracing::info!(%host, "Connected to portal");
                         self.join(self.login, self.init_req.clone());
@@ -374,7 +382,11 @@ where
                             return Poll::Ready(Err(Error::MaxRetriesReached));
                         };
 
-                        let secret_url = self.url.clone();
+                        let secret_url = self
+                            .last_url
+                            .as_ref()
+                            .expect("should have last URL if we receive connection error")
+                            .clone();
                         let user_agent = self.user_agent.clone();
                         let socket_factory = self.socket_factory.clone();
 
@@ -734,22 +746,20 @@ impl<T, R> PhoenixMessage<T, R> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(url: Secret<LoginUrl>, user_agent: String) -> Request {
-    use secrecy::ExposeSecret as _;
-
+fn make_request(url: Url, user_agent: String) -> Request {
     let mut r = [0u8; 16];
     OsRng.fill_bytes(&mut r);
     let key = base64::engine::general_purpose::STANDARD.encode(r);
 
     Request::builder()
         .method("GET")
-        .header("Host", url.expose_secret().host())
+        .header("Host", url.host().unwrap().to_string())
         .header("Connection", "Upgrade")
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
         .header("User-Agent", user_agent)
-        .uri(url.expose_secret().inner().as_str())
+        .uri(url.to_string())
         .body(())
         .expect("building static request always works")
 }

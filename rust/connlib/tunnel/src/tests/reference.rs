@@ -1,18 +1,12 @@
 use super::{
-    composite_strategy::CompositeStrategy, sim_client::*, sim_dns::*, sim_gateway::*, sim_net::*,
+    composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
-use crate::dns::is_subdomain;
-use connlib_shared::{
-    messages::{
-        client::{self, ResourceDescription},
-        GatewayId, RelayId, ResourceId,
-    },
-    DomainName, StaticSecret,
-};
+use crate::{client, DomainName};
+use crate::{dns::is_subdomain, proptest::relay_id};
+use connlib_model::{GatewayId, RelayId, ResourceId, StaticSecret};
 use domain::base::Rtype;
 use proptest::{prelude::*, sample};
-use proptest_state_machine::ReferenceStateMachine;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     fmt, iter,
@@ -28,7 +22,6 @@ pub(crate) struct ReferenceState {
     pub(crate) client: Host<RefClient>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
-    pub(crate) dns_servers: BTreeMap<DnsServerId, Host<RefDns>>,
 
     pub(crate) portal: StubPortal,
 
@@ -54,20 +47,14 @@ pub(crate) enum ResourceDst {
 /// The logic in here represents what we expect the [`ClientState`] & [`GatewayState`] to do.
 /// Care has to be taken that we don't implement things in a buggy way here.
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
-impl ReferenceStateMachine for ReferenceState {
-    type State = Self;
-    type Transition = Transition;
-
-    fn init_state() -> BoxedStrategy<Self::State> {
-        (stub_portal(), dns_servers())
-            .prop_flat_map(|(portal, dns_servers)| {
+impl ReferenceState {
+    pub(crate) fn initial_state() -> BoxedStrategy<Self> {
+        stub_portal()
+            .prop_flat_map(|portal| {
                 let gateways = portal.gateways();
                 let dns_resource_records = portal.dns_resource_records();
-                let client = portal.client(
-                    system_dns_servers(dns_servers.values().cloned().collect()),
-                    upstream_dns_servers(dns_servers.values().cloned().collect()),
-                );
-                let relays = relays();
+                let client = portal.client(system_dns_servers(), upstream_dns_servers());
+                let relays = relays(relay_id());
                 let global_dns_records = global_dns_records(); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();
 
@@ -79,7 +66,6 @@ impl ReferenceStateMachine for ReferenceState {
                     relays,
                     global_dns_records,
                     drop_direct_client_traffic,
-                    Just(dns_servers),
                 )
             })
             .prop_filter_map(
@@ -92,7 +78,6 @@ impl ReferenceStateMachine for ReferenceState {
                     relays,
                     mut global_dns,
                     drop_direct_client_traffic,
-                    dns_servers,
                 )| {
                     let mut routing_table = RoutingTable::default();
 
@@ -111,12 +96,6 @@ impl ReferenceStateMachine for ReferenceState {
                         };
                     }
 
-                    for (id, dns_server) in &dns_servers {
-                        if !routing_table.add_host(*id, dns_server) {
-                            return None;
-                        };
-                    }
-
                     // Merge all DNS records into `global_dns`.
                     global_dns.extend(records);
 
@@ -124,7 +103,6 @@ impl ReferenceStateMachine for ReferenceState {
                         c,
                         gateways,
                         relays,
-                        dns_servers,
                         portal,
                         global_dns,
                         drop_direct_client_traffic,
@@ -134,7 +112,7 @@ impl ReferenceStateMachine for ReferenceState {
             )
             .prop_filter(
                 "private keys must be unique",
-                |(c, gateways, _, _, _, _, _, _)| {
+                |(c, gateways, _, _, _, _, _)| {
                     let different_keys = gateways
                         .iter()
                         .map(|(_, g)| g.inner().key)
@@ -149,7 +127,6 @@ impl ReferenceStateMachine for ReferenceState {
                     client,
                     gateways,
                     relays,
-                    dns_servers,
                     portal,
                     global_dns_records,
                     drop_direct_client_traffic,
@@ -159,7 +136,6 @@ impl ReferenceStateMachine for ReferenceState {
                         client,
                         gateways,
                         relays,
-                        dns_servers,
                         portal,
                         global_dns_records,
                         network,
@@ -174,17 +150,15 @@ impl ReferenceStateMachine for ReferenceState {
     ///
     /// This is invoked by proptest repeatedly to explore further state transitions.
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
-    fn transitions(state: &Self::State) -> BoxedStrategy<Self::Transition> {
+    pub(crate) fn transitions(state: &Self) -> BoxedStrategy<Transition> {
         CompositeStrategy::default()
             .with(
                 1,
-                system_dns_servers(state.dns_servers.values().cloned().collect())
-                    .prop_map(Transition::UpdateSystemDnsServers),
+                system_dns_servers().prop_map(Transition::UpdateSystemDnsServers),
             )
             .with(
                 1,
-                upstream_dns_servers(state.dns_servers.values().cloned().collect())
-                    .prop_map(Transition::UpdateUpstreamDnsServers),
+                upstream_dns_servers().prop_map(Transition::UpdateUpstreamDnsServers),
             )
             .with_if_not_empty(
                 5,
@@ -195,8 +169,15 @@ impl ReferenceStateMachine for ReferenceState {
                 sample::select(resource_ids).prop_map(Transition::DeactivateResource)
             })
             .with(1, roam_client())
-            .with(1, relays().prop_map(Transition::DeployNewRelays))
+            .with(1, relays(relay_id()).prop_map(Transition::DeployNewRelays))
             .with(1, Just(Transition::PartitionRelaysFromPortal))
+            .with(
+                1,
+                relays(sample::select(
+                    state.relays.keys().copied().collect::<Vec<_>>(),
+                ))
+                .prop_map(Transition::RebootRelaysWhilePartitioned),
+            )
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
@@ -284,11 +265,11 @@ impl ReferenceStateMachine for ReferenceState {
     /// Apply the transition to our reference state.
     ///
     /// Here is where we implement the "expected" logic.
-    fn apply(mut state: Self::State, transition: &Self::Transition) -> Self::State {
+    pub(crate) fn apply(mut state: Self, transition: &Transition) -> Self {
         match transition {
             Transition::ActivateResource(resource) => {
                 state.client.exec_mut(|client| match resource {
-                    client::ResourceDescription::Dns(r) => {
+                    client::Resource::Dns(r) => {
                         client.add_dns_resource(r.clone());
 
                         // TODO: PRODUCTION CODE CANNOT DO THIS.
@@ -301,10 +282,8 @@ impl ReferenceStateMachine for ReferenceState {
                             true
                         });
                     }
-                    client::ResourceDescription::Cidr(r) => client.add_cidr_resource(r.clone()),
-                    client::ResourceDescription::Internet(r) => {
-                        client.add_internet_resource(r.clone())
-                    }
+                    client::Resource::Cidr(r) => client.add_cidr_resource(r.clone()),
+                    client::Resource::Internet(r) => client.add_internet_resource(r.clone()),
                 });
             }
             Transition::DeactivateResource(id) => {
@@ -447,29 +426,19 @@ impl ReferenceStateMachine for ReferenceState {
                     .add_host(state.client.inner().id, &state.client));
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
-                state.client.exec_mut(|client| client.reset_connections());
+                state.client.exec_mut(|client| {
+                    client.reset_connections();
+                    client.readd_all_resources()
+                });
             }
             Transition::ReconnectPortal => {
                 // Reconnecting to the portal should have no noticeable impact on the data plane.
                 // We do re-add all resources though so depending on the order they are added in, overlapping CIDR resources may change.
                 state.client.exec_mut(|c| c.readd_all_resources());
             }
-            Transition::DeployNewRelays(new_relays) => {
-                // Always take down all relays because we can't know which one was sampled for the connection.
-                for relay in state.relays.values() {
-                    state.network.remove_host(relay);
-                }
-                state.relays.clear();
-
-                for (rid, new_relay) in new_relays {
-                    state.relays.insert(*rid, new_relay.clone());
-                    debug_assert!(state.network.add_host(*rid, new_relay));
-                }
-
-                // In case we were using the relays, all connections will be cut and require us to make a new one.
-                if state.drop_direct_client_traffic {
-                    state.client.exec_mut(|client| client.reset_connections());
-                }
+            Transition::DeployNewRelays(new_relays) => state.deploy_new_relays(new_relays),
+            Transition::RebootRelaysWhilePartitioned(new_relays) => {
+                state.deploy_new_relays(new_relays)
             }
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
@@ -483,7 +452,7 @@ impl ReferenceStateMachine for ReferenceState {
     }
 
     /// Any additional checks on whether a particular [`Transition`] can be applied to a certain state.
-    fn preconditions(state: &Self::State, transition: &Self::Transition) -> bool {
+    pub(crate) fn is_valid_transition(state: &Self, transition: &Transition) -> bool {
         match transition {
             Transition::ActivateResource(resource) => {
                 // Don't add resource we already have.
@@ -620,7 +589,8 @@ impl ReferenceStateMachine for ReferenceState {
             Transition::DeactivateResource(r) => {
                 state.client.inner().all_resource_ids().contains(r)
             }
-            Transition::DeployNewRelays(new_relays) => {
+            Transition::RebootRelaysWhilePartitioned(new_relays)
+            | Transition::DeployNewRelays(new_relays) => {
                 let mut additional_routes = RoutingTable::default();
                 for (rid, relay) in new_relays {
                     if !additional_routes.add_host(*rid, relay) {
@@ -666,11 +636,29 @@ impl ReferenceState {
             .collect()
     }
 
-    fn all_resources_not_known_to_client(&self) -> Vec<ResourceDescription> {
+    fn all_resources_not_known_to_client(&self) -> Vec<client::Resource> {
         let mut all_resources = self.portal.all_resources();
         all_resources.retain(|r| !self.client.inner().has_resource(r.id()));
 
         all_resources
+    }
+
+    fn deploy_new_relays(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {
+        // Always take down all relays because we can't know which one was sampled for the connection.
+        for relay in self.relays.values() {
+            self.network.remove_host(relay);
+        }
+        self.relays.clear();
+
+        for (rid, new_relay) in new_relays {
+            self.relays.insert(*rid, new_relay.clone());
+            debug_assert!(self.network.add_host(*rid, new_relay));
+        }
+
+        // In case we were using the relays, all connections will be cut and require us to make a new one.
+        if self.drop_direct_client_traffic {
+            self.client.exec_mut(|client| client.reset_connections());
+        }
     }
 }
 

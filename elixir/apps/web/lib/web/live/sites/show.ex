@@ -5,7 +5,10 @@ defmodule Web.Sites.Show do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
            Gateways.fetch_group_by_id(id, socket.assigns.subject,
-             preload: [created_by_identity: [:actor]]
+             preload: [
+               created_by_identity: [:actor],
+               created_by_actor: []
+             ]
            ) do
       if connected?(socket) do
         :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
@@ -177,6 +180,10 @@ defmodule Web.Sites.Show do
                 <%= gateway.last_seen_remote_ip %>
               </code>
             </:col>
+            <:col :let={gateway} label="version">
+              <.version_status outdated={Gateways.gateway_outdated?(gateway)} />
+              <%= gateway.last_seen_version %>
+            </:col>
             <:col :let={gateway} label="status">
               <.connection_status schema={gateway} />
             </:col>
@@ -320,5 +327,24 @@ defmodule Web.Sites.Show do
   def handle_event("delete", _params, socket) do
     {:ok, _group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites")}
+  end
+
+  attr :outdated, :boolean
+
+  defp version_status(assigns) do
+    ~H"""
+    <.icon
+      :if={!@outdated}
+      name="hero-check-circle"
+      class="w-4 h-4 text-green-500"
+      title="Up to date"
+    />
+    <.icon
+      :if={@outdated}
+      name="hero-arrow-up-circle"
+      class="w-4 h-4 text-primary-500"
+      title="New version available"
+    />
+    """
   end
 end

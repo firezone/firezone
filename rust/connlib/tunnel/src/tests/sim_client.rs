@@ -6,18 +6,14 @@ use super::{
     transition::DnsQuery,
     IcmpIdentifier, IcmpSeq, QueryId,
 };
-use crate::{proptest::*, ClientState};
-use bimap::BiMap;
-use connlib_shared::{
-    messages::{
-        client::{
-            ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
-            ResourceDescriptionInternet,
-        },
-        ClientId, DnsServer, GatewayId, Interface, RelayId, ResourceId,
-    },
+use crate::{
+    client::{CidrResource, DnsResource, InternetResource, Resource},
+    messages::{DnsServer, Interface},
     DomainName,
 };
+use crate::{proptest::*, ClientState};
+use bimap::BiMap;
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use domain::{
     base::{Message, Rtype, ToName},
     rdata::AllRecordData,
@@ -199,7 +195,10 @@ impl SimClient {
 
                 // Map back to upstream socket so we can assert on it correctly.
                 let sentinel = SocketAddr::from((packet.source(), udp.source_port()));
-                let upstream = self.upstream_dns_by_sentinel(&sentinel).unwrap();
+                let Some(upstream) = self.upstream_dns_by_sentinel(&sentinel) else {
+                    tracing::error!(%sentinel, "Unknown DNS server");
+                    return;
+                };
 
                 self.received_dns_responses
                     .insert((upstream, message.header().id()), packet.clone());
@@ -286,7 +285,7 @@ pub struct RefClient {
     ///
     /// When reconnecting to the portal, we simulate them being re-added in the same order.
     #[derivative(Debug = "ignore")]
-    resources: Vec<ResourceDescription>,
+    resources: Vec<Resource>,
 
     #[derivative(Debug = "ignore")]
     internet_resource: Option<ResourceId>,
@@ -335,7 +334,7 @@ impl RefClient {
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(self) -> SimClient {
-        let mut client_state = ClientState::new(self.key, self.known_hosts, self.key.0); // Cheating a bit here by reusing the key as seed.
+        let mut client_state = ClientState::new(self.known_hosts, self.key.0); // Cheating a bit here by reusing the key as seed.
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
@@ -373,7 +372,7 @@ impl RefClient {
     fn recalculate_cidr_routes(&mut self) -> IpNetworkTable<ResourceId> {
         let mut table = IpNetworkTable::<ResourceId>::new();
         for resource in self.resources.iter().sorted_by_key(|r| r.id()) {
-            let ResourceDescription::Cidr(resource) = resource else {
+            let Resource::Cidr(resource) = resource else {
                 continue;
             };
 
@@ -400,10 +399,9 @@ impl RefClient {
         self.connected_gateways.clear();
     }
 
-    pub(crate) fn add_internet_resource(&mut self, r: ResourceDescriptionInternet) {
+    pub(crate) fn add_internet_resource(&mut self, r: InternetResource) {
         self.internet_resource = Some(r.id);
-        self.resources
-            .push(ResourceDescription::Internet(r.clone()));
+        self.resources.push(Resource::Internet(r.clone()));
 
         if self.disabled_resources.contains(&r.id) {
             return;
@@ -413,8 +411,8 @@ impl RefClient {
         self.ipv6_routes.insert(r.id, Ipv6Network::DEFAULT_ROUTE);
     }
 
-    pub(crate) fn add_cidr_resource(&mut self, r: ResourceDescriptionCidr) {
-        self.resources.push(ResourceDescription::Cidr(r.clone()));
+    pub(crate) fn add_cidr_resource(&mut self, r: CidrResource) {
+        self.resources.push(Resource::Cidr(r.clone()));
         self.cidr_resources = self.recalculate_cidr_routes();
 
         if self.disabled_resources.contains(&r.id) {
@@ -431,8 +429,8 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn add_dns_resource(&mut self, r: ResourceDescriptionDns) {
-        self.resources.push(ResourceDescription::Dns(r));
+    pub(crate) fn add_dns_resource(&mut self, r: DnsResource) {
+        self.resources.push(Resource::Dns(r));
     }
 
     /// Re-adds all resources in the order they have been initially added.
@@ -442,9 +440,9 @@ impl RefClient {
 
         for resource in mem::take(&mut self.resources) {
             match resource {
-                ResourceDescription::Dns(d) => self.add_dns_resource(d),
-                ResourceDescription::Cidr(c) => self.add_cidr_resource(c),
-                ResourceDescription::Internet(i) => self.add_internet_resource(i),
+                Resource::Dns(d) => self.add_dns_resource(d),
+                Resource::Cidr(c) => self.add_cidr_resource(c),
+                Resource::Internet(i) => self.add_internet_resource(i),
             }
         }
     }
@@ -837,7 +835,7 @@ impl RefClient {
         self.resources.iter().any(|r| r.id() == resource_id)
     }
 
-    pub(crate) fn all_resources(&self) -> Vec<ResourceDescription> {
+    pub(crate) fn all_resources(&self) -> Vec<Resource> {
         self.resources.clone()
     }
 

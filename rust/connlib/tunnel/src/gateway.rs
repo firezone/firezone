@@ -1,3 +1,5 @@
+use crate::messages::ResolveRequest;
+use crate::messages::{gateway::ResourceDescription, Answer, Key, Offer};
 use crate::peer::ClientOnGateway;
 use crate::peer_store::PeerStore;
 use crate::utils::earliest;
@@ -5,11 +7,7 @@ use crate::{GatewayEvent, GatewayTunnel};
 use anyhow::Context;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::ResolveRequest;
-use connlib_shared::messages::{
-    gateway::ResourceDescription, Answer, ClientId, Key, Offer, RelayId, ResourceId,
-};
-use connlib_shared::{DomainName, StaticSecret};
+use connlib_model::{ClientId, DomainName, RelayId, ResourceId};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::IpPacket;
 use secrecy::{ExposeSecret as _, Secret};
@@ -37,6 +35,7 @@ impl GatewayTunnel {
     }
 
     /// Accept a connection request from a client.
+    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
     pub fn accept(
         &mut self,
         client_id: ClientId,
@@ -125,7 +124,8 @@ impl GatewayTunnel {
     }
 
     pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
-        self.role_state.remove_ice_candidate(conn_id, ice_candidate);
+        self.role_state
+            .remove_ice_candidate(conn_id, ice_candidate, Instant::now());
     }
 }
 
@@ -164,16 +164,15 @@ impl DnsResourceNatEntry {
 }
 
 impl GatewayState {
-    pub(crate) fn new(private_key: impl Into<StaticSecret>, seed: [u8; 32]) -> Self {
+    pub(crate) fn new(seed: [u8; 32]) -> Self {
         Self {
             peers: Default::default(),
-            node: ServerNode::new(private_key.into(), seed),
+            node: ServerNode::new(seed),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
         }
     }
 
-    #[cfg(all(feature = "proptest", test))]
     pub(crate) fn public_key(&self) -> PublicKey {
         self.node.public_key()
     }
@@ -245,11 +244,13 @@ impl GatewayState {
         self.node.add_remote_candidate(conn_id, ice_candidate, now);
     }
 
-    pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String) {
-        self.node.remove_remote_candidate(conn_id, ice_candidate);
+    pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String, now: Instant) {
+        self.node
+            .remove_remote_candidate(conn_id, ice_candidate, now);
     }
 
     /// Accept a connection request from a client.
+    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
     pub fn accept(
         &mut self,
         client_id: ClientId,
@@ -330,6 +331,7 @@ impl GatewayState {
 
     pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {
         self.node.handle_timeout(now);
+        self.drain_node_events();
 
         match self.next_expiry_resources_check {
             Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
@@ -344,7 +346,9 @@ impl GatewayState {
             None => self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL),
             Some(_) => {}
         }
+    }
 
+    fn drain_node_events(&mut self) {
         let mut added_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
         let mut removed_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
 
@@ -417,6 +421,7 @@ impl GatewayState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
+        self.drain_node_events()
     }
 }
 

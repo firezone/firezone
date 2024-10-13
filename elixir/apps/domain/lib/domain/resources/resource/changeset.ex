@@ -93,6 +93,9 @@ defmodule Domain.Resources.Resource.Changeset do
     changeset
     |> validate_length(:address, min: 1, max: 253)
     |> validate_format(:address, ~r/^[\p{L}\*\?0-9-]{1,63}(\.[\p{L}\*\?0-9-]{1,63})*$/iu)
+    |> validate_format(:address, ~r/^[^\.]/, message: "must start with a letter or number")
+    |> validate_format(:address, ~r/[^\.]$/, message: "must end with a letter or number")
+    |> validate_format(:address, ~r/[\w]/iu, message: "must contain at least one letter")
     |> validate_change(:address, fn field, dns_address ->
       {tld, domain} =
         dns_address

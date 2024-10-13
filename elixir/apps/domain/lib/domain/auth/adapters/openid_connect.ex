@@ -186,14 +186,17 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     end
   end
 
-  def refresh_access_token(%Provider{} = provider) do
+  @impl true
+  def refresh_access_token(provider_or_identity, identifier_claim \\ "sub")
+
+  def refresh_access_token(%Provider{} = provider, identifier_claim) do
     token_params = %{
       grant_type: "refresh_token",
       refresh_token: provider.adapter_state["refresh_token"]
     }
 
     with {:ok, _provider_identifier, adapter_state} <-
-           fetch_state(provider, token_params) do
+           fetch_state(provider, token_params, identifier_claim) do
       Provider.Query.not_deleted()
       |> Provider.Query.by_id(provider.id)
       |> Repo.fetch_and_update(Provider.Query,
@@ -238,7 +241,27 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     end
   end
 
-  defp fetch_state(%Provider{} = provider, token_params, identifier_claim \\ "sub") do
+  def refresh_access_token(%Identity{} = identity, identifier_claim) do
+    token_params = %{
+      grant_type: "refresh_token",
+      refresh_token: identity.provider_state["refresh_token"]
+    }
+
+    with {:ok, _provider_identifier, identity_state} <-
+           fetch_state(identity.provider, token_params, identifier_claim) do
+      Identity.Query.not_deleted()
+      |> Identity.Query.by_id(identity.id)
+      |> Repo.fetch_and_update(Identity.Query,
+        with: &Identity.Changeset.update_identity_provider_state(&1, identity_state)
+      )
+      |> case do
+        {:ok, identity} -> {:ok, identity, identity_state["expires_at"]}
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  defp fetch_state(%Provider{} = provider, token_params, identifier_claim) do
     config = config_for_provider(provider)
 
     with {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),

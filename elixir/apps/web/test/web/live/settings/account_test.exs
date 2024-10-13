@@ -121,4 +121,18 @@ defmodule Web.Live.Settings.AccountTest do
     assert html =~ "This account has been disabled."
     assert html =~ "contact support"
   end
+
+  test "renders notification settings for account", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/account")
+
+    html = lv |> render()
+    assert html =~ "Gateway Upgrade Available"
+  end
 end

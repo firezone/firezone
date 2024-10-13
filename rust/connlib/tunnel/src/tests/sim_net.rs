@@ -1,7 +1,6 @@
-use super::sim_dns::DnsServerId;
 use crate::tests::buffered_transmits::BufferedTransmits;
 use crate::tests::strategies::documentation_ip6s;
-use connlib_shared::messages::{ClientId, GatewayId, RelayId};
+use connlib_model::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
 use ip_network::{IpNetwork, Ipv4Network};
 use ip_network_table::IpNetworkTable;
@@ -120,15 +119,6 @@ impl<T> Host<T> {
         match src {
             IpAddr::V4(src) => self.ip4.is_some_and(|v4| v4 == src),
             IpAddr::V6(src) => self.ip6.is_some_and(|v6| v6 == src),
-        }
-    }
-
-    pub(crate) fn single_socket(&self) -> SocketAddr {
-        match (self.ip4, self.ip6) {
-            (None, Some(ip6)) => SocketAddr::new(ip6.into(), self.default_port),
-            (Some(ip4), None) => SocketAddr::new(ip4.into(), self.default_port),
-            (Some(_), Some(_)) => panic!("Dual-stack host"),
-            (None, None) => panic!("No socket available"),
         }
     }
 
@@ -261,7 +251,6 @@ pub(crate) enum HostId {
     Client(ClientId),
     Gateway(GatewayId),
     Relay(RelayId),
-    DnsServer(DnsServerId),
     Stale,
 }
 
@@ -280,12 +269,6 @@ impl From<GatewayId> for HostId {
 impl From<ClientId> for HostId {
     fn from(v: ClientId) -> Self {
         Self::Client(v)
-    }
-}
-
-impl From<DnsServerId> for HostId {
-    fn from(v: DnsServerId) -> Self {
-        Self::DnsServer(v)
     }
 }
 
