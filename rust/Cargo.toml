@@ -7,6 +7,7 @@ members = [
   "connlib/model",
   "connlib/snownet",
   "connlib/tunnel",
+  "dns-over-tcp",
   "gateway",
   "gui-client/src-common",
   "gui-client/src-tauri",
@@ -51,6 +52,7 @@ firezone-bin-shared = { path = "bin-shared" }
 firezone-logging = { path = "logging" }
 firezone-telemetry = { path = "telemetry" }
 snownet = { path = "connlib/snownet" }
+dns-over-tcp = { path = "dns-over-tcp" }
 firezone-relay = { path = "relay" }
 connlib-model = { path = "connlib/model" }
 firezone-tunnel = { path = "connlib/tunnel" }

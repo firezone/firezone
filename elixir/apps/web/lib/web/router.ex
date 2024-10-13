@@ -211,6 +211,7 @@ defmodule Web.Router do
         scope "/account" do
           live "/", Account
           live "/edit", Account.Edit
+          live "/notifications/edit", Account.Notifications.Edit
         end
 
         live "/billing", Billing

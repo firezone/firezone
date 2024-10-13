@@ -85,8 +85,7 @@ android {
             buildConfigField(
                 "String",
                 "LOG_FILTER",
-                "\"connlib_client_android=debug,firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug," +
-                    "boringtun=debug,snownet=debug,str0m=debug,connlib_client_shared=debug,info\"",
+                "\"debug\"",
             )
         }
 
@@ -126,7 +125,7 @@ android {
 
             buildConfigField("String", "AUTH_BASE_URL", "\"https://app.firezone.dev\"")
             buildConfigField("String", "API_URL", "\"wss://api.firezone.dev\"")
-            buildConfigField("String", "LOG_FILTER", "\"str0m=warn,info\"")
+            buildConfigField("String", "LOG_FILTER", "\"info\"")
             firebaseAppDistribution {
                 serviceCredentialsFile = System.getenv("FIREBASE_CREDENTIALS_PATH")
                 artifactType = "AAB"
@@ -188,7 +187,7 @@ dependencies {
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.52")
     kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.52")
     androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation("androidx.navigation:navigation-testing:2.8.1")
+    androidTestImplementation("androidx.navigation:navigation-testing:2.8.2")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.6.1")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
@@ -219,7 +218,7 @@ dependencies {
     androidTestImplementation("androidx.fragment:fragment-testing:1.8.2")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:33.3.0"))
+    implementation(platform("com.google.firebase:firebase-bom:33.4.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
@@ -239,6 +238,7 @@ cargo {
     prebuiltToolchains = true
     module = "../../../rust/connlib/clients/android"
     libname = "connlib"
+    verbose = true
     targets =
         listOf(
             "arm64",

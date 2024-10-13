@@ -110,6 +110,30 @@ defmodule Web.Live.Sites.ShowTest do
     assert table["created"] =~ actor.name
   end
 
+  test "renders group details when group created by API", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    subject = Fixtures.Auth.create_subject(account: account, actor: actor)
+    group = Fixtures.Gateways.create_group(account: account, subject: subject)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/sites/#{group}")
+
+    table =
+      lv
+      |> element("#group")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["name"] =~ group.name
+    assert table["created"] =~ actor.name
+  end
+
   test "renders online gateways table", %{
     account: account,
     identity: identity,
@@ -137,6 +161,7 @@ defmodule Web.Live.Sites.ShowTest do
     |> with_table_row("instance", gateway.name, fn row ->
       assert gateway.last_seen_remote_ip
       assert row["remote ip"] =~ to_string(gateway.last_seen_remote_ip)
+      assert row["version"] =~ gateway.last_seen_version
       assert row["status"] =~ "Online"
     end)
   end

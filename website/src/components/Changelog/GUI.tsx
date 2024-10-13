@@ -14,7 +14,22 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem enable={title === "Linux GUI"}>
+          This is a maintenance release with no user-facing changes.
+        </ChangeItem>
+        <ChangeItem enable={title === "Windows"} pull="7009">
+          The IPC service `firezone-client-ipc.exe` is now signed.
+        </ChangeItem>
+      </Unreleased>
+      <Entry version="1.3.9" date={new Date("2024-10-09")}>
+        <ChangeItem enable={title === "Linux GUI"} pull="6987">
+          Fixes a crash on startup caused by incorrect permissions on the ID file.
+        </ChangeItem>
+        <ChangeItem enable={title === "Windows"}>
+          This is a maintenance release with no user-facing changes.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.3.8" date={new Date("2024-10-08")}>
         <ChangeItem pull="6874">
           Fixes the GUI shutting down slowly.
@@ -80,6 +95,9 @@ export default function GUI({ title }: { title: string }) {
         </ChangeItem>
       </Entry>
       <Entry version="1.3.3" date={new Date("2024-09-13")}>
+        <ChangeItem enable={title === "Linux GUI"}>
+          This is a maintenance release with no user-facing changes.
+        </ChangeItem>
         <ChangeItem enable={title === "Windows"} pull="6681">
           Fixes a bug where sign-in fails if IPv6 is disabled.
         </ChangeItem>

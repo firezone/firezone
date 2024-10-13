@@ -17,6 +17,7 @@ use futures_bounded::Timeout;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
 use std::convert::Infallible;
+use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::time::Duration;
@@ -70,6 +71,9 @@ impl Eventloop {
             match self.tunnel.poll_next_event(cx) {
                 Poll::Ready(Ok(event)) => {
                     self.handle_tunnel_event(event);
+                    continue;
+                }
+                Poll::Ready(Err(e)) if e.kind() == io::ErrorKind::WouldBlock => {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {

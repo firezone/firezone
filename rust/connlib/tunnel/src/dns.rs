@@ -1,19 +1,23 @@
 use crate::client::IpProvider;
-use crate::messages::DnsServer;
 use anyhow::{Context, Result};
 use connlib_model::{DomainName, ResourceId};
-use domain::base::{
-    iana::{Class, Rcode, Rtype},
-    Message, MessageBuilder, ToName,
-};
 use domain::rdata::AllRecordData;
-use ip_packet::IpPacket;
+use domain::{
+    base::{
+        iana::{Class, Rcode, Rtype},
+        Message, MessageBuilder, ToName,
+    },
+    dep::octseq::OctetsInto,
+};
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
-use std::collections::{BTreeMap, HashMap};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::ops::ControlFlow;
+use std::io;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::sync::LazyLock;
+use std::{
+    collections::{BTreeMap, HashMap},
+    net::SocketAddr,
+};
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -41,22 +45,45 @@ pub struct StubResolver {
     known_hosts: KnownHosts,
 }
 
+/// A query that needs to be forwarded to an upstream DNS server for resolution.
+#[derive(Debug, Clone)]
+pub(crate) struct RecursiveQuery {
+    pub server: SocketAddr,
+    pub message: Message<Vec<u8>>,
+    pub transport: Transport,
+}
+
+/// A response to a [`RecursiveQuery`].
+#[derive(Debug)]
+pub(crate) struct RecursiveResponse {
+    pub server: SocketAddr,
+    pub query: Message<Vec<u8>>,
+    pub message: io::Result<Message<Vec<u8>>>,
+    pub transport: Transport,
+}
+
+impl RecursiveQuery {
+    pub(crate) fn via_udp(server: SocketAddr, message: Message<&[u8]>) -> Self {
+        Self {
+            server,
+            message: message.octets_into(),
+            transport: Transport::Udp,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Transport {
+    Udp,
+}
+
 /// Tells the Client how to reply to a single DNS query
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "We purposely don't want to allocate each IP packet."
-)]
 pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(IpPacket),
+    LocalResponse(Vec<u8>),
     /// The query is for a non-Resource, forward it to an upstream or system resolver.
-    ForwardQuery {
-        upstream: SocketAddr,
-        original_src: SocketAddr,
-        query_id: u16,
-        payload: Vec<u8>,
-    },
+    Recurse,
 }
 
 struct KnownHosts {
@@ -185,21 +212,23 @@ impl StubResolver {
     /// Attempts to match the given domain against our list of possible patterns.
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
-    #[tracing::instrument(level = "trace", skip_all, fields(%domain))]
     fn match_resource_linear(&self, domain: &DomainName) -> Option<ResourceId> {
         let name = Candidate::from_domain(domain);
 
         for (pattern, id) in &self.dns_resources {
             if pattern.matches(&name) {
-                tracing::trace!(%id, %pattern, "Matched domain");
+                tracing::trace!(%id, %pattern, %domain, "Matched resource");
 
                 return Some(*id);
             }
-
-            tracing::trace!(%pattern, %id, "No match");
         }
 
-        tracing::trace!("No resources matched");
+        if tracing::enabled!(tracing::Level::TRACE) {
+            let patterns = self.dns_resources.keys().join(" | ");
+            let patterns = format!("[{patterns}]");
+
+            tracing::trace!(%domain, %patterns, "No resources matched");
+        }
 
         None
     }
@@ -224,28 +253,7 @@ impl StubResolver {
     /// - `Ok(ControlFlow::Break)` if the packet was successfully parsed a DNS packet
     /// - `Ok(ControlFlow::Continue)` if the packet isn't a DNS packet
     /// - `Err()` if the packet was directed at our DNS resolver but processing failed
-    pub(crate) fn handle(
-        &mut self,
-        dns_mapping: &bimap::BiMap<IpAddr, DnsServer>,
-        packet: &IpPacket,
-    ) -> Result<ControlFlow<ResolveStrategy, ()>> {
-        let dst = packet.destination();
-        let _guard = tracing::debug_span!("packet", %dst).entered();
-        let Some(upstream) = dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
-            return Ok(ControlFlow::Continue(()));
-        };
-
-        let datagram = packet.as_udp().context("Only DNS over UDP is supported")?;
-        let port = datagram.destination_port();
-
-        anyhow::ensure!(
-            port == DNS_PORT,
-            "DNS over UDP is only supported on port 53"
-        );
-
-        let message = Message::from_octets(datagram.payload())
-            .context("Failed to parse payload as DNS message")?;
-
+    pub(crate) fn handle(&mut self, message: Message<&[u8]>) -> Result<ResolveStrategy> {
         anyhow::ensure!(
             !message.header().qr(),
             "Can only handle DNS queries, not responses"
@@ -270,30 +278,12 @@ impl StubResolver {
                 .unwrap()
                 .finish();
 
-            let packet = ip_packet::make::udp_packet(
-                packet.destination(),
-                packet.source(),
-                datagram.destination_port(),
-                datagram.source_port(),
-                payload,
-            )
-            .expect("src and dst are retrieved from the same packet");
-
-            return Ok(ControlFlow::Break(ResolveStrategy::LocalResponse(packet)));
+            return Ok(ResolveStrategy::LocalResponse(payload));
         }
 
         if let Some(records) = self.known_hosts.get_records(qtype, &domain) {
             let response = build_dns_with_answer(message, domain, records)?;
-            let packet = ip_packet::make::udp_packet(
-                packet.destination(),
-                packet.source(),
-                datagram.destination_port(),
-                datagram.source_port(),
-                response,
-            )
-            .expect("src and dst come from the same packet");
-
-            return Ok(ControlFlow::Break(ResolveStrategy::LocalResponse(packet)));
+            return Ok(ResolveStrategy::LocalResponse(response));
         }
 
         // `match_resource` is `O(N)` which we deem fine for DNS queries.
@@ -301,12 +291,7 @@ impl StubResolver {
 
         let resource_records = match (qtype, maybe_resource) {
             (_, Some(resource)) if !self.knows_resource(&resource) => {
-                return Ok(ControlFlow::Break(ResolveStrategy::ForwardQuery {
-                    upstream,
-                    query_id: message.header().id(),
-                    payload: message.into_octets().to_vec(),
-                    original_src: SocketAddr::new(packet.source(), datagram.source_port()),
-                }))
+                return Ok(ResolveStrategy::Recurse)
             }
             (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
             (Rtype::AAAA, Some(resource)) => {
@@ -314,12 +299,7 @@ impl StubResolver {
             }
             (Rtype::PTR, _) => {
                 let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {
-                    return Ok(ControlFlow::Break(ResolveStrategy::ForwardQuery {
-                        upstream,
-                        query_id: message.header().id(),
-                        payload: message.into_octets().to_vec(),
-                        original_src: SocketAddr::new(packet.source(), datagram.source_port()),
-                    }));
+                    return Ok(ResolveStrategy::Recurse);
                 };
 
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
@@ -329,29 +309,13 @@ impl StubResolver {
                     "Discarding HTTPS record query for resource {domain} because we can't mangle it"
                 );
             }
-            _ => {
-                return Ok(ControlFlow::Break(ResolveStrategy::ForwardQuery {
-                    upstream,
-                    query_id: message.header().id(),
-                    payload: message.into_octets().to_vec(),
-                    original_src: SocketAddr::new(packet.source(), datagram.source_port()),
-                }))
-            }
+            _ => return Ok(ResolveStrategy::Recurse),
         };
 
         tracing::trace!(%qtype, %domain, records = ?resource_records, "Forming DNS response");
 
         let response = build_dns_with_answer(message, domain, resource_records)?;
-        let packet = ip_packet::make::udp_packet(
-            packet.destination(),
-            packet.source(),
-            datagram.destination_port(),
-            datagram.source_port(),
-            response,
-        )
-        .expect("src and dst come from the same packet");
-
-        Ok(ControlFlow::Break(ResolveStrategy::LocalResponse(packet)))
+        Ok(ResolveStrategy::LocalResponse(response))
     }
 }
 
@@ -644,7 +608,7 @@ mod pattern {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bimap::BiHashMap;
+    use domain::base::Question;
     use std::str::FromStr as _;
     use test_case::test_case;
 
@@ -766,31 +730,23 @@ mod tests {
     #[test]
     fn query_for_doh_canary_domain_records_nx_domain() {
         let mut resolver = StubResolver::new(BTreeMap::default());
-        let src = IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1));
-        let dns_server = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1));
 
-        let query = ip_packet::make::dns_query(
-            "use-application-dns.net".parse().unwrap(),
-            Rtype::A,
-            SocketAddr::from((src, 1000)),
-            SocketAddr::from((dns_server, 53)),
-            0,
-        )
-        .unwrap();
-
-        let control_flow = resolver
-            .handle(
-                &BiHashMap::from_iter([(dns_server, DnsServer::from((dns_server, 53)))]),
-                &query,
-            )
+        let mut builder = MessageBuilder::new_vec().question();
+        builder
+            .push(Question::new_in(
+                "use-application-dns.net".parse::<DomainName>().unwrap(),
+                Rtype::A,
+            ))
             .unwrap();
+        let message = builder.into_message();
 
-        let ControlFlow::Break(ResolveStrategy::LocalResponse(response)) = control_flow else {
-            panic!("Unexpected result: {control_flow:?}")
+        let strategy = resolver.handle(message.for_slice_ref()).unwrap();
+
+        let ResolveStrategy::LocalResponse(response) = strategy else {
+            panic!("Unexpected result: {strategy:?}")
         };
 
-        let udp_slice = response.as_udp().unwrap();
-        let message = Message::from_slice(udp_slice.payload()).unwrap();
+        let message = Message::from_slice(&response).unwrap();
         let answers = message.answer().unwrap();
 
         assert_eq!(message.header().rcode(), Rcode::NXDOMAIN);
