@@ -363,7 +363,12 @@ defmodule Web.NavigationComponents do
 
   def docs_action(assigns) do
     ~H"""
-    <.link navigate={"/kb#{@path}?utm_source=product##{@fragment}"} target="_blank" {@rest}>
+    <.link
+      title="View documentation for this page"
+      href={"https://www.firezone.dev/kb#{@path}?utm_source=product##{@fragment}"}
+      target="_blank"
+      {@rest}
+    >
       <.icon name="hero-question-mark-circle" class="mr-2 w-5 h-5" />
     </.link>
     """
