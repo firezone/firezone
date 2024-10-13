@@ -5,8 +5,19 @@ defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
 
   describe "execute/1" do
     setup do
+      account_attrs = %{
+        config: %{
+          notifications: %{
+            outdated_gateway: %{
+              enabled: true,
+              last_notified: nil
+            }
+          }
+        }
+      }
+
       account =
-        Fixtures.Accounts.create_account()
+        Fixtures.Accounts.create_account(account_attrs)
         |> Fixtures.Accounts.change_to_enterprise()
 
       gateway_group = Fixtures.Gateways.create_group(account: account)

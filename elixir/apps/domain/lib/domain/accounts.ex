@@ -27,6 +27,7 @@ defmodule Domain.Accounts do
   def all_active_accounts_by_subscription_name_pending_notification!(subscription_name) do
     Account.Query.not_disabled()
     |> Account.Query.by_stripe_product_name(subscription_name)
+    |> Account.Query.by_notification_enabled("outdated_gateway")
     |> Account.Query.by_notification_last_notified("outdated_gateway", 24)
     |> Repo.all()
   end
