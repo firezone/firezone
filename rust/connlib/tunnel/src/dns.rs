@@ -63,18 +63,21 @@ pub(crate) struct RecursiveResponse {
 }
 
 impl RecursiveQuery {
-    pub(crate) fn via_udp(server: SocketAddr, message: Message<&[u8]>) -> Self {
+    pub(crate) fn via_udp(source: SocketAddr, server: SocketAddr, message: Message<&[u8]>) -> Self {
         Self {
             server,
             message: message.octets_into(),
-            transport: Transport::Udp,
+            transport: Transport::Udp { source },
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Transport {
-    Udp,
+    Udp {
+        /// The original source we received the DNS query on.
+        source: SocketAddr,
+    },
 }
 
 /// Tells the Client how to reply to a single DNS query

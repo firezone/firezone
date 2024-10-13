@@ -217,7 +217,7 @@ impl Io {
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
         match query.transport {
-            dns::Transport::Udp => {
+            dns::Transport::Udp { .. } => {
                 let factory = self.udp_socket_factory.clone();
                 let server = query.server;
                 let bind_addr = match query.server {
@@ -227,7 +227,7 @@ impl Io {
                 let meta = DnsQueryMetaData {
                     query: query.message.clone(),
                     server,
-                    transport: dns::Transport::Udp,
+                    transport: query.transport,
                 };
 
                 if self
