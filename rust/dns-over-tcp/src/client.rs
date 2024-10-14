@@ -53,7 +53,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     pub fn new(now: Instant, seed: [u8; 32]) -> Self {
         // Sadly, these can't be compile-time assertions :(
         assert!(MIN_PORT >= 49152, "Must use ephemeral port range");
-        assert!(MIN_PORT > MAX_PORT, "Port range must not have length 0");
+        assert!(MIN_PORT < MAX_PORT, "Port range must not have length 0");
 
         let mut device = InMemoryDevice::default();
         let interface = create_interface(&mut device, now);
