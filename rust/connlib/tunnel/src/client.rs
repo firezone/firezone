@@ -403,10 +403,11 @@ impl ClientState {
         now: Instant,
         buffer: &mut EncryptBuffer,
     ) -> Option<snownet::EncryptedPacket> {
-        let (packet, dst) = match self.try_handle_dns(packet) {
+        let packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
+        let dst = packet.destination();
 
         if is_definitely_not_a_resource(dst) {
             return None;
@@ -425,13 +426,6 @@ impl ClientState {
             self.on_not_connected_resource(resource, &dst, now);
             return None;
         };
-
-        let packet = maybe_mangle_dns_query_to_cidr_resource(
-            packet,
-            &self.dns_mapping,
-            &mut self.mangled_dns_queries,
-            now,
-        );
 
         // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
         // for DNS resource we will send the IP one at a time.
@@ -690,11 +684,10 @@ impl ClientState {
     }
 
     /// Handles UDP & TCP packets targeted at our stub resolver.
-    fn try_handle_dns(&mut self, packet: IpPacket) -> ControlFlow<(), (IpPacket, IpAddr)> {
+    fn try_handle_dns(&mut self, mut packet: IpPacket, now: Instant) -> ControlFlow<(), IpPacket> {
         let dst = packet.destination();
         let Some(upstream) = self.dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
-            let dest = packet.destination();
-            return ControlFlow::Continue((packet, dest)); // Not for our DNS resolver.
+            return ControlFlow::Continue(packet); // Not for our DNS resolver.
         };
 
         let (datagram, message) = match parse_udp_dns_message(&packet) {
@@ -719,14 +712,23 @@ impl ClientState {
                 );
             }
             Ok(dns::ResolveStrategy::Recurse) => {
+                let query_id = message.header().id();
+
                 if self.should_forward_dns_query_to_gateway(upstream.ip()) {
-                    return ControlFlow::Continue((packet, upstream.ip()));
+                    tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query via tunnel");
+
+                    self.mangled_dns_queries
+                        .insert(message.header().id(), now + IDS_EXPIRE);
+                    packet.set_dst(upstream.ip());
+                    packet.update_checksum();
+
+                    return ControlFlow::Continue(packet);
                 }
 
                 let query_id = message.header().id();
                 let source = SocketAddr::new(packet.source(), datagram.source_port());
 
-                tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query");
+                tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host");
 
                 self.buffered_dns_queries
                     .push_back(dns::RecursiveQuery::via_udp(source, upstream, message));
@@ -1422,36 +1424,6 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
     false
 }
 
-/// In case the given packet is a DNS query, change its source IP to that of the actual DNS server.
-fn maybe_mangle_dns_query_to_cidr_resource(
-    mut packet: IpPacket,
-    dns_mapping: &BiMap<IpAddr, DnsServer>,
-    mangeled_dns_queries: &mut HashMap<u16, Instant>,
-    now: Instant,
-) -> IpPacket {
-    let dst = packet.destination();
-
-    let Some(srv) = dns_mapping.get_by_left(&dst) else {
-        return packet;
-    };
-
-    let Some(dgm) = packet.as_udp() else {
-        return packet;
-    };
-
-    let Ok(message) = domain::base::Message::from_slice(dgm.payload()) else {
-        return packet;
-    };
-
-    tracing::trace!(old_dst = %dst, new_dst = %srv.ip(), "Mangling DNS query to CIDR resource");
-
-    mangeled_dns_queries.insert(message.header().id(), now + IDS_EXPIRE);
-    packet.set_dst(srv.ip());
-    packet.update_checksum();
-
-    packet
-}
-
 fn maybe_mangle_dns_response_from_cidr_resource(
     mut packet: IpPacket,
     dns_mapping: &BiMap<IpAddr, DnsServer>,
@@ -1483,12 +1455,13 @@ fn maybe_mangle_dns_response_from_cidr_resource(
 
     let rtt = now.duration_since(query_sent_at);
 
-    let domains = message
-        .question()
-        .filter_map(|q| Some(q.ok()?.into_qname()))
-        .join(",");
+    let domain = message
+        .sole_question()
+        .ok()
+        .map(|q| q.into_qname())
+        .map(tracing::field::display);
 
-    tracing::trace!(old_src = %src_ip, new_src = %sentinel, ?rtt, %domains, "Mangling DNS response from CIDR resource");
+    tracing::trace!(server = %src_ip, query_id = %message.header().id(), ?rtt, domain, "Received UDP DNS response via tunnel");
 
     packet.set_src(*sentinel);
     packet.update_checksum();
