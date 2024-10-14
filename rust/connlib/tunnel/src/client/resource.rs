@@ -140,6 +140,18 @@ impl Resource {
     }
 }
 
+impl TryFrom<ResourceDescription> for Resource {
+    type Error = UnknownResourceType;
+
+    fn try_from(value: ResourceDescription) -> Result<Self, Self::Error> {
+        Self::from_description(value).ok_or(UnknownResourceType)
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Unknown resource type")]
+pub struct UnknownResourceType;
+
 impl CidrResource {
     pub fn from_description(resource: ResourceDescriptionCidr) -> Self {
         Self {

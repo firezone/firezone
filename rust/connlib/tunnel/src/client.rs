@@ -6,11 +6,8 @@ pub(crate) use resource::{CidrResource, Resource};
 pub(crate) use resource::{DnsResource, InternetResource};
 
 use crate::dns::StubResolver;
-use crate::messages::client::ResourceDescription;
 use crate::messages::ResolveRequest;
-use crate::messages::{
-    Answer, DnsServer, Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay,
-};
+use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer, Key, Offer};
 use crate::peer_store::PeerStore;
 use crate::{dns, TunConfig};
 use anyhow::Context;
@@ -24,8 +21,8 @@ use ip_packet::{IpPacket, UdpSlice};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{earliest, turn};
-use crate::{ClientEvent, ClientTunnel, Tun};
+use crate::utils::earliest;
+use crate::ClientEvent;
 use domain::base::{Message, MessageBuilder};
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
@@ -75,106 +72,6 @@ const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 /// 100 has been chosen as a pretty arbitrary value.
 /// We only store [`GatewayId`]s so the memory footprint is negligible.
 const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(100) };
-
-impl ClientTunnel {
-    pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
-        self.role_state.set_resources(
-            resources
-                .into_iter()
-                .filter_map(Resource::from_description)
-                .collect(),
-        );
-    }
-
-    pub fn set_disabled_resources(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
-        self.role_state
-            .set_disabled_resource(new_disabled_resources);
-    }
-
-    pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        self.io.set_tun(tun);
-    }
-
-    pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {
-        self.role_state
-            .update_relays(to_remove, turn(&to_add), Instant::now())
-    }
-
-    /// Adds a the given resource to the tunnel.
-    pub fn add_resource(&mut self, resource: ResourceDescription) {
-        let Some(resource) = Resource::from_description(resource) else {
-            return;
-        };
-
-        self.role_state.add_resource(resource);
-    }
-
-    pub fn remove_resource(&mut self, id: ResourceId) {
-        self.role_state.remove_resource(id);
-    }
-
-    /// Updates the system's dns
-    pub fn set_new_dns(&mut self, new_dns: Vec<IpAddr>) {
-        // We store the sentinel dns both in the config and in the system's resolvers
-        // but when we calculate the dns mapping, those are ignored.
-        self.role_state.update_system_resolvers(new_dns);
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_new_interface_config(&mut self, config: InterfaceConfig) {
-        self.role_state.update_interface_config(config);
-    }
-
-    pub fn cleanup_connection(&mut self, id: ResourceId) {
-        self.role_state.on_connection_failed(id);
-    }
-
-    pub fn set_resource_offline(&mut self, id: ResourceId) {
-        self.role_state.set_resource_offline(id);
-    }
-
-    pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.role_state
-            .add_ice_candidate(conn_id, ice_candidate, Instant::now());
-    }
-
-    pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.role_state
-            .remove_ice_candidate(conn_id, ice_candidate, Instant::now());
-    }
-
-    pub fn on_routing_details(
-        &mut self,
-        resource_id: ResourceId,
-        gateway_id: GatewayId,
-        site_id: SiteId,
-    ) -> anyhow::Result<()> {
-        self.role_state
-            .on_routing_details(resource_id, gateway_id, site_id, Instant::now())
-    }
-
-    #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
-    pub fn received_offer_response(
-        &mut self,
-        resource_id: ResourceId,
-        answer: Answer,
-        gateway_public_key: PublicKey,
-    ) -> anyhow::Result<()> {
-        self.role_state.accept_answer(
-            snownet::Answer {
-                credentials: snownet::Credentials {
-                    username: answer.username,
-                    password: answer.password,
-                },
-            },
-            resource_id,
-            gateway_public_key,
-            Instant::now(),
-        )?;
-
-        Ok(())
-    }
-}
 
 /// A sans-IO implementation of a Client's functionality.
 ///
@@ -332,7 +229,7 @@ impl ClientState {
         ResourceStatus::Unknown
     }
 
-    fn set_resource_offline(&mut self, id: ResourceId) {
+    pub fn set_resource_offline(&mut self, id: ResourceId) {
         let Some(resource) = self.resources_by_id.get(&id).cloned() else {
             return;
         };
@@ -562,11 +459,13 @@ impl ClientState {
     #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
     pub fn accept_answer(
         &mut self,
-        answer: snownet::Answer,
+        answer: impl Into<snownet::Answer>,
         resource_id: ResourceId,
         gateway: PublicKey,
         now: Instant,
     ) -> anyhow::Result<()> {
+        let answer = answer.into();
+
         debug_assert!(!self.awaiting_connection_details.contains_key(&resource_id));
 
         let gateway_id = self
@@ -809,7 +708,7 @@ impl ClientState {
         self.mangled_dns_queries.clear();
     }
 
-    pub fn set_disabled_resource(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
+    pub fn set_disabled_resources(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
         let current_disabled_resources = self.disabled_resources.clone();
 
         // We set disabled_resources before anything else so that add_resource knows what resources are enabled right now.
@@ -881,7 +780,7 @@ impl ClientState {
             .or(self.internet_resource)
     }
 
-    pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
+    pub fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
         tracing::debug!(servers = ?new_dns, "Received system-defined DNS servers");
 
         self.system_resolvers = new_dns;
@@ -889,7 +788,7 @@ impl ClientState {
         self.update_dns_mapping()
     }
 
-    pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) {
+    pub fn update_interface_config(&mut self, config: InterfaceConfig) {
         tracing::trace!(upstream_dns = ?config.upstream_dns, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
 
         match self.tun_config.as_mut() {
@@ -1102,7 +1001,15 @@ impl ClientState {
     ///
     /// TODO: Add a test that asserts the above.
     ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resource`] and check that it did in fact not get deleted.
-    pub(crate) fn set_resources(&mut self, new_resources: Vec<Resource>) {
+    pub fn set_resources<R>(&mut self, new_resources: Vec<R>)
+    where
+        R: TryInto<Resource, Error: std::error::Error>,
+    {
+        let new_resources = new_resources
+            .into_iter()
+            .filter_map(|r| r.try_into().inspect_err(|e| tracing::debug!("{e}")).ok())
+            .collect::<Vec<_>>();
+
         let current_resource_ids = self
             .resources_by_id
             .keys()
@@ -1126,7 +1033,15 @@ impl ClientState {
         self.emit_resources_changed();
     }
 
-    pub(crate) fn add_resource(&mut self, new_resource: Resource) {
+    pub fn add_resource(&mut self, new_resource: impl TryInto<Resource, Error: std::error::Error>) {
+        let new_resource = match new_resource.try_into() {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::debug!("{e}");
+                return;
+            }
+        };
+
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
             if resource.has_different_address(&new_resource) {
                 self.remove_resource(resource.id());
@@ -1170,7 +1085,7 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
-    pub(crate) fn remove_resource(&mut self, id: ResourceId) {
+    pub fn remove_resource(&mut self, id: ResourceId) {
         self.disable_resource(id);
         self.resources_by_id.remove(&id);
         self.maybe_update_tun_routes();

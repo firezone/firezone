@@ -101,6 +101,18 @@ pub struct Answer {
     pub password: String,
 }
 
+#[expect(deprecated)]
+impl From<Answer> for snownet::Answer {
+    fn from(val: Answer) -> Self {
+        snownet::Answer {
+            credentials: snownet::Credentials {
+                username: val.username,
+                password: val.password,
+            },
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Offer {
     pub username: String,

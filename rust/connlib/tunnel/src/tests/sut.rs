@@ -132,7 +132,7 @@ impl TunnelTest {
             }
             Transition::DisableResources(resources) => state
                 .client
-                .exec_mut(|c| c.sut.set_disabled_resource(resources)),
+                .exec_mut(|c| c.sut.set_disabled_resources(resources)),
             Transition::SendICMPPacketToNonResourceIp {
                 src,
                 dst,

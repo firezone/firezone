@@ -15,7 +15,6 @@ use snownet::{EncryptBuffer, RelaySocket, ServerNode};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
-use tun::Tun;
 
 pub const IPV4_PEERS: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11) {
     Ok(n) => n,
@@ -30,10 +29,6 @@ pub const IPV6_PEERS: Ipv6Network =
 const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
 impl GatewayTunnel {
-    pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        self.io.set_tun(tun);
-    }
-
     /// Accept a connection request from a client.
     #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
     pub fn accept(
