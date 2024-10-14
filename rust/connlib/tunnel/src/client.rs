@@ -32,11 +32,11 @@ use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, EncryptBuffer, RelaySocket, Transmit};
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
+use std::{io, iter};
 
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
@@ -498,19 +498,38 @@ impl ClientState {
     }
 
     fn try_handle_dns_response(&mut self, response: dns::RecursiveResponse) -> anyhow::Result<()> {
-        match (response.transport, response.message) {
-            (dns::Transport::Udp { source }, result) => {
-                let dns_response = result.unwrap_or_else(|e| {
-                    tracing::debug!("UDP DNS query failed: {e}");
+        let qid = response.query.header().id();
+        let server = response.server;
+        let domain = response
+            .query
+            .sole_question()
+            .ok()
+            .map(|q| q.into_qname())
+            .map(tracing::field::display);
 
-                    MessageBuilder::new_vec()
-                        .start_answer(&response.query, Rcode::SERVFAIL)
-                        .expect("original query is valid")
-                        .into_message()
-                });
+        match (response.transport, response.message) {
+            (dns::Transport::Udp { source }, Ok(message)) => {
+                tracing::trace!(%server, %qid, domain, "Received recursive DNS response");
 
                 let ip_packet = self
-                    .try_handle_udp_dns_response(response.server, source, &dns_response)
+                    .try_handle_udp_dns_response(server, source, &message)
+                    .context("Failed to produce UDP DNS response packet")?;
+
+                self.buffered_packets.push_back(ip_packet);
+            }
+            (dns::Transport::Udp { .. }, Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
+                tracing::debug!(%server, %qid, domain, "Recursive DNS query timed out")
+            }
+            (dns::Transport::Udp { source }, Err(e)) => {
+                tracing::debug!(%server, %qid, domain, "Recursive DNS query failed: {e}");
+
+                let message = MessageBuilder::new_vec()
+                    .start_answer(&response.query, Rcode::SERVFAIL)
+                    .expect("original query is valid")
+                    .into_message();
+
+                let ip_packet = self
+                    .try_handle_udp_dns_response(server, source, &message)
                     .context("Failed to produce UDP DNS response packet")?;
 
                 self.buffered_packets.push_back(ip_packet);
@@ -525,12 +544,13 @@ impl ClientState {
         from: SocketAddr,
         dst: SocketAddr,
         message: &Message<Vec<u8>>,
-    ) -> Option<IpPacket> {
+    ) -> anyhow::Result<IpPacket> {
         // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
-        let saddr = *self.dns_mapping.get_by_right(&DnsServer::from(from))?;
+        let saddr = *self
+            .dns_mapping
+            .get_by_right(&DnsServer::from(from))
+            .context("Unknown DNS server")?;
         let sport = DNS_PORT;
-
-        let query_id = message.header().id();
 
         if message.header().tc() {
             let domain = message
@@ -541,17 +561,13 @@ impl ClientState {
             tracing::debug!(server = %from, domain, "Upstream DNS server had to truncate response");
         }
 
-        tracing::trace!(server = %from, %query_id, "Received recursive DNS response");
-
         let daddr = dst.ip();
         let dport = dst.port();
 
         let ip_packet =
-            ip_packet::make::udp_packet(saddr, daddr, sport, dport, message.as_octets().to_vec())
-                .inspect_err(|_| tracing::warn!("Failed to find original dst for DNS response"))
-                .ok()?;
+            ip_packet::make::udp_packet(saddr, daddr, sport, dport, message.as_octets().to_vec())?;
 
-        Some(ip_packet)
+        Ok(ip_packet)
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
