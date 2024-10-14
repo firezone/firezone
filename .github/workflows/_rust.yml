@@ -13,7 +13,7 @@ permissions:
 
 # Never tolerate warnings. Duplicated in `_gtk.yml` and `_tauri.yml`
 env:
-  RUSTFLAGS: "-Dwarnings"
+  RUSTFLAGS: "-Dwarnings --cfg tokio_unstable"
   RUSTDOCFLAGS: "-D warnings"
 
 jobs:
