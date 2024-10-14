@@ -43,15 +43,22 @@ defmodule Web.Settings.DNS do
         All other queries will use the resolvers configured here or the Client's
         system resolvers if none are configured.
       </:help>
+
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto">
-          <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
           <h2 class="mb-4 text-xl text-neutral-900">Client DNS</h2>
-          <p :if={Enum.any?(@form.source.changes)} class="mb-4 text-neutral-500">
+
+          <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
+
+          <% empty? =
+            Domain.Repo.Changeset.empty?(@form.source) and
+              Enum.empty?(@account.config.clients_upstream_dns) %>
+
+          <p :if={not empty?} class="mb-4 text-neutral-500">
             Upstream resolvers will be used by Clients in the order they are listed below.
           </p>
 
-          <p :if={Enum.empty?(@form.source.changes)} class="text-neutral-500">
+          <p :if={empty?} class="text-neutral-500">
             No upstream resolvers have been configured. Click <strong>New Resolver</strong>
             to add one.
           </p>
