@@ -49,7 +49,7 @@ defmodule Web.Actors.Index do
       <:title><%= @page_title %></:title>
 
       <:action>
-        <.docs_action path="/deploy/actors" />
+        <.docs_action path="/deploy/users" />
       </:action>
 
       <:action>
