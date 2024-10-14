@@ -145,7 +145,8 @@ defmodule Web.Actors.Show do
       <:title>
         <%= actor_type(@actor.type) %>: <span class="font-medium"><%= @actor.name %></span>
         <span :if={@actor.id == @subject.actor.id} class="text-sm text-neutral-400">(you)</span>
-        <span :if={not is_nil(@actor.deleted_at)} class="text-red-600">(deleted)</span>
+        <span :if={Actors.actor_deleted?(@actor)} class="text-red-600">(deleted)</span>
+        <span :if={Actors.actor_disabled?(@actor)} class="text-red-600">(disabled)</span>
       </:title>
       <:action :if={is_nil(@actor.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/actors/#{@actor}/edit"}>
@@ -196,8 +197,9 @@ defmodule Web.Actors.Show do
         <.vertical_table id="actor">
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @actor.name %>
-              <.actor_status actor={@actor} /></:value>
+            <:value>
+              <%= @actor.name %>
+            </:value>
           </.vertical_table_row>
 
           <.vertical_table_row>
@@ -376,24 +378,7 @@ defmodule Web.Actors.Show do
           <:col :let={token} :if={@actor.type != :service_account} label="identity" class="w-3/12">
             <.identity_identifier account={@account} identity={token.identity} />
           </:col>
-          <:col :let={token} :if={@actor.type == :service_account} label="name" class="w-2/12">
-            <%= token.name %>
-          </:col>
-          <:col :let={token} label="created">
-            <.created_by account={@account} schema={token} />
-          </:col>
-          <:col :let={token} label="last used">
-            <p>
-              <.relative_datetime datetime={token.last_seen_at} />
-            </p>
-            <p :if={not is_nil(token.last_seen_at)}>
-              <code class="text-xs"><.last_seen schema={token} /></code>
-            </p>
-          </:col>
-          <:col :let={token} label="expires">
-            <.relative_datetime datetime={token.expires_at} />
-          </:col>
-          <:col :let={token} label="client">
+          <:col :let={token} label="client" class="w-1/12">
             <.intersperse_blocks :if={token.type == :client}>
               <:separator>,&nbsp;</:separator>
 
@@ -406,6 +391,34 @@ defmodule Web.Actors.Show do
               </:item>
             </.intersperse_blocks>
             <span :if={token.type != :client}>N/A</span>
+          </:col>
+          <:col :let={token} :if={@actor.type == :service_account} label="name" class="w-2/12">
+            <%= token.name %>
+          </:col>
+          <:col :let={token} label="created" class="w-2/12">
+            <.created_by account={@account} schema={token} />
+          </:col>
+          <:col :let={token} label="expires" class="w-1/12">
+            <%= if DateTime.compare(token.expires_at, DateTime.utc_now()) == :lt do %>
+              <.popover>
+                <:target>
+                  expired
+                </:target>
+                <:content>
+                  <.datetime datetime={token.expires_at} />
+                </:content>
+              </.popover>
+            <% else %>
+              <.relative_datetime datetime={token.expires_at} negative_class="text-red-600" />
+            <% end %>
+          </:col>
+          <:col :let={token} label="last used" class="w-3/12">
+            <p>
+              <.relative_datetime datetime={token.last_seen_at} />
+            </p>
+            <p :if={not is_nil(token.last_seen_at)}>
+              <code class="text-xs"><.last_seen schema={token} /></code>
+            </p>
           </:col>
           <:action :let={token}>
             <.button_with_confirmation
@@ -538,9 +551,7 @@ defmodule Web.Actors.Show do
           metadata={@groups_metadata}
         >
           <:col :let={group} label="name">
-            <.link navigate={~p"/#{@account}/groups/#{group.id}"} class={[link_style()]}>
-              <%= group.name %>
-            </.link>
+            <.group account={@account} group={group} />
           </:col>
           <:empty>
             <div class="text-center text-neutral-500 p-4">No Groups to display.</div>

@@ -47,14 +47,21 @@ defmodule Web.Groups.Index do
       <:title>
         Groups
       </:title>
+
+      <:action>
+        <.docs_action path="/deploy/groups" />
+      </:action>
+
       <:action>
         <.add_button navigate={~p"/#{@account}/groups/new"}>
           Add Group
         </.add_button>
       </:action>
+
       <:help>
         Groups organize Actors and form the basis of the Firezone access control model.
       </:help>
+
       <:content>
         <.flash_group flash={@flash} />
         <.live_table
@@ -67,9 +74,7 @@ defmodule Web.Groups.Index do
           metadata={@groups_metadata}
         >
           <:col :let={group} field={{:groups, :name}} label="name" class="w-2/4">
-            <.link navigate={~p"/#{@account}/groups/#{group.id}"} class={[link_style()]}>
-              <%= group.name %>
-            </.link>
+            <.group account={@account} group={group} />
 
             <span :if={Actors.group_deleted?(group)} class="text-xs text-neutral-100">
               (deleted)

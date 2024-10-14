@@ -237,7 +237,7 @@ defmodule Web.Live.Sites.ShowTest do
     Enum.each(resource_rows, fn row ->
       assert row["name"] =~ resource.name
       assert row["address"] =~ resource.address
-      assert row["authorized groups"] == "None - Create a Policy to grant access."
+      assert row["authorized groups"] == "None. Create a Policy to grant access."
     end)
   end
 

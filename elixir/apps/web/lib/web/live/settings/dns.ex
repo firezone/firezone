@@ -32,24 +32,35 @@ defmodule Web.Settings.DNS do
       <:title>
         DNS
       </:title>
+
+      <:action>
+        <.docs_action path="/deploy/dns" />
+      </:action>
+
       <:help>
-        Configure the default resolver used by connected Clients.
-        Queries for Resources will <strong>always</strong>
-        use Firezone's internal DNS.
-        All other queries will use the DNS servers configured here or the Client's
-        system resolvers if no servers are configured.
-        <p class="mt-2">
-          <.website_link path="/kb/deploy/dns">
-            Read more about configuring DNS in Firezone.
-          </.website_link>
-        </p>
+        Configure the upstream resolver used by connected Clients.
+        Queries for Resources will <strong>always</strong> use Firezone's internal DNS.
+        All other queries will use the resolvers configured here or the Client's
+        system resolvers if none are configured.
       </:help>
+
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto">
-          <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
           <h2 class="mb-4 text-xl text-neutral-900">Client DNS</h2>
-          <p class="mb-4 text-neutral-500">
-            DNS servers will be used in the order they are listed below.
+
+          <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
+
+          <% empty? =
+            Domain.Repo.Changeset.empty?(@form.source) and
+              Enum.empty?(@account.config.clients_upstream_dns) %>
+
+          <p :if={not empty?} class="mb-4 text-neutral-500">
+            Upstream resolvers will be used by Clients in the order they are listed below.
+          </p>
+
+          <p :if={empty?} class="text-neutral-500">
+            No upstream resolvers have been configured. Click <strong>New Resolver</strong>
+            to add one.
           </p>
 
           <.form for={@form} phx-submit={:submit} phx-change={:change}>
@@ -74,12 +85,8 @@ defmodule Web.Settings.DNS do
                           value={dns[:protocol].value}
                         />
                       </div>
-                      <div class="w-8/12">
-                        <.input
-                          label="Address"
-                          field={dns[:address]}
-                          placeholder="DNS Server Address"
-                        />
+                      <div class="w-3/4">
+                        <.input label="Address" field={dns[:address]} placeholder="E.g. 1.1.1.1" />
                       </div>
                       <div class="w-1/12 flex">
                         <div class="pt-7">
@@ -89,7 +96,10 @@ defmodule Web.Settings.DNS do
                             value={dns.index}
                             phx-click={JS.dispatch("change")}
                           >
-                            <.icon name="hero-trash" class="text-red-500 w-6 h-6 relative top-2" />
+                            <.icon
+                              name="hero-trash"
+                              class="-ml-1 text-red-500 w-5 h-5 relative top-2"
+                            />
                           </button>
                         </div>
                       </div>
@@ -104,7 +114,7 @@ defmodule Web.Settings.DNS do
                     value="new"
                     phx-click={JS.dispatch("change")}
                   >
-                    New DNS Server
+                    New Resolver
                   </.button>
                   <.error
                     :for={error <- dns_config_errors(@form.source.changes)}
@@ -117,7 +127,7 @@ defmodule Web.Settings.DNS do
               <p class="text-sm text-neutral-500">
                 <strong>Note:</strong>
                 It is highly recommended to to specify <strong>both</strong>
-                IPv4 and IPv6 addresses when adding custom resolvers. Otherwise, Clients without IPv4
+                IPv4 and IPv6 addresses when adding upstream resolvers. Otherwise, Clients without IPv4
                 or IPv6 connectivity may not be able to resolve DNS queries.
               </p>
               <.submit_button>

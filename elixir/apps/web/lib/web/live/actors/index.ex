@@ -49,13 +49,19 @@ defmodule Web.Actors.Index do
       <:title><%= @page_title %></:title>
 
       <:action>
+        <.docs_action path="/deploy/users" />
+      </:action>
+
+      <:action>
         <.add_button navigate={~p"/#{@account}/actors/new"}>
           Add Actor
         </.add_button>
       </:action>
+
       <:help>
         Actors are the people and services that can access your Resources.
       </:help>
+
       <:content>
         <.flash_group flash={@flash} />
         <.live_table
@@ -103,7 +109,11 @@ defmodule Web.Actors.Index do
             </.peek>
           </:col>
 
-          <:col :let={actor} label="last signed in">
+          <:col :let={actor} label="status" class="w-1/12">
+            <.actor_status actor={actor} />
+          </:col>
+
+          <:col :let={actor} label="last signed in" class="w-1/12">
             <.relative_datetime datetime={actor.last_seen_at} />
           </:col>
         </.live_table>
