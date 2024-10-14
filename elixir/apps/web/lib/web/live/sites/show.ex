@@ -144,7 +144,7 @@ defmodule Web.Sites.Show do
           icon="hero-trash-solid"
           on_confirm="revoke_all_tokens"
         >
-          <:dialog_title>Revoke all tokens</:dialog_title>
+          <:dialog_title>Confirm revocation of all tokens</:dialog_title>
           <:dialog_content>
             Are you sure you want to revoke all tokens for this Site?
             This will <strong>immediately</strong> disconnect all associated Gateways.
@@ -294,7 +294,7 @@ defmodule Web.Sites.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete Site</:dialog_title>
+          <:dialog_title>Confirm deletion of Site</:dialog_title>
           <:dialog_content>
             Are you sure you want to delete this Site? This will <strong>immediately</strong>
             disconnect all associated Gateways.

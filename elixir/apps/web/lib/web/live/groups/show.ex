@@ -251,7 +251,7 @@ defmodule Web.Groups.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete Group</:dialog_title>
+          <:dialog_title>Confirm deletion of Group</:dialog_title>
           <:dialog_content>
             Are you sure you want to delete this Group and all related Policies?
           </:dialog_content>

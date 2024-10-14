@@ -69,7 +69,7 @@ defmodule Web.Settings.ApiClients.Show do
           icon="hero-lock-closed"
           on_confirm="disable"
         >
-          <:dialog_title>Disable the API Client</:dialog_title>
+          <:dialog_title>Confirm disabling the API Client</:dialog_title>
           <:dialog_content>
             Are you sure want to disable this API Client and revoke all its tokens?
           </:dialog_content>
@@ -86,10 +86,11 @@ defmodule Web.Settings.ApiClients.Show do
         <.button_with_confirmation
           id="enable"
           style="warning"
+          confirm_style="primary"
           icon="hero-lock-open"
           on_confirm="enable"
         >
-          <:dialog_title>Enable the API Client</:dialog_title>
+          <:dialog_title>Confirm enabling the API Client</:dialog_title>
           <:dialog_content>
             Are you sure want to enable this API Client?
           </:dialog_content>
@@ -138,7 +139,7 @@ defmodule Web.Settings.ApiClients.Show do
           icon="hero-trash"
           on_confirm="revoke_all_tokens"
         >
-          <:dialog_title>Revoke all API Client Tokens</:dialog_title>
+          <:dialog_title>Confirm revocation of all API Client tokens</:dialog_title>
           <:dialog_content>
             Are you sure you want to revoke all Tokens for this API client?
           </:dialog_content>
@@ -191,7 +192,7 @@ defmodule Web.Settings.ApiClients.Show do
               on_confirm_id={token.id}
               size="xs"
             >
-              <:dialog_title>Revoke the Token</:dialog_title>
+              <:dialog_title>Confirm revocation of API Token</:dialog_title>
               <:dialog_content>
                 Are you sure you want to revoke this token?
               </:dialog_content>
@@ -223,7 +224,7 @@ defmodule Web.Settings.ApiClients.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete API Client</:dialog_title>
+          <:dialog_title>Confirm deletion of API Client</:dialog_title>
           <:dialog_content>
             Are you sure want to delete this API Client along with all associated tokens?
           </:dialog_content>

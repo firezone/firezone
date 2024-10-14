@@ -114,7 +114,7 @@ defmodule Web.Gateways.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete Gateway</:dialog_title>
+          <:dialog_title>Confirm deletion of Gateway</:dialog_title>
           <:dialog_content>
             <p>
               Are you sure you want to delete this Gateway?
