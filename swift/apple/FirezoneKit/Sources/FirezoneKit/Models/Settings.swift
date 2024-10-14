@@ -68,15 +68,14 @@ struct Settings: Equatable {
       Settings(
         authBaseURL: "https://app.firez.one",
         apiURL: "wss://api.firez.one",
-        logFilter:
-          "firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,snownet=debug,str0m=info,warn",
+        logFilter: "debug",
         internetResourceEnabled: nil
       )
     #else
       Settings(
         authBaseURL: "https://app.firezone.dev",
         apiURL: "wss://api.firezone.dev",
-        logFilter: "str0m=warn,info",
+        logFilter: "info",
         internetResourceEnabled: nil
       )
     #endif

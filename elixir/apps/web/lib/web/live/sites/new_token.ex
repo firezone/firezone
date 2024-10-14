@@ -277,7 +277,7 @@ defmodule Web.Sites.NewToken do
         "--env #{key}=\"#{value}\""
       end),
       "--env FIREZONE_NAME=$(hostname)",
-      "--env RUST_LOG=str0m=warn,info",
+      "--env RUST_LOG=info",
       "#{Domain.Config.fetch_env!(:domain, :docker_registry)}/gateway:1"
     ]
     |> List.flatten()
@@ -316,7 +316,7 @@ defmodule Web.Sites.NewToken do
 
   defp manual_command_env(env) do
     """
-    RUST_LOG=str0m=warn,info
+    RUST_LOG=info
     #{Enum.map_join(env, "\n", fn {key, value} -> "#{key}=#{value}" end)}
     """
   end
