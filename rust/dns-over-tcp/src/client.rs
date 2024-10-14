@@ -51,7 +51,8 @@ pub struct QueryResult {
 
 impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     pub fn new(now: Instant, seed: [u8; 32]) -> Self {
-        static_assertions::const_assert!(MIN_PORT > 1024); // Ports below <= 1024 are reserved.
+        static_assertions::const_assert!(MIN_PORT >= 49152); // Outbound TCP connections should use the ephemeral port range.
+        static_assertions::const_assert!(MIN_PORT > MAX_PORT); // Port range must not have length 0.
 
         let mut device = InMemoryDevice::default();
         let interface = create_interface(&mut device, now);
