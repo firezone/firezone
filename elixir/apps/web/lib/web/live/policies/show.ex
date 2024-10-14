@@ -99,7 +99,7 @@ defmodule Web.Policies.Show do
           icon="hero-lock-closed"
           on_confirm="disable"
         >
-          <:dialog_title>Disable the Policy</:dialog_title>
+          <:dialog_title>Confirm disabling the Policy</:dialog_title>
           <:dialog_content>
             Are you sure you want to disable this policy?
             This will <strong>immediately</strong>
@@ -117,10 +117,11 @@ defmodule Web.Policies.Show do
           :if={not is_nil(@policy.disabled_at)}
           id="enable"
           style="warning"
+          confirm_style="primary"
           icon="hero-lock-open"
           on_confirm="enable"
         >
-          <:dialog_title>Enable the Policy</:dialog_title>
+          <:dialog_title>Confirm enabling the Policy</:dialog_title>
           <:dialog_content>
             Are you sure you want to enable this policy?
             This will <strong>immediately</strong>
@@ -294,7 +295,7 @@ defmodule Web.Policies.Show do
           on_confirm="delete"
           on_confirm_id={@policy.id}
         >
-          <:dialog_title>Delete Policy</:dialog_title>
+          <:dialog_title>Confirm deletion of Policy</:dialog_title>
           <:dialog_content>
             Are you sure you want to delete this Policy? All sessions authorized by it will be expired.
           </:dialog_content>

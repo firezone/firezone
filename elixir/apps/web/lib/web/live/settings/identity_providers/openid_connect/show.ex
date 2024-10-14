@@ -55,7 +55,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
           icon="hero-lock-closed"
           on_confirm="disable"
         >
-          <:dialog_title>Disable the Provider</:dialog_title>
+          <:dialog_title>Confirm disabling the Provider</:dialog_title>
           <:dialog_content>
             Are you sure you want to disable this Provider?
             This will <strong>immediately</strong>
@@ -73,10 +73,11 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
           :if={not is_nil(@provider.disabled_at)}
           id="enable"
           style="warning"
+          confirm_style="primary"
           icon="hero-lock-open"
           on_confirm="enable"
         >
-          <:dialog_title>Enable the Provider</:dialog_title>
+          <:dialog_title>Confirm enabling the Provider</:dialog_title>
           <:dialog_content>
             Are you sure you want to enable this provider?
           </:dialog_content>
@@ -115,7 +116,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
             on_confirm="delete_stale_actors"
             class="mt-4"
           >
-            <:dialog_title>Delete Stale Actors</:dialog_title>
+            <:dialog_title>Confirm deletion of stale Actors</:dialog_title>
             <:dialog_content>
               Are you sure you want to delete all Actors that were synced synced from this provider and do not have any other identities?
             </:dialog_content>
@@ -188,7 +189,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete Identity Provider</:dialog_title>
+          <:dialog_title>Confirm deletion of Identity Provider</:dialog_title>
           <:dialog_content>
             Are you sure you want to delete this provider? This will remove <strong>all</strong>
             Identities, Groups and Policies associated with this provider.

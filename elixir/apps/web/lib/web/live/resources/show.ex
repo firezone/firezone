@@ -388,7 +388,7 @@ defmodule Web.Resources.Show do
           on_confirm="delete"
           on_confirm_id={@resource.id}
         >
-          <:dialog_title>Delete Resource</:dialog_title>
+          <:dialog_title>Confirm deletion of Resource</:dialog_title>
           <:dialog_content>
             Are you sure want to delete this Resource along with all associated Policies?
             This will immediately end all active sessions opened for this Resource.

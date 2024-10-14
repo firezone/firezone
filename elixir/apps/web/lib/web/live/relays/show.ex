@@ -120,7 +120,7 @@ defmodule Web.Relays.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete Relay</:dialog_title>
+          <:dialog_title>Confirm deletion of Relay</:dialog_title>
           <:dialog_content>
             <p>
               Are you sure you want to delete this relay?

@@ -157,10 +157,11 @@ defmodule Web.Actors.Show do
         <.button_with_confirmation
           id="disable_actor"
           style="warning"
+          confirm_style="primary"
           icon="hero-lock-closed"
           on_confirm="disable"
         >
-          <:dialog_title>Apply changes to Actor Groups</:dialog_title>
+          <:dialog_title>Confirm disabling the Actor</:dialog_title>
           <:dialog_content>
             Are you sure you want to disable this <%= String.downcase(actor_type(@actor.type)) %> and revoke all its tokens?
           </:dialog_content>
@@ -177,10 +178,11 @@ defmodule Web.Actors.Show do
         <.button_with_confirmation
           id="enable_actor"
           style="warning"
+          confirm_style="primary"
           icon="hero-lock-open"
           on_confirm="enable"
         >
-          <:dialog_title>Apply changes to Actor Groups</:dialog_title>
+          <:dialog_title>Confirm enabling the Actor</:dialog_title>
           <:dialog_content>
             Are you sure you want to enable this <%= String.downcase(actor_type(@actor.type)) %>?
           </:dialog_content>
@@ -281,7 +283,7 @@ defmodule Web.Actors.Show do
               on_confirm_id={identity.id}
               size="xs"
             >
-              <:dialog_title>Delete Identity</:dialog_title>
+              <:dialog_title>Confirm Identity deletion</:dialog_title>
               <:dialog_content>
                 Are you sure you want to delete this identity?
                 This will <strong>immediately</strong>
@@ -344,10 +346,11 @@ defmodule Web.Actors.Show do
         <.button_with_confirmation
           id="revoke_all_tokens"
           style="danger"
+          confirm_style="primary"
           icon="hero-trash-solid"
           on_confirm="revoke_all_tokens"
         >
-          <:dialog_title>Revoke All Tokens</:dialog_title>
+          <:dialog_title>Confirm token revocation of all actor tokens</:dialog_title>
           <:dialog_content>
             Are you sure you want to revoke all tokens?
             This will <strong>immediately</strong> sign the actor out of all clients.
@@ -429,7 +432,7 @@ defmodule Web.Actors.Show do
               on_confirm_id={token.id}
               size="xs"
             >
-              <:dialog_title>Revoke the Token</:dialog_title>
+              <:dialog_title>Confirm token revocation</:dialog_title>
               <:dialog_content>
                 Are you sure you want to revoke the token?
                 This will <strong>immediately</strong>
@@ -568,7 +571,7 @@ defmodule Web.Actors.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete <%= actor_type(@actor.type) %></:dialog_title>
+          <:dialog_title>Confirm <%= actor_type(@actor.type) %> deletion</:dialog_title>
           <:dialog_content>
             Are you sure you want to delete this <%= String.downcase(actor_type(@actor.type)) %> along with all associated identities?
           </:dialog_content>
