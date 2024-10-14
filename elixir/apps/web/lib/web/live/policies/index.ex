@@ -51,6 +51,9 @@ defmodule Web.Policies.Index do
     <.section>
       <:title><%= @page_title %></:title>
       <:action>
+        <.docs_action path="/deploy/policies" />
+      </:action>
+      <:action>
         <.add_button navigate={~p"/#{@account}/policies/new"}>
           Add Policy
         </.add_button>
@@ -91,7 +94,7 @@ defmodule Web.Policies.Index do
               <%= if is_nil(policy.disabled_at) do %>
                 Active
               <% else %>
-                Disabled
+                <span class="text-red-800">Disabled</span>
               <% end %>
             <% else %>
               Deleted

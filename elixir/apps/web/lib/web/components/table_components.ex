@@ -18,7 +18,10 @@ defmodule Web.TableComponents do
     ~H"""
     <thead id={"#{@table_id}-header"} class="text-xs text-neutral-700 uppercase bg-neutral-50">
       <tr>
-        <th :for={col <- @columns} class={["px-4 py-3 font-medium", Map.get(col, :class, "")]}>
+        <th
+          :for={col <- @columns}
+          class={["px-4 py-3 font-medium whitespace-nowrap", Map.get(col, :class, "")]}
+        >
           <%= col[:label] %>
           <.table_header_order_buttons
             :if={col[:field]}

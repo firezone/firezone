@@ -64,6 +64,9 @@ defmodule Web.Settings.ApiClients.Index do
       </:help>
 
       <:action>
+        <.docs_action path="/reference/rest-api" />
+      </:action>
+      <:action>
         <.add_button navigate={~p"/#{@account}/settings/api_clients/new"}>
           Add API Client
         </.add_button>

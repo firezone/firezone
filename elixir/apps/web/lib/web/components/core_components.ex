@@ -472,6 +472,12 @@ defmodule Web.CoreComponents do
     """
   end
 
+  def icon(%{name: "firezone"} = assigns) do
+    ~H"""
+    <img src={~p"/images/logo.svg"} class={["inline-block", @class]} {@rest} />
+    """
+  end
+
   def icon(%{name: "spinner"} = assigns) do
     ~H"""
     <svg
@@ -783,14 +789,19 @@ defmodule Web.CoreComponents do
   """
   attr :datetime, DateTime, default: nil
   attr :relative_to, DateTime, required: false
+  attr :negative_class, :string, default: ""
 
   def relative_datetime(assigns) do
-    assigns = assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
+    assigns =
+      assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
     ~H"""
     <.popover :if={not is_nil(@datetime)}>
       <:target>
-        <span class="underline underline-offset-2 decoration-dashed">
+        <span class={[
+          "underline underline-offset-2 decoration-1 decoration-dotted",
+          DateTime.compare(@datetime, @relative_to) == :lt && @negative_class
+        ]}>
           <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to)
           |> String.capitalize() %>
         </span>
@@ -1021,8 +1032,8 @@ defmodule Web.CoreComponents do
           text-xs
           rounded-l
           py-0.5 px-1.5
-          text-neutral-900
-          bg-neutral-50
+          text-neutral-800
+          bg-neutral-100
           border-neutral-100
           border
         ]}
@@ -1035,7 +1046,7 @@ defmodule Web.CoreComponents do
         rounded-r
         mr-2 py-0.5 pl-1.5 pr-2.5
         text-neutral-900
-        bg-neutral-100
+        bg-neutral-50
       ]}>
         <span class="block truncate" title={get_identity_email(@identity)}>
           <%= get_identity_email(@identity) %>
@@ -1068,14 +1079,25 @@ defmodule Web.CoreComponents do
         class={~w[
           rounded-l
           py-0.5 px-1.5
-          text-neutral-900
-          bg-neutral-50
+          text-neutral-800
+          bg-neutral-100
           border-neutral-100
           border
         ]}
       >
         <.provider_icon adapter={@group.provider.adapter} class="h-3.5 w-3.5" />
       </.link>
+      <div :if={not Actors.group_synced?(@group)} title="Manually managed in Firezone" class={~w[
+          inline-flex
+          rounded-l
+          py-0.5 px-1.5
+          text-neutral-800
+          bg-neutral-100
+          border-neutral-100
+          border
+        ]}>
+        <.icon name="firezone" class="h-3.5 w-3.5" />
+      </div>
       <.link
         title={"View Group \"#{@group.name}\""}
         navigate={~p"/#{@account}/groups/#{@group}"}
@@ -1083,10 +1105,10 @@ defmodule Web.CoreComponents do
           text-xs
           truncate
           min-w-0
-          #{if(Actors.group_synced?(@group), do: "rounded-r pl-1.5 pr-2.5", else: "rounded px-1.5")}
+          rounded-r pl-1.5 pr-2.5
           py-0.5
-          text-neutral-800
-          bg-neutral-100
+          text-neutral-900
+          bg-neutral-50
         ]}
       >
         <%= @group.name %>

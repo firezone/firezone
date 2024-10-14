@@ -54,14 +54,13 @@ defmodule Web.Actors.Users.NewIdentity do
       <:title><%= @page_title %></:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Identity details</h2>
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
                 <.input
                   type="select"
-                  label="Provider"
+                  label="Identity Provider"
                   field={@form[:provider_id]}
                   options={
                     Enum.map(@providers, fn provider ->
@@ -72,9 +71,6 @@ defmodule Web.Actors.Users.NewIdentity do
                   placeholder="Provider"
                   required
                 />
-                <p class="mt-2 text-xs text-gray-500">
-                  Select the provider to use for signing in.
-                </p>
               </div>
               <.provider_form :if={@provider} form={@form} provider={@provider} />
             </div>

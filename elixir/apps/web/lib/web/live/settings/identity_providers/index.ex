@@ -56,15 +56,15 @@ defmodule Web.Settings.IdentityProviders.Index do
         Identity Providers
       </:title>
       <:action>
+        <.docs_action path="/authenticate" />
+      </:action>
+      <:action>
         <.add_button navigate={~p"/#{@account}/settings/identity_providers/new"}>
           Add Identity Provider
         </.add_button>
       </:action>
       <:help>
-        <.website_link path="/kb/authenticate">
-          Read more
-        </.website_link>
-        about how authentication works in Firezone.
+        Identity providers authenticate and sync your users and groups with an external source.
       </:help>
       <:content>
         <.flash_group flash={@flash} />

@@ -58,6 +58,9 @@ defmodule Web.Resources.Index do
         in the <.link navigate={~p"/#{@account}/sites"} class={link_style()}>Sites</.link> section.
       </:help>
       <:action>
+        <.docs_action path="/deploy/resources" />
+      </:action>
+      <:action>
         <.add_button navigate={~p"/#{@account}/resources/new"}>
           Add Resource
         </.add_button>

@@ -194,7 +194,7 @@ defmodule Domain.Actors.Actor.Query do
         title: "Status",
         type: :string,
         values: [
-          {"Enabled", "enabled"},
+          {"Active", "active"},
           {"Disabled", "disabled"}
         ],
         fun: &filter_by_status/2
@@ -234,7 +234,7 @@ defmodule Domain.Actors.Actor.Query do
       }
     ]
 
-  def filter_by_status(queryable, "enabled") do
+  def filter_by_status(queryable, "active") do
     {queryable, dynamic([actors: actors], is_nil(actors.disabled_at))}
   end
 

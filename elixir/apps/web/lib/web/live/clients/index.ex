@@ -1,5 +1,6 @@
 defmodule Web.Clients.Index do
   use Web, :live_view
+  import Web.Actors.Components
   alias Domain.Clients
 
   def mount(_params, _session, socket) do
@@ -54,6 +55,9 @@ defmodule Web.Clients.Index do
       <:help>
         Clients are end-user devices and servers that access your protected Resources.
       </:help>
+      <:action>
+        <.docs_action path="/deploy/clients" />
+      </:action>
       <:content>
         <.flash_group flash={@flash} />
         <.live_table
@@ -70,12 +74,17 @@ defmodule Web.Clients.Index do
               <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
                 <%= client.name %>
               </.link>
-              <.icon :if={not is_nil(client.verified_at)} name="hero-shield-check" class="w-4 h-4" />
+              <.icon
+                :if={not is_nil(client.verified_at)}
+                name="hero-shield-check"
+                class="w-4 h-4"
+                title="Device attributes of this client are manually verified"
+              />
             </div>
           </:col>
           <:col :let={client} label="user">
             <.link navigate={~p"/#{@account}/actors/#{client.actor.id}"} class={[link_style()]}>
-              <%= client.actor.name %>
+              <.actor_name_and_role account={@account} actor={client.actor} />
             </.link>
           </:col>
           <:col :let={client} label="status">

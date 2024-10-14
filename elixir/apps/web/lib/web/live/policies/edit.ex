@@ -48,7 +48,7 @@ defmodule Web.Policies.Edit do
       <:title><%= @page_title %></:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Policy details</h2>
+          <legend class="mb-4 text-xl text-neutral-900">Details</legend>
 
           <.form for={@form} phx-submit="submit" phx-change="validate">
             <.base_error form={@form} field={:base} />

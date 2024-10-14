@@ -661,7 +661,7 @@ defmodule API.Gateway.ChannelTest do
          }, otel_ctx}
       )
 
-      assert_push "request_connection", %{}
+      assert_push "request_connection", %{}, 200
 
       {:updated, resource} =
         Domain.Resources.update_or_replace_resource(
@@ -670,7 +670,7 @@ defmodule API.Gateway.ChannelTest do
           subject
         )
 
-      assert_push "resource_updated", payload
+      assert_push "resource_updated", payload, 200
 
       assert payload == %{
                address: resource.address,
