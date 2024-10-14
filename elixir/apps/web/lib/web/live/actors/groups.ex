@@ -140,8 +140,14 @@ defmodule Web.Actors.EditGroups do
             </p>
           </div>
 
-          <.button_with_confirmation id="save_changes" style="primary" class="m-4" on_confirm="submit">
-            <:dialog_title>Apply changes to Actor Groups</:dialog_title>
+          <.button_with_confirmation
+            id="save_changes"
+            style="primary"
+            confirm_style="primary"
+            class="m-4"
+            on_confirm="submit"
+          >
+            <:dialog_title>Confirm changes to Actor Groups</:dialog_title>
             <:dialog_content>
               <%= confirm_message(@added, @removed) %>
             </:dialog_content>

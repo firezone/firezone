@@ -182,9 +182,10 @@ defmodule Web.Clients.Show do
           icon="hero-shield-exclamation"
           on_confirm="remove_client_verification"
         >
-          <:dialog_title>Remove verification</:dialog_title>
+          <:dialog_title>Confirm removal of Client verification</:dialog_title>
           <:dialog_content>
             Are you sure you want to remove verification of this Client?
+            It will no longer be able to access Resources using Policies that require verification.
           </:dialog_content>
           <:dialog_confirm_button>
             Remove
@@ -199,10 +200,11 @@ defmodule Web.Clients.Show do
         <.button_with_confirmation
           id="verify_client"
           style="warning"
+          confirm_style="primary"
           icon="hero-shield-check"
           on_confirm="verify_client"
         >
-          <:dialog_title>Verify Client</:dialog_title>
+          <:dialog_title>Confirm verification of Client</:dialog_title>
           <:dialog_content>
             Are you sure you want to verify this Client?
           </:dialog_content>
