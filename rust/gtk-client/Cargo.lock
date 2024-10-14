@@ -1453,6 +1453,7 @@ dependencies = [
 name = "firezone-logging"
 version = "0.1.0"
 dependencies = [
+ "nu-ansi-term",
  "time",
  "tracing",
  "tracing-appender",

@@ -1,4 +1,5 @@
 pub mod file;
+mod format;
 
 use tracing::subscriber::DefaultGuard;
 use tracing_log::LogTracer;
@@ -6,6 +7,8 @@ use tracing_subscriber::{
     filter::ParseError, fmt, layer::SubscriberExt as _, util::SubscriberInitExt, EnvFilter, Layer,
     Registry,
 };
+
+pub use format::Format;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`
 pub fn setup_global_subscriber<L>(additional_layer: L)
@@ -16,7 +19,7 @@ where
 
     let subscriber = Registry::default()
         .with(additional_layer)
-        .with(fmt::layer())
+        .with(fmt::layer().event_format(Format::new()))
         .with(filter(&directives));
     tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
     LogTracer::init().unwrap();

@@ -140,9 +140,12 @@ fn init_logging(log_dir: &Path, log_filter: String) -> firezone_logging::file::H
         .with(file_layer)
         .with(
             tracing_subscriber::fmt::layer()
-                .with_ansi(false)
-                .without_time()
-                .with_level(false)
+                .event_format(
+                    firezone_logging::Format::new()
+                        .without_ansi()
+                        .without_timestamp()
+                        .without_level(),
+                )
                 .with_writer(make_writer::MakeWriter::new("connlib")),
         )
         .with(firezone_logging::filter(&log_filter))

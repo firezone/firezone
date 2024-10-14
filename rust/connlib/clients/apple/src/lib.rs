@@ -160,9 +160,12 @@ fn init_logging(
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
-                .with_ansi(false)
-                .without_time()
-                .with_level(false)
+                .event_format(
+                    firezone_logging::Format::new()
+                        .without_ansi()
+                        .without_timestamp()
+                        .without_level(),
+                )
                 .with_writer(make_writer::MakeWriter::new(
                     "dev.firezone.firezone",
                     "connlib",
