@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    ops::RangeInclusive,
     time::Instant,
 };
 
@@ -25,12 +24,10 @@ use smoltcp::{
 ///
 /// There are however currently no timeouts.
 /// If the upstream resolver refuses to answer, we don't fail the query.
-pub struct Client {
+pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     device: InMemoryDevice,
     interface: Interface,
     source_ips: Option<(Ipv4Addr, Ipv6Addr)>,
-    /// The port range we are allowed to use on our local interface for outgoing connections.
-    port_range: RangeInclusive<u16>,
 
     sockets: SocketSet<'static>,
     sockets_by_remote: HashMap<SocketAddr, smoltcp::iface::SocketHandle>,
@@ -52,9 +49,9 @@ pub struct QueryResult {
     pub result: Result<Message<Vec<u8>>>,
 }
 
-impl Client {
-    pub fn new(now: Instant, port_range: RangeInclusive<u16>, seed: [u8; 32]) -> Self {
-        assert!(!port_range.contains(&0), "0 port must not be possible");
+impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
+    pub fn new(now: Instant, seed: [u8; 32]) -> Self {
+        static_assertions::const_assert!(MIN_PORT > 1024); // Ports below <= 1024 are reserved.
 
         let mut device = InMemoryDevice::default();
         let interface = create_interface(&mut device, now);
@@ -64,7 +61,6 @@ impl Client {
             interface,
             sockets: SocketSet::new(Vec::default()),
             source_ips: None,
-            port_range,
             sent_queries_by_remote: Default::default(),
             query_results: Default::default(),
             rng: StdRng::from_seed(seed),
@@ -281,16 +277,17 @@ impl Client {
 
     fn sample_unique_ports(&mut self, num_ports: usize) -> Result<impl Iterator<Item = u16>> {
         let mut ports = HashSet::with_capacity(num_ports);
+        let range = MIN_PORT..=MAX_PORT;
 
-        if num_ports > self.port_range.len() {
+        if num_ports > range.len() {
             bail!(
                 "Port range only provides {} values but we need {num_ports}",
-                self.port_range.len()
+                range.len()
             )
         }
 
         while ports.len() < num_ports {
-            ports.insert(self.rng.gen_range(self.port_range.clone()));
+            ports.insert(self.rng.gen_range(range.clone()));
         }
 
         Ok(ports.into_iter())
