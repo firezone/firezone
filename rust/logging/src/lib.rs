@@ -1,4 +1,5 @@
 pub mod file;
+mod format;
 
 use tracing::subscriber::DefaultGuard;
 use tracing_log::LogTracer;
@@ -16,7 +17,7 @@ where
 
     let subscriber = Registry::default()
         .with(additional_layer)
-        .with(fmt::layer())
+        .with(fmt::layer().event_format(crate::format::CompactNoSpans))
         .with(filter(&directives));
     tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
     LogTracer::init().unwrap();
