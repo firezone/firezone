@@ -661,23 +661,17 @@ impl TunnelTest {
                 let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
                 gateway.exec_mut(|g| {
-                    g.sut.allow_access(
-                        self.client.inner().id,
-                        self.client.inner().sut.tunnel_ip4().unwrap(),
-                        self.client.inner().sut.tunnel_ip6().unwrap(),
-                        None,
-                        resource.clone(),
-                    );
-                    if let Some(entry) = maybe_entry {
-                        g.sut
-                            .create_dns_resource_nat_entry(
-                                self.client.inner().id,
-                                resource.id(),
-                                entry,
-                                now,
-                            )
-                            .unwrap()
-                    };
+                    g.sut
+                        .allow_access(
+                            self.client.inner().id,
+                            self.client.inner().sut.tunnel_ip4().unwrap(),
+                            self.client.inner().sut.tunnel_ip6().unwrap(),
+                            None,
+                            resource.clone(),
+                            maybe_entry,
+                            now,
+                        )
+                        .unwrap();
                 });
             }
             ClientEvent::ResourcesChanged { .. } => {
@@ -734,23 +728,17 @@ impl TunnelTest {
                             self.client.inner().sut.public_key(),
                             now,
                         );
-                        g.sut.allow_access(
-                            self.client.inner().id,
-                            self.client.inner().sut.tunnel_ip4().unwrap(),
-                            self.client.inner().sut.tunnel_ip6().unwrap(),
-                            None,
-                            resource.clone(),
-                        );
-                        if let Some(entry) = maybe_entry {
-                            g.sut
-                                .create_dns_resource_nat_entry(
-                                    self.client.inner().id,
-                                    resource.id(),
-                                    entry,
-                                    now,
-                                )
-                                .unwrap()
-                        };
+                        g.sut
+                            .allow_access(
+                                self.client.inner().id,
+                                self.client.inner().sut.tunnel_ip4().unwrap(),
+                                self.client.inner().sut.tunnel_ip6().unwrap(),
+                                None,
+                                resource.clone(),
+                                maybe_entry,
+                                now,
+                            )
+                            .unwrap();
 
                         anyhow::Ok(answer)
                     })
