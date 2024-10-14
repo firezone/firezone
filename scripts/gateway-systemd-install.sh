@@ -7,7 +7,7 @@ FIREZONE_NAME=${FIREZONE_NAME:-$hostname}
 FIREZONE_ID=${FIREZONE_ID:-}
 FIREZONE_TOKEN=${FIREZONE_TOKEN:-}
 FIREZONE_API_URL=${FIREZONE_API_URL:-wss://api.firezone.dev}
-RUST_LOG=${RUST_LOG:-str0m=warn,info}
+RUST_LOG=${RUST_LOG:-info}
 
 # Can be used to download a specific version of the gateway from a custom URL
 FIREZONE_VERSION=${FIREZONE_VERSION:-latest}
