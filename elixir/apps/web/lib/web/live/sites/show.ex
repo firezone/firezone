@@ -166,7 +166,7 @@ defmodule Web.Sites.Show do
       <:content flash={@flash}>
         <.flash :if={@gateways_metadata.count == 1} kind={:info} style="wide" class="mb-2">
           Deploy at least one more gateway to ensure
-          <.website_link path={~p"/kb/deploy/gateways"} fragment="deploy-multiple-gateways">
+          <.website_link path="/kb/deploy/gateways" fragment="deploy-multiple-gateways">
             high availability
           </.website_link>.
         </.flash>
