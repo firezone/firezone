@@ -84,12 +84,6 @@ impl ClientTunnel {
                 .filter_map(Resource::from_description)
                 .collect(),
         );
-
-        self.role_state
-            .buffered_events
-            .push_back(ClientEvent::ResourcesChanged {
-                resources: self.role_state.resources(),
-            });
     }
 
     pub fn set_disabled_resources(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
@@ -113,22 +107,10 @@ impl ClientTunnel {
         };
 
         self.role_state.add_resource(resource);
-
-        self.role_state
-            .buffered_events
-            .push_back(ClientEvent::ResourcesChanged {
-                resources: self.role_state.resources(),
-            });
     }
 
     pub fn remove_resource(&mut self, id: ResourceId) {
         self.role_state.remove_resource(id);
-
-        self.role_state
-            .buffered_events
-            .push_back(ClientEvent::ResourcesChanged {
-                resources: self.role_state.resources(),
-            });
     }
 
     /// Updates the system's dns
@@ -149,14 +131,7 @@ impl ClientTunnel {
 
     pub fn set_resource_offline(&mut self, id: ResourceId) {
         self.role_state.set_resource_offline(id);
-
         self.role_state.on_connection_failed(id);
-
-        self.role_state
-            .buffered_events
-            .push_back(ClientEvent::ResourcesChanged {
-                resources: self.role_state.resources(),
-            });
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
@@ -366,6 +341,8 @@ impl ClientState {
         for Site { id, .. } in resource.sites() {
             self.sites_status.insert(*id, ResourceStatus::Offline);
         }
+
+        self.emit_resources_changed()
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
@@ -1063,10 +1040,7 @@ impl ClientState {
         }
 
         if resources_changed {
-            self.buffered_events
-                .push_back(ClientEvent::ResourcesChanged {
-                    resources: self.resources(),
-                });
+            self.emit_resources_changed()
         }
 
         for (conn_id, candidates) in added_ice_candidates.into_iter() {
@@ -1149,6 +1123,7 @@ impl ClientState {
         }
 
         self.maybe_update_tun_routes();
+        self.emit_resources_changed();
     }
 
     pub(crate) fn add_resource(&mut self, new_resource: Resource) {
@@ -1191,6 +1166,7 @@ impl ClientState {
         tracing::info!(%name, address, %sites, "Activating resource");
 
         self.maybe_update_tun_routes();
+        self.emit_resources_changed();
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
@@ -1198,6 +1174,20 @@ impl ClientState {
         self.disable_resource(id);
         self.resources_by_id.remove(&id);
         self.maybe_update_tun_routes();
+        self.emit_resources_changed();
+    }
+
+    /// Emit a [`ClientEvent::ResourcesChanged`] event.
+    ///
+    /// Each instance of this event contains the latest state of the resources.
+    /// To not spam clients with multiple updates, we remove all prior instances of that event.
+    fn emit_resources_changed(&mut self) {
+        self.buffered_events
+            .retain(|e| !matches!(e, ClientEvent::ResourcesChanged { .. }));
+        self.buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.resources(),
+            });
     }
 
     fn disable_resource(&mut self, id: ResourceId) {
