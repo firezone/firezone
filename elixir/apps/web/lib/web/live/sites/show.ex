@@ -164,6 +164,13 @@ defmodule Web.Sites.Show do
         its resources.
       </:help>
       <:content flash={@flash}>
+        <.flash :if={@gateways_metadata.count == 1} kind={:info} style="wide" class="mb-2">
+          Deploy at least one more gateway to ensure
+          <.website_link path="/kb/deploy/gateways" fragment="deploy-multiple-gateways">
+            high availability
+          </.website_link>.
+        </.flash>
+
         <div class="relative overflow-x-auto">
           <.live_table
             id="gateways"
