@@ -293,8 +293,6 @@ defmodule Web.SignUp do
 
     changeset =
       attrs
-      |> maybe_put_default_account_name(account_name_changed?)
-      |> maybe_put_default_actor_name(actor_name_changed?)
       |> Registration.changeset()
       |> Map.put(:action, :validate)
 
@@ -313,8 +311,6 @@ defmodule Web.SignUp do
 
     changeset =
       attrs
-      |> maybe_put_default_account_name()
-      |> maybe_put_default_actor_name()
       |> put_in(["actor", "type"], :account_admin_user)
       |> Registration.changeset()
       |> Map.put(:action, :insert)
@@ -379,56 +375,6 @@ defmodule Web.SignUp do
       end
     else
       {:noreply, assign(socket, form: to_form(changeset))}
-    end
-  end
-
-  defp maybe_put_default_account_name(attrs, account_name_changed? \\ true)
-
-  defp maybe_put_default_account_name(attrs, true) do
-    attrs
-  end
-
-  defp maybe_put_default_account_name(attrs, false) do
-    with [default_name | _] <- String.split(attrs["email"], "@", parts: 2) do
-      case String.split(default_name, ".", parts: 2) do
-        [first_name, last_name | _] when byte_size(first_name) > 0 and byte_size(last_name) > 0 ->
-          put_in(
-            attrs,
-            ["account", "name"],
-            "#{String.capitalize(first_name)} #{String.capitalize(last_name)}'s Account"
-          )
-
-        _ ->
-          put_in(attrs, ["account", "name"], "#{String.capitalize(default_name)}'s Account")
-      end
-    else
-      _ ->
-        attrs
-    end
-  end
-
-  defp maybe_put_default_actor_name(attrs, actor_name_changed? \\ true)
-
-  defp maybe_put_default_actor_name(attrs, true) do
-    attrs
-  end
-
-  defp maybe_put_default_actor_name(attrs, false) do
-    with [default_name | _] <- String.split(attrs["email"], "@", parts: 2) do
-      case String.split(default_name, ".", parts: 2) do
-        [first_name, last_name | _] when byte_size(first_name) > 0 and byte_size(last_name) > 0 ->
-          put_in(
-            attrs,
-            ["actor", "name"],
-            "#{String.capitalize(first_name)} #{String.capitalize(last_name)}"
-          )
-
-        _ ->
-          put_in(attrs, ["actor", "name"], String.capitalize(default_name))
-      end
-    else
-      _ ->
-        attrs
     end
   end
 
