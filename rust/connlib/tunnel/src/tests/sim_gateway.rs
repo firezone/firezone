@@ -45,10 +45,12 @@ impl SimGateway {
         now: Instant,
         utc_now: DateTime<Utc>,
     ) -> Option<Transmit<'static>> {
-        let Some(packet) =
-            self.sut
-                .decapsulate(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
-        else {
+        let Some(packet) = self.sut.handle_network_input(
+            transmit.dst,
+            transmit.src.unwrap(),
+            &transmit.payload,
+            now,
+        ) else {
             self.sut.handle_timeout(now, utc_now);
             return None;
         };
@@ -84,7 +86,7 @@ impl SimGateway {
 
             let transmit = self
                 .sut
-                .encapsulate(response, now, &mut self.enc_buffer)?
+                .handle_tun_input(response, now, &mut self.enc_buffer)?
                 .to_transmit(&self.enc_buffer)
                 .into_owned();
 
@@ -130,7 +132,7 @@ impl SimGateway {
         .expect("src and dst are taken from incoming packet");
         let transmit = self
             .sut
-            .encapsulate(echo_response, now, &mut self.enc_buffer)?
+            .handle_tun_input(echo_response, now, &mut self.enc_buffer)?
             .to_transmit(&self.enc_buffer)
             .into_owned();
 

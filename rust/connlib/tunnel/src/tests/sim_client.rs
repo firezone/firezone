@@ -149,7 +149,7 @@ impl SimClient {
             }
         }
 
-        let Some(enc_packet) = self.sut.encapsulate(packet, now, &mut self.enc_buffer) else {
+        let Some(enc_packet) = self.sut.handle_tun_input(packet, now, &mut self.enc_buffer) else {
             self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
             return None;
         };
@@ -158,10 +158,12 @@ impl SimClient {
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
-        let Some(packet) =
-            self.sut
-                .decapsulate(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
-        else {
+        let Some(packet) = self.sut.handle_network_input(
+            transmit.dst,
+            transmit.src.unwrap(),
+            &transmit.payload,
+            now,
+        ) else {
             self.sut.handle_timeout(now);
             return;
         };
