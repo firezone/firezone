@@ -69,7 +69,7 @@ defmodule Web.CoreComponents do
 
   def code_block(assigns) do
     ~H"""
-    <div id={@id} phx-hook="Copy" class="relative">
+    <div id={@id} class="relative">
       <div id={"#{@id}-nested"} class={[~w[
         text-sm text-left text-neutral-50
         inline-flex items-center
@@ -77,23 +77,32 @@ defmodule Web.CoreComponents do
         bg-neutral-800
         overflow-x-auto
       ], @class]} {@rest}>
-        <code class="block w-full no-scrollbar whitespace-pre rounded-b" data-copy phx-no-format><%= render_slot(@inner_block) %></code>
+        <code
+          id={"#{@id}-code"}
+          class="block w-full no-scrollbar whitespace-pre rounded-b"
+          phx-no-format
+        ><%= render_slot(@inner_block) %></code>
       </div>
 
-      <span title="Click to copy" class={~w[
-            absolute top-1 right-1
-            items-center
-            cursor-pointer
-            rounded
-            p-1
-            text-xs
-            text-neutral-50
-            hover:bg-neutral-50
-            hover:text-neutral-900
-            hover:opacity-50
-          ]}>
+      <button
+        type="button"
+        data-copy-to-clipboard-target={"#{@id}-code"}
+        data-copy-to-clipboard-content-type="innerHTML"
+        data-copy-to-clipboard-html-entities="true"
+        title="Click to copy"
+        class={[
+          "absolute top-1 right-1",
+          "items-center",
+          "cursor-pointer",
+          "rounded",
+          "p-1",
+          "bg-neutral-50/25",
+          "text-xs text-neutral-50",
+          "hover:bg-neutral-50 hover:text-neutral-900 hover:opacity-50"
+        ]}
+      >
         <.icon name="hero-clipboard-document" data-icon class="h-4 w-4" />
-      </span>
+      </button>
     </div>
     """
   end
@@ -114,11 +123,18 @@ defmodule Web.CoreComponents do
 
   def copy(assigns) do
     ~H"""
-    <div id={@id} phx-hook="Copy" class={@class} {@rest}>
-      <code data-copy phx-no-format><%= render_slot(@inner_block) %></code>
-      <span class={~w[text-neutral-400 cursor-pointer rounded]}>
+    <div id={@id} class={@class} {@rest}>
+      <code id={"#{@id}-code"} phx-no-format><%= render_slot(@inner_block) %></code>
+      <button
+        type="button"
+        class={~w[text-neutral-400 cursor-pointer rounded]}
+        data-copy-to-clipboard-target={"#{@id}-code"}
+        data-copy-to-clipboard-content-type="innerHTML"
+        data-copy-to-clipboard-html-entities="true"
+        title="Copy to clipboard"
+      >
         <.icon name="hero-clipboard-document" data-icon class="h-4 w-4" />
-      </span>
+      </button>
     </div>
     """
   end
