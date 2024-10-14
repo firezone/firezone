@@ -4,7 +4,7 @@ mod interface;
 mod server;
 mod stub_device;
 
-pub use client::{Client, QueryResult};
+pub use client::{Client, OutboundQueryId, QueryResult};
 pub use server::{Server, SocketHandle};
 
 fn create_tcp_socket() -> smoltcp::socket::tcp::Socket<'static> {
