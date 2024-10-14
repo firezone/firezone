@@ -155,13 +155,16 @@ impl ClientTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::Network(packets)) => {
+                    let now = Instant::now();
+
                     for received in packets {
                         let Some(packet) = self.role_state.decapsulate(
                             received.local,
                             received.from,
                             received.packet,
-                            Instant::now(),
+                            now,
                         ) else {
+                            self.role_state.handle_timeout(now);
                             continue;
                         };
 
@@ -256,13 +259,17 @@ impl GatewayTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::Network(packets)) => {
+                    let now = Instant::now();
+                    let utc_now = Utc::now();
+
                     for received in packets {
                         let Some(packet) = self.role_state.decapsulate(
                             received.local,
                             received.from,
                             received.packet,
-                            Instant::now(),
+                            now,
                         ) else {
+                            self.role_state.handle_timeout(now, utc_now);
                             continue;
                         };
 

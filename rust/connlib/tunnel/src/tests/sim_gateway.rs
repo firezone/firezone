@@ -6,6 +6,7 @@ use super::{
 };
 use crate::DomainName;
 use crate::GatewayState;
+use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId};
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use proptest::prelude::*;
@@ -42,10 +43,15 @@ impl SimGateway {
         global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
         transmit: Transmit,
         now: Instant,
+        utc_now: DateTime<Utc>,
     ) -> Option<Transmit<'static>> {
-        let packet =
+        let Some(packet) =
             self.sut
-                .decapsulate(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)?;
+                .decapsulate(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
+        else {
+            self.sut.handle_timeout(now, utc_now);
+            return None;
+        };
 
         self.on_received_packet(global_dns_records, packet, now)
     }

@@ -497,9 +497,9 @@ impl TunnelTest {
 
         for (_, gateway) in self.gateways.iter_mut() {
             while let Some(transmit) = gateway.poll_transmit(now) {
-                let Some(reply) =
-                    gateway.exec_mut(|g| g.receive(global_dns_records, transmit, now))
-                else {
+                let Some(reply) = gateway.exec_mut(|g| {
+                    g.receive(global_dns_records, transmit, now, self.flux_capacitor.now())
+                }) else {
                     continue;
                 };
 

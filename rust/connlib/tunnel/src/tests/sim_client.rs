@@ -162,6 +162,7 @@ impl SimClient {
             self.sut
                 .decapsulate(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
         else {
+            self.sut.handle_timeout(now);
             return;
         };
 
