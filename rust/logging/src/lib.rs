@@ -8,6 +8,8 @@ use tracing_subscriber::{
     Registry,
 };
 
+pub use format::Format;
+
 /// Registers a global subscriber with stdout logging and `additional_layer`
 pub fn setup_global_subscriber<L>(additional_layer: L)
 where
@@ -17,7 +19,7 @@ where
 
     let subscriber = Registry::default()
         .with(additional_layer)
-        .with(fmt::layer().event_format(crate::format::CompactNoSpans))
+        .with(fmt::layer().event_format(Format::new()))
         .with(filter(&directives));
     tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
     LogTracer::init().unwrap();

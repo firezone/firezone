@@ -27,7 +27,48 @@ use tracing_subscriber::{
 /// - All fields, including the fields of all active spans
 ///
 /// Most importantly, the actual span-name is not logged.
-pub(crate) struct CompactNoSpans;
+pub struct Format {
+    ansi: bool,
+    time: bool,
+    level: bool,
+}
+
+impl Format {
+    pub fn new() -> Self {
+        Self {
+            ansi: true,
+            time: true,
+            level: true,
+        }
+    }
+
+    pub fn without_ansi(self) -> Self {
+        Self {
+            ansi: false,
+            ..self
+        }
+    }
+
+    pub fn without_timestamp(self) -> Self {
+        Self {
+            time: false,
+            ..self
+        }
+    }
+
+    pub fn without_level(self) -> Self {
+        Self {
+            level: false,
+            ..self
+        }
+    }
+}
+
+impl Default for Format {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 const TIMESTAMP_FORMAT_CONFIG: EncodedConfig = Config::DEFAULT
     .set_time_precision(TimePrecision::Second {
@@ -38,7 +79,7 @@ const TIMESTAMP_FORMAT_CONFIG: EncodedConfig = Config::DEFAULT
     })
     .encode();
 
-impl<S, N> FormatEvent<S, N> for CompactNoSpans
+impl<S, N> FormatEvent<S, N> for Format
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
     N: for<'a> FormatFields<'a> + 'static,
@@ -52,34 +93,38 @@ where
         let normalized_meta = event.normalized_metadata();
         let meta = normalized_meta.as_ref().unwrap_or_else(|| event.metadata());
 
-        if writer.has_ansi_escapes() {
-            let style = Style::new().dimmed();
-            write!(writer, "{}", style.prefix())?;
+        if self.time {
+            if self.ansi {
+                let style = Style::new().dimmed();
+                write!(writer, "{}", style.prefix())?;
 
-            ::time::OffsetDateTime::now_utc()
-                .format_into(
-                    &mut IoWriteAdapter::new(&mut writer),
-                    &Iso8601::<TIMESTAMP_FORMAT_CONFIG>,
-                )
-                .map_err(|_| fmt::Error)?;
+                ::time::OffsetDateTime::now_utc()
+                    .format_into(
+                        &mut IoWriteAdapter::new(&mut writer),
+                        &Iso8601::<TIMESTAMP_FORMAT_CONFIG>,
+                    )
+                    .map_err(|_| fmt::Error)?;
 
-            write!(writer, "{} ", style.suffix())?;
-        } else {
-            ::time::OffsetDateTime::now_utc()
-                .format_into(
-                    &mut IoWriteAdapter::new(&mut writer),
-                    &Iso8601::<TIMESTAMP_FORMAT_CONFIG>,
-                )
-                .map_err(|_| fmt::Error)?;
+                write!(writer, "{} ", style.suffix())?;
+            } else {
+                ::time::OffsetDateTime::now_utc()
+                    .format_into(
+                        &mut IoWriteAdapter::new(&mut writer),
+                        &Iso8601::<TIMESTAMP_FORMAT_CONFIG>,
+                    )
+                    .map_err(|_| fmt::Error)?;
 
-            writer.write_char(' ')?;
+                writer.write_char(' ')?;
+            }
         }
 
-        let fmt_level = FmtLevel::new(meta.level(), writer.has_ansi_escapes());
+        if self.level {
+            let fmt_level = FmtLevel::new(meta.level(), self.ansi);
 
-        write!(writer, "{} ", fmt_level)?;
+            write!(writer, "{} ", fmt_level)?;
+        }
 
-        let dimmed = if writer.has_ansi_escapes() {
+        let dimmed = if self.ansi {
             Style::new().dimmed()
         } else {
             Style::new()
