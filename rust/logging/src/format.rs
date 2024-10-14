@@ -1,3 +1,7 @@
+//! Defines our custom event format.
+//!
+//! Inspired by `Compact` in <https://github.com/tokio-rs/tracing/blob/tracing-subscriber-0.3.18/tracing-subscriber/src/fmt/format/mod.rs>.
+
 use std::{fmt, io, num::NonZeroU8};
 
 use nu_ansi_term::{Color, Style};
