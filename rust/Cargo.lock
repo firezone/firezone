@@ -5621,6 +5621,7 @@ version = "0.1.0"
 dependencies = [
  "backoff",
  "base64 0.22.1",
+ "firezone-logging",
  "futures",
  "hex",
  "hostname",
@@ -7955,6 +7956,7 @@ dependencies = [
  "signal-hook-registry",
  "socket2",
  "tokio-macros",
+ "tracing",
  "windows-sys 0.52.0",
 ]
 

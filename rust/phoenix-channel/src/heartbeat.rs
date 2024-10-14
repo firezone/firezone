@@ -58,11 +58,14 @@ impl Heartbeat {
     ) -> Poll<Result<OutboundRequestId, MissedLastHeartbeat>> {
         if let Some((_, timeout)) = self.pending.as_mut() {
             ready!(timeout.poll_unpin(cx));
+            tracing::trace!("Timeout waiting for heartbeat response");
             self.pending = None;
             return Poll::Ready(Err(MissedLastHeartbeat {}));
         }
 
         ready!(self.interval.poll_tick(cx));
+
+        tracing::trace!("Time to send a new heartbeat");
 
         let next_id = self
             .next_request_id
@@ -138,6 +141,8 @@ mod tests {
 
     #[tokio::test]
     async fn fails_if_not_provided_within_timeout() {
+        let _guard = firezone_logging::test("trace");
+
         let mut heartbeat = Heartbeat::new(INTERVAL, TIMEOUT, Arc::new(AtomicU64::new(0)));
 
         let id = poll_fn(|cx| heartbeat.poll(cx)).await.unwrap();
