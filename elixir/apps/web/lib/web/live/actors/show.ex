@@ -350,7 +350,7 @@ defmodule Web.Actors.Show do
           icon="hero-trash-solid"
           on_confirm="revoke_all_tokens"
         >
-          <:dialog_title>Confirm token revocation of all actor tokens</:dialog_title>
+          <:dialog_title>Confirm revocation of all actor tokens</:dialog_title>
           <:dialog_content>
             Are you sure you want to revoke all tokens?
             This will <strong>immediately</strong> sign the actor out of all clients.
