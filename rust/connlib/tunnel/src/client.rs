@@ -131,7 +131,6 @@ impl ClientTunnel {
 
     pub fn set_resource_offline(&mut self, id: ResourceId) {
         self.role_state.set_resource_offline(id);
-        self.role_state.on_connection_failed(id);
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
@@ -342,7 +341,8 @@ impl ClientState {
             self.sites_status.insert(*id, ResourceStatus::Offline);
         }
 
-        self.emit_resources_changed()
+        self.on_connection_failed(id);
+        self.emit_resources_changed();
     }
 
     pub(crate) fn public_key(&self) -> PublicKey {
