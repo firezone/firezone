@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeSet, HashMap, HashSet, VecDeque},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use crate::{codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice};
@@ -40,6 +40,9 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     query_results: VecDeque<QueryResult>,
 
     rng: StdRng,
+
+    created_at: Instant,
+    last_now: Instant,
 }
 
 #[derive(Debug)]
@@ -56,7 +59,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         assert!(MIN_PORT < MAX_PORT, "Port range must not have length 0");
 
         let mut device = InMemoryDevice::default();
-        let interface = create_interface(&mut device, now);
+        let interface = create_interface(&mut device);
 
         Self {
             device,
@@ -69,6 +72,8 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             sockets_by_remote: Default::default(),
             local_ports_by_socket: Default::default(),
             pending_queries_by_remote: Default::default(),
+            created_at: now,
+            last_now: now,
         }
     }
 
@@ -213,15 +218,14 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     ///
     /// Typical for a sans-IO design, `handle_timeout` will work through all local buffers and process them as much as possible.
     pub fn handle_timeout(&mut self, now: Instant) {
+        self.last_now = now;
         let Some((ipv4_source, ipv6_source)) = self.source_ips else {
             return;
         };
 
-        let changed = self.interface.poll(
-            smoltcp::time::Instant::from(now),
-            &mut self.device,
-            &mut self.sockets,
-        );
+        let changed = self
+            .interface
+            .poll(self.smol_now(now), &mut self.device, &mut self.sockets);
 
         if !changed && self.pending_queries_by_remote.is_empty() {
             return;
@@ -275,6 +279,20 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                     );
             }
         }
+    }
+
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
+        let now = self.smol_now(self.last_now);
+
+        let poll_in = self.interface.poll_delay(now, &self.sockets)?;
+
+        Some(self.last_now + Duration::from(poll_in))
+    }
+
+    fn smol_now(&self, now: Instant) -> smoltcp::time::Instant {
+        let seconds_since_startup = now.duration_since(self.created_at).as_secs();
+
+        smoltcp::time::Instant::from_secs(seconds_since_startup as i64)
     }
 
     fn sample_unique_ports(&mut self, num_ports: usize) -> Result<impl Iterator<Item = u16>> {
