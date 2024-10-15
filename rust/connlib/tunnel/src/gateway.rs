@@ -177,7 +177,8 @@ impl GatewayState {
         self.node.public_key()
     }
 
-    pub(crate) fn encapsulate(
+    /// Handles packets received on the TUN device.
+    pub(crate) fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
@@ -210,7 +211,13 @@ impl GatewayState {
         Some(transmit)
     }
 
-    pub(crate) fn decapsulate(
+    /// Handles UDP packets received on the network interface.
+    ///
+    /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`IpPacket`].
+    /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
+    ///
+    /// In case this function returns `None`, you should call [`GatewayState::handle_timeout`] next to fully advance the internal state.
+    pub(crate) fn handle_network_input(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
