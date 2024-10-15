@@ -88,7 +88,7 @@ jobs:
       - name: Sign the MSI
         if: ${{ runner.os == 'Windows' }}
         shell: bash
-        run: ../../scripts/build/sign.sh src-tauri/target/release/bundle/msi/Firezone_${{ env.FIREZONE_GUI_VERSION }}_x64_en-US.msi
+        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.FIREZONE_GUI_VERSION }}_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ env.RENAME_SCRIPT }}
