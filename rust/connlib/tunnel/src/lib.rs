@@ -12,6 +12,7 @@ use connlib_model::{
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::MAX_DATAGRAM_PAYLOAD;
+use snownet::EncryptBuffer;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -22,7 +23,6 @@ use std::{
     time::Instant,
 };
 use tun::Tun;
-use utils::turn;
 
 mod client;
 mod device_channel;
@@ -56,7 +56,7 @@ pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
 pub use gateway::{DnsResourceNatEntry, GatewayState, IPV4_PEERS, IPV6_PEERS};
-use snownet::EncryptBuffer;
+pub use utils::turn;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
@@ -76,6 +76,16 @@ pub struct Tunnel<TRoleState> {
 
     /// Buffer for encrypting a single packet.
     encrypt_buf: EncryptBuffer,
+}
+
+impl<TRoleState> Tunnel<TRoleState> {
+    pub fn state_mut(&mut self) -> &mut TRoleState {
+        &mut self.role_state
+    }
+
+    pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
+        self.io.set_tun(tun);
+    }
 }
 
 impl ClientTunnel {

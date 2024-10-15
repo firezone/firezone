@@ -4,6 +4,7 @@ use connlib_model::ResourceId;
 use firezone_tunnel::messages::{client::*, *};
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
+use std::time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet},
     io,
@@ -59,12 +60,12 @@ where
             match self.rx.poll_recv(cx) {
                 Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
                 Poll::Ready(Some(Command::SetDns(dns))) => {
-                    self.tunnel.set_new_dns(dns);
+                    self.tunnel.state_mut().update_system_resolvers(dns);
 
                     continue;
                 }
                 Poll::Ready(Some(Command::SetDisabledResources(resources))) => {
-                    self.tunnel.set_disabled_resources(resources);
+                    self.tunnel.state_mut().set_disabled_resources(resources);
                     continue;
                 }
                 Poll::Ready(Some(Command::SetTun(tun))) => {
@@ -226,15 +227,18 @@ where
 
     fn handle_portal_inbound_message(&mut self, msg: IngressMessages) {
         match msg {
-            IngressMessages::ConfigChanged(config) => {
-                self.tunnel.set_new_interface_config(config.interface)
-            }
+            IngressMessages::ConfigChanged(config) => self
+                .tunnel
+                .state_mut()
+                .update_interface_config(config.interface),
             IngressMessages::IceCandidates(GatewayIceCandidates {
                 gateway_id,
                 candidates,
             }) => {
                 for candidate in candidates {
-                    self.tunnel.add_ice_candidate(gateway_id, candidate)
+                    self.tunnel
+                        .state_mut()
+                        .add_ice_candidate(gateway_id, candidate, Instant::now())
                 }
             }
             IngressMessages::Init(InitClient {
@@ -242,28 +246,40 @@ where
                 resources,
                 relays,
             }) => {
-                self.tunnel.set_new_interface_config(interface);
-                self.tunnel.set_resources(resources);
-                self.tunnel.update_relays(BTreeSet::default(), relays);
+                let state = self.tunnel.state_mut();
+
+                state.update_interface_config(interface);
+                state.set_resources(resources);
+                state.update_relays(
+                    BTreeSet::default(),
+                    firezone_tunnel::turn(&relays),
+                    Instant::now(),
+                );
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
-                self.tunnel.add_resource(resource);
+                self.tunnel.state_mut().add_resource(resource);
             }
             IngressMessages::ResourceDeleted(resource) => {
-                self.tunnel.remove_resource(resource);
+                self.tunnel.state_mut().remove_resource(resource);
             }
             IngressMessages::RelaysPresence(RelaysPresence {
                 disconnected_ids,
                 connected,
-            }) => self
-                .tunnel
-                .update_relays(BTreeSet::from_iter(disconnected_ids), connected),
+            }) => self.tunnel.state_mut().update_relays(
+                BTreeSet::from_iter(disconnected_ids),
+                firezone_tunnel::turn(&connected),
+                Instant::now(),
+            ),
             IngressMessages::InvalidateIceCandidates(GatewayIceCandidates {
                 gateway_id,
                 candidates,
             }) => {
                 for candidate in candidates {
-                    self.tunnel.remove_ice_candidate(gateway_id, candidate)
+                    self.tunnel.state_mut().remove_ice_candidate(
+                        gateway_id,
+                        candidate,
+                        Instant::now(),
+                    )
                 }
             }
         }
@@ -278,10 +294,11 @@ where
                 resource_id,
                 ..
             }) => {
-                if let Err(e) = self.tunnel.received_offer_response(
-                    resource_id,
+                if let Err(e) = self.tunnel.state_mut().accept_answer(
                     ice_parameters,
+                    resource_id,
                     gateway_public_key.0.into(),
+                    Instant::now(),
                 ) {
                     tracing::warn!("Failed to accept connection: {e}");
                 }
@@ -307,10 +324,12 @@ where
                     return;
                 }
 
-                match self
-                    .tunnel
-                    .on_routing_details(resource_id, gateway_id, site_id)
-                {
+                match self.tunnel.state_mut().on_routing_details(
+                    resource_id,
+                    gateway_id,
+                    site_id,
+                    Instant::now(),
+                ) {
                     Ok(()) => {}
                     Err(e) => {
                         tracing::warn!("Failed to request new connection: {e}");
@@ -334,7 +353,9 @@ where
 
                 tracing::debug!(resource_id = %offline_resource, "Resource is offline");
 
-                self.tunnel.set_resource_offline(offline_resource);
+                self.tunnel
+                    .state_mut()
+                    .set_resource_offline(offline_resource);
             }
 
             ErrorReply::Disabled => {
