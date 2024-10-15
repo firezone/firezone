@@ -12,6 +12,10 @@ permissions:
   contents: write
   id-token: write
 
+defaults:
+  run:
+    working-directory: ./rust/gui-client
+
 # Never tolerate warnings. Source of truth is `_rust.yml`
 env:
   RUSTFLAGS: "-Dwarnings"
@@ -20,9 +24,6 @@ env:
 jobs:
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
-    defaults:
-      run:
-        working-directory: ./rust/gui-client
     runs-on: ${{ matrix.runs-on }}
     strategy:
       fail-fast: false
