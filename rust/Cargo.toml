@@ -92,7 +92,11 @@ strip = true
 
 # Tauri builds are gigantic, "fat" LTO seems to be too much for the CI runners
 # Unfortunately Cargo doesn't allow us to specify thin LTO for Tauri and fat for everything else.
-lto = "thin"
+# lto = "thin"
+
+# Full link-time optimization. Reduces binaries by up to 3x on some platforms.
+# Tauri builds are gigantic, "fat" LTO seems to be too much for the CI runners
+lto = "fat"
 
 # Increases the compiler's ability to produce smaller, optimized code
 # at the expense of compilation time
