@@ -257,17 +257,20 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                     SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), *local_port),
                 };
 
-                tracing::info!(local = %local_endpoint, remote = %server, "Connecting to DNS resolver");
-
-                if let Err(e) = socket.connect(self.interface.context(), server, local_endpoint) {
-                    self.query_results.extend(into_failed_results(
+                if let Err(error) = socket
+                    .connect(self.interface.context(), server, local_endpoint)
+                    .context("Failed to connect to upstream resolver")
+                {
+                    self.query_results.extend(fail_all_queries(
+                        &error,
                         server,
-                        pending_queries
-                            .drain(..)
-                            .chain(sent_queries.drain().map(|(_, query)| query)),
-                        || anyhow!("{e:#}"),
+                        pending_queries,
+                        sent_queries,
                     ));
+                    continue;
                 }
+
+                tracing::info!(local = %local_endpoint, remote = %server, "Connecting to DNS resolver");
             }
         }
     }
@@ -316,13 +319,7 @@ fn send_pending_queries(
                 // We failed to send the query, declare the socket as failed.
                 socket.abort();
 
-                query_results.extend(into_failed_results(
-                    server,
-                    pending_queries
-                        .drain(..)
-                        .chain(sent_queries.drain().map(|(_, query)| query)),
-                    || anyhow!("{e:#}"),
-                ));
+                query_results.extend(fail_all_queries(&e, server, pending_queries, sent_queries));
                 query_results.push_back(QueryResult {
                     query,
                     server,
@@ -362,17 +359,23 @@ fn recv_responses(
         .unwrap_or_else(|e| {
             socket.abort();
 
-            into_failed_results(
-                server,
-                pending_queries
-                    .drain(..)
-                    .chain(sent_queries.drain().map(|(_, query)| query)),
-                || anyhow!("{e:#}"),
-            )
-            .collect()
+            fail_all_queries(&e, server, pending_queries, sent_queries).collect()
         });
 
     query_results.extend(new_results);
+}
+
+fn fail_all_queries<'a>(
+    error: &'a anyhow::Error,
+    server: SocketAddr,
+    pending_queries: &'a mut VecDeque<Message<Vec<u8>>>,
+    sent_queries: &'a mut HashMap<u16, Message<Vec<u8>>>,
+) -> impl Iterator<Item = QueryResult> + 'a {
+    let pending_queries = pending_queries.drain(..);
+    let sent_queries = sent_queries.drain().map(|(_, query)| query);
+    let queries = pending_queries.chain(sent_queries);
+
+    into_failed_results(server, queries, move || anyhow!("{error:#}"))
 }
 
 fn into_failed_results(
