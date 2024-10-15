@@ -80,7 +80,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     /// Connect to the specified DNS resolvers.
     ///
     /// All currently pending queries will be reported as failed.
-    pub fn connect_to_resolvers(&mut self, resolvers: BTreeSet<SocketAddr>) -> Result<()> {
+    pub fn set_resolvers(&mut self, resolvers: BTreeSet<SocketAddr>) -> Result<()> {
         let (ipv4_source, ipv6_source) = self.source_ips.context("Missing source IPs")?;
 
         // First, clear all local state.
@@ -106,23 +106,17 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             );
 
         // Second, try to create all new sockets.
-        let new_sockets = std::iter::zip(self.sample_unique_ports(resolvers.len())?, resolvers).map(|(port, server)| {
-            let local_endpoint = match server {
-                SocketAddr::V4(_) => SocketAddr::new(ipv4_source.into(), port),
-                SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), port),
-            };
+        let new_sockets = std::iter::zip(self.sample_unique_ports(resolvers.len())?, resolvers)
+            .map(|(port, server)| {
+                let local_endpoint = match server {
+                    SocketAddr::V4(_) => SocketAddr::new(ipv4_source.into(), port),
+                    SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), port),
+                };
+                let socket = create_tcp_socket();
 
-            let mut socket = create_tcp_socket();
-
-            socket
-                .connect(self.interface.context(), server, local_endpoint)
-                .context("Failed to connect socket")?;
-
-            tracing::info!(local = %local_endpoint, remote = %server, "Connecting to DNS resolver");
-
-            Ok((server, local_endpoint, socket))
-        })
-        .collect::<Result<Vec<_>>>()?;
+                Ok((server, local_endpoint, socket))
+            })
+            .collect::<Result<Vec<_>>>()?;
 
         // Third, if everything was successful, change the local state.
         for (server, local_endpoint, socket) in new_sockets {
@@ -266,7 +260,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                     SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), *local_port),
                 };
 
-                tracing::info!(local = %local_endpoint, remote = %server, "Re-connecting to DNS resolver");
+                tracing::info!(local = %local_endpoint, remote = %server, "Connecting to DNS resolver");
 
                 socket
                     .connect(self.interface.context(), server, local_endpoint)
@@ -398,8 +392,6 @@ fn into_failed_results(
 }
 
 fn try_recv_response<'b>(socket: &'b mut tcp::Socket) -> Result<Option<Message<&'b [u8]>>> {
-    anyhow::ensure!(socket.is_active(), "Socket is not active");
-
     if !socket.can_recv() {
         tracing::trace!("Not yet ready to receive next message");
 
