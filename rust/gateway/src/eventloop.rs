@@ -20,7 +20,7 @@ use std::convert::Infallible;
 use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
@@ -197,7 +197,9 @@ impl Eventloop {
                 ..
             } => {
                 for candidate in candidates {
-                    self.tunnel.add_ice_candidate(client_id, candidate);
+                    self.tunnel
+                        .state_mut()
+                        .add_ice_candidate(client_id, candidate, Instant::now());
                 }
             }
             phoenix_channel::Event::InboundMessage {
@@ -209,7 +211,11 @@ impl Eventloop {
                 ..
             } => {
                 for candidate in candidates {
-                    self.tunnel.remove_ice_candidate(client_id, candidate);
+                    self.tunnel.state_mut().remove_ice_candidate(
+                        client_id,
+                        candidate,
+                        Instant::now(),
+                    );
                 }
             }
             phoenix_channel::Event::InboundMessage {
@@ -220,7 +226,9 @@ impl Eventloop {
                     }),
                 ..
             } => {
-                self.tunnel.remove_access(&client_id, &resource_id);
+                self.tunnel
+                    .state_mut()
+                    .remove_access(&client_id, &resource_id);
             }
             phoenix_channel::Event::InboundMessage {
                 msg:
@@ -229,14 +237,20 @@ impl Eventloop {
                         connected,
                     }),
                 ..
-            } => self
-                .tunnel
-                .update_relays(BTreeSet::from_iter(disconnected_ids), connected),
+            } => self.tunnel.state_mut().update_relays(
+                BTreeSet::from_iter(disconnected_ids),
+                firezone_tunnel::turn(&connected),
+                Instant::now(),
+            ),
             phoenix_channel::Event::InboundMessage {
                 msg: IngressMessages::Init(init),
                 ..
             } => {
-                self.tunnel.update_relays(BTreeSet::default(), init.relays);
+                self.tunnel.state_mut().update_relays(
+                    BTreeSet::default(),
+                    firezone_tunnel::turn(&init.relays),
+                    Instant::now(),
+                );
 
                 // FIXME(tech-debt): Currently, the `Tunnel` creates the TUN device as part of `set_interface`.
                 // For the gateway, it doesn't do anything else so in an ideal world, we would cause the side-effect out here and just pass an opaque `Device` to the `Tunnel`.
@@ -249,7 +263,9 @@ impl Eventloop {
                 msg: IngressMessages::ResourceUpdated(resource_description),
                 ..
             } => {
-                self.tunnel.update_resource(resource_description);
+                self.tunnel
+                    .state_mut()
+                    .update_resource(resource_description);
             }
             phoenix_channel::Event::ErrorResponse { topic, req_id, res } => {
                 tracing::warn!(%topic, %req_id, "Request failed: {res:?}");
@@ -272,27 +288,31 @@ impl Eventloop {
             .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}"))
             .unwrap_or_default();
 
-        let answer = self.tunnel.accept(
+        let answer = self.tunnel.state_mut().accept(
             req.client.id,
-            req.client.peer.preshared_key,
-            req.client.payload.ice_parameters,
+            req.client
+                .payload
+                .ice_parameters
+                .into_snownet_offer(req.client.peer.preshared_key),
             PublicKey::from(req.client.peer.public_key.0),
+            Instant::now(),
         );
 
-        if let Err(e) = self.tunnel.allow_access(
+        if let Err(e) = self.tunnel.state_mut().allow_access(
             req.client.id,
             req.client.peer.ipv4,
             req.client.peer.ipv6,
+            req.expires_at,
+            req.resource,
             req.client
                 .payload
                 .domain
                 .map(|r| DnsResourceNatEntry::new(r, addresses)),
-            req.expires_at,
-            req.resource,
+            Instant::now(),
         ) {
             let client = req.client.id;
 
-            self.tunnel.cleanup_connection(&client);
+            self.tunnel.state_mut().cleanup_connection(&client);
             tracing::debug!(%client, "Connection request failed: {e:#}");
             return;
         }
@@ -314,13 +334,14 @@ impl Eventloop {
             .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
             .unwrap_or_default();
 
-        if let Err(e) = self.tunnel.allow_access(
+        if let Err(e) = self.tunnel.state_mut().allow_access(
             req.client_id,
             req.client_ipv4,
             req.client_ipv6,
-            req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),
             req.expires_at,
             req.resource,
+            req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),
+            Instant::now(),
         ) {
             tracing::warn!(client = %req.client_id, "Allow access request failed: {e:#}");
         };
@@ -337,8 +358,13 @@ impl Eventloop {
             .inspect_err(|e| tracing::debug!(%conn_id, "DNS resolution timed out as part of allow access request: {e}"))
             .unwrap_or_default();
 
-        self.tunnel
-            .refresh_translation(conn_id, resource_id, name, addresses);
+        self.tunnel.state_mut().refresh_translation(
+            conn_id,
+            resource_id,
+            name,
+            addresses,
+            Instant::now(),
+        );
     }
 }
 

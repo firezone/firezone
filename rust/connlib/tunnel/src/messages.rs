@@ -4,6 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use connlib_model::{GatewayId, RelayId, ResourceId};
 use ip_network::IpNetwork;
+use secrecy::{ExposeSecret, Secret};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -101,10 +102,36 @@ pub struct Answer {
     pub password: String,
 }
 
+#[expect(deprecated)]
+impl From<Answer> for snownet::Answer {
+    fn from(val: Answer) -> Self {
+        snownet::Answer {
+            credentials: snownet::Credentials {
+                username: val.username,
+                password: val.password,
+            },
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Offer {
     pub username: String,
     pub password: String,
+}
+
+#[expect(deprecated)]
+impl Offer {
+    // Not a very clean API but it is deprecated anyway.
+    pub fn into_snownet_offer(self, key: Secret<Key>) -> snownet::Offer {
+        snownet::Offer {
+            session_key: Secret::new(key.expose_secret().0),
+            credentials: snownet::Credentials {
+                username: self.username,
+                password: self.password,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, Hash, PartialEq, Eq)]
