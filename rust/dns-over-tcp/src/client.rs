@@ -80,7 +80,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     /// Connect to the specified DNS resolvers.
     ///
     /// All currently pending queries will be reported as failed.
-    pub fn connect_to_resolvers(&mut self, resolvers: BTreeSet<SocketAddr>) -> Result<()> {
+    pub fn set_resolvers(&mut self, resolvers: BTreeSet<SocketAddr>) -> Result<()> {
         let (ipv4_source, ipv6_source) = self.source_ips.context("Missing source IPs")?;
 
         // First, clear all local state.
@@ -106,23 +106,17 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             );
 
         // Second, try to create all new sockets.
-        let new_sockets = std::iter::zip(self.sample_unique_ports(resolvers.len())?, resolvers).map(|(port, server)| {
-            let local_endpoint = match server {
-                SocketAddr::V4(_) => SocketAddr::new(ipv4_source.into(), port),
-                SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), port),
-            };
+        let new_sockets = std::iter::zip(self.sample_unique_ports(resolvers.len())?, resolvers)
+            .map(|(port, server)| {
+                let local_endpoint = match server {
+                    SocketAddr::V4(_) => SocketAddr::new(ipv4_source.into(), port),
+                    SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), port),
+                };
+                let socket = create_tcp_socket();
 
-            let mut socket = create_tcp_socket();
-
-            socket
-                .connect(self.interface.context(), server, local_endpoint)
-                .context("Failed to connect socket")?;
-
-            tracing::info!(local = %local_endpoint, remote = %server, "Connecting to DNS resolver");
-
-            Ok((server, local_endpoint, socket))
-        })
-        .collect::<Result<Vec<_>>>()?;
+                Ok((server, local_endpoint, socket))
+            })
+            .collect::<Result<Vec<_>>>()?;
 
         // Third, if everything was successful, change the local state.
         for (server, local_endpoint, socket) in new_sockets {
@@ -231,12 +225,15 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             let socket = self.sockets.get_mut::<Socket>(*handle);
             let server = *remote;
 
+            let pending_queries = self.pending_queries_by_remote.entry(server).or_default();
+            let sent_queries = self.sent_queries_by_remote.entry(server).or_default();
+
             // First, attempt to send all pending queries on this socket.
             send_pending_queries(
                 socket,
                 server,
-                &mut self.pending_queries_by_remote,
-                &mut self.sent_queries_by_remote,
+                pending_queries,
+                sent_queries,
                 &mut self.query_results,
             );
 
@@ -244,19 +241,13 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             recv_responses(
                 socket,
                 server,
-                &mut self.pending_queries_by_remote,
-                &mut self.sent_queries_by_remote,
+                pending_queries,
+                sent_queries,
                 &mut self.query_results,
             );
 
-            let has_pending_dns_queries = !self
-                .pending_queries_by_remote
-                .entry(server)
-                .or_default()
-                .is_empty();
-
             // Third, if the socket got closed, reconnect it.
-            if matches!(socket.state(), tcp::State::Closed) && has_pending_dns_queries {
+            if matches!(socket.state(), tcp::State::Closed) && !pending_queries.is_empty() {
                 let local_port = self
                     .local_ports_by_socket
                     .get(handle)
@@ -266,13 +257,20 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                     SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), *local_port),
                 };
 
-                tracing::info!(local = %local_endpoint, remote = %server, "Re-connecting to DNS resolver");
-
-                socket
+                if let Err(error) = socket
                     .connect(self.interface.context(), server, local_endpoint)
-                    .expect(
-                        "re-connecting a closed socket with the same parameters should always work",
-                    );
+                    .context("Failed to connect to upstream resolver")
+                {
+                    self.query_results.extend(fail_all_queries(
+                        &error,
+                        server,
+                        pending_queries,
+                        sent_queries,
+                    ));
+                    continue;
+                }
+
+                tracing::info!(local = %local_endpoint, remote = %server, "Connecting to DNS resolver");
             }
         }
     }
@@ -299,13 +297,10 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 fn send_pending_queries(
     socket: &mut Socket,
     server: SocketAddr,
-    pending_queries_by_remote: &mut HashMap<SocketAddr, VecDeque<Message<Vec<u8>>>>,
-    sent_queries_by_remote: &mut HashMap<SocketAddr, HashMap<u16, Message<Vec<u8>>>>,
+    pending_queries: &mut VecDeque<Message<Vec<u8>>>,
+    sent_queries: &mut HashMap<u16, Message<Vec<u8>>>,
     query_results: &mut VecDeque<QueryResult>,
 ) {
-    let pending_queries = pending_queries_by_remote.entry(server).or_default();
-    let sent_queries = sent_queries_by_remote.entry(server).or_default();
-
     loop {
         if !socket.can_send() {
             break;
@@ -324,13 +319,7 @@ fn send_pending_queries(
                 // We failed to send the query, declare the socket as failed.
                 socket.abort();
 
-                query_results.extend(into_failed_results(
-                    server,
-                    pending_queries
-                        .drain(..)
-                        .chain(sent_queries.drain().map(|(_, query)| query)),
-                    || anyhow!("{e:#}"),
-                ));
+                query_results.extend(fail_all_queries(&e, server, pending_queries, sent_queries));
                 query_results.push_back(QueryResult {
                     query,
                     server,
@@ -344,8 +333,8 @@ fn send_pending_queries(
 fn recv_responses(
     socket: &mut Socket,
     server: SocketAddr,
-    pending_queries_by_remote: &mut HashMap<SocketAddr, VecDeque<Message<Vec<u8>>>>,
-    sent_queries_by_remote: &mut HashMap<SocketAddr, HashMap<u16, Message<Vec<u8>>>>,
+    pending_queries: &mut VecDeque<Message<Vec<u8>>>,
+    sent_queries: &mut HashMap<u16, Message<Vec<u8>>>,
     query_results: &mut VecDeque<QueryResult>,
 ) {
     let Some(result) = try_recv_response(socket)
@@ -354,8 +343,6 @@ fn recv_responses(
     else {
         return; // No messages on this socket, continue.
     };
-    let pending_queries = pending_queries_by_remote.entry(server).or_default();
-    let sent_queries = sent_queries_by_remote.entry(server).or_default();
 
     let new_results = result
         .and_then(|response| {
@@ -372,17 +359,23 @@ fn recv_responses(
         .unwrap_or_else(|e| {
             socket.abort();
 
-            into_failed_results(
-                server,
-                pending_queries
-                    .drain(..)
-                    .chain(sent_queries.drain().map(|(_, query)| query)),
-                || anyhow!("{e:#}"),
-            )
-            .collect()
+            fail_all_queries(&e, server, pending_queries, sent_queries).collect()
         });
 
     query_results.extend(new_results);
+}
+
+fn fail_all_queries<'a>(
+    error: &'a anyhow::Error,
+    server: SocketAddr,
+    pending_queries: &'a mut VecDeque<Message<Vec<u8>>>,
+    sent_queries: &'a mut HashMap<u16, Message<Vec<u8>>>,
+) -> impl Iterator<Item = QueryResult> + 'a {
+    let pending_queries = pending_queries.drain(..);
+    let sent_queries = sent_queries.drain().map(|(_, query)| query);
+    let queries = pending_queries.chain(sent_queries);
+
+    into_failed_results(server, queries, move || anyhow!("{error:#}"))
 }
 
 fn into_failed_results(
@@ -398,8 +391,6 @@ fn into_failed_results(
 }
 
 fn try_recv_response<'b>(socket: &'b mut tcp::Socket) -> Result<Option<Message<&'b [u8]>>> {
-    anyhow::ensure!(socket.is_active(), "Socket is not active");
-
     if !socket.can_recv() {
         tracing::trace!("Not yet ready to receive next message");
 
