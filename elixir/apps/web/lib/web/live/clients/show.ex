@@ -1,6 +1,7 @@
 defmodule Web.Clients.Show do
   use Web, :live_view
   import Web.Policies.Components
+  import Web.Clients.Components
   alias Domain.{Accounts, Clients, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
@@ -148,7 +149,9 @@ defmodule Web.Clients.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>User agent</:label>
-            <:value><%= @client.last_seen_user_agent %></:value>
+            <:value>
+              <%= @client.last_seen_user_agent %>
+            </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
@@ -271,6 +274,13 @@ defmodule Web.Clients.Show do
             </:label>
             <:value>
               <.verified_by account={@account} schema={@client} />
+            </:value>
+          </.vertical_table_row>
+
+          <.vertical_table_row>
+            <:label>Operating System</:label>
+            <:value>
+              <.client_os client={@client} />
             </:value>
           </.vertical_table_row>
         </.vertical_table>
