@@ -32,29 +32,27 @@ defmodule API.Schemas.Resource do
     alias OpenApiSpex.Schema
     alias API.Schemas.Resource
 
+    properties =
+      Map.merge(Resource.Schema.schema().properties, %{
+        connections: %Schema{
+          title: "Connections",
+          description: "Gateway Groups to connect the Resource to",
+          type: :array,
+          items: %Schema{
+            type: :object,
+            properties: %{
+              gateway_group_id: %Schema{type: :string, description: "Gateway Group ID"}
+            }
+          }
+        }
+      })
+
     OpenApiSpex.schema(%{
       title: "ResourceRequest",
       description: "POST body for creating a Resource",
       type: :object,
       properties: %{
-        resource: %Schema{
-          anyOf: [
-            Resource.Schema
-          ],
-          properties: %{
-            connections: %Schema{
-              title: "Connections",
-              description: "Gateway Groups to connect the Resource to",
-              type: :array,
-              items: %Schema{
-                type: :object,
-                properties: %{
-                  gateway_group_id: %Schema{type: :string, description: "Gateway Group ID"}
-                }
-              }
-            }
-          }
-        }
+        resource: %Schema{properties: properties}
       },
       required: [:resource],
       example: %{
