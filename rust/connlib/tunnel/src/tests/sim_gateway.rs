@@ -34,7 +34,7 @@ impl SimGateway {
             id,
             sut,
             received_icmp_requests: Default::default(),
-            enc_buffer: EncryptBuffer::new((1 << 16) - 1),
+            enc_buffer: Default::default(),
         }
     }
 
