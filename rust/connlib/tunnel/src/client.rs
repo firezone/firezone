@@ -283,47 +283,12 @@ impl ClientState {
         now: Instant,
         buffer: &mut EncryptBuffer,
     ) -> Option<snownet::EncryptedPacket> {
-        let packet = match self.try_handle_dns(packet, now) {
+        let non_dns_packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
-        let dst = packet.destination();
 
-        if is_definitely_not_a_resource(dst) {
-            return None;
-        }
-
-        let Some(resource) = self.get_resource_by_destination(dst) else {
-            tracing::trace!(?packet, "Unknown resource");
-            return None;
-        };
-
-        // We read this here to prevent problems with the borrow checker
-        let is_dns_resource = self.is_dns_resource(&resource);
-
-        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
-        else {
-            self.on_not_connected_resource(resource, &dst, now);
-            return None;
-        };
-
-        // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
-        // for DNS resource we will send the IP one at a time.
-        if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
-            let gateway_id = peer.id();
-            self.request_access(&dst, resource, gateway_id);
-            return None;
-        }
-
-        let gid = peer.id();
-
-        let transmit = self
-            .node
-            .encapsulate(gid, packet, now, buffer)
-            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
-            .ok()??;
-
-        Some(transmit)
+        self.encapsulate(non_dns_packet, now, buffer)
     }
 
     /// Handles UDP packets received on the network interface.
@@ -406,6 +371,51 @@ impl ClientState {
                     .log_unwrap_debug("Failed to queue UDP DNS response");
             }
         }
+    }
+
+    fn encapsulate(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+        buffer: &mut EncryptBuffer,
+    ) -> Option<snownet::EncryptedPacket> {
+        let dst = packet.destination();
+
+        if is_definitely_not_a_resource(dst) {
+            return None;
+        }
+
+        let Some(resource) = self.get_resource_by_destination(dst) else {
+            tracing::trace!(?packet, "Unknown resource");
+            return None;
+        };
+
+        // We read this here to prevent problems with the borrow checker
+        let is_dns_resource = self.is_dns_resource(&resource);
+
+        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+        else {
+            self.on_not_connected_resource(resource, &dst, now);
+            return None;
+        };
+
+        // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
+        // for DNS resource we will send the IP one at a time.
+        if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
+            let gateway_id = peer.id();
+            self.request_access(&dst, resource, gateway_id);
+            return None;
+        }
+
+        let gid = peer.id();
+
+        let transmit = self
+            .node
+            .encapsulate(gid, packet, now, buffer)
+            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
+            .ok()??;
+
+        Some(transmit)
     }
 
     fn try_queue_udp_dns_response(
