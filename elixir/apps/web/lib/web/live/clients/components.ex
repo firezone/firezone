@@ -15,7 +15,7 @@ defmodule Web.Clients.Components do
     <.icon
       name={client_os_icon_name(@client.last_seen_user_agent)}
       title={client_os_name_and_version(@client.last_seen_user_agent)}
-      class="w-4 h-4"
+      class="w-3.5 h-3.5"
     />
     """
   end
