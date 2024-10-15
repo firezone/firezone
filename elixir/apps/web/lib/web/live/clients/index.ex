@@ -1,6 +1,7 @@
 defmodule Web.Clients.Index do
   use Web, :live_view
   import Web.Actors.Components
+  import Web.Clients.Components
   alias Domain.Clients
 
   def mount(_params, _session, socket) do
@@ -86,6 +87,9 @@ defmodule Web.Clients.Index do
             <.link navigate={~p"/#{@account}/actors/#{client.actor.id}"} class={[link_style()]}>
               <.actor_name_and_role account={@account} actor={client.actor} />
             </.link>
+          </:col>
+          <:col :let={client} field={{:clients, :last_seen_user_agent}} label="os">
+            <.client_os client={client} />
           </:col>
           <:col :let={client} label="status">
             <.connection_status schema={client} />
