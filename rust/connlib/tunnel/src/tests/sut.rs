@@ -5,7 +5,7 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
-use super::transition::DnsQuery;
+use super::transition::{DnsQuery, TransitionProtocol};
 use crate::client::Resource;
 use crate::dns::{self, is_subdomain};
 use crate::gateway::DnsResourceNatEntry;
@@ -18,6 +18,8 @@ use connlib_model::{ClientId, DomainName, GatewayId, RelayId};
 use domain::base::iana::{Class, Rcode};
 use domain::base::{Message, MessageBuilder, Record, Rtype, ToName as _, Ttl};
 use domain::rdata::AllRecordData;
+use ip_packet::make::IpVersionMismatch;
+use ip_packet::IpPacket;
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
 use std::collections::BTreeSet;
@@ -136,25 +138,16 @@ impl TunnelTest {
             Transition::SendPacketToNonResourceIp {
                 src,
                 dst,
-                seq,
-                identifier,
+                protocol,
                 payload,
             }
             | Transition::SendPacketToCidrResource {
                 src,
                 dst,
-                seq,
-                identifier,
+                protocol,
                 payload,
             } => {
-                let packet = ip_packet::make::icmp_request_packet(
-                    src,
-                    dst,
-                    seq,
-                    identifier,
-                    &payload.to_be_bytes(),
-                )
-                .unwrap();
+                let packet = make_request_packet(src, dst, protocol, payload).unwrap();
 
                 let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
 
@@ -163,8 +156,7 @@ impl TunnelTest {
             Transition::SendPacketToDnsResource {
                 src,
                 dst,
-                seq,
-                identifier,
+                protocol,
                 payload,
                 resolved_ip,
                 ..
@@ -182,14 +174,7 @@ impl TunnelTest {
                     });
                 let dst = *resolved_ip.select(available_ips);
 
-                let packet = ip_packet::make::icmp_request_packet(
-                    src,
-                    dst,
-                    seq,
-                    identifier,
-                    &payload.to_be_bytes(),
-                )
-                .unwrap();
+                let packet = make_request_packet(src, dst, protocol, payload).unwrap();
 
                 let transmit = state
                     .client
@@ -830,6 +815,27 @@ impl TunnelTest {
             gateway.exec_mut(|g| g.update_relays(to_remove.iter().copied(), online.iter(), now));
         }
         self.relays = online; // Override all relays.
+    }
+}
+
+fn make_request_packet(
+    src: IpAddr,
+    dst: IpAddr,
+    protocol: TransitionProtocol,
+    payload: u64,
+) -> Result<IpPacket, IpVersionMismatch> {
+    match protocol {
+        TransitionProtocol::Tcp {
+            src: sport,
+            dst: dport,
+        } => ip_packet::make::tcp_packet(src, dst, sport, dport, payload.to_be_bytes().to_vec()),
+        TransitionProtocol::Udp {
+            src: sport,
+            dst: dport,
+        } => ip_packet::make::udp_packet(src, dst, sport, dport, payload.to_be_bytes().to_vec()),
+        TransitionProtocol::Icmp { seq, identifier } => {
+            ip_packet::make::icmp_request_packet(src, dst, seq, identifier, &payload.to_be_bytes())
+        }
     }
 }
 

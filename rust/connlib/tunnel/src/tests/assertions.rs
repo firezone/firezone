@@ -28,20 +28,16 @@ pub(crate) fn assert_icmp_packets_properties(
     global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
 ) {
     let unexpected_icmp_replies = find_unexpected_entries(
-        &ref_client
-            .expected_icmp_handshakes
-            .values()
-            .flatten()
-            .collect(),
-        &sim_client.received_icmp_replies,
-        |(_, (_, seq_a, id_a)), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
+        &ref_client.expected_handshakes.values().flatten().collect(),
+        &sim_client.received_replies,
+        |(_, (_, protocol_a)), protocol_b| protocol_a == protocol_b,
     );
 
     if !unexpected_icmp_replies.is_empty() {
         tracing::error!(target: "assertions", ?unexpected_icmp_replies, "❌ Unexpected ICMP replies on client");
     }
 
-    for (gid, expected_icmp_handshakes) in ref_client.expected_icmp_handshakes.iter() {
+    for (gid, expected_icmp_handshakes) in ref_client.expected_handshakes.iter() {
         let gateway = sim_gateways.get(gid).unwrap();
 
         let num_expected_handshakes = expected_icmp_handshakes.len();
@@ -59,21 +55,17 @@ pub(crate) fn assert_icmp_packets_properties(
     // Assert properties of the individual ICMP handshakes per gateway.
     // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
     // Thus, we rely on the _order_ here which is why the packets are indexed by gateway in the `RefClient`.
-    for (gateway, expected_icmp_handshakes) in &ref_client.expected_icmp_handshakes {
+    for (gateway, expected_icmp_handshakes) in &ref_client.expected_handshakes {
         let received_icmp_requests = &sim_gateways.get(gateway).unwrap().received_icmp_requests;
 
-        for (payload, (resource_dst, seq, identifier)) in expected_icmp_handshakes {
-            let _guard =
-                tracing::info_span!(target: "assertions", "icmp", %seq, %identifier).entered();
+        for (payload, (resource_dst, protocol)) in expected_icmp_handshakes {
+            let _guard = tracing::info_span!(target: "assertions", "icmp", ?protocol).entered();
 
-            let Some(client_sent_request) = sim_client.sent_icmp_requests.get(&(*seq, *identifier))
-            else {
+            let Some(client_sent_request) = sim_client.sent_request.get(protocol) else {
                 tracing::error!(target: "assertions", "❌ Missing ICMP request on client");
                 continue;
             };
-            let Some(client_received_reply) =
-                sim_client.received_icmp_replies.get(&(*seq, *identifier))
-            else {
+            let Some(client_received_reply) = sim_client.received_replies.get(protocol) else {
                 tracing::error!(target: "assertions", "❌ Missing ICMP reply on client");
                 continue;
             };
