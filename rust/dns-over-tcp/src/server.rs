@@ -9,7 +9,7 @@ use anyhow::{Context as _, Result};
 use domain::{base::Message, dep::octseq::OctetsInto as _};
 use ip_packet::IpPacket;
 use smoltcp::{
-    iface::{Interface, SocketSet},
+    iface::{Interface, PollResult, SocketSet},
     socket::tcp,
     wire::IpEndpoint,
 };
@@ -146,13 +146,13 @@ impl Server {
     ///
     /// Typical for a sans-IO design, `handle_timeout` will work through all local buffers and process them as much as possible.
     pub fn handle_timeout(&mut self, now: Instant) {
-        let changed = self.interface.poll(
+        let result = self.interface.poll(
             smoltcp::time::Instant::from(now),
             &mut self.device,
             &mut self.sockets,
         );
 
-        if !changed {
+        if result == PollResult::None {
             return;
         }
 
