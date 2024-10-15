@@ -225,12 +225,15 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             let socket = self.sockets.get_mut::<Socket>(*handle);
             let server = *remote;
 
+            let pending_queries = self.pending_queries_by_remote.entry(server).or_default();
+            let sent_queries = self.sent_queries_by_remote.entry(server).or_default();
+
             // First, attempt to send all pending queries on this socket.
             send_pending_queries(
                 socket,
                 server,
-                &mut self.pending_queries_by_remote,
-                &mut self.sent_queries_by_remote,
+                pending_queries,
+                sent_queries,
                 &mut self.query_results,
             );
 
@@ -238,19 +241,13 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             recv_responses(
                 socket,
                 server,
-                &mut self.pending_queries_by_remote,
-                &mut self.sent_queries_by_remote,
+                pending_queries,
+                sent_queries,
                 &mut self.query_results,
             );
 
-            let has_pending_dns_queries = !self
-                .pending_queries_by_remote
-                .entry(server)
-                .or_default()
-                .is_empty();
-
             // Third, if the socket got closed, reconnect it.
-            if matches!(socket.state(), tcp::State::Closed) && has_pending_dns_queries {
+            if matches!(socket.state(), tcp::State::Closed) && !pending_queries.is_empty() {
                 let local_port = self
                     .local_ports_by_socket
                     .get(handle)
@@ -262,11 +259,15 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
                 tracing::info!(local = %local_endpoint, remote = %server, "Connecting to DNS resolver");
 
-                socket
-                    .connect(self.interface.context(), server, local_endpoint)
-                    .expect(
-                        "re-connecting a closed socket with the same parameters should always work",
-                    );
+                if let Err(e) = socket.connect(self.interface.context(), server, local_endpoint) {
+                    self.query_results.extend(into_failed_results(
+                        server,
+                        pending_queries
+                            .drain(..)
+                            .chain(sent_queries.drain().map(|(_, query)| query)),
+                        || anyhow!("{e:#}"),
+                    ));
+                }
             }
         }
     }
@@ -293,13 +294,10 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 fn send_pending_queries(
     socket: &mut Socket,
     server: SocketAddr,
-    pending_queries_by_remote: &mut HashMap<SocketAddr, VecDeque<Message<Vec<u8>>>>,
-    sent_queries_by_remote: &mut HashMap<SocketAddr, HashMap<u16, Message<Vec<u8>>>>,
+    pending_queries: &mut VecDeque<Message<Vec<u8>>>,
+    sent_queries: &mut HashMap<u16, Message<Vec<u8>>>,
     query_results: &mut VecDeque<QueryResult>,
 ) {
-    let pending_queries = pending_queries_by_remote.entry(server).or_default();
-    let sent_queries = sent_queries_by_remote.entry(server).or_default();
-
     loop {
         if !socket.can_send() {
             break;
@@ -338,8 +336,8 @@ fn send_pending_queries(
 fn recv_responses(
     socket: &mut Socket,
     server: SocketAddr,
-    pending_queries_by_remote: &mut HashMap<SocketAddr, VecDeque<Message<Vec<u8>>>>,
-    sent_queries_by_remote: &mut HashMap<SocketAddr, HashMap<u16, Message<Vec<u8>>>>,
+    pending_queries: &mut VecDeque<Message<Vec<u8>>>,
+    sent_queries: &mut HashMap<u16, Message<Vec<u8>>>,
     query_results: &mut VecDeque<QueryResult>,
 ) {
     let Some(result) = try_recv_response(socket)
@@ -348,8 +346,6 @@ fn recv_responses(
     else {
         return; // No messages on this socket, continue.
     };
-    let pending_queries = pending_queries_by_remote.entry(server).or_default();
-    let sent_queries = sent_queries_by_remote.entry(server).or_default();
 
     let new_results = result
         .and_then(|response| {
