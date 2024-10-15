@@ -18,7 +18,7 @@ fn smoke() {
 
     let resolver_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(100, 100, 111, 1), 53));
 
-    let mut dns_client = dns_over_tcp::Client::new(Instant::now(), 49152..=65535, [0u8; 32]);
+    let mut dns_client = dns_over_tcp::Client::new(Instant::now(), [0u8; 32]);
     dns_client.set_source_interface(ipv4, ipv6);
     dns_client
         .connect_to_resolvers(BTreeSet::from_iter([resolver_addr]))
