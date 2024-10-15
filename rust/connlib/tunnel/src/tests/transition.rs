@@ -98,6 +98,13 @@ pub(crate) struct DnsQuery {
     /// The DNS query ID.
     pub(crate) query_id: u16,
     pub(crate) dns_server: SocketAddr,
+    pub(crate) transport: DnsTransport,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum DnsTransport {
+    Udp,
+    Tcp,
 }
 
 pub(crate) fn ping_random_ip<I>(
@@ -202,9 +209,17 @@ pub(crate) fn dns_queries(
                     query_type(),
                     Just(query_id),
                     ptr_query_ip(),
+                    dns_transport(),
                 )
                     .prop_map(
-                        |(mut domain, dns_server, r_type, query_id, maybe_reverse_record)| {
+                        |(
+                            mut domain,
+                            dns_server,
+                            r_type,
+                            query_id,
+                            maybe_reverse_record,
+                            transport,
+                        )| {
                             if matches!(r_type, Rtype::PTR) {
                                 domain =
                                     DomainName::reverse_from_addr(maybe_reverse_record).unwrap();
@@ -215,6 +230,7 @@ pub(crate) fn dns_queries(
                                 r_type,
                                 query_id,
                                 dns_server,
+                                transport,
                             }
                         },
                     )
@@ -229,6 +245,10 @@ fn ptr_query_ip() -> impl Strategy<Value = IpAddr> {
         host_v6(IPV6_RESOURCES).prop_map_into(),
         any::<IpAddr>(),
     ]
+}
+
+fn dns_transport() -> impl Strategy<Value = DnsTransport> {
+    prop_oneof![Just(DnsTransport::Udp), Just(DnsTransport::Tcp),]
 }
 
 pub(crate) fn query_type() -> impl Strategy<Value = Rtype> {
