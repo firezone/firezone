@@ -132,11 +132,11 @@ impl SimClient {
                     self.sent_dns_queries
                         .insert((upstream, message.header().id()), packet.clone());
                 } else {
-                    let protocol = transition_protocol_from_packet(&packet)?;
+                    let protocol = request_to_transition_protocol_from_packet(&packet)?;
                     self.sent_request.insert(protocol, packet.clone());
                 }
             } else {
-                let protocol = transition_protocol_from_packet(&packet)?;
+                let protocol = request_to_transition_protocol_from_packet(&packet)?;
                 self.sent_request.insert(protocol, packet.clone());
             }
         }
@@ -209,11 +209,13 @@ impl SimClient {
                 }
 
                 return;
-            } else if let Some(protocol) = transition_protocol_from_packet(&packet) {
+            } else if let Some(protocol) = reply_to_transition_protocol_from_packet(&packet) {
                 self.received_replies.insert(protocol, packet.clone());
+                return;
             }
-        } else if let Some(protocol) = transition_protocol_from_packet(&packet) {
+        } else if let Some(protocol) = reply_to_transition_protocol_from_packet(&packet) {
             self.received_replies.insert(protocol, packet.clone());
+            return;
         }
 
         tracing::error!(?packet, "Unhandled packet");
@@ -914,7 +916,7 @@ fn ref_client(
         )
 }
 
-fn transition_protocol_from_packet(packet: &IpPacket) -> Option<TransitionProtocol> {
+fn request_to_transition_protocol_from_packet(packet: &IpPacket) -> Option<TransitionProtocol> {
     if let Some(icmp) = packet.as_icmpv4() {
         if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
             return Some(TransitionProtocol::Icmp {
@@ -955,13 +957,25 @@ fn transition_protocol_from_packet(packet: &IpPacket) -> Option<TransitionProtoc
     }
 
     if let Some(tcp) = packet.as_udp() {
-        return Some(TransitionProtocol::Tcp {
+        return Some(TransitionProtocol::Udp {
             src: tcp.source_port(),
             dst: tcp.destination_port(),
         });
     }
 
     None
+}
+
+fn reply_to_transition_protocol_from_packet(packet: &IpPacket) -> Option<TransitionProtocol> {
+    match request_to_transition_protocol_from_packet(packet) {
+        Some(TransitionProtocol::Tcp { src, dst }) => {
+            Some(TransitionProtocol::Tcp { src: dst, dst: src })
+        }
+        Some(TransitionProtocol::Udp { src, dst }) => {
+            Some(TransitionProtocol::Udp { src: dst, dst: src })
+        }
+        protocol => protocol,
+    }
 }
 
 fn default_routes_v4() -> Vec<Ipv4Network> {

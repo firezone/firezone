@@ -23,7 +23,7 @@ pub(crate) struct SimGateway {
     pub(crate) sut: GatewayState,
 
     /// The received ICMP packets, indexed by our custom ICMP payload.
-    pub(crate) received_icmp_requests: BTreeMap<u64, IpPacket>,
+    pub(crate) received_requests: BTreeMap<u64, IpPacket>,
 
     enc_buffer: EncryptBuffer,
 }
@@ -33,7 +33,7 @@ impl SimGateway {
         Self {
             id,
             sut,
-            received_icmp_requests: Default::default(),
+            received_requests: Default::default(),
             enc_buffer: EncryptBuffer::new((1 << 16) - 1),
         }
     }
@@ -69,24 +69,35 @@ impl SimGateway {
 
         if let Some(icmp) = packet.as_icmpv4() {
             if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
+                self.request_received(&packet);
                 return self.handle_icmp_request(&packet, echo, icmp.payload(), now);
             }
         }
 
         if let Some(icmp) = packet.as_icmpv6() {
             if let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type() {
+                self.request_received(&packet);
                 return self.handle_icmp_request(&packet, echo, icmp.payload(), now);
             }
         }
 
-        if packet.as_udp().is_some() {
-            let response = ip_packet::make::dns_ok_response(packet, |name| {
-                global_dns_records.get(name).cloned().into_iter().flatten()
-            });
-
+        if let Some(response) = ip_packet::make::dns_ok_response(packet.clone(), |name| {
+            global_dns_records.get(name).cloned().into_iter().flatten()
+        }) {
             let transmit = self
                 .sut
                 .handle_tun_input(response, now, &mut self.enc_buffer)?
+                .to_transmit(&self.enc_buffer)
+                .into_owned();
+
+            return Some(transmit);
+        }
+
+        if let Some(reply) = ip_packet::make::ehco_reply(packet.clone()) {
+            self.request_received(&packet);
+            let transmit = self
+                .sut
+                .encapsulate(reply, now, &mut self.enc_buffer)?
                 .to_transmit(&self.enc_buffer)
                 .into_owned();
 
@@ -110,6 +121,34 @@ impl SimGateway {
         )
     }
 
+    fn request_received(&mut self, packet: &IpPacket) {
+        let mut payload = None;
+
+        if let Some(packet) = packet.as_icmpv4() {
+            payload = Some(packet.payload());
+        }
+
+        if let Some(packet) = packet.as_icmpv6() {
+            payload = Some(packet.payload())
+        }
+
+        if let Some(packet) = packet.as_tcp() {
+            payload = Some(packet.payload());
+        }
+
+        if let Some(packet) = packet.as_udp() {
+            payload = Some(packet.payload());
+        }
+
+        let Some(payload) = payload else {
+            return;
+        };
+
+        let packet_id = u64::from_be_bytes(*payload.first_chunk().unwrap());
+        tracing::debug!(%packet_id, "Received request");
+        self.received_requests.insert(packet_id, packet.clone());
+    }
+
     fn handle_icmp_request(
         &mut self,
         packet: &IpPacket,
@@ -117,11 +156,6 @@ impl SimGateway {
         payload: &[u8],
         now: Instant,
     ) -> Option<Transmit<'static>> {
-        let echo_id = u64::from_be_bytes(*payload.first_chunk().unwrap());
-        self.received_icmp_requests.insert(echo_id, packet.clone());
-
-        tracing::debug!(%echo_id, "Received ICMP request");
-
         let echo_response = ip_packet::make::icmp_reply_packet(
             packet.destination(),
             packet.source(),
