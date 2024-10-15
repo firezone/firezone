@@ -11,7 +11,7 @@ permissions:
   contents: 'read'
   id-token: 'write'
 
-# Never tolerate warnings. Duplicated in `_gtk.yml` and `_tauri.yml`
+# Never tolerate warnings. Duplicated in `_tauri.yml`
 env:
   RUSTFLAGS: "-Dwarnings --cfg tokio_unstable"
   RUSTDOCFLAGS: "-D warnings"

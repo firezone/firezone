@@ -59,8 +59,6 @@ dirs = "5.0.1"
 ipconfig = "0.3.2"
 itertools = "0.13.0"
 known-folders = "1.2.0"
-thiserror = { version = "1.0", default-features = false }
-tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 windows-service = "0.7.0"
 winreg = "0.52.0"
 
