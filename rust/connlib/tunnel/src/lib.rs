@@ -143,7 +143,7 @@ impl ClientTunnel {
                     let now = Instant::now();
                     let Some(enc_packet) =
                         self.role_state
-                            .encapsulate(packet, now, &mut self.encrypt_buf)
+                            .handle_tun_input(packet, now, &mut self.encrypt_buf)
                     else {
                         self.role_state.handle_timeout(now);
                         continue;
@@ -155,13 +155,16 @@ impl ClientTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::Network(packets)) => {
+                    let now = Instant::now();
+
                     for received in packets {
-                        let Some(packet) = self.role_state.decapsulate(
+                        let Some(packet) = self.role_state.handle_network_input(
                             received.local,
                             received.from,
                             received.packet,
-                            Instant::now(),
+                            now,
                         ) else {
+                            self.role_state.handle_timeout(now);
                             continue;
                         };
 
@@ -244,7 +247,7 @@ impl GatewayTunnel {
                     let now = Instant::now();
                     let Some(enc_packet) =
                         self.role_state
-                            .encapsulate(packet, now, &mut self.encrypt_buf)
+                            .handle_tun_input(packet, now, &mut self.encrypt_buf)
                     else {
                         self.role_state.handle_timeout(now, Utc::now());
                         continue;
@@ -256,13 +259,17 @@ impl GatewayTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::Network(packets)) => {
+                    let now = Instant::now();
+                    let utc_now = Utc::now();
+
                     for received in packets {
-                        let Some(packet) = self.role_state.decapsulate(
+                        let Some(packet) = self.role_state.handle_network_input(
                             received.local,
                             received.from,
                             received.packet,
-                            Instant::now(),
+                            now,
                         ) else {
+                            self.role_state.handle_timeout(now, utc_now);
                             continue;
                         };
 

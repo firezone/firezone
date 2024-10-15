@@ -6,6 +6,7 @@ use super::{
 };
 use crate::DomainName;
 use crate::GatewayState;
+use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId};
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use proptest::prelude::*;
@@ -42,10 +43,17 @@ impl SimGateway {
         global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
         transmit: Transmit,
         now: Instant,
+        utc_now: DateTime<Utc>,
     ) -> Option<Transmit<'static>> {
-        let packet =
-            self.sut
-                .decapsulate(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)?;
+        let Some(packet) = self.sut.handle_network_input(
+            transmit.dst,
+            transmit.src.unwrap(),
+            &transmit.payload,
+            now,
+        ) else {
+            self.sut.handle_timeout(now, utc_now);
+            return None;
+        };
 
         self.on_received_packet(global_dns_records, packet, now)
     }
@@ -78,7 +86,7 @@ impl SimGateway {
 
             let transmit = self
                 .sut
-                .encapsulate(response, now, &mut self.enc_buffer)?
+                .handle_tun_input(response, now, &mut self.enc_buffer)?
                 .to_transmit(&self.enc_buffer)
                 .into_owned();
 
@@ -124,7 +132,7 @@ impl SimGateway {
         .expect("src and dst are taken from incoming packet");
         let transmit = self
             .sut
-            .encapsulate(echo_response, now, &mut self.enc_buffer)?
+            .handle_tun_input(echo_response, now, &mut self.enc_buffer)?
             .to_transmit(&self.enc_buffer)
             .into_owned();
 

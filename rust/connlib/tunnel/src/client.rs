@@ -397,7 +397,12 @@ impl ClientState {
         self.peers.get(gateway_id).is_some()
     }
 
-    pub(crate) fn encapsulate(
+    /// Handles packets received on the TUN device.
+    ///
+    /// Most of these packets will be application traffic that needs to be encrypted and sent through a WireGuard tunnel.
+    /// Some of it may be processed directly, for example DNS queries.
+    /// In that case, this function will return `None` and you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    pub(crate) fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
@@ -452,7 +457,13 @@ impl ClientState {
         Some(transmit)
     }
 
-    pub(crate) fn decapsulate(
+    /// Handles UDP packets received on the network interface.
+    ///
+    /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`IpPacket`].
+    /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
+    ///
+    /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    pub(crate) fn handle_network_input(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
