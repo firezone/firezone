@@ -39,7 +39,7 @@ runs:
       shell: powershell
     - if: ${{ runner.os == 'Windows' }}
       name: Install Bash # Windows ARM image doesn't have this
-      run: choco install bash
+      run: C:/ProgramData/chocolatey/bin/choco install bash # Absolute path since we didn't reload %PATH%
       shell: powershell
     # Setup sccache, works well for most Rust components
     - if: ${{ inputs.cache_backend == 'sccache' }}
