@@ -202,9 +202,9 @@ impl Server {
     }
 
     fn smol_now(&self, now: Instant) -> smoltcp::time::Instant {
-        let seconds_since_startup = now.duration_since(self.created_at).as_secs();
+        let millis_since_startup = now.duration_since(self.created_at).as_millis();
 
-        smoltcp::time::Instant::from_secs(seconds_since_startup as i64)
+        smoltcp::time::Instant::from_millis(millis_since_startup as i64)
     }
 }
 
