@@ -101,7 +101,7 @@ pub(crate) struct DnsQuery {
     pub(crate) transport: DnsTransport,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) enum DnsTransport {
     Udp,
     Tcp,
