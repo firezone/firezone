@@ -33,6 +33,14 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - if: ${{ runner.os == 'Windows' }}
+      name: Install Choco # Windows ARM image doesn't have this
+      run: Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+      shell: powershell
+    - if: ${{ runner.os == 'Windows' }}
+      name: Install Bash # Windows ARM image doesn't have this
+      run: choco install bash
+      shell: powershell
     # Setup sccache, works well for most Rust components
     - if: ${{ inputs.cache_backend == 'sccache' }}
       id: auth
