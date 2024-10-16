@@ -6,13 +6,13 @@ set -euo pipefail
 BUNDLES_DIR=../target/release/bundle/deb
 
 # Copy frontend dependencies
-cp node_modules/flowbite/dist/flowbite.min.js src/
+cp node_modules/flowbite/dist/flowbite.min.js dist
 
 # Compile TypeScript
 pnpm tsc && pnpm vite build
 
 # Compile CSS
-pnpm tailwindcss -i src/input.css -o src/output.css
+pnpm tailwindcss -i src/input.css -o dist/output.css
 
 # Get rid of any existing debs, since we need to discover the path later
 rm -rf "$BUNDLES_DIR"
