@@ -118,14 +118,11 @@ Normal system DNS:
 
 ## Known issues
 
-- [**SSH session disconnects**](https://github.com/firezone/firezone/issues/6347):
-  SSH sessions on macOS may disconnect when not used for a period of time. As a
-  workaround, try setting the `ServerAliveInterval` in `$HOME/.ssh/config` to 4
-  minutes:
-  ```text
-  Host *
-      ServerAliveInterval 240
-  ```
+- [**Authentication will not use Firefox even if it is the default browser**](https://github.com/firezone/firezone/issues/7072):
+  Firezone will not use Firefox for authentication on macOS even if it is the
+  default browser. This is due to Firefox's lack of support for Apple's
+  [WebAuthenticationSession](https://developer.apple.com/documentation/authenticationservices/webauthenticationsession)
+  API. To work around this issue, use Safari or Chrome for authentication.
 - **Cloudflare WARP client conflicts with other VPN apps**: The Cloudflare WARP
   client may interfere with Firezone's ability to initialize its tunnel
   interface or resolve DNS resources. Ensure the Cloudflare WARP client is
@@ -134,7 +131,7 @@ Normal system DNS:
   for more information.
 - **SentinelOne agent can block DNS queries**: The SentinelOne agent for macOS
   may interfere with Firezone's ability to successfully forward and reply to DNS
-  queries made my applications on macOS. The symptom when this occurs is that
+  queries made by applications on macOS. The symptom when this occurs is that
   all DNS queries on the system will fail, not just those that match the DNS
   Resources you have in your account. See this issue for more information:
   [#6768](https://github.com/firezone/firezone/issues/6768).
