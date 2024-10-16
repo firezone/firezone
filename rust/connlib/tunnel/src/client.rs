@@ -369,11 +369,6 @@ impl ClientState {
     }
 
     pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse) {
-        self.try_handle_dns_response(response)
-            .log_unwrap_debug("Failed to handle DNS response")
-    }
-
-    fn try_handle_dns_response(&mut self, response: dns::RecursiveResponse) -> anyhow::Result<()> {
         let qid = response.query.header().id();
         let server = response.server;
         let domain = response
@@ -407,11 +402,10 @@ impl ClientState {
                             .into_message()
                     });
 
-                self.try_queue_udp_dns_response(server, source, &message)?;
+                self.try_queue_udp_dns_response(server, source, &message)
+                    .log_unwrap_debug("Failed to queue UDP DNS response");
             }
         }
-
-        Ok(())
     }
 
     fn try_queue_udp_dns_response(
