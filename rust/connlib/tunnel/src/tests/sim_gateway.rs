@@ -97,7 +97,7 @@ impl SimGateway {
             self.request_received(&packet);
             let transmit = self
                 .sut
-                .encapsulate(reply, now, &mut self.enc_buffer)?
+                .handle_tun_input(reply, now, &mut self.enc_buffer)?
                 .to_transmit(&self.enc_buffer)
                 .into_owned();
 
