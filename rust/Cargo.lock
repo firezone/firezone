@@ -2101,6 +2101,7 @@ dependencies = [
  "connlib-model",
  "derivative",
  "divan",
+ "dns-over-tcp",
  "domain",
  "firezone-logging",
  "firezone-relay",

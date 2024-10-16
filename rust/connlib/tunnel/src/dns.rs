@@ -1,6 +1,7 @@
 use crate::client::IpProvider;
 use anyhow::{Context, Result};
 use connlib_model::{DomainName, ResourceId};
+use dns_over_tcp::SocketHandle;
 use domain::rdata::AllRecordData;
 use domain::{
     base::{
@@ -46,7 +47,7 @@ pub struct StubResolver {
 }
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct RecursiveQuery {
     pub server: SocketAddr,
     pub message: Message<Vec<u8>>,
@@ -70,13 +71,28 @@ impl RecursiveQuery {
             transport: Transport::Udp { source },
         }
     }
+
+    pub(crate) fn via_tcp(
+        source: SocketHandle,
+        server: SocketAddr,
+        message: Message<Vec<u8>>,
+    ) -> Self {
+        Self {
+            server,
+            message,
+            transport: Transport::Tcp { source },
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub(crate) enum Transport {
     Udp {
         /// The original source we received the DNS query on.
         source: SocketAddr,
+    },
+    Tcp {
+        source: SocketHandle,
     },
 }
 
