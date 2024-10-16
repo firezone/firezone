@@ -702,24 +702,29 @@ impl ClientState {
     fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
         self.dns_mapping = new_mapping;
         self.mangled_dns_queries.clear();
-        self.initialise_tcp_dns();
+        self.initialise_tcp_dns_client();
+        self.initialise_tcp_dns_server();
     }
 
-    fn initialise_tcp_dns(&mut self) {
+    fn initialise_tcp_dns_client(&mut self) {
         let upstream_resolvers = self
             .dns_mapping
             .right_values()
             .map(|s| s.address())
             .collect();
+
+        if let Err(e) = self.tcp_dns_client.set_resolvers(upstream_resolvers) {
+            tracing::warn!("Failed to connect to upstream DNS resolvers over TCP: {e:#}");
+        }
+    }
+
+    fn initialise_tcp_dns_server(&mut self) {
         let sentinel_sockets = self
             .dns_mapping
             .left_values()
             .map(|ip| SocketAddr::new(*ip, DNS_PORT))
             .collect();
 
-        if let Err(e) = self.tcp_dns_client.set_resolvers(upstream_resolvers) {
-            tracing::warn!("Failed to connect to upstream DNS resolvers over TCP: {e:#}");
-        }
         self.tcp_dns_server
             .set_listen_addresses::<NUM_CONCURRENT_TCP_DNS_CLIENTS>(sentinel_sockets);
     }
@@ -1162,6 +1167,11 @@ impl ClientState {
         self.node.reset();
         self.recently_connected_gateways.clear(); // Ensure we don't have sticky gateways when we roam.
         self.drain_node_events();
+
+        // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.
+        // Failed queries get translated into `SERVFAIL` responses to the client.
+        // This will also allocate new local ports for our outgoing TCP connections.
+        self.initialise_tcp_dns_client();
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
