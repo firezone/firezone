@@ -112,7 +112,7 @@ pub struct ClientState {
     /// DNS queries that had their destination IP mangled because the servers is a CIDR resource.
     ///
     /// The [`Instant`] tracks when the DNS query expires.
-    mangled_dns_queries: HashMap<u16, Instant>,
+    mangled_dns_queries: HashMap<(SocketAddr, u16), Instant>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
@@ -621,14 +621,13 @@ impl ClientState {
                     tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query via tunnel");
 
                     self.mangled_dns_queries
-                        .insert(message.header().id(), now + IDS_EXPIRE);
+                        .insert((upstream, message.header().id()), now + IDS_EXPIRE);
                     packet.set_dst(upstream.ip());
                     packet.update_checksum();
 
                     return ControlFlow::Continue(packet);
                 }
 
-                let query_id = message.header().id();
                 let source = SocketAddr::new(packet.source(), datagram.source_port());
 
                 tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host");
@@ -1359,7 +1358,7 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
 fn maybe_mangle_dns_response_from_cidr_resource(
     mut packet: IpPacket,
     dns_mapping: &BiMap<IpAddr, DnsServer>,
-    mangeled_dns_queries: &mut HashMap<u16, Instant>,
+    mangeled_dns_queries: &mut HashMap<(SocketAddr, u16), Instant>,
     now: Instant,
 ) -> IpPacket {
     let src_ip = packet.source();
@@ -1369,8 +1368,9 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     };
 
     let src_port = udp.source_port();
+    let src_socket = SocketAddr::new(src_ip, src_port);
 
-    let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from((src_ip, src_port))) else {
+    let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from(src_socket)) else {
         return packet;
     };
 
@@ -1379,7 +1379,7 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     };
 
     let Some(query_sent_at) = mangeled_dns_queries
-        .remove(&message.header().id())
+        .remove(&(src_socket, message.header().id()))
         .map(|expires_at| expires_at - IDS_EXPIRE)
     else {
         return packet;
