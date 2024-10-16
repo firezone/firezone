@@ -15,6 +15,7 @@ use bimap::BiMap;
 use connlib_model::PublicKey;
 use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
 use connlib_model::{Site, SiteId};
+use firezone_logging::LogUnwrap as _;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, UdpSlice};
@@ -368,12 +369,8 @@ impl ClientState {
     }
 
     pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse) {
-        match self.try_handle_dns_response(response) {
-            Ok(()) => {}
-            Err(e) => {
-                tracing::debug!("Failed to handle DNS response: {e}")
-            }
-        }
+        self.try_handle_dns_response(response)
+            .log_unwrap_debug("Failed to handle DNS response")
     }
 
     fn try_handle_dns_response(&mut self, response: dns::RecursiveResponse) -> anyhow::Result<()> {
@@ -390,11 +387,7 @@ impl ClientState {
             (dns::Transport::Udp { source }, Ok(message)) => {
                 tracing::trace!(%server, %qid, domain, "Received recursive DNS response");
 
-                let ip_packet = self
-                    .try_handle_udp_dns_response(server, source, &message)
-                    .context("Failed to produce UDP DNS response packet")?;
-
-                self.buffered_packets.push_back(ip_packet);
+                self.try_queue_udp_dns_response(server, source, &message)?;
             }
             (dns::Transport::Udp { .. }, Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
                 tracing::debug!(%server, %qid, domain, "Recursive DNS query timed out")
@@ -407,23 +400,19 @@ impl ClientState {
                     .expect("original query is valid")
                     .into_message();
 
-                let ip_packet = self
-                    .try_handle_udp_dns_response(server, source, &message)
-                    .context("Failed to produce UDP DNS response packet")?;
-
-                self.buffered_packets.push_back(ip_packet);
+                self.try_queue_udp_dns_response(server, source, &message)?;
             }
         }
 
         Ok(())
     }
 
-    fn try_handle_udp_dns_response(
+    fn try_queue_udp_dns_response(
         &mut self,
         from: SocketAddr,
         dst: SocketAddr,
         message: &Message<Vec<u8>>,
-    ) -> anyhow::Result<IpPacket> {
+    ) -> anyhow::Result<()> {
         // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
         let saddr = *self
             .dns_mapping
@@ -446,7 +435,9 @@ impl ClientState {
         let ip_packet =
             ip_packet::make::udp_packet(saddr, daddr, sport, dport, message.as_octets().to_vec())?;
 
-        Ok(ip_packet)
+        self.buffered_packets.push_back(ip_packet);
+
+        Ok(())
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
@@ -601,18 +592,12 @@ impl ClientState {
             }
         };
 
+        let source = SocketAddr::new(packet.source(), datagram.source_port());
+
         match self.stub_resolver.handle(message) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.buffered_packets.push_back(
-                    ip_packet::make::udp_packet(
-                        packet.destination(),
-                        packet.source(),
-                        datagram.destination_port(),
-                        datagram.source_port(),
-                        response.into_octets(),
-                    )
-                    .expect("src and dst IPs come from the same packet"),
-                );
+                self.try_queue_udp_dns_response(upstream, source, &response)
+                    .log_unwrap_debug("Failed to queue UDP DNS response");
             }
             dns::ResolveStrategy::Recurse => {
                 let query_id = message.header().id();
@@ -627,8 +612,6 @@ impl ClientState {
 
                     return ControlFlow::Continue(packet);
                 }
-
-                let source = SocketAddr::new(packet.source(), datagram.source_port());
 
                 tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host");
 

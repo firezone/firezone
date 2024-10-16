@@ -2022,6 +2022,7 @@ dependencies = [
 name = "firezone-logging"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "nu-ansi-term",
  "time",
  "tracing",
@@ -2101,6 +2102,7 @@ dependencies = [
  "derivative",
  "divan",
  "domain",
+ "firezone-logging",
  "firezone-relay",
  "futures",
  "futures-bounded",
