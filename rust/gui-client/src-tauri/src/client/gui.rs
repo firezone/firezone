@@ -321,7 +321,7 @@ pub(crate) fn run(
         .icon(system_tray::icon_to_tauri_icon(
             &firezone_gui_client_common::system_tray::Icon::default(),
         ))
-        .menu(&system_tray::build_app_state(app.handle(), state))
+        .menu(&system_tray::build_app_state(app.handle(), state)?)
         .on_menu_event(|app, event| {
             tracing::warn!("on_menu_event");
             let id = &event.id.0;

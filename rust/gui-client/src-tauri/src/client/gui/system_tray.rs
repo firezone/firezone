@@ -13,6 +13,8 @@ use firezone_gui_client_common::{
 use tauri::AppHandle;
 
 type IsMenuItem = dyn tauri::menu::IsMenuItem<tauri::Wry>;
+type TauriMenu = tauri::menu::Menu<tauri::Wry>;
+type TauriSubmenu = tauri::menu::Submenu<tauri::Wry>;
 
 // Figma is the source of truth for the tray icon layers
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
@@ -25,7 +27,7 @@ const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../../icons/tray/Update rea
 const TOOLTIP: &str = "Firezone";
 
 pub(crate) struct Tray {
-    app: tauri::AppHandle,
+    app: AppHandle,
     handle: tauri::tray::TrayIcon,
     last_icon_set: Icon,
 }
@@ -49,7 +51,7 @@ fn image_to_tauri_icon(val: Image) -> tauri::image::Image<'static> {
 }
 
 impl Tray {
-    pub(crate) fn new(app: tauri::AppHandle, handle: tauri::tray::TrayIcon) -> Self {
+    pub(crate) fn new(app: AppHandle, handle: tauri::tray::TrayIcon) -> Self {
         Self {
             app,
             handle,
@@ -77,8 +79,10 @@ impl Tray {
         let handle = self.handle.clone();
         self.app
             .run_on_main_thread(move || {
-                handle.set_tooltip(Some(TOOLTIP)).unwrap();
-                handle.set_menu(Some(build_app_state(&app, state))).unwrap();
+                if let Err(error) = update(handle, &app, state) {
+                    tracing::error!(?error, "Error while updating tray icon");
+                    firezone_telemetry::capture_anyhow(&error);
+                }
             })
             .unwrap();
         self.set_icon(new_icon)?;
@@ -107,60 +111,64 @@ impl Tray {
     }
 }
 
-pub(crate) fn build_app_state(
-    app: &tauri::AppHandle,
-    that: AppState,
-) -> tauri::menu::Menu<tauri::Wry> {
+fn update(handle: tauri::tray::TrayIcon, app: &AppHandle, state: AppState) -> Result<()> {
+    handle.set_tooltip(Some(TOOLTIP))?;
+    handle.set_menu(Some(build_app_state(app, state)?))?;
+    Ok(())
+}
+
+pub(crate) fn build_app_state(app: &AppHandle, that: AppState) -> Result<TauriMenu> {
     build_menu(app, &that.into_menu())
 }
 
 /// Builds this abstract `Menu` into a real menu that we can use in Tauri.
 ///
 /// This recurses but we never go deeper than 3 or 4 levels so it's fine.
-pub(crate) fn build_menu(app: &tauri::AppHandle, that: &Menu) -> tauri::menu::Menu<tauri::Wry> {
+///
+/// Note that Menus and Submenus are different in Tauri. Using a Submenu as a Menu
+/// may crash on Windows. <https://github.com/tauri-apps/tauri/issues/11363>
+pub(crate) fn build_menu(app: &AppHandle, that: &Menu) -> Result<TauriMenu> {
     let mut menu = tauri::menu::MenuBuilder::new(app);
     for entry in &that.entries {
-        menu = menu.item(&*build_entry(app, entry));
+        menu = menu.item(&*build_entry(app, entry)?);
     }
-    menu.build().unwrap()
+    Ok(menu.build()?)
 }
 
-pub(crate) fn build_submenu(
-    app: &AppHandle,
-    title: &str,
-    that: &Menu,
-) -> tauri::menu::Submenu<tauri::Wry> {
+pub(crate) fn build_submenu(app: &AppHandle, title: &str, that: &Menu) -> Result<TauriSubmenu> {
     let mut menu = tauri::menu::SubmenuBuilder::new(app, title);
     for entry in &that.entries {
-        menu = menu.item(&*build_entry(app, entry));
+        menu = menu.item(&*build_entry(app, entry)?);
     }
-    menu.build().unwrap()
+    Ok(menu.build()?)
 }
 
-fn build_entry(app: &AppHandle, entry: &Entry) -> Box<IsMenuItem> {
-    match entry {
-        Entry::Item(item) => build_item(app, item),
-        Entry::Separator => Box::new(tauri::menu::PredefinedMenuItem::separator(app).unwrap()),
-        Entry::Submenu { title, inner } => Box::new(build_submenu(app, title, inner)),
-    }
+fn build_entry(app: &AppHandle, entry: &Entry) -> Result<Box<IsMenuItem>> {
+    let entry = match entry {
+        Entry::Item(item) => build_item(app, item)?,
+        Entry::Separator => Box::new(tauri::menu::PredefinedMenuItem::separator(app)?),
+        Entry::Submenu { title, inner } => Box::new(build_submenu(app, title, inner)?),
+    };
+    Ok(entry)
 }
 
-fn build_item(app: &AppHandle, item: &Item) -> Box<IsMenuItem> {
-    if let Some(checked) = item.checked {
+fn build_item(app: &AppHandle, item: &Item) -> Result<Box<IsMenuItem>> {
+    let item: Box<IsMenuItem> = if let Some(checked) = item.checked {
         let mut tauri_item = tauri::menu::CheckMenuItemBuilder::new(&item.title).checked(checked);
         if let Some(event) = &item.event {
-            tauri_item = tauri_item.id(serde_json::to_string(event).unwrap());
+            tauri_item = tauri_item.id(serde_json::to_string(event)?);
         } else {
             tauri_item = tauri_item.enabled(false);
         }
-        Box::new(tauri_item.build(app).unwrap())
+        Box::new(tauri_item.build(app)?)
     } else {
         let mut tauri_item = tauri::menu::MenuItemBuilder::new(&item.title);
         if let Some(event) = &item.event {
-            tauri_item = tauri_item.id(serde_json::to_string(event).unwrap());
+            tauri_item = tauri_item.id(serde_json::to_string(event)?);
         } else {
             tauri_item = tauri_item.enabled(false);
         }
-        Box::new(tauri_item.build(app).unwrap())
-    }
+        Box::new(tauri_item.build(app)?)
+    };
+    Ok(item)
 }
