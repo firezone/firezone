@@ -4,7 +4,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice};
+use crate::{
+    codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice,
+    time::smol_now,
+};
 use anyhow::{Context as _, Result};
 use domain::{base::Message, dep::octseq::OctetsInto as _};
 use ip_packet::IpPacket;
@@ -153,9 +156,11 @@ impl Server {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.last_now = now;
 
-        let result = self
-            .interface
-            .poll(self.smol_now(now), &mut self.device, &mut self.sockets);
+        let result = self.interface.poll(
+            smol_now(self.created_at, now),
+            &mut self.device,
+            &mut self.sockets,
+        );
 
         if result == PollResult::None {
             return;
@@ -184,7 +189,7 @@ impl Server {
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        let now = self.smol_now(self.last_now);
+        let now = smol_now(self.created_at, self.last_now);
 
         let poll_in = self.interface.poll_delay(now, &self.sockets)?;
 
@@ -199,12 +204,6 @@ impl Server {
     /// Returns queries received from a DNS client.
     pub fn poll_queries(&mut self) -> Option<Query> {
         self.received_queries.pop_front()
-    }
-
-    fn smol_now(&self, now: Instant) -> smoltcp::time::Instant {
-        let seconds_since_startup = now.duration_since(self.created_at).as_secs();
-
-        smoltcp::time::Instant::from_secs(seconds_since_startup as i64)
     }
 }
 
