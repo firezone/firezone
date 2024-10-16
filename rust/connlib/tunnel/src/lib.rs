@@ -11,7 +11,6 @@ use connlib_model::{
 };
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
-use ip_packet::MAX_DATAGRAM_PAYLOAD;
 use snownet::EncryptBuffer;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -99,7 +98,7 @@ impl ClientTunnel {
             role_state: ClientState::new(known_hosts, rand::random()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),
+            encrypt_buf: Default::default(),
         }
     }
 
@@ -210,7 +209,7 @@ impl GatewayTunnel {
             role_state: GatewayState::new(rand::random()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            encrypt_buf: EncryptBuffer::new(MAX_DATAGRAM_PAYLOAD),
+            encrypt_buf: Default::default(),
         }
     }
 

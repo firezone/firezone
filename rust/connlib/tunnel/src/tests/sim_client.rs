@@ -69,7 +69,7 @@ impl SimClient {
             received_dns_responses: Default::default(),
             sent_icmp_requests: Default::default(),
             received_icmp_replies: Default::default(),
-            enc_buffer: EncryptBuffer::new((1 << 16) - 1),
+            enc_buffer: Default::default(),
             ipv4_routes: Default::default(),
             ipv6_routes: Default::default(),
         }
