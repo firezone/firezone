@@ -468,6 +468,13 @@ defmodule Web.LiveTable do
 
     assign(socket,
       live_table_ids: [id] ++ (socket.assigns[:live_table_ids] || []),
+      query_module_by_table_id:
+        put_table_state(
+          socket,
+          id,
+          :query_module_by_table_id,
+          query_module
+        ),
       callback_by_table_id:
         put_table_state(
           socket,
@@ -495,6 +502,13 @@ defmodule Web.LiveTable do
           id,
           :enforced_filters_by_table_id,
           enforce_filters
+        ),
+      order_by_table_id:
+        put_table_state(
+          socket,
+          id,
+          :order_by_table_id,
+          maybe_use_default_order_by(query_module)
         ),
       limit_by_table_id: put_table_state(socket, id, :limit_by_table_id, limit)
     )
@@ -559,6 +573,7 @@ defmodule Web.LiveTable do
   end
 
   defp handle_live_table_params(socket, params, id) do
+    query_module = Map.fetch!(socket.assigns.query_module_by_table_id, id)
     enforced_filters = Map.fetch!(socket.assigns.enforced_filters_by_table_id, id)
     sortable_fields = Map.fetch!(socket.assigns.sortable_fields_by_table_id, id)
     limit = Map.fetch!(socket.assigns.limit_by_table_id, id)
@@ -589,7 +604,7 @@ defmodule Web.LiveTable do
                 socket,
                 id,
                 :order_by_table_id,
-                order_by
+                maybe_use_default_order_by(query_module, order_by)
               ),
             list_opts_by_table_id:
               put_table_state(
@@ -624,6 +639,20 @@ defmodule Web.LiveTable do
         message = "The page was reset due to invalid pagination filter."
         reset_live_table_params(socket, id, message)
     end
+  end
+
+  defp maybe_use_default_order_by(query_module, order_by \\ nil)
+
+  defp maybe_use_default_order_by(query_module, nil) do
+    if function_exported?(query_module, :cursor_fields, 0) do
+      query_module.cursor_fields() |> List.first()
+    else
+      []
+    end
+  end
+
+  defp maybe_use_default_order_by(_query_module, order_by) do
+    order_by
   end
 
   defp reset_live_table_params(socket, id, message) do

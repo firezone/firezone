@@ -16,7 +16,9 @@ defmodule Web.Clients.Index do
         query_module: Clients.Client.Query,
         sortable_fields: [
           {:clients, :name},
-          {:clients, :inserted_at}
+          {:clients, :last_seen_at},
+          {:clients, :inserted_at},
+          {:clients, :last_seen_user_agent}
         ],
         hide_filters: [
           :name
@@ -93,6 +95,9 @@ defmodule Web.Clients.Index do
           </:col>
           <:col :let={client} label="status">
             <.connection_status schema={client} />
+          </:col>
+          <:col :let={client} field={{:clients, :last_seen_at}} label="last started at">
+            <.relative_datetime datetime={client.last_seen_at} />
           </:col>
           <:col :let={client} field={{:clients, :inserted_at}} label="created at">
             <.relative_datetime datetime={client.inserted_at} />

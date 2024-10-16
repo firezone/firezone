@@ -271,7 +271,6 @@ defmodule Web.ConnCase do
   end
 
   defp reject_tooltips(other) do
-    dbg(other)
     other
   end
 
