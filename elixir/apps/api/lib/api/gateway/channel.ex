@@ -25,6 +25,10 @@ defmodule API.Gateway.Channel do
     end
   end
 
+  ####################################
+  ##### Channel lifecycle events #####
+  ####################################
+
   @impl true
   def handle_info({:after_join, {opentelemetry_ctx, opentelemetry_span_ctx}}, socket) do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
@@ -64,116 +68,9 @@ defmodule API.Gateway.Channel do
     end
   end
 
-  def handle_info(
-        {:ice_candidates, client_id, candidates, {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
-    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "gateway.ice_candidates",
-      attributes: %{
-        client_id: client_id,
-        candidates_length: length(candidates)
-      } do
-      push(socket, "ice_candidates", %{
-        client_id: client_id,
-        candidates: candidates
-      })
-
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info(
-        {:invalidate_ice_candidates, client_id, candidates,
-         {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
-    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "gateway.invalidate_ice_candidates",
-      attributes: %{
-        client_id: client_id,
-        candidates_length: length(candidates)
-      } do
-      push(socket, "invalidate_ice_candidates", %{
-        client_id: client_id,
-        candidates: candidates
-      })
-
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info(
-        {:allow_access, {channel_pid, socket_ref}, attrs,
-         {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
-    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
-
-    %{
-      client_id: client_id,
-      resource_id: resource_id,
-      flow_id: flow_id,
-      authorization_expires_at: authorization_expires_at,
-      client_payload: payload
-    } = attrs
-
-    OpenTelemetry.Tracer.with_span "gateway.allow_access",
-      attributes: %{
-        flow_id: flow_id,
-        client_id: client_id,
-        resource_id: resource_id
-      } do
-      :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
-
-      client = Clients.fetch_client_by_id!(client_id)
-      resource = Resources.fetch_resource_by_id!(resource_id)
-
-      case API.Client.Channel.map_or_drop_compatible_resource(
-             resource,
-             socket.assigns.gateway.last_seen_version
-           ) do
-        {:cont, resource} ->
-          :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
-          :ok = Resources.subscribe_to_events_for_resource(resource_id)
-
-          opentelemetry_headers = :otel_propagator_text_map.inject([])
-          ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
-
-          push(socket, "allow_access", %{
-            ref: ref,
-            client_id: client_id,
-            flow_id: flow_id,
-            resource: Views.Resource.render(resource),
-            expires_at: DateTime.to_unix(authorization_expires_at, :second),
-            payload: payload,
-            client_ipv4: client.ipv4,
-            client_ipv6: client.ipv6
-          })
-
-          Logger.debug("Awaiting gateway connection_ready message",
-            client_id: client_id,
-            resource_id: resource_id,
-            flow_id: flow_id
-          )
-
-        :drop ->
-          Logger.debug("Resource is not compatible with the gateway version",
-            gateway_id: socket.assigns.gateway.id,
-            client_id: client_id,
-            resource_id: resource_id,
-            flow_id: flow_id
-          )
-      end
-
-      {:noreply, socket}
-    end
-  end
+  ####################################
+  ##### Reacting to domain events ####
+  ####################################
 
   # Resource is updated, eg. traffic filters are changed
   def handle_info({:update_resource, resource_id}, socket) do
@@ -229,73 +126,6 @@ defmodule API.Gateway.Channel do
         client_id: client_id,
         resource_id: resource_id
       })
-
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info(
-        {:request_connection, {channel_pid, socket_ref}, attrs,
-         {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
-    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
-
-    %{
-      client_id: client_id,
-      resource_id: resource_id,
-      flow_id: flow_id,
-      authorization_expires_at: authorization_expires_at,
-      client_payload: payload,
-      client_preshared_key: preshared_key
-    } = attrs
-
-    OpenTelemetry.Tracer.with_span "gateway.request_connection" do
-      :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
-
-      Logger.debug("Gateway received connection request message",
-        client_id: client_id,
-        resource_id: resource_id
-      )
-
-      client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
-      resource = Resources.fetch_resource_by_id!(resource_id)
-
-      case API.Client.Channel.map_or_drop_compatible_resource(
-             resource,
-             socket.assigns.gateway.last_seen_version
-           ) do
-        {:cont, resource} ->
-          :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
-          :ok = Resources.subscribe_to_events_for_resource(resource_id)
-
-          opentelemetry_headers = :otel_propagator_text_map.inject([])
-          ref = encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers)
-
-          push(socket, "request_connection", %{
-            ref: ref,
-            flow_id: flow_id,
-            actor: Views.Actor.render(client.actor),
-            resource: Views.Resource.render(resource),
-            client: Views.Client.render(client, payload, preshared_key),
-            expires_at: DateTime.to_unix(authorization_expires_at, :second)
-          })
-
-          Logger.debug("Awaiting gateway connection_ready message",
-            client_id: client_id,
-            resource_id: resource_id,
-            flow_id: flow_id
-          )
-
-        :drop ->
-          Logger.debug("Resource is not compatible with the gateway version",
-            gateway_id: socket.assigns.gateway.id,
-            client_id: client_id,
-            resource_id: resource_id,
-            flow_id: flow_id
-          )
-      end
 
       {:noreply, socket}
     end
@@ -382,6 +212,305 @@ defmodule API.Gateway.Channel do
     end
   end
 
+  ##############################################################
+  ##### Forwarding messages from the client to the gateway #####
+  ##############################################################
+
+  def handle_info(
+        {:ice_candidates, client_id, candidates, {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "gateway.ice_candidates",
+      attributes: %{
+        client_id: client_id,
+        candidates_length: length(candidates)
+      } do
+      push(socket, "ice_candidates", %{
+        client_id: client_id,
+        candidates: candidates
+      })
+
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(
+        {:invalidate_ice_candidates, client_id, candidates,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "gateway.invalidate_ice_candidates",
+      attributes: %{
+        client_id: client_id,
+        candidates_length: length(candidates)
+      } do
+      push(socket, "invalidate_ice_candidates", %{
+        client_id: client_id,
+        candidates: candidates
+      })
+
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(
+        {:authorize_flow, {channel_pid, socket_ref}, payload,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    %{
+      client_id: client_id,
+      resource_id: resource_id,
+      flow_id: flow_id,
+      authorization_expires_at: authorization_expires_at,
+      ice_credentials: ice_credentials,
+      preshared_key: preshared_key
+    } = payload
+
+    OpenTelemetry.Tracer.with_span "gateway.authorize_flow" do
+      :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
+
+      Logger.debug("Gateway authorizes a new network flow",
+        flow_id: flow_id,
+        client_id: client_id,
+        resource_id: resource_id
+      )
+
+      client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
+      resource = Resources.fetch_resource_by_id!(resource_id)
+
+      :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
+      :ok = Resources.subscribe_to_events_for_resource(resource_id)
+
+      opentelemetry_headers = :otel_propagator_text_map.inject([])
+
+      ref =
+        encode_ref(socket, {
+          channel_pid,
+          socket_ref,
+          resource_id,
+          preshared_key,
+          ice_credentials,
+          opentelemetry_headers
+        })
+
+      push(socket, "authorize_flow", %{
+        ref: ref,
+        flow_id: flow_id,
+        actor: Views.Actor.render(client.actor),
+        resource: Views.Resource.render(resource),
+        gateway_ice_credentials: ice_credentials.gateway,
+        client: Views.Client.render(client, preshared_key),
+        client_ice_credentials: ice_credentials.client,
+        expires_at:
+          if(authorization_expires_at, do: DateTime.to_unix(authorization_expires_at, :second))
+      })
+
+      Logger.debug("Awaiting gateway flow_authorized message",
+        client_id: client_id,
+        resource_id: resource_id,
+        flow_id: flow_id
+      )
+
+      {:noreply, socket}
+    end
+  end
+
+  # DEPRECATED IN 1.4
+  def handle_info(
+        {:allow_access, {channel_pid, socket_ref}, attrs,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    %{
+      client_id: client_id,
+      resource_id: resource_id,
+      flow_id: flow_id,
+      authorization_expires_at: authorization_expires_at,
+      client_payload: payload
+    } = attrs
+
+    OpenTelemetry.Tracer.with_span "gateway.allow_access",
+      attributes: %{
+        flow_id: flow_id,
+        client_id: client_id,
+        resource_id: resource_id
+      } do
+      :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
+
+      client = Clients.fetch_client_by_id!(client_id)
+      resource = Resources.fetch_resource_by_id!(resource_id)
+
+      case API.Client.Channel.map_or_drop_compatible_resource(
+             resource,
+             socket.assigns.gateway.last_seen_version
+           ) do
+        {:cont, resource} ->
+          :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
+          :ok = Resources.subscribe_to_events_for_resource(resource_id)
+
+          opentelemetry_headers = :otel_propagator_text_map.inject([])
+          ref = encode_ref(socket, {channel_pid, socket_ref, resource_id, opentelemetry_headers})
+
+          push(socket, "allow_access", %{
+            ref: ref,
+            client_id: client_id,
+            flow_id: flow_id,
+            resource: Views.Resource.render(resource),
+            expires_at: DateTime.to_unix(authorization_expires_at, :second),
+            payload: payload,
+            client_ipv4: client.ipv4,
+            client_ipv6: client.ipv6
+          })
+
+          Logger.debug("Awaiting gateway connection_ready message",
+            client_id: client_id,
+            resource_id: resource_id,
+            flow_id: flow_id
+          )
+
+        :drop ->
+          Logger.debug("Resource is not compatible with the gateway version",
+            gateway_id: socket.assigns.gateway.id,
+            client_id: client_id,
+            resource_id: resource_id,
+            flow_id: flow_id
+          )
+      end
+
+      {:noreply, socket}
+    end
+  end
+
+  # DEPRECATED IN 1.4
+  def handle_info(
+        {:request_connection, {channel_pid, socket_ref}, attrs,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    %{
+      client_id: client_id,
+      resource_id: resource_id,
+      flow_id: flow_id,
+      authorization_expires_at: authorization_expires_at,
+      client_payload: payload,
+      client_preshared_key: preshared_key
+    } = attrs
+
+    OpenTelemetry.Tracer.with_span "gateway.request_connection" do
+      :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
+
+      Logger.debug("Gateway received connection request message",
+        client_id: client_id,
+        resource_id: resource_id
+      )
+
+      client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
+      resource = Resources.fetch_resource_by_id!(resource_id)
+
+      case API.Client.Channel.map_or_drop_compatible_resource(
+             resource,
+             socket.assigns.gateway.last_seen_version
+           ) do
+        {:cont, resource} ->
+          :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
+          :ok = Resources.subscribe_to_events_for_resource(resource_id)
+
+          opentelemetry_headers = :otel_propagator_text_map.inject([])
+          ref = encode_ref(socket, {channel_pid, socket_ref, resource_id, opentelemetry_headers})
+
+          push(socket, "request_connection", %{
+            ref: ref,
+            flow_id: flow_id,
+            actor: Views.Actor.render(client.actor),
+            resource: Views.Resource.render(resource),
+            client: Views.Client.render(client, payload, preshared_key),
+            expires_at: DateTime.to_unix(authorization_expires_at, :second)
+          })
+
+          Logger.debug("Awaiting gateway connection_ready message",
+            client_id: client_id,
+            resource_id: resource_id,
+            flow_id: flow_id
+          )
+
+        :drop ->
+          Logger.debug("Resource is not compatible with the gateway version",
+            gateway_id: socket.assigns.gateway.id,
+            client_id: client_id,
+            resource_id: resource_id,
+            flow_id: flow_id
+          )
+      end
+
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_in("flow_authorized", %{"ref" => signed_ref}, socket) do
+    OpenTelemetry.Tracer.with_span "gateway.flow_authorized" do
+      case decode_ref(socket, signed_ref) do
+        {:ok,
+         {
+           channel_pid,
+           socket_ref,
+           resource_id,
+           preshared_key,
+           ice_credentials,
+           opentelemetry_headers
+         }} ->
+          :otel_propagator_text_map.extract(opentelemetry_headers)
+
+          opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
+          opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
+
+          send(
+            channel_pid,
+            {
+              :connect,
+              socket_ref,
+              resource_id,
+              socket.assigns.gateway.group_id,
+              socket.assigns.gateway.id,
+              socket.assigns.gateway.public_key,
+              preshared_key,
+              ice_credentials,
+              {opentelemetry_ctx, opentelemetry_span_ctx}
+            }
+          )
+
+          Logger.debug("Gateway replied to the Client with :authorize_flow message",
+            resource_id: resource_id,
+            channel_pid: inspect(channel_pid)
+          )
+
+          {:reply, :ok, socket}
+
+        {:error, :invalid_ref} ->
+          OpenTelemetry.Tracer.set_status(:error, "invalid ref")
+          Logger.error("Gateway replied with an invalid ref")
+          {:reply, {:error, %{reason: :invalid_ref}}, socket}
+      end
+    end
+  end
+
+  # DEPRECATED IN 1.4
   @impl true
   def handle_in(
         "connection_ready",
@@ -419,6 +548,10 @@ defmodule API.Gateway.Channel do
       end
     end
   end
+
+  #####################################
+  ##### Gateway-initiated actions #####
+  #####################################
 
   def handle_in(
         "broadcast_ice_candidates",
@@ -516,9 +649,9 @@ defmodule API.Gateway.Channel do
     end
   end
 
-  defp encode_ref(socket, channel_pid, socket_ref, resource_id, opentelemetry_headers) do
+  defp encode_ref(socket, tuple) do
     ref =
-      {channel_pid, socket_ref, resource_id, opentelemetry_headers}
+      tuple
       |> :erlang.term_to_binary()
       |> Base.url_encode64()
 
@@ -531,12 +664,12 @@ defmodule API.Gateway.Channel do
 
     with {:ok, ref} <-
            Plug.Crypto.verify(key_base, "gateway_reply_ref", signed_ref, max_age: :infinity) do
-      {channel_pid, socket_ref, resource_id, opentelemetry_headers} =
+      tuple =
         ref
         |> Base.url_decode64!()
         |> Plug.Crypto.non_executable_binary_to_term([:safe])
 
-      {:ok, {channel_pid, socket_ref, resource_id, opentelemetry_headers}}
+      {:ok, tuple}
     else
       {:error, :invalid} -> {:error, :invalid_ref}
     end

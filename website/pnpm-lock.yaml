@@ -36,8 +36,8 @@ importers:
         specifier: 18.3.10
         version: 18.3.10
       '@types/react-dom':
-        specifier: 18.3.0
-        version: 18.3.0
+        specifier: 18.3.1
+        version: 18.3.1
       '@types/react-syntax-highlighter':
         specifier: ^15.5.13
         version: 15.5.13
@@ -55,7 +55,7 @@ importers:
         version: 4.5.0
       flowbite-react:
         specifier: ^0.10.2
-        version: 0.10.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.10)
+        version: 0.10.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.14)
       framer-motion:
         specifier: ^11.11.8
         version: 11.11.8(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -117,18 +117,18 @@ importers:
         specifier: ^11.0.0
         version: 11.0.0
       tailwindcss:
-        specifier: 3.4.10
-        version: 3.4.10
+        specifier: 3.4.14
+        version: 3.4.14
     devDependencies:
       flowbite-typography:
         specifier: ^1.0.4
-        version: 1.0.4(tailwindcss@3.4.10)
+        version: 1.0.4(tailwindcss@3.4.14)
       hastscript:
         specifier: ^9.0.0
         version: 9.0.0
       typescript:
-        specifier: 5.5.4
-        version: 5.5.4
+        specifier: 5.6.3
+        version: 5.6.3
 
 packages:
 
@@ -459,8 +459,8 @@ packages:
   '@types/prop-types@15.7.13':
     resolution: {integrity: sha512-hCZTSvwbzWGvhqxp/RqVqwU999pBf2vp7hzIjiYOsl8wqOmUxkQ6ddw1cV3l8811+kdUFus/q4d1Y3E3SyEifA==}
 
-  '@types/react-dom@18.3.0':
-    resolution: {integrity: sha512-EhwApuTmMBmXuFOikhQLIBUn6uFg81SwLMOAUgodJF14SOBOCMdU04gDoYi0WOJJHD144TL32z4yDqCW3dnkQg==}
+  '@types/react-dom@18.3.1':
+    resolution: {integrity: sha512-qW1Mfv8taImTthu4KoXgDfLuk4bydU6Q/TkADnDWWHwi4NX4BR+LWfTp2sVmTqRrsHvyDDTelgelxJ+SsejKKQ==}
 
   '@types/react-syntax-highlighter@15.5.13':
     resolution: {integrity: sha512-uLGJ87j6Sz8UaBAooU0T6lWJ0dBmjZgN1PZTrj05TNql2/XpC6+4HhMT5syIdFUUt+FASfCeLLv4kBygNU+8qA==}
@@ -1726,8 +1726,8 @@ packages:
   tailwind-merge@2.4.0:
     resolution: {integrity: sha512-49AwoOQNKdqKPd9CViyH5wJoSKsCDjUlzL8DxuGp3P1FsGY36NJDAa18jLZcaHAUUuTj+JB8IAo8zWgBNvBF7A==}
 
-  tailwindcss@3.4.10:
-    resolution: {integrity: sha512-KWZkVPm7yJRhdu4SRSl9d4AK2wM3a50UsvgHZO7xY77NQr2V+fIrEuoDGQcbvswWvFGbS2f6e+jC/6WJm1Dl0w==}
+  tailwindcss@3.4.14:
+    resolution: {integrity: sha512-IcSvOcTRcUtQQ7ILQL5quRDg7Xs93PdJEk1ZLbhhvJc7uj/OAhYOnruEiwnGgBvUtaUAJ8/mhSw1o8L2jCiENA==}
     engines: {node: '>=14.0.0'}
     hasBin: true
 
@@ -1782,8 +1782,8 @@ packages:
   tslib@2.7.0:
     resolution: {integrity: sha512-gLXCKdN1/j47AiHiOkJN69hJmcbGTHI0ImLmbYLHykhgeN0jVGola9yVjFgzCUklsZQMW55o+dW7IXv3RCXDzA==}
 
-  typescript@5.5.4:
-    resolution: {integrity: sha512-Mtq29sKDAEYP7aljRgtPOpTvOfbwRWlS6dPRzwjdE+C0R4brX/GUyhHSecbHMFLNBLcJIPt9nl9yG5TZ1weH+Q==}
+  typescript@5.6.3:
+    resolution: {integrity: sha512-hjcS1mhfuyi4WW8IWtjP7brDrG2cuDZukyrYrSauoXGNgx0S7zceP07adYkJycEr56BOUTNPzbInooiN3fn1qw==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -2241,7 +2241,7 @@ snapshots:
 
   '@types/prop-types@15.7.13': {}
 
-  '@types/react-dom@18.3.0':
+  '@types/react-dom@18.3.1':
     dependencies:
       '@types/react': 18.3.10
 
@@ -2647,7 +2647,7 @@ snapshots:
     transitivePeerDependencies:
       - rollup
 
-  flowbite-react@0.10.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.10):
+  flowbite-react@0.10.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.14):
     dependencies:
       '@floating-ui/core': 1.6.6
       '@floating-ui/react': 0.26.21(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2658,16 +2658,16 @@ snapshots:
       react-dom: 18.3.1(react@18.3.1)
       react-icons: 5.2.1(react@18.3.1)
       tailwind-merge: 2.4.0
-      tailwindcss: 3.4.10
+      tailwindcss: 3.4.14
     transitivePeerDependencies:
       - rollup
 
-  flowbite-typography@1.0.4(tailwindcss@3.4.10):
+  flowbite-typography@1.0.4(tailwindcss@3.4.14):
     dependencies:
       lodash.castarray: 4.4.0
       lodash.isplainobject: 4.0.6
       lodash.merge: 4.6.2
-      tailwindcss: 3.4.10
+      tailwindcss: 3.4.14
 
   flowbite@2.5.1:
     dependencies:
@@ -3866,7 +3866,7 @@ snapshots:
 
   tailwind-merge@2.4.0: {}
 
-  tailwindcss@3.4.10:
+  tailwindcss@3.4.14:
     dependencies:
       '@alloc/quick-lru': 5.2.0
       arg: 5.0.2
@@ -3933,7 +3933,7 @@ snapshots:
 
   tslib@2.7.0: {}
 
-  typescript@5.5.4: {}
+  typescript@5.6.3: {}
 
   undici-types@5.26.5: {}
 

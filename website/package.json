@@ -21,7 +21,7 @@
     "@types/mixpanel-browser": "^2.50.0",
     "@types/node": "20.14.12",
     "@types/react": "18.3.10",
-    "@types/react-dom": "18.3.0",
+    "@types/react-dom": "18.3.1",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@vercel/edge-config": "^1.3.0",
     "asciinema-player": "^3.8.1",
@@ -48,11 +48,11 @@
     "rehype-stringify": "^10.0.1",
     "remark-gfm": "^4.0.0",
     "remark-parse": "^11.0.0",
-    "tailwindcss": "3.4.10"
+    "tailwindcss": "3.4.14"
   },
   "devDependencies": {
     "flowbite-typography": "^1.0.4",
     "hastscript": "^9.0.0",
-    "typescript": "5.5.4"
+    "typescript": "5.6.3"
   }
 }

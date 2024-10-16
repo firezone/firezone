@@ -1,7 +1,7 @@
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     net::SocketAddr,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use crate::{codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice};
@@ -9,7 +9,7 @@ use anyhow::{Context as _, Result};
 use domain::{base::Message, dep::octseq::OctetsInto as _};
 use ip_packet::IpPacket;
 use smoltcp::{
-    iface::{Interface, SocketSet},
+    iface::{Interface, PollResult, SocketSet},
     socket::tcp,
     wire::IpEndpoint,
 };
@@ -25,6 +25,9 @@ pub struct Server {
     listen_endpoints: HashMap<smoltcp::iface::SocketHandle, SocketAddr>,
 
     received_queries: VecDeque<Query>,
+
+    created_at: Instant,
+    last_now: Instant,
 }
 
 /// Opaque handle to a TCP socket.
@@ -44,7 +47,7 @@ pub struct Query {
 impl Server {
     pub fn new(now: Instant) -> Self {
         let mut device = InMemoryDevice::default();
-        let interface = create_interface(&mut device, now);
+        let interface = create_interface(&mut device);
 
         Self {
             device,
@@ -52,6 +55,8 @@ impl Server {
             sockets: SocketSet::new(Vec::default()),
             listen_endpoints: Default::default(),
             received_queries: Default::default(),
+            created_at: now,
+            last_now: now,
         }
     }
 
@@ -146,13 +151,13 @@ impl Server {
     ///
     /// Typical for a sans-IO design, `handle_timeout` will work through all local buffers and process them as much as possible.
     pub fn handle_timeout(&mut self, now: Instant) {
-        let changed = self.interface.poll(
-            smoltcp::time::Instant::from(now),
-            &mut self.device,
-            &mut self.sockets,
-        );
+        self.last_now = now;
 
-        if !changed {
+        let result = self
+            .interface
+            .poll(self.smol_now(now), &mut self.device, &mut self.sockets);
+
+        if result == PollResult::None {
             return;
         }
 
@@ -178,6 +183,14 @@ impl Server {
         }
     }
 
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
+        let now = self.smol_now(self.last_now);
+
+        let poll_in = self.interface.poll_delay(now, &self.sockets)?;
+
+        Some(self.last_now + Duration::from(poll_in))
+    }
+
     /// Returns [`IpPacket`]s that should be sent.
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
         self.device.next_send()
@@ -186,6 +199,12 @@ impl Server {
     /// Returns queries received from a DNS client.
     pub fn poll_queries(&mut self) -> Option<Query> {
         self.received_queries.pop_front()
+    }
+
+    fn smol_now(&self, now: Instant) -> smoltcp::time::Instant {
+        let seconds_since_startup = now.duration_since(self.created_at).as_secs();
+
+        smoltcp::time::Instant::from_secs(seconds_since_startup as i64)
     }
 }
 
