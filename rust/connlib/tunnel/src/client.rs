@@ -609,7 +609,7 @@ impl ClientState {
                         packet.source(),
                         datagram.destination_port(),
                         datagram.source_port(),
-                        response,
+                        response.into_octets(),
                     )
                     .expect("src and dst IPs come from the same packet"),
                 );

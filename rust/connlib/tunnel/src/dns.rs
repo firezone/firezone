@@ -84,7 +84,7 @@ pub(crate) enum Transport {
 #[derive(Debug)]
 pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(Vec<u8>),
+    LocalResponse(Message<Vec<u8>>),
     /// The query is for a non-Resource, forward it to an upstream or system resolver.
     Recurse,
 }
@@ -279,7 +279,7 @@ impl StubResolver {
             let payload = MessageBuilder::new_vec()
                 .start_answer(&message, Rcode::NXDOMAIN)
                 .unwrap()
-                .finish();
+                .into_message();
 
             return Ok(ResolveStrategy::LocalResponse(payload));
         }
@@ -340,7 +340,7 @@ fn build_dns_with_answer(
     message: Message<&[u8]>,
     qname: DomainName,
     records: Vec<AllRecordData<Vec<u8>, DomainName>>,
-) -> Result<Vec<u8>> {
+) -> Result<Message<Vec<u8>>> {
     let mut answer_builder = MessageBuilder::new_vec()
         .start_answer(&message, Rcode::NOERROR)
         .context("Failed to create answer from query")?;
@@ -352,7 +352,7 @@ fn build_dns_with_answer(
             .context("Failed to push record")?;
     }
 
-    Ok(answer_builder.finish())
+    Ok(answer_builder.into_message())
 }
 
 pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
@@ -749,8 +749,7 @@ mod tests {
             panic!("Unexpected result: {strategy:?}")
         };
 
-        let message = Message::from_slice(&response).unwrap();
-        let answers = message.answer().unwrap();
+        let answers = response.answer().unwrap();
 
         assert_eq!(message.header().rcode(), Rcode::NXDOMAIN);
         assert_eq!(answers.count(), 0);
