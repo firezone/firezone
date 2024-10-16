@@ -3,6 +3,7 @@ mod codec;
 mod interface;
 mod server;
 mod stub_device;
+mod time;
 
 pub use client::{Client, QueryResult};
 pub use server::{Server, SocketHandle};
