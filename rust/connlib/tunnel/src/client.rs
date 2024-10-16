@@ -1084,6 +1084,7 @@ impl ClientState {
 
         self.tcp_dns_client
             .set_source_interface(new_tun_config.ip4, new_tun_config.ip6);
+        self.initialise_tcp_dns_client(); // Need to reset all TCP connections when our routes change in case CIDR resources got added / removed that will cause upstream DNS servers to route through a different gateway.
         self.tun_config = Some(new_tun_config.clone());
         self.buffered_events
             .push_back(ClientEvent::TunInterfaceUpdated(new_tun_config));
