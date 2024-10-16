@@ -367,7 +367,7 @@ impl ClientState {
 
         match (response.transport, response.message) {
             (dns::Transport::Udp { .. }, Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
-                tracing::debug!("Recursive DNS query timed out")
+                tracing::debug!("Recursive UDP DNS query timed out")
             }
             (dns::Transport::Udp { source }, result) => {
                 let message = result
