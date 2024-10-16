@@ -96,10 +96,10 @@ defmodule Web.Clients.Index do
           <:col :let={client} label="status">
             <.connection_status schema={client} />
           </:col>
-          <:col :let={client} field={{:clients, :last_seen_at}} label="last started at">
+          <:col :let={client} field={{:clients, :last_seen_at}} label="last started">
             <.relative_datetime datetime={client.last_seen_at} />
           </:col>
-          <:col :let={client} field={{:clients, :inserted_at}} label="created at">
+          <:col :let={client} field={{:clients, :inserted_at}} label="created">
             <.relative_datetime datetime={client.inserted_at} />
           </:col>
           <:empty>
