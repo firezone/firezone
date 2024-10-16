@@ -275,12 +275,7 @@ impl StubResolver {
             Err(e) => {
                 tracing::trace!("Failed to handle DNS query: {e:#}");
 
-                let response = MessageBuilder::new_vec()
-                    .start_answer(&message, Rcode::SERVFAIL)
-                    .unwrap()
-                    .into_message();
-
-                ResolveStrategy::LocalResponse(response)
+                ResolveStrategy::LocalResponse(servfail(message))
             }
         }
     }
@@ -349,6 +344,13 @@ impl StubResolver {
         let response = build_dns_with_answer(message, domain, resource_records)?;
         Ok(ResolveStrategy::LocalResponse(response))
     }
+}
+
+pub fn servfail(message: Message<&[u8]>) -> Message<Vec<u8>> {
+    MessageBuilder::new_vec()
+        .start_answer(&message, Rcode::SERVFAIL)
+        .expect("should always be able to create a heap-allocated SERVFAIL message")
+        .into_message()
 }
 
 fn to_a_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {

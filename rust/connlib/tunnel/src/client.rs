@@ -1,6 +1,5 @@
 mod resource;
 
-use domain::base::iana::Rcode;
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
@@ -24,7 +23,7 @@ use itertools::Itertools;
 use crate::peer::GatewayOnClient;
 use crate::utils::earliest;
 use crate::ClientEvent;
-use domain::base::{Message, MessageBuilder};
+use domain::base::Message;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, EncryptBuffer, RelaySocket, Transmit};
@@ -382,10 +381,7 @@ impl ClientState {
                     .unwrap_or_else(|e| {
                         tracing::debug!("Recursive UDP DNS query failed: {e}");
 
-                        MessageBuilder::new_vec()
-                            .start_answer(&response.query, Rcode::SERVFAIL)
-                            .expect("original query is valid")
-                            .into_message()
+                        dns::servfail(response.query.for_slice_ref())
                     });
 
                 self.try_queue_udp_dns_response(server, source, &message)
@@ -399,10 +395,7 @@ impl ClientState {
                     .unwrap_or_else(|e| {
                         tracing::debug!("Recursive TCP DNS query failed: {e}");
 
-                        MessageBuilder::new_vec()
-                            .start_answer(&response.query, Rcode::SERVFAIL)
-                            .expect("original query is valid")
-                            .into_message()
+                        dns::servfail(response.query.for_slice_ref())
                     });
 
                 self.tcp_dns_server
