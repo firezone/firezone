@@ -1,4 +1,5 @@
 use super::{
+    dns_server_resource::UdpDnsServerResource,
     reference::{private_key, PrivateKey},
     sim_net::{any_port, dual_ip_stack, host, Host},
     sim_relay::{map_explode, SimRelay},
@@ -12,8 +13,8 @@ use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use proptest::prelude::*;
 use snownet::{EncryptBuffer, Transmit};
 use std::{
-    collections::{BTreeMap, BTreeSet},
-    net::IpAddr,
+    collections::{BTreeMap, BTreeSet, HashMap},
+    net::{IpAddr, SocketAddr},
     time::Instant,
 };
 
@@ -21,11 +22,12 @@ use std::{
 pub(crate) struct SimGateway {
     id: GatewayId,
     pub(crate) sut: GatewayState,
+    enc_buffer: EncryptBuffer,
 
     /// The received ICMP packets, indexed by our custom ICMP payload.
     pub(crate) received_icmp_requests: BTreeMap<u64, IpPacket>,
 
-    enc_buffer: EncryptBuffer,
+    udp_dns_server_resources: HashMap<SocketAddr, UdpDnsServerResource>,
 }
 
 impl SimGateway {
@@ -35,12 +37,12 @@ impl SimGateway {
             sut,
             received_icmp_requests: Default::default(),
             enc_buffer: Default::default(),
+            udp_dns_server_resources: Default::default(),
         }
     }
 
     pub(crate) fn receive(
         &mut self,
-        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
         transmit: Transmit,
         now: Instant,
         utc_now: DateTime<Utc>,
@@ -55,16 +57,43 @@ impl SimGateway {
             return None;
         };
 
-        self.on_received_packet(global_dns_records, packet, now)
+        self.on_received_packet(packet, now)
+    }
+
+    pub(crate) fn advance_resources(
+        &mut self,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+        now: Instant,
+    ) -> Vec<Transmit<'static>> {
+        let udp_server_packets = self.udp_dns_server_resources.values_mut().flat_map(|s| {
+            s.handle_timeout(global_dns_records, now);
+
+            std::iter::from_fn(|| s.poll_outbound())
+        });
+
+        udp_server_packets
+            .filter_map(|packet| {
+                Some(
+                    self.sut
+                        .handle_tun_input(packet, now, &mut self.enc_buffer)?
+                        .to_transmit(&self.enc_buffer)
+                        .into_owned(),
+                )
+            })
+            .collect()
+    }
+
+    pub(crate) fn deploy_new_dns_servers(&mut self, dns_servers: impl Iterator<Item = SocketAddr>) {
+        self.udp_dns_server_resources.clear();
+
+        for server in dns_servers {
+            self.udp_dns_server_resources
+                .insert(server, UdpDnsServerResource::default());
+        }
     }
 
     /// Process an IP packet received on the gateway.
-    fn on_received_packet(
-        &mut self,
-        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
-        packet: IpPacket,
-        now: Instant,
-    ) -> Option<Transmit<'static>> {
+    fn on_received_packet(&mut self, packet: IpPacket, now: Instant) -> Option<Transmit<'static>> {
         // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
 
         if let Some(icmp) = packet.as_icmpv4() {
@@ -79,18 +108,13 @@ impl SimGateway {
             }
         }
 
-        if packet.as_udp().is_some() {
-            let response = ip_packet::make::dns_ok_response(packet, |name| {
-                global_dns_records.get(name).cloned().into_iter().flatten()
-            });
+        if let Some(udp) = packet.as_udp() {
+            let socket = SocketAddr::new(packet.destination(), udp.destination_port());
 
-            let transmit = self
-                .sut
-                .handle_tun_input(response, now, &mut self.enc_buffer)?
-                .to_transmit(&self.enc_buffer)
-                .into_owned();
-
-            return Some(transmit);
+            if let Some(server) = self.udp_dns_server_resources.get_mut(&socket) {
+                server.handle_input(packet);
+                return None;
+            }
         }
 
         tracing::error!(?packet, "Unhandled packet");

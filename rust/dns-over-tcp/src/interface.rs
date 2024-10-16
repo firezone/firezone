@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use smoltcp::{
     iface::{Config, Interface, Route},
     wire::{HardwareAddress, Ipv4Address, Ipv4Cidr, Ipv6Address, Ipv6Cidr},
@@ -23,8 +21,12 @@ const IP6_ADDR: Ipv6Address = Ipv6Address::new(0, 0, 0, 0, 0, 0, 0, 1);
 /// - Accept any packet
 /// - Define dummy IPs (localhost for IPv4 and IPv6)
 /// - Define catch-all routes (0.0.0.0/0) that routes all traffic to the interface
-pub fn create_interface(device: &mut InMemoryDevice, now: Instant) -> Interface {
-    let mut interface = Interface::new(Config::new(HardwareAddress::Ip), device, now.into());
+pub fn create_interface(device: &mut InMemoryDevice) -> Interface {
+    let mut interface = Interface::new(
+        Config::new(HardwareAddress::Ip),
+        device,
+        smoltcp::time::Instant::ZERO,
+    );
     // Accept packets with any destination IP, not just our interface.
     interface.set_any_ip(true);
 
