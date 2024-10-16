@@ -11,11 +11,11 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.2",
-    "@tauri-apps/cli": "^2.0.2",
+    "@tauri-apps/api": ">=2.0.0",
     "flowbite": "^2.5.2"
   },
   "devDependencies": {
+    "@tauri-apps/cli": ">=2.0.0",
     "@types/node": "22",
     "http-server": "^14.1.1",
     "run-script-os": "^1.1.6",
