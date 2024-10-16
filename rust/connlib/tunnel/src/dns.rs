@@ -754,18 +754,15 @@ mod tests {
                 Rtype::A,
             ))
             .unwrap();
-        let message = builder.into_message();
+        let query = builder.into_message();
 
-        let strategy = resolver.try_handle(message.for_slice_ref()).unwrap();
-
-        let ResolveStrategy::LocalResponse(response) = strategy else {
-            panic!("Unexpected result: {strategy:?}")
+        let ResolveStrategy::LocalResponse(response) = resolver.handle(query.for_slice_ref())
+        else {
+            panic!("Unexpected result")
         };
 
-        let answers = response.answer().unwrap();
-
-        assert_eq!(message.header().rcode(), Rcode::NXDOMAIN);
-        assert_eq!(answers.count(), 0);
+        assert_eq!(response.header().rcode(), Rcode::NXDOMAIN);
+        assert_eq!(response.answer().unwrap().count(), 0);
     }
 }
 
