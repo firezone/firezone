@@ -496,10 +496,14 @@ impl TunnelTest {
         });
 
         for (_, gateway) in self.gateways.iter_mut() {
+            for transmit in gateway.exec_mut(|g| g.advance_resources(global_dns_records, now)) {
+                buffered_transmits.push_from(transmit, gateway, now);
+            }
+
             while let Some(transmit) = gateway.poll_transmit(now) {
-                let Some(reply) = gateway.exec_mut(|g| {
-                    g.receive(global_dns_records, transmit, now, self.flux_capacitor.now())
-                }) else {
+                let Some(reply) =
+                    gateway.exec_mut(|g| g.receive(transmit, now, self.flux_capacitor.now()))
+                else {
                     continue;
                 };
 
@@ -686,6 +690,15 @@ impl TunnelTest {
                         "Emitted `TunInterfaceUpdated` without changing DNS servers or routes"
                     );
                 }
+
+                if self.client.inner().dns_by_sentinel != config.dns_by_sentinel {
+                    for gateway in self.gateways.values_mut() {
+                        gateway.exec_mut(|g| {
+                            g.deploy_new_dns_servers(config.dns_by_sentinel.right_values().copied())
+                        })
+                    }
+                }
+
                 self.client.exec_mut(|c| {
                     c.dns_by_sentinel = config.dns_by_sentinel;
                     c.ipv4_routes = config.ipv4_routes;

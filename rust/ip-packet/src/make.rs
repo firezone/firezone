@@ -2,13 +2,7 @@
 
 use crate::{IpPacket, IpPacketBuf};
 use anyhow::{Context, Result};
-use domain::{
-    base::{
-        iana::{Class, Opcode, Rcode},
-        Message, MessageBuilder, Name, Question, Record, Rtype, ToName, Ttl,
-    },
-    rdata::AllRecordData,
-};
+use domain::base::{iana::Opcode, MessageBuilder, Name, Question, Rtype};
 use etherparse::PacketBuilder;
 use std::net::{IpAddr, SocketAddr};
 
@@ -180,50 +174,6 @@ pub fn dns_query(
     let payload = question_builder.finish();
 
     udp_packet(src.ip(), dst.ip(), src.port(), dst.port(), payload)
-}
-
-/// Makes a DNS response to the given DNS query packet, using a resolver callback.
-pub fn dns_ok_response<I>(packet: IpPacket, resolve: impl Fn(&Name<Vec<u8>>) -> I) -> IpPacket
-where
-    I: Iterator<Item = IpAddr>,
-{
-    let udp = packet.as_udp().unwrap();
-    let query = Message::from_octets(udp.payload().to_vec()).unwrap();
-
-    let response = MessageBuilder::new_vec();
-    let mut answers = response.start_answer(&query, Rcode::NOERROR).unwrap();
-
-    for query in query.question() {
-        let query = query.unwrap();
-        let name = query.qname().to_name();
-
-        let records = resolve(&name)
-            .filter_map(|ip| match (query.qtype(), ip) {
-                (Rtype::A, IpAddr::V4(v4)) => {
-                    Some(AllRecordData::<Vec<_>, Name<Vec<_>>>::A(v4.into()))
-                }
-                (Rtype::AAAA, IpAddr::V6(v6)) => {
-                    Some(AllRecordData::<Vec<_>, Name<Vec<_>>>::Aaaa(v6.into()))
-                }
-                _ => None,
-            })
-            .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
-
-        for record in records {
-            answers.push(record).unwrap();
-        }
-    }
-
-    let payload = answers.finish();
-
-    udp_packet(
-        packet.destination(),
-        packet.source(),
-        udp.destination_port(),
-        udp.source_port(),
-        payload,
-    )
-    .expect("src and dst are retrieved from the same packet")
 }
 
 #[derive(thiserror::Error, Debug)]
