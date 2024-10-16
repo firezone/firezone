@@ -345,8 +345,18 @@ defmodule Web.Clients.Show do
         >
           <:dialog_title>Confirm deletion of client</:dialog_title>
           <:dialog_content>
-            Deleting the client doesn't remove it from the device; it will be re-created with the same
-            hardware attributes upon the next sign-in, but the verification status won't carry over.
+            <p>
+              Deleting the client doesn't remove it from the device; it will be re-created with the same
+              hardware attributes upon the next sign-in, but the verification status won't carry over.
+            </p>
+
+            <p class="mt-2">
+              To prevent the client owner from logging in again,
+              <.link navigate={~p"/#{@account}/actors/#{@client.actor_id}"} class={link_style()}>
+                disable the owning actor
+              </.link>
+              instead.
+            </p>
           </:dialog_content>
           <:dialog_confirm_button>
             Delete Client
