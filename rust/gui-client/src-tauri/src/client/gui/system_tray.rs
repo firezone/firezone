@@ -8,8 +8,11 @@
 use anyhow::Result;
 use firezone_gui_client_common::{
     compositor::{self, Image},
-    system_tray::{AppState, ConnlibState, Entry, Icon, IconBase, Menu},
+    system_tray::{AppState, ConnlibState, Entry, Icon, IconBase, Item, Menu},
 };
+use tauri::AppHandle;
+
+type IsMenuItem = dyn tauri::menu::IsMenuItem<tauri::Wry>;
 
 // Figma is the source of truth for the tray icon layers
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
@@ -117,65 +120,47 @@ pub(crate) fn build_app_state(
 pub(crate) fn build_menu(app: &tauri::AppHandle, that: &Menu) -> tauri::menu::Menu<tauri::Wry> {
     let mut menu = tauri::menu::MenuBuilder::new(app);
     for entry in &that.entries {
-        menu = match entry {
-            Entry::Item(item) => {
-                if let Some(checked) = item.checked {
-                    let mut tauri_item =
-                        tauri::menu::CheckMenuItemBuilder::new(&item.title).checked(checked);
-                    if let Some(event) = &item.event {
-                        tauri_item = tauri_item.id(serde_json::to_string(event).unwrap());
-                    } else {
-                        tauri_item = tauri_item.enabled(false);
-                    }
-                    menu.item(&tauri_item.build(app).unwrap())
-                } else {
-                    let mut tauri_item = tauri::menu::MenuItemBuilder::new(&item.title);
-                    if let Some(event) = &item.event {
-                        tauri_item = tauri_item.id(serde_json::to_string(event).unwrap());
-                    } else {
-                        tauri_item = tauri_item.enabled(false);
-                    }
-                    menu.item(&tauri_item.build(app).unwrap())
-                }
-            }
-            Entry::Separator => menu.separator(),
-            Entry::Submenu { title, inner } => menu.item(&build_submenu(app, title, inner)),
-        };
+        menu = menu.item(&*build_entry(app, entry));
     }
     menu.build().unwrap()
 }
 
 pub(crate) fn build_submenu(
-    app: &tauri::AppHandle,
+    app: &AppHandle,
     title: &str,
     that: &Menu,
 ) -> tauri::menu::Submenu<tauri::Wry> {
     let mut menu = tauri::menu::SubmenuBuilder::new(app, title);
     for entry in &that.entries {
-        menu = match entry {
-            Entry::Item(item) => {
-                if let Some(checked) = item.checked {
-                    let mut tauri_item =
-                        tauri::menu::CheckMenuItemBuilder::new(&item.title).checked(checked);
-                    if let Some(event) = &item.event {
-                        tauri_item = tauri_item.id(serde_json::to_string(event).unwrap());
-                    } else {
-                        tauri_item = tauri_item.enabled(false);
-                    }
-                    menu.item(&tauri_item.build(app).unwrap())
-                } else {
-                    let mut tauri_item = tauri::menu::MenuItemBuilder::new(&item.title);
-                    if let Some(event) = &item.event {
-                        tauri_item = tauri_item.id(serde_json::to_string(event).unwrap());
-                    } else {
-                        tauri_item = tauri_item.enabled(false);
-                    }
-                    menu.item(&tauri_item.build(app).unwrap())
-                }
-            }
-            Entry::Separator => menu.separator(),
-            Entry::Submenu { title, inner } => menu.item(&build_submenu(app, title, inner)),
-        };
+        menu = menu.item(&*build_entry(app, entry));
     }
     menu.build().unwrap()
+}
+
+fn build_entry(app: &AppHandle, entry: &Entry) -> Box<IsMenuItem> {
+    match entry {
+        Entry::Item(item) => build_item(app, item),
+        Entry::Separator => Box::new(tauri::menu::PredefinedMenuItem::separator(app).unwrap()),
+        Entry::Submenu { title, inner } => Box::new(build_submenu(app, title, inner)),
+    }
+}
+
+fn build_item(app: &AppHandle, item: &Item) -> Box<IsMenuItem> {
+    if let Some(checked) = item.checked {
+        let mut tauri_item = tauri::menu::CheckMenuItemBuilder::new(&item.title).checked(checked);
+        if let Some(event) = &item.event {
+            tauri_item = tauri_item.id(serde_json::to_string(event).unwrap());
+        } else {
+            tauri_item = tauri_item.enabled(false);
+        }
+        Box::new(tauri_item.build(app).unwrap())
+    } else {
+        let mut tauri_item = tauri::menu::MenuItemBuilder::new(&item.title);
+        if let Some(event) = &item.event {
+            tauri_item = tauri_item.id(serde_json::to_string(event).unwrap());
+        } else {
+            tauri_item = tauri_item.enabled(false);
+        }
+        Box::new(tauri_item.build(app).unwrap())
+    }
 }
