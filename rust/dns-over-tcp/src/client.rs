@@ -10,7 +10,7 @@ use domain::{base::Message, dep::octseq::OctetsInto};
 use ip_packet::IpPacket;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use smoltcp::{
-    iface::{Interface, SocketSet},
+    iface::{Interface, PollResult, SocketSet},
     socket::tcp::{self, Socket},
 };
 
@@ -217,11 +217,11 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return;
         };
 
-        let changed = self
+        let result = self
             .interface
             .poll(self.smol_now(now), &mut self.device, &mut self.sockets);
 
-        if !changed && self.pending_queries_by_remote.is_empty() {
+        if result == PollResult::None && self.pending_queries_by_remote.is_empty() {
             return;
         }
 

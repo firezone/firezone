@@ -789,7 +789,7 @@ impl IpPacket {
         }
     }
 
-    pub fn packet_mut(&mut self) -> &mut [u8] {
+    fn packet_mut(&mut self) -> &mut [u8] {
         match self {
             IpPacket::Ipv4(v4) => v4.packet_mut(),
             IpPacket::Ipv6(v6) => v6.packet_mut(),

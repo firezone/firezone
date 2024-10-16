@@ -9,7 +9,7 @@ use anyhow::{Context as _, Result};
 use domain::{base::Message, dep::octseq::OctetsInto as _};
 use ip_packet::IpPacket;
 use smoltcp::{
-    iface::{Interface, SocketSet},
+    iface::{Interface, PollResult, SocketSet},
     socket::tcp,
     wire::IpEndpoint,
 };
@@ -153,11 +153,11 @@ impl Server {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.last_now = now;
 
-        let changed = self
+        let result = self
             .interface
             .poll(self.smol_now(now), &mut self.device, &mut self.sockets);
 
-        if !changed {
+        if result == PollResult::None {
             return;
         }
 
