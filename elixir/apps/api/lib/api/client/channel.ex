@@ -7,10 +7,17 @@ defmodule API.Client.Channel do
   require OpenTelemetry.Tracer
 
   @gateway_compatibility [
+    # We introduced new websocket protocol and the clients of version 1.4+
+    # are only compatible with gateways of version 1.4+
+    {">= 1.4.0", ">= 1.4.0"},
     # The clients of version of 1.1+ are compatible with gateways of version 1.1+,
     # but the clients of versions prior to that can connect to any gateway
     {">= 1.1.0", ">= 1.1.0"}
   ]
+
+  ####################################
+  ##### Channel lifecycle events #####
+  ####################################
 
   @impl true
   def join("client", _payload, socket) do
@@ -131,6 +138,20 @@ defmodule API.Client.Channel do
     end
   end
 
+  ####################################
+  ##### Reacting to domain events ####
+  ####################################
+
+  # This message is sent using Clients.broadcast_to_client/1 eg. when the client is deleted
+  def handle_info("disconnect", socket) do
+    OpenTelemetry.Tracer.with_span "client.disconnect" do
+      push(socket, "disconnect", %{reason: :token_expired})
+      send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
+      {:stop, :shutdown, socket}
+    end
+  end
+
+  # This event is broadcasted from the Accounts context whenever the account config is changed
   def handle_info(:config_changed, socket) do
     account = Accounts.fetch_account_by_id!(socket.assigns.client.account_id)
 
@@ -146,19 +167,6 @@ defmodule API.Client.Channel do
     {:noreply, socket}
   end
 
-  # This event is sent when client or group are changed (eg. renamed, verified, etc.),
-  # so we just re-initialize the client the same way as after join to push the updates
-  def handle_info(:updated, socket) do
-    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "client.updated" do
-      socket = assign(socket, client: Clients.fetch_client_by_id!(socket.assigns.client.id))
-      :ok = init(socket)
-      {:noreply, socket}
-    end
-  end
-
   # Message is scheduled by schedule_expiration/1 on topic join to be sent
   # when the client token/subject expires
   def handle_info(:token_expired, socket) do
@@ -171,79 +179,56 @@ defmodule API.Client.Channel do
     end
   end
 
-  # This message is sent using Clients.broadcast_to_client/1 eg. when the client is deleted
-  def handle_info("disconnect", socket) do
-    OpenTelemetry.Tracer.with_span "client.disconnect" do
-      push(socket, "disconnect", %{reason: :token_expired})
-      send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
-      {:stop, :shutdown, socket}
-    end
-  end
+  # This event is broadcasted when client or actor group was changed (eg. renamed, verified, etc.),
+  # so we just re-initialize the client the same way as after join to push the updates
+  def handle_info(:updated, socket) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
-  # This the list of ICE candidates gathered by the gateway and relayed to the client
-  def handle_info(
-        {:ice_candidates, gateway_id, candidates, {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
-    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "client.ice_candidates",
-      attributes: %{
-        gateway_id: gateway_id,
-        candidates_length: length(candidates)
-      } do
-      push(socket, "ice_candidates", %{
-        gateway_id: gateway_id,
-        candidates: candidates
-      })
-
+    OpenTelemetry.Tracer.with_span "client.updated" do
+      socket = assign(socket, client: Clients.fetch_client_by_id!(socket.assigns.client.id))
+      :ok = init(socket)
       {:noreply, socket}
     end
   end
 
-  def handle_info(
-        {:invalidate_ice_candidates, gateway_id, candidates,
-         {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
-    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+  # Resource is created
+  def handle_info({:create_resource, resource_id}, socket) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
-    OpenTelemetry.Tracer.with_span "client.invalidate_ice_candidates",
-      attributes: %{
-        gateway_id: gateway_id,
-        candidates_length: length(candidates)
-      } do
-      push(socket, "invalidate_ice_candidates", %{
-        gateway_id: gateway_id,
-        candidates: candidates
-      })
+    OpenTelemetry.Tracer.with_span "client.resource_created",
+      attributes: %{resource_id: resource_id} do
+      with {:ok, resource} <-
+             Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
+               preload: [:gateway_groups]
+             ),
+           true <-
+             Policies.client_conforms_any_on_connect?(
+               socket.assigns.client,
+               resource.authorized_by_policies
+             ) do
+        case map_or_drop_compatible_resource(
+               resource,
+               socket.assigns.client.last_seen_version
+             ) do
+          {:cont, resource} ->
+            push(
+              socket,
+              "resource_created_or_updated",
+              Views.Resource.render(resource)
+            )
 
-      {:noreply, socket}
-    end
-  end
+          :drop ->
+            :ok
+        end
+      else
+        {:error, _reason} ->
+          :ok
 
-  # This message is sent by the gateway when it is ready to accept the connection from the client
-  def handle_info(
-        {:connect, socket_ref, resource_id, gateway_public_key, payload,
-         {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
-    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "client.connect", attributes: %{resource_id: resource_id} do
-      reply(
-        socket_ref,
-        {:ok,
-         %{
-           resource_id: resource_id,
-           persistent_keepalive: 25,
-           gateway_public_key: gateway_public_key,
-           gateway_payload: payload
-         }}
-      )
+        false ->
+          :ok
+      end
 
       {:noreply, socket}
     end
@@ -473,6 +458,111 @@ defmodule API.Client.Channel do
     end
   end
 
+  #############################################################
+  ##### Forwarding replies from the gateway to the client #####
+  #############################################################
+
+  # This the list of ICE candidates gathered by the gateway and relayed to the client
+  def handle_info(
+        {:ice_candidates, gateway_id, candidates, {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "client.ice_candidates",
+      attributes: %{
+        gateway_id: gateway_id,
+        candidates_length: length(candidates)
+      } do
+      push(socket, "ice_candidates", %{
+        gateway_id: gateway_id,
+        candidates: candidates
+      })
+
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(
+        {:invalidate_ice_candidates, gateway_id, candidates,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "client.invalidate_ice_candidates",
+      attributes: %{
+        gateway_id: gateway_id,
+        candidates_length: length(candidates)
+      } do
+      push(socket, "invalidate_ice_candidates", %{
+        gateway_id: gateway_id,
+        candidates: candidates
+      })
+
+      {:noreply, socket}
+    end
+  end
+
+  # DEPRECATED IN 1.4
+  # This message is sent by the gateway when it is ready to accept the connection from the client
+  def handle_info(
+        {:connect, socket_ref, resource_id, gateway_public_key, payload,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "client.connect", attributes: %{resource_id: resource_id} do
+      reply(
+        socket_ref,
+        {:ok,
+         %{
+           resource_id: resource_id,
+           persistent_keepalive: 25,
+           gateway_public_key: gateway_public_key,
+           gateway_payload: payload
+         }}
+      )
+
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(
+        {:connect, _socket_ref, resource_id, gateway_group_id, gateway_id, gateway_public_key,
+         preshared_key, ice_credentials, {opentelemetry_ctx, opentelemetry_span_ctx}},
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "client.connect", attributes: %{resource_id: resource_id} do
+      reply_payload = %{
+        resource_id: resource_id,
+        preshared_key: preshared_key,
+        client_ice_credentials: ice_credentials.client,
+        gateway_group_id: gateway_group_id,
+        gateway_id: gateway_id,
+        gateway_public_key: gateway_public_key,
+        gateway_ice_credentials: ice_credentials.gateway
+      }
+
+      # We are pushing a message instead of replying for the sake of connlib message parsing convenience
+      push(socket, "flow_created", reply_payload)
+      # reply(socket_ref, {:ok, reply_payload})
+
+      {:noreply, socket}
+    end
+  end
+
+  ####################################
+  ##### Client-initiated actions #####
+  ####################################
+
   # This message sent by the client to create a GSC signed url for uploading logs and debug artifacts
   # TODO: This has been disabled on clients. Remove this when no more clients are requesting log sinks.
   @impl true
@@ -507,6 +597,112 @@ defmodule API.Client.Channel do
     end
   end
 
+  # This message is sent to the client to request a network flow with a gateway that can serve given resource.
+  #
+  # `connected_gateway_ids` is used to indicate that the client is already connected to some of the gateways,
+  # so the gateway can be reused by multiplexing the connection.
+  def handle_in(
+        "create_flow",
+        %{
+          "resource_id" => resource_id,
+          "connected_gateway_ids" => connected_gateway_ids
+        } = attrs,
+        socket
+      ) do
+    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+
+    OpenTelemetry.Tracer.with_span "client.create_flow", attributes: attrs do
+      location = {
+        socket.assigns.client.last_seen_remote_ip_location_lat,
+        socket.assigns.client.last_seen_remote_ip_location_lon
+      }
+
+      with {:ok, resource} <-
+             Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject),
+           {:ok, gateways} when gateways != [] <-
+             Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
+               preload: :group
+             ),
+           {:ok, gateways} <-
+             filter_compatible_gateways(gateways, socket.assigns.gateway_version_requirement),
+           OpenTelemetry.Tracer.set_attribute(:gateways_count, length(gateways)),
+           gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids),
+           OpenTelemetry.Tracer.set_attribute(:gateway_id, gateway.id),
+           {:ok, resource, flow} <-
+             Flows.authorize_flow(
+               socket.assigns.client,
+               gateway,
+               resource_id,
+               socket.assigns.subject
+             ) do
+        OpenTelemetry.Tracer.set_attribute(:flow_id, flow.id)
+        opentelemetry_ctx = OpenTelemetry.Ctx.get_current()
+        opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
+
+        preshared_key = generate_preshared_key()
+        ice_credentials = generate_ice_credentials(socket.assigns.client, gateway)
+
+        :ok =
+          Gateways.broadcast_to_gateway(
+            gateway,
+            {:authorize_flow, {self(), socket_ref(socket)},
+             %{
+               client_id: socket.assigns.client.id,
+               resource_id: resource.id,
+               flow_id: flow.id,
+               authorization_expires_at: flow.expires_at,
+               ice_credentials: ice_credentials,
+               preshared_key: preshared_key
+             }, {opentelemetry_ctx, opentelemetry_span_ctx}}
+          )
+
+        {:noreply, socket}
+      else
+        {:error, :not_found} ->
+          OpenTelemetry.Tracer.set_status(:error, "not_found")
+
+          # We are pushing a message instead of replying for the sake of connlib message parsing convenience
+          # {:reply, {:error, %{reason: :not_found}}, socket}
+
+          push(socket, "flow_creation_failed", %{
+            resource_id: resource_id,
+            reason: :not_found
+          })
+
+          {:noreply, socket}
+
+        {:ok, []} ->
+          OpenTelemetry.Tracer.set_status(:error, "offline")
+
+          # We are pushing a message instead of replying for the sake of connlib message parsing convenience
+          # {:reply, {:error, %{reason: :offline}}, socket}
+
+          push(socket, "flow_creation_failed", %{
+            resource_id: resource_id,
+            reason: :offline
+          })
+
+          {:noreply, socket}
+
+        {:error, {:forbidden, violated_properties: violated_properties}} ->
+          OpenTelemetry.Tracer.set_status(:error, "forbidden")
+
+          # We are pushing a message instead of replying for the sake of connlib message parsing convenience
+          # {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}}, socket}
+
+          push(socket, "flow_creation_failed", %{
+            resource_id: resource_id,
+            reason: :forbidden,
+            violated_properties: violated_properties
+          })
+
+          {:noreply, socket}
+      end
+    end
+  end
+
+  # DEPRECATED IN 1.4
   # The client sends it's message to list relays and select a gateway whenever it wants
   # to connect to a resource.
   #
@@ -562,6 +758,7 @@ defmodule API.Client.Channel do
     end
   end
 
+  # DEPRECATED IN 1.4
   # This message is sent by the client when it already has connection to a gateway,
   # but wants to multiplex the connection to access a new resource
   def handle_in(
@@ -621,6 +818,7 @@ defmodule API.Client.Channel do
     end
   end
 
+  # DEPRECATED IN 1.4
   # This message is sent by the client when it wants to connect to a new gateway
   # to access a resource
   def handle_in(
@@ -778,6 +976,7 @@ defmodule API.Client.Channel do
     end
   end
 
+  # DEPRECATED IN 1.4
   defp maybe_update_gateway_version_requirement(resource, gateway_version_requirement) do
     case map_or_drop_compatible_resource(resource, "1.0.0") do
       {:cont, _resource} ->
@@ -803,6 +1002,7 @@ defmodule API.Client.Channel do
     end
   end
 
+  # DEPRECATED IN 1.4
   defp map_and_filter_compatible_resources(resources, client_version) do
     Enum.flat_map(resources, fn resource ->
       case map_or_drop_compatible_resource(resource, client_version) do
@@ -812,6 +1012,7 @@ defmodule API.Client.Channel do
     end)
   end
 
+  # DEPRECATED IN 1.4
   def map_or_drop_compatible_resource(resource, client_or_gateway_version) do
     cond do
       resource.gateway_groups == [] ->
@@ -835,5 +1036,52 @@ defmodule API.Client.Channel do
           :drop -> :drop
         end
     end
+  end
+
+  # We generate a new preshared key for each flow request, the client and gateway MUST
+  # ignore it if this is for a connection that is already established.
+  defp generate_preshared_key do
+    Domain.Crypto.psk()
+  end
+
+  # Ice credentials must stay the same for all connections between client and gateway as long as they
+  # do not loose their state, so we can leverage public_key which is reset on each restart of the client
+  # or gateway.
+  defp generate_ice_credentials(client, gateway) do
+    ice_credential_seed =
+      [
+        client.id,
+        client.public_key,
+        gateway.id,
+        gateway.public_key
+      ]
+      |> Enum.join(":")
+
+    ice_credential_seed_hash =
+      :crypto.hash(:sha256, ice_credential_seed)
+      |> Base.encode32(case: :lower, padding: false)
+
+    [
+      {:client_username, client_username},
+      {:client_password, client_password},
+      {:gateway_username, gateway_username},
+      {:gateway_password, gateway_password}
+    ] =
+      Enum.map(
+        [
+          client_username: 0..3,
+          client_password: 4..25,
+          gateway_username: 26..29,
+          gateway_password: 30..52
+        ],
+        fn {key, range} ->
+          {key, String.slice(ice_credential_seed_hash, range)}
+        end
+      )
+
+    %{
+      client: %{username: client_username, password: client_password},
+      gateway: %{username: gateway_username, password: gateway_password}
+    }
   end
 end
