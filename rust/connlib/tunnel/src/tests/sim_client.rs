@@ -199,7 +199,7 @@ impl SimClient {
                 // Map back to upstream socket so we can assert on it correctly.
                 let sentinel = SocketAddr::from((packet.source(), udp.source_port()));
                 let Some(upstream) = self.upstream_dns_by_sentinel(&sentinel) else {
-                    tracing::error!(%sentinel, "Unknown DNS server");
+                    tracing::error!(%sentinel, mapping = ?self.dns_by_sentinel, "Unknown DNS server");
                     return;
                 };
 
