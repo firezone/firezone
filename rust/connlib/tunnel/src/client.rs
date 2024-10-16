@@ -383,25 +383,29 @@ impl ClientState {
             .map(|q| q.into_qname())
             .map(tracing::field::display);
 
+        let _span = tracing::debug_span!("handle_dns_response", %qid, %server, domain).entered();
+
         match (response.transport, response.message) {
             (dns::Transport::Udp { .. }, Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
-                tracing::debug!(%server, %qid, domain, "Recursive DNS query timed out")
+                tracing::debug!("Recursive DNS query timed out")
             }
             (dns::Transport::Udp { source }, result) => {
-                let message = result.inspect(|message| {
-                    tracing::trace!(%server, %qid, domain, "Received recursive DNS response");
+                let message = result
+                    .inspect(|message| {
+                        tracing::trace!("Received recursive DNS response");
 
-                    if message.header().tc() {
-                        tracing::debug!(%server, domain, "Upstream DNS server had to truncate response");
-                    }
-                }).unwrap_or_else(|e| {
-                    tracing::debug!(%server, %qid, domain, "Recursive DNS query failed: {e}");
+                        if message.header().tc() {
+                            tracing::debug!("Upstream DNS server had to truncate response");
+                        }
+                    })
+                    .unwrap_or_else(|e| {
+                        tracing::debug!("Recursive DNS query failed: {e}");
 
-                    MessageBuilder::new_vec()
-                        .start_answer(&response.query, Rcode::SERVFAIL)
-                        .expect("original query is valid")
-                        .into_message()
-                });
+                        MessageBuilder::new_vec()
+                            .start_answer(&response.query, Rcode::SERVFAIL)
+                            .expect("original query is valid")
+                            .into_message()
+                    });
 
                 self.try_queue_udp_dns_response(server, source, &message)?;
             }
