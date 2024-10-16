@@ -304,6 +304,9 @@ impl TunnelTest {
 
                 state.deploy_new_relays(new_relays, now, to_remove);
             }
+            Transition::SendTcpPayloadToNonResourceIp { .. } => todo!(),
+            Transition::SendTcpPayloadToCidrResource { .. } => todo!(),
+            Transition::SendTcpPayloadToDnsResource { .. } => todo!(),
         };
         state.advance(ref_state, &mut buffered_transmits);
 
@@ -825,10 +828,6 @@ fn make_request_packet(
     payload: u64,
 ) -> Result<IpPacket, IpVersionMismatch> {
     match protocol {
-        TransitionProtocol::Tcp {
-            src: sport,
-            dst: dport,
-        } => ip_packet::make::tcp_packet(src, dst, sport, dport, payload.to_be_bytes().to_vec()),
         TransitionProtocol::Udp {
             src: sport,
             dst: dport,

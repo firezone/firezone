@@ -438,6 +438,9 @@ impl ReferenceState {
                     state.client.exec_mut(|client| client.reset_connections());
                 }
             }
+            Transition::SendTcpPayloadToNonResourceIp { .. } => todo!(),
+            Transition::SendTcpPayloadToCidrResource { .. } => todo!(),
+            Transition::SendTcpPayloadToDnsResource { .. } => todo!(),
         };
 
         state
@@ -590,6 +593,9 @@ impl ReferenceState {
             }
             Transition::Idle => true,
             Transition::PartitionRelaysFromPortal => true,
+            Transition::SendTcpPayloadToNonResourceIp { .. } => todo!(),
+            Transition::SendTcpPayloadToCidrResource { .. } => todo!(),
+            Transition::SendTcpPayloadToDnsResource { .. } => todo!(),
         }
     }
 }

@@ -26,22 +26,47 @@ pub(crate) enum Transition {
     DeactivateResource(ResourceId),
     /// Client-side disable resource
     DisableResources(BTreeSet<ResourceId>),
-    /// Send an ICMP packet to non-resource IP.
+    /// Send an ICMP or UDP packet to non-resource IP.
     SendPacketToNonResourceIp {
         src: IpAddr,
         dst: IpAddr,
         protocol: TransitionProtocol,
         payload: u64,
     },
-    /// Send an ICMP packet to a CIDR resource.
+    /// Send an ICMP or UDP packet to a CIDR resource.
     SendPacketToCidrResource {
         src: IpAddr,
         dst: IpAddr,
         protocol: TransitionProtocol,
         payload: u64,
     },
-    /// Send an ICMP packet to a DNS resource.
+    /// Send an ICMP or UDP packet to a DNS resource.
     SendPacketToDnsResource {
+        src: IpAddr,
+        dst: DomainName,
+        #[derivative(Debug = "ignore")]
+        resolved_ip: sample::Selector,
+
+        protocol: TransitionProtocol,
+        payload: u64,
+    },
+
+    /// Send a TCP payload to non-resource IP.
+    SendTcpPayloadToNonResourceIp {
+        src: IpAddr,
+        dst: IpAddr,
+        protocol: TransitionProtocol,
+        payload: u64,
+    },
+    /// Send a TCP payload to a CIDR resource.
+    SendTcpPayloadToCidrResource {
+        src: IpAddr,
+        dst: IpAddr,
+        protocol: TransitionProtocol,
+        payload: u64,
+    },
+    /// Send a TCP payload to a DNS resource.
+    SendTcpPayloadToDnsResource {
         src: IpAddr,
         dst: DomainName,
         #[derivative(Debug = "ignore")]
@@ -89,7 +114,6 @@ pub(crate) enum Transition {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum TransitionProtocol {
-    Tcp { src: u16, dst: u16 },
     Udp { src: u16, dst: u16 },
     Icmp { seq: u16, identifier: u16 },
 }
@@ -98,16 +122,6 @@ impl Ord for TransitionProtocol {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
             (
-                TransitionProtocol::Tcp {
-                    src: src_a,
-                    dst: dst_a,
-                },
-                TransitionProtocol::Tcp {
-                    src: src_b,
-                    dst: dst_b,
-                },
-            )
-            | (
                 TransitionProtocol::Udp {
                     src: src_a,
                     dst: dst_a,
@@ -141,12 +155,6 @@ impl Ord for TransitionProtocol {
             }
             (TransitionProtocol::Icmp { .. }, _) => std::cmp::Ordering::Less,
             (TransitionProtocol::Udp { .. }, _) => std::cmp::Ordering::Greater,
-            (TransitionProtocol::Tcp { .. }, TransitionProtocol::Udp { .. }) => {
-                std::cmp::Ordering::Less
-            }
-            (TransitionProtocol::Tcp { .. }, TransitionProtocol::Icmp { .. }) => {
-                std::cmp::Ordering::Greater
-            }
         }
     }
 }
@@ -297,7 +305,6 @@ fn transition_protocol() -> impl Strategy<Value = TransitionProtocol> {
                     identifier: p2
                 }),
                 Just(TransitionProtocol::Udp { src: p1, dst: p2 }),
-                Just(TransitionProtocol::Tcp { src: p1, dst: p2 }),
             ]
         })
 }

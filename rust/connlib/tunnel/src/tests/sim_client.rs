@@ -952,17 +952,10 @@ fn request_to_transition_protocol_from_packet(packet: &IpPacket) -> Option<Trans
         }
     }
 
-    if let Some(tcp) = packet.as_tcp() {
-        return Some(TransitionProtocol::Tcp {
-            src: tcp.source_port(),
-            dst: tcp.destination_port(),
-        });
-    }
-
-    if let Some(tcp) = packet.as_udp() {
+    if let Some(udp) = packet.as_udp() {
         return Some(TransitionProtocol::Udp {
-            src: tcp.source_port(),
-            dst: tcp.destination_port(),
+            src: udp.source_port(),
+            dst: udp.destination_port(),
         });
     }
 
@@ -971,9 +964,6 @@ fn request_to_transition_protocol_from_packet(packet: &IpPacket) -> Option<Trans
 
 fn reply_to_transition_protocol_from_packet(packet: &IpPacket) -> Option<TransitionProtocol> {
     match request_to_transition_protocol_from_packet(packet) {
-        Some(TransitionProtocol::Tcp { src, dst }) => {
-            Some(TransitionProtocol::Tcp { src: dst, dst: src })
-        }
         Some(TransitionProtocol::Udp { src, dst }) => {
             Some(TransitionProtocol::Udp { src: dst, dst: src })
         }
