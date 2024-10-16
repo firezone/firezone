@@ -17,7 +17,8 @@ defmodule Web.Clients.Index do
         sortable_fields: [
           {:clients, :name},
           {:clients, :last_seen_at},
-          {:clients, :inserted_at}
+          {:clients, :inserted_at},
+          {:clients, :last_seen_user_agent}
         ],
         hide_filters: [
           :name
