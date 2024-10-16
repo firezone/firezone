@@ -387,6 +387,10 @@ impl ClientState {
             (dns::Transport::Udp { source }, Ok(message)) => {
                 tracing::trace!(%server, %qid, domain, "Received recursive DNS response");
 
+                if message.header().tc() {
+                    tracing::debug!(%server, domain, "Upstream DNS server had to truncate response");
+                }
+
                 self.try_queue_udp_dns_response(server, source, &message)?;
             }
             (dns::Transport::Udp { .. }, Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
@@ -413,27 +417,18 @@ impl ClientState {
         dst: SocketAddr,
         message: &Message<Vec<u8>>,
     ) -> anyhow::Result<()> {
-        // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
         let saddr = *self
             .dns_mapping
             .get_by_right(&DnsServer::from(from))
             .context("Unknown DNS server")?;
-        let sport = DNS_PORT;
 
-        if message.header().tc() {
-            let domain = message
-                .first_question()
-                .map(|q| q.into_qname())
-                .map(tracing::field::display);
-
-            tracing::debug!(server = %from, domain, "Upstream DNS server had to truncate response");
-        }
-
-        let daddr = dst.ip();
-        let dport = dst.port();
-
-        let ip_packet =
-            ip_packet::make::udp_packet(saddr, daddr, sport, dport, message.as_octets().to_vec())?;
+        let ip_packet = ip_packet::make::udp_packet(
+            saddr,
+            dst.ip(),
+            DNS_PORT,
+            dst.port(),
+            message.as_octets().to_vec(),
+        )?;
 
         self.buffered_packets.push_back(ip_packet);
 
