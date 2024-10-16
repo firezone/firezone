@@ -272,7 +272,7 @@ impl Io {
                     .dns_queries
                     .try_push(
                         async move {
-                            let tcp_socket = factory(&server)?;
+                            let tcp_socket = factory(&server)?; // TODO: Optimise this to reuse a TCP socket to the same resolver.
                             let mut tcp_stream = tcp_socket.connect(server).await?;
 
                             let query = query.message.into_octets();
