@@ -9,7 +9,9 @@ use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
 use hex_display::HexDisplayExt;
-use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf};
+use ip_packet::{
+    ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf, MAX_DATAGRAM_PAYLOAD,
+};
 use itertools::Itertools as _;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
@@ -1491,10 +1493,16 @@ pub struct EncryptBuffer {
 }
 
 impl EncryptBuffer {
-    pub fn new(len: usize) -> Self {
+    pub fn new() -> Self {
         Self {
-            inner: vec![0u8; len],
+            inner: vec![0u8; MAX_DATAGRAM_PAYLOAD], // TODO: Stack-allocate this?
         }
+    }
+}
+
+impl Default for EncryptBuffer {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
