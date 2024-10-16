@@ -143,13 +143,6 @@ impl Server {
         Ok(())
     }
 
-    /// Resets the socket associated with the given handle.
-    ///
-    /// Use this if you encountered an error while processing a previously emitted DNS query.
-    pub fn reset(&mut self, handle: SocketHandle) {
-        self.sockets.get_mut::<tcp::Socket>(handle.0).abort();
-    }
-
     /// Inform the server that time advanced.
     ///
     /// Typical for a sans-IO design, `handle_timeout` will work through all local buffers and process them as much as possible.
