@@ -463,20 +463,6 @@ iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)2> {:ok, token} = Domain
 ...
 ```
 
-## Apply Terraform changes without deploying new containers
-
-Switch to environment you want to apply changes to:
-
-```bash
-cd terraform/environments/staging
-```
-
-and apply changes:
-
-```bash
-terraform apply -var image_tag=$(terraform output -raw image_tag)
-```
-
 ## Connection to production Cloud SQL instance
 
 Install
@@ -502,7 +488,40 @@ token:
 gcloud auth application-default login
 ```
 
-## Viewing logs
+## Deploying
+
+### Apply Terraform changes without deploying new containers
+
+This can be helpful when you want to quickly iterate over Terraform configuration in staging environment, without
+having to merge for every single apply attempt.
+
+Switch to the staging environment:
+
+```bash
+cd terraform/environments/staging
+```
+
+and apply changes reusing previous container versions:
+
+```bash
+terraform apply -var image_tag=$(terraform output -raw image_tag)
+```
+
+### Deploying production
+
+Go to ["Deploy Production"](https://github.com/firezone/firezone/actions/workflows/deploy.yml) CI workflow and click "Run Workflow".
+
+1. In the form that appears, read the warning and check the checkbox next to it.
+2. The main branch is selected by default for deployment. To deploy a previous version, enter the commit SHA in the "Image tag to deploy" field.
+   The commit MUST be from the `main` branch.
+3. Click "Run Workflow" to start the process.
+
+The workflow will run all the way till the `deploy-production` step (which runs `terraform apply`) and wait for an approval from one of the project owners,
+message one of your colleagues to approve it.
+
+## Monitoring and Troubleshooting
+
+### Viewing logs
 
 Logs can be viewed via th [Logs Explorer](https://console.cloud.google.com/logs)
 in GCP, or via the `gcloud` CLI:
@@ -533,3 +552,50 @@ firezone-staging
 # For more info on the filter expression syntax, see:
 # https://cloud.google.com/logging/docs/view/logging-query-language
 ```
+
+Here is a helpful filter to show all errors and crashes:
+
+```
+resource.type="gce_instance"
+(severity>=ERROR OR "Kernel pid terminated" OR "Crash dump is being written")
+-protoPayload.@type="type.googleapis.com/google.cloud.audit.AuditLog"
+-logName:"/logs/GCEGuestAgent"
+-logName:"/logs/OSConfigAgent"
+-logName:"/logs/ops-agent-fluent-bit"
+```
+
+An alert will be sent to the `#feed-proudction` Slack channel when a new error is logged that matches this filter.
+You can also see all errors in [Google Cloud Error Reporting](https://console.cloud.google.com/errors?project=firezone-prod).
+
+Sometimes logs will not provide enough context to understand the issue. In those cases you can
+try to filter by the `trace` field to get more information. Copy the `trace` value from a log entry
+and use it in the filter:
+
+```
+resource.type="gce_instance"
+jsonPayload.trace:"<trace_id>"
+```
+
+Note: If you simply click "Show entries for this trace" in the log entry, it will
+automatically **append** the filter for you. You might want to remove rest of filters
+so you can see all logs for that trace.
+
+## Viewing metrics
+
+Metrics can be viewed via the [Metrics Explorer](https://console.cloud.google.com/monitoring/metrics-explorer) in GCP.
+
+## Viewing traces
+
+Traces can be viewed via the [Trace Explorer](https://console.cloud.google.com/traces/list) in GCP.
+They are mostly helpful for debugging Clients, Relays and Gateways.
+
+For example, if you want to find all traces for client management processes, you can use the following filter:
+
+```
+RootSpan: client.connect
+```
+
+Then you can drill down either by using a `client_id: <ID>` or an `account_id: <ID>`.
+
+Note: For WS API processes, the total trace duration might not be helpful since a single trace is defined for
+the entire connection lifespan.
