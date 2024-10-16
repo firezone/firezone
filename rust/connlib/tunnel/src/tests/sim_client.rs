@@ -12,6 +12,7 @@ use crate::{
     DomainName,
 };
 use crate::{proptest::*, ClientState};
+use anyhow::anyhow;
 use bimap::BiMap;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use domain::{
@@ -117,29 +118,7 @@ impl SimClient {
         packet: IpPacket,
         now: Instant,
     ) -> Option<snownet::Transmit<'static>> {
-        {
-            if let Some(udp) = packet.as_udp() {
-                if let Ok(message) = Message::from_slice(udp.payload()) {
-                    debug_assert!(
-                        !message.header().qr(),
-                        "every DNS message sent from the client should be a DNS query"
-                    );
-
-                    // Map back to upstream socket so we can assert on it correctly.
-                    let sentinel = SocketAddr::from((packet.destination(), udp.destination_port()));
-                    let upstream = self.upstream_dns_by_sentinel(&sentinel).unwrap();
-
-                    self.sent_dns_queries
-                        .insert((upstream, message.header().id()), packet.clone());
-                } else {
-                    let protocol = request_to_transition_protocol_from_packet(&packet)?;
-                    self.sent_request.insert(protocol, packet.clone());
-                }
-            } else {
-                let protocol = request_to_transition_protocol_from_packet(&packet)?;
-                self.sent_request.insert(protocol, packet.clone());
-            }
-        }
+        self.update_sent_requests(&packet).ok()?;
 
         let Some(enc_packet) = self.sut.handle_tun_input(packet, now, &mut self.enc_buffer) else {
             self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
@@ -147,6 +126,31 @@ impl SimClient {
         };
 
         Some(enc_packet.to_transmit(&self.enc_buffer).into_owned())
+    }
+
+    fn update_sent_requests(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
+        if let Some(udp) = packet.as_udp() {
+            if let Ok(message) = Message::from_slice(udp.payload()) {
+                debug_assert!(
+                    !message.header().qr(),
+                    "every DNS message sent from the client should be a DNS query"
+                );
+
+                // Map back to upstream socket so we can assert on it correctly.
+                let sentinel = SocketAddr::from((packet.destination(), udp.destination_port()));
+                let upstream = self.upstream_dns_by_sentinel(&sentinel).unwrap();
+
+                self.sent_dns_queries
+                    .insert((upstream, message.header().id()), packet.clone());
+
+                return Ok(());
+            }
+        }
+
+        let protocol = request_to_transition_protocol_from_packet(packet)
+            .ok_or(anyhow!("Unexpected packet protocol"))?;
+        self.sent_request.insert(protocol, packet.clone());
+        Ok(())
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
@@ -209,11 +213,10 @@ impl SimClient {
                 }
 
                 return;
-            } else if let Some(protocol) = reply_to_transition_protocol_from_packet(&packet) {
-                self.received_replies.insert(protocol, packet.clone());
-                return;
             }
-        } else if let Some(protocol) = reply_to_transition_protocol_from_packet(&packet) {
+        }
+
+        if let Some(protocol) = reply_to_transition_protocol_from_packet(&packet) {
             self.received_replies.insert(protocol, packet.clone());
             return;
         }
