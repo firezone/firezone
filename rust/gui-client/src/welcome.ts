@@ -1,6 +1,4 @@
-import "./tauri_stub.js";
-
-const invoke = window.__TAURI__.tauri.invoke;
+import { invoke } from "@tauri-apps/api/core";
 
 const signInBtn = <HTMLButtonElement>(
   document.getElementById("sign-in")
