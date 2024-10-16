@@ -250,13 +250,26 @@ impl StubResolver {
         self.dns_resources.values().contains(resource)
     }
 
-    /// Parses an incoming packet as a DNS query and decides how to respond to it
+    /// Processes the incoming DNS query.
     ///
-    /// Returns:
-    /// - `Ok(ControlFlow::Break)` if the packet was successfully parsed a DNS packet
-    /// - `Ok(ControlFlow::Continue)` if the packet isn't a DNS packet
-    /// - `Err()` if the packet was directed at our DNS resolver but processing failed
-    pub(crate) fn handle(&mut self, message: Message<&[u8]>) -> Result<ResolveStrategy> {
+    /// Any errors will result in an immediate `SERVFAIL` response.
+    pub(crate) fn handle(&mut self, message: Message<&[u8]>) -> ResolveStrategy {
+        match self.try_handle(message) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::trace!("Failed to handle DNS query: {e:#}");
+
+                let response = MessageBuilder::new_vec()
+                    .start_answer(&message, Rcode::SERVFAIL)
+                    .unwrap()
+                    .into_message();
+
+                ResolveStrategy::LocalResponse(response)
+            }
+        }
+    }
+
+    fn try_handle(&mut self, message: Message<&[u8]>) -> Result<ResolveStrategy> {
         anyhow::ensure!(
             !message.header().qr(),
             "Can only handle DNS queries, not responses"
@@ -743,7 +756,7 @@ mod tests {
             .unwrap();
         let message = builder.into_message();
 
-        let strategy = resolver.handle(message.for_slice_ref()).unwrap();
+        let strategy = resolver.try_handle(message.for_slice_ref()).unwrap();
 
         let ResolveStrategy::LocalResponse(response) = strategy else {
             panic!("Unexpected result: {strategy:?}")

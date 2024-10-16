@@ -602,7 +602,7 @@ impl ClientState {
         };
 
         match self.stub_resolver.handle(message) {
-            Ok(dns::ResolveStrategy::LocalResponse(response)) => {
+            dns::ResolveStrategy::LocalResponse(response) => {
                 self.buffered_packets.push_back(
                     ip_packet::make::udp_packet(
                         packet.destination(),
@@ -614,7 +614,7 @@ impl ClientState {
                     .expect("src and dst IPs come from the same packet"),
                 );
             }
-            Ok(dns::ResolveStrategy::Recurse) => {
+            dns::ResolveStrategy::Recurse => {
                 let query_id = message.header().id();
 
                 if self.should_forward_dns_query_to_gateway(upstream.ip()) {
@@ -634,9 +634,6 @@ impl ClientState {
 
                 self.buffered_dns_queries
                     .push_back(dns::RecursiveQuery::via_udp(source, upstream, message));
-            }
-            Err(e) => {
-                tracing::trace!(?packet, "Failed to handle DNS query: {e:#}");
             }
         }
 
