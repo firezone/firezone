@@ -4,7 +4,10 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice};
+use crate::{
+    codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice,
+    time::smol_now,
+};
 use anyhow::{anyhow, bail, Context as _, Result};
 use domain::{base::Message, dep::octseq::OctetsInto};
 use ip_packet::IpPacket;
@@ -217,9 +220,11 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             return;
         };
 
-        let result = self
-            .interface
-            .poll(self.smol_now(now), &mut self.device, &mut self.sockets);
+        let result = self.interface.poll(
+            smol_now(self.created_at, now),
+            &mut self.device,
+            &mut self.sockets,
+        );
 
         if result == PollResult::None && self.pending_queries_by_remote.is_empty() {
             return;
@@ -280,17 +285,11 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        let now = self.smol_now(self.last_now);
+        let now = smol_now(self.created_at, self.last_now);
 
         let poll_in = self.interface.poll_delay(now, &self.sockets)?;
 
         Some(self.last_now + Duration::from(poll_in))
-    }
-
-    fn smol_now(&self, now: Instant) -> smoltcp::time::Instant {
-        let seconds_since_startup = now.duration_since(self.created_at).as_secs();
-
-        smoltcp::time::Instant::from_secs(seconds_since_startup as i64)
     }
 
     fn sample_unique_ports(&mut self, num_ports: usize) -> Result<impl Iterator<Item = u16>> {
