@@ -15,4 +15,4 @@ async function sign_in() {
     });
 }
 
-signInBtn.addEventListener("click", (e) => sign_in());
+signInBtn.addEventListener("click", (_e) => sign_in());

@@ -1,6 +1,4 @@
-import "./tauri_stub.js";
-
-const invoke = window.__TAURI__.tauri.invoke;
+import { invoke } from "@tauri-apps/api/core";
 
 const cargoVersionSpan = <HTMLSpanElement>(
   document.getElementById("cargo-version")
@@ -9,8 +7,8 @@ const gitVersionSpan = <HTMLSpanElement>document.getElementById("git-version");
 
 function get_cargo_version() {
   invoke("get_cargo_version")
-    .then((cargoVersion: string) => {
-      cargoVersionSpan.innerText = cargoVersion;
+    .then((cargoVersion: unknown) => {
+      cargoVersionSpan.innerText = cargoVersion as string;
     })
     .catch((e: Error) => {
       cargoVersionSpan.innerText = "Unknown";
@@ -20,8 +18,8 @@ function get_cargo_version() {
 
 function get_git_version() {
   invoke("get_git_version")
-    .then((gitVersion: string) => {
-      gitVersionSpan.innerText = gitVersion;
+    .then((gitVersion: unknown) => {
+      gitVersionSpan.innerText = gitVersion as string;
     })
     .catch((e: Error) => {
       gitVersionSpan.innerText = "Unknown";

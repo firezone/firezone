@@ -2,7 +2,7 @@
   "build": {
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
-    "frontendDist": "../src"
+    "frontendDist": "../dist"
   },
   "bundle": {
     "active": true,
@@ -61,7 +61,7 @@
       {
         "label": "about",
         "title": "About Firezone",
-        "url": "about.html",
+        "url": "src/about.html",
         "fullscreen": false,
         "resizable": true,
         "width": 640,
@@ -71,7 +71,7 @@
       {
         "label": "settings",
         "title": "Settings",
-        "url": "settings.html",
+        "url": "src/settings.html",
         "fullscreen": false,
         "resizable": true,
         "width": 640,
@@ -81,7 +81,7 @@
       {
         "label": "welcome",
         "title": "Welcome",
-        "url": "welcome.html",
+        "url": "src/welcome.html",
         "fullscreen": false,
         "resizable": true,
         "width": 640,
