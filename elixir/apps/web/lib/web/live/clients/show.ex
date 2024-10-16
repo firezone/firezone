@@ -334,6 +334,30 @@ defmodule Web.Clients.Show do
         </.live_table>
       </:content>
     </.section>
+
+    <.danger_zone :if={is_nil(@client.deleted_at)}>
+      <:action>
+        <.button_with_confirmation
+          id="delete_client"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
+        >
+          <:dialog_title>Confirm deletion of client</:dialog_title>
+          <:dialog_content>
+            Deleting the client doesn't remove it from the device; it will be re-created with the same
+            hardware attributes upon the next sign-in, but the verification status won't carry over.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Client
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
+          Delete Client
+        </.button_with_confirmation>
+      </:action>
+    </.danger_zone>
     """
   end
 
@@ -411,6 +435,9 @@ defmodule Web.Clients.Show do
     {:noreply, socket}
   end
 
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
+
   def handle_event("verify_client", _params, socket) do
     {:ok, client} = Clients.verify_client(socket.assigns.client, socket.assigns.subject)
 
@@ -438,6 +465,14 @@ defmodule Web.Clients.Show do
     {:noreply, assign(socket, :client, client)}
   end
 
-  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
-    do: handle_live_table_event(event, params, socket)
+  def handle_event("delete", _params, socket) do
+    {:ok, _client} = Clients.delete_client(socket.assigns.client, socket.assigns.subject)
+
+    socket =
+      socket
+      |> put_flash(:info, "Client was deleted.")
+      |> push_navigate(to: ~p"/#{socket.assigns.account}/clients")
+
+    {:noreply, socket}
+  end
 end
