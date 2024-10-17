@@ -702,11 +702,16 @@ impl ClientState {
     fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
         self.dns_mapping = new_mapping;
         self.mangled_dns_queries.clear();
-        self.initialise_tcp_dns_client();
-        self.initialise_tcp_dns_server();
     }
 
     fn initialise_tcp_dns_client(&mut self) {
+        let Some(tun_config) = self.tun_config.as_ref() else {
+            return;
+        };
+
+        self.tcp_dns_client
+            .set_source_interface(tun_config.ip4, tun_config.ip6);
+
         let upstream_resolvers = self
             .dns_mapping
             .right_values()
@@ -1082,12 +1087,12 @@ impl ClientState {
         self.buffered_events
             .retain(|e| !matches!(e, ClientEvent::TunInterfaceUpdated(_)));
 
-        self.tcp_dns_client
-            .set_source_interface(new_tun_config.ip4, new_tun_config.ip6);
-        self.initialise_tcp_dns_client(); // Need to reset all TCP connections when our routes change in case CIDR resources got added / removed that will cause upstream DNS servers to route through a different gateway.
         self.tun_config = Some(new_tun_config.clone());
         self.buffered_events
             .push_back(ClientEvent::TunInterfaceUpdated(new_tun_config));
+
+        self.initialise_tcp_dns_client();
+        self.initialise_tcp_dns_server();
     }
 
     fn drain_node_events(&mut self) {
@@ -1396,8 +1401,8 @@ impl ClientState {
             ipv6_routes,
         };
 
-        self.maybe_update_tun_config(new_tun_config);
         self.set_dns_mapping(dns_mapping);
+        self.maybe_update_tun_config(new_tun_config);
     }
 
     pub fn update_relays(
