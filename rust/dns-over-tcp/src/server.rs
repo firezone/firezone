@@ -72,6 +72,21 @@ impl Server {
         &mut self,
         addresses: BTreeSet<SocketAddr>,
     ) {
+        let current_listen_endpoints = self
+            .listen_endpoints
+            .values()
+            .copied()
+            .collect::<BTreeSet<_>>();
+
+        if current_listen_endpoints == addresses {
+            tracing::debug!(
+                ?current_listen_endpoints,
+                "Already listening on this exact set of addresses"
+            );
+
+            return;
+        }
+
         assert!(NUM_CONCURRENT_CLIENTS > 0);
 
         let mut sockets =
