@@ -49,3 +49,6 @@ runs:
       # Currently the MSI does this and it's a little janky.
       run: Start-Process WebView2Installer.exe -ArgumentList "/install" -Wait
       shell: pwsh
+    - name: Create `rust/gui-client/dist`
+      run: mkdir "$GITHUB_WORKSPACE/rust/gui-client/dist"
+      shell: bash
