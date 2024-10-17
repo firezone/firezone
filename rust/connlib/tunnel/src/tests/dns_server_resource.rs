@@ -27,7 +27,7 @@ pub struct UdpDnsServerResource {
 impl TcpDnsServerResource {
     pub fn new(socket: SocketAddr, now: Instant) -> Self {
         let mut server = dns_over_tcp::Server::new(now);
-        server.set_listen_addresses::<5>(vec![socket]);
+        server.set_listen_addresses::<5>(BTreeSet::from([socket]));
 
         Self { server }
     }

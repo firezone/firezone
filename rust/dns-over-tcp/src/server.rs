@@ -70,7 +70,7 @@ impl Server {
     /// The constant configures, how many concurrent clients you would like to be able to serve per listen address.
     pub fn set_listen_addresses<const NUM_CONCURRENT_CLIENTS: usize>(
         &mut self,
-        addresses: Vec<SocketAddr>,
+        addresses: BTreeSet<SocketAddr>,
     ) {
         assert!(NUM_CONCURRENT_CLIENTS > 0);
 
