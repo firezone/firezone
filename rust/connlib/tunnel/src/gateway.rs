@@ -1,13 +1,9 @@
+use crate::messages::{
+    gateway::ResourceDescription, Answer, IceCredentials, ResolveRequest, SecretKey,
+};
 use crate::utils::earliest;
-use crate::{
-    messages::{gateway::ResourceDescription, Answer},
-    peer_store::PeerStore,
-};
-use crate::{
-    messages::{IceCredentials, ResolveRequest, SecretKey},
-    peer::ClientOnGateway,
-};
 use crate::{p2p_control, GatewayEvent};
+use crate::{peer::ClientOnGateway, peer_store::PeerStore};
 use anyhow::Context;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
@@ -412,11 +408,9 @@ impl GatewayState {
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
-        if let Some(transmit) = self.buffered_transmits.pop_front() {
-            return Some(transmit);
-        }
-
-        self.node.poll_transmit()
+        self.buffered_transmits
+            .pop_front()
+            .or_else(|| self.node.poll_transmit())
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
@@ -514,14 +508,6 @@ pub struct PendingSetupNatRequest {
 impl PendingSetupNatRequest {
     pub fn domain(&self) -> &DomainName {
         &self.domain
-    }
-
-    pub fn resource(&self) -> ResourceId {
-        self.resource
-    }
-
-    pub fn client(&self) -> ClientId {
-        self.client
     }
 }
 

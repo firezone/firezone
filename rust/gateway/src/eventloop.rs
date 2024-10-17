@@ -5,8 +5,8 @@ use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use firezone_tunnel::messages::gateway::{
-    ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages, IngressMessages,
-    RejectAccess,
+    AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
+    IngressMessages, RejectAccess, RequestConnection,
 };
 use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
 use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel, PendingSetupNatRequest};
@@ -33,8 +33,8 @@ static_assertions::const_assert!(
 
 #[derive(Debug, Clone)]
 enum ResolveTrigger {
-    RequestConnection(firezone_tunnel::messages::gateway::RequestConnection), // Deprecated
-    AllowAccess(firezone_tunnel::messages::gateway::AllowAccess),             // Deprecated
+    RequestConnection(RequestConnection), // Deprecated
+    AllowAccess(AllowAccess),             // Deprecated
     Refresh(DomainName, ClientId, ResourceId),
     SetupNat(PendingSetupNatRequest),
 }
@@ -344,7 +344,7 @@ impl Eventloop {
     pub fn accept_connection(
         &mut self,
         result: Result<Vec<IpAddr>, Timeout>,
-        req: firezone_tunnel::messages::gateway::RequestConnection,
+        req: RequestConnection,
     ) {
         let addresses = result
             .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}"))
@@ -390,11 +390,7 @@ impl Eventloop {
         );
     }
 
-    pub fn allow_access(
-        &mut self,
-        result: Result<Vec<IpAddr>, Timeout>,
-        req: firezone_tunnel::messages::gateway::AllowAccess,
-    ) {
+    pub fn allow_access(&mut self, result: Result<Vec<IpAddr>, Timeout>, req: AllowAccess) {
         let addresses = result
             .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
             .unwrap_or_default();
