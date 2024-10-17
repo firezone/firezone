@@ -285,7 +285,7 @@ pub(crate) fn run(
 
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);
-                    tracing::error!("This was unreachable in Tauri v1");
+                    // This was unreachable in Tauri v1
                     std::process::exit(exit_code);
                 });
                 Ok(())
