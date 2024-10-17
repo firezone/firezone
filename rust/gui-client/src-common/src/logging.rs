@@ -95,6 +95,7 @@ pub async fn clear_gui_logs() -> Result<()> {
 /// * `stem` - A directory containing all the log files inside the zip archive, to avoid creating a ["tar bomb"](https://www.linfo.org/tarbomb.html). This comes from the automatically-generated name of the archive, even if the user changes it to e.g. `logs.zip`
 pub async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     tracing::info!("Exporting logs to {path:?}");
+    let start = std::time::Instant::now();
     // Use a temp path so that if the export fails we don't end up with half a zip file
     let temp_path = path.with_extension(".zip-partial");
 
@@ -111,6 +112,7 @@ pub async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     })
     .await
     .context("Failed to join zip export task")??;
+    tracing::warn!(elapsed_s = start.elapsed().as_secs(), "Exported logs");
     Ok(())
 }
 

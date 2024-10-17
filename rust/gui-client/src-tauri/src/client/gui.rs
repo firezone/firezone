@@ -83,7 +83,6 @@ impl GuiIntegration for TauriIntegration {
     }
 
     fn set_tray_menu(&mut self, app_state: common::system_tray::AppState) -> Result<()> {
-        tracing::warn!("set_tray_menu");
         self.tray.update(app_state)
     }
 
@@ -167,6 +166,7 @@ pub(crate) fn run(
             settings::get_advanced_settings,
             crate::client::welcome::sign_in,
         ])
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .setup(move |app| {
@@ -292,7 +292,6 @@ pub(crate) fn run(
             };
 
             let result = setup_inner();
-            tracing::warn!(?result, "Ran setup_inner");
             setup_result_tx.send(result).expect("should be able to send setup result");
 
             Ok(())
@@ -322,7 +321,6 @@ pub(crate) fn run(
             &firezone_gui_client_common::system_tray::AppState::default().into_menu(),
         )?)
         .on_menu_event(|app, event| {
-            tracing::warn!("on_menu_event");
             let id = &event.id.0;
             tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
             let event = match serde_json::from_str::<TrayMenuEvent>(id) {
