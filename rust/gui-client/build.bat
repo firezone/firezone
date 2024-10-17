@@ -11,7 +11,7 @@ REM bundle JS
 call pnpm vite build
 
 REM Compile CSS
-call pnpm tailwindcss -i src\input.css -o dist\output.css
+call pnpm tailwindcss -i src\input.css -o src\output.css
 
 REM Compile Rust and bundle
 call pnpm tauri build

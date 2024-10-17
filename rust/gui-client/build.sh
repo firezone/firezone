@@ -12,7 +12,7 @@ cp node_modules/flowbite/dist/flowbite.min.js src
 pnpm tsc && pnpm vite build
 
 # Compile CSS
-pnpm tailwindcss -i src/input.css -o dist/output.css
+pnpm tailwindcss -i src/input.css -o src/output.css
 
 # Get rid of any existing debs, since we need to discover the path later
 rm -rf "$BUNDLES_DIR"
