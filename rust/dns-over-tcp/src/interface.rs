@@ -1,5 +1,5 @@
 use smoltcp::{
-    iface::{Config, Interface, Route},
+    iface::{Config, Interface},
     wire::{HardwareAddress, Ipv4Address, Ipv4Cidr, Ipv6Address, Ipv6Cidr},
 };
 
@@ -37,10 +37,14 @@ pub fn create_interface(device: &mut InMemoryDevice) -> Interface {
     });
 
     // Configure catch-all routes, meaning all packets given to `smoltcp` will be routed to our interface.
-    interface.routes_mut().update(|routes| {
-        routes.push(Route::new_ipv4_gateway(IP4_ADDR)).unwrap();
-        routes.push(Route::new_ipv6_gateway(IP6_ADDR)).unwrap();
-    });
+    interface
+        .routes_mut()
+        .add_default_ipv4_route(IP4_ADDR)
+        .expect("IPv4 default route should fit");
+    interface
+        .routes_mut()
+        .add_default_ipv6_route(IP6_ADDR)
+        .expect("IPv6 default route should fit");
 
     interface
 }

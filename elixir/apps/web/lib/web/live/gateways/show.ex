@@ -116,20 +116,15 @@ defmodule Web.Gateways.Show do
         >
           <:dialog_title>Confirm deletion of Gateway</:dialog_title>
           <:dialog_content>
-            <p>
-              Are you sure you want to delete this Gateway?
-            </p>
-            <p class="mt-4 text-sm">
-              Deleting the gateway does not remove it's access token so it can be re-created again,
-              revoke the token on the
-              <.link
-                navigate={~p"/#{@account}/sites/#{@gateway.group}"}
-                class={["font-medium", link_style()]}
-              >
-                site
-              </.link>
-              page if you want to prevent the gateway from connecting to the portal.
-            </p>
+            Deleting the gateway does not remove it's access token so it can be re-created again,
+            revoke the token on the
+            <.link
+              navigate={~p"/#{@account}/sites/#{@gateway.group}"}
+              class={["font-medium", link_style()]}
+            >
+              site
+            </.link>
+            page if you want to prevent the gateway from connecting to the portal.
           </:dialog_content>
           <:dialog_confirm_button>
             Delete Gateway
@@ -175,9 +170,9 @@ defmodule Web.Gateways.Show do
     {:ok, _gateway} = Gateways.delete_gateway(socket.assigns.gateway, socket.assigns.subject)
 
     socket =
-      push_navigate(socket,
-        to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway.group}"
-      )
+      socket
+      |> put_flash(:info, "Gateway was deleted.")
+      |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway.group}")
 
     {:noreply, socket}
   end

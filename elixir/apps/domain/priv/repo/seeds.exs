@@ -348,10 +348,57 @@ IO.puts("")
       name: "FZ User iPhone",
       external_id: Ecto.UUID.generate(),
       public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-      last_seen_user_agent: "iOS/12.7 (iPhone) connlib/0.7.412",
       identifier_for_vendor: "APPL-#{Ecto.UUID.generate()}"
     },
-    unprivileged_subject
+    %{
+      unprivileged_subject
+      | context: %{unprivileged_subject.context | user_agent: "iOS/12.7 (iPhone) connlib/0.7.412"}
+    }
+  )
+
+{:ok, _user_android_phone} =
+  Domain.Clients.upsert_client(
+    %{
+      name: "FZ User Android",
+      external_id: Ecto.UUID.generate(),
+      public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+      identifier_for_vendor: "GOOG-#{Ecto.UUID.generate()}"
+    },
+    %{
+      unprivileged_subject
+      | context: %{unprivileged_subject.context | user_agent: "Android/14 connlib/0.7.412"}
+    }
+  )
+
+{:ok, _user_windows_laptop} =
+  Domain.Clients.upsert_client(
+    %{
+      name: "FZ User Surface",
+      external_id: Ecto.UUID.generate(),
+      public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+      device_uuid: "WIN-#{Ecto.UUID.generate()}"
+    },
+    %{
+      unprivileged_subject
+      | context: %{
+          unprivileged_subject.context
+          | user_agent: "Windows/10.0.22631 connlib/0.7.412"
+        }
+    }
+  )
+
+{:ok, _user_linux_laptop} =
+  Domain.Clients.upsert_client(
+    %{
+      name: "FZ User Rendering Station",
+      external_id: Ecto.UUID.generate(),
+      public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+      device_uuid: "UB-#{Ecto.UUID.generate()}"
+    },
+    %{
+      unprivileged_subject
+      | context: %{unprivileged_subject.context | user_agent: "Ubuntu/22.4.0 connlib/0.7.412"}
+    }
   )
 
 {:ok, _admin_iphone} =
@@ -360,11 +407,13 @@ IO.puts("")
       name: "FZ Admin Laptop",
       external_id: Ecto.UUID.generate(),
       public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
-      last_seen_user_agent: "Mac OS/14.5 connlib/0.7.412",
       device_serial: "FVFHF246Q72Z",
       device_uuid: "#{Ecto.UUID.generate()}"
     },
-    admin_subject
+    %{
+      admin_subject
+      | context: %{admin_subject.context | user_agent: "Mac OS/14.5 connlib/0.7.412"}
+    }
   )
 
 IO.puts("Clients created")
