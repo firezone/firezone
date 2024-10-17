@@ -73,7 +73,7 @@ defmodule Web.Groups.Index do
           ordered_by={@order_by_table_id["groups"]}
           metadata={@groups_metadata}
         >
-          <:col :let={group} field={{:groups, :name}} label="name" class="w-2/4">
+          <:col :let={group} field={{:groups, :name}} label="name" class="w-3/12">
             <.group account={@account} group={group} />
 
             <span :if={Actors.group_deleted?(group)} class="text-xs text-neutral-100">
@@ -103,7 +103,7 @@ defmodule Web.Groups.Index do
               </:tail>
             </.peek>
           </:col>
-          <:col :let={group} field={{:groups, :inserted_at}} label="Created">
+          <:col :let={group} field={{:groups, :inserted_at}} label="Created" class="w-2/12">
             <.relative_datetime datetime={group.inserted_at} />
           </:col>
           <:empty>
