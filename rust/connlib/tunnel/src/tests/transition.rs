@@ -27,26 +27,9 @@ pub(crate) enum Transition {
     /// Client-side disable resource
     DisableResources(BTreeSet<ResourceId>),
     /// Send an ICMP or UDP packet to non-resource IP.
-    SendPacketToNonResourceIp {
+    SendPacket {
         src: IpAddr,
-        dst: IpAddr,
-        protocol: TransitionProtocol,
-        payload: u64,
-    },
-    /// Send an ICMP or UDP packet to a CIDR resource.
-    SendPacketToCidrResource {
-        src: IpAddr,
-        dst: IpAddr,
-        protocol: TransitionProtocol,
-        payload: u64,
-    },
-    /// Send an ICMP or UDP packet to a DNS resource.
-    SendPacketToDnsResource {
-        src: IpAddr,
-        dst: DomainName,
-        #[derivative(Debug = "ignore")]
-        resolved_ip: sample::Selector,
-
+        dst: Destination,
         protocol: TransitionProtocol,
         payload: u64,
     },
@@ -55,14 +38,16 @@ pub(crate) enum Transition {
     SendTcpPayloadToNonResourceIp {
         src: IpAddr,
         dst: IpAddr,
-        protocol: TransitionProtocol,
+        sport: u16,
+        dport: u16,
         payload: u64,
     },
     /// Send a TCP payload to a CIDR resource.
     SendTcpPayloadToCidrResource {
         src: IpAddr,
         dst: IpAddr,
-        protocol: TransitionProtocol,
+        sport: u16,
+        dport: u16,
         payload: u64,
     },
     /// Send a TCP payload to a DNS resource.
@@ -72,7 +57,8 @@ pub(crate) enum Transition {
         #[derivative(Debug = "ignore")]
         resolved_ip: sample::Selector,
 
-        protocol: TransitionProtocol,
+        sport: u16,
+        dport: u16,
         payload: u64,
     },
 
@@ -175,6 +161,15 @@ pub(crate) struct DnsQuery {
     pub(crate) dns_server: SocketAddr,
 }
 
+#[derive(Debug, Clone)]
+pub(crate) enum Destination {
+    DomainName {
+        resolved_ip: sample::Selector,
+        name: DomainName,
+    },
+    IpAddr(IpAddr),
+}
+
 pub(crate) fn packet_to_random_ip<I>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = I>,
@@ -188,14 +183,12 @@ where
         transition_protocol(),
         any::<u64>(),
     )
-        .prop_map(
-            |(src, dst, protocol, payload)| Transition::SendPacketToNonResourceIp {
-                src,
-                dst,
-                protocol,
-                payload,
-            },
-        )
+        .prop_map(|(src, dst, protocol, payload)| Transition::SendPacket {
+            src,
+            dst: Destination::IpAddr(dst),
+            protocol,
+            payload,
+        })
 }
 
 pub(crate) fn packet_to_cidr_resource<I>(
@@ -211,14 +204,12 @@ where
         src.prop_map(Into::into),
         any::<u64>(),
     )
-        .prop_map(
-            |(dst, protocol, src, payload)| Transition::SendPacketToCidrResource {
-                src,
-                dst,
-                protocol,
-                payload,
-            },
-        )
+        .prop_map(|(dst, protocol, src, payload)| Transition::SendPacket {
+            src,
+            dst: Destination::IpAddr(dst),
+            protocol,
+            payload,
+        })
 }
 
 pub(crate) fn packet_to_dns_resource<I>(
@@ -235,15 +226,17 @@ where
         any::<sample::Selector>(),
         any::<u64>(),
     )
-        .prop_map(|(dst, protocol, src, resolved_ip, payload)| {
-            Transition::SendPacketToDnsResource {
+        .prop_map(
+            |(dst, protocol, src, resolved_ip, payload)| Transition::SendPacket {
                 src,
-                dst,
-                resolved_ip,
+                dst: Destination::DomainName {
+                    name: dst,
+                    resolved_ip,
+                },
                 protocol,
                 payload,
-            }
-        })
+            },
+        )
 }
 
 /// Samples up to 5 DNS queries that will be sent concurrently into connlib.

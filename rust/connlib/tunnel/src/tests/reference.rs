@@ -35,13 +35,6 @@ pub(crate) struct ReferenceState {
     pub(crate) network: RoutingTable,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) enum ResourceDst {
-    Internet(IpAddr),
-    Cidr(IpAddr),
-    Dns(DomainName),
-}
-
 /// Implementation of our reference state machine.
 ///
 /// The logic in here represents what we expect the [`ClientState`] & [`GatewayState`] to do.
@@ -361,44 +354,18 @@ impl ReferenceState {
                     }
                 }
             }
-            Transition::SendPacketToNonResourceIp {
+            Transition::SendPacket {
                 src,
                 dst,
                 protocol,
                 payload,
             } => {
                 state.client.exec_mut(|client| {
-                    // If the Internet Resource is active, all packets are expected to be routed.
-                    if client.active_internet_resource().is_some() {
-                        client.on_icmp_packet_to_internet(*src, *dst, *protocol, *payload, |r| {
-                            state.portal.gateway_for_resource(r).copied()
-                        })
-                    }
-                });
-            }
-            Transition::SendPacketToCidrResource {
-                src,
-                dst,
-                protocol,
-                payload,
-            } => {
-                state.client.exec_mut(|client| {
-                    client.on_packet_to_cidr(*src, *dst, *protocol, *payload, |r| {
+                    client.on_packet(*src, dst.clone(), *protocol, *payload, |r| {
                         state.portal.gateway_for_resource(r).copied()
                     })
                 });
             }
-            Transition::SendPacketToDnsResource {
-                src,
-                dst,
-                protocol,
-                payload,
-                ..
-            } => state.client.exec_mut(|client| {
-                client.on_packet_to_dns(*src, dst.clone(), *protocol, *payload, |r| {
-                    state.portal.gateway_for_resource(r).copied()
-                })
-            }),
             Transition::UpdateSystemDnsServers(servers) => {
                 state
                     .client
@@ -464,43 +431,16 @@ impl ReferenceState {
                     .iter()
                     .all(|r| state.client.inner().has_resource(*r))
             }
-            Transition::SendPacketToNonResourceIp {
-                dst,
-                protocol,
-                payload,
-                ..
-            } => {
-                let is_valid_packet = state.client.inner().is_valid_packet(protocol, payload);
-                let is_cidr_resource = state.client.inner().cidr_resource_by_ip(*dst).is_some();
-
-                is_valid_packet && !is_cidr_resource
-            }
-            Transition::SendPacketToCidrResource {
-                protocol,
-                dst,
-                payload,
-                ..
-            } => {
-                let ref_client = state.client.inner();
-                let Some(rid) = ref_client.cidr_resource_by_ip(*dst) else {
-                    return false;
-                };
-                let Some(gateway) = state.portal.gateway_for_resource(rid) else {
-                    return false;
-                };
-
-                ref_client.is_valid_packet(protocol, payload)
-                    && state.gateways.contains_key(gateway)
-            }
-            Transition::SendPacketToDnsResource {
-                protocol,
-                dst,
+            Transition::SendPacket {
                 src,
+                dst: Destination::DomainName { name, .. },
+                protocol,
                 payload,
                 ..
             } => {
                 let ref_client = state.client.inner();
-                let Some(resource) = ref_client.dns_resource_by_domain(dst) else {
+                let Some(resource) = ref_client.dns_resource_by_domain(name) else {
+                    // TODO: should we allow sending to dns names that aren't resources here?
                     return false;
                 };
                 let Some(gateway) = state.portal.gateway_for_resource(resource) else {
@@ -508,10 +448,33 @@ impl ReferenceState {
                 };
 
                 ref_client.is_valid_packet(protocol, payload)
-                    && ref_client.dns_records.get(dst).is_some_and(|r| match src {
+                    && ref_client.dns_records.get(name).is_some_and(|r| match src {
                         IpAddr::V4(_) => r.contains(&Rtype::A),
                         IpAddr::V6(_) => r.contains(&Rtype::AAAA),
                     })
+                    && state.gateways.contains_key(gateway)
+            }
+            Transition::SendPacket {
+                dst: Destination::IpAddr(dst),
+                protocol,
+                payload,
+                ..
+            } => {
+                let ref_client = state.client.inner();
+
+                if !ref_client.is_valid_packet(protocol, payload) {
+                    return false;
+                }
+
+                let Some(rid) = ref_client.cidr_resource_by_ip(*dst) else {
+                    // As long as the packet is valid it's always valid to send to a non-resource
+                    return true;
+                };
+                let Some(gateway) = state.portal.gateway_for_resource(rid) else {
+                    return false;
+                };
+
+                ref_client.is_valid_packet(protocol, payload)
                     && state.gateways.contains_key(gateway)
             }
             Transition::UpdateSystemDnsServers(servers) => {

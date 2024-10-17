@@ -1,9 +1,9 @@
 use super::{
-    reference::{private_key, PrivateKey, ResourceDst},
+    reference::{private_key, PrivateKey},
     sim_net::{any_ip_stack, any_port, host, Host},
     sim_relay::{map_explode, SimRelay},
     strategies::latency,
-    transition::{DnsQuery, TransitionProtocol},
+    transition::{Destination, DnsQuery, TransitionProtocol},
     QueryId,
 };
 use crate::{
@@ -309,7 +309,7 @@ pub struct RefClient {
     /// The expected ICMP handshakes.
     #[derivative(Debug = "ignore")]
     pub(crate) expected_handshakes:
-        BTreeMap<GatewayId, BTreeMap<u64, (ResourceDst, TransitionProtocol)>>,
+        BTreeMap<GatewayId, BTreeMap<u64, (Destination, TransitionProtocol)>>,
     /// The expected DNS handshakes.
     #[derivative(Debug = "ignore")]
     pub(crate) expected_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
@@ -448,96 +448,15 @@ impl RefClient {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    pub(crate) fn on_icmp_packet_to_internet(
+    pub(crate) fn on_packet(
         &mut self,
         src: IpAddr,
-        dst: IpAddr,
+        dst: Destination,
         protocol: TransitionProtocol,
         payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
     ) {
-        tracing::Span::current().record("dst", tracing::field::display(dst));
-
-        // Second, if we are not yet connected, check if we have a resource for this IP.
-        let Some(rid) = self.active_internet_resource() else {
-            tracing::debug!("No internet resource");
-            return;
-        };
-        tracing::Span::current().record("resource", tracing::field::display(rid));
-
-        let Some(gateway) = gateway_by_resource(rid) else {
-            tracing::error!("No gateway for resource");
-            return;
-        };
-
-        if self.is_connected_to_internet(rid) && self.is_tunnel_ip(src) {
-            tracing::debug!("Connected to Internet resource, expecting packet to be routed");
-            self.expected_handshakes
-                .entry(gateway)
-                .or_default()
-                .insert(payload, (ResourceDst::Internet(dst), protocol));
-            return;
-        }
-
-        // If we have a resource, the first packet will initiate a connection to the gateway.
-        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connected_internet_resource = true;
-    }
-
-    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    pub(crate) fn on_packet_to_cidr(
-        &mut self,
-        src: IpAddr,
-        dst: IpAddr,
-        protocol: TransitionProtocol,
-        payload: u64,
-        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
-    ) {
-        tracing::Span::current().record("dst", tracing::field::display(dst));
-
-        // Second, if we are not yet connected, check if we have a resource for this IP.
-        let Some(rid) = self.cidr_resource_by_ip(dst) else {
-            tracing::debug!("No resource corresponds to IP");
-            return;
-        };
-        tracing::Span::current().record("resource", tracing::field::display(rid));
-
-        if self.disabled_resources.contains(&rid) {
-            return;
-        }
-
-        let Some(gateway) = gateway_by_resource(rid) else {
-            tracing::error!("No gateway for resource");
-            return;
-        };
-
-        if self.is_connected_to_internet_or_cidr(rid) && self.is_tunnel_ip(src) {
-            tracing::debug!("Connected to CIDR resource, expecting packet to be routed");
-            self.expected_handshakes
-                .entry(gateway)
-                .or_default()
-                .insert(payload, (ResourceDst::Cidr(dst), protocol));
-            return;
-        }
-
-        // If we have a resource, the first packet will initiate a connection to the gateway.
-        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        self.connect_to_internet_or_cidr_resource(rid, gateway);
-    }
-
-    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    pub(crate) fn on_packet_to_dns(
-        &mut self,
-        src: IpAddr,
-        dst: DomainName,
-        protocol: TransitionProtocol,
-        payload: u64,
-        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
-    ) {
-        tracing::Span::current().record("dst", tracing::field::display(&dst));
-
-        let Some(resource) = self.dns_resource_by_domain(&dst) else {
-            tracing::debug!("No resource corresponds to IP");
+        let Some(resource) = self.resource(&dst) else {
             return;
         };
 
@@ -548,28 +467,40 @@ impl RefClient {
             return;
         };
 
-        if self
-            .connected_dns_resources
-            .contains(&(resource, dst.clone()))
-            && self.is_tunnel_ip(src)
-        {
+        if self.is_connected_to_resource(resource, &dst) && self.is_tunnel_ip(src) {
             tracing::debug!("Connected to DNS resource, expecting packet to be routed");
             self.expected_handshakes
                 .entry(gateway)
                 .or_default()
-                .insert(payload, (ResourceDst::Dns(dst), protocol));
+                .insert(payload, (dst, protocol));
             return;
         }
 
-        debug_assert!(
-            self.dns_records.iter().any(|(name, _)| name == &dst),
-            "Should only sample ICMPs to domains that we resolved"
-        );
+        if let Destination::DomainName { name: dst, .. } = &dst {
+            debug_assert!(
+                self.dns_records.iter().any(|(name, _)| name == dst),
+                "Should only sample ICMPs to domains that we resolved"
+            );
+        }
 
         tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-        if !self.disabled_resources.contains(&resource) {
-            self.connected_dns_resources.insert((resource, dst));
-            self.connected_gateways.insert(gateway);
+        self.connect_to_resource(resource, dst, gateway);
+    }
+
+    fn connect_to_resource(
+        &mut self,
+        resource: ResourceId,
+        destination: Destination,
+        gateway: GatewayId,
+    ) {
+        match destination {
+            Destination::DomainName { name, .. } => {
+                if !self.disabled_resources.contains(&resource) {
+                    self.connected_dns_resources.insert((resource, name));
+                    self.connected_gateways.insert(gateway);
+                }
+            }
+            Destination::IpAddr(_) => self.connect_to_internet_or_cidr_resource(resource, gateway),
         }
     }
 
@@ -622,6 +553,20 @@ impl RefClient {
             .collect_vec()
     }
 
+    fn is_connected_to_resource(&self, resource: ResourceId, destination: &Destination) -> bool {
+        if self.is_connected_to_internet_or_cidr(resource) {
+            return true;
+        }
+
+        let Destination::DomainName { name, .. } = destination else {
+            return false;
+        };
+
+        self.connected_dns_resources
+            .get(&(resource, name.clone()))
+            .is_some()
+    }
+
     fn is_connected_to_internet(&self, id: ResourceId) -> bool {
         self.active_internet_resource() == Some(id) && self.connected_internet_resource
     }
@@ -648,6 +593,23 @@ impl RefClient {
         }
 
         (is_known_host || is_dns_resource) && is_suppported_type
+    }
+
+    fn resource(&self, destination: &Destination) -> Option<ResourceId> {
+        match destination {
+            Destination::DomainName { name, .. } => {
+                if let Some(id) = self.dns_resource_by_domain(name) {
+                    return Some(id);
+                }
+            }
+            Destination::IpAddr(addr) => {
+                if let Some(id) = self.cidr_resource_by_ip(*addr) {
+                    return Some(id);
+                }
+            }
+        }
+
+        self.active_internet_resource()
     }
 
     pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {

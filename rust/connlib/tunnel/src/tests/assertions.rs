@@ -1,8 +1,8 @@
 use super::{
     sim_client::{RefClient, SimClient},
     sim_gateway::SimGateway,
+    transition::Destination,
 };
-use crate::tests::reference::ResourceDst;
 use connlib_model::{DomainName, GatewayId};
 use ip_packet::IpPacket;
 use itertools::Itertools;
@@ -86,14 +86,14 @@ pub(crate) fn assert_icmp_packets_properties(
             }
 
             match resource_dst {
-                ResourceDst::Cidr(resource_dst) => {
+                Destination::IpAddr(resource_dst) => {
                     assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
                 }
-                ResourceDst::Dns(domain) => {
+                Destination::DomainName { name, .. } => {
                     assert_destination_is_dns_resource(
                         gateway_received_request,
                         global_dns_records,
-                        domain,
+                        name,
                     );
 
                     assert_proxy_ip_mapping_is_stable(
@@ -101,9 +101,6 @@ pub(crate) fn assert_icmp_packets_properties(
                         gateway_received_request,
                         &mut mapping,
                     )
-                }
-                ResourceDst::Internet(resource_dst) => {
-                    assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
                 }
             }
         }

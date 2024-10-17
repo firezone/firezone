@@ -5,7 +5,7 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
-use super::transition::{DnsQuery, TransitionProtocol};
+use super::transition::{Destination, DnsQuery, TransitionProtocol};
 use crate::client::Resource;
 use crate::dns::{self, is_subdomain};
 use crate::gateway::DnsResourceNatEntry;
@@ -135,44 +135,14 @@ impl TunnelTest {
             Transition::DisableResources(resources) => state
                 .client
                 .exec_mut(|c| c.sut.set_disabled_resources(resources)),
-            Transition::SendPacketToNonResourceIp {
+            Transition::SendPacket {
                 src,
                 dst,
                 protocol,
                 payload,
-            }
-            | Transition::SendPacketToCidrResource {
-                src,
-                dst,
-                protocol,
-                payload,
-            } => {
-                let packet = make_request_packet(src, dst, protocol, payload).unwrap();
-
-                let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
-
-                buffered_transmits.push_from(transmit, &state.client, now);
-            }
-            Transition::SendPacketToDnsResource {
-                src,
-                dst,
-                protocol,
-                payload,
-                resolved_ip,
                 ..
             } => {
-                let available_ips = state
-                    .client
-                    .inner()
-                    .dns_records
-                    .get(&dst)
-                    .unwrap()
-                    .iter()
-                    .filter(|ip| match ip {
-                        IpAddr::V4(_) => src.is_ipv4(),
-                        IpAddr::V6(_) => src.is_ipv6(),
-                    });
-                let dst = *resolved_ip.select(available_ips);
+                let dst = address_from_destination(&dst, &state, &src);
 
                 let packet = make_request_packet(src, dst, protocol, payload).unwrap();
 
@@ -818,6 +788,26 @@ impl TunnelTest {
             gateway.exec_mut(|g| g.update_relays(to_remove.iter().copied(), online.iter(), now));
         }
         self.relays = online; // Override all relays.
+    }
+}
+
+fn address_from_destination(destination: &Destination, state: &TunnelTest, src: &IpAddr) -> IpAddr {
+    match destination {
+        Destination::DomainName { resolved_ip, name } => {
+            let available_ips = state
+                .client
+                .inner()
+                .dns_records
+                .get(name)
+                .unwrap()
+                .iter()
+                .filter(|ip| match ip {
+                    IpAddr::V4(_) => src.is_ipv4(),
+                    IpAddr::V6(_) => src.is_ipv6(),
+                });
+            *resolved_ip.select(available_ips)
+        }
+        Destination::IpAddr(addr) => *addr,
     }
 }
 
