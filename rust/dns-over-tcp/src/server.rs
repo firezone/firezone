@@ -70,8 +70,23 @@ impl Server {
     /// The constant configures, how many concurrent clients you would like to be able to serve per listen address.
     pub fn set_listen_addresses<const NUM_CONCURRENT_CLIENTS: usize>(
         &mut self,
-        addresses: Vec<SocketAddr>,
+        addresses: BTreeSet<SocketAddr>,
     ) {
+        let current_listen_endpoints = self
+            .listen_endpoints
+            .values()
+            .copied()
+            .collect::<BTreeSet<_>>();
+
+        if current_listen_endpoints == addresses {
+            tracing::debug!(
+                ?current_listen_endpoints,
+                "Already listening on this exact set of addresses"
+            );
+
+            return;
+        }
+
         assert!(NUM_CONCURRENT_CLIENTS > 0);
 
         let mut sockets =
@@ -141,13 +156,6 @@ impl Server {
             .context("Failed to write DNS response")?;
 
         Ok(())
-    }
-
-    /// Resets the socket associated with the given handle.
-    ///
-    /// Use this if you encountered an error while processing a previously emitted DNS query.
-    pub fn reset(&mut self, handle: SocketHandle) {
-        self.sockets.get_mut::<tcp::Socket>(handle.0).abort();
     }
 
     /// Inform the server that time advanced.

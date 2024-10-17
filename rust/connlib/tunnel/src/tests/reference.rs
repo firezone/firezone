@@ -345,6 +345,10 @@ impl ReferenceState {
                             if connected_resources.is_empty() {
                                 connected_resources.insert(resource);
                             }
+                            // TCP has retries so we will also be connected to those for sure.
+                            if query.transport == DnsTransport::Tcp {
+                                connected_resources.insert(resource);
+                            }
                         }
 
                         continue;

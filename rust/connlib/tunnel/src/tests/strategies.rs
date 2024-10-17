@@ -115,6 +115,9 @@ pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
             .prop_filter("must not be in IPv4 resources range", |ip| {
                 !crate::client::IPV4_RESOURCES.contains(*ip)
             })
+            .prop_filter("must be addressable IP", |ip| {
+                !ip.is_unspecified() && !ip.is_multicast() && !ip.is_broadcast()
+            })
             .prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
@@ -125,6 +128,9 @@ pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
             })
             .prop_filter("must not be in IPv6 resources range", |ip| {
                 !crate::client::IPV6_RESOURCES.contains(*ip)
+            })
+            .prop_filter("must be addressable IP", |ip| {
+                !ip.is_unspecified() && !ip.is_multicast()
             })
             .prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,

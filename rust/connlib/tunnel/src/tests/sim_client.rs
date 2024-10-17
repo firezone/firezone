@@ -3,7 +3,7 @@ use super::{
     sim_net::{any_ip_stack, any_port, host, Host},
     sim_relay::{map_explode, SimRelay},
     strategies::latency,
-    transition::DnsQuery,
+    transition::{DnsQuery, DnsTransport},
     IcmpIdentifier, IcmpSeq, QueryId,
 };
 use crate::{
@@ -15,7 +15,7 @@ use crate::{proptest::*, ClientState};
 use bimap::BiMap;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use domain::{
-    base::{Message, Rtype, ToName},
+    base::{iana::Opcode, Message, MessageBuilder, Question, Rtype, ToName},
     rdata::AllRecordData,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -44,34 +44,45 @@ pub(crate) struct SimClient {
     pub(crate) dns_records: HashMap<DomainName, Vec<IpAddr>>,
 
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
-    pub(crate) dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+    dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
     pub(crate) ipv4_routes: BTreeSet<Ipv4Network>,
     pub(crate) ipv6_routes: BTreeSet<Ipv6Network>,
 
-    pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket>,
-    pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket>,
+    pub(crate) sent_udp_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket>,
+    pub(crate) received_udp_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket>,
+
+    pub(crate) sent_tcp_dns_queries: HashSet<(SocketAddr, QueryId)>,
+    pub(crate) received_tcp_dns_responses: BTreeSet<(SocketAddr, QueryId)>,
 
     pub(crate) sent_icmp_requests: HashMap<(u16, u16), IpPacket>,
     pub(crate) received_icmp_replies: BTreeMap<(u16, u16), IpPacket>,
+
+    pub(crate) tcp_dns_client: dns_over_tcp::Client,
 
     enc_buffer: EncryptBuffer,
 }
 
 impl SimClient {
-    pub(crate) fn new(id: ClientId, sut: ClientState) -> Self {
+    pub(crate) fn new(id: ClientId, sut: ClientState, now: Instant) -> Self {
+        let mut tcp_dns_client = dns_over_tcp::Client::new(now, [0u8; 32]);
+        tcp_dns_client.set_source_interface(Ipv4Addr::LOCALHOST, Ipv6Addr::LOCALHOST);
+
         Self {
             id,
             sut,
             dns_records: Default::default(),
             dns_by_sentinel: Default::default(),
-            sent_dns_queries: Default::default(),
-            received_dns_responses: Default::default(),
+            sent_udp_dns_queries: Default::default(),
+            received_udp_dns_responses: Default::default(),
+            sent_tcp_dns_queries: Default::default(),
+            received_tcp_dns_responses: Default::default(),
             sent_icmp_requests: Default::default(),
             received_icmp_replies: Default::default(),
             enc_buffer: Default::default(),
             ipv4_routes: Default::default(),
             ipv6_routes: Default::default(),
+            tcp_dns_client,
         }
     }
 
@@ -80,36 +91,85 @@ impl SimClient {
         self.dns_by_sentinel.right_values().copied().collect()
     }
 
+    pub(crate) fn set_new_dns_servers(&mut self, mapping: BiMap<IpAddr, SocketAddr>) {
+        if self.dns_by_sentinel != mapping {
+            self.tcp_dns_client
+                .set_resolvers(
+                    mapping
+                        .left_values()
+                        .map(|ip| SocketAddr::new(*ip, 53))
+                        .collect(),
+                )
+                .unwrap();
+        }
+
+        self.dns_by_sentinel = mapping;
+    }
+
+    pub(crate) fn dns_mapping(&self) -> &BiMap<IpAddr, SocketAddr> {
+        &self.dns_by_sentinel
+    }
+
     pub(crate) fn send_dns_query_for(
         &mut self,
         domain: DomainName,
         r_type: Rtype,
         query_id: u16,
-        dns_server: SocketAddr,
+        upstream: SocketAddr,
+        dns_transport: DnsTransport,
         now: Instant,
     ) -> Option<Transmit<'static>> {
-        let Some(dns_server) = self.dns_by_sentinel.get_by_right(&dns_server).copied() else {
-            tracing::error!(%dns_server, "Unknown DNS server");
+        let Some(sentinel) = self.dns_by_sentinel.get_by_right(&upstream).copied() else {
+            tracing::error!(%upstream, "Unknown DNS server");
             return None;
         };
 
-        tracing::debug!(%dns_server, %domain, "Sending DNS query");
+        tracing::debug!(%sentinel, %domain, "Sending DNS query");
 
         let src = self
             .sut
-            .tunnel_ip_for(dns_server)
+            .tunnel_ip_for(sentinel)
             .expect("tunnel should be initialised");
 
-        let packet = ip_packet::make::dns_query(
-            domain,
-            r_type,
-            SocketAddr::new(src, 9999), // An application would pick a random source port that is free.
-            SocketAddr::new(dns_server, 53),
-            query_id,
-        )
-        .unwrap();
+        // Create the DNS query message
+        let mut msg_builder = MessageBuilder::new_vec();
 
-        self.encapsulate(packet, now)
+        msg_builder.header_mut().set_opcode(Opcode::QUERY);
+        msg_builder.header_mut().set_rd(true);
+        msg_builder.header_mut().set_id(query_id);
+
+        // Create the query
+        let mut question_builder = msg_builder.question();
+        question_builder
+            .push(Question::new_in(domain, r_type))
+            .unwrap();
+
+        let message = question_builder.into_message();
+
+        match dns_transport {
+            DnsTransport::Udp => {
+                let packet = ip_packet::make::udp_packet(
+                    src,
+                    sentinel,
+                    9999, // An application would pick a free source port.
+                    53,
+                    message.as_octets().to_vec(),
+                )
+                .unwrap();
+
+                self.sent_udp_dns_queries
+                    .insert((upstream, query_id), packet.clone());
+                self.encapsulate(packet, now)
+            }
+            DnsTransport::Tcp => {
+                self.tcp_dns_client
+                    .send_query(SocketAddr::new(sentinel, 53), message)
+                    .unwrap();
+                self.sent_tcp_dns_queries.insert((upstream, query_id));
+
+                None
+            }
+        }
     }
 
     pub(crate) fn encapsulate(
@@ -128,24 +188,6 @@ impl SimClient {
             if let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type() {
                 self.sent_icmp_requests
                     .insert((echo.seq, echo.id), packet.clone());
-            }
-        }
-
-        {
-            if let Some(udp) = packet.as_udp() {
-                if let Ok(message) = Message::from_slice(udp.payload()) {
-                    debug_assert!(
-                        !message.header().qr(),
-                        "every DNS message sent from the client should be a DNS query"
-                    );
-
-                    // Map back to upstream socket so we can assert on it correctly.
-                    let sentinel = SocketAddr::from((packet.destination(), udp.destination_port()));
-                    let upstream = self.upstream_dns_by_sentinel(&sentinel).unwrap();
-
-                    self.sent_dns_queries
-                        .insert((upstream, message.header().id()), packet.clone());
-                }
             }
         }
 
@@ -191,6 +233,11 @@ impl SimClient {
             }
         }
 
+        if self.tcp_dns_client.accepts(&packet) {
+            self.tcp_dns_client.handle_inbound(packet);
+            return;
+        }
+
         if let Some(udp) = packet.as_udp() {
             if udp.source_port() == 53 {
                 let message = Message::from_slice(udp.payload())
@@ -203,36 +250,9 @@ impl SimClient {
                     return;
                 };
 
-                self.received_dns_responses
+                self.received_udp_dns_responses
                     .insert((upstream, message.header().id()), packet.clone());
-
-                for record in message.answer().unwrap() {
-                    let record = record.unwrap();
-                    let domain = record.owner().to_name();
-
-                    #[expect(clippy::wildcard_enum_match_arm)]
-                    let ip = match record
-                        .into_any_record::<AllRecordData<_, _>>()
-                        .unwrap()
-                        .data()
-                    {
-                        AllRecordData::A(a) => IpAddr::from(a.addr()),
-                        AllRecordData::Aaaa(aaaa) => IpAddr::from(aaaa.addr()),
-                        AllRecordData::Ptr(_) => {
-                            continue;
-                        }
-                        unhandled => {
-                            panic!("Unexpected record data: {unhandled:?}")
-                        }
-                    };
-
-                    self.dns_records.entry(domain).or_default().push(ip);
-                }
-
-                // Ensure all IPs are always sorted.
-                for ips in self.dns_records.values_mut() {
-                    ips.sort()
-                }
+                self.handle_dns_response(message);
 
                 return;
             }
@@ -258,6 +278,36 @@ impl SimClient {
         let socket = self.dns_by_sentinel.get_by_left(&sentinel.ip())?;
 
         Some(*socket)
+    }
+
+    pub(crate) fn handle_dns_response(&mut self, message: &Message<[u8]>) {
+        for record in message.answer().unwrap() {
+            let record = record.unwrap();
+            let domain = record.owner().to_name();
+
+            #[expect(clippy::wildcard_enum_match_arm)]
+            let ip = match record
+                .into_any_record::<AllRecordData<_, _>>()
+                .unwrap()
+                .data()
+            {
+                AllRecordData::A(a) => IpAddr::from(a.addr()),
+                AllRecordData::Aaaa(aaaa) => IpAddr::from(aaaa.addr()),
+                AllRecordData::Ptr(_) => {
+                    continue;
+                }
+                unhandled => {
+                    panic!("Unexpected record data: {unhandled:?}")
+                }
+            };
+
+            self.dns_records.entry(domain).or_default().push(ip);
+        }
+
+        // Ensure all IPs are always sorted.
+        for ips in self.dns_records.values_mut() {
+            ips.sort()
+        }
     }
 }
 
@@ -327,17 +377,20 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     pub(crate) expected_icmp_handshakes:
         BTreeMap<GatewayId, BTreeMap<u64, (ResourceDst, IcmpSeq, IcmpIdentifier)>>,
-    /// The expected DNS handshakes.
+    /// The expected UDP DNS handshakes.
     #[derivative(Debug = "ignore")]
-    pub(crate) expected_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
+    pub(crate) expected_udp_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
+    /// The expected TCP DNS handshakes.
+    #[derivative(Debug = "ignore")]
+    pub(crate) expected_tcp_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
 }
 
 impl RefClient {
     /// Initialize the [`ClientState`].
     ///
     /// This simulates receiving the `init` message from the portal.
-    pub(crate) fn init(self) -> SimClient {
-        let mut client_state = ClientState::new(self.known_hosts, self.key.0); // Cheating a bit here by reusing the key as seed.
+    pub(crate) fn init(self, now: Instant) -> SimClient {
+        let mut client_state = ClientState::new(self.known_hosts, self.key.0, now); // Cheating a bit here by reusing the key as seed.
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
@@ -345,7 +398,7 @@ impl RefClient {
         });
         client_state.update_system_resolvers(self.system_dns_resolvers.clone());
 
-        SimClient::new(self.id, client_state)
+        SimClient::new(self.id, client_state, now)
     }
 
     pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
@@ -624,8 +677,16 @@ impl RefClient {
             .or_default()
             .insert(query.r_type);
 
-        self.expected_dns_handshakes
-            .push_back((query.dns_server, query.query_id));
+        match query.transport {
+            DnsTransport::Udp => {
+                self.expected_udp_dns_handshakes
+                    .push_back((query.dns_server, query.query_id));
+            }
+            DnsTransport::Tcp => {
+                self.expected_tcp_dns_handshakes
+                    .push_back((query.dns_server, query.query_id));
+            }
+        }
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Network> {
@@ -930,7 +991,8 @@ fn ref_client(
                     connected_dns_resources: Default::default(),
                     connected_internet_resource: Default::default(),
                     expected_icmp_handshakes: Default::default(),
-                    expected_dns_handshakes: Default::default(),
+                    expected_udp_dns_handshakes: Default::default(),
+                    expected_tcp_dns_handshakes: Default::default(),
                     disabled_resources: Default::default(),
                     resources: Default::default(),
                     ipv4_routes: Default::default(),

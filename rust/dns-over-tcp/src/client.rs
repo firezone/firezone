@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -14,7 +14,7 @@ use ip_packet::IpPacket;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use smoltcp::{
     iface::{Interface, PollResult, SocketSet},
-    socket::tcp::{self, Socket},
+    socket::tcp,
 };
 
 /// A sans-io DNS-over-TCP client.
@@ -33,7 +33,7 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     source_ips: Option<(Ipv4Addr, Ipv6Addr)>,
 
     sockets: SocketSet<'static>,
-    sockets_by_remote: HashMap<SocketAddr, smoltcp::iface::SocketHandle>,
+    sockets_by_remote: BTreeMap<SocketAddr, smoltcp::iface::SocketHandle>,
     local_ports_by_socket: HashMap<smoltcp::iface::SocketHandle, u16>,
     /// Queries we should send to a DNS resolver.
     pending_queries_by_remote: HashMap<SocketAddr, VecDeque<Message<Vec<u8>>>>,
@@ -95,45 +95,17 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         self.sockets = SocketSet::new(vec![]);
         self.sockets_by_remote.clear();
         self.local_ports_by_socket.clear();
+        self.abort_all_pending_and_sent_queries();
 
-        self.query_results
-            .extend(
-                self.pending_queries_by_remote
-                    .drain()
-                    .flat_map(|(server, queries)| {
-                        into_failed_results(server, queries, || anyhow!("Aborted"))
-                    }),
-            );
-        self.query_results
-            .extend(
-                self.sent_queries_by_remote
-                    .drain()
-                    .flat_map(|(server, queries)| {
-                        into_failed_results(server, queries.into_values(), || anyhow!("Aborted"))
-                    }),
-            );
+        // Second, try to allocate a unique port per resolver.
+        let unique_ports = self.sample_unique_ports(resolvers.len())?;
 
-        // Second, try to create all new sockets.
-        let new_sockets = std::iter::zip(self.sample_unique_ports(resolvers.len())?, resolvers)
-            .map(|(port, server)| {
-                let local_endpoint = match server {
-                    SocketAddr::V4(_) => SocketAddr::new(ipv4_source.into(), port),
-                    SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), port),
-                };
-                let socket = create_tcp_socket();
-
-                Ok((server, local_endpoint, socket))
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        // Third, if everything was successful, change the local state.
-        for (server, local_endpoint, socket) in new_sockets {
-            let handle = self.sockets.add(socket);
-
-            self.sockets_by_remote.insert(server, handle);
-            self.local_ports_by_socket
-                .insert(handle, local_endpoint.port());
-        }
+        // Third, initialise the sockets.
+        self.init_sockets(
+            std::iter::zip(unique_ports, resolvers),
+            ipv4_source,
+            ipv6_source,
+        );
 
         Ok(())
     }
@@ -231,7 +203,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         }
 
         for (remote, handle) in self.sockets_by_remote.iter_mut() {
-            let socket = self.sockets.get_mut::<Socket>(*handle);
+            let socket = self.sockets.get_mut::<tcp::Socket>(*handle);
             let server = *remote;
 
             let pending_queries = self.pending_queries_by_remote.entry(server).or_default();
@@ -292,6 +264,52 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         Some(self.last_now + Duration::from(poll_in))
     }
 
+    fn abort_all_pending_and_sent_queries(&mut self) {
+        let aborted_pending_queries =
+            self.pending_queries_by_remote
+                .drain()
+                .flat_map(|(server, queries)| {
+                    into_failed_results(server, queries, || anyhow!("Aborted"))
+                });
+        let aborted_sent_queries =
+            self.sent_queries_by_remote
+                .drain()
+                .flat_map(|(server, queries)| {
+                    into_failed_results(server, queries.into_values(), || anyhow!("Aborted"))
+                });
+
+        self.query_results
+            .extend(aborted_pending_queries.chain(aborted_sent_queries));
+    }
+
+    fn init_sockets(
+        &mut self,
+        ports_and_resolvers: impl IntoIterator<Item = (u16, SocketAddr)>,
+        ipv4_source: Ipv4Addr,
+        ipv6_source: Ipv6Addr,
+    ) {
+        let new_sockets = ports_and_resolvers
+            .into_iter()
+            .map(|(port, server)| {
+                let local_endpoint = match server {
+                    SocketAddr::V4(_) => SocketAddr::new(ipv4_source.into(), port),
+                    SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), port),
+                };
+                let socket = create_tcp_socket();
+
+                (server, local_endpoint, socket)
+            })
+            .collect::<Vec<_>>();
+
+        for (server, local_endpoint, socket) in new_sockets {
+            let handle = self.sockets.add(socket);
+
+            self.sockets_by_remote.insert(server, handle);
+            self.local_ports_by_socket
+                .insert(handle, local_endpoint.port());
+        }
+    }
+
     fn sample_unique_ports(&mut self, num_ports: usize) -> Result<impl Iterator<Item = u16>> {
         let mut ports = HashSet::with_capacity(num_ports);
         let range = MIN_PORT..=MAX_PORT;
@@ -312,7 +330,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 }
 
 fn send_pending_queries(
-    socket: &mut Socket,
+    socket: &mut tcp::Socket,
     server: SocketAddr,
     pending_queries: &mut VecDeque<Message<Vec<u8>>>,
     sent_queries: &mut HashMap<u16, Message<Vec<u8>>>,
@@ -348,7 +366,7 @@ fn send_pending_queries(
 }
 
 fn recv_responses(
-    socket: &mut Socket,
+    socket: &mut tcp::Socket,
     server: SocketAddr,
     pending_queries: &mut VecDeque<Message<Vec<u8>>>,
     sent_queries: &mut HashMap<u16, Message<Vec<u8>>>,
