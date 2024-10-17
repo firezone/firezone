@@ -1307,12 +1307,12 @@ defmodule Web.CoreComponents do
 
   def last_seen(assigns) do
     ~H"""
-    <code class="text-xs -mr-1">
+    <span class="inline-block">
       <%= @schema.last_seen_remote_ip %>
-    </code>
-    <span class="text-neutral-500 inline-block text-xs">
+    </span>
+    <span class="inline-block">
       <%= [
-        @schema.last_seen_remote_ip_location_region,
+        Domain.Geo.country_common_name!(@schema.last_seen_remote_ip_location_region),
         @schema.last_seen_remote_ip_location_city
       ]
       |> Enum.reject(&is_nil/1)
