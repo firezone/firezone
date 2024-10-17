@@ -45,27 +45,6 @@ gcloud iam service-accounts add-iam-policy-binding "github-actions@github-iam-38
 
 for more details see https://github.com/google-github-actions/auth.
 
-## Larger GitHub-hosted runners
-
-We've configured two GitHub-hosted larger runners to use in workflows:
-
-- `ubuntu-22.04.firezone-4c`
-- `ubuntu-22.04-firezone-16c`
-
-Please use them wisely (especially the 16c one) as we are billed for their
-usage.
-
-Before you run your jobs on these larger runners, please ensure your workload is
-**CPU-bound** or **Memory-size-bound** so that your workflow / job will actually
-benefit from the extra cores. Many workloads are IO-bound and won't see a marked
-difference using a larger runner.
-
-## Self-hosted runners
-
-We maintain a baremetal testbed for running our end-to-end test suite. See
-[the `e2e`](../e2e) directory. Please don't target those runners unless you're
-specifically trying to run workflows that require a baremetal runner.
-
 ## Busting the GCP Docker layer cache
 
 If you find yourself hitting strange Docker image issues like Rust binaries
