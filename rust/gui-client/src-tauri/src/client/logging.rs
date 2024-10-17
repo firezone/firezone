@@ -23,7 +23,10 @@ pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(),
 }
 
 #[tauri::command]
-pub(crate) async fn export_logs(app: tauri::AppHandle, managed: tauri::State<'_, Managed>) -> Result<(), String> {
+pub(crate) async fn export_logs(
+    app: tauri::AppHandle,
+    managed: tauri::State<'_, Managed>,
+) -> Result<(), String> {
     show_export_dialog(&app, managed.ctlr_tx.clone()).map_err(|e| e.to_string())
 }
 
