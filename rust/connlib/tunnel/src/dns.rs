@@ -84,7 +84,7 @@ pub(crate) enum Transport {
 #[derive(Debug)]
 pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(Vec<u8>),
+    LocalResponse(Message<Vec<u8>>),
     /// The query is for a non-Resource, forward it to an upstream or system resolver.
     Recurse,
 }
@@ -250,13 +250,26 @@ impl StubResolver {
         self.dns_resources.values().contains(resource)
     }
 
-    /// Parses an incoming packet as a DNS query and decides how to respond to it
+    /// Processes the incoming DNS query.
     ///
-    /// Returns:
-    /// - `Ok(ControlFlow::Break)` if the packet was successfully parsed a DNS packet
-    /// - `Ok(ControlFlow::Continue)` if the packet isn't a DNS packet
-    /// - `Err()` if the packet was directed at our DNS resolver but processing failed
-    pub(crate) fn handle(&mut self, message: Message<&[u8]>) -> Result<ResolveStrategy> {
+    /// Any errors will result in an immediate `SERVFAIL` response.
+    pub(crate) fn handle(&mut self, message: Message<&[u8]>) -> ResolveStrategy {
+        match self.try_handle(message) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::trace!("Failed to handle DNS query: {e:#}");
+
+                let response = MessageBuilder::new_vec()
+                    .start_answer(&message, Rcode::SERVFAIL)
+                    .unwrap()
+                    .into_message();
+
+                ResolveStrategy::LocalResponse(response)
+            }
+        }
+    }
+
+    fn try_handle(&mut self, message: Message<&[u8]>) -> Result<ResolveStrategy> {
         anyhow::ensure!(
             !message.header().qr(),
             "Can only handle DNS queries, not responses"
@@ -279,7 +292,7 @@ impl StubResolver {
             let payload = MessageBuilder::new_vec()
                 .start_answer(&message, Rcode::NXDOMAIN)
                 .unwrap()
-                .finish();
+                .into_message();
 
             return Ok(ResolveStrategy::LocalResponse(payload));
         }
@@ -340,7 +353,7 @@ fn build_dns_with_answer(
     message: Message<&[u8]>,
     qname: DomainName,
     records: Vec<AllRecordData<Vec<u8>, DomainName>>,
-) -> Result<Vec<u8>> {
+) -> Result<Message<Vec<u8>>> {
     let mut answer_builder = MessageBuilder::new_vec()
         .start_answer(&message, Rcode::NOERROR)
         .context("Failed to create answer from query")?;
@@ -352,7 +365,7 @@ fn build_dns_with_answer(
             .context("Failed to push record")?;
     }
 
-    Ok(answer_builder.finish())
+    Ok(answer_builder.into_message())
 }
 
 pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
@@ -741,19 +754,15 @@ mod tests {
                 Rtype::A,
             ))
             .unwrap();
-        let message = builder.into_message();
+        let query = builder.into_message();
 
-        let strategy = resolver.handle(message.for_slice_ref()).unwrap();
-
-        let ResolveStrategy::LocalResponse(response) = strategy else {
-            panic!("Unexpected result: {strategy:?}")
+        let ResolveStrategy::LocalResponse(response) = resolver.handle(query.for_slice_ref())
+        else {
+            panic!("Unexpected result")
         };
 
-        let message = Message::from_slice(&response).unwrap();
-        let answers = message.answer().unwrap();
-
-        assert_eq!(message.header().rcode(), Rcode::NXDOMAIN);
-        assert_eq!(answers.count(), 0);
+        assert_eq!(response.header().rcode(), Rcode::NXDOMAIN);
+        assert_eq!(response.answer().unwrap().count(), 0);
     }
 }
 

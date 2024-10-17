@@ -1,5 +1,6 @@
 pub mod file;
 mod format;
+mod log_unwrap;
 
 use tracing::subscriber::DefaultGuard;
 use tracing_log::LogTracer;
@@ -9,6 +10,7 @@ use tracing_subscriber::{
 };
 
 pub use format::Format;
+pub use log_unwrap::LogUnwrap;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`
 pub fn setup_global_subscriber<L>(additional_layer: L)
