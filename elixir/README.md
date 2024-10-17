@@ -509,7 +509,15 @@ terraform apply -var image_tag=$(terraform output -raw image_tag)
 
 ### Deploying production
 
-Go to ["Deploy Production"](https://github.com/firezone/firezone/actions/workflows/deploy.yml) CI workflow and click "Run Workflow".
+Before deploying, check if the `main` branch has any breaking changes since the last deployment. You can do this by comparing the `main` branch with the last deployed commit, which you can find [here](https://github.com/firezone/firezone/deployments/gcp_production).
+
+Here is a one-liner to open the comparison in your browser:
+
+```bash
+open "https://github.com/firezone/firezone/compare/$(curl -L -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/firezone/firezone/actions/workflows/deploy.yml/runs?status=completed&per_page=1" | jq -r '.workflow_runs[0].head_commit.id')...main"
+```
+
+Then, go to ["Deploy Production"](https://github.com/firezone/firezone/actions/workflows/deploy.yml) CI workflow and click "Run Workflow".
 
 1. In the form that appears, read the warning and check the checkbox next to it.
 2. The main branch is selected by default for deployment. To deploy a previous version, enter the commit SHA in the "Image tag to deploy" field.
@@ -518,6 +526,57 @@ Go to ["Deploy Production"](https://github.com/firezone/firezone/actions/workflo
 
 The workflow will run all the way till the `deploy-production` step (which runs `terraform apply`) and wait for an approval from one of the project owners,
 message one of your colleagues to approve it.
+
+#### Deployment Takes Too Long to Complete
+
+Typically, `terraform apply` takes around 15 minutes in production. If it's taking longer (or you want to monitor the status), here are a few things you can check:
+
+1. **Monitor the run status in [Terraform Cloud](https://app.terraform.io/app/firezone/workspaces/production/runs).**
+2. **Check the status of Instance Groups in [Google Cloud Console](https://console.cloud.google.com/compute/instanceGroups/list?project=firezone-prod).**
+3. [Check the logs](#viewing-logs) for the deployed instances.
+
+For instance groups stuck in the `UPDATING` state:
+
+- Open the group and look for any errors. Typically, if deployment is stuck, you'll find one instance in the group with an error (and a recent creation time), while the others are pending updates.
+- To quickly view logs for that instance, click the instance name and then click the `Logging` link.
+
+_Do not panic—our production environment should remain stable. GCP and Terraform are designed to keep old instances running until the new ones are healthy._
+
+#### Common Reasons for Deployment Issues
+
+**1. A Bug in the Code**
+
+- This can either crash the instance or make it unresponsive (you’ll notice failing health checks and error logs).
+- If this happens, ensure there were no database migrations as part of the changes (check `priv/repo/migrations`).
+- If no migrations are involved, rollback the deployment. To do this, cancel the currently running deployment,
+  find the last successful deployment in Terraform Cloud, copy the `image_tag` from its output, and run:
+
+  ```bash
+  cd terraform/environments/production
+  terraform apply -var image_tag=<LAST_SUCCESSFUL_IMAGE_TAG_HERE>
+  ```
+
+- You can also rollback a specific component by overriding its image tag in the `terraform apply` command:
+
+  ```bash
+  terraform apply -var image_tag=<CURRENT_IMAGE_TAG> -var <COMPONENT_NAME>_image_tag=<LAST_SUCCESSFUL_IMAGE_TAG_HERE>
+  ```
+
+  _If there were migrations and they’ve already been applied, proceed to the next option._
+
+**2. An Issue with the Migration**
+
+- You’ll notice failing health checks and error logs related to the migration.
+- You can either:
+  - Fix the data causing the migration to fail (refer to [Connection to Production Cloud SQL Instance](#connection-to-production-cloud-sql-instance)).
+  - Fix the migration code and redeploy.
+
+**3. Insufficient Resources to Deploy New Instances**
+
+- If there are no errors but updates are pending, there might not be enough resources to deploy new instances.
+- This can be found in the Errors tab of the instance group.
+
+  Typically, this issue resolves itself as old reservations are freed up.
 
 ## Monitoring and Troubleshooting
 
