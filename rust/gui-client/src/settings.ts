@@ -1,8 +1,4 @@
-// Purpose: TypeScript file for the settings page.
-import "./tauri_stub.js";
-
-const invoke = window.__TAURI__.tauri.invoke;
-const listen = window.__TAURI__.event.listen;
+import { invoke } from "@tauri-apps/api/core";
 
 // Custom types
 interface Settings {
@@ -101,7 +97,8 @@ async function resetAdvancedSettings() {
   lockAdvancedSettingsForm();
 
   invoke("reset_advanced_settings")
-    .then((settings: Settings) => {
+    .then((result: unknown) => {
+      let settings = result as Settings;
       authBaseUrlInput.value = settings.auth_base_url;
       apiUrlInput.value = settings.api_url;
       logFilterInput.value = settings.log_filter;
@@ -119,7 +116,8 @@ async function getAdvancedSettings() {
   lockAdvancedSettingsForm();
 
   invoke("get_advanced_settings")
-    .then((settings: Settings) => {
+    .then((result: unknown) => {
+      let settings = result as Settings;
       authBaseUrlInput.value = settings.auth_base_url;
       apiUrlInput.value = settings.api_url;
       logFilterInput.value = settings.log_filter;
@@ -161,7 +159,8 @@ async function clearLogs() {
 
 async function countLogs() {
   invoke("count_logs")
-    .then((fileCount) => {
+    .then((result: unknown) => {
+      let fileCount = result as FileCount;
       console.log(fileCount);
       const megabytes = Math.round(fileCount.bytes / 100000) / 10;
       logCountOutput.innerText = `${fileCount.files} files, ${megabytes} MB`;
@@ -177,16 +176,16 @@ form.addEventListener("submit", (e) => {
   e.preventDefault();
   applyAdvancedSettings();
 });
-resetAdvancedSettingsBtn.addEventListener("click", (e) => {
+resetAdvancedSettingsBtn.addEventListener("click", (_e) => {
   resetAdvancedSettings();
 });
-exportLogsBtn.addEventListener("click", (e) => {
+exportLogsBtn.addEventListener("click", (_e) => {
   exportLogs();
 });
-clearLogsBtn.addEventListener("click", (e) => {
+clearLogsBtn.addEventListener("click", (_e) => {
   clearLogs();
 });
-logsTabBtn.addEventListener("click", (e) => {
+logsTabBtn.addEventListener("click", (_e) => {
   countLogs();
 });
 
