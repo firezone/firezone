@@ -73,7 +73,7 @@ defmodule Web.Clients.Index do
           metadata={@clients_metadata}
         >
           <:col :let={client} class="w-8">
-            <.popover data-popover-placement="right">
+            <.popover placement="right">
               <:target>
                 <.client_os_icon client={client} />
               </:target>
