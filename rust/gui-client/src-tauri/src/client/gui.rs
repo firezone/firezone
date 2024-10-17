@@ -141,7 +141,6 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    let (setup_result_tx, mut setup_result_rx) = oneshot::channel::<Result<(), Error>>();
     let (tray_tx, tray_rx) = oneshot::channel();
     let app = tauri::Builder::default()
         .manage(managed)
@@ -291,8 +290,10 @@ pub(crate) fn run(
                 Ok(())
             };
 
-            let result = setup_inner();
-            setup_result_tx.send(result).expect("should be able to send setup result");
+            if let Err(error) = setup_inner() {
+                firezone_telemetry::capture_anyhow(&error);
+                tracing::error!(?error, "Tauri setup failed");
+            }
 
             Ok(())
         });
@@ -350,10 +351,7 @@ pub(crate) fn run(
             api.prevent_exit();
         }
     });
-    tracing::warn!("app.run returned");
-    setup_result_rx
-        .try_recv()
-        .context("couldn't receive result of setup")??;
+    tracing::warn!("app.run returned, this is normally unreachable even in Tauri v2");
     Ok(())
 }
 
