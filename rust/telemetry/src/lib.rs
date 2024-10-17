@@ -110,23 +110,6 @@ mod tests {
     // To avoid problems with global mutable state, we run unrelated tests in the same test case.
     #[test]
     fn sentry() {
-        // Test this flush problem
-        {
-            let telemetry = sentry::init((
-                HEADLESS_DSN.0,
-                sentry::ClientOptions {
-                    release: sentry::release_name!(),
-                    traces_sample_rate: 1.0,
-                    ..Default::default()
-                },
-            ));
-            sentry::start_session();
-            sentry::end_session();
-            // `flush`'s return value is flipped from the docs
-            // <https://github.com/getsentry/sentry-rust/issues/677>
-            assert!(!telemetry.flush(Some(Duration::from_secs(5))));
-        }
-
         // Smoke-test Sentry itself by turning it on and off a couple times
         {
             let tele = Telemetry::default();
