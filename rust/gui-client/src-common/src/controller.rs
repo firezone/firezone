@@ -545,6 +545,9 @@ impl<I: GuiIntegration> Controller<I> {
             IpcServerMsg::Handshake { daemon_version } => {
                 tracing::info!(?daemon_version);
                 self.got_daemon_version = true;
+                firezone_telemetry::Hub::main().configure_scope(|scope| {
+                    scope.set_tag("daemon_version", &daemon_version);
+                });
                 let gui_version = git_version().to_string();
                 if gui_version != daemon_version {
                     firezone_telemetry::capture_message(
