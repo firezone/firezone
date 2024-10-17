@@ -30,6 +30,7 @@ pub(crate) struct Tray {
     app: AppHandle,
     handle: tauri::tray::TrayIcon,
     last_icon_set: Icon,
+    last_menu_set: Option<Menu>,
 }
 
 pub(crate) fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
@@ -56,6 +57,7 @@ impl Tray {
             app,
             handle,
             last_icon_set: Default::default(),
+            last_menu_set: None,
         }
     }
 
@@ -75,17 +77,25 @@ impl Tray {
             update_ready: state.release.is_some(),
         };
 
+        let menu = state.into_menu();
+        let menu_clone = menu.clone();
         let app = self.app.clone();
         let handle = self.handle.clone();
-        self.app
-            .run_on_main_thread(move || {
-                if let Err(error) = update(handle, &app, state) {
-                    tracing::error!(?error, "Error while updating tray icon");
-                    firezone_telemetry::capture_anyhow(&error);
-                }
-            })
-            .unwrap();
+
+        if Some(&menu) == self.last_menu_set.as_ref() {
+            tracing::debug!("Skipping redundant menu update");
+        } else {
+            self.app
+                .run_on_main_thread(move || {
+                    if let Err(error) = update(handle, &app, &menu) {
+                        tracing::error!(?error, "Error while updating tray icon");
+                        firezone_telemetry::capture_anyhow(&error);
+                    }
+                })
+                .unwrap();
+        }
         self.set_icon(new_icon)?;
+        self.last_menu_set = Some(menu_clone);
 
         Ok(())
     }
@@ -111,14 +121,14 @@ impl Tray {
     }
 }
 
-fn update(handle: tauri::tray::TrayIcon, app: &AppHandle, state: AppState) -> Result<()> {
+fn update(handle: tauri::tray::TrayIcon, app: &AppHandle, menu: &Menu) -> Result<()> {
     handle.set_tooltip(Some(TOOLTIP))?;
-    handle.set_menu(Some(build_app_state(app, state)?))?;
+    handle.set_menu(Some(build_app_state(app, menu)?))?;
     Ok(())
 }
 
-pub(crate) fn build_app_state(app: &AppHandle, that: AppState) -> Result<TauriMenu> {
-    build_menu(app, &that.into_menu())
+pub(crate) fn build_app_state(app: &AppHandle, menu: &Menu) -> Result<TauriMenu> {
+    build_menu(app, menu)
 }
 
 /// Builds this abstract `Menu` into a real menu that we can use in Tauri.

@@ -313,15 +313,14 @@ pub(crate) fn run(
         }
     };
 
-    let state = firezone_gui_client_common::system_tray::AppState {
-        connlib: firezone_gui_client_common::system_tray::ConnlibState::Loading,
-        release: None,
-    };
     let tray = tauri::tray::TrayIconBuilder::new()
         .icon(system_tray::icon_to_tauri_icon(
             &firezone_gui_client_common::system_tray::Icon::default(),
         ))
-        .menu(&system_tray::build_app_state(app.handle(), state)?)
+        .menu(&system_tray::build_app_state(
+            app.handle(),
+            &firezone_gui_client_common::system_tray::AppState::default().into_menu(),
+        )?)
         .on_menu_event(|app, event| {
             tracing::warn!("on_menu_event");
             let id = &event.id.0;

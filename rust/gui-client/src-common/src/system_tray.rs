@@ -32,6 +32,15 @@ pub struct AppState {
     pub release: Option<Release>,
 }
 
+impl Default for AppState {
+    fn default() -> AppState {
+        AppState {
+            connlib: ConnlibState::Loading,
+            release: None,
+        }
+    }
+}
+
 impl AppState {
     pub fn into_menu(self) -> Menu {
         let quit_text = match &self.connlib {
