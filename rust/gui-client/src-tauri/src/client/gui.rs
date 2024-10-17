@@ -75,7 +75,6 @@ impl GuiIntegration for TauriIntegration {
 
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
         Ok(self.app.shell().open(url.as_ref(), None)?)
-        //Ok(tauri::api::shell::open(&self.app.shell_scope(), url, None)?)
     }
 
     fn set_tray_icon(&mut self, icon: common::system_tray::Icon) -> Result<()> {
@@ -87,11 +86,11 @@ impl GuiIntegration for TauriIntegration {
     }
 
     fn show_notification(&self, title: &str, body: &str) -> Result<()> {
-        os::show_notification(title, body)
+        os::show_notification(&self.app, title, body)
     }
 
     fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()> {
-        os::show_update_notification(ctlr_tx, title, url)
+        os::show_update_notification(&self.app, ctlr_tx, title, url)
     }
 
     fn show_window(&self, window: common::system_tray::Window) -> Result<()> {

@@ -1,5 +1,6 @@
 use anyhow::{Context as _, Result};
-// use firezone_bin_shared::BUNDLE_ID;
+use tauri::AppHandle;
+use tauri_plugin_notification::NotificationExt as _;
 
 pub(crate) async fn set_autostart(enabled: bool) -> Result<()> {
     let dir = dirs::config_local_dir()
@@ -34,23 +35,22 @@ pub(crate) async fn set_autostart(enabled: bool) -> Result<()> {
 /// Since clickable notifications don't work on Linux yet, the update text
 /// must be different on different platforms
 pub(crate) fn show_update_notification(
+    app: &AppHandle,
     _ctlr_tx: super::CtlrTx,
     title: &str,
     download_url: url::Url,
 ) -> Result<()> {
-    show_notification(title, download_url.to_string().as_ref())?;
+    show_notification(app, title, download_url.to_string().as_ref())?;
     Ok(())
 }
 
 /// Show a notification in the bottom right of the screen
 #[allow(clippy::unnecessary_wraps)]
-pub(crate) fn show_notification(_title: &str, _body: &str) -> Result<()> {
-    tracing::warn!("Notifications not migrated yet");
-    /*
-    Notification::new(BUNDLE_ID)
+pub(crate) fn show_notification(app: &AppHandle, title: &str, body: &str) -> Result<()> {
+    app.notification()
+        .builder()
         .title(title)
         .body(body)
         .show()?;
-    */
     Ok(())
 }
