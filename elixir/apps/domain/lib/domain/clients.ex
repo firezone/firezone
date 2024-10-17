@@ -123,14 +123,21 @@ defmodule Domain.Clients do
       |> Enum.map(& &1.account_id)
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
-      |> Enum.reduce(%{}, fn account_id, acc ->
-        connected_clients = account_id |> account_clients_presence_topic() |> Presence.list()
-        Map.merge(acc, connected_clients)
+      |> Enum.reduce([], fn account_id, acc ->
+        connected_client_ids = online_client_ids(account_id)
+        connected_client_ids ++ acc
       end)
 
     Enum.map(clients, fn client ->
-      %{client | online?: Map.has_key?(connected_clients, client.id)}
+      %{client | online?: client.id in connected_clients}
     end)
+  end
+
+  def online_client_ids(account_id) do
+    account_id
+    |> account_clients_presence_topic()
+    |> Presence.list()
+    |> Map.keys()
   end
 
   def change_client(%Client{} = client, attrs \\ %{}) do

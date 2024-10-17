@@ -606,14 +606,33 @@ defmodule Web.CoreComponents do
 
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 30 30"
+      viewBox="0 0 24 24"
       class={["inline-block", @class]}
       {@rest}
     >
-      <path d="M1,15H12a1,1,0,0,0,1-1V4.17a1,1,0,0,0-.35-.77,1,1,0,0,0-.81-.22L.84,5A1,1,0,0,0,0,6v8A1,1,0,0,0,1,15ZM2,6.85l9-1.5V13H2Z" />
-      <path d="M30.84,0l-15,2.5a1,1,0,0,0-.84,1V14a1,1,0,0,0,1,1H31a1,1,0,0,0,1-1V1a1,1,0,0,0-.35-.76A1,1,0,0,0,30.84,0ZM30,13H17V4.35L30,2.18Z" />
-      <path d="M.84,27l11,1.83H12a1,1,0,0,0,1-1V18a1,1,0,0,0-1-1H1a1,1,0,0,0-1,1v8A1,1,0,0,0,.84,27ZM2,19h9v7.65l-9-1.5Z" />
-      <path d="M31,17H16a1,1,0,0,0-1,1V28.5a1,1,0,0,0,.84,1l15,2.5H31a1,1,0,0,0,.65-.24A1,1,0,0,0,32,31V18A1,1,0,0,0,31,17ZM30,29.82,17,27.65V19H30Z" />
+      <g xmlns="http://www.w3.org/2000/svg" data-name="&lt;Group&gt;" id="_Group_">
+        <polygon
+          data-name="&lt;Path&gt;"
+          id="_Path_"
+          points="12.5 10.5 22.5 10.5 22.5 1.5 12.5 2.69 12.5 10.5"
+          style="fill:none;stroke:#303c42;stroke-linecap:round;stroke-linejoin:round"
+        /><polygon
+          data-name="&lt;Path&gt;"
+          id="_Path_2"
+          points="9.5 10.5 9.5 3.05 1.5 4 1.5 10.5 9.5 10.5"
+          style="fill:none;stroke:#303c42;stroke-linecap:round;stroke-linejoin:round"
+        /><polygon
+          data-name="&lt;Path&gt;"
+          id="_Path_3"
+          points="9.5 13.5 1.5 13.5 1.5 20 9.5 20.95 9.5 13.5"
+          style="fill:none;stroke:#303c42;stroke-linecap:round;stroke-linejoin:round"
+        /><polygon
+          data-name="&lt;Path&gt;"
+          id="_Path_4"
+          points="12.5 13.5 12.5 21.31 22.5 22.5 22.5 13.5 12.5 13.5"
+          style="fill:none;stroke:#303c42;stroke-linecap:round;stroke-linejoin:round"
+        />
+      </g>
     </svg>
     """
   end

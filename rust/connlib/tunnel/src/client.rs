@@ -15,6 +15,7 @@ use bimap::BiMap;
 use connlib_model::PublicKey;
 use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
 use connlib_model::{Site, SiteId};
+use firezone_logging::LogUnwrap as _;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, UdpSlice};
@@ -112,7 +113,7 @@ pub struct ClientState {
     /// DNS queries that had their destination IP mangled because the servers is a CIDR resource.
     ///
     /// The [`Instant`] tracks when the DNS query expires.
-    mangled_dns_queries: HashMap<u16, Instant>,
+    mangled_dns_queries: HashMap<(SocketAddr, u16), Instant>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
@@ -368,15 +369,6 @@ impl ClientState {
     }
 
     pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse) {
-        match self.try_handle_dns_response(response) {
-            Ok(()) => {}
-            Err(e) => {
-                tracing::debug!("Failed to handle DNS response: {e}")
-            }
-        }
-    }
-
-    fn try_handle_dns_response(&mut self, response: dns::RecursiveResponse) -> anyhow::Result<()> {
         let qid = response.query.header().id();
         let server = response.server;
         let domain = response
@@ -386,67 +378,58 @@ impl ClientState {
             .map(|q| q.into_qname())
             .map(tracing::field::display);
 
+        let _span = tracing::debug_span!("handle_dns_response", %qid, %server, domain).entered();
+
         match (response.transport, response.message) {
-            (dns::Transport::Udp { source }, Ok(message)) => {
-                tracing::trace!(%server, %qid, domain, "Received recursive DNS response");
-
-                let ip_packet = self
-                    .try_handle_udp_dns_response(server, source, &message)
-                    .context("Failed to produce UDP DNS response packet")?;
-
-                self.buffered_packets.push_back(ip_packet);
-            }
             (dns::Transport::Udp { .. }, Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
-                tracing::debug!(%server, %qid, domain, "Recursive DNS query timed out")
+                tracing::debug!("Recursive DNS query timed out")
             }
-            (dns::Transport::Udp { source }, Err(e)) => {
-                tracing::debug!(%server, %qid, domain, "Recursive DNS query failed: {e}");
+            (dns::Transport::Udp { source }, result) => {
+                let message = result
+                    .inspect(|message| {
+                        tracing::trace!("Received recursive DNS response");
 
-                let message = MessageBuilder::new_vec()
-                    .start_answer(&response.query, Rcode::SERVFAIL)
-                    .expect("original query is valid")
-                    .into_message();
+                        if message.header().tc() {
+                            tracing::debug!("Upstream DNS server had to truncate response");
+                        }
+                    })
+                    .unwrap_or_else(|e| {
+                        tracing::debug!("Recursive DNS query failed: {e}");
 
-                let ip_packet = self
-                    .try_handle_udp_dns_response(server, source, &message)
-                    .context("Failed to produce UDP DNS response packet")?;
+                        MessageBuilder::new_vec()
+                            .start_answer(&response.query, Rcode::SERVFAIL)
+                            .expect("original query is valid")
+                            .into_message()
+                    });
 
-                self.buffered_packets.push_back(ip_packet);
+                self.try_queue_udp_dns_response(server, source, &message)
+                    .log_unwrap_debug("Failed to queue UDP DNS response");
             }
         }
-
-        Ok(())
     }
 
-    fn try_handle_udp_dns_response(
+    fn try_queue_udp_dns_response(
         &mut self,
         from: SocketAddr,
         dst: SocketAddr,
         message: &Message<Vec<u8>>,
-    ) -> anyhow::Result<IpPacket> {
-        // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
+    ) -> anyhow::Result<()> {
         let saddr = *self
             .dns_mapping
             .get_by_right(&DnsServer::from(from))
             .context("Unknown DNS server")?;
-        let sport = DNS_PORT;
 
-        if message.header().tc() {
-            let domain = message
-                .first_question()
-                .map(|q| q.into_qname())
-                .map(tracing::field::display);
+        let ip_packet = ip_packet::make::udp_packet(
+            saddr,
+            dst.ip(),
+            DNS_PORT,
+            dst.port(),
+            message.as_octets().to_vec(),
+        )?;
 
-            tracing::debug!(server = %from, domain, "Upstream DNS server had to truncate response");
-        }
+        self.buffered_packets.push_back(ip_packet);
 
-        let daddr = dst.ip();
-        let dport = dst.port();
-
-        let ip_packet =
-            ip_packet::make::udp_packet(saddr, daddr, sport, dport, message.as_octets().to_vec())?;
-
-        Ok(ip_packet)
+        Ok(())
     }
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
@@ -601,43 +584,31 @@ impl ClientState {
             }
         };
 
+        let source = SocketAddr::new(packet.source(), datagram.source_port());
+
         match self.stub_resolver.handle(message) {
-            Ok(dns::ResolveStrategy::LocalResponse(response)) => {
-                self.buffered_packets.push_back(
-                    ip_packet::make::udp_packet(
-                        packet.destination(),
-                        packet.source(),
-                        datagram.destination_port(),
-                        datagram.source_port(),
-                        response,
-                    )
-                    .expect("src and dst IPs come from the same packet"),
-                );
+            dns::ResolveStrategy::LocalResponse(response) => {
+                self.try_queue_udp_dns_response(upstream, source, &response)
+                    .log_unwrap_debug("Failed to queue UDP DNS response");
             }
-            Ok(dns::ResolveStrategy::Recurse) => {
+            dns::ResolveStrategy::Recurse => {
                 let query_id = message.header().id();
 
                 if self.should_forward_dns_query_to_gateway(upstream.ip()) {
                     tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query via tunnel");
 
                     self.mangled_dns_queries
-                        .insert(message.header().id(), now + IDS_EXPIRE);
+                        .insert((upstream, message.header().id()), now + IDS_EXPIRE);
                     packet.set_dst(upstream.ip());
                     packet.update_checksum();
 
                     return ControlFlow::Continue(packet);
                 }
 
-                let query_id = message.header().id();
-                let source = SocketAddr::new(packet.source(), datagram.source_port());
-
                 tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host");
 
                 self.buffered_dns_queries
                     .push_back(dns::RecursiveQuery::via_udp(source, upstream, message));
-            }
-            Err(e) => {
-                tracing::trace!(?packet, "Failed to handle DNS query: {e:#}");
             }
         }
 
@@ -1359,7 +1330,7 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
 fn maybe_mangle_dns_response_from_cidr_resource(
     mut packet: IpPacket,
     dns_mapping: &BiMap<IpAddr, DnsServer>,
-    mangeled_dns_queries: &mut HashMap<u16, Instant>,
+    mangeled_dns_queries: &mut HashMap<(SocketAddr, u16), Instant>,
     now: Instant,
 ) -> IpPacket {
     let src_ip = packet.source();
@@ -1369,8 +1340,9 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     };
 
     let src_port = udp.source_port();
+    let src_socket = SocketAddr::new(src_ip, src_port);
 
-    let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from((src_ip, src_port))) else {
+    let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from(src_socket)) else {
         return packet;
     };
 
@@ -1379,7 +1351,7 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     };
 
     let Some(query_sent_at) = mangeled_dns_queries
-        .remove(&message.header().id())
+        .remove(&(src_socket, message.header().id()))
         .map(|expires_at| expires_at - IDS_EXPIRE)
     else {
         return packet;

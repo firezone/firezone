@@ -155,10 +155,10 @@ defmodule Web.Flows.Show do
           ordered_by={@order_by_table_id["activities"]}
           metadata={@activities_metadata}
         >
-          <:col :let={activity} label="started at">
+          <:col :let={activity} label="started">
             <.relative_datetime datetime={activity.window_started_at} />
           </:col>
-          <:col :let={activity} label="ended at">
+          <:col :let={activity} label="ended">
             <.relative_datetime datetime={activity.window_ended_at} />
           </:col>
           <:col :let={activity} label="destination">

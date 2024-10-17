@@ -213,8 +213,8 @@ defmodule Web.Live.Flows.ShowTest do
       |> render()
       |> table_to_map()
 
-    assert row["started at"]
-    assert row["ended at"]
+    assert row["started"]
+    assert row["ended"]
 
     assert row["connectivity type"] == to_string(activity.connectivity_type)
     assert row["destination"] == to_string(activity.destination)
