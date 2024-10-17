@@ -112,6 +112,9 @@ pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
             .prop_filter("must not be in sentinel IP range", |ip| {
                 !crate::client::DNS_SENTINELS_V4.contains(*ip)
             })
+            .prop_filter("must not be in IPv4 resources range", |ip| {
+                !crate::client::IPV4_RESOURCES.contains(*ip)
+            })
             .prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
@@ -119,6 +122,9 @@ pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
         any::<Ipv6Addr>()
             .prop_filter("must not be in sentinel IP range", |ip| {
                 !crate::client::DNS_SENTINELS_V6.contains(*ip)
+            })
+            .prop_filter("must not be in IPv6 resources range", |ip| {
+                !crate::client::IPV6_RESOURCES.contains(*ip)
             })
             .prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
