@@ -76,13 +76,22 @@ impl Default for Cmd {
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub enum ClientMsg {
     ClearLogs,
-    Connect { api_url: String, token: String },
+    Connect {
+        api_url: String,
+        token: String,
+    },
     Disconnect,
+    /// Optional information sent in the first message after connection.
+    Handshake {
+        gui_version: String,
+    },
     ReloadLogFilter,
     Reset,
     SetDns(Vec<IpAddr>),
     SetDisabledResources(BTreeSet<ResourceId>),
-    StartTelemetry { environment: String },
+    StartTelemetry {
+        environment: String,
+    },
     StopTelemetry,
 }
 
@@ -93,6 +102,10 @@ pub enum ServerMsg {
     ClearedLogs(Result<(), String>),
     ConnectResult(Result<(), Error>),
     DisconnectedGracefully,
+    /// Optional information sent in the first message after connection.
+    Handshake {
+        daemon_version: String,
+    },
     OnDisconnect {
         error_msg: String,
         is_authentication_error: bool,
@@ -471,6 +484,16 @@ impl<'a> Handler<'a> {
                     .await
                     .context("Failed to send `DisconnectedGracefully`")?;
             }
+            ClientMsg::Handshake { gui_version } => {
+                firezone_telemetry::Hub::main().configure_scope(|scope| {
+                    scope.set_tag("gui_version", &gui_version);
+                });
+                if gui_version != git_version() {
+                    firezone_telemetry::capture_anyhow(&anyhow::anyhow!(
+                        "GUI version doesn't match tunnel daemon version"
+                    ));
+                }
+            }
             ClientMsg::ReloadLogFilter => {
                 let filter = spawn_blocking(get_log_filter).await??;
                 self.log_filter_reloader.reload(filter)?;
@@ -505,11 +528,18 @@ impl<'a> Handler<'a> {
 
                 session.connlib.set_disabled_resources(disabled_resources);
             }
-            ClientMsg::StartTelemetry { environment } => self.telemetry.start(
-                &environment,
-                firezone_bin_shared::git_version!("gui-client-*"),
-                firezone_telemetry::IPC_SERVICE_DSN,
-            ),
+            ClientMsg::StartTelemetry { environment } => {
+                let daemon_version = git_version().to_string();
+                self.telemetry.start(
+                    &environment,
+                    git_version(),
+                    firezone_telemetry::IPC_SERVICE_DSN,
+                );
+                self.ipc_tx
+                    .send(&ServerMsg::Handshake { daemon_version })
+                    .await
+                    .context("Failed to send `Handshake`")?;
+            }
             ClientMsg::StopTelemetry => self.telemetry.stop(),
         }
         Ok(())
@@ -583,6 +613,10 @@ impl<'a> Handler<'a> {
         transaction.finish();
         Ok(())
     }
+}
+
+fn git_version() -> &'static str {
+    firezone_bin_shared::git_version!("gui-client-*")
 }
 
 /// Starts logging for the production IPC service

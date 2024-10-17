@@ -32,6 +32,7 @@ pub struct Controller<I: GuiIntegration> {
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
+    got_daemon_version: bool,
     ipc_client: ipc::Client,
     ipc_rx: mpsc::Receiver<ipc::Event>,
     integration: I,
@@ -85,6 +86,7 @@ impl<I: GuiIntegration> Builder<I> {
             auth: auth::Auth::new()?,
             clear_logs_callback: None,
             ctlr_tx,
+            got_daemon_version: false,
             ipc_client,
             ipc_rx,
             integration,
@@ -217,11 +219,8 @@ impl<I: GuiIntegration> Controller<I> {
         // Start telemetry
         {
             let environment = self.advanced_settings.api_url.to_string();
-            self.telemetry.start(
-                &environment,
-                firezone_bin_shared::git_version!("gui-client-*"),
-                firezone_telemetry::GUI_DSN,
-            );
+            self.telemetry
+                .start(&environment, git_version(), firezone_telemetry::GUI_DSN);
             self.ipc_client
                 .send_msg(&IpcClientMsg::StartTelemetry { environment })
                 .await?;
@@ -526,15 +525,37 @@ impl<I: GuiIntegration> Controller<I> {
                 })?;
             }
             IpcServerMsg::ConnectResult(result) => {
+                if !self.got_daemon_version {
+                    firezone_telemetry::capture_message(
+                        "Connected to Firezone but never got daemon version",
+                        firezone_telemetry::Level::Error,
+                    );
+                    tracing::error!("Connected to Firezone but never got daemon version");
+                }
                 return self
                     .handle_connect_result(result)
                     .await
-                    .map(|_| ControlFlow::Continue(()))
+                    .map(|_| ControlFlow::Continue(()));
             }
             IpcServerMsg::DisconnectedGracefully => {
                 if let Status::Quitting = self.status {
                     return Ok(ControlFlow::Break(()));
                 }
+            }
+            IpcServerMsg::Handshake { daemon_version } => {
+                tracing::info!(?daemon_version);
+                self.got_daemon_version = true;
+                let gui_version = git_version().to_string();
+                if gui_version != daemon_version {
+                    firezone_telemetry::capture_message(
+                        "GUI version doesn't match tunnel daemon version",
+                        firezone_telemetry::Level::Error,
+                    );
+                    tracing::error!("GUI version doesn't match tunnel daemon version");
+                }
+                self.ipc_client
+                    .send_msg(&IpcClientMsg::Handshake { gui_version })
+                    .await?;
             }
             IpcServerMsg::OnDisconnect {
                 error_msg,
@@ -777,4 +798,8 @@ impl<I: GuiIntegration> Controller<I> {
         self.refresh_system_tray_menu()?;
         Ok(())
     }
+}
+
+fn git_version() -> &'static str {
+    firezone_bin_shared::git_version!("gui-client-*")
 }
