@@ -73,7 +73,14 @@ defmodule Web.Clients.Index do
           metadata={@clients_metadata}
         >
           <:col :let={client} class="w-8">
-            <.client_os_icon client={client} />
+            <.popover data-popover-placement="right">
+              <:target>
+                <.client_os_icon client={client} />
+              </:target>
+              <:content>
+                <.client_os_name_and_version client={client} />
+              </:content>
+            </.popover>
           </:col>
           <:col :let={client} field={{:clients, :name}} label="name">
             <div class="flex items-center space-x-1">
