@@ -15,6 +15,10 @@ export default function Gateway() {
             Separates CIDR and DNS resources filters, preventing filters
             from one applying to the other.
           </ChangeItem>
+          <ChangeItem pull="6941">
+            Implements support for the new control protocol; delivering faster
+            and more robust connection establishment.
+          </ChangeItem>
       </Unreleased>
       <Entry version="1.3.2" date={new Date("2024-10-02")}>
         <ChangeItem pull="6733">
