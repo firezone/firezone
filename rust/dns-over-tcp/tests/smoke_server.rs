@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
     process::Stdio,
     task::{ready, Context, Poll},
@@ -36,7 +37,7 @@ async fn smoke() {
 
     let listen_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(100, 100, 111, 1), 53));
     let mut dns_server = dns_over_tcp::Server::new(Instant::now());
-    dns_server.set_listen_addresses::<CLIENT_CONCURRENCY>(vec![listen_addr]);
+    dns_server.set_listen_addresses::<CLIENT_CONCURRENCY>(BTreeSet::from([listen_addr]));
     let mut eventloop = Eventloop::new(Box::new(tun), dns_server);
 
     tokio::spawn(std::future::poll_fn(move |cx| eventloop.poll(cx)));
