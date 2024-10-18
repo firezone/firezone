@@ -182,7 +182,7 @@ impl ReferenceState {
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
                 |ip4_resources| {
-                    packet_to_cidr_resource(
+                    icmp_to_destination(
                         packet_source_v4(state.client.inner().tunnel_ip4),
                         sample::select(ip4_resources).prop_flat_map(crate::proptest::host_v4),
                     )
@@ -192,7 +192,7 @@ impl ReferenceState {
                 10,
                 state.client.inner().ipv6_cidr_resource_dsts(),
                 |ip6_resources| {
-                    packet_to_cidr_resource(
+                    icmp_to_destination(
                         packet_source_v6(state.client.inner().tunnel_ip6),
                         sample::select(ip6_resources).prop_flat_map(crate::proptest::host_v6),
                     )
@@ -202,7 +202,7 @@ impl ReferenceState {
                 10,
                 state.client.inner().resolved_v4_domains(),
                 |dns_v4_domains| {
-                    packet_to_dns_resource(
+                    icmp_to_destination(
                         packet_source_v4(state.client.inner().tunnel_ip4),
                         sample::select(dns_v4_domains),
                     )
@@ -212,7 +212,7 @@ impl ReferenceState {
                 10,
                 state.client.inner().resolved_v6_domains(),
                 |dns_v6_domains| {
-                    packet_to_dns_resource(
+                    icmp_to_destination(
                         packet_source_v6(state.client.inner().tunnel_ip6),
                         sample::select(dns_v6_domains),
                     )
@@ -233,7 +233,7 @@ impl ReferenceState {
                     .inner()
                     .resolved_ip4_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip4s| {
-                    packet_to_random_ip(
+                    icmp_to_destination(
                         packet_source_v4(state.client.inner().tunnel_ip4),
                         sample::select(resolved_non_resource_ip4s),
                     )
@@ -246,7 +246,7 @@ impl ReferenceState {
                     .inner()
                     .resolved_ip6_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip6s| {
-                    packet_to_random_ip(
+                    icmp_to_destination(
                         packet_source_v6(state.client.inner().tunnel_ip6),
                         sample::select(resolved_non_resource_ip6s),
                     )
@@ -354,14 +354,15 @@ impl ReferenceState {
                     }
                 }
             }
-            Transition::SendPacket {
+            Transition::SendIcmpPacket {
                 src,
                 dst,
-                protocol,
+                seq,
+                identifier,
                 payload,
             } => {
                 state.client.exec_mut(|client| {
-                    client.on_packet(*src, dst.clone(), *protocol, *payload, |r| {
+                    client.on_icmp_packet(*src, dst.clone(), *seq, *identifier, *payload, |r| {
                         state.portal.gateway_for_resource(r).copied()
                     })
                 });
@@ -405,9 +406,8 @@ impl ReferenceState {
                     state.client.exec_mut(|client| client.reset_connections());
                 }
             }
-            Transition::SendTcpPayloadToNonResourceIp { .. } => todo!(),
-            Transition::SendTcpPayloadToCidrResource { .. } => todo!(),
-            Transition::SendTcpPayloadToDnsResource { .. } => todo!(),
+            Transition::SendUdpPacket { .. } => todo!(),
+            Transition::SendTcpPayload { .. } => todo!(),
         };
 
         state
@@ -431,10 +431,11 @@ impl ReferenceState {
                     .iter()
                     .all(|r| state.client.inner().has_resource(*r))
             }
-            Transition::SendPacket {
+            Transition::SendIcmpPacket {
                 src,
                 dst: Destination::DomainName { name, .. },
-                protocol,
+                seq,
+                identifier,
                 payload,
                 ..
             } => {
@@ -447,22 +448,23 @@ impl ReferenceState {
                     return false;
                 };
 
-                ref_client.is_valid_packet(protocol, payload)
+                ref_client.is_valid_packet(seq, identifier, payload)
                     && ref_client.dns_records.get(name).is_some_and(|r| match src {
                         IpAddr::V4(_) => r.contains(&Rtype::A),
                         IpAddr::V6(_) => r.contains(&Rtype::AAAA),
                     })
                     && state.gateways.contains_key(gateway)
             }
-            Transition::SendPacket {
+            Transition::SendIcmpPacket {
                 dst: Destination::IpAddr(dst),
-                protocol,
+                seq,
+                identifier,
                 payload,
                 ..
             } => {
                 let ref_client = state.client.inner();
 
-                if !ref_client.is_valid_packet(protocol, payload) {
+                if !ref_client.is_valid_packet(seq, identifier, payload) {
                     return false;
                 }
 
@@ -474,8 +476,7 @@ impl ReferenceState {
                     return false;
                 };
 
-                ref_client.is_valid_packet(protocol, payload)
-                    && state.gateways.contains_key(gateway)
+                state.gateways.contains_key(gateway)
             }
             Transition::UpdateSystemDnsServers(servers) => {
                 if servers.is_empty() {
@@ -556,9 +557,8 @@ impl ReferenceState {
             }
             Transition::Idle => true,
             Transition::PartitionRelaysFromPortal => true,
-            Transition::SendTcpPayloadToNonResourceIp { .. } => todo!(),
-            Transition::SendTcpPayloadToCidrResource { .. } => todo!(),
-            Transition::SendTcpPayloadToDnsResource { .. } => todo!(),
+            Transition::SendUdpPacket { .. } => todo!(),
+            Transition::SendTcpPayload { .. } => todo!(),
         }
     }
 }

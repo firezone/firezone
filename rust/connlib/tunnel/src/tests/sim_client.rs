@@ -3,7 +3,7 @@ use super::{
     sim_net::{any_ip_stack, any_port, host, Host},
     sim_relay::{map_explode, SimRelay},
     strategies::latency,
-    transition::{Destination, DnsQuery, TransitionProtocol},
+    transition::{Destination, DnsQuery, Identifier, Seq},
     QueryId,
 };
 use crate::{
@@ -53,8 +53,8 @@ pub(crate) struct SimClient {
     pub(crate) sent_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket>,
     pub(crate) received_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket>,
 
-    pub(crate) sent_request: HashMap<TransitionProtocol, IpPacket>,
-    pub(crate) received_replies: BTreeMap<TransitionProtocol, IpPacket>,
+    pub(crate) sent_icmp_requests: HashMap<(Seq, Identifier), IpPacket>,
+    pub(crate) received_icmp_replies: BTreeMap<(Seq, Identifier), IpPacket>,
 
     enc_buffer: EncryptBuffer,
 }
@@ -68,8 +68,8 @@ impl SimClient {
             dns_by_sentinel: Default::default(),
             sent_dns_queries: Default::default(),
             received_dns_responses: Default::default(),
-            sent_request: Default::default(),
-            received_replies: Default::default(),
+            sent_icmp_requests: Default::default(),
+            received_icmp_replies: Default::default(),
             enc_buffer: EncryptBuffer::new((1 << 16) - 1),
             ipv4_routes: Default::default(),
             ipv6_routes: Default::default(),
@@ -129,6 +129,22 @@ impl SimClient {
     }
 
     fn update_sent_requests(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
+        if let Some(icmp) = packet.as_icmpv4() {
+            if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
+                self.sent_icmp_requests
+                    .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+                return Ok(());
+            }
+        }
+
+        if let Some(icmp) = packet.as_icmpv6() {
+            if let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type() {
+                self.sent_icmp_requests
+                    .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+                return Ok(());
+            }
+        }
+
         if let Some(udp) = packet.as_udp() {
             if let Ok(message) = Message::from_slice(udp.payload()) {
                 debug_assert!(
@@ -147,10 +163,7 @@ impl SimClient {
             }
         }
 
-        let protocol = request_to_transition_protocol_from_packet(packet)
-            .ok_or(anyhow!("Unexpected packet protocol"))?;
-        self.sent_request.insert(protocol, packet.clone());
-        Ok(())
+        Err(anyhow!("Unhandled packet"))
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
@@ -216,9 +229,20 @@ impl SimClient {
             }
         }
 
-        if let Some(protocol) = reply_to_transition_protocol_from_packet(&packet) {
-            self.received_replies.insert(protocol, packet.clone());
-            return;
+        if let Some(icmp) = packet.as_icmpv4() {
+            if let Icmpv4Type::EchoReply(echo) = icmp.icmp_type() {
+                self.received_icmp_replies
+                    .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+                return;
+            }
+        }
+
+        if let Some(icmp) = packet.as_icmpv6() {
+            if let Icmpv6Type::EchoReply(echo) = icmp.icmp_type() {
+                self.received_icmp_replies
+                    .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+                return;
+            }
         }
 
         tracing::error!(?packet, "Unhandled packet");
@@ -308,8 +332,8 @@ pub struct RefClient {
 
     /// The expected ICMP handshakes.
     #[derivative(Debug = "ignore")]
-    pub(crate) expected_handshakes:
-        BTreeMap<GatewayId, BTreeMap<u64, (Destination, TransitionProtocol)>>,
+    pub(crate) expected_icmp_handshakes:
+        BTreeMap<GatewayId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
     /// The expected DNS handshakes.
     #[derivative(Debug = "ignore")]
     pub(crate) expected_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
@@ -448,11 +472,12 @@ impl RefClient {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    pub(crate) fn on_packet(
+    pub(crate) fn on_icmp_packet(
         &mut self,
         src: IpAddr,
         dst: Destination,
-        protocol: TransitionProtocol,
+        seq: Seq,
+        identifier: Identifier,
         payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
     ) {
@@ -469,10 +494,10 @@ impl RefClient {
 
         if self.is_connected_to_resource(resource, &dst) && self.is_tunnel_ip(src) {
             tracing::debug!("Connected to DNS resource, expecting packet to be routed");
-            self.expected_handshakes
+            self.expected_icmp_handshakes
                 .entry(gateway)
                 .or_default()
-                .insert(payload, (dst, protocol));
+                .insert(payload, (dst, seq, identifier));
             return;
         }
 
@@ -563,8 +588,7 @@ impl RefClient {
         };
 
         self.connected_dns_resources
-            .get(&(resource, name.clone()))
-            .is_some()
+            .contains(&(resource, name.clone()))
     }
 
     fn is_connected_to_internet(&self, id: ResourceId) -> bool {
@@ -632,10 +656,17 @@ impl RefClient {
     }
 
     /// An ICMP packet is valid if we didn't yet send an ICMP packet with the same seq, identifier and payload.
-    pub(crate) fn is_valid_packet(&self, protocol: &TransitionProtocol, payload: &u64) -> bool {
-        self.expected_handshakes.values().flatten().all(
-            |(existig_payload, (_, existing_protocol))| {
-                existing_protocol == protocol && existig_payload != payload
+    pub(crate) fn is_valid_packet(
+        &self,
+        seq: &Seq,
+        identifier: &Identifier,
+        payload: &u64,
+    ) -> bool {
+        self.expected_icmp_handshakes.values().flatten().all(
+            |(existig_payload, (_, existing_seq, existing_identifier))| {
+                existing_seq != seq
+                    && existing_identifier != identifier
+                    && existig_payload != payload
             },
         )
     }
@@ -869,7 +900,7 @@ fn ref_client(
                     connected_cidr_resources: Default::default(),
                     connected_dns_resources: Default::default(),
                     connected_internet_resource: Default::default(),
-                    expected_handshakes: Default::default(),
+                    expected_icmp_handshakes: Default::default(),
                     expected_dns_handshakes: Default::default(),
                     disabled_resources: Default::default(),
                     resources: Default::default(),
@@ -879,58 +910,6 @@ fn ref_client(
                 }
             },
         )
-}
-
-fn request_to_transition_protocol_from_packet(packet: &IpPacket) -> Option<TransitionProtocol> {
-    if let Some(icmp) = packet.as_icmpv4() {
-        if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
-            return Some(TransitionProtocol::Icmp {
-                seq: echo.seq,
-                identifier: echo.id,
-            });
-        }
-
-        if let Icmpv4Type::EchoReply(echo) = icmp.icmp_type() {
-            return Some(TransitionProtocol::Icmp {
-                seq: echo.seq,
-                identifier: echo.id,
-            });
-        }
-    }
-
-    if let Some(icmp) = packet.as_icmpv6() {
-        if let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type() {
-            return Some(TransitionProtocol::Icmp {
-                seq: echo.seq,
-                identifier: echo.id,
-            });
-        }
-
-        if let Icmpv6Type::EchoReply(echo) = icmp.icmp_type() {
-            return Some(TransitionProtocol::Icmp {
-                seq: echo.seq,
-                identifier: echo.id,
-            });
-        }
-    }
-
-    if let Some(udp) = packet.as_udp() {
-        return Some(TransitionProtocol::Udp {
-            src: udp.source_port(),
-            dst: udp.destination_port(),
-        });
-    }
-
-    None
-}
-
-fn reply_to_transition_protocol_from_packet(packet: &IpPacket) -> Option<TransitionProtocol> {
-    match request_to_transition_protocol_from_packet(packet) {
-        Some(TransitionProtocol::Udp { src, dst }) => {
-            Some(TransitionProtocol::Udp { src: dst, dst: src })
-        }
-        protocol => protocol,
-    }
 }
 
 fn default_routes_v4() -> Vec<Ipv4Network> {

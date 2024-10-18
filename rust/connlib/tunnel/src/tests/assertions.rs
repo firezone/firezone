@@ -28,25 +28,31 @@ pub(crate) fn assert_icmp_packets_properties(
     global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
 ) {
     let unexpected_replies = find_unexpected_entries(
-        &ref_client.expected_handshakes.values().flatten().collect(),
-        &sim_client.received_replies,
-        |(_, (_, protocol_a)), protocol_b| protocol_a == protocol_b,
+        &ref_client
+            .expected_icmp_handshakes
+            .values()
+            .flatten()
+            .collect(),
+        &sim_client.received_icmp_replies,
+        |(_, (_, seq_a, identifier_a)), (seq_b, identifier_b)| {
+            seq_a == seq_b && identifier_a == identifier_b
+        },
     );
 
     if !unexpected_replies.is_empty() {
         tracing::error!(target: "assertions", ?unexpected_replies, "❌ Unexpected replies on client");
     }
 
-    for (gid, expected_icmp_handshakes) in ref_client.expected_handshakes.iter() {
+    for (gid, expected_icmp_handshakes) in ref_client.expected_icmp_handshakes.iter() {
         let gateway = sim_gateways.get(gid).unwrap();
 
         let num_expected_handshakes = expected_icmp_handshakes.len();
         let num_actual_handshakes = gateway.received_requests.len();
 
         if num_expected_handshakes != num_actual_handshakes {
-            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %gid, "❌ Unexpected requests");
+            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %gid, "❌ Unexpected ICMP requests");
         } else {
-            tracing::info!(target: "assertions", %num_expected_handshakes, %gid, "✅ Performed the expected handshakes");
+            tracing::info!(target: "assertions", %num_expected_handshakes, %gid, "✅ Performed the expected ICMP handshakes");
         }
     }
 
@@ -55,24 +61,28 @@ pub(crate) fn assert_icmp_packets_properties(
     // Assert properties of the individual ICMP handshakes per gateway.
     // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
     // Thus, we rely on the _order_ here which is why the packets are indexed by gateway in the `RefClient`.
-    for (gateway, expected_handshakes) in &ref_client.expected_handshakes {
+    for (gateway, expected_icmp_handshakes) in &ref_client.expected_icmp_handshakes {
         let received_requests = &sim_gateways.get(gateway).unwrap().received_requests;
 
-        for (payload, (resource_dst, protocol)) in expected_handshakes {
-            let _guard = tracing::info_span!(target: "assertions", "packet", ?protocol).entered();
+        for (payload, (resource_dst, seq, identifier)) in expected_icmp_handshakes {
+            let _guard =
+                tracing::info_span!(target: "assertions", "icmp", ?seq, ?identifier).entered();
 
-            let Some(client_sent_request) = sim_client.sent_request.get(protocol) else {
-                tracing::error!(target: "assertions", "❌ Missing request on client");
+            let Some(client_sent_request) = sim_client.sent_icmp_requests.get(&(*seq, *identifier))
+            else {
+                tracing::error!(target: "assertions", "❌ Missing ICMP request on client");
                 continue;
             };
-            let Some(client_received_reply) = sim_client.received_replies.get(protocol) else {
-                tracing::error!(target: "assertions", "❌ Missing reply on client");
+            let Some(client_received_reply) =
+                sim_client.received_icmp_replies.get(&(*seq, *identifier))
+            else {
+                tracing::error!(target: "assertions", "❌ Missing ICMP reply on client");
                 continue;
             };
             assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
 
             let Some(gateway_received_request) = received_requests.get(payload) else {
-                tracing::error!(target: "assertions", "❌ Missing request on gateway");
+                tracing::error!(target: "assertions", "❌ Missing ICMP request on gateway");
                 continue;
             };
 
@@ -81,7 +91,7 @@ pub(crate) fn assert_icmp_packets_properties(
                 let actual = gateway_received_request.source();
 
                 if expected != actual {
-                    tracing::error!(target: "assertions", %expected, %actual, "❌ Unexpected request source");
+                    tracing::error!(target: "assertions", %expected, %actual, "❌ Unexpected ICMP request source");
                 }
             }
 

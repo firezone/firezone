@@ -26,37 +26,26 @@ pub(crate) enum Transition {
     DeactivateResource(ResourceId),
     /// Client-side disable resource
     DisableResources(BTreeSet<ResourceId>),
-    /// Send an ICMP or UDP packet to non-resource IP.
-    SendPacket {
+    /// Send an ICMP packet to non-resource IP.
+    SendIcmpPacket {
         src: IpAddr,
         dst: Destination,
-        protocol: TransitionProtocol,
+        seq: Seq,
+        identifier: Identifier,
         payload: u64,
     },
-
-    /// Send a TCP payload to non-resource IP.
-    SendTcpPayloadToNonResourceIp {
+    /// Send an UDP packet to non-resource IP.
+    SendUdpPacket {
         src: IpAddr,
-        dst: IpAddr,
+        dst: Destination,
         sport: u16,
         dport: u16,
         payload: u64,
     },
-    /// Send a TCP payload to a CIDR resource.
-    SendTcpPayloadToCidrResource {
+    /// Send an TCP payload to non-resource IP.
+    SendTcpPayload {
         src: IpAddr,
-        dst: IpAddr,
-        sport: u16,
-        dport: u16,
-        payload: u64,
-    },
-    /// Send a TCP payload to a DNS resource.
-    SendTcpPayloadToDnsResource {
-        src: IpAddr,
-        dst: DomainName,
-        #[derivative(Debug = "ignore")]
-        resolved_ip: sample::Selector,
-
+        dst: Destination,
         sport: u16,
         dport: u16,
         payload: u64,
@@ -98,59 +87,6 @@ pub(crate) enum Transition {
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum TransitionProtocol {
-    Udp { src: u16, dst: u16 },
-    Icmp { seq: u16, identifier: u16 },
-}
-
-impl Ord for TransitionProtocol {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match (self, other) {
-            (
-                TransitionProtocol::Udp {
-                    src: src_a,
-                    dst: dst_a,
-                },
-                TransitionProtocol::Udp {
-                    src: src_b,
-                    dst: dst_b,
-                },
-            ) => {
-                if src_a == src_b {
-                    return dst_a.cmp(dst_b);
-                }
-
-                src_a.cmp(src_b)
-            }
-            (
-                TransitionProtocol::Icmp {
-                    seq: seq_a,
-                    identifier: identifier_a,
-                },
-                TransitionProtocol::Icmp {
-                    seq: seq_b,
-                    identifier: identifier_b,
-                },
-            ) => {
-                if identifier_a == identifier_b {
-                    return seq_a.cmp(seq_b);
-                }
-
-                identifier_a.cmp(identifier_b)
-            }
-            (TransitionProtocol::Icmp { .. }, _) => std::cmp::Ordering::Less,
-            (TransitionProtocol::Udp { .. }, _) => std::cmp::Ordering::Greater,
-        }
-    }
-}
-
-impl PartialOrd for TransitionProtocol {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
 #[derive(Debug, Clone)]
 pub(crate) struct DnsQuery {
     pub(crate) domain: DomainName,
@@ -161,7 +97,14 @@ pub(crate) struct DnsQuery {
     pub(crate) dns_server: SocketAddr,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct Seq(pub u16);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) struct Identifier(pub u16);
+
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum Destination {
     DomainName {
         resolved_ip: sample::Selector,
@@ -170,73 +113,72 @@ pub(crate) enum Destination {
     IpAddr(IpAddr),
 }
 
-pub(crate) fn packet_to_random_ip<I>(
+/// Helper enum
+#[derive(Debug, Clone)]
+enum PacketDestination {
+    DomainName(DomainName),
+    IpAddr(IpAddr),
+}
+
+impl From<DomainName> for PacketDestination {
+    fn from(name: DomainName) -> Self {
+        PacketDestination::DomainName(name)
+    }
+}
+
+impl From<Ipv4Addr> for PacketDestination {
+    fn from(addr: Ipv4Addr) -> Self {
+        PacketDestination::IpAddr(addr.into())
+    }
+}
+
+impl From<Ipv6Addr> for PacketDestination {
+    fn from(addr: Ipv6Addr) -> Self {
+        PacketDestination::IpAddr(addr.into())
+    }
+}
+
+impl From<IpAddr> for PacketDestination {
+    fn from(addr: IpAddr) -> Self {
+        PacketDestination::IpAddr(addr)
+    }
+}
+
+impl PacketDestination {
+    fn into_destination(self, resolved_ip: sample::Selector) -> Destination {
+        match self {
+            PacketDestination::DomainName(name) => Destination::DomainName { resolved_ip, name },
+            PacketDestination::IpAddr(addr) => Destination::IpAddr(addr),
+        }
+    }
+}
+
+#[allow(private_bounds)]
+pub(crate) fn icmp_to_destination<I, D>(
     src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = I>,
+    dst: impl Strategy<Value = D>,
 ) -> impl Strategy<Value = Transition>
 where
     I: Into<IpAddr>,
+    D: Into<PacketDestination>,
 {
     (
         src.prop_map(Into::into),
         dst.prop_map(Into::into),
-        transition_protocol(),
-        any::<u64>(),
-    )
-        .prop_map(|(src, dst, protocol, payload)| Transition::SendPacket {
-            src,
-            dst: Destination::IpAddr(dst),
-            protocol,
-            payload,
-        })
-}
-
-pub(crate) fn packet_to_cidr_resource<I>(
-    src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = I>,
-) -> impl Strategy<Value = Transition>
-where
-    I: Into<IpAddr>,
-{
-    (
-        dst.prop_map(Into::into),
-        transition_protocol(),
-        src.prop_map(Into::into),
-        any::<u64>(),
-    )
-        .prop_map(|(dst, protocol, src, payload)| Transition::SendPacket {
-            src,
-            dst: Destination::IpAddr(dst),
-            protocol,
-            payload,
-        })
-}
-
-pub(crate) fn packet_to_dns_resource<I>(
-    src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = DomainName>,
-) -> impl Strategy<Value = Transition>
-where
-    I: Into<IpAddr>,
-{
-    (
-        dst,
-        transition_protocol(),
-        src.prop_map(Into::into),
+        any::<u16>(),
+        any::<u16>(),
         any::<sample::Selector>(),
         any::<u64>(),
     )
-        .prop_map(
-            |(dst, protocol, src, resolved_ip, payload)| Transition::SendPacket {
+        .prop_map(|(src, dst, seq, identifier, resolved_ip, payload)| {
+            Transition::SendIcmpPacket {
                 src,
-                dst: Destination::DomainName {
-                    name: dst,
-                    resolved_ip,
-                },
-                protocol,
+                dst: dst.into_destination(resolved_ip),
+                seq: Seq(seq),
+                identifier: Identifier(identifier),
                 payload,
-            },
-        )
+            }
+        })
 }
 
 /// Samples up to 5 DNS queries that will be sent concurrently into connlib.
@@ -283,23 +225,6 @@ pub(crate) fn dns_queries(
             })
             .collect::<Vec<_>>()
     })
-}
-
-fn transition_protocol() -> impl Strategy<Value = TransitionProtocol> {
-    (any::<u16>(), any::<u16>())
-        .prop_filter(
-            "We only use 53 for DNS to keep things simpler",
-            |(p1, p2)| *p1 != 53 && *p2 != 53,
-        )
-        .prop_flat_map(|(p1, p2)| {
-            prop_oneof![
-                Just(TransitionProtocol::Icmp {
-                    seq: p1,
-                    identifier: p2
-                }),
-                Just(TransitionProtocol::Udp { src: p1, dst: p2 }),
-            ]
-        })
 }
 
 fn ptr_query_ip() -> impl Strategy<Value = IpAddr> {
