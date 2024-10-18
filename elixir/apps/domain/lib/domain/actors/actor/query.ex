@@ -66,6 +66,37 @@ defmodule Domain.Actors.Actor.Query do
 
   # Preloads
 
+  def preload_few_clients_for_each_actor(queryable, limit) do
+    queryable
+    |> with_joined_clients(limit)
+    |> with_joined_client_counts()
+    |> select([actors: actors, clients: clients, client_counts: client_counts], %{
+      id: actors.id,
+      count: client_counts.count,
+      item: clients
+    })
+  end
+
+  def with_joined_clients(queryable, limit) do
+    subquery =
+      Domain.Clients.Client.Query.not_deleted()
+      |> where([clients: clients], clients.actor_id == parent_as(:actors).id)
+      |> order_by([clients: clients], desc: clients.last_seen_at)
+      |> limit(^limit)
+
+    join(queryable, :cross_lateral, [actors: actors], clients in subquery(subquery), as: :clients)
+  end
+
+  def with_joined_client_counts(queryable) do
+    subquery =
+      Domain.Clients.Client.Query.count_clients_by_actor_id()
+      |> where([clients: clients], clients.actor_id == parent_as(:actors).id)
+
+    join(queryable, :cross_lateral, [actors: actors], client_counts in subquery(subquery),
+      as: :client_counts
+    )
+  end
+
   def preload_few_groups_for_each_actor(queryable, limit) do
     queryable
     |> with_joined_memberships(limit)
@@ -170,7 +201,8 @@ defmodule Domain.Actors.Actor.Query do
   @impl Domain.Repo.Query
   def preloads,
     do: [
-      last_seen_at: &Domain.Actors.preload_last_seen_at/1
+      last_seen_at: &Domain.Actors.preload_last_seen_at/1,
+      clients: {nil, Domain.Clients.Client.Query.preloads()}
     ]
 
   @impl Domain.Repo.Query
