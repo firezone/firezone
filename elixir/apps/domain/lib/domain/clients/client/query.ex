@@ -48,6 +48,15 @@ defmodule Domain.Clients.Client.Query do
     |> distinct(true)
   end
 
+  def count_clients_by_actor_id(queryable \\ not_deleted()) do
+    queryable
+    |> group_by([clients: clients], clients.actor_id)
+    |> select([clients: clients], %{
+      actor_id: clients.actor_id,
+      count: count(clients.id)
+    })
+  end
+
   def returning_not_deleted(queryable) do
     select(queryable, [clients: clients], clients)
   end
