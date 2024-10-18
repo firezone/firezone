@@ -433,6 +433,7 @@ mod tests {
             // User clicks "Sign In", build a fake server response
             let req = state.start_sign_in().unwrap().unwrap();
             let resp = Response {
+                account_slug: "firezone".into(),
                 actor_name: actor_name.into(),
                 fragment: bogus_secret("fragment"),
                 state: req.state.clone(),
@@ -479,6 +480,7 @@ mod tests {
 
         // If we get a deep link with no in-flight request, it's invalid
         let r = state.handle_response(Response {
+            account_slug: "firezone".into(),
             actor_name: "Jane Doe".into(),
             fragment: bogus_secret("fragment"),
             state: bogus_secret("state"),
@@ -507,6 +509,7 @@ mod tests {
         // User clicks "Sign In", build a fake server response
         state.start_sign_in().unwrap();
         let resp = Response {
+            account_slug: "firezone".into(),
             actor_name: "Jane Doe".into(),
             fragment: bogus_secret("fragment"),
             state: SecretString::from(

@@ -104,9 +104,10 @@ mod tests {
     #[test]
     fn parse_auth_callback() -> Result<()> {
         // Positive cases
-        let input = "firezone://handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
+        let input = "firezone://handle_client_sign_in_callback/?account_slug=firezone&actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input)?;
 
+        assert_eq!(actual.account_slug, "firezone");
         assert_eq!(actual.actor_name, "Reactor Scram");
         assert_eq!(actual.fragment.expose_secret(), "a_very_secret_string");
         assert_eq!(actual.state.expose_secret(), "a_less_secret_string");
@@ -114,14 +115,16 @@ mod tests {
         let input = "firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Reactor+Scram&fragment=a_very_secret_string&identity_provider_identifier=1234&state=a_less_secret_string";
         let actual = parse_callback_wrapper(input)?;
 
+        assert_eq!(actual.account_slug, "firezone");
         assert_eq!(actual.actor_name, "Reactor Scram");
         assert_eq!(actual.fragment.expose_secret(), "a_very_secret_string");
         assert_eq!(actual.state.expose_secret(), "a_less_secret_string");
 
         // Empty string "" `actor_name` is fine
-        let input = "firezone://handle_client_sign_in_callback/?actor_name=&fragment=&state=&identity_provider_identifier=12345";
+        let input = "firezone://handle_client_sign_in_callback/?account_slug=firezone&actor_name=&fragment=&state=&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input)?;
 
+        assert_eq!(actual.account_slug, "firezone");
         assert_eq!(actual.actor_name, "");
         assert_eq!(actual.fragment.expose_secret(), "");
         assert_eq!(actual.state.expose_secret(), "");
@@ -129,12 +132,12 @@ mod tests {
         // Negative cases
 
         // URL host is wrong
-        let input = "firezone://not_handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
+        let input = "firezone://not_handle_client_sign_in_callback/?account_slug=firezone&actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input);
         assert!(actual.is_err());
 
         // `actor_name` is not just blank but totally missing
-        let input = "firezone://handle_client_sign_in_callback/?fragment=&state=&identity_provider_identifier=12345";
+        let input = "firezone://handle_client_sign_in_callback/?account_slug=firezone&fragment=&state=&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input);
         assert!(actual.is_err());
 
