@@ -375,7 +375,14 @@ impl TunnelTest {
                     continue;
                 };
 
-                on_gateway_event(*id, event, &mut self.client, now);
+                on_gateway_event(
+                    *id,
+                    event,
+                    &mut self.client,
+                    gateway,
+                    &ref_state.global_dns_records,
+                    now,
+                );
                 continue 'outer;
             }
             if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
@@ -764,35 +771,33 @@ impl TunnelTest {
 
                 let client_id = self.client.inner().id;
 
-                let answer = gateway
-                    .exec_mut(|g| {
-                        let answer = g.sut.accept(
-                            client_id,
-                            snownet::Offer {
-                                session_key: preshared_key.expose_secret().0.into(),
-                                credentials: snownet::Credentials {
-                                    username: offer.username,
-                                    password: offer.password,
-                                },
+                let answer = gateway.exec_mut(|g| {
+                    let answer = g.sut.accept(
+                        client_id,
+                        snownet::Offer {
+                            session_key: preshared_key.expose_secret().0.into(),
+                            credentials: snownet::Credentials {
+                                username: offer.username,
+                                password: offer.password,
                             },
-                            self.client.inner().sut.public_key(),
+                        },
+                        self.client.inner().sut.public_key(),
+                        now,
+                    );
+                    g.sut
+                        .allow_access(
+                            self.client.inner().id,
+                            self.client.inner().sut.tunnel_ip4().unwrap(),
+                            self.client.inner().sut.tunnel_ip6().unwrap(),
+                            None,
+                            resource.clone(),
+                            maybe_entry,
                             now,
-                        );
-                        g.sut
-                            .allow_access(
-                                self.client.inner().id,
-                                self.client.inner().sut.tunnel_ip4().unwrap(),
-                                self.client.inner().sut.tunnel_ip6().unwrap(),
-                                None,
-                                resource.clone(),
-                                maybe_entry,
-                                now,
-                            )
-                            .unwrap();
+                        )
+                        .unwrap();
 
-                        anyhow::Ok(answer)
-                    })
-                    .unwrap();
+                    answer
+                });
 
                 self.client
                     .exec_mut(|c| {
@@ -885,6 +890,8 @@ fn on_gateway_event(
     src: GatewayId,
     event: GatewayEvent,
     client: &mut Host<SimClient>,
+    gateway: &mut Host<SimGateway>,
+    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     now: Instant,
 ) {
     match event {
@@ -899,5 +906,17 @@ fn on_gateway_event(
             }
         }),
         GatewayEvent::RefreshDns { .. } => todo!(),
+        GatewayEvent::ResolveDns(r) => {
+            let resolved_ips = global_dns_records
+                .get(r.domain())
+                .cloned()
+                .unwrap_or_default();
+
+            gateway.exec_mut(|g| {
+                g.sut
+                    .handle_domain_resolved(r, Vec::from_iter(resolved_ips), now)
+                    .unwrap()
+            })
+        }
     }
 }
