@@ -32,6 +32,15 @@ pub struct AppState {
     pub release: Option<Release>,
 }
 
+impl Default for AppState {
+    fn default() -> AppState {
+        AppState {
+            connlib: ConnlibState::Loading,
+            release: None,
+        }
+    }
+}
+
 impl AppState {
     pub fn into_menu(self) -> Menu {
         let quit_text = match &self.connlib {
@@ -130,7 +139,7 @@ impl SignedIn {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Icon {
     pub base: IconBase,
     pub update_ready: bool,
@@ -144,7 +153,7 @@ pub(crate) fn icon_terminating() -> Icon {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum IconBase {
     /// Must be equivalent to the default app icon, since we assume this is set when we start
     Busy,

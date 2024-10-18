@@ -10,5 +10,8 @@ call pnpm tsc
 REM Compile CSS
 call pnpm tailwindcss -i src\input.css -o src\output.css
 
+REM bundle JS
+call pnpm vite build
+
 REM Compile Rust and bundle
 call pnpm tauri build
