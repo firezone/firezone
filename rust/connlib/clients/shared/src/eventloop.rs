@@ -300,21 +300,13 @@ where
         req_id: OutboundRequestId,
     ) {
         match res {
-            ErrorReply::Offline => {
-                // tracing::debug!(resource_id = %offline_resource, "Resource is offline");
-
-                // self.tunnel
-                //     .state_mut()
-                //     .set_resource_offline(offline_resource);
-            }
-
             ErrorReply::Disabled => {
                 tracing::debug!(%req_id, "Functionality is disabled");
             }
             ErrorReply::UnmatchedTopic => {
                 self.portal.join(topic, ());
             }
-            reason @ (ErrorReply::InvalidVersion | ErrorReply::NotFound | ErrorReply::Other) => {
+            reason @ (ErrorReply::InvalidVersion | ErrorReply::Other) => {
                 tracing::debug!(%req_id, %reason, "Request failed");
             }
         }
