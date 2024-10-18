@@ -15,6 +15,7 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
         <ChangeItem enable={title === "Windows"} pull="7009">
           The IPC service `firezone-client-ipc.exe` is now signed.
         </ChangeItem>

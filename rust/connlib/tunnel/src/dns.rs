@@ -1,6 +1,7 @@
 use crate::client::IpProvider;
 use anyhow::{Context, Result};
 use connlib_model::{DomainName, ResourceId};
+use dns_over_tcp::SocketHandle;
 use domain::rdata::AllRecordData;
 use domain::{
     base::{
@@ -46,7 +47,7 @@ pub struct StubResolver {
 }
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct RecursiveQuery {
     pub server: SocketAddr,
     pub message: Message<Vec<u8>>,
@@ -70,13 +71,28 @@ impl RecursiveQuery {
             transport: Transport::Udp { source },
         }
     }
+
+    pub(crate) fn via_tcp(
+        source: SocketHandle,
+        server: SocketAddr,
+        message: Message<Vec<u8>>,
+    ) -> Self {
+        Self {
+            server,
+            message,
+            transport: Transport::Tcp { source },
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub(crate) enum Transport {
     Udp {
         /// The original source we received the DNS query on.
         source: SocketAddr,
+    },
+    Tcp {
+        source: SocketHandle,
     },
 }
 
@@ -259,12 +275,7 @@ impl StubResolver {
             Err(e) => {
                 tracing::trace!("Failed to handle DNS query: {e:#}");
 
-                let response = MessageBuilder::new_vec()
-                    .start_answer(&message, Rcode::SERVFAIL)
-                    .unwrap()
-                    .into_message();
-
-                ResolveStrategy::LocalResponse(response)
+                ResolveStrategy::LocalResponse(servfail(message))
             }
         }
     }
@@ -333,6 +344,13 @@ impl StubResolver {
         let response = build_dns_with_answer(message, domain, resource_records)?;
         Ok(ResolveStrategy::LocalResponse(response))
     }
+}
+
+pub fn servfail(message: Message<&[u8]>) -> Message<Vec<u8>> {
+    MessageBuilder::new_vec()
+        .start_answer(&message, Rcode::SERVFAIL)
+        .expect("should always be able to create a heap-allocated SERVFAIL message")
+        .into_message()
 }
 
 fn to_a_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {

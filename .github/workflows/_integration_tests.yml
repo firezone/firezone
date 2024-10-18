@@ -106,6 +106,7 @@ jobs:
             # Too noisy can cause flaky tests due to the amount of data
             rust_log: debug
           - name: dns-nm
+          - name: tcp-dns
           - name: relay-graceful-shutdown
           - name: systemd/dns-systemd-resolved
     steps:

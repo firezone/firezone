@@ -2,9 +2,8 @@
 
 use crate::{IpPacket, IpPacketBuf};
 use anyhow::{Context, Result};
-use domain::base::{iana::Opcode, MessageBuilder, Name, Question, Rtype};
 use etherparse::PacketBuilder;
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 
 /// Helper macro to turn a [`PacketBuilder`] into an [`IpPacket`].
 #[macro_export]
@@ -149,31 +148,6 @@ where
         }
         _ => Err(IpVersionMismatch),
     }
-}
-
-pub fn dns_query(
-    domain: Name<Vec<u8>>,
-    kind: Rtype,
-    src: SocketAddr,
-    dst: SocketAddr,
-    id: u16,
-) -> Result<IpPacket, IpVersionMismatch> {
-    // Create the DNS query message
-    let mut msg_builder = MessageBuilder::new_vec();
-
-    msg_builder.header_mut().set_opcode(Opcode::QUERY);
-    msg_builder.header_mut().set_rd(true);
-    msg_builder.header_mut().set_id(id);
-
-    // Create the query
-    let mut question_builder = msg_builder.question();
-    question_builder
-        .push(Question::new_in(domain, kind))
-        .unwrap();
-
-    let payload = question_builder.finish();
-
-    udp_packet(src.ip(), dst.ip(), src.port(), dst.port(), payload)
 }
 
 #[derive(thiserror::Error, Debug)]

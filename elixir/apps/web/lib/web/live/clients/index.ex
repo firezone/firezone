@@ -72,6 +72,16 @@ defmodule Web.Clients.Index do
           ordered_by={@order_by_table_id["clients"]}
           metadata={@clients_metadata}
         >
+          <:col :let={client} class="w-8">
+            <.popover placement="right">
+              <:target>
+                <.client_os_icon client={client} />
+              </:target>
+              <:content>
+                <.client_os_name_and_version client={client} />
+              </:content>
+            </.popover>
+          </:col>
           <:col :let={client} field={{:clients, :name}} label="name">
             <div class="flex items-center space-x-1">
               <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
@@ -89,9 +99,6 @@ defmodule Web.Clients.Index do
             <.link navigate={~p"/#{@account}/actors/#{client.actor.id}"} class={[link_style()]}>
               <.actor_name_and_role account={@account} actor={client.actor} />
             </.link>
-          </:col>
-          <:col :let={client} field={{:clients, :last_seen_user_agent}} label="os">
-            <.client_os client={client} />
           </:col>
           <:col :let={client} label="status">
             <.connection_status schema={client} />
