@@ -1,7 +1,7 @@
 use super::{
     sim_client::{RefClient, SimClient},
     sim_gateway::SimGateway,
-    transition::{Destination, RequestFrom},
+    transition::{Destination, ReplyTo},
 };
 use connlib_model::{DomainName, GatewayId};
 use ip_packet::IpPacket;
@@ -26,7 +26,7 @@ use tracing_subscriber::Layer;
 pub(crate) fn assert_icmp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
-    sim_gateway: HashMap<GatewayId, &SimGateway>,
+    sim_gateway: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
 ) {
     let received_icmp_requests = sim_gateway
@@ -55,7 +55,7 @@ pub(crate) fn assert_icmp_packets_properties(
 pub(crate) fn assert_udp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
-    sim_gateway: HashMap<GatewayId, &SimGateway>,
+    sim_gateway: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
 ) {
     let received_udp_requests = sim_gateway
@@ -84,7 +84,7 @@ pub(crate) fn assert_udp_packets_properties(
 pub(crate) fn assert_tcp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
-    sim_gateway: HashMap<GatewayId, &SimGateway>,
+    sim_gateway: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
 ) {
     let received_tcp_requests = sim_gateway
@@ -106,7 +106,7 @@ pub(crate) fn assert_tcp_packets_properties(
 pub(crate) fn assert_packets_properties<T, U>(
     ref_client: &RefClient,
     sent_requests: &HashMap<(T, U), IpPacket>,
-    received_requests: &HashMap<GatewayId, &BTreeMap<u64, IpPacket>>,
+    received_requests: &BTreeMap<GatewayId, &BTreeMap<u64, IpPacket>>,
     expected_handshakes: &BTreeMap<GatewayId, BTreeMap<u64, (Destination, T, U)>>,
     received_replies: &BTreeMap<(T, U), IpPacket>,
     packet_protocol: &str,
@@ -114,12 +114,12 @@ pub(crate) fn assert_packets_properties<T, U>(
 ) where
     T: Copy + std::fmt::Debug,
     U: Copy + std::fmt::Debug,
-    (T, U): RequestFrom + Hash + Eq + Ord,
+    (T, U): ReplyTo + Hash + Eq + Ord,
 {
     let unexpected_replies = find_unexpected_entries(
         &expected_handshakes.values().flatten().collect(),
         received_replies,
-        |(_, (_, t_a, u_a)), b| (*t_a, *u_a).request_from() == *b,
+        |(_, (_, t_a, u_a)), b| (*t_a, *u_a) == b.reply_to(),
     );
 
     if !unexpected_replies.is_empty() {
@@ -151,11 +151,11 @@ pub(crate) fn assert_packets_properties<T, U>(
                 tracing::info_span!(target: "assertions", "packet", packet_protocol, ?t, ?u)
                     .entered();
 
-            let Some(client_sent_request) = sent_requests.get(&(*t, *u).request_from()) else {
+            let Some(client_sent_request) = sent_requests.get(&(*t, *u)) else {
                 tracing::error!(target: "assertions", "❌ Missing {packet_protocol} request on client");
                 continue;
             };
-            let Some(client_received_reply) = received_replies.get(&(*t, *u)) else {
+            let Some(client_received_reply) = received_replies.get(&(*t, *u).reply_to()) else {
                 tracing::error!(target: "assertions", "❌ Missing {packet_protocol} reply on client");
                 continue;
             };

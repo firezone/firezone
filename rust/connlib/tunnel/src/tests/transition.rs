@@ -133,18 +133,18 @@ enum PacketDestination {
     IpAddr(IpAddr),
 }
 
-pub(crate) trait RequestFrom {
-    fn request_from(self) -> Self;
+pub(crate) trait ReplyTo {
+    fn reply_to(self) -> Self;
 }
 
-impl RequestFrom for (SPort, DPort) {
-    fn request_from(self) -> Self {
+impl ReplyTo for (SPort, DPort) {
+    fn reply_to(self) -> Self {
         (SPort(self.1 .0), DPort(self.0 .0))
     }
 }
 
-impl RequestFrom for (Seq, Identifier) {
-    fn request_from(self) -> Self {
+impl ReplyTo for (Seq, Identifier) {
+    fn reply_to(self) -> Self {
         self
     }
 }

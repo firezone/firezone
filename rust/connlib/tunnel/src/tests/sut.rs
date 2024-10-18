@@ -350,7 +350,19 @@ impl TunnelTest {
         assert_icmp_packets_properties(
             ref_client,
             sim_client,
-            sim_gateways,
+            &sim_gateways,
+            &ref_state.global_dns_records,
+        );
+        assert_udp_packets_properties(
+            ref_client,
+            sim_client,
+            &sim_gateways,
+            &ref_state.global_dns_records,
+        );
+        assert_tcp_packets_properties(
+            ref_client,
+            sim_client,
+            &sim_gateways,
             &ref_state.global_dns_records,
         );
         assert_udp_dns_packets_properties(ref_client, sim_client);
