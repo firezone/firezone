@@ -36,7 +36,10 @@ pub enum Error {
 
 pub use imp::{open, register, Server};
 
-pub fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Response> {
+/// Parses a deep-link URL into a struct.
+///
+/// e.g. `firezone-fd0020211111://handle_client_sign_in_callback/?state=secret&fragment=secret&account_name=Firezone&account_slug=firezone&actor_name=Jane+Doe&identity_provider_identifier=secret`
+pub(crate) fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Response> {
     let url = Url::parse(url_secret.expose_secret())?;
     if Some(url::Host::Domain("handle_client_sign_in_callback")) != url.host() {
         bail!("URL host should be `handle_client_sign_in_callback`");
@@ -48,12 +51,20 @@ pub fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Response> 
         _ => bail!("URL path should be `/` or empty"),
     }
 
+    let mut account_slug = None;
     let mut actor_name = None;
     let mut fragment = None;
     let mut state = None;
 
+    // There's probably a way to get serde to do this
     for (key, value) in url.query_pairs() {
         match key.as_ref() {
+            "account_slug" => {
+                if account_slug.is_some() {
+                    bail!("`account_slug` should appear exactly once");
+                }
+                account_slug = Some(value.to_string());
+            }
             "actor_name" => {
                 if actor_name.is_some() {
                     bail!("`actor_name` should appear exactly once");
@@ -77,6 +88,7 @@ pub fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Response> 
     }
 
     Ok(auth::Response {
+        account_slug: account_slug.context("URL should have `account_slug`")?,
         actor_name: actor_name.context("URL should have `actor_name`")?,
         fragment: fragment.context("URL should have `fragment`")?,
         state: state.context("URL should have `state`")?,
