@@ -1,5 +1,6 @@
 defmodule Web.Clients.Components do
   use Web, :component_library
+  import Web.CoreComponents
 
   def client_os(assigns) do
     ~H"""
@@ -25,6 +26,31 @@ defmodule Web.Clients.Components do
     <span>
       <%= get_client_os_name_and_version(@client.last_seen_user_agent) %>
     </span>
+    """
+  end
+
+  def client_as_icon(assigns) do
+    ~H"""
+    <.popover placement="right">
+      <:target>
+        <.client_os_icon client={@client} />
+      </:target>
+      <:content>
+        <div>
+          <%= @client.name %>
+        </div>
+        <div>
+          <.client_os_name_and_version client={@client} />
+        </div>
+        <div>
+          <span>Last started:</span>
+          <.relative_datetime datetime={@client.last_seen_at} popover={false} />
+        </div>
+        <div>
+          <.connection_status schema={@client} />
+        </div>
+      </:content>
+    </.popover>
     """
   end
 
