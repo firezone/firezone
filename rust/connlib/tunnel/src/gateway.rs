@@ -280,7 +280,7 @@ impl GatewayState {
         peer.add_resource(resource.clone(), expires_at);
 
         if let Some(entry) = dns_resource_nat {
-            peer.assign_translations(
+            peer.setup_nat(
                 entry.domain,
                 resource.id(),
                 &entry.resolved_ips,
@@ -292,23 +292,22 @@ impl GatewayState {
         self.peers.add_ip(&client, &ipv4.into());
         self.peers.add_ip(&client, &ipv6.into());
 
-        tracing::info!(%client, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
-
         Ok(())
     }
 
-    pub fn handle_pending_setup_nat_request_completed(
+    pub fn handle_domain_resolved(
         &mut self,
-        req: PendingSetupNatRequest,
+        req: ResolveDnsRequest,
         addresses: Vec<IpAddr>,
         now: Instant,
     ) -> anyhow::Result<()> {
         use p2p_control::dns_resource_nat;
 
-        let peer = self.peers.get_mut(&req.client).context("Unknown peer")?;
-
-        let nat_status = peer
-            .assign_translations(
+        let nat_status = self
+            .peers
+            .get_mut(&req.client)
+            .context("Unknown peer")?
+            .setup_nat(
                 req.domain.clone(),
                 req.resource,
                 &addresses,
@@ -467,7 +466,7 @@ fn handle_p2p_control_packet(
 
             // TODO: Should we throttle concurrent events for the same domain?
 
-            buffered_events.push_back(GatewayEvent::ResolveDns(PendingSetupNatRequest {
+            buffered_events.push_back(GatewayEvent::ResolveDns(ResolveDnsRequest {
                 domain: req.domain,
                 client: peer.id(),
                 resource: req.resource,
@@ -497,15 +496,16 @@ fn encrypt_packet<'a>(
     Some(encrypted_packet.to_transmit(buffer))
 }
 
-#[derive(Debug, Clone)]
-pub struct PendingSetupNatRequest {
+/// Opaque request struct for when a domain name needs to be resolved.
+#[derive(Debug)]
+pub struct ResolveDnsRequest {
     domain: DomainName,
     client: ClientId,
     resource: ResourceId,
     proxy_ips: Vec<IpAddr>,
 }
 
-impl PendingSetupNatRequest {
+impl ResolveDnsRequest {
     pub fn domain(&self) -> &DomainName {
         &self.domain
     }

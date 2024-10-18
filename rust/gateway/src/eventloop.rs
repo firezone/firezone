@@ -9,7 +9,7 @@ use firezone_tunnel::messages::gateway::{
     IngressMessages, RejectAccess, RequestConnection,
 };
 use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
-use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel, PendingSetupNatRequest};
+use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel, ResolveDnsRequest};
 use futures::channel::mpsc;
 use futures_bounded::Timeout;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
@@ -31,12 +31,12 @@ static_assertions::const_assert!(
     DNS_RESOLUTION_TIMEOUT.as_secs() < snownet::HANDSHAKE_TIMEOUT.as_secs()
 );
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum ResolveTrigger {
-    RequestConnection(RequestConnection), // Deprecated
-    AllowAccess(AllowAccess),             // Deprecated
-    Refresh(DomainName, ClientId, ResourceId),
-    SetupNat(PendingSetupNatRequest),
+    RequestConnection(RequestConnection),      // Deprecated
+    AllowAccess(AllowAccess),                  // Deprecated
+    Refresh(DomainName, ClientId, ResourceId), // TODO: Can we delete this perhaps?
+    SetupNat(ResolveDnsRequest),
 }
 
 pub struct Eventloop {
@@ -104,15 +104,11 @@ impl Eventloop {
                         })
                         .unwrap_or_default();
 
-                    if let Err(e) = self
-                        .tunnel
-                        .state_mut()
-                        .handle_pending_setup_nat_request_completed(
-                            request,
-                            addresses,
-                            Instant::now(),
-                        )
-                    {
+                    if let Err(e) = self.tunnel.state_mut().handle_domain_resolved(
+                        request,
+                        addresses,
+                        Instant::now(),
+                    ) {
                         tracing::warn!("Failed to set DNS resource NAT: {e:#}");
                     };
 

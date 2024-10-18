@@ -914,11 +914,7 @@ fn on_gateway_event(
 
             gateway.exec_mut(|g| {
                 g.sut
-                    .handle_pending_setup_nat_request_completed(
-                        r,
-                        Vec::from_iter(resolved_ips),
-                        now,
-                    )
+                    .handle_domain_resolved(r, Vec::from_iter(resolved_ips), now)
                     .unwrap()
             })
         }
