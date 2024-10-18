@@ -1,5 +1,5 @@
 use super::{
-    dns_server_resource::UdpDnsServerResource,
+    dns_server_resource::{TcpDnsServerResource, UdpDnsServerResource},
     reference::{private_key, PrivateKey},
     sim_net::{any_port, dual_ip_stack, host, Host},
     sim_relay::{map_explode, SimRelay},
@@ -28,6 +28,7 @@ pub(crate) struct SimGateway {
     pub(crate) received_icmp_requests: BTreeMap<u64, IpPacket>,
 
     udp_dns_server_resources: HashMap<SocketAddr, UdpDnsServerResource>,
+    tcp_dns_server_resources: HashMap<SocketAddr, TcpDnsServerResource>,
 }
 
 impl SimGateway {
@@ -38,6 +39,7 @@ impl SimGateway {
             received_icmp_requests: Default::default(),
             enc_buffer: Default::default(),
             udp_dns_server_resources: Default::default(),
+            tcp_dns_server_resources: Default::default(),
         }
     }
 
@@ -70,8 +72,14 @@ impl SimGateway {
 
             std::iter::from_fn(|| s.poll_outbound())
         });
+        let tcp_server_packets = self.tcp_dns_server_resources.values_mut().flat_map(|s| {
+            s.handle_timeout(global_dns_records, now);
+
+            std::iter::from_fn(|| s.poll_outbound())
+        });
 
         udp_server_packets
+            .chain(tcp_server_packets)
             .filter_map(|packet| {
                 Some(
                     self.sut
@@ -83,12 +91,18 @@ impl SimGateway {
             .collect()
     }
 
-    pub(crate) fn deploy_new_dns_servers(&mut self, dns_servers: impl Iterator<Item = SocketAddr>) {
+    pub(crate) fn deploy_new_dns_servers(
+        &mut self,
+        dns_servers: impl Iterator<Item = SocketAddr>,
+        now: Instant,
+    ) {
         self.udp_dns_server_resources.clear();
 
         for server in dns_servers {
             self.udp_dns_server_resources
                 .insert(server, UdpDnsServerResource::default());
+            self.tcp_dns_server_resources
+                .insert(server, TcpDnsServerResource::new(server, now));
         }
     }
 
@@ -112,6 +126,15 @@ impl SimGateway {
             let socket = SocketAddr::new(packet.destination(), udp.destination_port());
 
             if let Some(server) = self.udp_dns_server_resources.get_mut(&socket) {
+                server.handle_input(packet);
+                return None;
+            }
+        }
+
+        if let Some(tcp) = packet.as_tcp() {
+            let socket = SocketAddr::new(packet.destination(), tcp.destination_port());
+
+            if let Some(server) = self.tcp_dns_server_resources.get_mut(&socket) {
                 server.handle_input(packet);
                 return None;
             }

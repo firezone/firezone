@@ -47,9 +47,10 @@ impl TunnelTest {
     // Initialize the system under test from our reference state.
     pub(crate) fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
         // Construct client, gateway and relay from the initial state.
-        let mut client = ref_state
-            .client
-            .map(|ref_client, _, _| ref_client.init(), debug_span!("client"));
+        let mut client = ref_state.client.map(
+            |ref_client, _, _| ref_client.init(flux_capacitor.now()),
+            debug_span!("client"),
+        );
 
         let mut gateways = ref_state
             .gateways
@@ -203,10 +204,11 @@ impl TunnelTest {
                     r_type,
                     dns_server,
                     query_id,
+                    transport,
                 } in queries
                 {
                     let transmit = state.client.exec_mut(|sim| {
-                        sim.send_dns_query_for(domain, r_type, query_id, dns_server, now)
+                        sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
                     });
 
                     buffered_transmits.push_from(transmit, &state.client, now);
@@ -342,7 +344,8 @@ impl TunnelTest {
             sim_gateways,
             &ref_state.global_dns_records,
         );
-        assert_dns_packets_properties(ref_client, sim_client);
+        assert_udp_dns_packets_properties(ref_client, sim_client);
+        assert_tcp_dns(ref_client, sim_client);
         assert_known_hosts_are_valid(ref_client, sim_client);
         assert_dns_servers_are_valid(ref_client, sim_client);
         assert_routes_are_valid(ref_client, sim_client);
@@ -388,8 +391,10 @@ impl TunnelTest {
                 let server = query.server;
                 let transport = query.transport;
 
-                let response =
-                    self.on_recursive_dns_query(query.clone(), &ref_state.global_dns_records);
+                let response = self.on_recursive_dns_query(
+                    query.message.for_slice_ref(),
+                    &ref_state.global_dns_records,
+                );
                 self.client.exec_mut(|c| {
                     c.sut.handle_dns_response(dns::RecursiveResponse {
                         server,
@@ -486,6 +491,33 @@ impl TunnelTest {
     ) {
         let now = self.flux_capacitor.now();
 
+        // Handle the TCP DNS client, i.e. simulate applications making TCP DNS queries.
+        self.client.exec_mut(|c| {
+            c.tcp_dns_client.handle_timeout(now);
+
+            while let Some(result) = c.tcp_dns_client.poll_query_result() {
+                match result.result {
+                    Ok(message) => {
+                        let upstream = c.dns_mapping().get_by_left(&result.server.ip()).unwrap();
+
+                        c.received_tcp_dns_responses
+                            .insert((*upstream, result.query.header().id()));
+                        c.handle_dns_response(message.for_slice())
+                    }
+                    Err(e) => {
+                        tracing::error!("TCP DNS query failed: {e:#}");
+                    }
+                }
+            }
+        });
+        while let Some(transmit) = self.client.exec_mut(|c| {
+            let packet = c.tcp_dns_client.poll_outbound()?;
+            c.encapsulate(packet, now)
+        }) {
+            buffered_transmits.push_from(transmit, &self.client, now)
+        }
+
+        // Handle the client's `Transmit`s and timeout.
         while let Some(transmit) = self.client.poll_transmit(now) {
             self.client.exec_mut(|c| c.receive(transmit, now))
         }
@@ -495,6 +527,7 @@ impl TunnelTest {
             }
         });
 
+        // Handle all gateway `Transmit`s and timeouts.
         for (_, gateway) in self.gateways.iter_mut() {
             for transmit in gateway.exec_mut(|g| g.advance_resources(global_dns_records, now)) {
                 buffered_transmits.push_from(transmit, gateway, now);
@@ -517,6 +550,7 @@ impl TunnelTest {
             });
         }
 
+        // Handle all relay `Transmit`s and timeouts.
         for (_, relay) in self.relays.iter_mut() {
             while let Some(transmit) = relay.poll_transmit(now) {
                 let Some(reply) = relay.exec_mut(|r| r.receive(transmit, now)) else {
@@ -682,7 +716,7 @@ impl TunnelTest {
                 tracing::warn!("Unimplemented");
             }
             ClientEvent::TunInterfaceUpdated(config) => {
-                if self.client.inner().dns_by_sentinel == config.dns_by_sentinel
+                if self.client.inner().dns_mapping() == &config.dns_by_sentinel
                     && self.client.inner().ipv4_routes == config.ipv4_routes
                     && self.client.inner().ipv6_routes == config.ipv6_routes
                 {
@@ -691,16 +725,19 @@ impl TunnelTest {
                     );
                 }
 
-                if self.client.inner().dns_by_sentinel != config.dns_by_sentinel {
+                if self.client.inner().dns_mapping() != &config.dns_by_sentinel {
                     for gateway in self.gateways.values_mut() {
                         gateway.exec_mut(|g| {
-                            g.deploy_new_dns_servers(config.dns_by_sentinel.right_values().copied())
+                            g.deploy_new_dns_servers(
+                                config.dns_by_sentinel.right_values().copied(),
+                                now,
+                            )
                         })
                     }
                 }
 
                 self.client.exec_mut(|c| {
-                    c.dns_by_sentinel = config.dns_by_sentinel;
+                    c.set_new_dns_servers(config.dns_by_sentinel);
                     c.ipv4_routes = config.ipv4_routes;
                     c.ipv6_routes = config.ipv6_routes;
                 });
@@ -778,11 +815,9 @@ impl TunnelTest {
 
     fn on_recursive_dns_query(
         &self,
-        query: crate::dns::RecursiveQuery,
+        query: Message<&[u8]>,
         global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     ) -> Message<Vec<u8>> {
-        let query = query.message;
-
         let response = MessageBuilder::new_vec();
         let mut answers = response.start_answer(&query, Rcode::NOERROR).unwrap();
 
