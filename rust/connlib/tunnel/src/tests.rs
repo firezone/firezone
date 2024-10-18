@@ -29,8 +29,6 @@ mod sut;
 mod transition;
 
 type QueryId = u16;
-type IcmpSeq = u16;
-type IcmpIdentifier = u16;
 
 #[test]
 #[expect(clippy::print_stdout, clippy::print_stderr)]
