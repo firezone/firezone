@@ -6,7 +6,7 @@ set -euo pipefail
 BUNDLES_DIR=../target/release/bundle/deb
 
 # Copy frontend dependencies
-cp node_modules/flowbite/dist/flowbite.min.js src
+cp node_modules/flowbite/dist/flowbite.min.js src/
 
 # Compile CSS
 pnpm tailwindcss -i src/input.css -o src/output.css
