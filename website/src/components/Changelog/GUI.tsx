@@ -16,6 +16,10 @@ export default function GUI({ title }: { title: string }) {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
+        <ChangeItem>
+          Makes use of the new control protocol, delivering faster and more
+          robust connection establishment.
+        </ChangeItem>
         <ChangeItem enable={title === "Windows"} pull="7009">
           The IPC service `firezone-client-ipc.exe` is now signed.
         </ChangeItem>
