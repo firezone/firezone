@@ -88,6 +88,7 @@ pub struct FlowCreated {
     pub resource_id: ResourceId,
     pub gateway_id: GatewayId,
     pub gateway_public_key: Key,
+    #[serde(rename = "gateway_group_id")]
     pub site_id: SiteId,
     pub preshared_key: SecretKey,
     pub client_ice_credentials: IceCredentials,
@@ -275,7 +276,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_flow_created() {
-        let json = r#"{"event":"flow_created","ref":null,"topic":"client","payload":{"resource_id":"f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3","gateway_id":"b3d34a15-55ab-40df-994b-a838e75d65d7","site_id":"eb94482a-94f4-47cb-8127-14fb3afa5516","gateway_public_key":"OR2dYCLwMEtwqtjOxSm4SU7BbHJDfM8ZCqK7HKXXxDw=","preshared_key":"sMeTuiJ3mezfpVdan948CmisIWbwBZ1z7jBNnbVtfVg=","client_ice_credentials":{"username":"PvCPFevCOgkvVCtH","password":"xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF"},"gateway_ice_credentials":{"username":"PvCPFevCOgkvVCtH","password":"xEwoXEzHuSyrcgOCSRnwOXQVnbnbeGeF"}}}"#;
+        let json = r#"{"event":"flow_created","ref":null,"topic":"client","payload":{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"},"gateway_ice_credentials":{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY="}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
