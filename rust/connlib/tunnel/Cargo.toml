@@ -47,6 +47,7 @@ firezone-relay = { workspace = true, features = ["proptest"] }
 ip-packet = { workspace = true, features = ["proptest"] }
 proptest-state-machine = "0.3"
 rand = "0.8"
+sha2 = "0.10.8"
 test-case = "3.3.1"
 test-strategy = "0.3.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
