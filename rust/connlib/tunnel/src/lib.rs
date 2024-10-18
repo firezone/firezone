@@ -3,12 +3,10 @@
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
 
-use crate::messages::{Offer, Relay, ResolveRequest, SecretKey};
+use crate::messages::{Offer, ResolveRequest, SecretKey};
 use bimap::BiMap;
 use chrono::Utc;
-use connlib_model::{
-    ClientId, DomainName, GatewayId, PublicKey, RelayId, ResourceId, ResourceView,
-};
+use connlib_model::{ClientId, DomainName, GatewayId, PublicKey, ResourceId, ResourceView};
 use io::Io;
 use ip_network::{Ipv4Network, Ipv6Network};
 use snownet::EncryptBuffer;
@@ -54,7 +52,9 @@ pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
-pub use gateway::{DnsResourceNatEntry, GatewayState, IPV4_PEERS, IPV6_PEERS};
+pub use gateway::{
+    DnsResourceNatEntry, GatewayState, PendingSetupNatRequest, IPV4_PEERS, IPV6_PEERS,
+};
 pub use utils::turn;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
@@ -217,11 +217,6 @@ impl GatewayTunnel {
         self.role_state.public_key()
     }
 
-    pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {
-        self.role_state
-            .update_relays(to_remove, turn(&to_add), Instant::now())
-    }
-
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<GatewayEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
@@ -373,6 +368,7 @@ pub enum GatewayEvent {
         conn_id: ClientId,
         resource_id: ResourceId,
     },
+    ResolveDns(PendingSetupNatRequest),
 }
 
 fn fmt_routes<T>(routes: &BTreeSet<T>, f: &mut fmt::Formatter) -> fmt::Result
