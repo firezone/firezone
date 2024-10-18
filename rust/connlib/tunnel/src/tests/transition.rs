@@ -18,7 +18,6 @@ use std::{
 /// The possible transitions of the state machine.
 #[derive(Clone, derivative::Derivative)]
 #[derivative(Debug)]
-#[expect(clippy::large_enum_variant)]
 pub(crate) enum Transition {
     /// Activate a resource on the client.
     ActivateResource(Resource),
@@ -117,7 +116,7 @@ pub(crate) struct SPort(pub u16);
 pub(crate) struct DPort(pub u16);
 
 #[derive(Debug, Clone)]
-#[allow(clippy::large_enum_variant)]
+#[expect(clippy::large_enum_variant)]
 pub(crate) enum Destination {
     DomainName {
         resolved_ip: sample::Selector,
@@ -182,7 +181,7 @@ impl PacketDestination {
     }
 }
 
-#[allow(private_bounds)]
+#[expect(private_bounds)]
 pub(crate) fn icmp_to_destination<I, D>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = D>,
