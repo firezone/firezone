@@ -193,32 +193,28 @@ impl Eventloop {
     fn handle_portal_event(&mut self, event: phoenix_channel::Event<IngressMessages, ()>) {
         match event {
             phoenix_channel::Event::InboundMessage {
-                msg:
-                    IngressMessages::AuthorizeFlow {
-                        reference,
-                        resource,
-                        gateway_ice_credentials,
-                        client,
-                        client_ice_credentials,
-                        expires_at,
-                    },
+                msg: IngressMessages::AuthorizeFlow(msg),
                 ..
             } => {
                 self.tunnel.state_mut().authorize_flow(
-                    client.id,
-                    PublicKey::from(client.public_key.0),
-                    client.preshared_key,
-                    client_ice_credentials,
-                    gateway_ice_credentials,
-                    client.ipv4,
-                    client.ipv6,
-                    expires_at,
-                    resource,
+                    msg.client.id,
+                    PublicKey::from(msg.client.public_key.0),
+                    msg.client.preshared_key,
+                    msg.client_ice_credentials,
+                    msg.gateway_ice_credentials,
+                    msg.client.ipv4,
+                    msg.client.ipv6,
+                    msg.expires_at,
+                    msg.resource,
                     Instant::now(),
                 );
 
-                self.portal
-                    .send(PHOENIX_TOPIC, EgressMessages::FlowAuthorized { reference });
+                self.portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::FlowAuthorized {
+                        reference: msg.reference,
+                    },
+                );
             }
             phoenix_channel::Event::InboundMessage {
                 msg: IngressMessages::RequestConnection(req),
