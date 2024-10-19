@@ -3,6 +3,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
     arbitrary::{any, any_with},
     collection, prop_oneof,
+    sample::subsequence,
     strategy::{Just, Strategy},
 };
 use std::{
@@ -10,37 +11,129 @@ use std::{
     ops::Range,
 };
 
-use crate::client::{CidrResource, DnsResource, InternetResource, Resource};
+use crate::{
+    client::InternetResource,
+    messages::gateway::{Filter, Filters, PortRange},
+};
 
-pub fn resource(
-    sites: impl Strategy<Value = Vec<Site>> + Clone + 'static,
-) -> impl Strategy<Value = Resource> {
-    any::<bool>().prop_flat_map(move |is_dns| {
-        if is_dns {
-            dns_resource(sites.clone()).prop_map(Resource::Dns).boxed()
-        } else {
-            cidr_resource(any_ip_network(8), sites.clone())
-                .prop_map(Resource::Cidr)
-                .boxed()
-        }
-    })
+/// Full model of a dns resource, proyections of this are sent to the client and gateways
+#[derive(Debug, Clone, PartialEq, Eq, derivative::Derivative)]
+#[derivative(PartialOrd, Ord)]
+pub(crate) struct PortalResourceDescriptionDns {
+    pub id: ResourceId,
+    pub address: String,
+    pub name: String,
+    #[derivative(PartialOrd = "ignore")]
+    #[derivative(Ord = "ignore")]
+    pub filters: Filters,
+    pub sites: Vec<Site>,
+    pub address_description: Option<String>,
 }
 
-pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Value = DnsResource> {
+/// Full model of a cidr resource, proyections of this are sent to the client and gateways
+#[derive(Debug, Clone, PartialEq, Eq, derivative::Derivative)]
+#[derivative(PartialOrd, Ord)]
+pub(crate) struct PortalResourceDescriptionCidr {
+    pub id: ResourceId,
+    pub address: IpNetwork,
+    pub name: String,
+    #[derivative(PartialOrd = "ignore")]
+    #[derivative(Ord = "ignore")]
+    pub filters: Filters,
+    pub sites: Vec<Site>,
+    pub address_description: Option<String>,
+}
+
+impl From<PortalResourceDescriptionCidr> for crate::messages::client::ResourceDescriptionCidr {
+    fn from(value: PortalResourceDescriptionCidr) -> Self {
+        Self {
+            id: value.id,
+            address: value.address,
+            name: value.name,
+            address_description: value.address_description,
+            sites: value.sites,
+        }
+    }
+}
+
+impl From<PortalResourceDescriptionDns> for crate::messages::client::ResourceDescriptionDns {
+    fn from(value: PortalResourceDescriptionDns) -> Self {
+        Self {
+            id: value.id,
+            address: value.address,
+            name: value.name,
+            address_description: value.address_description,
+            sites: value.sites,
+        }
+    }
+}
+
+impl From<PortalResourceDescriptionCidr> for crate::messages::gateway::ResourceDescriptionCidr {
+    fn from(value: PortalResourceDescriptionCidr) -> Self {
+        Self {
+            id: value.id,
+            address: value.address,
+            name: value.name,
+            filters: value.filters,
+        }
+    }
+}
+
+impl From<PortalResourceDescriptionDns> for crate::messages::gateway::ResourceDescriptionDns {
+    fn from(value: PortalResourceDescriptionDns) -> Self {
+        Self {
+            id: value.id,
+            address: value.address,
+            name: value.name,
+            filters: value.filters,
+        }
+    }
+}
+
+const ALLOWED_SERVICES: [Filter; 4] = [
+    Filter::Tcp(PortRange {
+        port_range_end: 22,
+        port_range_start: 22,
+    }),
+    Filter::Udp(PortRange {
+        port_range_end: 53,
+        port_range_start: 53,
+    }),
+    Filter::Tcp(PortRange {
+        port_range_end: 80,
+        port_range_start: 80,
+    }),
+    Filter::Tcp(PortRange {
+        port_range_end: 443,
+        port_range_start: 443,
+    }),
+];
+
+fn filters() -> impl Strategy<Value = Filters> {
+    subsequence(&ALLOWED_SERVICES, 0..4).prop_map(|f| f.to_vec())
+}
+
+pub fn dns_resource(
+    sites: impl Strategy<Value = Vec<Site>>,
+) -> impl Strategy<Value = PortalResourceDescriptionDns> {
     (
         resource_id(),
         resource_name(),
         domain_name(2..4),
         address_description(),
+        filters(),
         sites,
     )
         .prop_map(
-            move |(id, name, address, address_description, sites)| DnsResource {
-                id,
-                address,
-                name,
-                sites,
-                address_description,
+            move |(id, name, address, address_description, filters, sites)| {
+                PortalResourceDescriptionDns {
+                    id,
+                    address,
+                    name,
+                    sites,
+                    address_description,
+                    filters,
+                }
             },
         )
 }
@@ -48,21 +141,25 @@ pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Va
 pub fn cidr_resource(
     ip_network: impl Strategy<Value = IpNetwork>,
     sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = CidrResource> {
+) -> impl Strategy<Value = PortalResourceDescriptionCidr> {
     (
         resource_id(),
         resource_name(),
         ip_network,
         address_description(),
+        filters(),
         sites,
     )
         .prop_map(
-            move |(id, name, address, address_description, sites)| CidrResource {
-                id,
-                address,
-                name,
-                sites,
-                address_description,
+            move |(id, name, address, address_description, filters, sites)| {
+                PortalResourceDescriptionCidr {
+                    id,
+                    address,
+                    name,
+                    sites,
+                    address_description,
+                    filters,
+                }
             },
         )
 }
