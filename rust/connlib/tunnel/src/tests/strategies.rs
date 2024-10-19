@@ -190,7 +190,7 @@ fn any_site(sites: BTreeSet<Site>) -> impl Strategy<Value = Site> {
 
 fn cidr_resource_outside_reserved_ranges(
     sites: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = CidrResource> {
+) -> impl Strategy<Value = PortalResourceDescriptionCidr> {
     cidr_resource(any_ip_network(8), sites.prop_map(|s| vec![s]))
         .prop_filter(
             "tests doesn't support CIDR resources overlapping DNS resources",
@@ -213,14 +213,14 @@ fn internet_resource(site: impl Strategy<Value = Site>) -> impl Strategy<Value =
 
 fn non_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = DnsResource> {
+) -> impl Strategy<Value = PortalResourceDescriptionDns> {
     dns_resource(site.prop_map(|s| vec![s]))
 }
 
 fn star_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = DnsResource> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| DnsResource {
+) -> impl Strategy<Value = PortalResourceDescriptionDns> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| PortalResourceDescriptionDns {
         address: format!("*.{}", r.address),
         ..r
     })
@@ -228,8 +228,8 @@ fn star_wildcard_dns_resource(
 
 fn double_star_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = DnsResource> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| DnsResource {
+) -> impl Strategy<Value = PortalResourceDescriptionDns> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| PortalResourceDescriptionDns {
         address: format!("**.{}", r.address),
         ..r
     })

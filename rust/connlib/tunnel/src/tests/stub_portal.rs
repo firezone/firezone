@@ -30,9 +30,8 @@ pub(crate) struct StubPortal {
     #[derivative(Debug = "ignore")]
     sites_by_resource: BTreeMap<ResourceId, SiteId>,
 
-    // TODO: Maybe these should use the `messages` types to cover the conversions and to model that that is what we receive from the portal?
-    cidr_resources: BTreeMap<ResourceId, client::CidrResource>,
-    dns_resources: BTreeMap<ResourceId, client::DnsResource>,
+    cidr_resources: BTreeMap<ResourceId, PortalResourceDescriptionCidr>,
+    dns_resources: BTreeMap<ResourceId, PortalResourceDescriptionDns>,
     internet_resource: client::InternetResource,
 
     #[derivative(Debug = "ignore")]
@@ -43,8 +42,8 @@ impl StubPortal {
     pub(crate) fn new(
         gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>>,
         gateway_selector: Selector,
-        cidr_resources: BTreeSet<client::CidrResource>,
-        dns_resources: BTreeSet<client::DnsResource>,
+        cidr_resources: BTreeSet<PortalResourceDescriptionCidr>,
+        dns_resources: BTreeSet<PortalResourceDescriptionDns>,
         internet_resource: client::InternetResource,
     ) -> Self {
         let cidr_resources = cidr_resources
@@ -102,11 +101,15 @@ impl StubPortal {
         self.cidr_resources
             .values()
             .cloned()
+            .map_into()
+            .map(client::CidrResource::from_description)
             .map(client::Resource::Cidr)
             .chain(
                 self.dns_resources
                     .values()
                     .cloned()
+                    .map_into()
+                    .map(client::DnsResource::from_description)
                     .map(client::Resource::Dns),
             )
             .chain(iter::once(client::Resource::Internet(
@@ -132,28 +135,24 @@ impl StubPortal {
         (*gateway, *site_id)
     }
 
-    pub(crate) fn map_client_resource_to_gateway_resource(
+    pub(crate) fn map_portal_resource_to_gateway_resource(
         &self,
         resource_id: ResourceId,
     ) -> gateway::ResourceDescription {
         let cidr_resource = self.cidr_resources.iter().find_map(|(_, r)| {
             (r.id == resource_id).then_some(gateway::ResourceDescription::Cidr(
-                gateway::ResourceDescriptionCidr {
-                    id: r.id,
-                    address: r.address,
-                    name: r.name.clone(),
-                    filters: Vec::new(),
-                },
+                gateway::ResourceDescriptionCidr::from(r.clone()),
             ))
         });
-        let dns_resource = self.dns_resources.get(&resource_id).map(|r| {
-            gateway::ResourceDescription::Dns(gateway::ResourceDescriptionDns {
-                id: r.id,
-                name: r.name.clone(),
-                filters: Vec::new(),
-                address: r.address.clone(),
+        let dns_resource = self
+            .dns_resources
+            .get(&resource_id)
+            .map(|r| {
+                (r.id == resource_id).then_some(gateway::ResourceDescription::Dns(
+                    gateway::ResourceDescriptionDns::from(r.clone()),
+                ))
             })
-        });
+            .flatten();
         let internet_resource = Some(gateway::ResourceDescription::Internet(
             gateway::ResourceDescriptionInternet {
                 id: self.internet_resource.id,

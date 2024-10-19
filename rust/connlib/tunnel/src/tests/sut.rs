@@ -725,7 +725,7 @@ impl TunnelTest {
                     DnsResourceNatEntry::new(r, resolved_ips)
                 });
 
-                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
+                let resource = portal.map_portal_resource_to_gateway_resource(resource_id);
 
                 gateway.exec_mut(|g| {
                     g.sut
@@ -784,7 +784,7 @@ impl TunnelTest {
 
                     DnsResourceNatEntry::new(r, resolved_ips)
                 });
-                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
+                let resource = portal.map_portal_resource_to_gateway_resource(resource_id);
 
                 let Some(gateway) = self.gateways.get_mut(&gateway_id) else {
                     tracing::error!("Unknown gateway");

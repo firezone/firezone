@@ -2063,20 +2063,79 @@ mod proptests {
     }
 
     fn resource() -> impl Strategy<Value = Resource> {
-        crate::proptest::resource(site().prop_map(|s| vec![s]))
+        resource_with_sites(site().prop_map(|s| vec![s]))
     }
 
     fn cidr_resource() -> impl Strategy<Value = CidrResource> {
-        crate::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
+        cidr_resource_with_sites(any_ip_network(8), site().prop_map(|s| vec![s]))
     }
 
     fn dns_resource() -> impl Strategy<Value = DnsResource> {
-        crate::proptest::dns_resource(site().prop_map(|s| vec![s]))
+        dns_resource_with_sites(site().prop_map(|s| vec![s]))
     }
 
     // Generate resources sharing 1 site
     fn resources_sharing_n_sites(num_sites: usize) -> impl Strategy<Value = Vec<Resource>> {
         collection::vec(site(), num_sites)
-            .prop_flat_map(|sites| collection::vec(crate::proptest::resource(Just(sites)), 1..=100))
+            .prop_flat_map(|sites| collection::vec(resource_with_sites(Just(sites)), 1..=100))
+    }
+
+    fn resource_with_sites(
+        sites: impl Strategy<Value = Vec<Site>> + Clone + 'static,
+    ) -> impl Strategy<Value = Resource> {
+        any::<bool>().prop_flat_map(move |is_dns| {
+            if is_dns {
+                dns_resource_with_sites(sites.clone())
+                    .prop_map(Resource::Dns)
+                    .boxed()
+            } else {
+                cidr_resource_with_sites(any_ip_network(8), sites.clone())
+                    .prop_map(Resource::Cidr)
+                    .boxed()
+            }
+        })
+    }
+
+    fn dns_resource_with_sites(
+        sites: impl Strategy<Value = Vec<Site>>,
+    ) -> impl Strategy<Value = DnsResource> {
+        (
+            resource_id(),
+            resource_name(),
+            domain_name(2..4),
+            address_description(),
+            sites,
+        )
+            .prop_map(
+                move |(id, name, address, address_description, sites)| DnsResource {
+                    id,
+                    address,
+                    name,
+                    sites,
+                    address_description,
+                },
+            )
+    }
+
+    fn cidr_resource_with_sites(
+        ip_network: impl Strategy<Value = IpNetwork>,
+        sites: impl Strategy<Value = Vec<Site>>,
+    ) -> impl Strategy<Value = CidrResource> {
+        (
+            resource_id(),
+            resource_name(),
+            ip_network,
+            address_description(),
+            sites,
+        )
+            .prop_map(move |(id, name, address, address_description, sites)| {
+                CidrResource {
+                    id,
+                    address,
+                    name,
+                    sites,
+                    address_description,
+                }
+            })
     }
 }
