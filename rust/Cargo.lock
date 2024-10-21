@@ -2020,6 +2020,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "nu-ansi-term 0.50.1",
+ "sentry-tracing",
  "time",
  "tracing",
  "tracing-appender",

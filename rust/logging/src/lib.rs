@@ -2,6 +2,7 @@ mod dyn_err;
 pub mod file;
 mod format;
 mod log_unwrap;
+mod sentry;
 
 use tracing::subscriber::DefaultGuard;
 use tracing_log::LogTracer;
@@ -13,6 +14,7 @@ use tracing_subscriber::{
 pub use dyn_err::{anyhow_dyn_err, std_dyn_err};
 pub use format::Format;
 pub use log_unwrap::LogUnwrap;
+pub use sentry::sentry_layer;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`
 pub fn setup_global_subscriber<L>(additional_layer: L)
@@ -23,6 +25,7 @@ where
 
     let subscriber = Registry::default()
         .with(additional_layer)
+        .with(sentry_layer())
         .with(fmt::layer().event_format(Format::new()))
         .with(filter(&directives));
     tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
