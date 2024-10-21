@@ -33,7 +33,7 @@ pub(crate) enum Transition {
         identifier: Identifier,
         payload: u64,
     },
-    /// Send an UDP packet to non-resource IP.
+    /// Send an UDP packet to destination (IP resource, DNS resource or IP non-resource).
     SendUdpPacket {
         src: IpAddr,
         dst: Destination,
