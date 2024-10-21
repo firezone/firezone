@@ -453,7 +453,7 @@ fn handle_p2p_control_packet(
             };
 
             if !peer.is_allowed(req.resource) {
-                tracing::debug!(cid = %peer.id(), resource = %req.resource, "Received `AssignedIpsEvent` for resource that is not allowed");
+                tracing::warn!(cid = %peer.id(), resource = %req.resource, "Received `AssignedIpsEvent` for resource that is not allowed");
 
                 let packet = dns_resource_nat::domain_status(
                     req.resource,
