@@ -1054,7 +1054,6 @@ dependencies = [
  "chrono",
  "connlib-model",
  "firezone-logging",
- "firezone-telemetry",
  "firezone-tunnel",
  "ip_network",
  "phoenix-channel",
