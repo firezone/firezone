@@ -18,6 +18,7 @@ use connlib_model::{ClientId, DomainName, GatewayId, RelayId};
 use domain::base::iana::{Class, Rcode};
 use domain::base::{Message, MessageBuilder, Record, Rtype, ToName as _, Ttl};
 use domain::rdata::AllRecordData;
+use firezone_logging::anyhow_dyn_err;
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
 use std::collections::BTreeSet;
@@ -512,7 +513,7 @@ impl TunnelTest {
                         c.handle_dns_response(message.for_slice())
                     }
                     Err(e) => {
-                        tracing::error!("TCP DNS query failed: {e:#}");
+                        tracing::error!(error = anyhow_dyn_err(&e), "TCP DNS query failed");
                     }
                 }
             }

@@ -139,7 +139,7 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
         return;
     }
 
-    tracing::warn!(%route, "Failed to add route: {e}");
+    tracing::warn!(error = as_dyn_err(&e), %route, "Failed to add route");
 }
 
 // It's okay if this blocks until the route is removed in the OS.
@@ -159,7 +159,7 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
         return;
     }
 
-    tracing::warn!(%route, "Failed to remove route: {e}")
+    tracing::warn!(error = as_dyn_err(&e), %route, "Failed to remove route")
 }
 
 fn forward_entry(route: IpNetwork, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {

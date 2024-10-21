@@ -1053,6 +1053,7 @@ dependencies = [
  "bimap",
  "chrono",
  "connlib-model",
+ "firezone-logging",
  "firezone-telemetry",
  "firezone-tunnel",
  "ip_network",
@@ -2040,6 +2041,7 @@ dependencies = [
  "difference",
  "env_logger",
  "firezone-bin-shared",
+ "firezone-logging",
  "futures",
  "hex",
  "hex-display",
@@ -5699,6 +5701,7 @@ dependencies = [
 name = "socket-factory"
 version = "0.1.0"
 dependencies = [
+ "firezone-logging",
  "quinn-udp",
  "socket2",
  "tokio",

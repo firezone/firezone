@@ -137,7 +137,7 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
 
         // Safety: The `entry` is initialised.
         if let Err(e) = unsafe { DeleteIpForwardEntry2(entry) }.ok() {
-            tracing::warn!("Failed to remove routing entry: {e}");
+            tracing::warn!(error = as_dyn_err(&e), "Failed to remove routing entry");
             continue;
         };
 
@@ -200,7 +200,7 @@ impl Drop for RoutingTableEntry {
 
         // Safety: The entry we stored is valid.
         if let Err(e) = unsafe { DeleteIpForwardEntry2(&self.entry) }.ok() {
-            tracing::warn!("Failed to delete routing entry: {e}");
+            tracing::warn!(error = as_dyn_err(&e), "Failed to delete routing entry");
             return;
         };
 
