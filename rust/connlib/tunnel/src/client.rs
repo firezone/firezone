@@ -1076,7 +1076,7 @@ impl ClientState {
 
     fn maybe_update_tun_config(&mut self, new_tun_config: TunConfig) {
         if Some(&new_tun_config) == self.tun_config.as_ref() {
-            tracing::debug!(current = ?self.tun_config, "TUN device configuration unchanged");
+            tracing::trace!(current = ?self.tun_config, "TUN device configuration unchanged");
 
             return;
         }
