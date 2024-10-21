@@ -19,7 +19,7 @@ export default function Gateway() {
             Implements support for the new control protocol; delivering faster
             and more robust connection establishment.
           </ChangeItem>
-          <ChangeItem pull="6941">
+          <ChangeItem pull="7103">
             Adds always-on error reporting using sentry.io.
           </ChangeItem>
       </Unreleased>
