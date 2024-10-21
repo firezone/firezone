@@ -102,14 +102,18 @@ defmodule Web.NavigationComponents do
 
   def sidebar(assigns) do
     ~H"""
-    <aside class={~w[
-        fixed top-0 left-0 z-40
-        w-64 h-screen
-        pt-14 pb-8
-        transition-transform -translate-x-full
-        bg-white border-r border-neutral-200
-        lg:translate-x-0
-      ]} aria-label="Sidenav" id="drawer-navigation">
+    <aside
+      class={[
+        "fixed top-0 left-0 z-40 lg:z-10",
+        "w-64 h-screen",
+        "pt-14 pb-8",
+        "transition-transform -translate-x-full",
+        "bg-white border-r border-neutral-200",
+        "lg:translate-x-0"
+      ]}
+      aria-label="Sidenav"
+      id="drawer-navigation"
+    >
       <div class="overflow-y-auto py-1 px-2 h-full bg-white">
         <ul>
           <%= render_slot(@inner_block) %>
