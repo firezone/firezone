@@ -793,17 +793,28 @@ impl ClientState {
         let maybe_dns_resource_id = self
             .stub_resolver
             .resolve_resource_by_ip(&destination)
-            .filter(|resource| self.is_resource_enabled(resource));
+            .filter(|resource| self.is_resource_enabled(resource))
+            .inspect(
+                |resource| tracing::trace!(%destination, %resource, "Packet for DNS resource"),
+            );
 
         // We don't need to filter from here because resources are removed from the active_cidr_resources as soon as they are disabled.
         let maybe_cidr_resource_id = self
             .active_cidr_resources
             .longest_match(destination)
-            .map(|(_, res)| res.id);
+            .map(|(_, res)| res.id)
+            .inspect(
+                |resource| tracing::trace!(%destination, %resource, "Packet for CIDR resource"),
+            );
 
         maybe_dns_resource_id
             .or(maybe_cidr_resource_id)
             .or(self.internet_resource)
+            .inspect(|r| {
+                if Some(*r) == self.internet_resource {
+                    tracing::trace!(%destination, "Packet for internet resource")
+                }
+            })
     }
 
     pub fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
