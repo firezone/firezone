@@ -1147,6 +1147,7 @@ defmodule API.Gateway.ChannelTest do
           %{
             "flow_id" => flow.id,
             "destination" => destination,
+            "destination_domain" => "example.com",
             "connectivity_type" => "direct",
             "rx_bytes" => 100,
             "tx_bytes" => 200,
@@ -1162,6 +1163,7 @@ defmodule API.Gateway.ChannelTest do
       assert upserted_activity.window_started_at == one_minute_ago
       assert upserted_activity.window_ended_at == now
       assert upserted_activity.destination == destination
+      assert upserted_activity.destination_domain == "example.com"
       assert upserted_activity.rx_bytes == 100
       assert upserted_activity.tx_bytes == 200
       assert upserted_activity.flow_id == flow.id

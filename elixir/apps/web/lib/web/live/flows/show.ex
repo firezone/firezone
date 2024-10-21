@@ -163,6 +163,9 @@ defmodule Web.Flows.Show do
           </:col>
           <:col :let={activity} label="destination">
             <%= activity.destination %>
+            <div :if={activity.destination_domain} class="text-xs">
+              <%= activity.destination_domain %>
+            </div>
           </:col>
           <:col :let={activity} label="connectivity type">
             <%= activity.connectivity_type %>

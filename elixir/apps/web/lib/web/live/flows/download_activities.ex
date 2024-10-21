@@ -23,7 +23,7 @@ defmodule Web.Flows.DownloadActivities do
     iodata =
       Web.CSV.dump_to_iodata([~w[
         window_started_at window_ended_at
-        destination
+        destination destination_domain
         connectivity_type
         rx_bytes tx_bytes blocked_tx_bytes
       ]])
@@ -59,6 +59,7 @@ defmodule Web.Flows.DownloadActivities do
           to_string(activity.window_started_at),
           to_string(activity.window_ended_at),
           to_string(activity.destination),
+          activity.destination_domain,
           to_string(activity.connectivity_type),
           activity.rx_bytes,
           activity.tx_bytes,

@@ -598,6 +598,7 @@ defmodule Domain.FlowsTest do
         window_started_at: DateTime.add(now, -1, :minute),
         window_ended_at: now,
         destination: destination,
+        destination_domain: "example.com",
         rx_bytes: 100,
         tx_bytes: 200,
         blocked_tx_bytes: 0,
@@ -612,6 +613,7 @@ defmodule Domain.FlowsTest do
       assert upserted_activity.window_started_at == activity.window_started_at
       assert upserted_activity.window_ended_at == activity.window_ended_at
       assert upserted_activity.destination == destination
+      assert upserted_activity.destination_domain == "example.com"
       assert upserted_activity.rx_bytes == activity.rx_bytes
       assert upserted_activity.tx_bytes == activity.tx_bytes
       assert upserted_activity.flow_id == flow.id

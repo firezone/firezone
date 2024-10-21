@@ -6,6 +6,7 @@ defmodule Domain.Flows.Activity do
     field :window_ended_at, :utc_datetime
 
     field :destination, Domain.Types.ProtocolIPPort
+    field :destination_domain, :string
     field :rx_bytes, :integer
     field :tx_bytes, :integer
     field :blocked_tx_bytes, :integer

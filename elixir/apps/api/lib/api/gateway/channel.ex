@@ -624,6 +624,7 @@ defmodule API.Gateway.Channel do
           %{
             "flow_id" => flow_id,
             "destination" => destination,
+            "destination_domain" => destination_domain,
             "connectivity_type" => connectivity_type,
             "rx_bytes" => rx_bytes,
             "tx_bytes" => tx_bytes,
@@ -637,6 +638,7 @@ defmodule API.Gateway.Channel do
             window_ended_at: window_ended_at,
             connectivity_type: String.to_existing_atom(connectivity_type),
             destination: destination,
+            destination_domain: destination_domain,
             rx_bytes: rx_bytes,
             tx_bytes: tx_bytes,
             blocked_tx_bytes: blocked_tx_bytes
