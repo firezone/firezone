@@ -209,7 +209,7 @@ where
         })
 }
 
-#[allow(private_bounds)]
+#[expect(private_bounds)]
 pub(crate) fn udp_to_destination<I, D>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = D>,

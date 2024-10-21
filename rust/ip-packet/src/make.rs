@@ -98,7 +98,7 @@ pub fn icmp_reply_packet(
     }
 }
 
-pub fn ehco_reply(mut req: IpPacket) -> Option<IpPacket> {
+pub fn echo_reply(mut req: IpPacket) -> Option<IpPacket> {
     if !req.is_udp() && !req.is_tcp() {
         return None;
     }

@@ -12,7 +12,6 @@ use crate::{
     DomainName,
 };
 use crate::{proptest::*, ClientState};
-use anyhow::anyhow;
 use bimap::BiMap;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
 use domain::{
@@ -188,7 +187,7 @@ impl SimClient {
         packet: IpPacket,
         now: Instant,
     ) -> Option<snownet::Transmit<'static>> {
-        self.update_sent_requests(&packet).ok()?;
+        self.update_sent_requests(&packet);
 
         let Some(enc_packet) = self.sut.handle_tun_input(packet, now, &mut self.enc_buffer) else {
             self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
@@ -198,12 +197,12 @@ impl SimClient {
         Some(enc_packet.to_transmit(&self.enc_buffer).into_owned())
     }
 
-    fn update_sent_requests(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
+    fn update_sent_requests(&mut self, packet: &IpPacket) {
         if let Some(icmp) = packet.as_icmpv4() {
             if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
                 self.sent_icmp_requests
                     .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
-                return Ok(());
+                return;
             }
         }
 
@@ -211,7 +210,7 @@ impl SimClient {
             if let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type() {
                 self.sent_icmp_requests
                     .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
-                return Ok(());
+                return;
             }
         }
 
@@ -220,7 +219,7 @@ impl SimClient {
                 (SPort(tcp.source_port()), DPort(tcp.destination_port())),
                 packet.clone(),
             );
-            return Ok(());
+            return;
         }
 
         if let Some(udp) = packet.as_udp() {
@@ -229,10 +228,10 @@ impl SimClient {
                 packet.clone(),
             );
 
-            return Ok(());
+            return;
         }
 
-        Err(anyhow!("Unhandled packet"))
+        tracing::error!("Sent a request with an unknown transport protocol");
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
@@ -431,9 +430,9 @@ pub struct RefClient {
     pub(crate) expected_udp_handshakes:
         BTreeMap<GatewayId, BTreeMap<u64, (Destination, SPort, DPort)>>,
 
-    /// The expected TCP handshakes.
+    /// The expected TCP exchanges.
     #[derivative(Debug = "ignore")]
-    pub(crate) expected_tcp_handshakes:
+    pub(crate) expected_tcp_exchanges:
         BTreeMap<GatewayId, BTreeMap<u64, (Destination, SPort, DPort)>>,
 
     /// The expected UDP DNS handshakes.
@@ -630,14 +629,14 @@ impl RefClient {
             src,
             dst.clone(),
             (dst, sport, dport),
-            |ref_client| &mut ref_client.expected_tcp_handshakes,
+            |ref_client| &mut ref_client.expected_tcp_exchanges,
             payload,
             gateway_by_resource,
         );
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
-    pub(crate) fn on_packet<E>(
+    fn on_packet<E>(
         &mut self,
         src: IpAddr,
         dst: Destination,
@@ -646,7 +645,7 @@ impl RefClient {
         payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
     ) {
-        let Some(resource) = self.resource(&dst) else {
+        let Some(resource) = self.resource_by_dst(&dst) else {
             return;
         };
 
@@ -658,7 +657,7 @@ impl RefClient {
         };
 
         if self.is_connected_to_resource(resource, &dst) && self.is_tunnel_ip(src) {
-            tracing::debug!("Connected to DNS resource, expecting packet to be routed");
+            tracing::debug!("Connected to resource, expecting packet to be routed");
             map(self)
                 .entry(gateway)
                 .or_default()
@@ -669,7 +668,7 @@ impl RefClient {
         if let Destination::DomainName { name: dst, .. } = &dst {
             debug_assert!(
                 self.dns_records.iter().any(|(name, _)| name == dst),
-                "Should only sample ICMPs to domains that we resolved"
+                "Should only sample domains that we resolved"
             );
         }
 
@@ -792,7 +791,7 @@ impl RefClient {
         (is_known_host || is_dns_resource) && is_suppported_type
     }
 
-    fn resource(&self, destination: &Destination) -> Option<ResourceId> {
+    fn resource_by_dst(&self, destination: &Destination) -> Option<ResourceId> {
         match destination {
             Destination::DomainName { name, .. } => {
                 if let Some(id) = self.dns_resource_by_domain(name) {
@@ -855,7 +854,7 @@ impl RefClient {
 
     /// An TCP packet is valid if we didn't yet send an TCP packet with the same sport, dport and payload.
     pub(crate) fn is_valid_tcp_packet(&self, sport: &SPort, dport: &DPort, payload: &u64) -> bool {
-        self.expected_tcp_handshakes.values().flatten().all(
+        self.expected_tcp_exchanges.values().flatten().all(
             |(existig_payload, (_, existing_sport, existing_dport))| {
                 existing_dport != dport && existing_sport != sport && existig_payload != payload
             },
@@ -1093,7 +1092,7 @@ fn ref_client(
                     connected_internet_resource: Default::default(),
                     expected_icmp_handshakes: Default::default(),
                     expected_udp_handshakes: Default::default(),
-                    expected_tcp_handshakes: Default::default(),
+                    expected_tcp_exchanges: Default::default(),
                     expected_udp_dns_handshakes: Default::default(),
                     expected_tcp_dns_handshakes: Default::default(),
                     disabled_resources: Default::default(),

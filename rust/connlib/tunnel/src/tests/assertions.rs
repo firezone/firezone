@@ -13,7 +13,7 @@ use std::{
     net::IpAddr,
     sync::atomic::{AtomicBool, Ordering},
 };
-use tracing::{Level, Subscriber};
+use tracing::{Level, Span, Subscriber};
 use tracing_subscriber::Layer;
 
 /// Asserts the following properties for all ICMP handshakes:
@@ -22,14 +22,13 @@ use tracing_subscriber::Layer;
 ///     - For CIDR resources, that is the actual CIDR resource IP.
 ///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
 /// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
-
 pub(crate) fn assert_icmp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
-    sim_gateway: &BTreeMap<GatewayId, &SimGateway>,
+    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
 ) {
-    let received_icmp_requests = sim_gateway
+    let received_icmp_requests = sim_gateways
         .iter()
         .map(|(g, s)| (*g, &s.received_icmp_requests))
         .collect();
@@ -42,6 +41,7 @@ pub(crate) fn assert_icmp_packets_properties(
         &sim_client.received_icmp_replies,
         "ICMP",
         global_dns_records,
+        |seq, identifier| tracing::info_span!(target: "assertions", "ICMP", ?seq, ?identifier),
     );
 }
 
@@ -51,14 +51,13 @@ pub(crate) fn assert_icmp_packets_properties(
 ///     - For CIDR resources, that is the actual CIDR resource IP.
 ///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
 /// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
-
 pub(crate) fn assert_udp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
-    sim_gateway: &BTreeMap<GatewayId, &SimGateway>,
+    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
 ) {
-    let received_udp_requests = sim_gateway
+    let received_udp_requests = sim_gateways
         .iter()
         .map(|(g, s)| (*g, &s.received_udp_requests))
         .collect();
@@ -71,6 +70,7 @@ pub(crate) fn assert_udp_packets_properties(
         &sim_client.received_udp_replies,
         "UDP",
         global_dns_records,
+        |sport, dport| tracing::info_span!(target: "assertions", "UDP", ?sport, ?dport),
     );
 }
 
@@ -80,14 +80,13 @@ pub(crate) fn assert_udp_packets_properties(
 ///     - For CIDR resources, that is the actual CIDR resource IP.
 ///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
 /// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
-
 pub(crate) fn assert_tcp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
-    sim_gateway: &BTreeMap<GatewayId, &SimGateway>,
+    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
 ) {
-    let received_tcp_requests = sim_gateway
+    let received_tcp_requests = sim_gateways
         .iter()
         .map(|(g, s)| (*g, &s.received_tcp_requests))
         .collect();
@@ -96,14 +95,16 @@ pub(crate) fn assert_tcp_packets_properties(
         ref_client,
         &sim_client.sent_tcp_requests,
         &received_tcp_requests,
-        &ref_client.expected_tcp_handshakes,
+        &ref_client.expected_tcp_exchanges,
         &sim_client.received_tcp_replies,
         "TCP",
         global_dns_records,
+        |sport, dport| tracing::info_span!(target: "assertions", "TCP", ?sport, ?dport),
     );
 }
 
-pub(crate) fn assert_packets_properties<T, U>(
+#[allow(clippy::too_many_arguments)]
+fn assert_packets_properties<T, U>(
     ref_client: &RefClient,
     sent_requests: &HashMap<(T, U), IpPacket>,
     received_requests: &BTreeMap<GatewayId, &BTreeMap<u64, IpPacket>>,
@@ -111,6 +112,7 @@ pub(crate) fn assert_packets_properties<T, U>(
     received_replies: &BTreeMap<(T, U), IpPacket>,
     packet_protocol: &str,
     global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+    make_span: impl Fn(T, U) -> Span,
 ) where
     T: Copy + std::fmt::Debug,
     U: Copy + std::fmt::Debug,
@@ -143,13 +145,11 @@ pub(crate) fn assert_packets_properties<T, U>(
 
     // Assert properties of the individual handshakes per gateway.
     // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
-    // Thus, we rely on the _order_ here which is why the packets are indexed by gateway in the `RefClient`.
+    // Thus, we rely on a custom u64 payload attached to all packets to uniquely identify every individual packet.
     for (gateway, expected_handshakes) in expected_handshakes {
         let received_requests = received_requests.get(gateway).unwrap();
         for (payload, (resource_dst, t, u)) in expected_handshakes {
-            let _guard =
-                tracing::info_span!(target: "assertions", "packet", packet_protocol, ?t, ?u)
-                    .entered();
+            let _guard = make_span(*t, *u).entered();
 
             let Some(client_sent_request) = sent_requests.get(&(*t, *u)) else {
                 tracing::error!(target: "assertions", "❌ Missing {packet_protocol} request on client");

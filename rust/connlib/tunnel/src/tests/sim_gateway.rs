@@ -158,7 +158,7 @@ impl SimGateway {
             }
         }
 
-        if let Some(reply) = ip_packet::make::ehco_reply(packet.clone()) {
+        if let Some(reply) = ip_packet::make::echo_reply(packet.clone()) {
             self.request_received(&packet);
             let transmit = self
                 .sut
@@ -189,13 +189,13 @@ impl SimGateway {
     fn request_received(&mut self, packet: &IpPacket) {
         if let Some(udp) = packet.as_udp() {
             let packet_id = u64::from_be_bytes(*udp.payload().first_chunk().unwrap());
-            tracing::debug!(%packet_id, "Received request");
+            tracing::debug!(%packet_id, "Received UDP request");
             self.received_udp_requests.insert(packet_id, packet.clone());
         }
 
         if let Some(tcp) = packet.as_tcp() {
             let packet_id = u64::from_be_bytes(*tcp.payload().first_chunk().unwrap());
-            tracing::debug!(%packet_id, "Received request");
+            tracing::debug!(%packet_id, "Received TCP request");
             self.received_tcp_requests.insert(packet_id, packet.clone());
         }
     }
