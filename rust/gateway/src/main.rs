@@ -8,6 +8,7 @@ use firezone_bin_shared::{
     TunDeviceManager,
 };
 use firezone_logging::anyhow_dyn_err;
+use firezone_telemetry::Telemetry;
 use firezone_tunnel::messages::Interface;
 use firezone_tunnel::{GatewayTunnel, IPV4_PEERS, IPV6_PEERS};
 use phoenix_channel::get_user_agent;
@@ -37,19 +38,27 @@ async fn main() {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
+    let cli = Cli::parse();
+    let telemetry = Telemetry::default();
+    telemetry.start(
+        cli.api_url.as_str(),
+        firezone_bin_shared::git_version!("gateway-*"),
+        firezone_telemetry::GATEWAY_DSN,
+    );
+
     // Enforce errors only being printed on a single line using the technique recommended in the anyhow docs:
     // https://docs.rs/anyhow/latest/anyhow/struct.Error.html#display-representations
     //
     // By default, `anyhow` prints a stacktrace when it exits.
     // That looks like a "crash" but we "just" exit with a fatal error.
-    if let Err(e) = try_main().await {
+    if let Err(e) = try_main(cli).await {
         tracing::error!(error = anyhow_dyn_err(&e));
+        firezone_telemetry::capture_anyhow(&e);
         std::process::exit(1);
     }
 }
 
-async fn try_main() -> Result<()> {
-    let cli = Cli::parse();
+async fn try_main(cli: Cli) -> Result<()> {
     firezone_logging::setup_global_subscriber(layer::Identity::new());
 
     let firezone_id = get_firezone_id(cli.firezone_id).await

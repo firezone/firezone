@@ -1865,6 +1865,7 @@ dependencies = [
  "either",
  "firezone-bin-shared",
  "firezone-logging",
+ "firezone-telemetry",
  "firezone-tunnel",
  "futures",
  "futures-bounded",

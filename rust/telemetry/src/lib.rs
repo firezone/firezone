@@ -15,6 +15,7 @@ pub struct Dsn(&'static str);
 // > DSNs are safe to keep public because they only allow submission of new events and related event data; they do not allow read access to any information.
 // <https://docs.sentry.io/concepts/key-terms/dsn-explainer/#dsn-utilization>
 
+pub const GATEWAY_DSN: Dsn = Dsn("TODO");
 pub const GUI_DSN: Dsn = Dsn("https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312");
 pub const HEADLESS_DSN: Dsn = Dsn("https://bc27dca8bb37be0142c48c4f89647c13@o4507971108339712.ingest.us.sentry.io/4508010028728320");
 pub const IPC_SERVICE_DSN: Dsn = Dsn("https://0590b89fd4479494a1e7ffa4dc705001@o4507971108339712.ingest.us.sentry.io/4508008896069632");
