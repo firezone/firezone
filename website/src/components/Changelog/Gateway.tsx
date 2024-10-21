@@ -20,7 +20,8 @@ export default function Gateway() {
             and more robust connection establishment.
           </ChangeItem>
           <ChangeItem pull="7103">
-            Adds always-on error reporting using sentry.io.
+            Adds on-by-default error reporting using sentry.io.
+            Disable by setting `FIREZONE_NO_TELEMETRY=1`.
           </ChangeItem>
       </Unreleased>
       <Entry version="1.3.2" date={new Date("2024-10-02")}>
