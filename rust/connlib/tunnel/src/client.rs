@@ -305,14 +305,14 @@ impl ClientState {
                 continue;
             };
 
-            self.peers
-                .add_ips_with_resource(gid, proxy_ips.iter().copied(), rid);
-
             match self
                 .dns_resource_nat_by_gateway
                 .entry((*gid, domain.clone()))
             {
                 Entry::Vacant(v) => {
+                    self.peers
+                        .add_ips_with_resource(gid, proxy_ips.iter().copied(), rid);
+
                     v.insert(DnsResourceNatState::Pending { sent_at: now });
                 }
                 Entry::Occupied(mut o) => match o.get_mut() {
