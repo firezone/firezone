@@ -22,7 +22,7 @@ export default function Page() {
           </p>
         </div>
       </div>
-      <Posts/>
+      <Posts />
     </section>
   );
 }
