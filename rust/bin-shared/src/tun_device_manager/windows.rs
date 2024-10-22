@@ -1,6 +1,7 @@
 use crate::windows::{CREATE_NO_WINDOW, TUNNEL_UUID};
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
+use firezone_logging::std_dyn_err;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ring::digest;
 use std::{
@@ -139,7 +140,7 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
         return;
     }
 
-    tracing::warn!(%route, "Failed to add route: {e}");
+    tracing::warn!(error = std_dyn_err(&e), %route, "Failed to add route");
 }
 
 // It's okay if this blocks until the route is removed in the OS.
@@ -159,7 +160,7 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
         return;
     }
 
-    tracing::warn!(%route, "Failed to remove route: {e}")
+    tracing::warn!(error = std_dyn_err(&e), %route, "Failed to remove route")
 }
 
 fn forward_entry(route: IpNetwork, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {

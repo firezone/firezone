@@ -4,6 +4,7 @@ use connlib_model::DomainName;
 use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
@@ -76,7 +77,7 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::warn!("Tunnel error: {e}");
+                    tracing::warn!(error = std_dyn_err(&e), "Tunnel error");
                     continue;
                 }
                 Poll::Pending => {}
@@ -99,7 +100,8 @@ impl Eventloop {
                     let addresses = result
                         .inspect_err(|e| {
                             tracing::debug!(
-                                "DNS resolution timed out as part of setup NAT request: {e}"
+                                error = std_dyn_err(e),
+                                "DNS resolution timed out as part of setup NAT request"
                             )
                         })
                         .unwrap_or_default();
@@ -109,7 +111,10 @@ impl Eventloop {
                         addresses,
                         Instant::now(),
                     ) {
-                        tracing::warn!("Failed to set DNS resource NAT: {e:#}");
+                        tracing::warn!(
+                            error = anyhow_dyn_err(&e),
+                            "Failed to set DNS resource NAT"
+                        );
                     };
 
                     continue;
@@ -310,7 +315,7 @@ impl Eventloop {
                 // For the gateway, it doesn't do anything else so in an ideal world, we would cause the side-effect out here and just pass an opaque `Device` to the `Tunnel`.
                 // That requires more refactoring of other platforms, so for now, we need to rely on the `Tunnel` interface and cause the side-effect separately via the `TunDeviceManager`.
                 if let Err(e) = self.tun_device_channel.try_send(init.interface) {
-                    tracing::warn!("Failed to set interface: {e}");
+                    tracing::warn!(error = std_dyn_err(&e), "Failed to set interface");
                 }
             }
             phoenix_channel::Event::InboundMessage {
@@ -339,7 +344,7 @@ impl Eventloop {
         req: RequestConnection,
     ) {
         let addresses = result
-            .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}"))
+            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request"))
             .unwrap_or_default();
 
         let answer = self.tunnel.state_mut().accept(
@@ -367,7 +372,7 @@ impl Eventloop {
             let client = req.client.id;
 
             self.tunnel.state_mut().cleanup_connection(&client);
-            tracing::debug!(%client, "Connection request failed: {e:#}");
+            tracing::debug!(error = anyhow_dyn_err(&e), %client, "Connection request failed");
             return;
         }
 
@@ -384,7 +389,7 @@ impl Eventloop {
 
     pub fn allow_access(&mut self, result: Result<Vec<IpAddr>, Timeout>, req: AllowAccess) {
         let addresses = result
-            .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
+            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request"))
             .unwrap_or_default();
 
         if let Err(e) = self.tunnel.state_mut().allow_access(
@@ -396,7 +401,7 @@ impl Eventloop {
             req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),
             Instant::now(),
         ) {
-            tracing::warn!(client = %req.client_id, "Allow access request failed: {e:#}");
+            tracing::warn!(error = anyhow_dyn_err(&e), client = %req.client_id, "Allow access request failed");
         };
     }
 
@@ -408,7 +413,7 @@ impl Eventloop {
         name: DomainName,
     ) {
         let addresses = result
-            .inspect_err(|e| tracing::debug!(%conn_id, "DNS resolution timed out as part of allow access request: {e}"))
+            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %conn_id, "DNS resolution timed out as part of allow access request"))
             .unwrap_or_default();
 
         self.tunnel.state_mut().refresh_translation(
@@ -431,12 +436,12 @@ async fn resolve(domain: Option<DomainName>) -> Vec<IpAddr> {
     match tokio::task::spawn_blocking(move || resolve_addresses(&dname)).await {
         Ok(Ok(addresses)) => addresses,
         Ok(Err(e)) => {
-            tracing::warn!("Failed to resolve '{domain}': {e}");
+            tracing::warn!(error = std_dyn_err(&e), "Failed to resolve '{domain}'");
 
             vec![]
         }
         Err(e) => {
-            tracing::warn!("Failed to resolve '{domain}': {e}");
+            tracing::warn!(error = std_dyn_err(&e), "Failed to resolve '{domain}'");
 
             vec![]
         }

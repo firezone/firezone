@@ -12,6 +12,7 @@ bytes = "1.7.1"
 clap = { version = "4.5.19", features = ["derive", "env"] }
 derive_more = { version = "1.0.0", features = ["from"] }
 firezone-bin-shared = { workspace = true }
+firezone-logging = { workspace = true }
 futures = "0.3.29"
 hex = "0.4.3"
 hex-display = "0.3.0"

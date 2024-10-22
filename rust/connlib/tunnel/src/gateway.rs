@@ -8,6 +8,7 @@ use anyhow::Context;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, DomainName, RelayId, ResourceId};
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::{ExposeSecret as _, Secret};
@@ -106,7 +107,7 @@ impl GatewayState {
         let transmit = self
             .node
             .encapsulate(cid, packet, now, buffer)
-            .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e}"))
+            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %cid, "Failed to encapsulate"))
             .ok()??;
 
         Some(transmit)
@@ -131,7 +132,7 @@ impl GatewayState {
             packet,
             now,
         )
-        .inspect_err(|e| tracing::debug!(%from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet"))
         .ok()??;
 
         let Some(peer) = self.peers.get_mut(&cid) else {
@@ -257,7 +258,7 @@ impl GatewayState {
         };
 
         if let Err(e) = peer.refresh_translation(name.clone(), resource_id, resolved_ips, now) {
-            tracing::warn!(rid = %resource_id, %name, "Failed to refresh DNS resource IP translations: {e:#}");
+            tracing::warn!(error = anyhow_dyn_err(&e), rid = %resource_id, %name, "Failed to refresh DNS resource IP translations");
         };
     }
 
@@ -316,7 +317,10 @@ impl GatewayState {
             )
             .map(|()| dns_resource_nat::NatStatus::Active)
             .unwrap_or_else(|e| {
-                tracing::debug!("Failed to setup DNS resource NAT: {e:#}");
+                tracing::debug!(
+                    error = anyhow_dyn_err(&e),
+                    "Failed to setup DNS resource NAT"
+                );
 
                 dns_resource_nat::NatStatus::Inactive
             });
@@ -453,7 +457,7 @@ fn handle_p2p_control_packet(
             };
 
             if !peer.is_allowed(req.resource) {
-                tracing::debug!(cid = %peer.id(), resource = %req.resource, "Received `AssignedIpsEvent` for resource that is not allowed");
+                tracing::warn!(cid = %peer.id(), resource = %req.resource, "Received `AssignedIpsEvent` for resource that is not allowed");
 
                 let packet = dns_resource_nat::domain_status(
                     req.resource,
@@ -490,7 +494,7 @@ fn encrypt_packet<'a>(
 ) -> Option<Transmit<'a>> {
     let encrypted_packet = node
         .encapsulate(cid, packet, now, buffer)
-        .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e}"))
+        .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %cid, "Failed to encapsulate"))
         .ok()??;
 
     Some(encrypted_packet.to_transmit(buffer))

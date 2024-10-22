@@ -1,3 +1,4 @@
+mod dyn_err;
 pub mod file;
 mod format;
 mod log_unwrap;
@@ -9,6 +10,7 @@ use tracing_subscriber::{
     Registry,
 };
 
+pub use dyn_err::{anyhow_dyn_err, std_dyn_err};
 pub use format::Format;
 pub use log_unwrap::LogUnwrap;
 
