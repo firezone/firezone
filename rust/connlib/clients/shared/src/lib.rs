@@ -3,6 +3,7 @@ pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use callbacks::{Callbacks, DisconnectError};
 pub use connlib_model::StaticSecret;
 pub use eventloop::Eventloop;
+use firezone_logging::std_dyn_err;
 pub use firezone_tunnel::messages::client::{
     ResourceDescription, {IngressMessages, ReplyMessages},
 };
@@ -159,7 +160,7 @@ async fn connect_supervisor<CB>(
                 telemetry::capture_error(&e);
             }
 
-            tracing::error!("connlib failed: {e}");
+            tracing::error!(error = std_dyn_err(&e), "connlib failed");
             callbacks.on_disconnect(&e);
         }
         Err(e) => {

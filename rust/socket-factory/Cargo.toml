@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+firezone-logging = { workspace = true }
 quinn-udp = "0.5.2"
 socket2 = { workspace = true }
 tokio = { version = "1.39", features = ["net"] }

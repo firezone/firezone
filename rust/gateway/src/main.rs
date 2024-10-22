@@ -7,6 +7,7 @@ use firezone_bin_shared::{
     linux::{tcp_socket_factory, udp_socket_factory},
     TunDeviceManager,
 };
+use firezone_logging::anyhow_dyn_err;
 use firezone_tunnel::messages::Interface;
 use firezone_tunnel::{GatewayTunnel, IPV4_PEERS, IPV6_PEERS};
 use phoenix_channel::get_user_agent;
@@ -42,7 +43,7 @@ async fn main() {
     // By default, `anyhow` prints a stacktrace when it exits.
     // That looks like a "crash" but we "just" exit with a fatal error.
     if let Err(e) = try_main().await {
-        tracing::error!("{e:#}");
+        tracing::error!(error = anyhow_dyn_err(&e));
         std::process::exit(1);
     }
 }
@@ -143,14 +144,14 @@ async fn update_device_task(
             .set_ips(next_interface.ipv4, next_interface.ipv6)
             .await
         {
-            tracing::warn!("Failed to set interface: {e:#}");
+            tracing::warn!(error = anyhow_dyn_err(&e), "Failed to set interface");
         }
 
         if let Err(e) = tun_device
             .set_routes(vec![IPV4_PEERS], vec![IPV6_PEERS])
             .await
         {
-            tracing::warn!("Failed to set routes: {e:#}");
+            tracing::warn!(error = anyhow_dyn_err(&e), "Failed; to set routes");
         };
     }
 }

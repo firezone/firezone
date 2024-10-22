@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::http_health_check;
+use firezone_logging::std_dyn_err;
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     sockets, AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack,
@@ -384,7 +385,7 @@ where
                             recipient.into_socket(),
                             &payload,
                         ) {
-                            tracing::warn!(target: "relay", %recipient, "Failed to send message: {e}");
+                            tracing::warn!(target: "relay", error = std_dyn_err(&e), %recipient, "Failed to send message");
                         }
                     }
                     Command::CreateAllocation { port, family } => {
@@ -454,7 +455,7 @@ where
                             self.sockets
                                 .try_send(port.value(), peer.into_socket(), payload)
                         {
-                            tracing::warn!(target: "relay", %peer, "Failed to relay data to peer: {e}");
+                            tracing::warn!(target: "relay", error = std_dyn_err(&e), %peer, "Failed to relay data to peer");
                         }
                     };
                     continue;
@@ -480,13 +481,13 @@ where
                             client.into_socket(),
                             &self.buffer[..total_length],
                         ) {
-                            tracing::warn!(target: "relay", %client, "Failed to relay data to client: {e}");
+                            tracing::warn!(target: "relay", error = std_dyn_err(&e), %client, "Failed to relay data to client");
                         };
                     };
                     continue;
                 }
                 Poll::Ready(Err(sockets::Error::Io(e))) => {
-                    tracing::warn!(target: "relay", "Error while receiving message: {e}");
+                    tracing::warn!(target: "relay", error = std_dyn_err(&e), "Error while receiving message");
                     continue;
                 }
                 Poll::Ready(Err(sockets::Error::MioTaskCrashed(e))) => return Poll::Ready(Err(e)), // Fail the event-loop. We can't operate without the `mio` worker-task.

@@ -7,6 +7,7 @@ use crate::{
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
+use firezone_logging::std_dyn_err;
 use hex_display::HexDisplayExt as _;
 use rand::random;
 use std::{
@@ -1131,7 +1132,10 @@ fn srflx_candidate(local: SocketAddr, attr: &Attribute) -> Option<Candidate> {
     let new_candidate = match Candidate::server_reflexive(a.address(), local, Protocol::Udp) {
         Ok(c) => c,
         Err(e) => {
-            tracing::debug!("Observed address is not a valid candidate: {e}");
+            tracing::debug!(
+                error = std_dyn_err(&e),
+                "Observed address is not a valid candidate"
+            );
             return None;
         }
     };
@@ -1155,7 +1159,10 @@ fn relay_candidate(
         let new_candidate = match Candidate::relayed(addr, Protocol::Udp) {
             Ok(c) => c,
             Err(e) => {
-                tracing::debug!("Acquired allocation is not a valid candidate: {e}");
+                tracing::debug!(
+                    error = std_dyn_err(&e),
+                    "Acquired allocation is not a valid candidate"
+                );
                 return None;
             }
         };
@@ -1218,7 +1225,9 @@ impl ChannelBindings {
 
     fn try_decode<'p>(&mut self, packet: &'p [u8], now: Instant) -> Option<(SocketAddr, &'p [u8])> {
         let (channel_number, payload) = crate::channel_data::decode(packet)
-            .inspect_err(|e| tracing::debug!("Malformed channel data message: {e}"))
+            .inspect_err(|e| {
+                tracing::debug!(error = std_dyn_err(e), "Malformed channel data message")
+            })
             .ok()?;
         let Some(channel) = self.inner.get_mut(&channel_number) else {
             tracing::debug!(%channel_number, "Unknown channel");
