@@ -112,7 +112,7 @@ pub async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     })
     .await
     .context("Failed to join zip export task")??;
-    tracing::debug!(elapsed_s = start.elapsed().as_secs(), "Exported logs");
+    tracing::debug!(elapsed_s = ?start.elapsed(), "Exported logs");
     Ok(())
 }
 

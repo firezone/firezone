@@ -283,7 +283,8 @@ pub(crate) fn run(
 
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);
-                    // This was unreachable in Tauri v1
+                    // In Tauri v1, calling `App::exit` internally exited the process.
+                    // In Tauri v2, that doesn't happen, but `App::run` still doesn't return, so we have to bail out of the process manually.
                     std::process::exit(exit_code);
                 });
                 Ok(())
