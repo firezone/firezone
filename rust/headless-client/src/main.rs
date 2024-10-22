@@ -200,7 +200,7 @@ fn main() -> Result<()> {
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());
 
-    let result = rt.block_on(async {
+    rt.block_on(async {
         let ctx = firezone_telemetry::TransactionContext::new(
             "connect_to_firezone",
             "Connecting to Firezone",
@@ -325,13 +325,11 @@ fn main() -> Result<()> {
             tracing::error!(?error, "network notifier");
         }
 
+        telemetry.stop(); // Stop telemetry before dropping session. `connlib` needs to be active for this, otherwise we won't be able to resolve the DNS name for sentry.
         session.disconnect();
 
         result
-    });
-
-    telemetry.stop();
-    result
+    })
 }
 
 /// Read the token from disk if it was not in the environment
