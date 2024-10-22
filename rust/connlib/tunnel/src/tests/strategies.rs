@@ -151,7 +151,7 @@ fn cidr_resource_outside_reserved_ranges(
 ) -> impl Strategy<Value = CidrResource> {
     cidr_resource(any_ip_network(8), sites.prop_map(|s| vec![s]))
         .prop_filter(
-            "tests doesn't support yet CIDR resources overlapping DNS resources",
+            "tests doesn't support CIDR resources overlapping DNS resources",
             |r| {
                 // This works because CIDR resources' host mask is always <8 while IP resource is 21
                 let is_ip4_reserved = IpNetwork::V4(IPV4_RESOURCES)

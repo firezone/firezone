@@ -5,7 +5,7 @@ use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
-use super::transition::DnsQuery;
+use super::transition::{Destination, DnsQuery};
 use crate::client::Resource;
 use crate::dns::{self, is_subdomain};
 use crate::gateway::DnsResourceNatEntry;
@@ -18,6 +18,7 @@ use connlib_model::{ClientId, DomainName, GatewayId, RelayId};
 use domain::base::iana::{Class, Rcode};
 use domain::base::{Message, MessageBuilder, Record, Rtype, ToName as _, Ttl};
 use domain::rdata::AllRecordData;
+use firezone_logging::anyhow_dyn_err;
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
 use std::collections::BTreeSet;
@@ -134,61 +135,70 @@ impl TunnelTest {
             Transition::DisableResources(resources) => state
                 .client
                 .exec_mut(|c| c.sut.set_disabled_resources(resources)),
-            Transition::SendICMPPacketToNonResourceIp {
+            Transition::SendIcmpPacket {
                 src,
                 dst,
                 seq,
                 identifier,
                 payload,
-            }
-            | Transition::SendICMPPacketToCidrResource {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
+                ..
             } => {
+                let dst = address_from_destination(&dst, &state, &src);
+
                 let packet = ip_packet::make::icmp_request_packet(
                     src,
                     dst,
-                    seq,
-                    identifier,
+                    seq.0,
+                    identifier.0,
                     &payload.to_be_bytes(),
                 )
                 .unwrap();
 
-                let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
+                let transmit = state
+                    .client
+                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
-            Transition::SendICMPPacketToDnsResource {
+            Transition::SendUdpPacket {
                 src,
                 dst,
-                seq,
-                identifier,
+                sport,
+                dport,
                 payload,
-                resolved_ip,
-                ..
             } => {
-                let available_ips = state
-                    .client
-                    .inner()
-                    .dns_records
-                    .get(&dst)
-                    .unwrap()
-                    .iter()
-                    .filter(|ip| match ip {
-                        IpAddr::V4(_) => src.is_ipv4(),
-                        IpAddr::V6(_) => src.is_ipv6(),
-                    });
-                let dst = *resolved_ip.select(available_ips);
+                let dst = address_from_destination(&dst, &state, &src);
 
-                let packet = ip_packet::make::icmp_request_packet(
+                let packet = ip_packet::make::udp_packet(
                     src,
                     dst,
-                    seq,
-                    identifier,
-                    &payload.to_be_bytes(),
+                    sport.0,
+                    dport.0,
+                    payload.to_be_bytes().to_vec(),
+                )
+                .unwrap();
+
+                let transmit = state
+                    .client
+                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
+
+                buffered_transmits.push_from(transmit, &state.client, now);
+            }
+            Transition::SendTcpPayload {
+                src,
+                dst,
+                sport,
+                dport,
+                payload,
+            } => {
+                let dst = address_from_destination(&dst, &state, &src);
+
+                let packet = ip_packet::make::tcp_packet(
+                    src,
+                    dst,
+                    sport.0,
+                    dport.0,
+                    payload.to_be_bytes().to_vec(),
                 )
                 .unwrap();
 
@@ -341,7 +351,19 @@ impl TunnelTest {
         assert_icmp_packets_properties(
             ref_client,
             sim_client,
-            sim_gateways,
+            &sim_gateways,
+            &ref_state.global_dns_records,
+        );
+        assert_udp_packets_properties(
+            ref_client,
+            sim_client,
+            &sim_gateways,
+            &ref_state.global_dns_records,
+        );
+        assert_tcp_packets_properties(
+            ref_client,
+            sim_client,
+            &sim_gateways,
             &ref_state.global_dns_records,
         );
         assert_udp_dns_packets_properties(ref_client, sim_client);
@@ -375,7 +397,14 @@ impl TunnelTest {
                     continue;
                 };
 
-                on_gateway_event(*id, event, &mut self.client, now);
+                on_gateway_event(
+                    *id,
+                    event,
+                    &mut self.client,
+                    gateway,
+                    &ref_state.global_dns_records,
+                    now,
+                );
                 continue 'outer;
             }
             if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
@@ -505,7 +534,7 @@ impl TunnelTest {
                         c.handle_dns_response(message.for_slice())
                     }
                     Err(e) => {
-                        tracing::error!("TCP DNS query failed: {e:#}");
+                        tracing::error!(error = anyhow_dyn_err(&e), "TCP DNS query failed");
                     }
                 }
             }
@@ -764,35 +793,33 @@ impl TunnelTest {
 
                 let client_id = self.client.inner().id;
 
-                let answer = gateway
-                    .exec_mut(|g| {
-                        let answer = g.sut.accept(
-                            client_id,
-                            snownet::Offer {
-                                session_key: preshared_key.expose_secret().0.into(),
-                                credentials: snownet::Credentials {
-                                    username: offer.username,
-                                    password: offer.password,
-                                },
+                let answer = gateway.exec_mut(|g| {
+                    let answer = g.sut.accept(
+                        client_id,
+                        snownet::Offer {
+                            session_key: preshared_key.expose_secret().0.into(),
+                            credentials: snownet::Credentials {
+                                username: offer.username,
+                                password: offer.password,
                             },
-                            self.client.inner().sut.public_key(),
+                        },
+                        self.client.inner().sut.public_key(),
+                        now,
+                    );
+                    g.sut
+                        .allow_access(
+                            self.client.inner().id,
+                            self.client.inner().sut.tunnel_ip4().unwrap(),
+                            self.client.inner().sut.tunnel_ip6().unwrap(),
+                            None,
+                            resource.clone(),
+                            maybe_entry,
                             now,
-                        );
-                        g.sut
-                            .allow_access(
-                                self.client.inner().id,
-                                self.client.inner().sut.tunnel_ip4().unwrap(),
-                                self.client.inner().sut.tunnel_ip6().unwrap(),
-                                None,
-                                resource.clone(),
-                                maybe_entry,
-                                now,
-                            )
-                            .unwrap();
+                        )
+                        .unwrap();
 
-                        anyhow::Ok(answer)
-                    })
-                    .unwrap();
+                    answer
+                });
 
                 self.client
                     .exec_mut(|c| {
@@ -881,10 +908,32 @@ impl TunnelTest {
     }
 }
 
+fn address_from_destination(destination: &Destination, state: &TunnelTest, src: &IpAddr) -> IpAddr {
+    match destination {
+        Destination::DomainName { resolved_ip, name } => {
+            let available_ips = state
+                .client
+                .inner()
+                .dns_records
+                .get(name)
+                .unwrap()
+                .iter()
+                .filter(|ip| match ip {
+                    IpAddr::V4(_) => src.is_ipv4(),
+                    IpAddr::V6(_) => src.is_ipv6(),
+                });
+            *resolved_ip.select(available_ips)
+        }
+        Destination::IpAddr(addr) => *addr,
+    }
+}
+
 fn on_gateway_event(
     src: GatewayId,
     event: GatewayEvent,
     client: &mut Host<SimClient>,
+    gateway: &mut Host<SimGateway>,
+    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
     now: Instant,
 ) {
     match event {
@@ -899,5 +948,17 @@ fn on_gateway_event(
             }
         }),
         GatewayEvent::RefreshDns { .. } => todo!(),
+        GatewayEvent::ResolveDns(r) => {
+            let resolved_ips = global_dns_records
+                .get(r.domain())
+                .cloned()
+                .unwrap_or_default();
+
+            gateway.exec_mut(|g| {
+                g.sut
+                    .handle_domain_resolved(r, Vec::from_iter(resolved_ips), now)
+                    .unwrap()
+            })
+        }
     }
 }

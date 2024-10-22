@@ -4,7 +4,7 @@ defmodule Domain.CryptoTest do
 
   describe "psk/0" do
     test "it returns a string of proper length" do
-      assert 32 == String.length(psk())
+      assert 44 == String.length(psk())
     end
   end
 

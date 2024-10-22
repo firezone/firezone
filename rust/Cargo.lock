@@ -1107,6 +1107,7 @@ dependencies = [
  "bimap",
  "chrono",
  "connlib-model",
+ "firezone-logging",
  "firezone-telemetry",
  "firezone-tunnel",
  "ip_network",
@@ -2117,7 +2118,7 @@ name = "firezone-logging"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "nu-ansi-term",
+ "nu-ansi-term 0.50.1",
  "time",
  "tracing",
  "tracing-appender",
@@ -2140,6 +2141,7 @@ dependencies = [
  "difference",
  "env_logger",
  "firezone-bin-shared",
+ "firezone-logging",
  "futures",
  "hex",
  "hex-display",
@@ -3885,6 +3887,15 @@ checksum = "77a8165726e8236064dbb45459242600304b42a5ea24ee2948e18e023bf7ba84"
 dependencies = [
  "overload",
  "winapi",
+]
+
+[[package]]
+name = "nu-ansi-term"
+version = "0.50.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4a28e057d01f97e61255210fcff094d74ed0466038633e95017f5beb68e4399"
+dependencies = [
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -5660,9 +5671,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.129"
+version = "1.0.132"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6dbcf9b78a125ee667ae19388837dd12294b858d101fdd393cb9d5501ef09eb2"
+checksum = "d726bfaff4b320266d395898905d0eba0345aae23b54aee3a737e260fd46db03"
 dependencies = [
  "itoa 1.0.11",
  "memchr",
@@ -5933,6 +5944,7 @@ dependencies = [
 name = "socket-factory"
 version = "0.1.0"
 dependencies = [
+ "firezone-logging",
  "quinn-udp",
  "socket2",
  "tokio",
@@ -7100,7 +7112,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ad0f048c97dbd9faa9b7df56362b8ebcaa52adb06b498c050d2f4e32f90a7a8b"
 dependencies = [
  "matchers",
- "nu-ansi-term",
+ "nu-ansi-term 0.46.0",
  "once_cell",
  "parking_lot",
  "regex",

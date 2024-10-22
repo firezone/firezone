@@ -1,6 +1,7 @@
 use crate::{callbacks::Callbacks, PHOENIX_TOPIC};
 use anyhow::Result;
 use connlib_model::ResourceId;
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_tunnel::messages::{client::*, *};
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
@@ -91,7 +92,7 @@ where
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::warn!("Tunnel error: {e}");
+                    tracing::warn!(error = std_dyn_err(&e), "Tunnel error");
                     continue;
                 }
                 Poll::Pending => {}
@@ -300,7 +301,7 @@ where
                     gateway_public_key.0.into(),
                     Instant::now(),
                 ) {
-                    tracing::warn!("Failed to accept connection: {e}");
+                    tracing::warn!(error = anyhow_dyn_err(&e), "Failed to accept connection");
                 }
             }
             ReplyMessages::Connect(Connect {
@@ -332,7 +333,10 @@ where
                 ) {
                     Ok(()) => {}
                     Err(e) => {
-                        tracing::warn!("Failed to request new connection: {e}");
+                        tracing::warn!(
+                            error = anyhow_dyn_err(&e),
+                            "Failed to request new connection"
+                        );
                     }
                 };
             }

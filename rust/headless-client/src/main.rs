@@ -12,6 +12,7 @@ use firezone_bin_shared::{
 use firezone_headless_client::{
     device_id, signals, CallbackHandler, CliCommon, ConnlibMsg, DnsController,
 };
+use firezone_logging::LogUnwrap;
 use firezone_telemetry::Telemetry;
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::get_user_agent;
@@ -157,6 +158,9 @@ fn main() -> Result<()> {
         git_version = firezone_bin_shared::git_version!("headless-client-*")
     );
 
+    anyhow::Result::<()>::Err(anyhow::Error::msg("foo").context("bar").context("baz"))
+        .log_unwrap_debug("Something failed");
+
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
@@ -196,7 +200,7 @@ fn main() -> Result<()> {
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());
 
-    let result = rt.block_on(async {
+    rt.block_on(async {
         let ctx = firezone_telemetry::TransactionContext::new(
             "connect_to_firezone",
             "Connecting to Firezone",
@@ -321,13 +325,11 @@ fn main() -> Result<()> {
             tracing::error!(?error, "network notifier");
         }
 
+        telemetry.stop(); // Stop telemetry before dropping session. `connlib` needs to be active for this, otherwise we won't be able to resolve the DNS name for sentry.
         session.disconnect();
 
         result
-    });
-
-    telemetry.stop();
-    result
+    })
 }
 
 /// Read the token from disk if it was not in the environment

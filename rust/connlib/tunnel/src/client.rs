@@ -14,7 +14,7 @@ use bimap::BiMap;
 use connlib_model::PublicKey;
 use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
 use connlib_model::{Site, SiteId};
-use firezone_logging::LogUnwrap as _;
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, LogUnwrap as _};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, UdpSlice};
@@ -325,7 +325,7 @@ impl ClientState {
             packet.as_ref(),
             now,
         )
-        .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet"))
         .ok()??;
 
         if self.tcp_dns_client.accepts(&packet) {
@@ -379,7 +379,7 @@ impl ClientState {
                         }
                     })
                     .unwrap_or_else(|e| {
-                        tracing::debug!("Recursive UDP DNS query failed: {e}");
+                        tracing::debug!(error = std_dyn_err(&e), "Recursive UDP DNS query failed");
 
                         dns::servfail(response.query.for_slice_ref())
                     });
@@ -393,7 +393,7 @@ impl ClientState {
                         tracing::trace!("Received recursive TCP DNS response");
                     })
                     .unwrap_or_else(|e| {
-                        tracing::debug!("Recursive TCP DNS query failed: {e}");
+                        tracing::debug!(error = std_dyn_err(&e), "Recursive TCP DNS query failed");
 
                         dns::servfail(response.query.for_slice_ref())
                     });
@@ -444,7 +444,7 @@ impl ClientState {
         let transmit = self
             .node
             .encapsulate(gid, packet, now, buffer)
-            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
+            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %gid, "Failed to encapsulate"))
             .ok()??;
 
         Some(transmit)
@@ -719,7 +719,10 @@ impl ClientState {
             .collect();
 
         if let Err(e) = self.tcp_dns_client.set_resolvers(upstream_resolvers) {
-            tracing::warn!("Failed to connect to upstream DNS resolvers over TCP: {e:#}");
+            tracing::warn!(
+                error = anyhow_dyn_err(&e),
+                "Failed to connect to upstream DNS resolvers over TCP"
+            );
         }
     }
 
@@ -793,17 +796,28 @@ impl ClientState {
         let maybe_dns_resource_id = self
             .stub_resolver
             .resolve_resource_by_ip(&destination)
-            .filter(|resource| self.is_resource_enabled(resource));
+            .filter(|resource| self.is_resource_enabled(resource))
+            .inspect(
+                |resource| tracing::trace!(target: "tunnel_test_coverage", %destination, %resource, "Packet for DNS resource"),
+            );
 
         // We don't need to filter from here because resources are removed from the active_cidr_resources as soon as they are disabled.
         let maybe_cidr_resource_id = self
             .active_cidr_resources
             .longest_match(destination)
-            .map(|(_, res)| res.id);
+            .map(|(_, res)| res.id)
+            .inspect(
+                |resource| tracing::trace!(target: "tunnel_test_coverage", %destination, %resource, "Packet for CIDR resource"),
+            );
 
         maybe_dns_resource_id
             .or(maybe_cidr_resource_id)
             .or(self.internet_resource)
+            .inspect(|r| {
+                if Some(*r) == self.internet_resource {
+                    tracing::trace!(target: "tunnel_test_coverage", %destination, "Packet for Internet resource")
+                }
+            })
     }
 
     pub fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
@@ -939,7 +953,11 @@ impl ClientState {
         let (datagram, message) = match parse_udp_dns_message(&packet) {
             Ok((datagram, message)) => (datagram, message),
             Err(e) => {
-                tracing::trace!(?packet, "Failed to parse DNS query: {e:#}");
+                tracing::trace!(
+                    error = anyhow_dyn_err(&e),
+                    ?packet,
+                    "Failed to parse DNS query"
+                );
                 return ControlFlow::Break(());
             }
         };
@@ -1003,7 +1021,10 @@ impl ClientState {
                     match self.tcp_dns_client.send_query(server, message.clone()) {
                         Ok(()) => {}
                         Err(e) => {
-                            tracing::debug!("Failed to send recursive TCP DNS query {e:#}");
+                            tracing::debug!(
+                                error = anyhow_dyn_err(&e),
+                                "Failed to send recursive TCP DNS quer"
+                            );
 
                             self.tcp_dns_server
                                 .send_message(query.socket, dns::servfail(message.for_slice_ref()))
@@ -1076,7 +1097,7 @@ impl ClientState {
 
     fn maybe_update_tun_config(&mut self, new_tun_config: TunConfig) {
         if Some(&new_tun_config) == self.tun_config.as_ref() {
-            tracing::debug!(current = ?self.tun_config, "TUN device configuration unchanged");
+            tracing::trace!(current = ?self.tun_config, "TUN device configuration unchanged");
 
             return;
         }
