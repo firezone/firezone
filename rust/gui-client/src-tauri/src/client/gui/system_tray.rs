@@ -89,7 +89,6 @@ impl Tray {
                 .run_on_main_thread(move || {
                     if let Err(error) = update(handle, &app, &menu) {
                         tracing::error!(?error, "Error while updating tray icon");
-                        firezone_telemetry::capture_anyhow(&error);
                     }
                 })
                 .unwrap();
