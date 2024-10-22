@@ -795,7 +795,7 @@ impl ClientState {
             .resolve_resource_by_ip(&destination)
             .filter(|resource| self.is_resource_enabled(resource))
             .inspect(
-                |resource| tracing::trace!(target: "tunnel_test", %destination, %resource, "Packet for DNS resource"),
+                |resource| tracing::trace!(target: "tunnel_test_coverage", %destination, %resource, "Packet for DNS resource"),
             );
 
         // We don't need to filter from here because resources are removed from the active_cidr_resources as soon as they are disabled.
@@ -804,7 +804,7 @@ impl ClientState {
             .longest_match(destination)
             .map(|(_, res)| res.id)
             .inspect(
-                |resource| tracing::trace!(target: "tunnel_test", %destination, %resource, "Packet for CIDR resource"),
+                |resource| tracing::trace!(target: "tunnel_test_coverage", %destination, %resource, "Packet for CIDR resource"),
             );
 
         maybe_dns_resource_id
@@ -812,7 +812,7 @@ impl ClientState {
             .or(self.internet_resource)
             .inspect(|r| {
                 if Some(*r) == self.internet_resource {
-                    tracing::trace!(target: "tunnel_test", %destination, "Packet for Internet resource")
+                    tracing::trace!(target: "tunnel_test_coverage", %destination, "Packet for Internet resource")
                 }
             })
     }
