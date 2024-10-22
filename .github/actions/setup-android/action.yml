@@ -1,0 +1,28 @@
+# From https://tauri.app/v1/guides/getting-started/prerequisites
+name: "Setup Android"
+description: "Sets up the dependencies for building our Android app"
+runs:
+  using: "composite"
+  steps:
+    - uses: ./.github/actions/setup-rust
+      with:
+        targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
+
+    - uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: 17
+
+    - uses: gradle/actions/setup-gradle@v4
+
+    - uses: android-actions/setup-android@v3
+
+    - name: Install NDK
+      run: sdkmanager "ndk;27.2.12479018" # Must match `kotlin/android/app/build.gradle.kts`
+      shell: bash
+
+    - name: Validate Gradle wrapper
+      uses: gradle/actions/wrapper-validation@v4
+
+    - run: touch local.properties
+      shell: bash
