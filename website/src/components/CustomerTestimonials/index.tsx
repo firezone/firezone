@@ -75,9 +75,7 @@ const TestimonialBox = ({
 }: TestimonialBoxProps) => {
   return (
     <div className="shrink-0 p-6 md:p-8 bg-[#1B1B1D] flex flex-col rounded-2xl justify-between w-fit lg:max-w-[320px] xl:max-w-[340px] lg:min-h-[320px] h-fit">
-      <FaQuoteLeft
-        className="absolute text-white/10 -translate-y-1/3 -z-1 w-10 h-10 sm:h-12 md:h-12 md:w-12"
-      />
+      <FaQuoteLeft className="absolute text-white/10 -translate-y-1/3 -z-1 w-10 h-10 sm:h-12 md:h-12 md:w-12" />
       <p
         className={`text-md  ${fontSize === "md" ? "lg:text-md" : "lg:text-lg"}
          tracking-wide font-light mb-6 break-keep italic text-neutral-50 z-10`}
@@ -111,7 +109,6 @@ const TestimonialBox = ({
 };
 
 export default function CustomerTestimonials() {
-
   return (
     <section className="bg-neutral-950 py-24 flex justify-center">
       <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-center max-w-screen-2xl">
