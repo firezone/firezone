@@ -16,6 +16,7 @@ jobs:
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-22.04
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-android
       - name: Run linter
         run: ./gradlew spotlessCheck
@@ -60,6 +61,7 @@ jobs:
     runs-on: ubuntu-22.04
     name: build-debug
     steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-android
       - name: Build debug APK
         run: |
