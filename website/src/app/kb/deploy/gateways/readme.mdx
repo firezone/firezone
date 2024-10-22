@@ -61,6 +61,7 @@ you'll need to make sure the following outbound traffic is allowed:
 | N/A                          | See [relay-ips.json](/relay-ips.json) | `3478`        | STUN            | STUN protocol signaling                                         |
 | N/A                          | See [relay-ips.json](/relay-ips.json) | `49152-65535` | TURN            | TURN protocol channel data                                      |
 | github.com, www.firezone.dev | Varies                                | `443`         | HTTPS           | Only required for [Gateway upgrades](/kb/administer/upgrading). |
+| sentry.io                    | Varies                                | `443`         | HTTPS           | Crash-reporting, see [Telemetry](#telemetry)                    |
 
 ## Where to deploy Gateways
 
@@ -155,6 +156,12 @@ cloud providers using Terraform.
 It's a good idea to keep your Gateways up to date with the latest version
 available. See [upgrading Gateways](/kb/administer/upgrading) for ways to
 automate this.
+
+## Telemetry
+
+By default, Gateways will run a https://sentry.io crash-reporting agent. If
+you'd like to opt-out of this, set the environment variable
+`FIREZONE_NO_TELEMETRY=1`.
 
 <NextStep href="/kb/deploy/resources">Next: Create Resources</NextStep>
 
