@@ -8,6 +8,7 @@ backoff = "0.4.0"
 boringtun = { workspace = true }
 bytecodec = "0.4.15"
 bytes = "1.7.1"
+firezone-logging = { workspace = true }
 hex = "0.4.0"
 hex-display = "0.3.0"
 ip-packet = { workspace = true }
@@ -20,9 +21,6 @@ str0m = { workspace = true }
 stun_codec = "0.3.4"
 thiserror = "1"
 tracing = { workspace = true }
-
-[dev-dependencies]
-firezone-logging = { workspace = true }
 
 [lints]
 workspace = true
