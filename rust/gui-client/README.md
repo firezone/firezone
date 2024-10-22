@@ -8,7 +8,7 @@ To compile natively for x86_64 Linux:
 
 1. [Install rustup](https://rustup.rs/)
 1. Install [pnpm](https://pnpm.io/installation)
-1. `sudo apt-get install at-spi2-core gcc libwebkit2gtk-4.0-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev pkg-config xvfb`
+1. `sudo apt-get install build-essential curl file libayatana-appindicator3-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev wget`
 
 ## Setup (Windows)
 
