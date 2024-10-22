@@ -546,7 +546,9 @@ impl<'a> Handler<'a> {
         let phoenix_span = transaction.start_child("phoenix", "Resolve DNS for PhoenixChannel");
         let portal = PhoenixChannel::disconnected(
             Secret::new(url),
-            get_user_agent(None, env!("CARGO_PKG_VERSION")),
+            // The IPC service must use the GUI's version number, not the Headless Client's. But refactoring to separate the IPC service from the Headless Client will take a while.
+            // mark:next-gui-version
+            get_user_agent(None, "1.3.10"),
             "client",
             (),
             ExponentialBackoffBuilder::default()
