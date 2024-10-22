@@ -3,11 +3,12 @@ pub mod file;
 mod format;
 mod log_unwrap;
 
-use tracing::subscriber::DefaultGuard;
+use sentry_tracing::EventFilter;
+use tracing::{subscriber::DefaultGuard, Subscriber};
 use tracing_log::LogTracer;
 use tracing_subscriber::{
-    filter::ParseError, fmt, layer::SubscriberExt as _, util::SubscriberInitExt, EnvFilter, Layer,
-    Registry,
+    filter::ParseError, fmt, layer::SubscriberExt as _, registry::LookupSpan,
+    util::SubscriberInitExt, EnvFilter, Layer, Registry,
 };
 
 pub use dyn_err::{anyhow_dyn_err, std_dyn_err};
@@ -23,6 +24,7 @@ where
 
     let subscriber = Registry::default()
         .with(additional_layer)
+        .with(sentry_layer())
         .with(fmt::layer().event_format(Format::new()))
         .with(filter(&directives));
     tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
@@ -65,4 +67,29 @@ pub fn test_global(directives: &str) {
             .finish(),
     )
     .ok();
+}
+
+/// Constructs a [`tracing::Layer`](Layer) that captures events and spans and reports them to Sentry.
+///
+/// ## Events
+///
+/// - error events are reported as sentry exceptions
+/// - warn events are reported as sentry messages
+/// - info events are captured as breadcrumbs (and submitted together with warns & errors)
+///
+/// # Spans
+///
+/// The default span-filter captures all spans with level INFO, WARN and ERROR as sentry "transactions".
+pub fn sentry_layer<S>() -> sentry_tracing::SentryLayer<S>
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    sentry_tracing::layer()
+        .event_filter(|md| match *md.level() {
+            tracing::Level::ERROR => EventFilter::Exception,
+            tracing::Level::WARN => EventFilter::Event,
+            tracing::Level::INFO => EventFilter::Breadcrumb,
+            _ => EventFilter::Ignore,
+        })
+        .enable_span_attributes()
 }

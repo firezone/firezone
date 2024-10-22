@@ -1054,7 +1054,6 @@ dependencies = [
  "chrono",
  "connlib-model",
  "firezone-logging",
- "firezone-telemetry",
  "firezone-tunnel",
  "ip_network",
  "phoenix-channel",
@@ -2020,6 +2019,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "nu-ansi-term 0.50.1",
+ "sentry-tracing",
  "time",
  "tracing",
  "tracing-appender",
