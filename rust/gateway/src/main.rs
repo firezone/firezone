@@ -185,7 +185,7 @@ struct Cli {
     #[arg(short = 'n', long, env = "FIREZONE_NAME")]
     firezone_name: Option<String>,
 
-    /// Friendly name to display in the UI
+    /// Disable sentry.io crash-reporting agent.
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
 
