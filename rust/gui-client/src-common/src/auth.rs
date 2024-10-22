@@ -227,8 +227,7 @@ impl Auth {
         match std::fs::read_to_string(session_data_path()?) {
             Ok(x) => {
                 session = serde_json::from_str(&x).map_err(|_| Error::Serde)?;
-                firezone_telemetry::Hub::main()
-                    .configure_scope(|scope| scope.set_tag("account_slug", &session.account_slug));
+                firezone_telemetry::set_account_slug(session.account_slug.to_string());
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(Error::ReadFile(e)),
