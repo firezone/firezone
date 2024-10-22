@@ -575,7 +575,6 @@ impl RefClient {
         }
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
     pub(crate) fn on_icmp_packet(
         &mut self,
         src: IpAddr,
@@ -595,7 +594,6 @@ impl RefClient {
         );
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
     pub(crate) fn on_udp_packet(
         &mut self,
         src: IpAddr,
@@ -615,7 +613,6 @@ impl RefClient {
         );
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
     pub(crate) fn on_tcp_packet(
         &mut self,
         src: IpAddr,

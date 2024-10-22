@@ -25,7 +25,7 @@ pub(crate) enum Transition {
     DeactivateResource(ResourceId),
     /// Client-side disable resource
     DisableResources(BTreeSet<ResourceId>),
-    /// Send an ICMP packet to non-resource IP.
+    /// Send an ICMP packet to destination (IP resource, DNS resource or IP non-resource).
     SendIcmpPacket {
         src: IpAddr,
         dst: Destination,
@@ -41,7 +41,7 @@ pub(crate) enum Transition {
         dport: DPort,
         payload: u64,
     },
-    /// Send an TCP payload to non-resource IP.
+    /// Send an TCP payload to destination (IP resource, DNS resource or IP non-resource).
     SendTcpPayload {
         src: IpAddr,
         dst: Destination,
@@ -237,7 +237,7 @@ where
         )
 }
 
-#[allow(private_bounds)]
+#[expect(private_bounds)]
 pub(crate) fn tcp_to_destination<I, D>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = D>,

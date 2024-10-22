@@ -103,7 +103,7 @@ pub(crate) fn assert_tcp_packets_properties(
     );
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn assert_packets_properties<T, U>(
     ref_client: &RefClient,
     sent_requests: &HashMap<(T, U), IpPacket>,
