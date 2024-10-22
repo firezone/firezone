@@ -11,13 +11,13 @@ importers:
       '@tauri-apps/api':
         specifier: ^1.6
         version: 1.6.0
-      '@tauri-apps/cli':
-        specifier: ^1.6
-        version: 1.6.2
       flowbite:
         specifier: ^2.5.2
         version: 2.5.2
     devDependencies:
+      '@tauri-apps/cli':
+        specifier: ^1.6
+        version: 1.6.2
       '@types/node':
         specifier: '22'
         version: 22.7.5
