@@ -7,6 +7,7 @@ use crate::{dns::is_subdomain, proptest::relay_id};
 use connlib_model::{GatewayId, RelayId, ResourceId, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{Ipv4Network, Ipv6Network};
+use prop::sample::select;
 use proptest::{prelude::*, sample};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::{
@@ -184,19 +185,12 @@ impl ReferenceState {
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
                 |ip4_resources| {
+                    let tunnel_ip4 = state.client.inner().tunnel_ip4;
+
                     prop_oneof![
-                        icmp_to_destination(
-                            packet_source_v4(state.client.inner().tunnel_ip4),
-                            select_host_v4(ip4_resources.clone())
-                        ),
-                        udp_to_destination(
-                            packet_source_v4(state.client.inner().tunnel_ip4),
-                            select_host_v4(ip4_resources.clone())
-                        ),
-                        tcp_to_destination(
-                            packet_source_v4(state.client.inner().tunnel_ip4),
-                            select_host_v4(ip4_resources)
-                        ),
+                        icmp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&ip4_resources)),
+                        udp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&ip4_resources)),
+                        tcp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&ip4_resources)),
                     ]
                 },
             )
@@ -204,19 +198,12 @@ impl ReferenceState {
                 10,
                 state.client.inner().ipv6_cidr_resource_dsts(),
                 |ip6_resources| {
+                    let tunnel_ip6 = state.client.inner().tunnel_ip6;
+
                     prop_oneof![
-                        icmp_to_destination(
-                            packet_source_v6(state.client.inner().tunnel_ip6),
-                            select_host_v6(ip6_resources.clone())
-                        ),
-                        udp_to_destination(
-                            packet_source_v6(state.client.inner().tunnel_ip6),
-                            select_host_v6(ip6_resources.clone())
-                        ),
-                        tcp_to_destination(
-                            packet_source_v6(state.client.inner().tunnel_ip6),
-                            select_host_v6(ip6_resources)
-                        ),
+                        icmp_packet(packet_source_v6(tunnel_ip6), select_host_v6(&ip6_resources)),
+                        udp_packet(packet_source_v6(tunnel_ip6), select_host_v6(&ip6_resources)),
+                        tcp_packet(packet_source_v6(tunnel_ip6), select_host_v6(&ip6_resources)),
                     ]
                 },
             )
@@ -224,19 +211,12 @@ impl ReferenceState {
                 10,
                 state.client.inner().resolved_v4_domains(),
                 |dns_v4_domains| {
+                    let tunnel_ip4 = state.client.inner().tunnel_ip4;
+
                     prop_oneof![
-                        icmp_to_destination(
-                            packet_source_v4(state.client.inner().tunnel_ip4),
-                            sample::select(dns_v4_domains.clone()),
-                        ),
-                        udp_to_destination(
-                            packet_source_v4(state.client.inner().tunnel_ip4),
-                            sample::select(dns_v4_domains.clone()),
-                        ),
-                        tcp_to_destination(
-                            packet_source_v4(state.client.inner().tunnel_ip4),
-                            sample::select(dns_v4_domains),
-                        ),
+                        icmp_packet(packet_source_v4(tunnel_ip4), select(dns_v4_domains.clone())),
+                        udp_packet(packet_source_v4(tunnel_ip4), select(dns_v4_domains.clone())),
+                        tcp_packet(packet_source_v4(tunnel_ip4), select(dns_v4_domains)),
                     ]
                 },
             )
@@ -244,19 +224,12 @@ impl ReferenceState {
                 10,
                 state.client.inner().resolved_v6_domains(),
                 |dns_v6_domains| {
+                    let tunnel_ip6 = state.client.inner().tunnel_ip6;
+
                     prop_oneof![
-                        icmp_to_destination(
-                            packet_source_v6(state.client.inner().tunnel_ip6),
-                            sample::select(dns_v6_domains.clone()),
-                        ),
-                        udp_to_destination(
-                            packet_source_v6(state.client.inner().tunnel_ip6),
-                            sample::select(dns_v6_domains.clone()),
-                        ),
-                        tcp_to_destination(
-                            packet_source_v6(state.client.inner().tunnel_ip6),
-                            sample::select(dns_v6_domains),
-                        ),
+                        icmp_packet(packet_source_v6(tunnel_ip6), select(dns_v6_domains.clone()),),
+                        udp_packet(packet_source_v6(tunnel_ip6), select(dns_v6_domains.clone()),),
+                        tcp_packet(packet_source_v6(tunnel_ip6), select(dns_v6_domains),),
                     ]
                 },
             )
@@ -275,18 +248,20 @@ impl ReferenceState {
                     .inner()
                     .resolved_ip4_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip4s| {
+                    let tunnel_ip4 = state.client.inner().tunnel_ip4;
+
                     prop_oneof![
-                        icmp_to_destination(
-                            packet_source_v4(state.client.inner().tunnel_ip4),
-                            sample::select(resolved_non_resource_ip4s.clone()),
+                        icmp_packet(
+                            packet_source_v4(tunnel_ip4),
+                            select(resolved_non_resource_ip4s.clone()),
                         ),
-                        udp_to_destination(
-                            packet_source_v4(state.client.inner().tunnel_ip4),
-                            sample::select(resolved_non_resource_ip4s.clone()),
+                        udp_packet(
+                            packet_source_v4(tunnel_ip4),
+                            select(resolved_non_resource_ip4s.clone()),
                         ),
-                        tcp_to_destination(
-                            packet_source_v4(state.client.inner().tunnel_ip4),
-                            sample::select(resolved_non_resource_ip4s),
+                        tcp_packet(
+                            packet_source_v4(tunnel_ip4),
+                            select(resolved_non_resource_ip4s),
                         ),
                     ]
                 },
@@ -298,18 +273,20 @@ impl ReferenceState {
                     .inner()
                     .resolved_ip6_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip6s| {
+                    let tunnel_ip6 = state.client.inner().tunnel_ip6;
+
                     prop_oneof![
-                        icmp_to_destination(
-                            packet_source_v6(state.client.inner().tunnel_ip6),
-                            sample::select(resolved_non_resource_ip6s.clone()),
+                        icmp_packet(
+                            packet_source_v6(tunnel_ip6),
+                            select(resolved_non_resource_ip6s.clone()),
                         ),
-                        udp_to_destination(
-                            packet_source_v6(state.client.inner().tunnel_ip6),
-                            sample::select(resolved_non_resource_ip6s.clone()),
+                        udp_packet(
+                            packet_source_v6(tunnel_ip6),
+                            select(resolved_non_resource_ip6s.clone()),
                         ),
-                        tcp_to_destination(
-                            packet_source_v6(state.client.inner().tunnel_ip6),
-                            sample::select(resolved_non_resource_ip6s),
+                        tcp_packet(
+                            packet_source_v6(tunnel_ip6),
+                            select(resolved_non_resource_ip6s),
                         ),
                     ]
                 },
@@ -759,12 +736,12 @@ impl ReferenceState {
     }
 }
 
-fn select_host_v4(hosts: Vec<Ipv4Network>) -> impl Strategy<Value = Ipv4Addr> {
-    sample::select(hosts).prop_flat_map(crate::proptest::host_v4)
+fn select_host_v4(hosts: &[Ipv4Network]) -> impl Strategy<Value = Ipv4Addr> {
+    sample::select(hosts.to_vec()).prop_flat_map(crate::proptest::host_v4)
 }
 
-fn select_host_v6(hosts: Vec<Ipv6Network>) -> impl Strategy<Value = Ipv6Addr> {
-    sample::select(hosts).prop_flat_map(crate::proptest::host_v6)
+fn select_host_v6(hosts: &[Ipv6Network]) -> impl Strategy<Value = Ipv6Addr> {
+    sample::select(hosts.to_vec()).prop_flat_map(crate::proptest::host_v6)
 }
 
 pub(crate) fn private_key() -> impl Strategy<Value = PrivateKey> {

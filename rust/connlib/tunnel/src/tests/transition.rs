@@ -182,7 +182,7 @@ impl PacketDestination {
 }
 
 #[expect(private_bounds)]
-pub(crate) fn icmp_to_destination<I, D>(
+pub(crate) fn icmp_packet<I, D>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = D>,
 ) -> impl Strategy<Value = Transition>
@@ -210,7 +210,7 @@ where
 }
 
 #[expect(private_bounds)]
-pub(crate) fn udp_to_destination<I, D>(
+pub(crate) fn udp_packet<I, D>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = D>,
 ) -> impl Strategy<Value = Transition>
@@ -238,7 +238,7 @@ where
 }
 
 #[expect(private_bounds)]
-pub(crate) fn tcp_to_destination<I, D>(
+pub(crate) fn tcp_packet<I, D>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = D>,
 ) -> impl Strategy<Value = Transition>
