@@ -19,6 +19,9 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem enable={title === "Windows"} pull="7009">
           The IPC service `firezone-client-ipc.exe` is now signed.
         </ChangeItem>
+        <ChangeItem pull="7123">
+          Reports the version to the Portal correctly.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.9" date={new Date("2024-10-09")}>
         <ChangeItem enable={title === "Linux GUI"} pull="6987">
