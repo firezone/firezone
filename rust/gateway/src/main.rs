@@ -24,6 +24,7 @@ use std::pin::pin;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
+use tracing_subscriber::layer;
 use url::Url;
 use uuid::Uuid;
 
@@ -59,7 +60,7 @@ async fn main() {
 }
 
 async fn try_main(cli: Cli) -> Result<()> {
-    firezone_logging::setup_global_subscriber(firezone_logging::sentry_layer());
+    firezone_logging::setup_global_subscriber(layer::Identity::default());
 
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
