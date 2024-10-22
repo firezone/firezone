@@ -77,7 +77,7 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 
 [patch.crates-io]
 smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp", branch = "main" }
-boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
+boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
