@@ -18,6 +18,7 @@ domain = { workspace = true }
 either = "1"
 firezone-bin-shared = { workspace = true }
 firezone-logging = { workspace = true }
+firezone-telemetry = { workspace = true }
 firezone-tunnel = { workspace = true }
 futures = "0.3.29"
 futures-bounded = { workspace = true }
