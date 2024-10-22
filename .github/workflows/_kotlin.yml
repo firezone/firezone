@@ -47,7 +47,7 @@ jobs:
       - name: Setup Android
         uses: android-actions/setup-android@v3
       - name: Install NDK
-        run: sdkmanager "ndk;27.1.12297006"
+        run: sdkmanager "ndk;27.2.12479018" # Must match `kotlin/android/app/build.gradle.kts`
       - run: touch local.properties
       - name: Bundle and sign release
         env:

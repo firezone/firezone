@@ -44,7 +44,7 @@ android {
 
     namespace = "dev.firezone.android"
     compileSdk = 34
-    ndkVersion = "27.1.12297006" // Must match `.github/workflows/_kotlin.yml`
+    ndkVersion = "27.2.12479018" // Must match `.github/workflows/_kotlin.yml`
 
     defaultConfig {
         applicationId = "dev.firezone.android"
