@@ -101,6 +101,16 @@ impl Telemetry {
     }
 }
 
+/// Sets the Firezone account slug on the Sentry hub
+///
+/// This sets the entire set of "user" info, so it will conflict if we set any other user ID later.
+pub fn set_account_slug(account_slug: String) {
+    let mut user = sentry::User::default();
+    user.other
+        .insert("account_slug".to_string(), account_slug.into());
+    sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
