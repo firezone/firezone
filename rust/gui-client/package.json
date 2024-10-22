@@ -12,10 +12,10 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^1.6",
-    "@tauri-apps/cli": "^1.6",
     "flowbite": "^2.5.2"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^1.6",
     "@types/node": "22",
     "http-server": "^14.1.1",
     "run-script-os": "^1.1.6",
