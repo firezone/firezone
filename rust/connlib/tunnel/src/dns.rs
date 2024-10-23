@@ -333,9 +333,11 @@ impl StubResolver {
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
             (Rtype::HTTPS, Some(_)) => {
-                anyhow::bail!(
-                    "Discarding HTTPS record query for resource {domain} because we can't mangle it"
-                );
+                // We must intercept queries for the HTTPS record type to force the client to issue an A / AAAA query instead.
+                // Otherwise, the client won't use the IPs we issue for a particular domain and the traffic cannot be tunneled.
+
+                let response = build_dns_with_answer(message, domain, Vec::default())?;
+                return Ok(ResolveStrategy::LocalResponse(response));
             }
             _ => return Ok(ResolveStrategy::Recurse),
         };
