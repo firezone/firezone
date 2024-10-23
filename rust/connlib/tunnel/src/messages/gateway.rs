@@ -1,8 +1,8 @@
 //! Gateway related messages that are needed within connlib
 
 use crate::messages::{
-    GatewayResponse, IceCredentials, Interface, Key, Offer, Peer, Relay, RelaysPresence,
-    ResolveRequest, SecretKey,
+    GatewayResponse, IceCredentials, Interface, Key, Peer, Relay, RelaysPresence, ResolveRequest,
+    SecretKey,
 };
 use chrono::{serde::ts_seconds_option, DateTime, Utc};
 use connlib_model::{ClientId, ResourceId};
@@ -12,6 +12,8 @@ use std::{
     collections::BTreeSet,
     net::{Ipv4Addr, Ipv6Addr},
 };
+
+use super::Offer;
 
 pub type Filters = Vec<Filter>;
 

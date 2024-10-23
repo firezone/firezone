@@ -3,9 +3,7 @@ pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use callbacks::{Callbacks, DisconnectError};
 pub use connlib_model::StaticSecret;
 pub use eventloop::Eventloop;
-pub use firezone_tunnel::messages::client::{
-    ResourceDescription, {IngressMessages, ReplyMessages},
-};
+pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription};
 
 use connlib_model::ResourceId;
 use eventloop::Command;
@@ -42,7 +40,7 @@ impl Session {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         callbacks: CB,
-        portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
+        portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         handle: tokio::runtime::Handle,
     ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
@@ -119,7 +117,7 @@ async fn connect<CB>(
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     callbacks: CB,
-    portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
+    portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     rx: UnboundedReceiver<Command>,
 ) -> Result<(), DisconnectError>
 where

@@ -13,6 +13,10 @@ export default function Headless() {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
+        <ChangeItem>
+          Makes use of the new control protocol, delivering faster and more
+          robust connection establishment.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.4" date={new Date("2024-10-02")}>
         <ChangeItem pull="6831">

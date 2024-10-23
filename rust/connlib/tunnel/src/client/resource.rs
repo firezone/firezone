@@ -6,7 +6,7 @@ use connlib_model::{
     CidrResourceView, DnsResourceView, InternetResourceView, ResourceId, ResourceStatus,
     ResourceView, Site,
 };
-use ip_network::IpNetwork;
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools as _;
 
 use crate::messages::client::{
@@ -128,6 +128,17 @@ impl Resource {
             (Resource::Cidr(cidr_a), Resource::Cidr(cidr_b)) => cidr_a.address != cidr_b.address,
             (Resource::Internet(_), Resource::Internet(_)) => false,
             _ => true,
+        }
+    }
+
+    pub fn addresses(&self) -> Vec<IpNetwork> {
+        match self {
+            Resource::Dns(_) => vec![],
+            Resource::Cidr(c) => vec![c.address],
+            Resource::Internet(_) => vec![
+                Ipv4Network::DEFAULT_ROUTE.into(),
+                Ipv6Network::DEFAULT_ROUTE.into(),
+            ],
         }
     }
 
