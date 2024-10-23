@@ -91,9 +91,7 @@ export default function ElevatorPitch() {
               <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2">
                 Stay Connected
               </h6>
-              <h3
-                className={`mb-4 text-3xl md:text-4xl lg:text-5xl leading-tight tracking-tight font-bold inline-block font-manrope`}
-              >
+              <h3 className="mb-4 text-3xl md:text-4xl lg:text-5xl leading-tight tracking-tight font-bold inline-block">
                 <span className="text-primary-450">Eliminate </span>
                 ACL hell
               </h3>

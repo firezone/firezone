@@ -18,9 +18,7 @@ export default function FeatureSection({
       <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide mb-2">
         {titleCaption}
       </h6>
-      <h3
-        className={`mb-4 text-center lg:text-left text-3xl md:text-4xl lg:text-5xl leading-tight text-pretty tracking-tight font-bold inline-block font-manrope`}
-      >
+      <h3 className="mb-4 text-center lg:text-left text-3xl md:text-4xl lg:text-5xl leading-tight text-pretty tracking-tight font-bold inline-block">
         {title}
       </h3>
       {description}
