@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { get } from "@vercel/edge-config";
 
+// Cache responses
+export const dynamic = "force-static";
+
+// Revalidate cache every 60 seconds
+export const revalidate = 60;
+
 export async function GET(_req: NextRequest) {
-  const versions = {
-    portal: await get("deployed_sha"),
+  return NextResponse.json(versions());
+}
+
+function versions() {
+  return {
+    portal: get("deployed_sha"),
     // mark:current-apple-version
     apple: "1.3.6",
     // mark:current-android-version
@@ -15,6 +25,4 @@ export async function GET(_req: NextRequest) {
     // mark:current-gateway-version
     gateway: "1.3.2",
   };
-
-  return NextResponse.json(versions);
 }

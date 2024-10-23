@@ -2,10 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  font-family: var(--font-source-sans-3);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-manrope);
+}
+
 @layer components {
   /* Fix inline headings */
   *:is(h1, h2, h3, h4, h5, h6) {
-    @apply flex items-center gap-1 font-manrope;
+    @apply flex items-center gap-1;
   }
 
   /* Fix anchor slug links and scroll position due to fixed navbar */

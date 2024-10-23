@@ -37,9 +37,7 @@ export default function SingleFeature({
           </h3>
         </div>
         <div className="max-w-screen-md">
-          <p
-            className={`text-md text-left text-pretty mb-12 text-neutral-600 font-medium font-manrope`}
-          >
+          <p className="text-md text-left text-pretty mb-12 text-neutral-600 font-medium">
             {desc}
           </p>
           <ActionLink

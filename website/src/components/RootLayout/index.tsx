@@ -14,15 +14,13 @@ import { Source_Sans_3, Manrope } from "next/font/google";
 
 const source_sans_3 = Source_Sans_3({
   subsets: ["latin"],
-  variable: "--font-source-sans",
+  variable: "--font-source-sans-3",
   display: "swap",
-  weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
 });
 const manrope = Manrope({
   subsets: ["latin"],
   variable: "--font-manrope",
   display: "swap",
-  weight: ["200", "300", "400", "500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {

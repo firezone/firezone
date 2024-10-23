@@ -75,8 +75,7 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-source-sans)"],
-        manrope: ["var(--font-manrope)"],
+        sans: ["var(--font-source-sans-3)"],
       },
       boxShadow: {
         drop: "0px 16px 32px -4px rgba(12, 12, 13, 0.1), 0px 4px 4px -4px rgba(12, 12, 13, 0.05)",

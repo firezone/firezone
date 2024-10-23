@@ -9,9 +9,7 @@ export default function BattleCard2() {
         <h6 className="uppercase text-sm font-semibold text-primary-450 tracking-wide ">
           Compare
         </h6>
-        <h3
-          className={` text-3xl md:text-4xl lg:text-5xl tracking-tight font-bold inline-block text-center my-2 font-manrope`}
-        >
+        <h3 className="text-3xl md:text-4xl lg:text-5xl tracking-tight font-bold inline-block text-center my-2">
           More features
           <span className="text-primary-450"> for less</span>
         </h3>

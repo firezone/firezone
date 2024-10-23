@@ -16,7 +16,7 @@ export default function _Page() {
   return (
     <>
       <section className="bg-neutral-100 pb-14">
-        <div className={`text-center font-manrope`}>
+        <div className="text-center">
           <div className="flex gap-4 justify-center ps-6 mb-2.5">
             <span
               className={
@@ -46,9 +46,7 @@ export default function _Page() {
         </div>
 
         <div className="mx-auto bg-neutral-100 max-w-screen-2xl md:grid md:grid-cols-3 pt-10 md:gap-2 lg:gap-4 px-4">
-          <div
-            className={`p-8 md:p-6 lg:p-8 xl:p-10 bg-white rounded-xl shadow-light mb-4 font-manrope`}
-          >
+          <div className="p-8 md:p-6 lg:p-8 xl:p-10 bg-white rounded-xl shadow-light mb-4">
             <h3 className="mb-6 text-xl tracking-tight font-semibold text-neutral-900">
               Starter
             </h3>
