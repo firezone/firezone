@@ -1,7 +1,8 @@
 mod dyn_err;
 pub mod file;
 mod format;
-mod log_unwrap;
+#[macro_use]
+mod unwrap_or;
 
 use sentry_tracing::EventFilter;
 use tracing::{subscriber::DefaultGuard, Subscriber};
@@ -13,7 +14,6 @@ use tracing_subscriber::{
 
 pub use dyn_err::{anyhow_dyn_err, std_dyn_err};
 pub use format::Format;
-pub use log_unwrap::LogUnwrap;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`
 pub fn setup_global_subscriber<L>(additional_layer: L)
