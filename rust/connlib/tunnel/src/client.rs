@@ -385,7 +385,7 @@ impl ClientState {
                     });
 
                 self.try_queue_udp_dns_response(server, source, &message)
-                    .log_unwrap_debug("Failed to queue UDP DNS response");
+                    .log_unwrap_warn("Failed to queue UDP DNS response");
             }
             (dns::Transport::Tcp { source }, result) => {
                 let message = result
@@ -400,7 +400,7 @@ impl ClientState {
 
                 self.tcp_dns_server
                     .send_message(source, message)
-                    .log_unwrap_debug("Failed to send TCP DNS response");
+                    .log_unwrap_warn("Failed to send TCP DNS response");
             }
         }
     }
