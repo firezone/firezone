@@ -1,5 +1,8 @@
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
-use crate::client::{CidrResource, DnsResource, InternetResource, IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::client::{
+    CidrResource, DnsResource, InternetResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6,
+    IPV4_RESOURCES, IPV6_RESOURCES,
+};
 use crate::proptest::*;
 use crate::{messages::DnsServer, DomainName};
 use connlib_model::{RelayId, Site};
@@ -17,7 +20,7 @@ pub(crate) fn global_dns_records() -> impl Strategy<Value = BTreeMap<DomainName,
 {
     collection::btree_map(
         domain_name(2..4).prop_map(|d| d.parse().unwrap()),
-        collection::btree_set(any::<IpAddr>(), 1..6),
+        collection::btree_set(non_reserved_ip(), 1..6),
         0..5,
     )
 }
@@ -108,13 +111,7 @@ pub(crate) fn relays(
 /// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
 pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
     let ip4_dns_servers = collection::btree_set(
-        any::<Ipv4Addr>()
-            .prop_filter("must not be in sentinel IP range", |ip| {
-                !crate::client::DNS_SENTINELS_V4.contains(*ip)
-            })
-            .prop_filter("must not be in IPv4 resources range", |ip| {
-                !crate::client::IPV4_RESOURCES.contains(*ip)
-            })
+        non_reserved_ipv4()
             .prop_filter("must be addressable IP", |ip| {
                 !ip.is_unspecified() && !ip.is_multicast() && !ip.is_broadcast()
             })
@@ -122,13 +119,7 @@ pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
         1..4,
     );
     let ip6_dns_servers = collection::btree_set(
-        any::<Ipv6Addr>()
-            .prop_filter("must not be in sentinel IP range", |ip| {
-                !crate::client::DNS_SENTINELS_V6.contains(*ip)
-            })
-            .prop_filter("must not be in IPv6 resources range", |ip| {
-                !crate::client::IPV6_RESOURCES.contains(*ip)
-            })
+        non_reserved_ipv6()
             .prop_filter("must be addressable IP", |ip| {
                 !ip.is_unspecified() && !ip.is_multicast()
             })
@@ -140,6 +131,33 @@ pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
         v4.extend(v6);
         v4
     })
+}
+
+fn non_reserved_ip() -> impl Strategy<Value = IpAddr> {
+    prop_oneof![
+        non_reserved_ipv4().prop_map_into(),
+        non_reserved_ipv6().prop_map_into(),
+    ]
+}
+
+fn non_reserved_ipv4() -> impl Strategy<Value = Ipv4Addr> {
+    any::<Ipv4Addr>()
+        .prop_filter("must not be in sentinel IP range", |ip| {
+            !DNS_SENTINELS_V4.contains(*ip)
+        })
+        .prop_filter("must not be in IPv4 resources range", |ip| {
+            !IPV4_RESOURCES.contains(*ip)
+        })
+}
+
+fn non_reserved_ipv6() -> impl Strategy<Value = Ipv6Addr> {
+    any::<Ipv6Addr>()
+        .prop_filter("must not be in sentinel IP range", |ip| {
+            !DNS_SENTINELS_V6.contains(*ip)
+        })
+        .prop_filter("must not be in IPv6 resources range", |ip| {
+            !IPV6_RESOURCES.contains(*ip)
+        })
 }
 
 fn any_site(sites: BTreeSet<Site>) -> impl Strategy<Value = Site> {
