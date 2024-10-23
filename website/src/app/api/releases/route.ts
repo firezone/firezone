@@ -11,9 +11,9 @@ export async function GET(_req: NextRequest) {
   return NextResponse.json(versions());
 }
 
-function versions() {
+async function versions() {
   return {
-    portal: get("deployed_sha"),
+    portal: await get("deployed_sha"),
     // mark:current-apple-version
     apple: "1.3.6",
     // mark:current-android-version
