@@ -24,6 +24,7 @@ fn tcp_packet_v4() -> impl Strategy<Value = IpPacket> {
                 payload
             )
         })
+        .prop_map(|r: anyhow::Result<IpPacket>| r.unwrap())
 }
 
 fn tcp_packet_v6() -> impl Strategy<Value = IpPacket> {
@@ -40,6 +41,7 @@ fn tcp_packet_v6() -> impl Strategy<Value = IpPacket> {
                 payload
             )
         })
+        .prop_map(|r: anyhow::Result<IpPacket>| r.unwrap())
 }
 
 fn udp_packet_v4() -> impl Strategy<Value = IpPacket> {
@@ -56,6 +58,7 @@ fn udp_packet_v4() -> impl Strategy<Value = IpPacket> {
                 payload
             )
         })
+        .prop_map(|r: anyhow::Result<IpPacket>| r.unwrap())
 }
 
 fn udp_packet_v6() -> impl Strategy<Value = IpPacket> {
@@ -72,6 +75,7 @@ fn udp_packet_v6() -> impl Strategy<Value = IpPacket> {
                 payload
             )
         })
+        .prop_map(|r: anyhow::Result<IpPacket>| r.unwrap())
 }
 
 fn icmp_request_packet_v4() -> impl Strategy<Value = IpPacket> {
@@ -96,6 +100,7 @@ fn icmp_request_packet_v4() -> impl Strategy<Value = IpPacket> {
 
             build!(packet, EMPTY_PAYLOAD)
         })
+        .prop_map(|r: anyhow::Result<IpPacket>| r.unwrap())
 }
 
 fn icmp_reply_packet_v4() -> impl Strategy<Value = IpPacket> {
@@ -120,6 +125,7 @@ fn icmp_reply_packet_v4() -> impl Strategy<Value = IpPacket> {
 
             build!(packet, EMPTY_PAYLOAD)
         })
+        .prop_map(|r: anyhow::Result<IpPacket>| r.unwrap())
 }
 
 fn icmp_request_packet_v6() -> impl Strategy<Value = IpPacket> {
@@ -135,6 +141,7 @@ fn icmp_request_packet_v6() -> impl Strategy<Value = IpPacket> {
                 EMPTY_PAYLOAD
             )
         })
+        .prop_map(|r: anyhow::Result<IpPacket>| r.unwrap())
 }
 
 fn icmp_reply_packet_v6() -> impl Strategy<Value = IpPacket> {
@@ -150,6 +157,7 @@ fn icmp_reply_packet_v6() -> impl Strategy<Value = IpPacket> {
                 EMPTY_PAYLOAD
             )
         })
+        .prop_map(|r: anyhow::Result<IpPacket>| r.unwrap())
 }
 
 fn ipv4_options() -> impl Strategy<Value = Ipv4Options> {

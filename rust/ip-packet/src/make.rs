@@ -1,7 +1,7 @@
 //! Factory module for making all kinds of packets.
 
 use crate::{IpPacket, IpPacketBuf};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context as _, Result};
 use etherparse::PacketBuilder;
 use std::net::IpAddr;
 
@@ -9,14 +9,18 @@ use std::net::IpAddr;
 #[macro_export]
 macro_rules! build {
     ($packet:expr, $payload:ident) => {{
+        use ::anyhow::Context as _;
+
         let size = $packet.size($payload.len());
         let mut ip = $crate::IpPacketBuf::new();
 
         $packet
             .write(&mut std::io::Cursor::new(ip.buf()), &$payload)
-            .expect("Buffer should be big enough");
+            .with_context(|| format!("Payload is too big; len={size}"))?;
 
-        IpPacket::new(ip, size).expect("Should be a valid IP packet")
+        let packet = IpPacket::new(ip, size).context("Failed to create IP packet")?;
+
+        Ok(packet)
     }};
 }
 
@@ -44,7 +48,9 @@ pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> Result<IpPacke
             crate::fz_p2p_control::IP_NUMBER,
             &payload_buf,
         )
-        .expect("Buffer should be big enough");
+        .with_context(|| {
+            format!("Buffer should be big enough; ip_payload_size={ip_payload_size}")
+        })?;
     let ip_packet = IpPacket::new(packet_buf, packet_size).context("Unable to create IP packet")?;
 
     Ok(ip_packet)
@@ -56,21 +62,21 @@ pub fn icmp_request_packet(
     seq: u16,
     identifier: u16,
     payload: &[u8],
-) -> Result<IpPacket, IpVersionMismatch> {
+) -> Result<IpPacket> {
     match (src, dst.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
                 .icmpv4_echo_request(identifier, seq);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let packet = PacketBuilder::ipv6(src.octets(), dst.octets(), 64)
                 .icmpv6_echo_request(identifier, seq);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
-        _ => Err(IpVersionMismatch),
+        _ => bail!(IpVersionMismatch),
     }
 }
 
@@ -80,21 +86,21 @@ pub fn icmp_reply_packet(
     seq: u16,
     identifier: u16,
     payload: &[u8],
-) -> Result<IpPacket, IpVersionMismatch> {
+) -> Result<IpPacket> {
     match (src, dst.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
                 .icmpv4_echo_reply(identifier, seq);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let packet = PacketBuilder::ipv6(src.octets(), dst.octets(), 64)
                 .icmpv6_echo_reply(identifier, seq);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
-        _ => Err(IpVersionMismatch),
+        _ => bail!(IpVersionMismatch),
     }
 }
 
@@ -134,7 +140,7 @@ pub fn tcp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> Result<IpPacket, IpVersionMismatch>
+) -> Result<IpPacket>
 where
     IP: Into<IpAddr>,
 {
@@ -143,15 +149,15 @@ where
             let packet =
                 PacketBuilder::ipv4(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let packet =
                 PacketBuilder::ipv6(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
-        _ => Err(IpVersionMismatch),
+        _ => bail!(IpVersionMismatch),
     }
 }
 
@@ -161,7 +167,7 @@ pub fn udp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> Result<IpPacket, IpVersionMismatch>
+) -> Result<IpPacket>
 where
     IP: Into<IpAddr>,
 {
@@ -169,14 +175,14 @@ where
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64).udp(sport, dport);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let packet = PacketBuilder::ipv6(src.octets(), dst.octets(), 64).udp(sport, dport);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
-        _ => Err(IpVersionMismatch),
+        _ => bail!(IpVersionMismatch),
     }
 }
 
