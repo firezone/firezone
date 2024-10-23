@@ -9,9 +9,6 @@ name = "connlib"
 crate-type = ["lib", "cdylib"]
 doc = false
 
-[features]
-mock = ["connlib-client-shared/mock"]
-
 [dependencies]
 backoff = "0.4.0"
 connlib-client-shared = { workspace = true }
