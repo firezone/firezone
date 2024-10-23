@@ -8,11 +8,7 @@ export const dynamic = "force-static";
 export const revalidate = 60;
 
 export async function GET(_req: NextRequest) {
-  return NextResponse.json(versions());
-}
-
-async function versions() {
-  return {
+  const versions = {
     portal: await get("deployed_sha"),
     // mark:current-apple-version
     apple: "1.3.6",
@@ -25,4 +21,6 @@ async function versions() {
     // mark:current-gateway-version
     gateway: "1.3.2",
   };
+
+  return NextResponse.json(versions);
 }
