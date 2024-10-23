@@ -42,7 +42,7 @@ export default function RootLayout({
         type="text/javascript"
         src="https://app.termly.io/resource-blocker/c4df1a31-22d9-4000-82e6-a86cbec0bba0?autoBlock=on"
       />
-      <GoogleTagManager gtmId={gtmId} />
+      {gtmId && <GoogleTagManager gtmId={gtmId} />}
       <body className={"subpixel-antialiased text-neutral-900 font-sans"}>
         <Banner active={false}>
           <p className="mx-auto text-center">
