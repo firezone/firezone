@@ -14,7 +14,7 @@ use bimap::BiMap;
 use connlib_model::PublicKey;
 use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
 use connlib_model::{Site, SiteId};
-use firezone_logging::{anyhow_dyn_err, std_dyn_err, LogUnwrap as _};
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, unwrap_or_debug, unwrap_or_warn};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, UdpSlice};
@@ -384,8 +384,10 @@ impl ClientState {
                         dns::servfail(response.query.for_slice_ref())
                     });
 
-                self.try_queue_udp_dns_response(server, source, &message)
-                    .log_unwrap_warn("Failed to queue UDP DNS response");
+                unwrap_or_warn!(
+                    self.try_queue_udp_dns_response(server, source, &message),
+                    "Failed to queue UDP DNS response"
+                );
             }
             (dns::Transport::Tcp { source }, result) => {
                 let message = result
@@ -398,9 +400,10 @@ impl ClientState {
                         dns::servfail(response.query.for_slice_ref())
                     });
 
-                self.tcp_dns_server
-                    .send_message(source, message)
-                    .log_unwrap_warn("Failed to send TCP DNS response");
+                unwrap_or_warn!(
+                    self.tcp_dns_server.send_message(source, message),
+                    "Failed to send TCP DNS response"
+                );
             }
         }
     }
@@ -966,8 +969,10 @@ impl ClientState {
 
         match self.stub_resolver.handle(message) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.try_queue_udp_dns_response(upstream, source, &response)
-                    .log_unwrap_debug("Failed to queue UDP DNS response");
+                unwrap_or_debug!(
+                    self.try_queue_udp_dns_response(upstream, source, &response),
+                    "Failed to queue UDP DNS response"
+                );
             }
             dns::ResolveStrategy::Recurse => {
                 let query_id = message.header().id();
@@ -1010,9 +1015,10 @@ impl ClientState {
 
         match self.stub_resolver.handle(message.for_slice_ref()) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.tcp_dns_server
-                    .send_message(query.socket, response)
-                    .log_unwrap_debug("Failed to send TCP DNS response");
+                unwrap_or_debug!(
+                    self.tcp_dns_server.send_message(query.socket, response),
+                    "Failed to send TCP DNS response"
+                );
             }
             dns::ResolveStrategy::Recurse => {
                 let query_id = message.header().id();
@@ -1026,9 +1032,13 @@ impl ClientState {
                                 "Failed to send recursive TCP DNS quer"
                             );
 
-                            self.tcp_dns_server
-                                .send_message(query.socket, dns::servfail(message.for_slice_ref()))
-                                .log_unwrap_debug("Failed to send TCP DNS response");
+                            unwrap_or_debug!(
+                                self.tcp_dns_server.send_message(
+                                    query.socket,
+                                    dns::servfail(message.for_slice_ref())
+                                ),
+                                "Failed to send TCP DNS response"
+                            );
                             return;
                         }
                     };
