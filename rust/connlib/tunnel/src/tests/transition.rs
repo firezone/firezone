@@ -222,7 +222,7 @@ where
         src.prop_map(Into::into),
         dst.prop_map(Into::into),
         any::<u16>(),
-        any::<u16>(),
+        non_dns_ports(),
         any::<sample::Selector>(),
         any::<u64>(),
     )
@@ -250,7 +250,7 @@ where
         src.prop_map(Into::into),
         dst.prop_map(Into::into),
         any::<u16>(),
-        any::<u16>(),
+        non_dns_ports(),
         any::<sample::Selector>(),
         any::<u64>(),
     )
@@ -263,6 +263,13 @@ where
                 payload,
             }
         })
+}
+
+fn non_dns_ports() -> impl Strategy<Value = u16> {
+    any::<u16>().prop_filter(
+        "avoid using port 53 for non-dns queries for simplicity",
+        |p| *p != 53,
+    )
 }
 
 /// Samples up to 5 DNS queries that will be sent concurrently into connlib.
