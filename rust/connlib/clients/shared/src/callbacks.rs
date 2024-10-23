@@ -22,28 +22,14 @@ pub trait Callbacks: Clone + Send + Sync {
     fn on_update_resources(&self, _: Vec<ResourceView>) {}
 
     /// Called when the tunnel is disconnected.
-    ///
-    /// If the tunnel disconnected due to a fatal error, `error` is the error
-    /// that caused the disconnect.
-    fn on_disconnect(&self, error: &DisconnectError) {
-        tracing::error!(error = ?error, "tunnel_disconnected");
-        // Note that we can't panic here, since we already hooked the panic to this function.
-        std::process::exit(0);
-    }
+    fn on_disconnect(&self, _: &DisconnectError) {}
 }
 
 /// Unified error type to use across connlib.
 #[derive(thiserror::Error, Debug)]
 pub enum DisconnectError {
-    /// A panic occurred.
-    #[error("Connlib panicked: {0}")]
-    Panic(String),
-    /// The task was cancelled
-    #[error("Connlib task was cancelled")]
-    Cancelled,
-    /// A panic occurred with a non-string payload.
-    #[error("Panicked with a non-string payload")]
-    PanicNonStringPayload,
+    #[error("connlib crashed: {0}")]
+    Crash(#[from] tokio::task::JoinError),
 
     #[error("connection to the portal failed: {0}")]
     PortalConnectionFailed(#[from] phoenix_channel::Error),
