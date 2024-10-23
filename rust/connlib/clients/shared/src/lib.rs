@@ -9,7 +9,6 @@ pub use firezone_tunnel::messages::client::{
 
 use connlib_model::ResourceId;
 use eventloop::Command;
-use firezone_logging::std_dyn_err;
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -121,7 +120,7 @@ async fn connect<CB>(
     callbacks: CB,
     portal: PhoenixChannel<(), IngressMessages, ReplyMessages, PublicKeyParam>,
     rx: UnboundedReceiver<Command>,
-) -> Result<(), DisconnectError>
+) -> Result<(), phoenix_channel::Error>
 where
     CB: Callbacks + 'static,
 {
@@ -140,7 +139,7 @@ where
 
 /// A supervisor task that handles, when [`connect`] exits.
 async fn connect_supervisor<CB>(
-    connect_handle: JoinHandle<Result<(), DisconnectError>>,
+    connect_handle: JoinHandle<Result<(), phoenix_channel::Error>>,
     callbacks: CB,
 ) where
     CB: Callbacks,
@@ -149,35 +148,7 @@ async fn connect_supervisor<CB>(
         Ok(Ok(())) => {
             tracing::info!("connlib exited gracefully");
         }
-        Ok(Err(e)) => {
-            if e.is_authentication_error() {
-                tracing::warn!(error = std_dyn_err(&e), "Portal authentication error");
-            } else {
-                tracing::error!(error = std_dyn_err(&e), "connlib failed");
-            }
-
-            callbacks.on_disconnect(&e);
-        }
-        Err(e) => match e.try_into_panic() {
-            Ok(panic) => {
-                if let Some(msg) = panic.downcast_ref::<&str>() {
-                    tracing::error!("connlib panicked: {msg}");
-                    callbacks.on_disconnect(&DisconnectError::Panic(msg.to_string()));
-                    return;
-                }
-                if let Some(msg) = panic.downcast_ref::<String>() {
-                    tracing::error!("connlib panicked: {msg}");
-                    callbacks.on_disconnect(&DisconnectError::Panic(msg.to_string()));
-                    return;
-                }
-
-                tracing::error!("connlib panicked with a non-string payload");
-                callbacks.on_disconnect(&DisconnectError::PanicNonStringPayload);
-            }
-            Err(_) => {
-                tracing::error!("connlib task was cancelled");
-                callbacks.on_disconnect(&DisconnectError::Cancelled);
-            }
-        },
+        Ok(Err(e)) => callbacks.on_disconnect(&DisconnectError::PortalConnectionFailed(e)),
+        Err(e) => callbacks.on_disconnect(&DisconnectError::Crash(e)),
     }
 }
