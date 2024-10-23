@@ -55,13 +55,12 @@ async fn main() {
     // That looks like a "crash" but we "just" exit with a fatal error.
     if let Err(e) = try_main(cli).await {
         tracing::error!(error = anyhow_dyn_err(&e));
-        firezone_telemetry::capture_anyhow(&e);
         std::process::exit(1);
     }
 }
 
 async fn try_main(cli: Cli) -> Result<()> {
-    firezone_logging::setup_global_subscriber(layer::Identity::new());
+    firezone_logging::setup_global_subscriber(layer::Identity::default());
 
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
@@ -185,7 +184,7 @@ struct Cli {
     #[arg(short = 'n', long, env = "FIREZONE_NAME")]
     firezone_name: Option<String>,
 
-    /// Friendly name to display in the UI
+    /// Disable sentry.io crash-reporting agent.
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
 
