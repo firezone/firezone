@@ -44,7 +44,9 @@ pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> Result<IpPacke
             crate::fz_p2p_control::IP_NUMBER,
             &payload_buf,
         )
-        .expect("Buffer should be big enough");
+        .with_context(|| {
+            format!("Buffer should be big enough; ip_payload_size={ip_payload_size}")
+        })?;
     let ip_packet = IpPacket::new(packet_buf, packet_size).context("Unable to create IP packet")?;
 
     Ok(ip_packet)
