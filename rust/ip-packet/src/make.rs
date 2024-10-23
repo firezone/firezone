@@ -1,7 +1,7 @@
 //! Factory module for making all kinds of packets.
 
 use crate::{IpPacket, IpPacketBuf};
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Context as _, Result};
 use etherparse::PacketBuilder;
 use std::net::IpAddr;
 
@@ -9,14 +9,18 @@ use std::net::IpAddr;
 #[macro_export]
 macro_rules! build {
     ($packet:expr, $payload:ident) => {{
+        use ::anyhow::Context as _;
+
         let size = $packet.size($payload.len());
         let mut ip = $crate::IpPacketBuf::new();
 
         $packet
             .write(&mut std::io::Cursor::new(ip.buf()), &$payload)
-            .expect("Buffer should be big enough");
+            .with_context(|| format!("Payload is too big; len={size}"))?;
 
-        IpPacket::new(ip, size).expect("Should be a valid IP packet")
+        let packet = IpPacket::new(ip, size).context("Failed to create IP packet")?;
+
+        Ok(packet)
     }};
 }
 
@@ -64,13 +68,13 @@ pub fn icmp_request_packet(
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
                 .icmpv4_echo_request(identifier, seq);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let packet = PacketBuilder::ipv6(src.octets(), dst.octets(), 64)
                 .icmpv6_echo_request(identifier, seq);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         _ => bail!(IpVersionMismatch),
     }
@@ -88,13 +92,13 @@ pub fn icmp_reply_packet(
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
                 .icmpv4_echo_reply(identifier, seq);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let packet = PacketBuilder::ipv6(src.octets(), dst.octets(), 64)
                 .icmpv6_echo_reply(identifier, seq);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         _ => bail!(IpVersionMismatch),
     }
@@ -145,13 +149,13 @@ where
             let packet =
                 PacketBuilder::ipv4(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let packet =
                 PacketBuilder::ipv6(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         _ => bail!(IpVersionMismatch),
     }
@@ -171,12 +175,12 @@ where
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64).udp(sport, dport);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let packet = PacketBuilder::ipv6(src.octets(), dst.octets(), 64).udp(sport, dport);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         _ => bail!(IpVersionMismatch),
     }
