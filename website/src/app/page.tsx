@@ -55,7 +55,7 @@ export default function Page() {
             </Banner>
             <h1
               className={
-                "font-manrope mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-tight bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
+                "mb-8 text-5xl sm:text-6xl md:text-7xl text-center drop-shadow-[inset_0_2px_0_0_rgba(255,255,255,100)] font-medium tracking-tight leading-tight bg-gradient-to-b from-white from-70% to-slate-200 text-transparent bg-clip-text"
               }
             >
               Upgrade your VPN to zero-trust access
@@ -177,7 +177,7 @@ export default function Page() {
             Flexible security
           </h6>
           <h3
-            className={`mb-4 tracking-tight font-bold leading-tight inline-block font-manrope`}
+            className={`mb-4 tracking-tight font-bold leading-tight inline-block`}
           >
             Runs <span className="text-primary-450">everywhere </span>
             your business does
@@ -318,9 +318,7 @@ export default function Page() {
           <h6 className="uppercase text-sm font-semibold place-content-center text-primary-450 tracking-wide mb-2">
             Open source
           </h6>
-          <h3
-            className={`mb-4 tracking-tight font-bold inline-block font-manrope`}
-          >
+          <h3 className={`mb-4 tracking-tight font-bold inline-block`}>
             <span className="text-primary-450">Open source</span> for
             transparency and trust
           </h3>

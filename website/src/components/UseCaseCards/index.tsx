@@ -5,9 +5,7 @@ import { Route } from "next";
 
 function CardHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h4
-      className={`font-semibold tracking-tight leading-none text-xl mb-3 inline-block font-manrope`}
-    >
+    <h4 className="font-semibold tracking-tight leading-none text-xl mb-3 inline-block">
       {children}
     </h4>
   );
@@ -45,9 +43,7 @@ export default function UseCaseCards() {
         <h6 className="uppercase text-sm font-semibold text-primary-450 place-content-center tracking-wide mb-2">
           Use cases
         </h6>
-        <h3
-          className={`px-4 mb-8 text-3xl md:text-4xl lg:text-5xl text-center leading-tight tracking-tight font-bold inline-block font-manrope`}
-        >
+        <h3 className="px-4 mb-8 text-3xl md:text-4xl lg:text-5xl text-center leading-tight tracking-tight font-bold inline-block">
           One product. Endless possibilities.
           <span className="text-primary-450"> Zero </span>hassle.
         </h3>
