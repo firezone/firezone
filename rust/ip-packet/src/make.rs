@@ -1,7 +1,7 @@
 //! Factory module for making all kinds of packets.
 
 use crate::{IpPacket, IpPacketBuf};
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use etherparse::PacketBuilder;
 use std::net::IpAddr;
 
@@ -58,7 +58,7 @@ pub fn icmp_request_packet(
     seq: u16,
     identifier: u16,
     payload: &[u8],
-) -> Result<IpPacket, IpVersionMismatch> {
+) -> Result<IpPacket> {
     match (src, dst.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
@@ -72,7 +72,7 @@ pub fn icmp_request_packet(
 
             Ok(build!(packet, payload))
         }
-        _ => Err(IpVersionMismatch),
+        _ => bail!(IpVersionMismatch),
     }
 }
 
@@ -82,7 +82,7 @@ pub fn icmp_reply_packet(
     seq: u16,
     identifier: u16,
     payload: &[u8],
-) -> Result<IpPacket, IpVersionMismatch> {
+) -> Result<IpPacket> {
     match (src, dst.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
@@ -96,7 +96,7 @@ pub fn icmp_reply_packet(
 
             Ok(build!(packet, payload))
         }
-        _ => Err(IpVersionMismatch),
+        _ => bail!(IpVersionMismatch),
     }
 }
 
@@ -136,7 +136,7 @@ pub fn tcp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> Result<IpPacket, IpVersionMismatch>
+) -> Result<IpPacket>
 where
     IP: Into<IpAddr>,
 {
@@ -153,7 +153,7 @@ where
 
             Ok(build!(packet, payload))
         }
-        _ => Err(IpVersionMismatch),
+        _ => bail!(IpVersionMismatch),
     }
 }
 
@@ -163,7 +163,7 @@ pub fn udp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> Result<IpPacket, IpVersionMismatch>
+) -> Result<IpPacket>
 where
     IP: Into<IpAddr>,
 {
@@ -178,7 +178,7 @@ where
 
             Ok(build!(packet, payload))
         }
-        _ => Err(IpVersionMismatch),
+        _ => bail!(IpVersionMismatch),
     }
 }
 
