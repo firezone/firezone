@@ -3,9 +3,6 @@ name = "connlib-client-shared"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-mock = ["connlib-model/mock"]
-
 [dependencies]
 anyhow = "1.0.82"
 backoff = { workspace = true }
