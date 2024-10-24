@@ -317,7 +317,7 @@ impl GatewayState {
             )
             .map(|()| dns_resource_nat::NatStatus::Active)
             .unwrap_or_else(|e| {
-                tracing::debug!(
+                tracing::warn!(
                     error = anyhow_dyn_err(&e),
                     "Failed to setup DNS resource NAT"
                 );

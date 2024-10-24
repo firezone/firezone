@@ -927,7 +927,7 @@ impl ClientState {
                 let known_sockets = &mut self.tcp_dns_sockets_by_upstream_and_query_id;
 
                 let Some(source) = known_sockets.remove(&(server, qid)) else {
-                    tracing::debug!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
+                    tracing::warn!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
 
                     continue;
                 };
@@ -956,7 +956,7 @@ impl ClientState {
         let (datagram, message) = match parse_udp_dns_message(&packet) {
             Ok((datagram, message)) => (datagram, message),
             Err(e) => {
-                tracing::trace!(
+                tracing::warn!(
                     error = anyhow_dyn_err(&e),
                     ?packet,
                     "Failed to parse DNS query"
@@ -1004,11 +1004,7 @@ impl ClientState {
         let message = query.message;
 
         let Some(upstream) = self.dns_mapping.get_by_left(&query.local.ip()) else {
-            tracing::debug!("Received TCP packet for non-sentinel IP");
-            debug_assert!(
-                false,
-                "We only dispatch packets to sentinel IPs to the TCP DNS server"
-            );
+            // This is highly-unlikely but might be possible if our DNS mapping changes whilst the TCP DNS server is processing a request.
             return;
         };
         let server = upstream.address();
@@ -1027,9 +1023,9 @@ impl ClientState {
                     match self.tcp_dns_client.send_query(server, message.clone()) {
                         Ok(()) => {}
                         Err(e) => {
-                            tracing::debug!(
+                            tracing::warn!(
                                 error = anyhow_dyn_err(&e),
-                                "Failed to send recursive TCP DNS quer"
+                                "Failed to send recursive TCP DNS query"
                             );
 
                             unwrap_or_debug!(
@@ -1448,7 +1444,7 @@ impl ClientState {
 }
 
 fn parse_udp_dns_message(packet: &IpPacket) -> anyhow::Result<(UdpSlice, Message<&[u8]>)> {
-    let datagram = packet.as_udp().context("Only DNS over UDP is supported")?;
+    let datagram = packet.as_udp().context("Not a UDP packet")?;
     let port = datagram.destination_port();
 
     anyhow::ensure!(
