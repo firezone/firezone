@@ -10,7 +10,7 @@ use super::{
 use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::{DnsServer, Interface},
-    utils::networks_overlap,
+    utils::network_contains_network,
     DomainName,
 };
 use crate::{proptest::*, ClientState};
@@ -1205,4 +1205,8 @@ fn known_hosts() -> impl Strategy<Value = BTreeMap<String, Vec<IpAddr>>> {
         collection::vec(any::<IpAddr>(), 1..3),
         1..=2,
     )
+}
+
+fn networks_overlap(ip_a: IpNetwork, ip_b: IpNetwork) -> bool {
+    network_contains_network(ip_a, ip_b) || network_contains_network(ip_b, ip_a)
 }
