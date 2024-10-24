@@ -8,11 +8,11 @@ BUNDLES_DIR=../target/release/bundle/deb
 # Copy frontend dependencies
 cp node_modules/flowbite/dist/flowbite.min.js src/
 
-# Compile TypeScript
-pnpm tsc
-
 # Compile CSS
 pnpm tailwindcss -i src/input.css -o src/output.css
+
+# Bundle all web assets
+pnpm vite build
 
 # Get rid of any existing debs, since we need to discover the path later
 rm -rf "$BUNDLES_DIR"
