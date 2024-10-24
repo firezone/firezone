@@ -178,6 +178,21 @@ pub(crate) fn filters() -> impl Strategy<Value = Filters> {
 
         prop_oneof![Just(non_icmp_filters), Just(filters)]
     })
+    .prop_map(|mut filters| {
+        if !filters.is_empty() {
+            // When we send TCP packets to our dns servers that are resources on our test
+            // disallowing TCP generates a lot of retries.
+            // This causes an spike in packets which skew the tests when IDLE and if we have to account for this
+            // it wouldn't allow us to detect other sources of traffic spike.
+            filters.push(Filter::Tcp(PortRange {
+                port_range_end: 53,
+                port_range_start: 53,
+            }));
+            filters
+        } else {
+            filters
+        }
+    })
 }
 
 pub fn dns_resource(
