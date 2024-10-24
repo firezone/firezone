@@ -15,6 +15,8 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+      </Unreleased>
+      <Entry version="1.3.10" date={new Date("2024-10-24")}>
         <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
         <ChangeItem enable={title === "Windows"} pull="7009">
           The IPC service `firezone-client-ipc.exe` is now signed.
@@ -25,7 +27,7 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem pull="6996">
           Supports Ubuntu 24.04, no longer supports Ubuntu 20.04.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.3.9" date={new Date("2024-10-09")}>
         <ChangeItem enable={title === "Linux GUI"} pull="6987">
           Fixes a crash on startup caused by incorrect permissions on the ID file.
