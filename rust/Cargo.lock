@@ -1080,6 +1080,7 @@ dependencies = [
  "connlib-client-shared",
  "connlib-model",
  "firezone-logging",
+ "firezone-telemetry",
  "ip_network",
  "libc",
  "oslog",
