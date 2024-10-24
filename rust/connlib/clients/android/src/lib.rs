@@ -7,6 +7,7 @@ use crate::tun::Tun;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::{ResourceId, ResourceView};
+use firezone_telemetry::{Telemetry, ANDROID_DSN};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -344,8 +345,10 @@ fn connect(
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);
     let device_info = string_from_jstring!(env, device_info);
-
     let device_info = serde_json::from_str(&device_info).unwrap();
+
+    let telemetry = Telemetry::default();
+    telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), ANDROID_DSN);
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
     install_rustls_crypto_provider();
@@ -394,6 +397,7 @@ fn connect(
     Ok(SessionWrapper {
         inner: session,
         runtime,
+        telemetry,
     })
 }
 
@@ -451,6 +455,7 @@ pub struct SessionWrapper {
     inner: Session,
 
     runtime: Runtime,
+    telemetry: Telemetry,
 }
 
 /// # Safety
@@ -463,7 +468,10 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 ) {
     let session = session_ptr as *mut SessionWrapper;
     catch_and_throw(&mut env, |_| {
-        Box::from_raw(session).inner.disconnect();
+        let session = Box::from_raw(session);
+
+        session.inner.disconnect();
+        session.telemetry.stop();
     });
 }
 

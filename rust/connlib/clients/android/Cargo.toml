@@ -14,6 +14,7 @@ backoff = "0.4.0"
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
 firezone-logging = { workspace = true }
+firezone-telemetry = { workspace = true }
 ip_network = "0.4"
 jni = { version = "0.21.1", features = ["invocation"] }
 libc = "0.2"
