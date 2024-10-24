@@ -21,7 +21,13 @@ export default function GoogleAds() {
           return;
         };
 
-        sendGTMEvent({ event: "hubspot-form-submitted" });
+        const value =
+          Number(formData.submissionValues["0-2/numberofemployees"]) * 5;
+
+        sendGTMEvent({
+          event: "hubspot-form-submitted",
+          conversionValue: value,
+        });
       }
     };
 
