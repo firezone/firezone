@@ -28,8 +28,8 @@ pub struct ResourceId(Uuid);
 pub struct RelayId(Uuid);
 
 impl RelayId {
-    pub fn from_u128(v: u128) -> Self {
-        Self(Uuid::from_u128(v))
+    pub fn from_u8(v: u8) -> Self {
+        Self(Uuid::from_u128(v as u128))
     }
 }
 
@@ -46,14 +46,18 @@ impl ResourceId {
         ResourceId(Uuid::new_v4())
     }
 
+    pub fn from_u8(v: u8) -> Self {
+        Self(Uuid::from_u128(v as u128))
+    }
+
     pub fn from_u128(v: u128) -> Self {
         Self(Uuid::from_u128(v))
     }
 }
 
 impl GatewayId {
-    pub fn from_u128(v: u128) -> Self {
-        Self(Uuid::from_u128(v))
+    pub fn from_u8(v: u8) -> Self {
+        Self(Uuid::from_u128(v as u128))
     }
 }
 
@@ -69,8 +73,8 @@ impl FromStr for ClientId {
 }
 
 impl ClientId {
-    pub fn from_u128(v: u128) -> Self {
-        Self(Uuid::from_u128(v))
+    pub fn from_u8(v: u8) -> Self {
+        Self(Uuid::from_u128(v as u128))
     }
 }
 
@@ -168,8 +172,8 @@ impl FromStr for SiteId {
 }
 
 impl SiteId {
-    pub fn from_u128(v: u128) -> Self {
-        Self(Uuid::from_u128(v))
+    pub fn from_u8(v: u8) -> Self {
+        Self(Uuid::from_u128(v as u128))
     }
 }
 

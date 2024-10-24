@@ -384,7 +384,7 @@ mod tests {
     #[test]
     fn no_resources_invalid_favorite() {
         let resources = vec![];
-        let favorites = HashSet::from([ResourceId::from_u128(42)]);
+        let favorites = HashSet::from([ResourceId::from_u8(42)]);
         let disabled_resources = Default::default();
         let input = signed_in(resources, favorites, disabled_resources);
         let actual = input.into_menu();

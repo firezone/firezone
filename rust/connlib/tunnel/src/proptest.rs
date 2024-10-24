@@ -89,23 +89,23 @@ pub fn site() -> impl Strategy<Value = Site> + Clone {
 }
 
 pub fn resource_id() -> impl Strategy<Value = ResourceId> + Clone {
-    any::<u128>().prop_map(ResourceId::from_u128)
+    any::<u8>().prop_map(ResourceId::from_u8)
 }
 
 pub fn gateway_id() -> impl Strategy<Value = GatewayId> + Clone {
-    any::<u128>().prop_map(GatewayId::from_u128)
+    any::<u8>().prop_map(GatewayId::from_u8)
 }
 
 pub fn client_id() -> impl Strategy<Value = ClientId> {
-    any::<u128>().prop_map(ClientId::from_u128)
+    any::<u8>().prop_map(ClientId::from_u8)
 }
 
 pub fn relay_id() -> impl Strategy<Value = RelayId> {
-    any::<u128>().prop_map(RelayId::from_u128)
+    any::<u8>().prop_map(RelayId::from_u8)
 }
 
 pub fn site_id() -> impl Strategy<Value = SiteId> + Clone {
-    any::<u128>().prop_map(SiteId::from_u128)
+    any::<u8>().prop_map(SiteId::from_u8)
 }
 
 pub fn site_name() -> impl Strategy<Value = String> + Clone {
