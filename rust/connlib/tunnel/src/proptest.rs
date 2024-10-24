@@ -68,46 +68,14 @@ pub(crate) struct PortalResourceDescriptionCidr {
 }
 
 impl PortalResourceDescriptionCidr {
-    pub(crate) fn is_allowed(&self, p: Protocol) -> bool {
-        if self.filters.is_empty() {
-            return true;
-        }
-
-        self.filters.iter().any(|f| filter_contains(f, &p))
+    pub(crate) fn is_allowed(&self, p: &Protocol) -> bool {
+        filters_allow(&self.filters, p)
     }
 }
 
 impl PortalResourceDescriptionDns {
-    pub(crate) fn is_allowed(&self, p: Protocol) -> bool {
-        if self.filters.is_empty() {
-            return true;
-        }
-
-        match p {
-            Protocol::Tcp(p) => self
-                .filters
-                .iter()
-                .filter_map(|f| {
-                    if let Filter::Tcp(f) = f {
-                        Some(f)
-                    } else {
-                        None
-                    }
-                })
-                .any(|f| f.port_range_start <= p && p <= f.port_range_end),
-            Protocol::Udp(p) => self
-                .filters
-                .iter()
-                .filter_map(|f| {
-                    if let Filter::Udp(f) = f {
-                        Some(f)
-                    } else {
-                        None
-                    }
-                })
-                .any(|f| f.port_range_start <= p && p <= f.port_range_end),
-            Protocol::Icmp(_) => self.filters.iter().any(|f| matches!(f, Filter::Icmp)),
-        }
+    pub(crate) fn is_allowed(&self, p: &Protocol) -> bool {
+        filters_allow(&self.filters, p)
     }
 }
 
@@ -338,6 +306,14 @@ fn number_of_hosts_ipv6(mask: u8) -> u128 {
         .checked_pow(128 - mask as u32)
         .map(|i| i - 1)
         .unwrap_or(u128::MAX)
+}
+
+fn filters_allow(filters: &Filters, protocol: &Protocol) -> bool {
+    if filters.is_empty() {
+        return true;
+    }
+
+    filters.iter().any(|f| filter_contains(f, protocol))
 }
 
 fn filter_contains(filter: &Filter, protocol: &Protocol) -> bool {
