@@ -755,17 +755,17 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Network> {
+    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(Ipv4Network, ResourceId)> {
         self.cidr_resources
             .iter_ipv4()
-            .map(|(n, _)| n)
+            .map(|(n, r)| (n, *r))
             .collect_vec()
     }
 
-    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<Ipv6Network> {
+    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<(Ipv6Network, ResourceId)> {
         self.cidr_resources
             .iter_ipv6()
-            .map(|(n, _)| n)
+            .map(|(n, r)| (n, *r))
             .collect_vec()
     }
 
