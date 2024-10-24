@@ -73,31 +73,7 @@ impl PortalResourceDescriptionCidr {
             return true;
         }
 
-        match p {
-            Protocol::Tcp(p) => self
-                .filters
-                .iter()
-                .filter_map(|f| {
-                    if let Filter::Tcp(f) = f {
-                        Some(f)
-                    } else {
-                        None
-                    }
-                })
-                .any(|f| f.port_range_start <= p && p <= f.port_range_end),
-            Protocol::Udp(p) => self
-                .filters
-                .iter()
-                .filter_map(|f| {
-                    if let Filter::Udp(f) = f {
-                        Some(f)
-                    } else {
-                        None
-                    }
-                })
-                .any(|f| f.port_range_start <= p && p <= f.port_range_end),
-            Protocol::Icmp(_) => self.filters.iter().any(|f| matches!(f, Filter::Icmp)),
-        }
+        self.filters.iter().any(|f| filter_contains(f, &p))
     }
 }
 
@@ -362,6 +338,21 @@ fn number_of_hosts_ipv6(mask: u8) -> u128 {
         .checked_pow(128 - mask as u32)
         .map(|i| i - 1)
         .unwrap_or(u128::MAX)
+}
+
+fn filter_contains(filter: &Filter, protocol: &Protocol) -> bool {
+    let (port_range, dst) = match (filter, protocol) {
+        (Filter::Udp(port_range), Protocol::Udp(dst)) => (*port_range, *dst),
+        (Filter::Tcp(port_range), Protocol::Tcp(dst)) => (*port_range, *dst),
+        (Filter::Icmp, Protocol::Icmp(_)) => {
+            return true;
+        }
+        _ => {
+            return false;
+        }
+    };
+
+    port_range.port_range_start <= dst && dst <= port_range.port_range_end
 }
 
 // Note: for these tests we don't really care that it's a valid host
