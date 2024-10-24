@@ -277,9 +277,11 @@ impl TunnelTest {
 
                 state.deploy_new_relays(new_relays, now, to_remove);
             }
-            Transition::Idle => {
-                const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
-                let cut_off = state.flux_capacitor.now::<Instant>() + IDLE_DURATION;
+            Transition::Idle { variation } => {
+                const BASE_IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
+                let idle_duration = BASE_IDLE_DURATION + variation;
+
+                let cut_off = state.flux_capacitor.now::<Instant>() + idle_duration;
 
                 debug_assert_eq!(buffered_transmits.packet_counter(), 0);
 
@@ -290,7 +292,7 @@ impl TunnelTest {
 
                 let num_packets = buffered_transmits.packet_counter() as f64;
                 let num_connections = state.client.inner().sut.num_connections() as f64 + 1.0; // +1 because we may have 0 connections.
-                let num_seconds = IDLE_DURATION.as_secs() as f64;
+                let num_seconds = idle_duration.as_secs() as f64;
 
                 let packets_per_sec = num_packets / num_seconds / num_connections;
 

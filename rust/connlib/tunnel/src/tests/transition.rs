@@ -13,6 +13,7 @@ use proptest::{prelude::*, sample};
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    time::Duration,
 };
 
 /// The possible transitions of the state machine.
@@ -78,7 +79,10 @@ pub(crate) enum Transition {
     PartitionRelaysFromPortal,
 
     /// Idle connlib for a while.
-    Idle,
+    Idle {
+        /// An additional variation for how long to idle.
+        variation: Duration,
+    },
 
     /// Simulate all relays rebooting while we are network partitioned from the portal.
     ///
@@ -353,5 +357,14 @@ pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
         ip4: ip_stack.as_v4().copied(),
         ip6: ip_stack.as_v6().copied(),
         port,
+    })
+}
+
+/// Samples a new "idle" transition.
+///
+/// It is important that this starts at > 0 because we _always_ want to apply some variation to the defined idle timeout in order to prevent it stopping at exactly a full minute.
+pub(crate) fn idle() -> impl Strategy<Value = Transition> {
+    (15u64..30u64).prop_map(|seconds| Transition::Idle {
+        variation: Duration::from_secs(seconds),
     })
 }
