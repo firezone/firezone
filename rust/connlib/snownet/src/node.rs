@@ -441,6 +441,17 @@ where
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
+        if conn.is_idle() {
+            // If we are coming back from idle, our WG session might be stale.
+            // Update the timers before encapsulating to avoid packet loss due to using an old session.
+            conn.handle_timeout(
+                connection,
+                now,
+                &mut self.allocations,
+                &mut self.buffered_transmits,
+            );
+        }
+
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
             .encapsulate(packet.packet(), &mut buffer.inner[4..], now)?
