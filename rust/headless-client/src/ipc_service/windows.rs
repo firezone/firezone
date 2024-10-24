@@ -252,11 +252,11 @@ async fn service_run_async(
 ) -> Result<()> {
     // Useless - Windows will never send us Ctrl+C when running as a service
     // This just keeps the signatures simpler
-    let mut signals = crate::signals::Terminate::new()?;
+    let signals = crate::signals::Terminate::new()?;
     let listen_fut = pin!(super::ipc_listen(
         DnsControlMethod::Nrpt,
         log_filter_reloader,
-        &mut signals
+        signals
     ));
     match future::select(listen_fut, pin!(shutdown_rx.recv())).await {
         Either::Left((Err(error), _)) => Err(error).context("`ipc_listen` threw an error"),

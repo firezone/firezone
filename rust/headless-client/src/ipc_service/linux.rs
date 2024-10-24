@@ -12,12 +12,12 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     }
     let rt = tokio::runtime::Runtime::new()?;
     let _guard = rt.enter();
-    let mut signals = signals::Terminate::new()?;
+    let signals = signals::Terminate::new()?;
 
     rt.block_on(super::ipc_listen(
         cli.dns_control,
         &log_filter_reloader,
-        &mut signals,
+        signals,
     ))
 }
 
