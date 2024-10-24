@@ -1,5 +1,6 @@
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_packet::Protocol;
 use proptest::{
     arbitrary::{any, any_with},
     collection, prop_oneof,
@@ -10,37 +11,211 @@ use std::{
     ops::Range,
 };
 
-use crate::client::{CidrResource, DnsResource, InternetResource, Resource};
+use crate::messages::gateway::{Filter, Filters, PortRange};
 
-pub fn resource(
-    sites: impl Strategy<Value = Vec<Site>> + Clone + 'static,
-) -> impl Strategy<Value = Resource> {
-    any::<bool>().prop_flat_map(move |is_dns| {
-        if is_dns {
-            dns_resource(sites.clone()).prop_map(Resource::Dns).boxed()
+/// Full model of a resource, ressembling what the portal stores, proyections of this are sent to the client and gateways
+#[derive(Debug, Clone)]
+pub(crate) enum PortalResource {
+    Cidr(PortalResourceDescriptionCidr),
+    Dns(PortalResourceDescriptionDns),
+    Internet(PortalInternetResource),
+}
+
+impl PortalResource {
+    pub(crate) fn id(&self) -> ResourceId {
+        match self {
+            PortalResource::Cidr(r) => r.id,
+            PortalResource::Dns(r) => r.id,
+            PortalResource::Internet(r) => r.id,
+        }
+    }
+
+    pub(crate) fn filters(&self) -> Filters {
+        match self {
+            PortalResource::Cidr(r) => r.filters.clone(),
+            PortalResource::Dns(r) => r.filters.clone(),
+            PortalResource::Internet(_) => vec![],
+        }
+    }
+}
+
+/// Full model of an Internet resource, ressembling what the portal stores, proyections of this are sent to the client and gateways
+#[derive(Debug, Clone)]
+pub(crate) struct PortalInternetResource {
+    pub name: String,
+    pub id: ResourceId,
+    pub sites: Vec<Site>,
+}
+
+/// Full model of a DNS resource, ressembling what the portal stores, proyections of this are sent to the client and gateways
+#[derive(Debug, Clone, PartialEq, Eq, derivative::Derivative)]
+#[derivative(PartialOrd, Ord)]
+pub(crate) struct PortalResourceDescriptionDns {
+    pub id: ResourceId,
+    pub address: String,
+    pub name: String,
+    #[derivative(PartialOrd = "ignore")]
+    #[derivative(Ord = "ignore")]
+    pub filters: Filters,
+    pub sites: Vec<Site>,
+    pub address_description: Option<String>,
+}
+
+/// Full model of a CIDR resource, ressembling what the portal stores, proyections of this are sent to the client and gateways
+#[derive(Debug, Clone, PartialEq, Eq, derivative::Derivative)]
+#[derivative(PartialOrd, Ord)]
+pub(crate) struct PortalResourceDescriptionCidr {
+    pub id: ResourceId,
+    pub address: IpNetwork,
+    pub name: String,
+    #[derivative(PartialOrd = "ignore")]
+    #[derivative(Ord = "ignore")]
+    pub filters: Filters,
+    pub sites: Vec<Site>,
+    pub address_description: Option<String>,
+}
+
+impl PortalResourceDescriptionCidr {
+    pub(crate) fn is_allowed(&self, p: &Protocol) -> bool {
+        filters_allow(&self.filters, p)
+    }
+}
+
+impl PortalResourceDescriptionDns {
+    pub(crate) fn is_allowed(&self, p: &Protocol) -> bool {
+        filters_allow(&self.filters, p)
+    }
+}
+
+impl From<PortalResource> for crate::messages::client::ResourceDescription {
+    fn from(value: PortalResource) -> Self {
+        match value {
+            PortalResource::Cidr(r) => crate::messages::client::ResourceDescription::Cidr(r.into()),
+            PortalResource::Dns(r) => crate::messages::client::ResourceDescription::Dns(r.into()),
+            PortalResource::Internet(r) => {
+                crate::messages::client::ResourceDescription::Internet(r.into())
+            }
+        }
+    }
+}
+
+impl From<PortalInternetResource> for crate::messages::client::ResourceDescriptionInternet {
+    fn from(value: PortalInternetResource) -> Self {
+        Self {
+            name: value.name,
+            id: value.id,
+            sites: value.sites,
+        }
+    }
+}
+
+impl From<PortalResourceDescriptionCidr> for crate::messages::client::ResourceDescriptionCidr {
+    fn from(value: PortalResourceDescriptionCidr) -> Self {
+        Self {
+            id: value.id,
+            address: value.address,
+            name: value.name,
+            address_description: value.address_description,
+            sites: value.sites,
+        }
+    }
+}
+
+impl From<PortalResourceDescriptionDns> for crate::messages::client::ResourceDescriptionDns {
+    fn from(value: PortalResourceDescriptionDns) -> Self {
+        Self {
+            id: value.id,
+            address: value.address,
+            name: value.name,
+            address_description: value.address_description,
+            sites: value.sites,
+        }
+    }
+}
+
+impl From<PortalResourceDescriptionCidr> for crate::messages::gateway::ResourceDescriptionCidr {
+    fn from(value: PortalResourceDescriptionCidr) -> Self {
+        Self {
+            id: value.id,
+            address: value.address,
+            name: value.name,
+            filters: value.filters,
+        }
+    }
+}
+
+impl From<PortalResourceDescriptionDns> for crate::messages::gateway::ResourceDescriptionDns {
+    fn from(value: PortalResourceDescriptionDns) -> Self {
+        Self {
+            id: value.id,
+            address: value.address,
+            name: value.name,
+            filters: value.filters,
+        }
+    }
+}
+
+pub(crate) fn port_range() -> impl Strategy<Value = PortRange> {
+    any::<u16>().prop_flat_map(|s| {
+        (s..=u16::MAX).prop_map(move |d| PortRange {
+            port_range_start: s,
+            port_range_end: d,
+        })
+    })
+}
+
+pub(crate) fn filters() -> impl Strategy<Value = Filters> {
+    collection::vec(
+        prop_oneof![
+            port_range().prop_map(Filter::Udp),
+            port_range().prop_map(Filter::Tcp),
+        ],
+        0..=4,
+    )
+    .prop_flat_map(|non_icmp_filters| {
+        let mut filters = non_icmp_filters.clone();
+        filters.push(Filter::Icmp);
+
+        prop_oneof![Just(non_icmp_filters), Just(filters)]
+    })
+    .prop_map(|mut filters| {
+        if !filters.is_empty() {
+            // When we send TCP packets to our dns servers that are resources on our test
+            // disallowing TCP generates a lot of retries.
+            // This causes an spike in packets which skew the tests when IDLE and if we have to account for this
+            // it wouldn't allow us to detect other sources of traffic spike.
+            filters.push(Filter::Tcp(PortRange {
+                port_range_end: 53,
+                port_range_start: 53,
+            }));
+            filters
         } else {
-            cidr_resource(any_ip_network(8), sites.clone())
-                .prop_map(Resource::Cidr)
-                .boxed()
+            filters
         }
     })
 }
 
-pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Value = DnsResource> {
+pub fn dns_resource(
+    sites: impl Strategy<Value = Vec<Site>>,
+) -> impl Strategy<Value = PortalResourceDescriptionDns> {
     (
         resource_id(),
         resource_name(),
         domain_name(2..4),
         address_description(),
+        filters(),
         sites,
     )
         .prop_map(
-            move |(id, name, address, address_description, sites)| DnsResource {
-                id,
-                address,
-                name,
-                sites,
-                address_description,
+            move |(id, name, address, address_description, filters, sites)| {
+                PortalResourceDescriptionDns {
+                    id,
+                    address,
+                    name,
+                    sites,
+                    address_description,
+                    filters,
+                }
             },
         )
 }
@@ -48,29 +223,33 @@ pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Va
 pub fn cidr_resource(
     ip_network: impl Strategy<Value = IpNetwork>,
     sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = CidrResource> {
+) -> impl Strategy<Value = PortalResourceDescriptionCidr> {
     (
         resource_id(),
         resource_name(),
         ip_network,
         address_description(),
+        filters(),
         sites,
     )
         .prop_map(
-            move |(id, name, address, address_description, sites)| CidrResource {
-                id,
-                address,
-                name,
-                sites,
-                address_description,
+            move |(id, name, address, address_description, filters, sites)| {
+                PortalResourceDescriptionCidr {
+                    id,
+                    address,
+                    name,
+                    sites,
+                    address_description,
+                    filters,
+                }
             },
         )
 }
 
 pub fn internet_resource(
     sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = InternetResource> {
-    (resource_id(), sites).prop_map(move |(id, sites)| InternetResource {
+) -> impl Strategy<Value = PortalInternetResource> {
+    (resource_id(), sites).prop_map(move |(id, sites)| PortalInternetResource {
         name: "Internet Resource".to_string(),
         id,
         sites,
@@ -155,6 +334,29 @@ fn number_of_hosts_ipv6(mask: u8) -> u128 {
         .checked_pow(128 - mask as u32)
         .map(|i| i - 1)
         .unwrap_or(u128::MAX)
+}
+
+fn filters_allow(filters: &Filters, protocol: &Protocol) -> bool {
+    if filters.is_empty() {
+        return true;
+    }
+
+    filters.iter().any(|f| filter_contains(f, protocol))
+}
+
+fn filter_contains(filter: &Filter, protocol: &Protocol) -> bool {
+    let (port_range, dst) = match (filter, protocol) {
+        (Filter::Udp(port_range), Protocol::Udp(dst)) => (*port_range, *dst),
+        (Filter::Tcp(port_range), Protocol::Tcp(dst)) => (*port_range, *dst),
+        (Filter::Icmp, Protocol::Icmp(_)) => {
+            return true;
+        }
+        _ => {
+            return false;
+        }
+    };
+
+    port_range.port_range_start <= dst && dst <= port_range.port_range_end
 }
 
 // Note: for these tests we don't really care that it's a valid host

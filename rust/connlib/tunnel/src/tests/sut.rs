@@ -6,9 +6,10 @@ use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
-use crate::client::Resource;
 use crate::dns::{self, is_subdomain};
 use crate::gateway::DnsResourceNatEntry;
+use crate::messages::client::ResourceDescription;
+use crate::proptest::PortalResource;
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
@@ -113,7 +114,7 @@ impl TunnelTest {
                 state.client.exec_mut(|c| {
                     // Flush DNS.
                     match &resource {
-                        Resource::Dns(r) => {
+                        PortalResource::Dns(r) => {
                             c.dns_records.retain(|domain, _| {
                                 if is_subdomain(domain, &r.address) {
                                     return false;
@@ -122,15 +123,20 @@ impl TunnelTest {
                                 true
                             });
                         }
-                        Resource::Cidr(_) => {}
-                        Resource::Internet(_) => {}
+                        PortalResource::Cidr(_) => {}
+                        PortalResource::Internet(_) => {}
                     }
 
-                    c.sut.add_resource(resource);
+                    c.sut.add_resource(ResourceDescription::from(resource));
                 });
             }
             Transition::DeactivateResource(id) => {
-                state.client.exec_mut(|c| c.sut.remove_resource(id))
+                state.client.exec_mut(|c| c.sut.remove_resource(id));
+
+                let client_id = state.client.inner().id;
+                for gateway in state.gateways.values_mut() {
+                    gateway.exec_mut(|g| g.sut.remove_access(&client_id, &id));
+                }
             }
             Transition::DisableResources(resources) => state
                 .client
@@ -725,7 +731,7 @@ impl TunnelTest {
                     Some(DnsResourceNatEntry::new(r, resolved_ips))
                 });
 
-                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
+                let resource = portal.map_portal_resource_to_gateway_resource(resource_id);
 
                 gateway.exec_mut(|g| {
                     g.sut
@@ -784,7 +790,7 @@ impl TunnelTest {
 
                     Some(DnsResourceNatEntry::new(r, resolved_ips))
                 });
-                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
+                let resource = portal.map_portal_resource_to_gateway_resource(resource_id);
 
                 let Some(gateway) = self.gateways.get_mut(&gateway_id) else {
                     tracing::error!("Unknown gateway");
