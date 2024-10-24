@@ -136,6 +136,19 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory do
       end)
   end
 
+  defp find_parent_orgunits(organization_units, child_organization_unit) do
+    parent_organization_ou =
+      Enum.find(organization_units, fn organization_unit ->
+        organization_unit["orgUnitId"] == child_organization_unit["parentOrgUnitId"]
+      end)
+
+    if parent_organization_ou["orgUnitId"] do
+      find_parent_orgunits(organization_units, parent_organization_ou) ++ [parent_organization_ou]
+    else
+      []
+    end
+  end
+
   defp map_org_unit_membership_tuples(users, organization_units) do
     Enum.flat_map(users, fn user ->
       organization_unit =
@@ -143,8 +156,14 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory do
           organization_unit["orgUnitPath"] == user["orgUnitPath"]
         end)
 
-      if organization_unit["orgUnitId"] do
-        [{"OU:" <> organization_unit["orgUnitId"], user["id"]}]
+      if organization_unit do
+        user_organization_units =
+          find_parent_orgunits(organization_units, organization_unit) ++ [organization_unit]
+
+        user_organization_units
+        |> Enum.map(fn organization_unit ->
+          {"OU:" <> organization_unit["orgUnitId"], user["id"]}
+        end)
       else
         []
       end
