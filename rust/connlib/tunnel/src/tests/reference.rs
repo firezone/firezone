@@ -818,8 +818,6 @@ impl ReferenceState {
         // In case we were using the relays, all connections will be cut and require us to make a new one.
         if self.drop_direct_client_traffic {
             self.client.exec_mut(|client| client.reset_connections());
-            self.client
-                .exec_mut(|client| client.reset_gateway_known_resources());
         }
     }
 }
