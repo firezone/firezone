@@ -29,6 +29,14 @@ impl PortalResource {
             PortalResource::Internet(r) => r.id,
         }
     }
+
+    pub(crate) fn filters(&self) -> Filters {
+        match self {
+            PortalResource::Cidr(r) => r.filters.clone(),
+            PortalResource::Dns(r) => r.filters.clone(),
+            PortalResource::Internet(_) => vec![],
+        }
+    }
 }
 
 /// Full model of an Internet resource, ressembling what the portal stores, proyections of this are sent to the client and gateways
@@ -159,12 +167,17 @@ pub(crate) fn port_range() -> impl Strategy<Value = PortRange> {
 pub(crate) fn filters() -> impl Strategy<Value = Filters> {
     collection::vec(
         prop_oneof![
-            Just(Filter::Icmp),
             port_range().prop_map(Filter::Udp),
             port_range().prop_map(Filter::Tcp),
         ],
-        0..=10,
+        0..=4,
     )
+    .prop_flat_map(|non_icmp_filters| {
+        let mut filters = non_icmp_filters.clone();
+        filters.push(Filter::Icmp);
+
+        prop_oneof![Just(non_icmp_filters), Just(filters)]
+    })
 }
 
 pub fn dns_resource(
