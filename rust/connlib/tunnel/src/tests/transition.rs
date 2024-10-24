@@ -1,8 +1,9 @@
 use crate::{
-    client::{Resource, IPV4_RESOURCES, IPV6_RESOURCES},
-    proptest::{host_v4, host_v6},
+    client::{IPV4_RESOURCES, IPV6_RESOURCES},
+    proptest::{host_v4, host_v6, PortalResource},
 };
 use connlib_model::RelayId;
+use ip_packet::Protocol;
 
 use super::sim_net::{any_ip_stack, any_port, Host};
 use crate::messages::DnsServer;
@@ -20,7 +21,7 @@ use std::{
 #[derivative(Debug)]
 pub(crate) enum Transition {
     /// Activate a resource on the client.
-    ActivateResource(Resource),
+    ActivateResource(PortalResource),
     /// Deactivate a resource on the client.
     DeactivateResource(ResourceId),
     /// Client-side disable resource
@@ -97,10 +98,19 @@ pub(crate) struct DnsQuery {
     pub(crate) transport: DnsTransport,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum DnsTransport {
     Udp,
     Tcp,
+}
+
+impl From<DnsTransport> for Protocol {
+    fn from(value: DnsTransport) -> Self {
+        match value {
+            DnsTransport::Udp => Protocol::Udp(53),
+            DnsTransport::Tcp => Protocol::Tcp(53),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

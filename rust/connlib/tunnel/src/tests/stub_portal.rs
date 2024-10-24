@@ -4,7 +4,7 @@ use super::{
     sim_net::Host,
     strategies::{resolved_ips, subdomain_records},
 };
-use crate::{client, proptest::*};
+use crate::proptest::*;
 use crate::{
     messages::{gateway, DnsServer},
     DomainName,
@@ -34,7 +34,7 @@ pub(crate) struct StubPortal {
 
     cidr_resources: BTreeMap<ResourceId, PortalResourceDescriptionCidr>,
     dns_resources: BTreeMap<ResourceId, PortalResourceDescriptionDns>,
-    internet_resource: client::InternetResource,
+    internet_resource: PortalInternetResource,
 
     #[derivative(Debug = "ignore")]
     gateway_selector: Selector,
@@ -46,7 +46,7 @@ impl StubPortal {
         gateway_selector: Selector,
         cidr_resources: BTreeSet<PortalResourceDescriptionCidr>,
         dns_resources: BTreeSet<PortalResourceDescriptionDns>,
-        internet_resource: client::InternetResource,
+        internet_resource: PortalInternetResource,
     ) -> Self {
         let cidr_resources = cidr_resources
             .into_iter()
@@ -99,24 +99,19 @@ impl StubPortal {
         }
     }
 
-    pub(crate) fn all_resources(&self) -> Vec<client::Resource> {
+    pub(crate) fn all_resources(&self) -> Vec<PortalResource> {
         self.cidr_resources
             .values()
             .cloned()
             .map_into()
-            .map(client::CidrResource::from_description)
-            .map(client::Resource::Cidr)
+            .map(PortalResource::Cidr)
             .chain(
                 self.dns_resources
                     .values()
                     .cloned()
-                    .map_into()
-                    .map(client::DnsResource::from_description)
-                    .map(client::Resource::Dns),
+                    .map(PortalResource::Dns),
             )
-            .chain(iter::once(client::Resource::Internet(
-                self.internet_resource.clone(),
-            )))
+            .chain(iter::once(self.internet_resource.clone()).map(PortalResource::Internet))
             .collect()
     }
 
@@ -146,15 +141,13 @@ impl StubPortal {
                 gateway::ResourceDescriptionCidr::from(r.clone()),
             ))
         });
-        let dns_resource = self
-            .dns_resources
-            .get(&resource_id)
-            .map(|r| {
-                (r.id == resource_id).then_some(gateway::ResourceDescription::Dns(
-                    gateway::ResourceDescriptionDns::from(r.clone()),
-                ))
-            })
-            .flatten();
+
+        let dns_resource = self.dns_resources.get(&resource_id).and_then(|r| {
+            (r.id == resource_id).then_some(gateway::ResourceDescription::Dns(
+                gateway::ResourceDescriptionDns::from(r.clone()),
+            ))
+        });
+
         let internet_resource = Some(gateway::ResourceDescription::Internet(
             gateway::ResourceDescriptionInternet {
                 id: self.internet_resource.id,
@@ -247,6 +240,26 @@ impl StubPortal {
 
                 map
             })
+    }
+
+    pub(crate) fn resource_by_id(&self, rid: &ResourceId) -> Option<PortalResource> {
+        let cidr_resource = self
+            .cidr_resources
+            .get(rid)
+            .cloned()
+            .map(PortalResource::Cidr);
+
+        let dns_resource = self
+            .dns_resources
+            .get(rid)
+            .cloned()
+            .map(PortalResource::Dns);
+
+        let internet_resource = (&self.internet_resource.id == rid)
+            .then_some(self.internet_resource.clone())
+            .map(PortalResource::Internet);
+
+        cidr_resource.or(dns_resource).or(internet_resource)
     }
 }
 

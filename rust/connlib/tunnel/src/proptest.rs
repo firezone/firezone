@@ -1,5 +1,6 @@
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_packet::Protocol;
 use proptest::{
     arbitrary::{any, any_with},
     collection, prop_oneof,
@@ -11,10 +12,31 @@ use std::{
     ops::Range,
 };
 
-use crate::{
-    client::InternetResource,
-    messages::gateway::{Filter, Filters, PortRange},
-};
+use crate::messages::gateway::{Filter, Filters, PortRange};
+
+#[derive(Debug, Clone)]
+pub(crate) enum PortalResource {
+    Cidr(PortalResourceDescriptionCidr),
+    Dns(PortalResourceDescriptionDns),
+    Internet(PortalInternetResource),
+}
+
+impl PortalResource {
+    pub(crate) fn id(&self) -> ResourceId {
+        match self {
+            PortalResource::Cidr(r) => r.id,
+            PortalResource::Dns(r) => r.id,
+            PortalResource::Internet(r) => r.id,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PortalInternetResource {
+    pub name: String,
+    pub id: ResourceId,
+    pub sites: Vec<Site>,
+}
 
 /// Full model of a dns resource, proyections of this are sent to the client and gateways
 #[derive(Debug, Clone, PartialEq, Eq, derivative::Derivative)]
@@ -42,6 +64,96 @@ pub(crate) struct PortalResourceDescriptionCidr {
     pub filters: Filters,
     pub sites: Vec<Site>,
     pub address_description: Option<String>,
+}
+
+impl PortalResourceDescriptionCidr {
+    pub(crate) fn is_allowed(&self, p: Protocol) -> bool {
+        if self.filters.is_empty() {
+            return true;
+        }
+
+        match p {
+            Protocol::Tcp(p) => self
+                .filters
+                .iter()
+                .filter_map(|f| {
+                    if let Filter::Tcp(f) = f {
+                        Some(f)
+                    } else {
+                        None
+                    }
+                })
+                .any(|f| f.port_range_start <= p && p <= f.port_range_end),
+            Protocol::Udp(p) => self
+                .filters
+                .iter()
+                .filter_map(|f| {
+                    if let Filter::Udp(f) = f {
+                        Some(f)
+                    } else {
+                        None
+                    }
+                })
+                .any(|f| f.port_range_start <= p && p <= f.port_range_end),
+            Protocol::Icmp(_) => self.filters.iter().any(|f| matches!(f, Filter::Icmp)),
+        }
+    }
+}
+
+impl PortalResourceDescriptionDns {
+    pub(crate) fn is_allowed(&self, p: Protocol) -> bool {
+        if self.filters.is_empty() {
+            return true;
+        }
+
+        match p {
+            Protocol::Tcp(p) => self
+                .filters
+                .iter()
+                .filter_map(|f| {
+                    if let Filter::Tcp(f) = f {
+                        Some(f)
+                    } else {
+                        None
+                    }
+                })
+                .any(|f| f.port_range_start <= p && p <= f.port_range_end),
+            Protocol::Udp(p) => self
+                .filters
+                .iter()
+                .filter_map(|f| {
+                    if let Filter::Udp(f) = f {
+                        Some(f)
+                    } else {
+                        None
+                    }
+                })
+                .any(|f| f.port_range_start <= p && p <= f.port_range_end),
+            Protocol::Icmp(_) => self.filters.iter().any(|f| matches!(f, Filter::Icmp)),
+        }
+    }
+}
+
+impl From<PortalResource> for crate::messages::client::ResourceDescription {
+    fn from(value: PortalResource) -> Self {
+        match value {
+            PortalResource::Cidr(r) => crate::messages::client::ResourceDescription::Cidr(r.into()),
+            PortalResource::Dns(r) => crate::messages::client::ResourceDescription::Dns(r.into()),
+            PortalResource::Internet(r) => {
+                crate::messages::client::ResourceDescription::Internet(r.into())
+            }
+        }
+    }
+}
+
+impl From<PortalInternetResource> for crate::messages::client::ResourceDescriptionInternet {
+    fn from(value: PortalInternetResource) -> Self {
+        Self {
+            name: value.name,
+            id: value.id,
+            sites: value.sites,
+        }
+    }
 }
 
 impl From<PortalResourceDescriptionCidr> for crate::messages::client::ResourceDescriptionCidr {
@@ -166,8 +278,8 @@ pub fn cidr_resource(
 
 pub fn internet_resource(
     sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = InternetResource> {
-    (resource_id(), sites).prop_map(move |(id, sites)| InternetResource {
+) -> impl Strategy<Value = PortalInternetResource> {
+    (resource_id(), sites).prop_map(move |(id, sites)| PortalInternetResource {
         name: "Internet Resource".to_string(),
         id,
         sites,

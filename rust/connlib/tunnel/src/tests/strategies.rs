@@ -1,8 +1,5 @@
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
-use crate::client::{
-    CidrResource, DnsResource, InternetResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6,
-    IPV4_RESOURCES, IPV6_RESOURCES,
-};
+use crate::client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::proptest::*;
 use crate::{messages::DnsServer, DomainName};
 use connlib_model::{RelayId, Site};
@@ -183,7 +180,9 @@ fn cidr_resource_outside_reserved_ranges(
         .prop_filter("resource must not be in the documentation range because we use those for host addresses and DNS IPs", |r| !r.address.is_documentation())
 }
 
-fn internet_resource(site: impl Strategy<Value = Site>) -> impl Strategy<Value = InternetResource> {
+fn internet_resource(
+    site: impl Strategy<Value = Site>,
+) -> impl Strategy<Value = PortalInternetResource> {
     crate::proptest::internet_resource(site.prop_map(|s| vec![s]))
 }
 
