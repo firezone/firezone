@@ -790,6 +790,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
 
     test "sends email on failed directory sync", %{
       account: account,
+      provider: provider,
       bypass: bypass
     } do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
@@ -812,10 +813,13 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         end)
       end
 
-      for _n <- 1..10 do
-        {:ok, pid} = Task.Supervisor.start_link()
-        assert execute(%{task_supervisor: pid}) == :ok
-      end
+      {:ok, pid} = Task.Supervisor.start_link()
+
+      provider
+      |> Ecto.Changeset.change(last_syncs_failed: 9)
+      |> Repo.update!()
+
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert_email_sent(fn email ->
         assert email.subject == "Firezone Identity Provider Sync Error"

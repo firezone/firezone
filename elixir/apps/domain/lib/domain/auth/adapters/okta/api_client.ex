@@ -100,13 +100,19 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     end
   end
 
+  if Mix.env() == :test do
+    def throttle, do: :ok
+  else
+    def throttle, do: :timer.sleep(:timer.seconds(1))
+  end
+
   # TODO: Need to catch 401/403 specifically when error message is in header
   defp list(uri, headers, api_token) do
     headers = headers ++ [{"Authorization", "Bearer #{api_token}"}]
     request = Finch.build(:get, uri, headers)
 
     # Crude request throttle, revisit for https://github.com/firezone/firezone/issues/6793
-    :timer.sleep(:timer.seconds(1))
+    throttle()
 
     with {:ok, %Finch.Response{headers: headers, body: response, status: status}}
          when status in 200..299 <- Finch.request(request, @pool_name),

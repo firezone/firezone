@@ -26,6 +26,10 @@ defmodule Domain.Resources.Resource.Query do
     where(queryable, [resources: resources], resources.id == ^id)
   end
 
+  def by_type(queryable, type) do
+    where(queryable, [resources: resources], resources.type == ^type)
+  end
+
   def by_account_id(queryable, account_id) do
     where(queryable, [resources: resources], resources.account_id == ^account_id)
   end
@@ -157,6 +161,11 @@ defmodule Domain.Resources.Resource.Query do
         name: :deleted?,
         type: :boolean,
         fun: &filter_deleted/1
+      },
+      %Domain.Repo.Filter{
+        name: :type,
+        type: {:list, :string},
+        fun: &filter_by_type/2
       }
     ]
 
@@ -176,5 +185,13 @@ defmodule Domain.Resources.Resource.Query do
 
   def filter_deleted(queryable) do
     {queryable, dynamic([resources: resources], not is_nil(resources.deleted_at))}
+  end
+
+  def filter_by_type(queryable, {:not_in, types}) do
+    {queryable, dynamic([resources: resources], resources.type not in ^types)}
+  end
+
+  def filter_by_type(queryable, types) do
+    {queryable, dynamic([resources: resources], resources.type in ^types)}
   end
 end
