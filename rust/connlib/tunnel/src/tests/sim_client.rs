@@ -535,6 +535,15 @@ impl RefClient {
         self.gateway_known_dns_resources.clear();
     }
 
+    pub(crate) fn cleanup_gateway_known_resources(&mut self) {
+        self.gateway_known_internet_resource
+            .take_if(|g| !self.connected_gateways.contains(g));
+        self.gateway_known_cidr_resources
+            .retain(|_, g| self.connected_gateways.contains(g));
+        self.gateway_known_dns_resources
+            .retain(|_, g| self.connected_gateways.contains(g));
+    }
+
     pub(crate) fn add_internet_resource(&mut self, r: InternetResource) {
         self.internet_resource = Some(r.id);
         self.resources.push(Resource::Internet(r.clone()));

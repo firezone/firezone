@@ -547,7 +547,12 @@ impl ReferenceState {
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 state.deploy_new_relays(new_relays)
             }
-            Transition::Idle => {}
+            Transition::Idle => {
+                // If some time happens after we roamed, the gateway will drop the peer and forget all known resources
+                state
+                    .client
+                    .exec_mut(|c| c.cleanup_gateway_known_resources());
+            }
             Transition::PartitionRelaysFromPortal => {
                 if state.drop_direct_client_traffic {
                     state.client.exec_mut(|client| client.reset_connections());
