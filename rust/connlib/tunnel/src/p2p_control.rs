@@ -115,7 +115,7 @@ pub mod dns_resource_nat {
         #[test]
         fn max_payload_length_assigned_ips() {
             let assigned_ips = AssignedIps {
-                resource: ResourceId::from_u128(100),
+                resource: ResourceId::from_u8(100),
                 domain: longest_domain_possible(),
                 proxy_ips: eight_proxy_ips(),
             };
@@ -129,7 +129,7 @@ pub mod dns_resource_nat {
         #[test]
         fn assigned_ips_serde_roundtrip() {
             let packet = assigned_ips(
-                ResourceId::from_u128(101),
+                ResourceId::from_u8(101),
                 domain("example.com"),
                 eight_proxy_ips(),
             );
@@ -137,7 +137,7 @@ pub mod dns_resource_nat {
             let slice = packet.as_fz_p2p_control().unwrap();
             let assigned_ips = decode_assigned_ips(slice).unwrap();
 
-            assert_eq!(assigned_ips.resource, ResourceId::from_u128(101));
+            assert_eq!(assigned_ips.resource, ResourceId::from_u8(101));
             assert_eq!(assigned_ips.domain, domain("example.com"));
             assert_eq!(assigned_ips.proxy_ips, eight_proxy_ips())
         }
@@ -145,7 +145,7 @@ pub mod dns_resource_nat {
         #[test]
         fn domain_status_serde_roundtrip() {
             let packet = domain_status(
-                ResourceId::from_u128(101),
+                ResourceId::from_u8(101),
                 domain("example.com"),
                 NatStatus::Active,
             );
@@ -153,7 +153,7 @@ pub mod dns_resource_nat {
             let slice = packet.as_fz_p2p_control().unwrap();
             let domain_status = decode_domain_status(slice).unwrap();
 
-            assert_eq!(domain_status.resource, ResourceId::from_u128(101));
+            assert_eq!(domain_status.resource, ResourceId::from_u8(101));
             assert_eq!(domain_status.domain, domain("example.com"));
             assert_eq!(domain_status.status, NatStatus::Active)
         }
@@ -170,7 +170,7 @@ pub mod dns_resource_nat {
             let slice = packet.as_fz_p2p_control().unwrap();
             let domain_status = decode_domain_status(slice).unwrap();
 
-            assert_eq!(domain_status.resource, ResourceId::from_u128(101));
+            assert_eq!(domain_status.resource, ResourceId::from_u8(101));
             assert_eq!(domain_status.domain, domain("example.com"));
             assert_eq!(domain_status.status, NatStatus::Inactive);
         }
