@@ -808,6 +808,7 @@ impl RefClient {
         let Some(resource) = portal.resource_by_id(resource) else {
             return false;
         };
+
         match resource {
             PortalResource::Cidr(resource) => {
                 // TODO: Remove in the future when a gateway with internet resoruce can't have non-internet resource
@@ -828,7 +829,7 @@ impl RefClient {
                             None
                         }
                     })
-                    .filter(|r| networks_overlap(r.address, resource.address))
+                    .filter(|r| network_contains_network(r.address, resource.address))
                     .any(|r| r.is_allowed(&dprotocol))
             }
             PortalResource::Dns(r) => r.is_allowed(&dprotocol),
@@ -1219,8 +1220,4 @@ fn known_hosts() -> impl Strategy<Value = BTreeMap<String, Vec<IpAddr>>> {
         collection::vec(any::<IpAddr>(), 1..3),
         1..=2,
     )
-}
-
-fn networks_overlap(ip_a: IpNetwork, ip_b: IpNetwork) -> bool {
-    network_contains_network(ip_a, ip_b) || network_contains_network(ip_b, ip_a)
 }
