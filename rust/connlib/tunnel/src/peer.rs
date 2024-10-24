@@ -1315,7 +1315,7 @@ mod proptests {
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
     use proptest::{
         arbitrary::any,
-        collection, prop_oneof,
+        collection,
         sample::select,
         strategy::{Just, Strategy},
     };
@@ -1677,26 +1677,6 @@ mod proptests {
             1..=ranges.len(),
         )
         .boxed()
-    }
-
-    fn filters() -> impl Strategy<Value = Filters> {
-        collection::vec(
-            prop_oneof![
-                Just(Filter::Icmp),
-                port_range().prop_map(Filter::Udp),
-                port_range().prop_map(Filter::Tcp),
-            ],
-            0..=100,
-        )
-    }
-
-    fn port_range() -> impl Strategy<Value = PortRange> {
-        any::<u16>().prop_flat_map(|s| {
-            (s..=u16::MAX).prop_map(move |d| PortRange {
-                port_range_start: s,
-                port_range_end: d,
-            })
-        })
     }
 
     fn supernet(ip: IpNetwork) -> Option<IpNetwork> {

@@ -202,27 +202,24 @@ impl From<PortalResourceDescriptionDns> for crate::messages::gateway::ResourceDe
     }
 }
 
-const ALLOWED_SERVICES: [Filter; 4] = [
-    Filter::Tcp(PortRange {
-        port_range_end: 22,
-        port_range_start: 22,
-    }),
-    Filter::Udp(PortRange {
-        port_range_end: 53,
-        port_range_start: 53,
-    }),
-    Filter::Tcp(PortRange {
-        port_range_end: 80,
-        port_range_start: 80,
-    }),
-    Filter::Tcp(PortRange {
-        port_range_end: 443,
-        port_range_start: 443,
-    }),
-];
+pub(crate) fn port_range() -> impl Strategy<Value = PortRange> {
+    any::<u16>().prop_flat_map(|s| {
+        (s..=u16::MAX).prop_map(move |d| PortRange {
+            port_range_start: s,
+            port_range_end: d,
+        })
+    })
+}
 
-fn filters() -> impl Strategy<Value = Filters> {
-    subsequence(&ALLOWED_SERVICES, 0..4).prop_map(|f| f.to_vec())
+pub(crate) fn filters() -> impl Strategy<Value = Filters> {
+    collection::vec(
+        prop_oneof![
+            Just(Filter::Icmp),
+            port_range().prop_map(Filter::Udp),
+            port_range().prop_map(Filter::Tcp),
+        ],
+        0..=10,
+    )
 }
 
 pub fn dns_resource(
