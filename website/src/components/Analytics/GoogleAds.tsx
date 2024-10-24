@@ -25,7 +25,7 @@ export default function GoogleAds() {
           Number(formData.submissionValues["0-2/numberofemployees"]) * 5;
 
         sendGTMEvent({
-          event: "gtm.formSubmit",
+          event: "hubspot-sales-form-submitted",
           conversionValue: value,
         });
       }
