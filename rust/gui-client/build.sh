@@ -11,8 +11,8 @@ cp node_modules/flowbite/dist/flowbite.min.js src/
 # Compile CSS
 pnpm tailwindcss -i src/input.css -o src/output.css
 
-# Compile TypeScript
-pnpm tsc && pnpm vite build
+# Bundle all web assets
+pnpm vite build
 
 # Get rid of any existing debs, since we need to discover the path later
 rm -rf "$BUNDLES_DIR"

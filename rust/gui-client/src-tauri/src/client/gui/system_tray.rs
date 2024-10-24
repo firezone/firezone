@@ -101,21 +101,21 @@ impl Tray {
 
     // Only needed for the stress test
     // Otherwise it would be inlined
-    #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn set_icon(&mut self, icon: Icon) -> Result<()> {
-        if icon != self.last_icon_set {
-            // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
-            // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
-            // Yes, even if you use `Icon::File` and tell Tauri that the icon is already
-            // on disk.
-            let handle = self.handle.clone();
-            self.last_icon_set = icon.clone();
-            self.app
-                .run_on_main_thread(move || {
-                    handle.set_icon(Some(icon_to_tauri_icon(&icon))).unwrap();
-                })
-                .unwrap();
+        if icon == self.last_icon_set {
+            return Ok(());
         }
+
+        // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
+        // <https://github.com/tauri-apps/tao/blob/tao-v0.16.7/src/platform_impl/linux/system_tray.rs#L119>
+        // Yes, even if you use `Icon::File` and tell Tauri that the icon is already
+        // on disk.
+        let handle = self.handle.clone();
+        self.last_icon_set = icon.clone();
+        self.app.run_on_main_thread(move || {
+            // These closures can't return any value for some reason
+            handle.set_icon(Some(icon_to_tauri_icon(&icon))).unwrap();
+        })?;
         Ok(())
     }
 }

@@ -288,12 +288,12 @@ pub(crate) fn run(
                 Ok(())
             };
 
-            if let Err(error) = setup_inner() {
-                firezone_telemetry::capture_anyhow(&error);
+            let result = setup_inner();
+            if let Err(error) = &result {
                 tracing::error!(?error, "Tauri setup failed");
             }
 
-            Ok(())
+            result
         });
     let app = app.build(tauri::generate_context!());
 
