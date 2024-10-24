@@ -4,7 +4,6 @@ use ip_packet::Protocol;
 use proptest::{
     arbitrary::{any, any_with},
     collection, prop_oneof,
-    sample::subsequence,
     strategy::{Just, Strategy},
 };
 use std::{
