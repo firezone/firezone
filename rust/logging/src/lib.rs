@@ -77,7 +77,17 @@ pub fn test_global(directives: &str) {
 /// - warn events are reported as sentry messages
 /// - info events are captured as breadcrumbs (and submitted together with warns & errors)
 ///
-/// # Spans
+/// ## Telemetry events
+///
+/// This layer configuration supports a special `telemetry` event.
+/// Telemetry events are events logged on the `TRACE` level for the `telemetry` target.
+/// They are sampled at a rate of 1%.
+/// The idea here is that some events logged via `tracing` should not necessarily end up in the users log file.
+/// Yet, if they happen a lot, we still want to know about them.
+/// Coupling the `telemetry` target to the `TRACE` level pretty much prevents these events from ever showing up in log files.
+/// By sampling them, we prevent flooding Sentry with lots of these logs.
+///
+/// ## Spans
 ///
 /// The default span-filter captures all spans with level INFO, WARN and ERROR as sentry "transactions".
 pub fn sentry_layer<S>() -> sentry_tracing::SentryLayer<S>
@@ -85,10 +95,18 @@ where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
     sentry_tracing::layer()
-        .event_filter(|md| match *md.level() {
+        .event_filter(move |md| match *md.level() {
             tracing::Level::ERROR => EventFilter::Exception,
             tracing::Level::WARN => EventFilter::Event,
             tracing::Level::INFO => EventFilter::Breadcrumb,
+            tracing::Level::TRACE if md.target() == "telemetry" => {
+                // rand::random generates floats in the range of [0, 1).
+                if rand::random::<f32>() < 0.01 {
+                    EventFilter::Event
+                } else {
+                    EventFilter::Ignore
+                }
+            }
             _ => EventFilter::Ignore,
         })
         .enable_span_attributes()
