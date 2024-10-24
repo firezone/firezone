@@ -13,6 +13,7 @@ backoff = "0.4.0"
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
 firezone-logging = { workspace = true }
+firezone-telemetry = { workspace = true }
 ip_network = "0.4"
 libc = "0.2"
 phoenix-channel = { workspace = true }
