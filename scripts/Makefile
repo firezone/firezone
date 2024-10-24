@@ -25,11 +25,11 @@ current-gui-version = 1.3.9
 current-headless-version = 1.3.4
 
 # Tracks the next version to release for each platform
-next-apple-version = 1.3.7
-next-android-version = 1.3.6
+next-apple-version = 1.4.0
+next-android-version = 1.4.0
 next-gateway-version = 1.3.3
-next-gui-version = 1.3.10
-next-headless-version = 1.3.5
+next-gui-version = 1.4.0
+next-headless-version = 1.4.0
 
 # macOS uses a slightly different sed syntax
 ifeq ($(shell uname),Darwin)
