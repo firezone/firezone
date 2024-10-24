@@ -271,7 +271,7 @@ where
         dst.prop_map(Into::into),
         any::<u16>(),
         port_from_resource(resource, |f| {
-            if let Filter::Udp(p) = f {
+            if let Filter::Tcp(p) = f {
                 Some(p)
             } else {
                 None
