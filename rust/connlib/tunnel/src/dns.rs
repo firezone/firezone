@@ -274,7 +274,7 @@ impl StubResolver {
         match self.try_handle(message) {
             Ok(s) => s,
             Err(e) => {
-                tracing::trace!(error = anyhow_dyn_err(&e), "Failed to handle DNS query");
+                tracing::warn!(error = anyhow_dyn_err(&e), "Failed to handle DNS query");
 
                 ResolveStrategy::LocalResponse(servfail(message))
             }
