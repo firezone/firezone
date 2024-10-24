@@ -551,11 +551,16 @@ where
             connection.handle_timeout(id, now);
         }
 
-        let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
+        if self.connections.all_idle() {
+            // If all connections are idle, there is no point in resetting the rate limiter.
+            self.next_rate_limiter_reset = None;
+        } else {
+            let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
 
-        if now >= next_reset {
-            self.rate_limiter.reset_count();
-            self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
+            if now >= next_reset {
+                self.rate_limiter.reset_count();
+                self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
+            }
         }
 
         self.allocations
@@ -1327,6 +1332,10 @@ where
 
     fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
         self.initial.keys().chain(self.established.keys()).copied()
+    }
+
+    fn all_idle(&self) -> bool {
+        self.established.values().all(|c| c.is_idle())
     }
 }
 
@@ -2173,6 +2182,10 @@ where
 
     fn is_failed(&self) -> bool {
         matches!(self.state, ConnectionState::Failed)
+    }
+
+    fn is_idle(&self) -> bool {
+        matches!(self.state, ConnectionState::Idle { .. })
     }
 }
 
