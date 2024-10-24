@@ -3,11 +3,14 @@ use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
-use crate::{client, DomainName};
+use crate::client::{CidrResource, DnsResource, InternetResource};
+use crate::proptest::PortalResource;
 use crate::{dns::is_subdomain, proptest::relay_id};
+use crate::{messages, DomainName};
 use connlib_model::{GatewayId, RelayId, ResourceId, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{Ipv4Network, Ipv6Network};
+use ip_packet::Protocol;
 use prop::sample::select;
 use proptest::{prelude::*, sample};
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -302,8 +305,10 @@ impl ReferenceState {
         match transition {
             Transition::ActivateResource(resource) => {
                 state.client.exec_mut(|client| match resource {
-                    client::Resource::Dns(r) => {
-                        client.add_dns_resource(r.clone());
+                    PortalResource::Dns(r) => {
+                        client.add_dns_resource(DnsResource::from_description(
+                            messages::client::ResourceDescriptionDns::from(r.clone()),
+                        ));
 
                         // TODO: PRODUCTION CODE CANNOT DO THIS.
                         // Remove all prior DNS records.
@@ -315,8 +320,16 @@ impl ReferenceState {
                             true
                         });
                     }
-                    client::Resource::Cidr(r) => client.add_cidr_resource(r.clone()),
-                    client::Resource::Internet(r) => client.add_internet_resource(r.clone()),
+                    PortalResource::Cidr(r) => {
+                        client.add_cidr_resource(CidrResource::from_description(
+                            messages::client::ResourceDescriptionCidr::from(r.clone()),
+                        ))
+                    }
+                    PortalResource::Internet(r) => {
+                        client.add_internet_resource(InternetResource::from_description(
+                            messages::client::ResourceDescriptionInternet::from(r.clone()),
+                        ))
+                    }
                 });
             }
             Transition::DeactivateResource(id) => {
@@ -398,7 +411,16 @@ impl ReferenceState {
                         continue;
                     }
 
-                    state.client.exec_mut(|client| client.on_dns_query(query));
+                    if state.client.inner().is_packet_allowed(
+                        &resource,
+                        &gateway,
+                        &state.portal,
+                        query.transport.into(),
+                    ) {
+                        state.client.exec_mut(|client| client.on_dns_query(query));
+                    } else {
+                        tracing::debug!(%resource, %gateway, "Dropping DNS query due to gateway filters");
+                    }
                 }
 
                 for (gateway, resources) in new_connections_via_gateways_udp_triggered
@@ -420,9 +442,15 @@ impl ReferenceState {
                 payload,
             } => {
                 state.client.exec_mut(|client| {
-                    client.on_icmp_packet(*src, dst.clone(), *seq, *identifier, *payload, |r| {
-                        state.portal.gateway_for_resource(r).copied()
-                    })
+                    client.on_icmp_packet(
+                        *src,
+                        dst.clone(),
+                        *seq,
+                        *identifier,
+                        Protocol::Icmp(seq.0),
+                        *payload,
+                        &state.portal,
+                    )
                 });
             }
             Transition::SendUdpPacket {
@@ -433,9 +461,15 @@ impl ReferenceState {
                 payload,
             } => {
                 state.client.exec_mut(|client| {
-                    client.on_udp_packet(*src, dst.clone(), *sport, *dport, *payload, |r| {
-                        state.portal.gateway_for_resource(r).copied()
-                    })
+                    client.on_udp_packet(
+                        *src,
+                        dst.clone(),
+                        *sport,
+                        *dport,
+                        Protocol::Udp(dport.0),
+                        *payload,
+                        &state.portal,
+                    )
                 });
             }
             Transition::SendTcpPayload {
@@ -446,9 +480,15 @@ impl ReferenceState {
                 payload,
             } => {
                 state.client.exec_mut(|client| {
-                    client.on_tcp_packet(*src, dst.clone(), *sport, *dport, *payload, |r| {
-                        state.portal.gateway_for_resource(r).copied()
-                    })
+                    client.on_tcp_packet(
+                        *src,
+                        dst.clone(),
+                        *sport,
+                        *dport,
+                        Protocol::Tcp(dport.0),
+                        *payload,
+                        &state.portal,
+                    )
                 });
             }
             Transition::UpdateSystemDnsServers(servers) => {
@@ -726,7 +766,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn all_resources_not_known_to_client(&self) -> Vec<client::Resource> {
+    fn all_resources_not_known_to_client(&self) -> Vec<PortalResource> {
         let mut all_resources = self.portal.all_resources();
         all_resources.retain(|r| !self.client.inner().has_resource(r.id()));
 
