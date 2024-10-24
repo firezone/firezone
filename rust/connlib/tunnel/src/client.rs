@@ -14,7 +14,7 @@ use bimap::BiMap;
 use connlib_model::PublicKey;
 use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
 use connlib_model::{Site, SiteId};
-use firezone_logging::{anyhow_dyn_err, std_dyn_err, LogUnwrap as _};
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, unwrap_or_debug, unwrap_or_warn};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, UdpSlice};
@@ -379,13 +379,17 @@ impl ClientState {
                         }
                     })
                     .unwrap_or_else(|e| {
-                        tracing::debug!(error = std_dyn_err(&e), "Recursive UDP DNS query failed");
+                        let error = std_dyn_err(&e);
+                        tracing::debug!(error, "Recursive UDP DNS query failed");
+                        tracing::trace!(target: "telemetry", error, "Recursive UDP DNS query failed");
 
                         dns::servfail(response.query.for_slice_ref())
                     });
 
-                self.try_queue_udp_dns_response(server, source, &message)
-                    .log_unwrap_debug("Failed to queue UDP DNS response");
+                unwrap_or_warn!(
+                    self.try_queue_udp_dns_response(server, source, &message),
+                    "Failed to queue UDP DNS response"
+                );
             }
             (dns::Transport::Tcp { source }, result) => {
                 let message = result
@@ -393,14 +397,17 @@ impl ClientState {
                         tracing::trace!("Received recursive TCP DNS response");
                     })
                     .unwrap_or_else(|e| {
-                        tracing::debug!(error = std_dyn_err(&e), "Recursive TCP DNS query failed");
+                        let error = std_dyn_err(&e);
+                        tracing::debug!(error, "Recursive TCP DNS query failed");
+                        tracing::trace!(target: "telemetry", error, "Recursive TCP DNS query failed");
 
                         dns::servfail(response.query.for_slice_ref())
                     });
 
-                self.tcp_dns_server
-                    .send_message(source, message)
-                    .log_unwrap_debug("Failed to send TCP DNS response");
+                unwrap_or_warn!(
+                    self.tcp_dns_server.send_message(source, message),
+                    "Failed to send TCP DNS response"
+                );
             }
         }
     }
@@ -924,7 +931,7 @@ impl ClientState {
                 let known_sockets = &mut self.tcp_dns_sockets_by_upstream_and_query_id;
 
                 let Some(source) = known_sockets.remove(&(server, qid)) else {
-                    tracing::debug!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
+                    tracing::warn!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
 
                     continue;
                 };
@@ -953,7 +960,7 @@ impl ClientState {
         let (datagram, message) = match parse_udp_dns_message(&packet) {
             Ok((datagram, message)) => (datagram, message),
             Err(e) => {
-                tracing::trace!(
+                tracing::warn!(
                     error = anyhow_dyn_err(&e),
                     ?packet,
                     "Failed to parse DNS query"
@@ -966,8 +973,10 @@ impl ClientState {
 
         match self.stub_resolver.handle(message) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.try_queue_udp_dns_response(upstream, source, &response)
-                    .log_unwrap_debug("Failed to queue UDP DNS response");
+                unwrap_or_debug!(
+                    self.try_queue_udp_dns_response(upstream, source, &response),
+                    "Failed to queue UDP DNS response"
+                );
             }
             dns::ResolveStrategy::Recurse => {
                 let query_id = message.header().id();
@@ -999,20 +1008,17 @@ impl ClientState {
         let message = query.message;
 
         let Some(upstream) = self.dns_mapping.get_by_left(&query.local.ip()) else {
-            tracing::debug!("Received TCP packet for non-sentinel IP");
-            debug_assert!(
-                false,
-                "We only dispatch packets to sentinel IPs to the TCP DNS server"
-            );
+            // This is highly-unlikely but might be possible if our DNS mapping changes whilst the TCP DNS server is processing a request.
             return;
         };
         let server = upstream.address();
 
         match self.stub_resolver.handle(message.for_slice_ref()) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.tcp_dns_server
-                    .send_message(query.socket, response)
-                    .log_unwrap_debug("Failed to send TCP DNS response");
+                unwrap_or_debug!(
+                    self.tcp_dns_server.send_message(query.socket, response),
+                    "Failed to send TCP DNS response"
+                );
             }
             dns::ResolveStrategy::Recurse => {
                 let query_id = message.header().id();
@@ -1021,14 +1027,18 @@ impl ClientState {
                     match self.tcp_dns_client.send_query(server, message.clone()) {
                         Ok(()) => {}
                         Err(e) => {
-                            tracing::debug!(
+                            tracing::warn!(
                                 error = anyhow_dyn_err(&e),
-                                "Failed to send recursive TCP DNS quer"
+                                "Failed to send recursive TCP DNS query"
                             );
 
-                            self.tcp_dns_server
-                                .send_message(query.socket, dns::servfail(message.for_slice_ref()))
-                                .log_unwrap_debug("Failed to send TCP DNS response");
+                            unwrap_or_debug!(
+                                self.tcp_dns_server.send_message(
+                                    query.socket,
+                                    dns::servfail(message.for_slice_ref())
+                                ),
+                                "Failed to send TCP DNS response"
+                            );
                             return;
                         }
                     };
@@ -1438,7 +1448,7 @@ impl ClientState {
 }
 
 fn parse_udp_dns_message(packet: &IpPacket) -> anyhow::Result<(UdpSlice, Message<&[u8]>)> {
-    let datagram = packet.as_udp().context("Only DNS over UDP is supported")?;
+    let datagram = packet.as_udp().context("Not a UDP packet")?;
     let port = datagram.destination_port();
 
     anyhow::ensure!(

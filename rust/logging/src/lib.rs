@@ -1,18 +1,19 @@
 mod dyn_err;
 pub mod file;
 mod format;
-mod log_unwrap;
+#[macro_use]
+mod unwrap_or;
 
-use tracing::subscriber::DefaultGuard;
+use sentry_tracing::EventFilter;
+use tracing::{subscriber::DefaultGuard, Subscriber};
 use tracing_log::LogTracer;
 use tracing_subscriber::{
-    filter::ParseError, fmt, layer::SubscriberExt as _, util::SubscriberInitExt, EnvFilter, Layer,
-    Registry,
+    filter::ParseError, fmt, layer::SubscriberExt as _, registry::LookupSpan,
+    util::SubscriberInitExt, EnvFilter, Layer, Registry,
 };
 
 pub use dyn_err::{anyhow_dyn_err, std_dyn_err};
 pub use format::Format;
-pub use log_unwrap::LogUnwrap;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`
 pub fn setup_global_subscriber<L>(additional_layer: L)
@@ -23,6 +24,7 @@ where
 
     let subscriber = Registry::default()
         .with(additional_layer)
+        .with(sentry_layer())
         .with(fmt::layer().event_format(Format::new()))
         .with(filter(&directives));
     tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
@@ -65,4 +67,47 @@ pub fn test_global(directives: &str) {
             .finish(),
     )
     .ok();
+}
+
+/// Constructs a [`tracing::Layer`](Layer) that captures events and spans and reports them to Sentry.
+///
+/// ## Events
+///
+/// - error events are reported as sentry exceptions
+/// - warn events are reported as sentry messages
+/// - info events are captured as breadcrumbs (and submitted together with warns & errors)
+///
+/// ## Telemetry events
+///
+/// This layer configuration supports a special `telemetry` event.
+/// Telemetry events are events logged on the `TRACE` level for the `telemetry` target.
+/// They are sampled at a rate of 1%.
+/// The idea here is that some events logged via `tracing` should not necessarily end up in the users log file.
+/// Yet, if they happen a lot, we still want to know about them.
+/// Coupling the `telemetry` target to the `TRACE` level pretty much prevents these events from ever showing up in log files.
+/// By sampling them, we prevent flooding Sentry with lots of these logs.
+///
+/// ## Spans
+///
+/// The default span-filter captures all spans with level INFO, WARN and ERROR as sentry "transactions".
+pub fn sentry_layer<S>() -> sentry_tracing::SentryLayer<S>
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    sentry_tracing::layer()
+        .event_filter(move |md| match *md.level() {
+            tracing::Level::ERROR => EventFilter::Exception,
+            tracing::Level::WARN => EventFilter::Event,
+            tracing::Level::INFO => EventFilter::Breadcrumb,
+            tracing::Level::TRACE if md.target() == "telemetry" => {
+                // rand::random generates floats in the range of [0, 1).
+                if rand::random::<f32>() < 0.01 {
+                    EventFilter::Event
+                } else {
+                    EventFilter::Ignore
+                }
+            }
+            _ => EventFilter::Ignore,
+        })
+        .enable_span_attributes()
 }

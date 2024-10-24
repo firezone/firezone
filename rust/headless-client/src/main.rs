@@ -12,7 +12,6 @@ use firezone_bin_shared::{
 use firezone_headless_client::{
     device_id, signals, CallbackHandler, CliCommon, ConnlibMsg, DnsController,
 };
-use firezone_logging::LogUnwrap;
 use firezone_telemetry::Telemetry;
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::get_user_agent;
@@ -157,9 +156,6 @@ fn main() -> Result<()> {
         arch = std::env::consts::ARCH,
         git_version = firezone_bin_shared::git_version!("headless-client-*")
     );
-
-    anyhow::Result::<()>::Err(anyhow::Error::msg("foo").context("bar").context("baz"))
-        .log_unwrap_debug("Something failed");
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()

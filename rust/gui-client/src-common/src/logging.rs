@@ -56,7 +56,9 @@ pub fn setup(directives: &str) -> Result<Handles> {
     let (layer, logger) = firezone_logging::file::layer(&log_path);
     let layer = layer.and_then(fmt::layer());
     let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(directives)?);
-    let subscriber = Registry::default().with(layer.with_filter(filter));
+    let subscriber = Registry::default()
+        .with(layer.with_filter(filter))
+        .with(firezone_logging::sentry_layer());
     set_global_default(subscriber)?;
     if let Err(error) = output_vt100::try_init() {
         tracing::debug!(

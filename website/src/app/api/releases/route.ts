@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { get } from "@vercel/edge-config";
 
+// Cache responses
+export const dynamic = "force-static";
+
+// Revalidate cache every 60 seconds
+export const revalidate = 60;
+
 export async function GET(_req: NextRequest) {
   const versions = {
     portal: await get("deployed_sha"),

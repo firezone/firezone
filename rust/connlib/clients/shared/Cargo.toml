@@ -3,16 +3,12 @@ name = "connlib-client-shared"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-mock = ["connlib-model/mock"]
-
 [dependencies]
 anyhow = "1.0.82"
 backoff = { workspace = true }
 bimap = "0.6"
 connlib-model = { workspace = true }
 firezone-logging = { workspace = true }
-firezone-telemetry = { workspace = true }
 firezone-tunnel = { workspace = true }
 ip_network = { version = "0.4", default-features = false }
 phoenix-channel = { workspace = true }

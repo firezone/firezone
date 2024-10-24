@@ -258,13 +258,11 @@ pub(crate) fn run(
 
                     let exit_code = match task.await {
                         Err(error) => {
-                            telemetry::capture_error(&error);
                             tracing::error!(?error, "run_controller panicked");
                             telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
                             1
                         }
                         Ok(Err(error)) => {
-                            telemetry::capture_error(&error);
                             tracing::error!(?error, "run_controller returned an error");
                             errors::show_error_dialog(&error).unwrap();
                             telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
