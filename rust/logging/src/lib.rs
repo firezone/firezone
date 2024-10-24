@@ -23,10 +23,13 @@ where
     let directives = std::env::var("RUST_LOG").unwrap_or_default();
 
     let subscriber = Registry::default()
-        .with(additional_layer)
-        .with(sentry_layer())
-        .with(fmt::layer().event_format(Format::new()))
-        .with(filter(&directives));
+        .with(additional_layer.with_filter(filter(&directives)))
+        .with(sentry_layer()) // Sentry layer has its own event filtering mechanism.
+        .with(
+            fmt::layer()
+                .event_format(Format::new())
+                .with_filter(filter(&directives)),
+        );
     tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
     LogTracer::init().unwrap();
 }
@@ -87,9 +90,10 @@ pub fn test_global(directives: &str) {
 /// Coupling the `telemetry` target to the `TRACE` level pretty much prevents these events from ever showing up in log files.
 /// By sampling them, we prevent flooding Sentry with lots of these logs.
 ///
-/// ## Spans
+/// ## Telemetry spans
 ///
-/// The default span-filter captures all spans with level INFO, WARN and ERROR as sentry "transactions".
+/// Only spans with the `telemetry` target on level `TRACE` will be submitted to Sentry.
+/// They are subject to the sampling rate defined in the Sentry client configuration.
 pub fn sentry_layer<S>() -> sentry_tracing::SentryLayer<S>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
@@ -109,5 +113,6 @@ where
             }
             _ => EventFilter::Ignore,
         })
+        .span_filter(|md| *md.level() == tracing::Level::TRACE && md.target() == "telemetry")
         .enable_span_attributes()
 }
