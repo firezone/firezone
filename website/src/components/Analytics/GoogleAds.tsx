@@ -5,8 +5,6 @@ import { HubSpotSubmittedFormData } from "./types";
 import { sendGTMEvent } from "@next/third-parties/google";
 
 export default function GoogleAds() {
-  const trackingId = process.env.NEXT_PUBLIC_GOOGLE_ANALYTICS_ID;
-
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       if (
@@ -32,7 +30,7 @@ export default function GoogleAds() {
     return () => {
       window.removeEventListener("message", handleMessage);
     };
-  }, [trackingId]);
+  }, []);
 
   return null;
 }
