@@ -521,11 +521,9 @@ impl<'a> Handler<'a> {
     ///
     /// Throws matchable errors for bad URLs, unable to reach the portal, or unable to create the tunnel device
     fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<(), Error> {
-        let ctx = firezone_telemetry::TransactionContext::new(
-            "connect_to_firezone",
-            "Connecting to Firezone",
-        );
-        let transaction = firezone_telemetry::start_transaction(ctx);
+        let _connect_span =
+            tracing::trace_span!(target: "telemetry", "connect_to_firezone").entered();
+
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
 
@@ -543,7 +541,6 @@ impl<'a> Handler<'a> {
         let callbacks = CallbackHandler { cb_tx };
 
         // Synchronous DNS resolution here
-        let phoenix_span = transaction.start_child("phoenix", "Resolve DNS for PhoenixChannel");
         let portal = PhoenixChannel::disconnected(
             Secret::new(url),
             // The IPC service must use the GUI's version number, not the Headless Client's. But refactoring to separate the IPC service from the Headless Client will take a while.
@@ -557,7 +554,6 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
         )
         .map_err(|e| Error::PortalConnection(e.to_string()))?;
-        phoenix_span.finish();
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
@@ -571,18 +567,19 @@ impl<'a> Handler<'a> {
         // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
         tracing::debug!(?dns, "Calling `set_dns`...");
         connlib.set_dns(dns);
-        let tun_span = transaction.start_child("tun", "Raise tunnel with `make_tun`");
-        let tun = self
-            .tun_device
-            .make_tun()
-            .map_err(|e| Error::TunnelDevice(e.to_string()))?;
+
+        let tun = {
+            let _guard = tracing::trace_span!(target: "telemetry", "create_tun_device").entered();
+
+            self.tun_device
+                .make_tun()
+                .map_err(|e| Error::TunnelDevice(e.to_string()))?
+        };
         connlib.set_tun(Box::new(tun));
-        tun_span.finish();
 
         let session = Session { cb_rx, connlib };
         self.session = Some(session);
 
-        transaction.finish();
         Ok(())
     }
 }
