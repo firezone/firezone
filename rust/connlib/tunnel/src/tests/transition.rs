@@ -245,6 +245,10 @@ where
         any::<sample::Selector>(),
         any::<u64>(),
     )
+        .prop_filter(
+            "avoid using port 53 for non-dns queries for simplicity",
+            |(_, _, _, dport, _, _)| *dport != 53,
+        )
         .prop_map(
             |(src, dst, sport, dport, resolved_ip, payload)| Transition::SendUdpPacket {
                 src,
@@ -280,15 +284,19 @@ where
         any::<sample::Selector>(),
         any::<u64>(),
     )
-        .prop_map(|(src, dst, sport, dport, resolved_ip, payload)| {
-            Transition::SendTcpPayload {
+        .prop_filter(
+            "avoid using port 53 for non-dns queries for simplicity",
+            |(_, _, _, dport, _, _)| *dport != 53,
+        )
+        .prop_map(
+            |(src, dst, sport, dport, resolved_ip, payload)| Transition::SendTcpPayload {
                 src,
                 dst: dst.into_destination(resolved_ip),
                 sport: SPort(sport),
                 dport: DPort(dport),
                 payload,
-            }
-        })
+            },
+        )
 }
 
 fn port_from_resource(
@@ -296,7 +304,7 @@ fn port_from_resource(
     filter_kind: impl Fn(&Filter) -> Option<&PortRange>,
 ) -> impl Strategy<Value = u16> {
     let Some(resource) = resource else {
-        return non_dns_ports().boxed();
+        return any::<u16>().boxed();
     };
 
     let filters = resource
@@ -309,19 +317,12 @@ fn port_from_resource(
     if !filters.is_empty() {
         prop_oneof![
             select(filters).prop_flat_map(|f| f.port_range_start..=f.port_range_end),
-            non_dns_ports()
+            any::<u16>()
         ]
         .boxed()
     } else {
-        non_dns_ports().boxed()
+        any::<u16>().boxed()
     }
-}
-
-fn non_dns_ports() -> impl Strategy<Value = u16> {
-    any::<u16>().prop_filter(
-        "avoid using port 53 for non-dns queries for simplicity",
-        |p| *p != 53,
-    )
 }
 
 /// Samples up to 5 DNS queries that will be sent concurrently into connlib.

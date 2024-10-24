@@ -209,7 +209,6 @@ impl ReferenceState {
                     let tunnel_ip6 = state.client.inner().tunnel_ip6;
 
                     let portal = state.portal.clone();
-
                     select_host_v6(&ip6_resources).prop_flat_map(move |(ip, r)| {
                         let resource = portal.resource_by_id(&r).unwrap();
                         prop_oneof![
