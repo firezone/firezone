@@ -379,7 +379,9 @@ impl ClientState {
                         }
                     })
                     .unwrap_or_else(|e| {
-                        tracing::debug!(error = std_dyn_err(&e), "Recursive UDP DNS query failed");
+                        let error = std_dyn_err(&e);
+                        tracing::debug!(error, "Recursive UDP DNS query failed");
+                        tracing::trace!(target: "telemetry", error, "Recursive UDP DNS query failed");
 
                         dns::servfail(response.query.for_slice_ref())
                     });
@@ -395,7 +397,9 @@ impl ClientState {
                         tracing::trace!("Received recursive TCP DNS response");
                     })
                     .unwrap_or_else(|e| {
-                        tracing::debug!(error = std_dyn_err(&e), "Recursive TCP DNS query failed");
+                        let error = std_dyn_err(&e);
+                        tracing::debug!(error, "Recursive TCP DNS query failed");
+                        tracing::trace!(target: "telemetry", error, "Recursive TCP DNS query failed");
 
                         dns::servfail(response.query.for_slice_ref())
                     });
