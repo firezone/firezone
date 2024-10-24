@@ -77,98 +77,91 @@ async function applyAdvancedSettings() {
   console.log("Applying advanced settings");
   lockAdvancedSettingsForm();
 
-  invoke("apply_advanced_settings", {
-    settings: {
-      auth_base_url: authBaseUrlInput.value,
-      api_url: apiUrlInput.value,
-      log_filter: logFilterInput.value,
-    },
-  })
-    .catch((e: Error) => {
-      console.error(e);
-    })
-    .finally(() => {
-      unlockAdvancedSettingsForm();
+  try {
+    await invoke("apply_advanced_settings", {
+      settings: {
+        auth_base_url: authBaseUrlInput.value,
+        api_url: apiUrlInput.value,
+        log_filter: logFilterInput.value,
+      },
     });
+  } catch(e) {
+    console.error(e);
+  } finally {
+    unlockAdvancedSettingsForm();
+  }
 }
 
 async function resetAdvancedSettings() {
   console.log("Resetting advanced settings");
   lockAdvancedSettingsForm();
 
-  invoke("reset_advanced_settings")
-    .then((result: unknown) => {
-      let settings = result as Settings;
-      authBaseUrlInput.value = settings.auth_base_url;
-      apiUrlInput.value = settings.api_url;
-      logFilterInput.value = settings.log_filter;
-    })
-    .catch((e: Error) => {
-      console.error(e);
-    })
-    .finally(() => {
-      unlockAdvancedSettingsForm();
-    });
+  try {
+    let settings = await invoke("reset_advanced_settings") as Settings;
+    authBaseUrlInput.value = settings.auth_base_url;
+    apiUrlInput.value = settings.api_url;
+    logFilterInput.value = settings.log_filter;
+  } catch(e) {
+    console.error(e);
+  } finally {
+    unlockAdvancedSettingsForm();
+  }
 }
 
 async function getAdvancedSettings() {
   console.log("Getting advanced settings");
   lockAdvancedSettingsForm();
 
-  invoke("get_advanced_settings")
-    .then((result: unknown) => {
-      let settings = result as Settings;
-      authBaseUrlInput.value = settings.auth_base_url;
-      apiUrlInput.value = settings.api_url;
-      logFilterInput.value = settings.log_filter;
-    })
-    .catch((e: Error) => {
-      console.error(e);
-    })
-    .finally(() => {
-      unlockAdvancedSettingsForm();
-    });
+  try {
+    let settings = await invoke("get_advanced_settings") as Settings;
+    authBaseUrlInput.value = settings.auth_base_url;
+    apiUrlInput.value = settings.api_url;
+    logFilterInput.value = settings.log_filter;
+  } catch(e) {
+    console.error(e);
+  } finally {
+    unlockAdvancedSettingsForm();
+  }
 }
 
 async function exportLogs() {
   console.log("Exporting logs");
   lockLogsForm();
 
-  invoke("export_logs")
-    .catch((e: Error) => {
+  try {
+    await invoke("export_logs");
+  } catch(e) {
       console.error(e);
-    })
-    .finally(() => {
-      unlockLogsForm();
-    });
+  } finally {
+    unlockLogsForm();
+  }
 }
 
 async function clearLogs() {
   console.log("Clearing logs");
   lockLogsForm();
 
-  invoke("clear_logs")
-    .catch((e: Error) => {
-      console.error(e);
-    })
-    .finally(() => {
-      countLogs();
-      unlockLogsForm();
-    });
+  try {
+    await invoke("clear_logs");
+  } catch(e) {
+    console.error(e);
+  } finally {
+    countLogs();
+    unlockLogsForm();
+  };
 }
 
 async function countLogs() {
-  invoke("count_logs")
-    .then((result: unknown) => {
-      let fileCount = result as FileCount;
-      console.log(fileCount);
-      const megabytes = Math.round(fileCount.bytes / 100000) / 10;
-      logCountOutput.innerText = `${fileCount.files} files, ${megabytes} MB`;
-    })
-    .catch((e: Error) => {
-      console.error(e);
-      logCountOutput.innerText = `Error counting logs: ${e.message}`;
-    });
+  try {
+    let fileCount = await invoke("count_logs") as FileCount;
+    console.log(fileCount);
+    const megabytes = Math.round(fileCount.bytes / 100000) / 10;
+    logCountOutput.innerText = `${fileCount.files} files, ${megabytes} MB`;
+  } catch(e) {
+    let error = e as Error;
+    console.error(e);
+    logCountOutput.innerText = `Error counting logs: ${error.message}`;
+  };
 }
 
 // Setup event listeners
