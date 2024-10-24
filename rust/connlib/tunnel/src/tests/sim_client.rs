@@ -578,6 +578,7 @@ impl RefClient {
         }
     }
 
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn on_icmp_packet(
         &mut self,
         src: IpAddr,
@@ -599,6 +600,7 @@ impl RefClient {
         );
     }
 
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn on_udp_packet(
         &mut self,
         src: IpAddr,
@@ -620,6 +622,7 @@ impl RefClient {
         );
     }
 
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn on_tcp_packet(
         &mut self,
         src: IpAddr,
@@ -642,6 +645,7 @@ impl RefClient {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
+    #[expect(clippy::too_many_arguments)]
     fn on_packet<E>(
         &mut self,
         src: IpAddr,
@@ -792,9 +796,9 @@ impl RefClient {
                         }
                     })
                     .filter(|r| networks_overlap(r.address, resource.address))
-                    .any(|r| r.is_allowed(dprotocol))
+                    .any(|r| r.is_allowed(&dprotocol))
             }
-            PortalResource::Dns(r) => r.is_allowed(dprotocol),
+            PortalResource::Dns(r) => r.is_allowed(&dprotocol),
             PortalResource::Internet(_) => true,
         }
     }
