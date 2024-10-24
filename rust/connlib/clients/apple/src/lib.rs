@@ -105,10 +105,6 @@ pub struct WrappedSession {
     )]
     logger: firezone_logging::file::Handle,
 
-    #[expect(
-        dead_code,
-        reason = "Telemetry handle must be kept alive until Session is dropped"
-    )]
     telemetry: Telemetry,
 }
 
