@@ -387,8 +387,8 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     upstream_dns_resolvers: Vec<DnsServer>,
 
-    ipv4_routes: BTreeMap<ResourceId, Ipv4Network>,
-    ipv6_routes: BTreeMap<ResourceId, Ipv6Network>,
+    pub(crate) ipv4_routes: BTreeMap<ResourceId, Ipv4Network>,
+    pub(crate) ipv6_routes: BTreeMap<ResourceId, Ipv6Network>,
 
     /// Tracks all resources in the order they have been added in.
     ///
@@ -468,7 +468,7 @@ impl RefClient {
         SimClient::new(self.id, client_state, now)
     }
 
-    pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
+    pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
         self.ipv4_routes.remove(resource);
         self.ipv6_routes.remove(resource);
 
@@ -479,10 +479,6 @@ impl RefClient {
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.connected_internet_resource = None;
         }
-    }
-
-    pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
-        self.disconnect_resource(resource);
 
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.internet_resource = None;
@@ -664,6 +660,7 @@ impl RefClient {
         stub_portal: &StubPortal,
     ) {
         let Some(resource) = self.resource_by_dst(&dst) else {
+            tracing::debug!("Destination is not a resource");
             return;
         };
 
@@ -833,7 +830,6 @@ impl RefClient {
 
     pub(crate) fn active_internet_resource(&self) -> Option<ResourceId> {
         self.internet_resource
-            .filter(|r| !self.disabled_resources.contains(r))
     }
 
     pub(crate) fn is_locally_answered_query(&self, domain: &DomainName, rtype: Rtype) -> bool {
@@ -852,20 +848,15 @@ impl RefClient {
     }
 
     fn resource_by_dst(&self, destination: &Destination) -> Option<ResourceId> {
-        match destination {
-            Destination::DomainName { name, .. } => {
-                if let Some(id) = self.dns_resource_by_domain(name) {
-                    return Some(id);
-                }
-            }
-            Destination::IpAddr(addr) => {
-                if let Some(id) = self.cidr_resource_by_ip(*addr) {
-                    return Some(id);
-                }
-            }
-        }
+        let specific_resource = match destination {
+            Destination::DomainName { name, .. } => self.dns_resource_by_domain(name),
+            Destination::IpAddr(addr) => self.cidr_resource_by_ip(*addr),
+        };
 
-        self.active_internet_resource()
+        specific_resource
+            .filter(|r| !self.disabled_resources.contains(r))
+            .or(self.active_internet_resource())
+            .filter(|r| !self.disabled_resources.contains(r))
     }
 
     pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
@@ -982,7 +973,6 @@ impl RefClient {
         let (_, r) = self
             .cidr_resources
             .matches(ip)
-            .filter(|(_, r)| !self.disabled_resources.contains(r))
             .sorted_by(|(n1, _), (n2, _)| n1.netmask().cmp(&n2.netmask()).reverse()) // Highest netmask is most specific.
             .next()?;
 
@@ -1046,7 +1036,10 @@ impl RefClient {
         let maybe_active_cidr_resource = self.cidr_resource_by_ip(query.dns_server.ip());
         let maybe_active_internet_resource = self.active_internet_resource();
 
-        maybe_active_cidr_resource.or(maybe_active_internet_resource)
+        maybe_active_cidr_resource
+            .filter(|r| !self.disabled_resources.contains(r))
+            .or(maybe_active_internet_resource)
+            .filter(|r| !self.disabled_resources.contains(r))
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {

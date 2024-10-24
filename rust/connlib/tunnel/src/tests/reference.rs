@@ -341,7 +341,8 @@ impl ReferenceState {
                 client.disabled_resources.clone_from(resources);
 
                 for id in resources {
-                    client.disconnect_resource(id)
+                    client.ipv4_routes.remove(id);
+                    client.ipv6_routes.remove(id);
                 }
             }),
             Transition::SendDnsQueries(queries) => {
@@ -366,6 +367,7 @@ impl ReferenceState {
                     // Check if the DNS server is defined as a resource.
                     let Some(resource) = state.client.inner().dns_query_via_resource(query) else {
                         // Not a resource, process normally.
+                        tracing::debug!("DNS query is not for a resource processing normally");
                         state.client.exec_mut(|client| client.on_dns_query(query));
                         continue;
                     };
