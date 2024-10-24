@@ -413,14 +413,20 @@ pub struct RefClient {
     /// Whether we are connected to the gateway serving the Internet resource.
     #[derivative(Debug = "ignore")]
     pub(crate) connected_internet_resource: Option<GatewayId>,
+    #[derivative(Debug = "ignore")]
+    pub(crate) gateway_known_internet_resource: Option<GatewayId>,
 
     /// The CIDR resources the client is connected to.
     #[derivative(Debug = "ignore")]
     pub(crate) connected_cidr_resources: BTreeMap<ResourceId, GatewayId>,
+    #[derivative(Debug = "ignore")]
+    pub(crate) gateway_known_cidr_resources: BTreeMap<ResourceId, GatewayId>,
 
     /// The DNS resources the client is connected to.
     #[derivative(Debug = "ignore")]
     pub(crate) connected_dns_resources: BTreeMap<(ResourceId, DomainName), GatewayId>,
+    #[derivative(Debug = "ignore")]
+    pub(crate) gateway_known_dns_resources: BTreeMap<(ResourceId, DomainName), GatewayId>,
 
     #[derivative(Debug = "ignore")]
     pub(crate) connected_gateways: BTreeSet<GatewayId>,
@@ -473,11 +479,15 @@ impl RefClient {
         self.ipv6_routes.remove(resource);
 
         self.connected_cidr_resources.remove(resource);
+        self.gateway_known_cidr_resources.remove(resource);
         self.connected_dns_resources
+            .retain(|(r, _), _| r != resource);
+        self.gateway_known_dns_resources
             .retain(|(r, _), _| r != resource);
 
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.connected_internet_resource = None;
+            self.gateway_known_internet_resource = None;
         }
 
         if self.internet_resource.is_some_and(|r| &r == resource) {
@@ -704,6 +714,8 @@ impl RefClient {
             Destination::DomainName { name, .. } => {
                 if !self.disabled_resources.contains(&resource) {
                     self.connected_dns_resources
+                        .insert((resource, name.clone()), gateway);
+                    self.gateway_known_dns_resources
                         .insert((resource, name), gateway);
                     self.connected_gateways.insert(gateway);
                 }
@@ -727,12 +739,14 @@ impl RefClient {
     ) {
         if self.internet_resource.is_some_and(|r| r == resource) {
             self.connected_internet_resource = Some(gateway);
+            self.gateway_known_internet_resource = Some(gateway);
             self.connected_gateways.insert(gateway);
             return;
         }
 
         if self.cidr_resources.iter().any(|(_, r)| *r == resource) {
             self.connected_cidr_resources.insert(resource, gateway);
+            self.gateway_known_cidr_resources.insert(resource, gateway);
             self.connected_gateways.insert(gateway);
         }
     }
@@ -783,13 +797,13 @@ impl RefClient {
             PortalResource::Cidr(resource) => {
                 // TODO: Remove in the future when a gateway with internet resoruce can't have non-internet resource
                 if self
-                    .connected_internet_resource
+                    .gateway_known_internet_resource
                     .is_some_and(|g| g == *gateway)
                 {
                     return true;
                 }
 
-                self.connected_cidr_resources
+                self.gateway_known_cidr_resources
                     .iter()
                     .filter(|(_, g)| *g == gateway)
                     .filter_map(|(r, _)| {
@@ -1141,6 +1155,9 @@ fn ref_client(
                     connected_cidr_resources: Default::default(),
                     connected_dns_resources: Default::default(),
                     connected_internet_resource: Default::default(),
+                    gateway_known_internet_resource: Default::default(),
+                    gateway_known_cidr_resources: Default::default(),
+                    gateway_known_dns_resources: Default::default(),
                     expected_icmp_handshakes: Default::default(),
                     expected_udp_handshakes: Default::default(),
                     expected_tcp_exchanges: Default::default(),
