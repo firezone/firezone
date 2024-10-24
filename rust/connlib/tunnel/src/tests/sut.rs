@@ -130,7 +130,12 @@ impl TunnelTest {
                 });
             }
             Transition::DeactivateResource(id) => {
-                state.client.exec_mut(|c| c.sut.remove_resource(id))
+                state.client.exec_mut(|c| c.sut.remove_resource(id));
+
+                let client_id = state.client.inner().id;
+                for gateway in state.gateways.values_mut() {
+                    gateway.exec_mut(|g| g.sut.remove_access(&client_id, &id));
+                }
             }
             Transition::DisableResources(resources) => state
                 .client
