@@ -105,7 +105,7 @@ impl ClientTunnel {
     }
 
     pub fn reset(&mut self) {
-        self.role_state.reset();
+        self.role_state.reset(Instant::now());
         self.io.rebind_sockets();
     }
 
@@ -204,7 +204,7 @@ impl GatewayTunnel {
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
-            role_state: GatewayState::new(rand::random()),
+            role_state: GatewayState::new(rand::random(), Instant::now()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             encrypt_buf: Default::default(),

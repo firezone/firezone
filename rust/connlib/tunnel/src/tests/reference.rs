@@ -175,7 +175,7 @@ impl ReferenceState {
                 .prop_map(Transition::RebootRelaysWhilePartitioned),
             )
             .with(1, Just(Transition::ReconnectPortal))
-            .with(1, Just(Transition::Idle))
+            .with(1, idle())
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
                 sample::subsequence(resources_id.clone(), resources_id.len()).prop_map(
                     |resources_id| Transition::DisableResources(BTreeSet::from_iter(resources_id)),
@@ -483,7 +483,7 @@ impl ReferenceState {
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 state.deploy_new_relays(new_relays)
             }
-            Transition::Idle => {}
+            Transition::Idle { .. } => {}
             Transition::PartitionRelaysFromPortal => {
                 if state.drop_direct_client_traffic {
                     state.client.exec_mut(|client| client.reset_connections());
@@ -659,7 +659,7 @@ impl ReferenceState {
 
                 !route_overlap
             }
-            Transition::Idle => true,
+            Transition::Idle { .. } => true,
             Transition::PartitionRelaysFromPortal => true,
         }
     }

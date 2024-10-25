@@ -155,7 +155,7 @@ where
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
     T: Mode,
 {
-    pub fn new(seed: [u8; 32]) -> Self {
+    pub fn new(seed: [u8; 32], now: Instant) -> Self {
         let mut rng = StdRng::from_seed(seed);
         let private_key = StaticSecret::random_from_rng(&mut rng);
         let public_key = &(&private_key).into();
@@ -167,7 +167,7 @@ where
             public_key: *public_key,
             mode: T::new(),
             index: IndexLfsr::default(),
-            rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT)),
+            rate_limiter: Arc::new(RateLimiter::new_at(public_key, HANDSHAKE_RATE_LIMIT, now)),
             host_candidates: Default::default(),
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
@@ -189,7 +189,7 @@ where
     /// - we change our IP or port
     ///
     /// `snownet` cannot control which IP / port we are binding to, thus upper layers MUST ensure that a new IP / port is allocated after calling [`Node::reset`].
-    pub fn reset(&mut self) {
+    pub fn reset(&mut self, now: Instant) {
         self.allocations.clear();
 
         self.buffered_transmits.clear();
@@ -211,7 +211,11 @@ where
 
         self.private_key = StaticSecret::random_from_rng(&mut self.rng);
         self.public_key = (&self.private_key).into();
-        self.rate_limiter = Arc::new(RateLimiter::new(&self.public_key, HANDSHAKE_RATE_LIMIT));
+        self.rate_limiter = Arc::new(RateLimiter::new_at(
+            &self.public_key,
+            HANDSHAKE_RATE_LIMIT,
+            now,
+        ));
         self.session_id = SessionId::new(self.public_key);
 
         tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
@@ -284,9 +288,9 @@ where
         self.public_key
     }
 
-    pub fn connection_id(&self, key: PublicKey) -> Option<TId> {
+    pub fn connection_id(&self, key: PublicKey, now: Instant) -> Option<TId> {
         self.connections.iter_established().find_map(|(id, c)| {
-            (c.remote_pub_key == key && c.tunnel.time_since_last_handshake().is_some())
+            (c.remote_pub_key == key && c.tunnel.time_since_last_handshake_at(now).is_some())
                 .then_some(id)
         })
     }
@@ -437,6 +441,17 @@ where
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
+        if conn.is_idle() {
+            // If we are coming back from idle, our WG session might be stale.
+            // Update the timers before encapsulating to avoid packet loss due to using an old session.
+            conn.handle_timeout(
+                connection,
+                now,
+                &mut self.allocations,
+                &mut self.buffered_transmits,
+            );
+        }
+
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
             .encapsulate(packet.packet(), &mut buffer.inner[4..], now)?
@@ -558,7 +573,7 @@ where
             let next_reset = *self.next_rate_limiter_reset.get_or_insert(now);
 
             if now >= next_reset {
-                self.rate_limiter.reset_count();
+                self.rate_limiter.reset_count_at(now);
                 self.next_rate_limiter_reset = Some(now + Duration::from_secs(1));
             }
         }
@@ -713,13 +728,14 @@ where
 
         Connection {
             agent,
-            tunnel: Tunn::new(
+            tunnel: Tunn::new_at(
                 self.private_key.clone(),
                 remote,
                 Some(key),
                 Some(25), // 25 is the default of the kernel implementation.
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
+                now,
             ),
             wg_timer: DEFAULT_WG_TIMER,
             next_wg_timer_update: now,
@@ -868,7 +884,7 @@ where
                 continue;
             }
 
-            let handshake_complete_before_decapsulate = conn.wg_handshake_complete();
+            let handshake_complete_before_decapsulate = conn.wg_handshake_complete(now);
 
             let control_flow = conn.decapsulate(
                 packet,
@@ -877,7 +893,7 @@ where
                 now,
             );
 
-            let handshake_complete_after_decapsulate = conn.wg_handshake_complete();
+            let handshake_complete_after_decapsulate = conn.wg_handshake_complete(now);
 
             // I can't think of a better way to detect this ...
             if !handshake_complete_before_decapsulate && handshake_complete_after_decapsulate {
@@ -1819,8 +1835,8 @@ where
         from_nominated || self.possible_sockets.contains(addr)
     }
 
-    fn wg_handshake_complete(&self) -> bool {
-        self.tunnel.time_since_last_handshake().is_some()
+    fn wg_handshake_complete(&self, now: Instant) -> bool {
+        self.tunnel.time_since_last_handshake_at(now).is_some()
     }
 
     fn duration_since_intent(&self, now: Instant) -> Duration {
@@ -1872,8 +1888,6 @@ where
             return;
         }
 
-        // TODO: `boringtun` is impure because it calls `Instant::now`.
-
         if now >= self.next_wg_timer_update {
             self.next_wg_timer_update = now + self.wg_timer;
 
@@ -1889,7 +1903,7 @@ where
 
             let mut buf = [0u8; MAX_SCRATCH_SPACE];
 
-            match self.tunnel.update_timers(&mut buf) {
+            match self.tunnel.update_timers_at(&mut buf, now) {
                 TunnResult::Done => {}
                 TunnResult::Err(WireGuardError::ConnectionExpired) => {
                     tracing::info!("Connection failed (wireguard tunnel expired)");
@@ -2039,7 +2053,7 @@ where
     ) -> Result<Option<&'b [u8]>, Error> {
         let _guard = self.span.enter();
 
-        let len = match self.tunnel.encapsulate(packet, buffer) {
+        let len = match self.tunnel.encapsulate_at(packet, buffer, now) {
             TunnResult::Done => return Ok(None),
             TunnResult::Err(e) => return Err(Error::Encapsulate(e)),
             TunnResult::WriteToNetwork(packet) => packet.len(),
@@ -2064,7 +2078,10 @@ where
         let _guard = self.span.enter();
         let mut ip_packet = IpPacketBuf::new();
 
-        let control_flow = match self.tunnel.decapsulate(None, packet, ip_packet.buf()) {
+        let control_flow = match self
+            .tunnel
+            .decapsulate_at(None, packet, ip_packet.buf(), now)
+        {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
 
@@ -2104,7 +2121,8 @@ where
                         buffered.push(bytes.to_owned());
 
                         while let TunnResult::WriteToNetwork(packet) =
-                            self.tunnel.decapsulate(None, &[], self.buffer.as_mut())
+                            self.tunnel
+                                .decapsulate_at(None, &[], self.buffer.as_mut(), now)
                         {
                             buffered.push(packet.to_owned());
                         }
@@ -2119,7 +2137,8 @@ where
                         ));
 
                         while let TunnResult::WriteToNetwork(packet) =
-                            self.tunnel.decapsulate(None, &[], self.buffer.as_mut())
+                            self.tunnel
+                                .decapsulate_at(None, &[], self.buffer.as_mut(), now)
                         {
                             transmits.extend(make_owned_transmit(
                                 *peer_socket,
@@ -2159,8 +2178,9 @@ where
 
         let mut buf = [0u8; MAX_SCRATCH_SPACE];
 
-        let TunnResult::WriteToNetwork(bytes) =
-            self.tunnel.format_handshake_initiation(&mut buf, false)
+        let TunnResult::WriteToNetwork(bytes) = self
+            .tunnel
+            .format_handshake_initiation_at(&mut buf, false, now)
         else {
             return;
         };

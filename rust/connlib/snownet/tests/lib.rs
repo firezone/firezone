@@ -10,9 +10,8 @@ use str0m::{net::Protocol, Candidate};
 #[test]
 #[expect(deprecated, reason = "Will be deleted together with deprecated API")]
 fn connection_times_out_after_20_seconds() {
-    let (mut alice, _) = alice_and_bob();
-
     let created_at = Instant::now();
+    let (mut alice, _) = alice_and_bob(created_at);
 
     let _ = alice.new_connection(1, Instant::now(), created_at);
     alice.handle_timeout(created_at + Duration::from_secs(20));
@@ -25,7 +24,7 @@ fn connection_without_candidates_times_out_after_10_seconds() {
     let _guard = firezone_logging::test("trace");
     let start = Instant::now();
 
-    let (mut alice, mut bob) = alice_and_bob();
+    let (mut alice, mut bob) = alice_and_bob(start);
     handshake(&mut alice, &mut bob, start);
 
     alice.handle_timeout(start + Duration::from_secs(10));
@@ -38,7 +37,7 @@ fn connection_with_candidates_does_not_time_out_after_10_seconds() {
     let _guard = firezone_logging::test("trace");
     let start = Instant::now();
 
-    let (mut alice, mut bob) = alice_and_bob();
+    let (mut alice, mut bob) = alice_and_bob(start);
     handshake(&mut alice, &mut bob, start);
 
     alice.add_local_host_candidate(s("10.0.0.2:4444")).unwrap();
@@ -57,7 +56,7 @@ fn connection_with_candidates_does_not_time_out_after_10_seconds() {
 fn answer_after_stale_connection_does_not_panic() {
     let start = Instant::now();
 
-    let (mut alice, mut bob) = alice_and_bob();
+    let (mut alice, mut bob) = alice_and_bob(start);
     let answer = send_offer(&mut alice, &mut bob, start);
 
     let now = start + Duration::from_secs(10);
@@ -71,10 +70,10 @@ fn answer_after_stale_connection_does_not_panic() {
 fn only_generate_candidate_event_after_answer() {
     let local_candidate = SocketAddr::new(IpAddr::from(Ipv4Addr::LOCALHOST), 10000);
 
-    let mut alice = ClientNode::<u64, u64>::new(rand::random());
+    let mut alice = ClientNode::<u64, u64>::new(rand::random(), Instant::now());
     alice.add_local_host_candidate(local_candidate).unwrap();
 
-    let mut bob = ServerNode::<u64, u64>::new(rand::random());
+    let mut bob = ServerNode::<u64, u64>::new(rand::random(), Instant::now());
 
     let offer = alice.new_connection(1, Instant::now(), Instant::now());
 
@@ -97,9 +96,9 @@ fn only_generate_candidate_event_after_answer() {
         }));
 }
 
-fn alice_and_bob() -> (ClientNode<u64, u64>, ServerNode<u64, u64>) {
-    let alice = ClientNode::new(rand::random());
-    let bob = ServerNode::new(rand::random());
+fn alice_and_bob(now: Instant) -> (ClientNode<u64, u64>, ServerNode<u64, u64>) {
+    let alice = ClientNode::new(rand::random(), now);
+    let bob = ServerNode::new(rand::random(), now);
 
     (alice, bob)
 }
