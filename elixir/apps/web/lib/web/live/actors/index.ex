@@ -95,27 +95,42 @@ defmodule Web.Actors.Index do
             </div>
           </:col>
 
-          <:col :let={actor} label="groups">
-            <.peek peek={@actor_groups[actor.id]}>
-              <:empty>
-                None
-              </:empty>
+          <:col :let={actor} label="groups" class="w-1/12">
+            <.popover placement="right">
+              <:target>
+                <.link
+                  navigate={~p"/#{@account}/actors/#{actor}?#groups"}
+                  class={[
+                    "hover:underline hover:decoration-line",
+                    "underline underline-offset-2 decoration-1 decoration-dotted"
+                  ]}
+                >
+                  <%= @actor_groups[actor.id].count %>
+                </.link>
+              </:target>
+              <:content>
+                <.peek peek={@actor_groups[actor.id]}>
+                  <:empty>
+                    None
+                  </:empty>
 
-              <:item :let={group}>
-                <div class="flex flex-wrap gap-y-2 mr-2">
-                  <.group account={@account} group={group} />
-                </div>
-              </:item>
+                  <:item :let={group}>
+                    <div class="flex flex-wrap gap-y-2 mr-2">
+                      <.group account={@account} group={group} />
+                    </div>
+                  </:item>
 
-              <:tail :let={count}>
-                <span class="inline-block whitespace-nowrap">
-                  and <%= count %> more.
-                </span>
-              </:tail>
-            </.peek>
+                  <:tail :let={count}>
+                    <span class="inline-block whitespace-nowrap">
+                      and <%= count %> more.
+                    </span>
+                  </:tail>
+                </.peek>
+              </:content>
+            </.popover>
           </:col>
 
-          <:col :let={actor} label="clients">
+          <:col :let={actor} label="clients" class="w-2/12">
             <.peek peek={@actor_clients[actor.id]}>
               <:empty>
                 None
@@ -125,7 +140,9 @@ defmodule Web.Actors.Index do
                 <div class="mr-2">
                   <.client_as_icon client={client} />
                   <div class="relative">
-                    <div class="absolute -inset-y-2.5 -right-1"><.online_icon schema={client} /></div>
+                    <div class="absolute -inset-y-2.5 -right-1">
+                      <.online_icon schema={client} />
+                    </div>
                   </div>
                 </div>
               </:item>

@@ -221,14 +221,58 @@ for actor <- other_actors do
       provider_identifier_confirmation: email
     })
 
-  identity
-  |> Ecto.Changeset.change(
-    created_by: :provider,
-    provider_id: oidc_provider.id,
-    provider_identifier: email,
-    provider_state: %{"claims" => %{"email" => email, "group" => "users"}}
-  )
-  |> Repo.update!()
+  identity =
+    identity
+    |> Ecto.Changeset.change(
+      created_by: :provider,
+      provider_id: oidc_provider.id,
+      provider_identifier: email,
+      provider_state: %{"claims" => %{"email" => email, "group" => "users"}}
+    )
+    |> Repo.update!()
+
+  context = %Auth.Context{
+    type: :browser,
+    user_agent: "Windows/10.0.22631 seeds/1",
+    remote_ip: {172, 28, 0, 100},
+    remote_ip_location_region: "UA",
+    remote_ip_location_city: "Kyiv",
+    remote_ip_location_lat: 50.4333,
+    remote_ip_location_lon: 30.5167
+  }
+
+  {:ok, token} =
+    Auth.create_token(identity, context, "n", nil)
+
+  {:ok, subject} = Auth.build_subject(token, context)
+
+  count = Enum.random([1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 240])
+
+  for i <- 0..count do
+    user_agent =
+      Enum.random([
+        "iOS/12.7 (iPhone) connlib/1.5.0",
+        "Android/14 connlib/1.4.1",
+        "Windows/10.0.22631 connlib/1.3.412",
+        "Ubuntu/22.4.0 connlib/1.2.2"
+      ])
+
+    client_name = String.split(user_agent, "/") |> List.first()
+
+    {:ok, _client} =
+      Domain.Clients.upsert_client(
+        %{
+          name: "My #{client_name} #{i}",
+          external_id: Ecto.UUID.generate(),
+          public_key: :crypto.strong_rand_bytes(32) |> Base.encode64(),
+          identifier_for_vendor: Ecto.UUID.generate()
+        },
+        %{
+          subject
+          | context: %{subject.context | user_agent: user_agent}
+        }
+      )
+  end
 end
 
 # Other Account Users
@@ -432,7 +476,7 @@ end
 {:ok, finance_group} = Actors.create_group(%{name: "Finance", type: :static}, admin_subject)
 
 {:ok, synced_group} =
-  Actors.create_group(%{name: "Synced Group with long name", type: :static}, admin_subject)
+  Actors.create_group(%{name: "Group:Synced Group with long name", type: :static}, admin_subject)
 
 for group <- [eng_group, finance_group, synced_group] do
   IO.puts("  Name: #{group.name}  ID: #{group.id}")
@@ -475,6 +519,25 @@ synced_group
 oidc_provider
 |> Ecto.Changeset.change(last_synced_at: DateTime.utc_now())
 |> Repo.update!()
+
+for name <- [
+      "Group:gcp-logging-viewers",
+      "Group:gcp-security-admins",
+      "Group:gcp-organization-admins",
+      "OU:Admins",
+      "OU:Product",
+      "Group:Engineering",
+      "Group:gcp-developers"
+    ] do
+  {:ok, group} = Actors.create_group(%{name: name, type: :static}, admin_subject)
+
+  group
+  |> Repo.preload(:memberships)
+  |> Actors.update_group(
+    %{memberships: [%{actor_id: admin_subject.actor.id}]},
+    admin_subject
+  )
+end
 
 IO.puts("")
 
