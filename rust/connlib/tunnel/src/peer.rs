@@ -479,14 +479,14 @@ impl ClientOnGateway {
         let dst = packet.destination();
 
         // Note a Gateway with Internet resource should never get packets for other resources
-        if self.internet_resource_enabled && !is_dns_addr(packet.destination()) {
+        if dbg!(self.internet_resource_enabled) && !is_dns_addr(dbg!(packet.destination())) {
             return Ok(());
         }
 
         if !self
             .filters
             .longest_match(dst)
-            .is_some_and(|(_, filter)| filter.is_allowed(packet))
+            .is_some_and(|(_, filter)| dbg!(filter).is_allowed(dbg!(packet)))
         {
             return Err(anyhow::Error::new(DstNotAllowed(dst)));
         };

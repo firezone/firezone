@@ -370,6 +370,7 @@ impl ReferenceState {
                     BTreeMap::<_, BTreeSet<ResourceId>>::new();
                 let mut new_connections_via_gateways_tcp_triggered =
                     BTreeMap::<_, BTreeSet<ResourceId>>::new();
+                let mut sent_queries = Vec::new();
 
                 for query in queries {
                     // Some queries get answered locally.
@@ -425,6 +426,7 @@ impl ReferenceState {
                                 }
                                 DnsTransport::Tcp => {
                                     // TCP has retries, so those will always connect.
+                                    sent_queries.push((resource, gateway, query));
                                     connected_resources.insert(resource);
                                 }
                             }
@@ -433,6 +435,23 @@ impl ReferenceState {
                         continue;
                     }
 
+                    sent_queries.push((resource, gateway, query));
+                }
+
+                // First connections triggers are processed (This is an implementation detail of the tests but in the future with packet buffering this artifact will be gone)
+                for (gateway, resources) in new_connections_via_gateways_udp_triggered
+                    .into_iter()
+                    .chain(new_connections_via_gateways_tcp_triggered)
+                {
+                    for resource in resources {
+                        state.client.exec_mut(|client| {
+                            client.connect_to_internet_or_cidr_resource(resource, gateway)
+                        });
+                    }
+                }
+
+                // Second triggers are processed (This is an implementation detail of the tests but in the future with packet buffering this artifact will be gone)
+                for (resource, gateway, query) in sent_queries {
                     if state.client.inner().is_packet_allowed(
                         &resource,
                         &gateway,
@@ -442,17 +461,6 @@ impl ReferenceState {
                         state.client.exec_mut(|client| client.on_dns_query(query));
                     } else {
                         tracing::debug!(%resource, %gateway, "Dropping DNS query due to gateway filters");
-                    }
-                }
-
-                for (gateway, resources) in new_connections_via_gateways_udp_triggered
-                    .into_iter()
-                    .chain(new_connections_via_gateways_tcp_triggered)
-                {
-                    for resource in resources {
-                        state.client.exec_mut(|client| {
-                            client.connect_to_internet_or_cidr_resource(resource, gateway)
-                        });
                     }
                 }
             }
@@ -544,10 +552,10 @@ impl ReferenceState {
             }
             Transition::DeployNewRelays(new_relays) => {
                 state.deploy_new_relays(new_relays);
+
                 // Deploy new relays disconnects all relays advance state and then starts them
                 // when state is advanced without relays connections peers from the gateways
                 // are dropped due to a connection dropped event in snownet.
-
                 if state.drop_direct_client_traffic {
                     state.client.exec_mut(|c| c.reset_gateway_known_resources());
                 }
