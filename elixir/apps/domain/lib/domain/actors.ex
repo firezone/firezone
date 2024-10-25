@@ -121,6 +121,33 @@ defmodule Domain.Actors do
     end
   end
 
+  def peek_actor_clients(actors, limit, %Auth.Subject{} = subject) do
+    with :ok <-
+           Auth.ensure_has_permissions(subject, Clients.Authorizer.manage_clients_permission()) do
+      ids = actors |> Enum.map(& &1.id) |> Enum.uniq()
+
+      {:ok, peek} =
+        Actor.Query.not_deleted()
+        |> Actor.Query.by_id({:in, ids})
+        |> Actor.Query.preload_few_clients_for_each_actor(limit)
+        |> Authorizer.for_subject(subject)
+        |> Repo.peek(actors)
+
+      group_by_ids =
+        Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
+        |> Clients.preload_clients_presence()
+        |> Enum.map(&{&1.id, &1})
+        |> Enum.into(%{})
+
+      peek =
+        for {id, %{items: items} = map} <- peek, into: %{} do
+          {id, %{map | items: Enum.map(items, &Map.fetch!(group_by_ids, &1.id))}}
+        end
+
+      {:ok, peek}
+    end
+  end
+
   def sync_provider_groups(%Auth.Provider{} = provider, attrs_list) do
     Group.Sync.sync_provider_groups(provider, attrs_list)
   end

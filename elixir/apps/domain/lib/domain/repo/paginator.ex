@@ -66,8 +66,8 @@ defmodule Domain.Repo.Paginator do
 
   def query(queryable, paginator_opts) do
     queryable
-    |> order_by_cursor_fields(paginator_opts)
     |> maybe_query_page(paginator_opts)
+    |> order_by_cursor_fields(paginator_opts)
     |> limit_page_size(paginator_opts)
   end
 
