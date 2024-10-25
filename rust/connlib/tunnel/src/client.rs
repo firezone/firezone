@@ -483,6 +483,8 @@ impl ClientState {
 
     pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
         self.node.add_remote_candidate(conn_id, ice_candidate, now);
+        self.node.handle_timeout(now);
+        self.drain_node_events();
     }
 
     pub fn remove_ice_candidate(
@@ -493,6 +495,8 @@ impl ClientState {
     ) {
         self.node
             .remove_remote_candidate(conn_id, ice_candidate, now);
+        self.node.handle_timeout(now);
+        self.drain_node_events();
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
