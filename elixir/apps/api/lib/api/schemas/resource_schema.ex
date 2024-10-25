@@ -13,7 +13,7 @@ defmodule API.Schemas.Resource do
         id: %Schema{type: :string, description: "Resource ID"},
         name: %Schema{type: :string, description: "Resource name"},
         address: %Schema{type: :string, description: "Resource address"},
-        description: %Schema{type: :string, description: "Resource description"},
+        address_description: %Schema{type: :string, description: "Resource address description"},
         type: %Schema{type: :string, description: "Resource type"}
       },
       required: [:name, :type],
@@ -21,7 +21,7 @@ defmodule API.Schemas.Resource do
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "Prod DB",
         "address" => "10.0.0.10",
-        "description" => "Production Database",
+        "address_description" => "Production Database",
         "type" => "ip"
       }
     })
@@ -60,7 +60,7 @@ defmodule API.Schemas.Resource do
           "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "name" => "Prod DB",
           "address" => "10.0.0.10",
-          "description" => "Production Database",
+          "address_description" => "Production Database",
           "type" => "ip",
           "connections" => [
             %{
@@ -89,7 +89,7 @@ defmodule API.Schemas.Resource do
           "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "name" => "Prod DB",
           "address" => "10.0.0.10",
-          "description" => "Production Database",
+          "address_description" => "Production Database",
           "type" => "ip"
         }
       }
@@ -115,14 +115,14 @@ defmodule API.Schemas.Resource do
             "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "name" => "Prod DB",
             "address" => "10.0.0.10",
-            "description" => "Production Database",
+            "address_description" => "Production Database",
             "type" => "ip"
           },
           %{
             "id" => "3b9451c9-5616-48f8-827f-009ace22d015",
             "name" => "Admin Dashboard",
             "address" => "10.0.0.20",
-            "description" => "Production Admin Dashboard",
+            "address_description" => "Production Admin Dashboard",
             "type" => "ip"
           }
         ],
