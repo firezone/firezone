@@ -89,6 +89,12 @@ impl BufferedTransmits {
         Some(next.value)
     }
 
+    pub(crate) fn drain(&mut self) -> impl Iterator<Item = (Transmit<'static>, Instant)> + '_ {
+        self.inner
+            .drain()
+            .map(|Reverse(ByTime { at, value })| (value, at))
+    }
+
     pub(crate) fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
