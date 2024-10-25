@@ -542,7 +542,16 @@ impl ReferenceState {
                 // We do re-add all resources though so depending on the order they are added in, overlapping CIDR resources may change.
                 state.client.exec_mut(|c| c.readd_all_resources());
             }
-            Transition::DeployNewRelays(new_relays) => state.deploy_new_relays(new_relays),
+            Transition::DeployNewRelays(new_relays) => {
+                state.deploy_new_relays(new_relays);
+                // Deploy new relays disconnects all relays advance state and then starts them
+                // when state is advanced without relays connections peers from the gateways
+                // are dropped due to a connection dropped event in snownet.
+
+                if state.drop_direct_client_traffic {
+                    state.client.exec_mut(|c| c.reset_gateway_known_resources());
+                }
+            }
             Transition::RebootRelaysWhilePartitioned(new_relays) => {
                 state.deploy_new_relays(new_relays)
             }
