@@ -16,6 +16,10 @@ export default function Android() {
         <ChangeItem pull="7151">
           Adds always-on error reporting using sentry.io.
         </ChangeItem>
+        <ChangeItem pull="7160">
+          Fixes an issue where notifications would sometimes not get delivered
+          when Firezone was active.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.5" date={new Date("2024-10-03")}>
         <ChangeItem pull="6831">
