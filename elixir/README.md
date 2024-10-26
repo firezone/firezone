@@ -517,6 +517,8 @@ Here is a one-liner to open the comparison in your browser:
 open "https://github.com/firezone/firezone/compare/$(curl -L -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/firezone/firezone/actions/workflows/deploy.yml/runs?status=completed&per_page=1" | jq -r '.workflow_runs[0].head_commit.id')...main"
 ```
 
+If there are any breaking changes, make sure to confirm with the rest of the team on a rollout strategy before proceeding with any of the steps listed below.
+
 Then, go to ["Deploy Production"](https://github.com/firezone/firezone/actions/workflows/deploy.yml) CI workflow and click "Run Workflow".
 
 1. In the form that appears, read the warning and check the checkbox next to it.
