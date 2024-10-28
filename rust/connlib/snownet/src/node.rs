@@ -1,4 +1,4 @@
-use crate::allocation::{Allocation, CandidateEvent, RelaySocket, Socket};
+use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::candidate_set::CandidateSet;
 use crate::index::IndexLfsr;
 use crate::ringbuffer::RingBuffer;
@@ -904,18 +904,18 @@ where
             tracing::trace!(%rid, ?event);
 
             match event {
-                CandidateEvent::New(candidate)
+                allocation::Event::New(candidate)
                     if candidate.kind() == CandidateKind::ServerReflexive =>
                 {
                     self.shared_candidates.insert(candidate);
                 }
-                CandidateEvent::New(candidate) => {
+                allocation::Event::New(candidate) => {
                     for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
                     {
                         add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
                     }
                 }
-                CandidateEvent::Invalid(candidate) => {
+                allocation::Event::Invalid(candidate) => {
                     for (cid, agent, _span) in self.connections.agents_mut() {
                         remove_local_candidate(cid, agent, &candidate, &mut self.pending_events);
                     }

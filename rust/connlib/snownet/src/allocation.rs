@@ -70,7 +70,7 @@ pub struct Allocation {
     allocation_lifetime: Option<(Instant, Duration)>,
 
     buffered_transmits: VecDeque<Transmit<'static>>,
-    events: VecDeque<CandidateEvent>,
+    events: VecDeque<Event>,
 
     sent_requests: BTreeMap<
         TransactionId,
@@ -92,7 +92,7 @@ pub struct Allocation {
 }
 
 #[derive(Debug, PartialEq)]
-pub(crate) enum CandidateEvent {
+pub(crate) enum Event {
     New(Candidate),
     Invalid(Candidate),
 }
@@ -655,7 +655,7 @@ impl Allocation {
         // TODO: Clean up unused channels
     }
 
-    pub fn poll_event(&mut self) -> Option<CandidateEvent> {
+    pub fn poll_event(&mut self) -> Option<Event> {
         self.events.pop_front()
     }
 
@@ -828,11 +828,11 @@ impl Allocation {
         tracing::info!(active_socket = ?self.active_socket, "Invalidating allocation");
 
         if let Some(candidate) = self.ip4_allocation.take() {
-            self.events.push_back(CandidateEvent::Invalid(candidate))
+            self.events.push_back(Event::Invalid(candidate))
         }
 
         if let Some(candidate) = self.ip6_allocation.take() {
-            self.events.push_back(CandidateEvent::Invalid(candidate))
+            self.events.push_back(Event::Invalid(candidate))
         }
 
         self.channel_bindings.clear();
@@ -1048,17 +1048,17 @@ fn authenticate(message: Message<Attribute>, credentials: &Credentials) -> Messa
 fn update_candidate(
     maybe_new: Option<Candidate>,
     maybe_current: &mut Option<Candidate>,
-    events: &mut VecDeque<CandidateEvent>,
+    events: &mut VecDeque<Event>,
 ) {
     match (maybe_new, &maybe_current) {
         (Some(new), Some(current)) if &new != current => {
-            events.push_back(CandidateEvent::New(new.clone()));
-            events.push_back(CandidateEvent::Invalid(current.clone()));
+            events.push_back(Event::New(new.clone()));
+            events.push_back(Event::Invalid(current.clone()));
             *maybe_current = Some(new);
         }
         (Some(new), None) => {
             *maybe_current = Some(new.clone());
-            events.push_back(CandidateEvent::New(new));
+            events.push_back(Event::New(new));
         }
         _ => {}
     }
@@ -1927,14 +1927,14 @@ mod tests {
         let next_event = allocation.poll_event();
         assert_eq!(
             next_event,
-            Some(CandidateEvent::New(
+            Some(Event::New(
                 Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()
             ))
         );
         let next_event = allocation.poll_event();
         assert_eq!(
             next_event,
-            Some(CandidateEvent::New(
+            Some(Event::New(
                 Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()
             ))
         );
@@ -1979,13 +1979,13 @@ mod tests {
 
         assert_eq!(
             allocation.poll_event(),
-            Some(CandidateEvent::Invalid(
+            Some(Event::Invalid(
                 Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()
             ))
         );
         assert_eq!(
             allocation.poll_event(),
-            Some(CandidateEvent::Invalid(
+            Some(Event::Invalid(
                 Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()
             ))
         );
@@ -2310,8 +2310,8 @@ mod tests {
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
-                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
-                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
             ]
         )
     }
@@ -2330,8 +2330,8 @@ mod tests {
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
-                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
-                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
             ]
         )
     }
@@ -2362,8 +2362,8 @@ mod tests {
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
-                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
-                CandidateEvent::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
             ]
         );
         assert_eq!(
@@ -2451,10 +2451,10 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                CandidateEvent::New(
+                Event::New(
                     Candidate::server_reflexive(PEER2_IP4, PEER2_IP4, Protocol::Udp).unwrap()
                 ),
-                CandidateEvent::New(
+                Event::New(
                     Candidate::server_reflexive(PEER2_IP6, PEER2_IP6, Protocol::Udp).unwrap()
                 )
             ]
