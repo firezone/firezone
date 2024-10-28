@@ -279,7 +279,6 @@ impl GatewayState {
         dns_resource_nat: Option<DnsResourceNatEntry>,
         now: Instant,
     ) -> anyhow::Result<()> {
-        dbg!(&resource);
         let peer = self
             .peers
             .entry(client)

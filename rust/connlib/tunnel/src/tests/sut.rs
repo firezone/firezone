@@ -226,7 +226,7 @@ impl TunnelTest {
                         sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
                     });
 
-                    buffered_transmits.push_from(dbg!(transmit), &state.client, now);
+                    buffered_transmits.push_from(transmit, &state.client, now);
                 }
             }
             Transition::UpdateSystemDnsServers(servers) => {
