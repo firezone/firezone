@@ -13,7 +13,7 @@ use std::{
 
 use crate::messages::gateway::{Filter, Filters, PortRange};
 
-/// Full model of a resource, ressembling what the portal stores, proyections of this are sent to the client and gateways
+/// Full model of a resource, resembling what the portal stores, projections of this are sent to the client and gateways
 #[derive(Debug, Clone)]
 pub(crate) enum PortalResource {
     Cidr(PortalResourceDescriptionCidr),
@@ -39,7 +39,7 @@ impl PortalResource {
     }
 }
 
-/// Full model of an Internet resource, ressembling what the portal stores, proyections of this are sent to the client and gateways
+/// Full model of an Internet resource, resembling what the portal stores, projections of this are sent to the client and gateways
 #[derive(Debug, Clone)]
 pub(crate) struct PortalInternetResource {
     pub name: String,
@@ -47,7 +47,7 @@ pub(crate) struct PortalInternetResource {
     pub sites: Vec<Site>,
 }
 
-/// Full model of a DNS resource, ressembling what the portal stores, proyections of this are sent to the client and gateways
+/// Full model of a DNS resource, resembling what the portal stores, projections of this are sent to the client and gateways
 #[derive(Debug, Clone, PartialEq, Eq, derivative::Derivative)]
 #[derivative(PartialOrd, Ord)]
 pub(crate) struct PortalResourceDescriptionDns {
