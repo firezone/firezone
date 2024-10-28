@@ -2,6 +2,7 @@
 
 mod allocation;
 mod backoff;
+mod candidate_set;
 mod channel_data;
 mod index;
 mod node;
