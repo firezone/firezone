@@ -1,6 +1,7 @@
 defmodule Web.Actors.Index do
   use Web, :live_view
   import Web.Actors.Components
+  import Web.Clients.Components
   alias Domain.Actors
 
   def mount(_params, _session, socket) do
@@ -9,7 +10,6 @@ defmodule Web.Actors.Index do
       |> assign(page_title: "Actors")
       |> assign_live_table("actors",
         query_module: Actors.Actor.Query,
-        # TODO[bmanifold]: Enable this filter once we start collapsing them
         hide_filters: [:type],
         sortable_fields: [
           {:actors, :name}
@@ -26,15 +26,21 @@ defmodule Web.Actors.Index do
   end
 
   def handle_actors_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, [:last_seen_at, identities: :provider])
+    list_opts =
+      Keyword.put(list_opts, :preload, [
+        :last_seen_at,
+        identities: :provider
+      ])
 
     with {:ok, actors, metadata} <- Actors.list_actors(socket.assigns.subject, list_opts),
-         {:ok, actor_groups} <- Actors.peek_actor_groups(actors, 3, socket.assigns.subject) do
+         {:ok, actor_groups} <- Actors.peek_actor_groups(actors, 3, socket.assigns.subject),
+         {:ok, actor_clients} <- Actors.peek_actor_clients(actors, 5, socket.assigns.subject) do
       {:ok,
        assign(socket,
          actors: actors,
          actors_metadata: metadata,
-         actor_groups: actor_groups
+         actor_groups: actor_groups,
+         actor_clients: actor_clients
        )}
     end
   end
@@ -73,7 +79,7 @@ defmodule Web.Actors.Index do
           ordered_by={@order_by_table_id["actors"]}
           metadata={@actors_metadata}
         >
-          <:col :let={actor} field={{:actors, :name}} label="name">
+          <:col :let={actor} field={{:actors, :name}} label="name" class="w-2/12">
             <span class="block truncate" title={actor.name}>
               <.actor_name_and_role account={@account} actor={actor} />
             </span>
@@ -89,20 +95,60 @@ defmodule Web.Actors.Index do
             </div>
           </:col>
 
-          <:col :let={actor} label="groups" class="w-4/12">
-            <.peek peek={@actor_groups[actor.id]}>
+          <:col :let={actor} label="groups" class="w-1/12">
+            <.popover placement="right">
+              <:target>
+                <.link
+                  navigate={~p"/#{@account}/actors/#{actor}?#groups"}
+                  class={[
+                    "hover:underline hover:decoration-line",
+                    "underline underline-offset-2 decoration-1 decoration-dotted"
+                  ]}
+                >
+                  <%= @actor_groups[actor.id].count %>
+                </.link>
+              </:target>
+              <:content>
+                <.peek peek={@actor_groups[actor.id]}>
+                  <:empty>
+                    None
+                  </:empty>
+
+                  <:item :let={group}>
+                    <div class="flex flex-wrap gap-y-2 mr-2">
+                      <.group account={@account} group={group} />
+                    </div>
+                  </:item>
+
+                  <:tail :let={count}>
+                    <span class="inline-block whitespace-nowrap">
+                      and <%= count %> more.
+                    </span>
+                  </:tail>
+                </.peek>
+              </:content>
+            </.popover>
+          </:col>
+
+          <:col :let={actor} label="clients" class="w-2/12">
+            <.peek peek={@actor_clients[actor.id]}>
               <:empty>
                 None
               </:empty>
 
-              <:item :let={group}>
-                <div class="flex flex-wrap gap-y-2 mr-2">
-                  <.group account={@account} group={group} />
+              <:item :let={client}>
+                <div class="mr-2">
+                  <.client_as_icon client={client} />
+                  <div class="relative">
+                    <div class="absolute -inset-y-2.5 -right-1">
+                      <.online_icon schema={client} />
+                    </div>
+                  </div>
                 </div>
               </:item>
 
               <:tail :let={count}>
-                <span class="inline-block whitespace-nowrap">
+                <span class={["inline-block whitespace-nowrap"]}>
                   and <%= count %> more.
                 </span>
               </:tail>

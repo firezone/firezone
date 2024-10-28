@@ -2,6 +2,7 @@ defmodule Domain.ActorsTest do
   use Domain.DataCase, async: true
   import Domain.Actors
   alias Domain.Auth
+  alias Domain.Clients
   alias Domain.Actors
 
   describe "fetch_groups_count_grouped_by_provider_id/1" do
@@ -582,6 +583,142 @@ defmodule Domain.ActorsTest do
                 {:unauthorized,
                  reason: :missing_permissions,
                  missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
+    end
+  end
+
+  describe "peek_actor_clients/3" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "returns count of clients per actor and first 3 clients", %{
+      account: account,
+      subject: subject
+    } do
+      actor1 = Fixtures.Actors.create_actor(account: account)
+      Fixtures.Clients.create_client(account: account, actor: actor1)
+      Fixtures.Clients.create_client(account: account, actor: actor1)
+      Fixtures.Clients.create_client(account: account, actor: actor1)
+      Fixtures.Clients.create_client(account: account, actor: actor1)
+
+      actor2 = Fixtures.Actors.create_actor(account: account)
+
+      assert {:ok, peek} = peek_actor_clients([actor1, actor2], 3, subject)
+
+      assert length(Map.keys(peek)) == 2
+
+      assert peek[actor1.id].count == 4
+      assert length(peek[actor1.id].items) == 3
+      assert [%Clients.Client{} | _] = peek[actor1.id].items
+
+      assert peek[actor2.id].count == 0
+      assert Enum.empty?(peek[actor2.id].items)
+    end
+
+    test "preloads client presence", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      Domain.Clients.connect_client(client)
+
+      assert {:ok, peek} = peek_actor_clients([actor], 3, subject)
+      assert [%Clients.Client{} = client] = peek[actor.id].items
+      assert client.online?
+    end
+
+    test "returns count of clients per actor and first LIMIT clients", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      Fixtures.Clients.create_client(account: account, actor: actor)
+      Fixtures.Clients.create_client(account: account, actor: actor)
+
+      other_actor = Fixtures.Actors.create_actor(account: account)
+      Fixtures.Clients.create_client(account: account, actor: other_actor)
+
+      assert {:ok, peek} = peek_actor_clients([actor], 1, subject)
+      assert length(peek[actor.id].items) == 1
+      assert Enum.count(peek) == 1
+    end
+
+    test "ignores deleted clients", %{
+      account: account,
+      subject: subject
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      Fixtures.Clients.create_client(account: account, actor: actor)
+      |> Fixtures.Clients.delete_client()
+
+      assert {:ok, peek} = peek_actor_clients([actor], 3, subject)
+      assert peek[actor.id].count == 0
+      assert Enum.empty?(peek[actor.id].items)
+    end
+
+    test "ignores other clients", %{
+      account: account,
+      subject: subject
+    } do
+      Fixtures.Clients.create_client(account: account)
+      Fixtures.Clients.create_client(account: account)
+
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      assert {:ok, peek} = peek_actor_clients([actor], 1, subject)
+      assert peek[actor.id].count == 0
+      assert Enum.empty?(peek[actor.id].items)
+    end
+
+    test "returns empty map on empty actors", %{subject: subject} do
+      assert peek_actor_clients([], 1, subject) == {:ok, %{}}
+    end
+
+    test "returns empty map on empty clients", %{account: account, subject: subject} do
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      assert {:ok, peek} = peek_actor_clients([actor], 3, subject)
+
+      assert length(Map.keys(peek)) == 1
+      assert peek[actor.id].count == 0
+      assert Enum.empty?(peek[actor.id].items)
+    end
+
+    test "does not allow peeking into other accounts", %{
+      subject: subject
+    } do
+      other_account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: other_account)
+      Fixtures.Clients.create_client(account: other_account, actor: actor)
+
+      assert {:ok, peek} = peek_actor_clients([actor], 3, subject)
+      assert Map.has_key?(peek, actor.id)
+      assert peek[actor.id].count == 0
+      assert Enum.empty?(peek[actor.id].items)
+    end
+
+    test "returns error when subject has no permission to manage groups", %{
+      subject: subject
+    } do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert peek_actor_clients([], 3, subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [Domain.Clients.Authorizer.manage_clients_permission()]}}
     end
   end
 
