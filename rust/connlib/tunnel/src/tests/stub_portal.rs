@@ -97,19 +97,17 @@ impl DnsResource {
     }
 }
 
-impl From<Resource> for crate::messages::client::ResourceDescription {
+impl From<Resource> for crate::client::Resource {
     fn from(value: Resource) -> Self {
         match value {
-            Resource::Cidr(r) => crate::messages::client::ResourceDescription::Cidr(r.into()),
-            Resource::Dns(r) => crate::messages::client::ResourceDescription::Dns(r.into()),
-            Resource::Internet(r) => {
-                crate::messages::client::ResourceDescription::Internet(r.into())
-            }
+            Resource::Cidr(r) => crate::client::Resource::Cidr(r.into()),
+            Resource::Dns(r) => crate::client::Resource::Dns(r.into()),
+            Resource::Internet(r) => crate::client::Resource::Internet(r.into()),
         }
     }
 }
 
-impl From<InternetResource> for crate::messages::client::ResourceDescriptionInternet {
+impl From<InternetResource> for crate::client::InternetResource {
     fn from(value: InternetResource) -> Self {
         Self {
             name: value.name,
@@ -119,7 +117,7 @@ impl From<InternetResource> for crate::messages::client::ResourceDescriptionInte
     }
 }
 
-impl From<CidrResource> for crate::messages::client::ResourceDescriptionCidr {
+impl From<CidrResource> for crate::client::CidrResource {
     fn from(value: CidrResource) -> Self {
         Self {
             id: value.id,
@@ -131,7 +129,7 @@ impl From<CidrResource> for crate::messages::client::ResourceDescriptionCidr {
     }
 }
 
-impl From<DnsResource> for crate::messages::client::ResourceDescriptionDns {
+impl From<DnsResource> for crate::client::DnsResource {
     fn from(value: DnsResource) -> Self {
         Self {
             id: value.id,

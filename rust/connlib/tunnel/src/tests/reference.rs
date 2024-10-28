@@ -4,9 +4,8 @@ use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
-use crate::client::{CidrResource, DnsResource, InternetResource};
+use crate::DomainName;
 use crate::{dns::is_subdomain, proptest::relay_id};
-use crate::{messages, DomainName};
 use connlib_model::{GatewayId, RelayId, ResourceId, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -326,9 +325,7 @@ impl ReferenceState {
             Transition::ActivateResource(resource) => {
                 state.client.exec_mut(|client| match resource {
                     Resource::Dns(r) => {
-                        client.add_dns_resource(DnsResource::from_description(
-                            messages::client::ResourceDescriptionDns::from(r.clone()),
-                        ));
+                        client.add_dns_resource(r.clone().into());
 
                         // TODO: PRODUCTION CODE CANNOT DO THIS.
                         // Remove all prior DNS records.
@@ -340,14 +337,8 @@ impl ReferenceState {
                             true
                         });
                     }
-                    Resource::Cidr(r) => client.add_cidr_resource(CidrResource::from_description(
-                        messages::client::ResourceDescriptionCidr::from(r.clone()),
-                    )),
-                    Resource::Internet(r) => {
-                        client.add_internet_resource(InternetResource::from_description(
-                            messages::client::ResourceDescriptionInternet::from(r.clone()),
-                        ))
-                    }
+                    Resource::Cidr(r) => client.add_cidr_resource(r.clone().into()),
+                    Resource::Internet(r) => client.add_internet_resource(r.clone().into()),
                 });
             }
             Transition::DeactivateResource(id) => {

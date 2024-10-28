@@ -9,7 +9,6 @@ use super::stub_portal::{Resource, StubPortal};
 use super::transition::{Destination, DnsQuery};
 use crate::dns::{self, is_subdomain};
 use crate::gateway::DnsResourceNatEntry;
-use crate::messages::client::ResourceDescription;
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
@@ -125,7 +124,7 @@ impl TunnelTest {
                         Resource::Internet(_) => {}
                     }
 
-                    c.sut.add_resource(ResourceDescription::from(resource));
+                    c.sut.add_resource(resource);
                 });
             }
             Transition::DeactivateResource(id) => {
