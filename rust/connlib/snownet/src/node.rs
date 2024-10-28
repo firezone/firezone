@@ -709,9 +709,7 @@ where
         agent.handle_timeout(now);
 
         if self.allocations.is_empty() {
-            tracing::warn!(
-                "No TURN servers connected; connection will very likely fail to establish"
-            );
+            tracing::warn!("No TURN servers connected; connection may fail to establish");
         }
 
         Connection {
