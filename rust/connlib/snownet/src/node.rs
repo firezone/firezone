@@ -14,7 +14,6 @@ use hex_display::HexDisplayExt;
 use ip_packet::{
     ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf, MAX_DATAGRAM_PAYLOAD,
 };
-use itertools::Itertools as _;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, Rng, SeedableRng};
@@ -115,8 +114,8 @@ pub struct Node<T, TId, RId> {
 
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
-    host_candidates: CandidateSet,
-    srvflx_candidates: CandidateSet,
+    /// Host and server-reflexive candidates that are shared between all connections.
+    shared_candidates: CandidateSet,
     buffered_transmits: VecDeque<Transmit<'static>>,
 
     next_rate_limiter_reset: Option<Instant>,
@@ -170,8 +169,7 @@ where
             mode: T::new(),
             index: IndexLfsr::default(),
             rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT)),
-            host_candidates: Default::default(),
-            srvflx_candidates: Default::default(),
+            shared_candidates: Default::default(),
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
@@ -208,7 +206,7 @@ where
 
         self.pending_events.extend(closed_connections);
 
-        self.host_candidates.clear();
+        self.shared_candidates.clear();
         self.connections.clear();
         self.buffered_transmits.clear();
 
@@ -745,7 +743,7 @@ where
     fn add_local_as_host_candidate(&mut self, local: SocketAddr) -> Result<(), Error> {
         let host_candidate = Candidate::host(local, Protocol::Udp)?;
 
-        if self.host_candidates.insert(host_candidate.clone()) {
+        if self.shared_candidates.insert(host_candidate.clone()) {
             return Ok(());
         }
 
@@ -909,7 +907,7 @@ where
                 CandidateEvent::New(candidate)
                     if candidate.kind() == CandidateKind::ServerReflexive =>
                 {
-                    self.srvflx_candidates.insert(candidate);
+                    self.shared_candidates.insert(candidate);
                 }
                 CandidateEvent::New(candidate) => {
                     for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
@@ -1111,12 +1109,7 @@ where
         selected_relay: Option<RId>,
         agent: &mut IceAgent,
     ) {
-        for candidate in self
-            .host_candidates
-            .iter()
-            .cloned()
-            .chain(self.srvflx_candidates.iter().cloned())
-        {
+        for candidate in self.shared_candidates.iter().cloned() {
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
 
