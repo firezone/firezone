@@ -100,8 +100,7 @@ where
 {
     sentry_tracing::layer()
         .event_filter(move |md| match *md.level() {
-            tracing::Level::ERROR => EventFilter::Exception,
-            tracing::Level::WARN => EventFilter::Event,
+            tracing::Level::ERROR | tracing::Level::WARN => EventFilter::Exception,
             tracing::Level::INFO => EventFilter::Breadcrumb,
             tracing::Level::TRACE if md.target() == "telemetry" => {
                 // rand::random generates floats in the range of [0, 1).
