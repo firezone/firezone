@@ -1,4 +1,5 @@
-use crate::allocation::{Allocation, RelaySocket, Socket};
+use crate::allocation::{self, Allocation, RelaySocket, Socket};
+use crate::candidate_set::CandidateSet;
 use crate::index::IndexLfsr;
 use crate::ringbuffer::RingBuffer;
 use crate::stats::{ConnectionStats, NodeStats};
@@ -13,7 +14,6 @@ use hex_display::HexDisplayExt;
 use ip_packet::{
     ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf, MAX_DATAGRAM_PAYLOAD,
 };
-use itertools::Itertools as _;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, Rng, SeedableRng};
@@ -114,7 +114,8 @@ pub struct Node<T, TId, RId> {
 
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
-    host_candidates: Vec<Candidate>, // `Candidate` doesn't implement `PartialOrd` so we cannot use a `BTreeSet`. Linear search is okay because we expect this vec to be <100 elements
+    /// Host and server-reflexive candidates that are shared between all connections.
+    shared_candidates: CandidateSet,
     buffered_transmits: VecDeque<Transmit<'static>>,
 
     next_rate_limiter_reset: Option<Instant>,
@@ -168,7 +169,7 @@ where
             mode: T::new(),
             index: IndexLfsr::default(),
             rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT)),
-            host_candidates: Default::default(),
+            shared_candidates: Default::default(),
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
@@ -205,7 +206,7 @@ where
 
         self.pending_events.extend(closed_connections);
 
-        self.host_candidates.clear();
+        self.shared_candidates.clear();
         self.connections.clear();
         self.buffered_transmits.clear();
 
@@ -706,9 +707,7 @@ where
         agent.handle_timeout(now);
 
         if self.allocations.is_empty() {
-            tracing::warn!(
-                "No TURN servers connected; connection will very likely fail to establish"
-            );
+            tracing::warn!("No TURN servers connected; connection may fail to establish");
         }
 
         Connection {
@@ -744,11 +743,9 @@ where
     fn add_local_as_host_candidate(&mut self, local: SocketAddr) -> Result<(), Error> {
         let host_candidate = Candidate::host(local, Protocol::Udp)?;
 
-        if self.host_candidates.contains(&host_candidate) {
+        if self.shared_candidates.insert(host_candidate.clone()) {
             return Ok(());
         }
-
-        self.host_candidates.push(host_candidate.clone());
 
         for (cid, agent, _span) in self.connections.agents_mut() {
             add_local_candidate(cid, agent, host_candidate.clone(), &mut self.pending_events);
@@ -907,20 +904,18 @@ where
             tracing::trace!(%rid, ?event);
 
             match event {
-                CandidateEvent::New(candidate)
+                allocation::Event::New(candidate)
                     if candidate.kind() == CandidateKind::ServerReflexive =>
                 {
-                    for (cid, agent, _span) in self.connections.agents_mut() {
-                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
-                    }
+                    self.shared_candidates.insert(candidate);
                 }
-                CandidateEvent::New(candidate) => {
+                allocation::Event::New(candidate) => {
                     for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
                     {
                         add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
                     }
                 }
-                CandidateEvent::Invalid(candidate) => {
+                allocation::Event::Invalid(candidate) => {
                     for (cid, agent, _span) in self.connections.agents_mut() {
                         remove_local_candidate(cid, agent, &candidate, &mut self.pending_events);
                     }
@@ -1114,17 +1109,7 @@ where
         selected_relay: Option<RId>,
         agent: &mut IceAgent,
     ) {
-        for candidate in self.host_candidates.iter().cloned() {
-            add_local_candidate(connection, agent, candidate, &mut self.pending_events);
-        }
-
-        for candidate in self
-            .allocations
-            .values()
-            .flat_map(|a| a.current_candidates())
-            .filter(|c| c.kind() == CandidateKind::ServerReflexive)
-            .unique()
-        {
+        for candidate in self.shared_candidates.iter().cloned() {
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
 
@@ -1138,10 +1123,7 @@ where
             return;
         };
 
-        for candidate in allocation
-            .current_candidates()
-            .filter(|c| c.kind() == CandidateKind::Relayed)
-        {
+        for candidate in allocation.current_relay_candidates() {
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
     }
@@ -1406,10 +1388,7 @@ fn invalidate_allocation_candidates<TId, RId>(
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     for (cid, agent, _guard) in connections.agents_mut() {
-        for candidate in allocation
-            .current_candidates()
-            .filter(|c| c.kind() == CandidateKind::Relayed)
-        {
+        for candidate in allocation.current_relay_candidates() {
             remove_local_candidate(cid, agent, &candidate, pending_events);
         }
     }
@@ -1574,12 +1553,6 @@ impl<'a> Transmit<'a> {
             payload: Cow::Owned(self.payload.into_owned()),
         }
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub(crate) enum CandidateEvent {
-    New(Candidate),
-    Invalid(Candidate),
 }
 
 struct InitialConnection<RId> {
