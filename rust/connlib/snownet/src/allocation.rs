@@ -1,6 +1,6 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
-    node::{CandidateEvent, SessionId, Transmit},
+    node::{SessionId, Transmit},
     ringbuffer::RingBuffer,
     utils::earliest,
     EncryptedPacket,
@@ -89,6 +89,12 @@ pub struct Allocation {
     last_now: Instant,
 
     credentials: Option<Credentials>,
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum CandidateEvent {
+    New(Candidate),
+    Invalid(Candidate),
 }
 
 #[derive(Debug, Clone)]

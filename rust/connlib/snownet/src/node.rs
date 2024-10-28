@@ -1,4 +1,4 @@
-use crate::allocation::{Allocation, RelaySocket, Socket};
+use crate::allocation::{Allocation, CandidateEvent, RelaySocket, Socket};
 use crate::candidate_set::CandidateSet;
 use crate::index::IndexLfsr;
 use crate::ringbuffer::RingBuffer;
@@ -1553,12 +1553,6 @@ impl<'a> Transmit<'a> {
             payload: Cow::Owned(self.payload.into_owned()),
         }
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub(crate) enum CandidateEvent {
-    New(Candidate),
-    Invalid(Candidate),
 }
 
 struct InitialConnection<RId> {
