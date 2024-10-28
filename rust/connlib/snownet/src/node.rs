@@ -1,4 +1,5 @@
 use crate::allocation::{Allocation, RelaySocket, Socket};
+use crate::candidate_set::CandidateSet;
 use crate::index::IndexLfsr;
 use crate::ringbuffer::RingBuffer;
 use crate::stats::{ConnectionStats, NodeStats};
@@ -114,7 +115,7 @@ pub struct Node<T, TId, RId> {
 
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
-    host_candidates: Vec<Candidate>, // `Candidate` doesn't implement `PartialOrd` so we cannot use a `BTreeSet`. Linear search is okay because we expect this vec to be <100 elements
+    host_candidates: CandidateSet,
     buffered_transmits: VecDeque<Transmit<'static>>,
 
     next_rate_limiter_reset: Option<Instant>,
@@ -744,11 +745,9 @@ where
     fn add_local_as_host_candidate(&mut self, local: SocketAddr) -> Result<(), Error> {
         let host_candidate = Candidate::host(local, Protocol::Udp)?;
 
-        if self.host_candidates.contains(&host_candidate) {
+        if self.host_candidates.insert(host_candidate.clone()) {
             return Ok(());
         }
-
-        self.host_candidates.push(host_candidate.clone());
 
         for (cid, agent, _span) in self.connections.agents_mut() {
             add_local_candidate(cid, agent, host_candidate.clone(), &mut self.pending_events);
