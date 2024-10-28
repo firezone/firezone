@@ -148,6 +148,10 @@ pub enum Error {
     BadLocalAddress(#[from] str0m::error::IceError),
 }
 
+#[derive(thiserror::Error, Debug)]
+#[error("No TURN servers available")]
+pub struct NoTurnServers {}
+
 #[expect(private_bounds, reason = "We don't want `Mode` to be public API")]
 impl<T, TId, RId> Node<T, TId, RId>
 where
@@ -234,13 +238,13 @@ where
         local_creds: Credentials,
         remote_creds: Credentials,
         now: Instant,
-    ) {
+    ) -> Result<(), NoTurnServers> {
         let local_creds = local_creds.into();
         let remote_creds = remote_creds.into();
 
         if self.connections.initial.contains_key(&cid) {
             debug_assert!(false, "The new `upsert_connection` API is incompatible with the previous `new_connection` API");
-            return;
+            return Ok(());
         }
 
         if self
@@ -249,10 +253,10 @@ where
             .is_some_and(|c| c.agent.local_credentials() == &local_creds)
         {
             tracing::debug!("Already got a connection");
-            return;
+            return Ok(());
         }
 
-        let selected_relay = self.sample_relay();
+        let selected_relay = self.sample_relay()?;
 
         let mut agent = new_agent();
         agent.set_controlling(self.mode.is_client());
@@ -278,6 +282,8 @@ where
         } else {
             tracing::info!("Created new connection");
         }
+
+        Ok(())
     }
 
     pub fn public_key(&self) -> PublicKey {
@@ -352,13 +358,8 @@ where
             | CandidateKind::PeerReflexive => {}
         }
 
-        let Some(rid) = relay else {
-            tracing::debug!("No relay selected for connection");
-            return;
-        };
-
-        let Some(allocation) = self.allocations.get_mut(&rid) else {
-            tracing::debug!(%rid, "Unknown relay");
+        let Some(allocation) = self.allocations.get_mut(&relay) else {
+            tracing::debug!(rid = %relay, "Unknown relay");
             return;
         };
 
@@ -699,7 +700,7 @@ where
         mut agent: IceAgent,
         remote: PublicKey,
         key: [u8; 32],
-        relay: Option<RId>,
+        relay: RId,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection<RId> {
@@ -930,12 +931,17 @@ where
     }
 
     /// Sample a relay to use for a new connection.
-    fn sample_relay(&mut self) -> Option<RId> {
-        let rid = self.allocations.keys().copied().choose(&mut self.rng)?;
+    fn sample_relay(&mut self) -> Result<RId, NoTurnServers> {
+        let rid = self
+            .allocations
+            .keys()
+            .copied()
+            .choose(&mut self.rng)
+            .ok_or(NoTurnServers {})?;
 
         tracing::debug!(%rid, "Sampled relay");
 
-        Some(rid)
+        Ok(rid)
     }
 }
 
@@ -952,7 +958,12 @@ where
     #[must_use]
     #[deprecated]
     #[expect(deprecated)]
-    pub fn new_connection(&mut self, cid: TId, intent_sent_at: Instant, now: Instant) -> Offer {
+    pub fn new_connection(
+        &mut self,
+        cid: TId,
+        intent_sent_at: Instant,
+        now: Instant,
+    ) -> Result<Offer, NoTurnServers> {
         if self.connections.initial.remove(&cid).is_some() {
             tracing::info!("Replacing existing initial connection");
         };
@@ -980,7 +991,7 @@ where
             session_key,
             created_at: now,
             intent_sent_at,
-            relay: self.sample_relay(),
+            relay: self.sample_relay()?,
             is_failed: false,
             span: info_span!("connection", %cid),
         };
@@ -991,7 +1002,7 @@ where
 
         tracing::info!(?duration_since_intent, "Establishing new connection");
 
-        params
+        Ok(params)
     }
 
     /// Whether we have sent an [`Offer`] for this connection and are currently expecting an [`Answer`].
@@ -1057,7 +1068,7 @@ where
         offer: Offer,
         remote: PublicKey,
         now: Instant,
-    ) -> Answer {
+    ) -> Result<Answer, NoTurnServers> {
         debug_assert!(
             !self.connections.initial.contains_key(&cid),
             "server to not use `initial_connections`"
@@ -1081,7 +1092,7 @@ where
             },
         };
 
-        let selected_relay = self.sample_relay();
+        let selected_relay = self.sample_relay()?;
         self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
         let connection = self.init_connection(
@@ -1099,7 +1110,7 @@ where
 
         tracing::info!("Created new connection");
 
-        answer
+        Ok(answer)
     }
 }
 
@@ -1111,7 +1122,7 @@ where
     fn seed_agent_with_local_candidates(
         &mut self,
         connection: TId,
-        selected_relay: Option<RId>,
+        selected_relay: RId,
         agent: &mut IceAgent,
     ) {
         for candidate in self.host_candidates.iter().cloned() {
@@ -1127,11 +1138,6 @@ where
         {
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
-
-        let Some(selected_relay) = selected_relay else {
-            tracing::debug!("Skipping seeding of relay candidates: No relay selected");
-            return;
-        };
 
         let Some(allocation) = self.allocations.get(&selected_relay) else {
             tracing::debug!(%selected_relay, "Cannot seed relay candidates: Unknown relay");
@@ -1193,7 +1199,7 @@ where
     ) {
         // For initial connections, we can just update the relay to be used.
         for (_, c) in self.iter_initial_mut() {
-            if c.relay.is_some_and(|r| allocations.contains_key(&r)) {
+            if allocations.contains_key(&c.relay) {
                 continue;
             }
 
@@ -1204,7 +1210,7 @@ where
             };
 
             tracing::info!(old_rid = ?c.relay, %new_rid, "Updating relay");
-            c.relay = Some(new_rid);
+            c.relay = new_rid;
         }
 
         // For established connections, we check if we are currently using the relay.
@@ -1215,19 +1221,12 @@ where
             let peer_socket = match &mut c.state {
                 Connected { peer_socket, .. } | Idle { peer_socket } => peer_socket,
                 Failed => continue,
-                Connecting {
-                    relay: maybe_relay, ..
-                } => {
-                    let Some(relay) = maybe_relay else {
-                        continue;
-                    };
-
+                Connecting { relay, .. } => {
                     if allocations.contains_key(relay) {
                         continue;
                     }
 
                     tracing::debug!("Selected relay disconnected during ICE; connection may fail");
-                    *maybe_relay = None;
                     continue;
                 }
             };
@@ -1257,7 +1256,7 @@ where
         maybe_initial_connection.or(maybe_established_connection)
     }
 
-    fn connecting_agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, Option<RId>)> {
+    fn connecting_agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, RId)> {
         let maybe_initial_connection = self.initial.get_mut(&id).map(|i| (&mut i.agent, i.relay));
         let maybe_pending_connection = self.established.get_mut(&id).and_then(|c| match c.state {
             ConnectionState::Connecting { relay, .. } => Some((&mut c.agent, relay)),
@@ -1274,15 +1273,15 @@ where
         id: RId,
     ) -> impl Iterator<Item = (TId, &mut IceAgent, tracing::span::Entered<'_>)> + '_ {
         let initial_connections = self.initial.iter_mut().filter_map(move |(cid, i)| {
-            (i.relay? == id).then_some((*cid, &mut i.agent, i.span.enter()))
+            (i.relay == id).then_some((*cid, &mut i.agent, i.span.enter()))
         });
         let pending_connections = self.established.iter_mut().filter_map(move |(cid, c)| {
             use ConnectionState::*;
 
             match c.state {
-                Connecting {
-                    relay: Some(relay), ..
-                } if relay == id => Some((*cid, &mut c.agent, c.span.enter())),
+                Connecting { relay, .. } if relay == id => {
+                    Some((*cid, &mut c.agent, c.span.enter()))
+                }
                 Failed | Idle { .. } | Connecting { .. } | Connected { .. } => None,
             }
         });
@@ -1587,9 +1586,7 @@ struct InitialConnection<RId> {
     session_key: Secret<[u8; 32]>,
 
     /// The fallback relay we sampled for this potential connection.
-    ///
-    /// `None` if we don't have any relays available.
-    relay: Option<RId>,
+    relay: RId,
 
     created_at: Instant,
     intent_sent_at: Instant,
@@ -1657,9 +1654,7 @@ enum ConnectionState<RId> {
     /// We are still running ICE to figure out, which socket to use to send data.
     Connecting {
         /// The relay we have selected for this connection.
-        ///
-        /// `None` if we didn't have any relays available.
-        relay: Option<RId>,
+        relay: RId,
 
         /// Packets emitted by wireguard whilst are still running ICE.
         ///
