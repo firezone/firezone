@@ -9,7 +9,6 @@ use super::{
     QueryId,
 };
 use crate::{
-    client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::{DnsServer, Interface},
     utils::network_contains_network,
     DomainName,
@@ -394,7 +393,7 @@ pub struct RefClient {
     ///
     /// When reconnecting to the portal, we simulate them being re-added in the same order.
     #[derivative(Debug = "ignore")]
-    resources: Vec<Resource>,
+    resources: Vec<crate::client::Resource>,
 
     #[derivative(Debug = "ignore")]
     internet_resource: Option<ResourceId>,
@@ -502,7 +501,7 @@ impl RefClient {
     fn recalculate_cidr_routes(&mut self) -> IpNetworkTable<ResourceId> {
         let mut table = IpNetworkTable::<ResourceId>::new();
         for resource in self.resources.iter().sorted_by_key(|r| r.id()) {
-            let Resource::Cidr(resource) = resource else {
+            let crate::client::Resource::Cidr(resource) = resource else {
                 continue;
             };
 
@@ -544,9 +543,10 @@ impl RefClient {
             .retain(|_, g| self.connected_gateways.contains(g));
     }
 
-    pub(crate) fn add_internet_resource(&mut self, r: InternetResource) {
+    pub(crate) fn add_internet_resource(&mut self, r: crate::client::InternetResource) {
         self.internet_resource = Some(r.id);
-        self.resources.push(Resource::Internet(r.clone()));
+        self.resources
+            .push(crate::client::Resource::Internet(r.clone()));
 
         if self.disabled_resources.contains(&r.id) {
             return;
@@ -556,8 +556,9 @@ impl RefClient {
         self.ipv6_routes.insert(r.id, Ipv6Network::DEFAULT_ROUTE);
     }
 
-    pub(crate) fn add_cidr_resource(&mut self, r: CidrResource) {
-        self.resources.push(Resource::Cidr(r.clone()));
+    pub(crate) fn add_cidr_resource(&mut self, r: crate::client::CidrResource) {
+        self.resources
+            .push(crate::client::Resource::Cidr(r.clone()));
         self.cidr_resources = self.recalculate_cidr_routes();
 
         if self.disabled_resources.contains(&r.id) {
@@ -574,8 +575,8 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn add_dns_resource(&mut self, r: DnsResource) {
-        self.resources.push(Resource::Dns(r));
+    pub(crate) fn add_dns_resource(&mut self, r: crate::client::DnsResource) {
+        self.resources.push(crate::client::Resource::Dns(r));
     }
 
     /// Re-adds all resources in the order they have been initially added.
@@ -585,9 +586,9 @@ impl RefClient {
 
         for resource in mem::take(&mut self.resources) {
             match resource {
-                Resource::Dns(d) => self.add_dns_resource(d),
-                Resource::Cidr(c) => self.add_cidr_resource(c),
-                Resource::Internet(i) => self.add_internet_resource(i),
+                crate::client::Resource::Dns(d) => self.add_dns_resource(d),
+                crate::client::Resource::Cidr(c) => self.add_cidr_resource(c),
+                crate::client::Resource::Internet(i) => self.add_internet_resource(i),
             }
         }
     }
@@ -810,7 +811,7 @@ impl RefClient {
         };
 
         match resource {
-            PortalResource::Cidr(resource) => {
+            super::stub_portal::Resource::Cidr(resource) => {
                 // TODO: Remove in the future when a gateway with internet resoruce can't have non-internet resource
                 if self
                     .gateway_known_internet_resource
@@ -823,7 +824,7 @@ impl RefClient {
                     .iter()
                     .filter(|(_, g)| *g == gateway)
                     .filter_map(|(r, _)| {
-                        if let PortalResource::Cidr(r) = portal.resource_by_id(r)? {
+                        if let super::stub_portal::Resource::Cidr(r) = portal.resource_by_id(r)? {
                             Some(r)
                         } else {
                             None
@@ -832,8 +833,8 @@ impl RefClient {
                     .filter(|r| network_contains_network(r.address, resource.address))
                     .any(|r| r.is_allowed(&dprotocol))
             }
-            PortalResource::Dns(r) => r.is_allowed(&dprotocol),
-            PortalResource::Internet(_) => true,
+            super::stub_portal::Resource::Dns(r) => r.is_allowed(&dprotocol),
+            super::stub_portal::Resource::Internet(_) => true,
         }
     }
 
@@ -1080,7 +1081,7 @@ impl RefClient {
         self.resources.iter().any(|r| r.id() == resource_id)
     }
 
-    pub(crate) fn all_resources(&self) -> Vec<Resource> {
+    pub(crate) fn all_resources(&self) -> Vec<crate::client::Resource> {
         self.resources.clone()
     }
 

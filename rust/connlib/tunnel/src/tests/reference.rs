@@ -1,10 +1,10 @@
 use super::dns_records::DnsRecords;
+use super::stub_portal::Resource;
 use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::client::{CidrResource, DnsResource, InternetResource};
-use crate::proptest::PortalResource;
 use crate::{dns::is_subdomain, proptest::relay_id};
 use crate::{messages, DomainName};
 use connlib_model::{GatewayId, RelayId, ResourceId, StaticSecret};
@@ -325,7 +325,7 @@ impl ReferenceState {
         match transition {
             Transition::ActivateResource(resource) => {
                 state.client.exec_mut(|client| match resource {
-                    PortalResource::Dns(r) => {
+                    Resource::Dns(r) => {
                         client.add_dns_resource(DnsResource::from_description(
                             messages::client::ResourceDescriptionDns::from(r.clone()),
                         ));
@@ -340,12 +340,10 @@ impl ReferenceState {
                             true
                         });
                     }
-                    PortalResource::Cidr(r) => {
-                        client.add_cidr_resource(CidrResource::from_description(
-                            messages::client::ResourceDescriptionCidr::from(r.clone()),
-                        ))
-                    }
-                    PortalResource::Internet(r) => {
+                    Resource::Cidr(r) => client.add_cidr_resource(CidrResource::from_description(
+                        messages::client::ResourceDescriptionCidr::from(r.clone()),
+                    )),
+                    Resource::Internet(r) => {
                         client.add_internet_resource(InternetResource::from_description(
                             messages::client::ResourceDescriptionInternet::from(r.clone()),
                         ))
@@ -813,7 +811,7 @@ impl ReferenceState {
             .collect()
     }
 
-    fn all_resources_not_known_to_client(&self) -> Vec<PortalResource> {
+    fn all_resources_not_known_to_client(&self) -> Vec<Resource> {
         let mut all_resources = self.portal.all_resources();
         all_resources.retain(|r| !self.client.inner().has_resource(r.id()));
 

@@ -1,4 +1,7 @@
 use super::dns_records::{ip_to_domain_record, DnsRecords};
+use super::stub_portal::{
+    cidr_resource, dns_resource, CidrResource, DnsResource, InternetResource,
+};
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
 use crate::client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::messages::DnsServer;
@@ -187,7 +190,7 @@ fn any_site(sites: BTreeSet<Site>) -> impl Strategy<Value = Site> {
 
 fn cidr_resource_outside_reserved_ranges(
     sites: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = PortalResourceDescriptionCidr> {
+) -> impl Strategy<Value = CidrResource> {
     cidr_resource(any_ip_network(8), sites.prop_map(|s| vec![s]))
         .prop_filter(
             "tests doesn't support CIDR resources overlapping DNS resources",
@@ -204,22 +207,20 @@ fn cidr_resource_outside_reserved_ranges(
         .prop_filter("resource must not be in the documentation range because we use those for host addresses and DNS IPs", |r| !r.address.is_documentation())
 }
 
-fn internet_resource(
-    site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = PortalInternetResource> {
-    crate::proptest::internet_resource(site.prop_map(|s| vec![s]))
+fn internet_resource(site: impl Strategy<Value = Site>) -> impl Strategy<Value = InternetResource> {
+    super::stub_portal::internet_resource(site.prop_map(|s| vec![s]))
 }
 
 fn non_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = PortalResourceDescriptionDns> {
+) -> impl Strategy<Value = DnsResource> {
     dns_resource(site.prop_map(|s| vec![s]))
 }
 
 fn star_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = PortalResourceDescriptionDns> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| PortalResourceDescriptionDns {
+) -> impl Strategy<Value = DnsResource> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| DnsResource {
         address: format!("*.{}", r.address),
         ..r
     })
@@ -227,8 +228,8 @@ fn star_wildcard_dns_resource(
 
 fn double_star_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = PortalResourceDescriptionDns> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| PortalResourceDescriptionDns {
+) -> impl Strategy<Value = DnsResource> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| DnsResource {
         address: format!("**.{}", r.address),
         ..r
     })

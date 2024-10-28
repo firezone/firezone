@@ -1,13 +1,16 @@
 use crate::{
     client::{IPV4_RESOURCES, IPV6_RESOURCES},
     messages::gateway::{Filter, PortRange},
-    proptest::{host_v4, host_v6, PortalResource},
+    proptest::{host_v4, host_v6},
 };
 use connlib_model::RelayId;
 use ip_packet::Protocol;
 use itertools::Itertools;
 
-use super::sim_net::{any_ip_stack, any_port, Host};
+use super::{
+    sim_net::{any_ip_stack, any_port, Host},
+    stub_portal::Resource,
+};
 use crate::messages::DnsServer;
 use connlib_model::{DomainName, ResourceId};
 use domain::base::Rtype;
@@ -23,7 +26,7 @@ use std::{
 #[derivative(Debug)]
 pub(crate) enum Transition {
     /// Activate a resource on the client.
-    ActivateResource(PortalResource),
+    ActivateResource(Resource),
     /// Deactivate a resource on the client.
     DeactivateResource(ResourceId),
     /// Client-side disable resource
@@ -225,7 +228,7 @@ where
 pub(crate) fn udp_packet<I, D>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = D>,
-    resource: Option<&PortalResource>,
+    resource: Option<&Resource>,
 ) -> impl Strategy<Value = Transition>
 where
     I: Into<IpAddr>,
@@ -264,7 +267,7 @@ where
 pub(crate) fn tcp_packet<I, D>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = D>,
-    resource: Option<&PortalResource>,
+    resource: Option<&Resource>,
 ) -> impl Strategy<Value = Transition>
 where
     I: Into<IpAddr>,
@@ -300,7 +303,7 @@ where
 }
 
 fn port_from_resource(
-    resource: Option<&PortalResource>,
+    resource: Option<&Resource>,
     filter_kind: impl Fn(&Filter) -> Option<&PortRange>,
 ) -> impl Strategy<Value = u16> {
     let Some(resource) = resource else {
