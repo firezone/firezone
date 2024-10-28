@@ -48,7 +48,7 @@ defmodule Web.Live.Clients.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients")
 
-    assert html =~ "No clients to display"
+    assert html =~ "No Actors have signed in from any Client"
   end
 
   test "renders clients table", %{
