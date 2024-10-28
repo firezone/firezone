@@ -227,15 +227,10 @@ impl Allocation {
         allocation
     }
 
-    pub fn current_candidates(&self) -> impl Iterator<Item = Candidate> {
-        [
-            self.ip4_srflx_candidate.clone(),
-            self.ip6_srflx_candidate.clone(),
-            self.ip4_allocation.clone(),
-            self.ip6_allocation.clone(),
-        ]
-        .into_iter()
-        .flatten()
+    pub fn current_relay_candidates(&self) -> impl Iterator<Item = Candidate> {
+        [self.ip4_allocation.clone(), self.ip6_allocation.clone()]
+            .into_iter()
+            .flatten()
     }
 
     /// Refresh this allocation.
@@ -1990,9 +1985,8 @@ mod tests {
         );
         assert!(allocation.poll_event().is_none());
         assert_eq!(
-            allocation.current_candidates().collect::<Vec<_>>(),
-            vec![Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()],
-            "server-reflexive candidate should still be valid after refresh"
+            allocation.current_relay_candidates().collect::<Vec<_>>(),
+            vec![],
         )
     }
 

@@ -1123,10 +1123,7 @@ where
             return;
         };
 
-        for candidate in allocation
-            .current_candidates()
-            .filter(|c| c.kind() == CandidateKind::Relayed)
-        {
+        for candidate in allocation.current_relay_candidates() {
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
     }
@@ -1391,10 +1388,7 @@ fn invalidate_allocation_candidates<TId, RId>(
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
     for (cid, agent, _guard) in connections.agents_mut() {
-        for candidate in allocation
-            .current_candidates()
-            .filter(|c| c.kind() == CandidateKind::Relayed)
-        {
+        for candidate in allocation.current_relay_candidates() {
             remove_local_candidate(cid, agent, &candidate, pending_events);
         }
     }
