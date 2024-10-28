@@ -77,7 +77,7 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::warn!(error = std_dyn_err(&e), "Tunnel error");
+                    tracing::debug!(error = std_dyn_err(&e), "Tunnel error");
                     continue;
                 }
                 Poll::Pending => {}
