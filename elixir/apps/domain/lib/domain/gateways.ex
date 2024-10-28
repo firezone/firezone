@@ -78,13 +78,24 @@ defmodule Domain.Gateways do
     |> Repo.insert()
   end
 
+  def create_internet_group(%Accounts.Account{} = account) do
+    attrs = %{
+      "name" => "Internet",
+      "managed_by" => "system"
+    }
+
+    account
+    |> Group.Changeset.create(attrs)
+    |> Repo.insert()
+  end
+
   def change_group(%Group{} = group, attrs \\ %{}) do
     group
     |> Repo.preload(:account)
     |> Group.Changeset.update(attrs)
   end
 
-  def update_group(%Group{} = group, attrs, %Auth.Subject{} = subject) do
+  def update_group(%Group{managed_by: :account} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       Group.Query.not_deleted()
       |> Group.Query.by_id(group.id)
@@ -108,7 +119,7 @@ defmodule Domain.Gateways do
     end
   end
 
-  def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
+  def delete_group(%Group{managed_by: :account} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       Group.Query.not_deleted()
       |> Group.Query.by_id(group.id)

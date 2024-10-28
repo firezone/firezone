@@ -1459,10 +1459,11 @@ defmodule Web.CoreComponents do
   """
 
   attr :color, :string, default: "info"
+  attr :title, :string, default: nil
 
   def ping_icon(assigns) do
     ~H"""
-    <span class="relative flex h-2.5 w-2.5">
+    <span class="relative flex h-2.5 w-2.5" title={@title}>
       <span class={~w[
         animate-ping absolute inline-flex
         h-full w-full rounded-full opacity-50

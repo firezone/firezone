@@ -604,6 +604,12 @@ IO.puts("  Group #{relay_group.name}:")
 IO.puts("    IPv4: #{relay.ipv4} IPv6: #{relay.ipv6}")
 IO.puts("")
 
+{:ok, _internet_gateway_group} =
+  Gateways.create_internet_group(account)
+
+{:ok, _internet_gateway_group} =
+  Gateways.create_internet_group(other_account)
+
 gateway_group =
   account
   |> Gateways.Group.Changeset.create(
