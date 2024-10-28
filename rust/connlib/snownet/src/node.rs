@@ -116,6 +116,7 @@ pub struct Node<T, TId, RId> {
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
     host_candidates: CandidateSet,
+    srvflx_candidates: CandidateSet,
     buffered_transmits: VecDeque<Transmit<'static>>,
 
     next_rate_limiter_reset: Option<Instant>,
@@ -170,6 +171,7 @@ where
             index: IndexLfsr::default(),
             rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT)),
             host_candidates: Default::default(),
+            srvflx_candidates: Default::default(),
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
@@ -909,9 +911,7 @@ where
                 CandidateEvent::New(candidate)
                     if candidate.kind() == CandidateKind::ServerReflexive =>
                 {
-                    for (cid, agent, _span) in self.connections.agents_mut() {
-                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
-                    }
+                    self.srvflx_candidates.insert(candidate);
                 }
                 CandidateEvent::New(candidate) => {
                     for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
@@ -1113,16 +1113,11 @@ where
         selected_relay: Option<RId>,
         agent: &mut IceAgent,
     ) {
-        for candidate in self.host_candidates.iter().cloned() {
-            add_local_candidate(connection, agent, candidate, &mut self.pending_events);
-        }
-
         for candidate in self
-            .allocations
-            .values()
-            .flat_map(|a| a.current_candidates())
-            .filter(|c| c.kind() == CandidateKind::ServerReflexive)
-            .unique()
+            .host_candidates
+            .iter()
+            .cloned()
+            .chain(self.srvflx_candidates.iter().cloned())
         {
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
