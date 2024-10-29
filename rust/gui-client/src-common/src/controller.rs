@@ -78,6 +78,7 @@ impl<I: GuiIntegration> Builder<I> {
         // Get the device ID after connecting to the IPC service, this creates a happens-before relationship where we know the IPC service has written a device ID to disk.
         match firezone_headless_client::device_id::get() {
             Ok(id) => {
+                // Get the main thread's telemetry hub instead of the current thread
                 telemetry::Hub::main().configure_scope(|scope| {
                     scope.set_context(
                         "firezone",
