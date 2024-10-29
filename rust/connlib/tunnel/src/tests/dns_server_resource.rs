@@ -10,6 +10,8 @@ use domain::base::{
 };
 use ip_packet::IpPacket;
 
+use crate::client::truncate_dns_response;
+
 use super::dns_records::DnsRecords;
 
 pub struct TcpDnsServerResource {
@@ -66,7 +68,7 @@ impl UdpDnsServerResource {
                     packet.source(),
                     udp.destination_port(),
                     udp.source_port(),
-                    response.into_octets(),
+                    truncate_dns_response(&response),
                 )
                 .expect("src and dst are retrieved from the same packet"),
             )

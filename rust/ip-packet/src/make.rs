@@ -186,6 +186,56 @@ where
     }
 }
 
+pub fn udp_packet<IP>(
+    saddr: IP,
+    daddr: IP,
+    sport: u16,
+    dport: u16,
+    payload: Vec<u8>,
+) -> Result<IpPacket>
+where
+    IP: Into<IpAddr>,
+{
+    match (saddr.into(), daddr.into()) {
+        (IpAddr::V4(src), IpAddr::V4(dst)) => {
+            let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64).udp(sport, dport);
+
+            build!(packet, payload)
+        }
+        (IpAddr::V6(src), IpAddr::V6(dst)) => {
+            let packet = PacketBuilder::ipv6(src.octets(), dst.octets(), 64).udp(sport, dport);
+
+            build!(packet, payload)
+        }
+        _ => bail!(IpVersionMismatch),
+    }
+}
+
+pub fn udp_packet_response<IP>(
+    saddr: IP,
+    daddr: IP,
+    sport: u16,
+    dport: u16,
+    payload: Vec<u8>,
+) -> Result<IpPacket>
+where
+    IP: Into<IpAddr>,
+{
+    match (saddr.into(), daddr.into()) {
+        (IpAddr::V4(src), IpAddr::V4(dst)) => {
+            let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64).udp(sport, dport);
+
+            build!(packet, payload)
+        }
+        (IpAddr::V6(src), IpAddr::V6(dst)) => {
+            let packet = PacketBuilder::ipv6(src.octets(), dst.octets(), 64).udp(sport, dport);
+
+            build!(packet, payload)
+        }
+        _ => bail!(IpVersionMismatch),
+    }
+}
+
 #[derive(thiserror::Error, Debug)]
 #[error("IPs must be of the same version")]
 pub struct IpVersionMismatch;

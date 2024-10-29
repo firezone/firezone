@@ -17,7 +17,7 @@ use connlib_model::{Site, SiteId};
 use firezone_logging::{anyhow_dyn_err, std_dyn_err, unwrap_or_debug, unwrap_or_warn};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, UdpSlice};
+use ip_packet::{IpPacket, UdpSlice, MAX_DATAGRAM_PAYLOAD};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
@@ -468,18 +468,13 @@ impl ClientState {
             .get_by_right(&DnsServer::from(from))
             .context("Unknown DNS server")?;
 
-        let mut message_bytes = message.as_octets().to_vec();
-
-        if message_bytes.len() >= 1280 - 40 - 8 {
-            let mut new_message = message.clone();
-            new_message.header_mut().set_tc(true);
-            message_bytes = new_message.as_octets().to_vec();
-            // TODO: truncate to question section instead?
-            message_bytes.truncate(12);
-        }
-
-        let ip_packet =
-            ip_packet::make::udp_packet(saddr, dst.ip(), DNS_PORT, dst.port(), message_bytes)?;
+        let ip_packet = ip_packet::make::udp_packet(
+            saddr,
+            dst.ip(),
+            DNS_PORT,
+            dst.port(),
+            truncate_dns_response(message),
+        )?;
 
         self.buffered_packets.push_back(ip_packet);
 
@@ -1624,6 +1619,33 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     packet.update_checksum();
 
     packet
+}
+
+pub(crate) fn truncate_dns_response(message: &Message<Vec<u8>>) -> Vec<u8> {
+    let mut message_bytes = message.as_octets().to_vec();
+
+    if message_bytes.len() > MAX_DATAGRAM_PAYLOAD {
+        let mut new_message = message.clone();
+        new_message.header_mut().set_tc(true);
+
+        let message_truncation = match message.answer() {
+            Ok(answer) if answer.pos() <= MAX_DATAGRAM_PAYLOAD => answer.pos(),
+            // This should be very unlikely or impossible.
+            _ => {
+                debug_assert!(
+                    false,
+                    "we shouldn't be able to read packets bigger than our MTU"
+                );
+                message.question().pos()
+            }
+        };
+
+        message_bytes = new_message.as_octets().to_vec();
+
+        message_bytes.truncate(message_truncation);
+    }
+
+    message_bytes
 }
 
 pub struct IpProvider {
