@@ -58,7 +58,7 @@ impl Telemetry {
         let environment = match api_url {
             "wss://api.firezone.dev" | "wss://api.firezone.dev/" => "production",
             "wss://api.firez.one" | "wss://api.firez.one/" => "staging",
-            "wss://api:8081" | "wss://api:8081/" => "docker-compose",
+            "ws://api:8081" | "ws://api:8081/" => "docker-compose",
             _ => "self-hosted",
         };
 
