@@ -265,7 +265,18 @@ impl SimClient {
 
                 self.received_udp_dns_responses
                     .insert((upstream, message.header().id()), packet.clone());
-                self.handle_dns_response(message);
+
+                if message.header().tc() {
+                    // TODO: don't unwrap here
+                    let message = self
+                        .sent_udp_dns_queries
+                        .get(&(upstream, message.header().id()))
+                        .unwrap();
+                    let message = Message::from_octets(message.payload().to_vec()).expect("todo");
+                    self.tcp_dns_client.send_query(sentinel, message).unwrap();
+                } else {
+                    self.handle_dns_response(message);
+                }
 
                 return;
             }

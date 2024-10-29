@@ -468,13 +468,18 @@ impl ClientState {
             .get_by_right(&DnsServer::from(from))
             .context("Unknown DNS server")?;
 
-        let ip_packet = ip_packet::make::udp_packet(
-            saddr,
-            dst.ip(),
-            DNS_PORT,
-            dst.port(),
-            message.as_octets().to_vec(),
-        )?;
+        let mut message_bytes = message.as_octets().to_vec();
+
+        if message_bytes.len() >= 1280 - 40 - 8 {
+            let mut new_message = message.clone();
+            new_message.header_mut().set_tc(true);
+            message_bytes = new_message.as_octets().to_vec();
+            // TODO: truncate to question section instead?
+            message_bytes.truncate(12);
+        }
+
+        let ip_packet =
+            ip_packet::make::udp_packet(saddr, dst.ip(), DNS_PORT, dst.port(), message_bytes)?;
 
         self.buffered_packets.push_back(ip_packet);
 
