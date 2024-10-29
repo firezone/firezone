@@ -247,7 +247,7 @@ impl SimClient {
             return;
         };
 
-        self.on_received_packet(packet);
+        self.on_received_packet(dbg!(packet));
     }
 
     /// Process an IP packet received on the client.
@@ -819,6 +819,8 @@ impl RefClient {
                 {
                     return true;
                 }
+
+                dbg!(&self.gateway_known_cidr_resources);
 
                 self.gateway_known_cidr_resources
                     .iter()

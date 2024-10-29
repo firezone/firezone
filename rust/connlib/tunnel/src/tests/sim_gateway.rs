@@ -160,11 +160,11 @@ impl SimGateway {
 
         if let Some(reply) = ip_packet::make::echo_reply(packet.clone()) {
             self.request_received(&packet);
-            let transmit = self
+            let transmit = dbg!(self
                 .sut
                 .handle_tun_input(reply, now, &mut self.enc_buffer)?
-                .to_transmit(&self.enc_buffer)
-                .into_owned();
+                .to_transmit(&self.enc_buffer))
+            .into_owned();
 
             return Some(transmit);
         }
