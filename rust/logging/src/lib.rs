@@ -76,9 +76,8 @@ pub fn test_global(directives: &str) {
 ///
 /// ## Events
 ///
-/// - error events are reported as sentry exceptions
-/// - warn events are reported as sentry messages
-/// - info events are captured as breadcrumbs (and submitted together with warns & errors)
+/// - error and warn events are reported as sentry exceptions
+/// - info and debug events are captured as breadcrumbs (and submitted together with warns & errors)
 ///
 /// ## Telemetry events
 ///
@@ -101,7 +100,7 @@ where
     sentry_tracing::layer()
         .event_filter(move |md| match *md.level() {
             tracing::Level::ERROR | tracing::Level::WARN => EventFilter::Exception,
-            tracing::Level::INFO => EventFilter::Breadcrumb,
+            tracing::Level::INFO | tracing::Level::DEBUG => EventFilter::Breadcrumb,
             tracing::Level::TRACE if md.target() == "telemetry" => {
                 // rand::random generates floats in the range of [0, 1).
                 if rand::random::<f32>() < 0.01 {
