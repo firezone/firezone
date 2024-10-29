@@ -23,7 +23,7 @@ defmodule Domain.Policies do
     end
   end
 
-  def fetch_policy_by_id_or_persistent(id, %Auth.Subject{} = subject, opts \\ []) do
+  def fetch_policy_by_id_or_persistent_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
       {:one_of,
        [
