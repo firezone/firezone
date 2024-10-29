@@ -272,7 +272,7 @@ impl SimClient {
                         .get(&(upstream, message.header().id()))
                     else {
                         tracing::error!(
-                            "Every recieved udp response should correspond to a sent query"
+                            "Every received udp response should correspond to a sent query"
                         );
                         return;
                     };
