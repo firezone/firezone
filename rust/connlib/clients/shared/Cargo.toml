@@ -14,6 +14,7 @@ ip_network = { version = "0.4", default-features = false }
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
+snownet = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = "1.0.63"
 time = { version = "0.3.36", features = ["formatting"] }

@@ -20,6 +20,10 @@ export default function Android() {
           Fixes an issue where notifications would sometimes not get delivered
           when Firezone was active.
         </ChangeItem>
+        <ChangeItem pull="7164">
+          Fixes an issue where Firezone would fail to establish connections to
+          Gateways and the user had to sign-out and in again.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.5" date={new Date("2024-10-03")}>
         <ChangeItem pull="6831">

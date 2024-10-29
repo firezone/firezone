@@ -12,7 +12,7 @@ use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{Credentials, EncryptBuffer, RelaySocket, ServerNode, Transmit};
+use snownet::{Credentials, EncryptBuffer, NoTurnServers, RelaySocket, ServerNode, Transmit};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
@@ -206,13 +206,13 @@ impl GatewayState {
         offer: snownet::Offer,
         client: PublicKey,
         now: Instant,
-    ) -> Answer {
-        let answer = self.node.accept_connection(client_id, offer, client, now);
+    ) -> Result<Answer, NoTurnServers> {
+        let answer = self.node.accept_connection(client_id, offer, client, now)?;
 
-        Answer {
+        Ok(Answer {
             username: answer.credentials.username,
             password: answer.credentials.password,
-        }
+        })
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%client_id))]
@@ -229,7 +229,7 @@ impl GatewayState {
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
         now: Instant,
-    ) {
+    ) -> Result<(), NoTurnServers> {
         self.node.upsert_connection(
             client_id,
             client_key,
@@ -243,10 +243,12 @@ impl GatewayState {
                 password: client_ice.password,
             },
             now,
-        );
+        )?;
 
         self.allow_access(client_id, ipv4, ipv6, expires_at, resource, None, now)
             .expect("Should never fail without a `DnsResourceNatEntry`");
+
+        Ok(())
     }
 
     pub fn refresh_translation(
