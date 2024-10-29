@@ -1,5 +1,6 @@
 use crate::{device_channel::Device, dns, sockets::Sockets};
 use domain::base::Message;
+use firezone_logging::std_dyn_err;
 use futures::{
     future::{self, Either},
     stream, Stream, StreamExt,
@@ -17,7 +18,10 @@ use std::{
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
-use tokio::sync::mpsc;
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    sync::mpsc,
+};
 use tun::Tun;
 
 /// Bundles together all side-effects that connlib needs to have access to.
@@ -26,7 +30,7 @@ pub struct Io {
     sockets: Sockets,
     unwritten_packet: Option<EncryptedPacket>,
 
-    _tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
     dns_queries: FuturesTupleSet<io::Result<Message<Vec<u8>>>, DnsQueryMetaData>,
@@ -87,7 +91,7 @@ impl Io {
             inbound_packet_rx,
             timeout: None,
             sockets,
-            _tcp_socket_factory: tcp_socket_factory,
+            tcp_socket_factory,
             udp_socket_factory,
             unwritten_packet: None,
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
@@ -117,19 +121,20 @@ impl Io {
 
         match self.dns_queries.poll_unpin(cx) {
             Poll::Ready((result, meta)) => {
-                let response = result
-                    .map(|result| dns::RecursiveResponse {
-                        server: meta.server,
-                        query: meta.query.clone(),
-                        message: result,
-                        transport: meta.transport,
-                    })
-                    .unwrap_or_else(|_| dns::RecursiveResponse {
+                let response = match result {
+                    Ok(result) => dns::RecursiveResponse {
                         server: meta.server,
                         query: meta.query,
-                        message: Err(io::Error::from(io::ErrorKind::TimedOut)),
+                        message: result,
                         transport: meta.transport,
-                    });
+                    },
+                    Err(e @ futures_bounded::Timeout { .. }) => dns::RecursiveResponse {
+                        server: meta.server,
+                        query: meta.query,
+                        message: Err(io::Error::new(io::ErrorKind::TimedOut, e)),
+                        transport: meta.transport,
+                    },
+                };
 
                 return Poll::Ready(Ok(Input::DnsResponse(response)));
             }
@@ -255,6 +260,48 @@ impl Io {
                     tracing::debug!("Failed to queue UDP DNS query")
                 }
             }
+            dns::Transport::Tcp { .. } => {
+                let factory = self.tcp_socket_factory.clone();
+                let server = query.server;
+                let meta = DnsQueryMetaData {
+                    query: query.message.clone(),
+                    server,
+                    transport: query.transport,
+                };
+
+                if self
+                    .dns_queries
+                    .try_push(
+                        async move {
+                            let tcp_socket = factory(&server)?; // TODO: Optimise this to reuse a TCP socket to the same resolver.
+                            let mut tcp_stream = tcp_socket.connect(server).await?;
+
+                            let query = query.message.into_octets();
+                            let dns_message_length = (query.len() as u16).to_be_bytes();
+
+                            tcp_stream.write_all(&dns_message_length).await?;
+                            tcp_stream.write_all(&query).await?;
+
+                            let mut response_length = [0u8; 2];
+                            tcp_stream.read_exact(&mut response_length).await?;
+                            let response_length = u16::from_be_bytes(response_length) as usize;
+
+                            // A u16 is at most 65k, meaning we are okay to allocate here based on what the remote is sending.
+                            let mut response = vec![0u8; response_length];
+                            tcp_stream.read_exact(&mut response).await?;
+
+                            let message = Message::from_octets(response)
+                                .map_err(|_| io::Error::other("Failed to parse DNS message"))?;
+
+                            Ok(message)
+                        },
+                        meta,
+                    )
+                    .is_err()
+                {
+                    tracing::debug!("Failed to queue TCP DNS query")
+                }
+            }
         }
     }
 
@@ -302,7 +349,7 @@ async fn tun_send_recv(
         {
             Either::Left((Some(Command::SendPacket(p)), _)) => {
                 if let Err(e) = device.write(p) {
-                    tracing::debug!("Failed to write TUN packet: {e}");
+                    tracing::debug!(error = std_dyn_err(&e), "Failed to write TUN packet");
                 };
             }
             Either::Left((Some(Command::UpdateTun(tun)), _)) => {
@@ -319,7 +366,10 @@ async fn tun_send_recv(
                 };
             }
             Either::Right((Err(e), _)) => {
-                tracing::debug!("Failed to read packet from TUN device: {e}");
+                tracing::debug!(
+                    error = std_dyn_err(&e),
+                    "Failed to read packet from TUN device"
+                );
                 return;
             }
         };

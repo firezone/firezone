@@ -15,11 +15,19 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
-        <ChangeItem enable={title === "Linux GUI"}>
-          This is a maintenance release with no user-facing changes.
-        </ChangeItem>
+        <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
         <ChangeItem enable={title === "Windows"} pull="7009">
           The IPC service `firezone-client-ipc.exe` is now signed.
+        </ChangeItem>
+        <ChangeItem pull="7123">
+          Reports the version to the Portal correctly.
+        </ChangeItem>
+        <ChangeItem pull="6996">
+          Supports Ubuntu 24.04, no longer supports Ubuntu 20.04.
+        </ChangeItem>
+        <ChangeItem pull="7164">
+          Fixes an issue where Firezone would fail to establish connections to
+          Gateways and the user had to sign-out and in again.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.3.9" date={new Date("2024-10-09")}>

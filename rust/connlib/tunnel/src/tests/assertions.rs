@@ -1,18 +1,19 @@
 use super::{
     sim_client::{RefClient, SimClient},
     sim_gateway::SimGateway,
+    transition::{Destination, ReplyTo},
 };
-use crate::tests::reference::ResourceDst;
 use connlib_model::{DomainName, GatewayId};
 use ip_packet::IpPacket;
 use itertools::Itertools;
 use std::{
     collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
+    hash::Hash,
     marker::PhantomData,
     net::IpAddr,
     sync::atomic::{AtomicBool, Ordering},
 };
-use tracing::{Level, Subscriber};
+use tracing::{Level, Span, Subscriber};
 use tracing_subscriber::Layer;
 
 /// Asserts the following properties for all ICMP handshakes:
@@ -24,63 +25,144 @@ use tracing_subscriber::Layer;
 pub(crate) fn assert_icmp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
-    sim_gateways: HashMap<GatewayId, &SimGateway>,
+    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
     global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
 ) {
-    let unexpected_icmp_replies = find_unexpected_entries(
-        &ref_client
-            .expected_icmp_handshakes
-            .values()
-            .flatten()
-            .collect(),
+    let received_icmp_requests = sim_gateways
+        .iter()
+        .map(|(g, s)| (*g, &s.received_icmp_requests))
+        .collect();
+
+    assert_packets_properties(
+        ref_client,
+        &sim_client.sent_icmp_requests,
+        &received_icmp_requests,
+        &ref_client.expected_icmp_handshakes,
         &sim_client.received_icmp_replies,
-        |(_, (_, seq_a, id_a)), (seq_b, id_b)| seq_a == seq_b && id_a == id_b,
+        "ICMP",
+        global_dns_records,
+        |seq, identifier| tracing::info_span!(target: "assertions", "ICMP", ?seq, ?identifier),
+    );
+}
+
+/// Asserts the following properties for all UDP handshakes:
+/// 1. An UDP request on the client MUST result in an UDP response using the flipped src & dst IP and sport and dport.
+/// 2. An UDP request on the gateway MUST target the intended resource:
+///     - For CIDR resources, that is the actual CIDR resource IP.
+///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
+/// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
+pub(crate) fn assert_udp_packets_properties(
+    ref_client: &RefClient,
+    sim_client: &SimClient,
+    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
+    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+) {
+    let received_udp_requests = sim_gateways
+        .iter()
+        .map(|(g, s)| (*g, &s.received_udp_requests))
+        .collect();
+
+    assert_packets_properties(
+        ref_client,
+        &sim_client.sent_udp_requests,
+        &received_udp_requests,
+        &ref_client.expected_udp_handshakes,
+        &sim_client.received_udp_replies,
+        "UDP",
+        global_dns_records,
+        |sport, dport| tracing::info_span!(target: "assertions", "UDP", ?sport, ?dport),
+    );
+}
+
+/// Asserts the following properties for all TCP handshakes:
+/// 1. An TCP request on the client MUST result in an TCP response using the flipped src & dst IP and sport and dport.
+/// 2. An TCP request on the gateway MUST target the intended resource:
+///     - For CIDR resources, that is the actual CIDR resource IP.
+///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
+/// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
+pub(crate) fn assert_tcp_packets_properties(
+    ref_client: &RefClient,
+    sim_client: &SimClient,
+    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
+    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+) {
+    let received_tcp_requests = sim_gateways
+        .iter()
+        .map(|(g, s)| (*g, &s.received_tcp_requests))
+        .collect();
+
+    assert_packets_properties(
+        ref_client,
+        &sim_client.sent_tcp_requests,
+        &received_tcp_requests,
+        &ref_client.expected_tcp_exchanges,
+        &sim_client.received_tcp_replies,
+        "TCP",
+        global_dns_records,
+        |sport, dport| tracing::info_span!(target: "assertions", "TCP", ?sport, ?dport),
+    );
+}
+
+#[expect(clippy::too_many_arguments)]
+fn assert_packets_properties<T, U>(
+    ref_client: &RefClient,
+    sent_requests: &HashMap<(T, U), IpPacket>,
+    received_requests: &BTreeMap<GatewayId, &BTreeMap<u64, IpPacket>>,
+    expected_handshakes: &BTreeMap<GatewayId, BTreeMap<u64, (Destination, T, U)>>,
+    received_replies: &BTreeMap<(T, U), IpPacket>,
+    packet_protocol: &str,
+    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+    make_span: impl Fn(T, U) -> Span,
+) where
+    T: Copy + std::fmt::Debug,
+    U: Copy + std::fmt::Debug,
+    (T, U): ReplyTo + Hash + Eq + Ord,
+{
+    let unexpected_replies = find_unexpected_entries(
+        &expected_handshakes.values().flatten().collect(),
+        received_replies,
+        |(_, (_, t_a, u_a)), b| (*t_a, *u_a) == b.reply_to(),
     );
 
-    if !unexpected_icmp_replies.is_empty() {
-        tracing::error!(target: "assertions", ?unexpected_icmp_replies, "❌ Unexpected ICMP replies on client");
+    if !unexpected_replies.is_empty() {
+        tracing::error!(target: "assertions", ?unexpected_replies, "❌ Unexpected {packet_protocol} replies on client");
     }
 
-    for (gid, expected_icmp_handshakes) in ref_client.expected_icmp_handshakes.iter() {
-        let gateway = sim_gateways.get(gid).unwrap();
+    for (gid, expected_handshakes) in expected_handshakes.iter() {
+        let received_requests = received_requests.get(gid).unwrap();
 
-        let num_expected_handshakes = expected_icmp_handshakes.len();
-        let num_actual_handshakes = gateway.received_icmp_requests.len();
+        let num_expected_handshakes = expected_handshakes.len();
+        let num_actual_handshakes = received_requests.len();
 
         if num_expected_handshakes != num_actual_handshakes {
-            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %gid, "❌ Unexpected ICMP requests");
+            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %gid, "❌ Unexpected {packet_protocol} requests");
         } else {
-            tracing::info!(target: "assertions", %num_expected_handshakes, %gid, "✅ Performed the expected ICMP handshakes");
+            tracing::info!(target: "assertions", %num_expected_handshakes, %gid, "✅ Performed the expected {packet_protocol} handshakes");
         }
     }
 
     let mut mapping = HashMap::new();
 
-    // Assert properties of the individual ICMP handshakes per gateway.
+    // Assert properties of the individual handshakes per gateway.
     // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
-    // Thus, we rely on the _order_ here which is why the packets are indexed by gateway in the `RefClient`.
-    for (gateway, expected_icmp_handshakes) in &ref_client.expected_icmp_handshakes {
-        let received_icmp_requests = &sim_gateways.get(gateway).unwrap().received_icmp_requests;
+    // Thus, we rely on a custom u64 payload attached to all packets to uniquely identify every individual packet.
+    for (gateway, expected_handshakes) in expected_handshakes {
+        let received_requests = received_requests.get(gateway).unwrap();
+        for (payload, (resource_dst, t, u)) in expected_handshakes {
+            let _guard = make_span(*t, *u).entered();
 
-        for (payload, (resource_dst, seq, identifier)) in expected_icmp_handshakes {
-            let _guard =
-                tracing::info_span!(target: "assertions", "icmp", %seq, %identifier).entered();
-
-            let Some(client_sent_request) = sim_client.sent_icmp_requests.get(&(*seq, *identifier))
-            else {
-                tracing::error!(target: "assertions", "❌ Missing ICMP request on client");
+            let Some(client_sent_request) = sent_requests.get(&(*t, *u)) else {
+                tracing::error!(target: "assertions", "❌ Missing {packet_protocol} request on client");
                 continue;
             };
-            let Some(client_received_reply) =
-                sim_client.received_icmp_replies.get(&(*seq, *identifier))
-            else {
-                tracing::error!(target: "assertions", "❌ Missing ICMP reply on client");
+            let Some(client_received_reply) = received_replies.get(&(*t, *u).reply_to()) else {
+                tracing::error!(target: "assertions", "❌ Missing {packet_protocol} reply on client");
                 continue;
             };
             assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
 
-            let Some(gateway_received_request) = received_icmp_requests.get(payload) else {
-                tracing::error!(target: "assertions", "❌ Missing ICMP request on gateway");
+            let Some(gateway_received_request) = received_requests.get(payload) else {
+                tracing::error!(target: "assertions", "❌ Missing {packet_protocol} request on gateway");
                 continue;
             };
 
@@ -89,19 +171,19 @@ pub(crate) fn assert_icmp_packets_properties(
                 let actual = gateway_received_request.source();
 
                 if expected != actual {
-                    tracing::error!(target: "assertions", %expected, %actual, "❌ Unexpected request source");
+                    tracing::error!(target: "assertions", %expected, %actual, "❌ Unexpected {packet_protocol} request source");
                 }
             }
 
             match resource_dst {
-                ResourceDst::Cidr(resource_dst) => {
+                Destination::IpAddr(resource_dst) => {
                     assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
                 }
-                ResourceDst::Dns(domain) => {
+                Destination::DomainName { name, .. } => {
                     assert_destination_is_dns_resource(
                         gateway_received_request,
                         global_dns_records,
-                        domain,
+                        name,
                     );
 
                     assert_proxy_ip_mapping_is_stable(
@@ -109,9 +191,6 @@ pub(crate) fn assert_icmp_packets_properties(
                         gateway_received_request,
                         &mut mapping,
                     )
-                }
-                ResourceDst::Internet(resource_dst) => {
-                    assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
                 }
             }
         }
@@ -159,36 +238,56 @@ pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimCl
     }
 }
 
-pub(crate) fn assert_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
+pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
     let unexpected_dns_replies = find_unexpected_entries(
-        &ref_client.expected_dns_handshakes,
-        &sim_client.received_dns_responses,
+        &ref_client.expected_udp_dns_handshakes,
+        &sim_client.received_udp_dns_responses,
         |(_, id_a), (_, id_b)| id_a == id_b,
     );
 
     if !unexpected_dns_replies.is_empty() {
-        tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Unexpected DNS replies on client");
+        tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Unexpected UDP DNS replies on client");
     }
 
-    for (dns_server, query_id) in ref_client.expected_dns_handshakes.iter() {
+    for (dns_server, query_id) in ref_client.expected_udp_dns_handshakes.iter() {
         let _guard =
-            tracing::info_span!(target: "assertions", "dns", %query_id, %dns_server).entered();
+            tracing::info_span!(target: "assertions", "udp_dns", %query_id, %dns_server).entered();
         let key = &(*dns_server, *query_id);
 
-        let queries = &sim_client.sent_dns_queries;
-        let responses = &sim_client.received_dns_responses;
+        let queries = &sim_client.sent_udp_dns_queries;
+        let responses = &sim_client.received_udp_dns_responses;
 
         let Some(client_sent_query) = queries.get(key) else {
-            tracing::error!(target: "assertions", ?queries, "❌ Missing DNS query on client");
+            tracing::error!(target: "assertions", ?queries, "❌ Missing UDP DNS query on client");
             continue;
         };
         let Some(client_received_response) = responses.get(key) else {
-            tracing::error!(target: "assertions", ?responses, "❌ Missing DNS response on client");
+            tracing::error!(target: "assertions", ?responses, "❌ Missing UDP DNS response on client");
             continue;
         };
 
         assert_correct_src_and_dst_ips(client_sent_query, client_received_response);
         assert_correct_src_and_dst_udp_ports(client_sent_query, client_received_response);
+    }
+}
+
+pub(crate) fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
+    for (dns_server, query_id) in ref_client.expected_tcp_dns_handshakes.iter() {
+        let _guard =
+            tracing::info_span!(target: "assertions", "tcp_dns", %query_id, %dns_server).entered();
+        let key = &(*dns_server, *query_id);
+
+        let queries = &sim_client.sent_tcp_dns_queries;
+        let responses = &sim_client.received_tcp_dns_responses;
+
+        if queries.get(key).is_none() {
+            tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
+            continue;
+        };
+        if responses.get(key).is_none() {
+            tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
+            continue;
+        };
     }
 }
 
@@ -304,11 +403,11 @@ fn assert_proxy_ip_mapping_is_stable(
 fn find_unexpected_entries<'a, E, K, V>(
     expected: &VecDeque<E>,
     actual: &'a BTreeMap<K, V>,
-    is_equal: impl Fn(&E, &K) -> bool,
+    is_expected: impl Fn(&E, &K) -> bool,
 ) -> Vec<&'a V> {
     actual
         .iter()
-        .filter(|(k, _)| !expected.iter().any(|e| is_equal(e, k)))
+        .filter(|(k, _)| !expected.iter().any(|e| is_expected(e, k)))
         .map(|(_, v)| v)
         .collect()
 }

@@ -3,7 +3,6 @@ defmodule Domain.Crypto do
 
   def psk do
     random_token(@wg_psk_length, encoder: :base64)
-    |> String.slice(0, @wg_psk_length)
   end
 
   def random_token(length \\ 16, opts \\ []) do

@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+#
+# Runs from `rust/gui-client` or `rust/tauri-client`
+
 set -euox pipefail
 
 SERVICE_NAME=firezone-client-ipc
@@ -9,21 +12,21 @@ function debug_exit() {
 }
 
 # For debugging
-ls ../target/release ../target/release/bundle/deb
+ls "$TARGET_DIR/release" "$TARGET_DIR/release/bundle/deb"
 
 # Used for release artifact
 # In release mode the name comes from tauri.conf.json
 # Using a glob for the source, there will only be one exe and one deb anyway
-cp ../target/release/firezone-client-gui "$BINARY_DEST_PATH"
-cp ../target/release/firezone-gui-client.dwp "$BINARY_DEST_PATH.dwp"
-cp ../target/release/bundle/deb/firezone-client-gui.deb "$BINARY_DEST_PATH.deb"
+cp "$TARGET_DIR/release/firezone-client-gui" "$BINARY_DEST_PATH"
+cp "$TARGET_DIR/release/firezone-gui-client.dwp" "$BINARY_DEST_PATH.dwp"
+cp "$TARGET_DIR/release/bundle/deb/firezone-client-gui.deb" "$BINARY_DEST_PATH.deb"
 # TODO: Debug symbols for Linux
 
 function make_hash() {
     sha256sum "$1" >"$1.sha256sum.txt"
 }
 
-# Windows uses x64, Debian amd64. Standardize on x86_64 naming here since that's
+# Windows calls it `x64`, Debian `amd64`. Standardize on `x86_64` here since that's
 # what Rust uses.
 make_hash "$BINARY_DEST_PATH"
 make_hash "$BINARY_DEST_PATH.dwp"
@@ -35,6 +38,8 @@ sudo apt-get install "$DEB_PATH"
 
 # Debug-print the files. The icons and both binaries should be in here
 dpkg --listfiles firezone-client-gui
+# Print the deps
+dpkg --info "$DEB_PATH"
 
 # Confirm that both binaries and at least one icon were installed
 which firezone-client-gui firezone-client-ipc

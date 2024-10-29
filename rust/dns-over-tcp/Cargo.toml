@@ -7,6 +7,7 @@ description = "User-space implementation of DNS over TCP."
 [dependencies]
 anyhow = "1.0"
 domain = { workspace = true }
+firezone-logging = { workspace = true }
 ip-packet = { workspace = true }
 itertools = "0.13"
 rand = "0.8"
@@ -15,7 +16,6 @@ tracing = { workspace = true }
 
 [dev-dependencies]
 firezone-bin-shared = { workspace = true }
-firezone-logging = { workspace = true }
 futures = "0.3"
 ip_network = { version = "0.4", default-features = false }
 tokio = { workspace = true, features = ["process", "rt", "macros"] }

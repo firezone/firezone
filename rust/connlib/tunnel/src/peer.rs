@@ -202,31 +202,37 @@ impl ClientOnGateway {
             })
             .collect_vec();
 
-        self.assign_translations(name, resource_id, &resolved_ips, proxy_ips, now)?;
+        self.setup_nat(name, resource_id, &resolved_ips, proxy_ips, now)?;
 
         Ok(())
     }
 
+    /// Setup the NAT for a particular domain within a wildcard DNS resource.
     #[tracing::instrument(level = "debug", skip_all, fields(cid = %self.id))]
-    pub(crate) fn assign_translations(
+    pub(crate) fn setup_nat(
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
-        mapped_ips: &[IpAddr],
+        resolved_ips: &[IpAddr],
         proxy_ips: Vec<IpAddr>,
         now: Instant,
     ) -> Result<()> {
-        let Some(ResourceOnGateway::Dns {
+        let resource = self
+            .resources
+            .get_mut(&resource_id)
+            .context("Unknown resource")?;
+
+        let ResourceOnGateway::Dns {
             address, domains, ..
-        }) = self.resources.get_mut(&resource_id)
+        } = resource
         else {
-            bail!("Cannot assign translation for non-DNS resource")
+            bail!("Cannot setup NAT for non-DNS resource")
         };
 
         anyhow::ensure!(crate::dns::is_subdomain(&name, address));
 
-        let mapped_ipv4 = mapped_ipv4(mapped_ips);
-        let mapped_ipv6 = mapped_ipv6(mapped_ips);
+        let mapped_ipv4 = mapped_ipv4(resolved_ips);
+        let mapped_ipv6 = mapped_ipv6(resolved_ips);
 
         let ipv4_maps = proxy_ips
             .iter()
@@ -249,7 +255,9 @@ impl ClientOnGateway {
             );
         }
 
-        domains.insert(name, mapped_ips.to_vec());
+        tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Set up DNS resource NAT");
+
+        domains.insert(name, resolved_ips.to_vec());
         self.recalculate_filters();
 
         Ok(())
@@ -330,6 +338,8 @@ impl ClientOnGateway {
         resource: crate::messages::gateway::ResourceDescription,
         expires_at: Option<DateTime<Utc>>,
     ) {
+        tracing::info!(client = %self.id, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
+
         match self.resources.entry(resource.id()) {
             hash_map::Entry::Vacant(v) => {
                 v.insert(ResourceOnGateway::new(resource, expires_at));
@@ -448,6 +458,10 @@ impl ClientOnGateway {
         packet.update_checksum();
 
         Ok(Some(packet))
+    }
+
+    pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
+        self.resources.contains_key(&resource)
     }
 
     fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
@@ -1100,7 +1114,7 @@ mod tests {
         let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
         peer.add_resource(foo_dns_resource(), None);
         peer.add_resource(bar_cidr_resource(), None);
-        peer.assign_translations(
+        peer.setup_nat(
             foo_name().parse().unwrap(),
             resource_id(),
             &[foo_real_ip().into()],
@@ -1161,7 +1175,7 @@ mod tests {
         let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
         peer.add_resource(foo_dns_resource(), None);
         peer.add_resource(internet_resource(), None);
-        peer.assign_translations(
+        peer.setup_nat(
             foo_name().parse().unwrap(),
             resource_id(),
             &[foo_real_ip().into()],

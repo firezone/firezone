@@ -2,6 +2,7 @@
 
 use crate::FIREZONE_MARK;
 use anyhow::{anyhow, Context as _, Result};
+use firezone_logging::std_dyn_err;
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use libc::{
@@ -257,7 +258,7 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         return;
     }
 
-    tracing::warn!(%route, "Failed to add route: {err}");
+    tracing::warn!(error = std_dyn_err(&err), %route, "Failed to add route");
 }
 
 async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
@@ -279,7 +280,7 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         return;
     }
 
-    tracing::warn!(%route, "Failed to remove route: {err}");
+    tracing::warn!(error = std_dyn_err(&err), %route, "Failed to remove route");
 }
 
 #[derive(Debug)]

@@ -196,19 +196,15 @@ fn main() -> Result<()> {
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());
 
-    let result = rt.block_on(async {
-        let ctx = firezone_telemetry::TransactionContext::new(
-            "connect_to_firezone",
-            "Connecting to Firezone",
-        );
-        let transaction = firezone_telemetry::start_transaction(ctx);
+    rt.block_on(async {
+        let connect_span =
+            tracing::trace_span!(target: "telemetry", "connect_to_firezone").entered();
 
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
         // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
         // so when it fails it will be restarted with backoff. `systemd` can additionally make us wait
         // for an Internet connection if it launches us at startup.
         // When running interactively, it is useful for the user to see that we can't reach the portal.
-        let phoenix_span = transaction.start_child("phoenix", "Connect PhoenixChannel");
         let portal = PhoenixChannel::disconnected(
             Secret::new(url),
             get_user_agent(None, env!("CARGO_PKG_VERSION")),
@@ -219,7 +215,6 @@ fn main() -> Result<()> {
                 .build(),
             Arc::new(tcp_socket_factory),
         )?;
-        phoenix_span.finish();
         let session = Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(udp_socket_factory),
@@ -244,13 +239,15 @@ fn main() -> Result<()> {
             new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
         drop(tokio_handle);
 
-        let tun_span = transaction.start_child("tun", "Raise tunnel");
-        let tun = tun_device.make_tun()?;
+        let tun = {
+            let _guard = tracing::trace_span!(target: "telemetry", "create_tun_device").entered();
+
+            tun_device.make_tun()?
+        };
         session.set_tun(Box::new(tun));
-        tun_span.finish();
         session.set_dns(dns_controller.system_resolvers());
 
-        transaction.finish();
+        drop(connect_span);
 
         let result = loop {
             let mut dns_changed = pin!(dns_notifier.notified().fuse());
@@ -321,13 +318,11 @@ fn main() -> Result<()> {
             tracing::error!(?error, "network notifier");
         }
 
+        telemetry.stop(); // Stop telemetry before dropping session. `connlib` needs to be active for this, otherwise we won't be able to resolve the DNS name for sentry.
         session.disconnect();
 
         result
-    });
-
-    telemetry.stop();
-    result
+    })
 }
 
 /// Read the token from disk if it was not in the environment

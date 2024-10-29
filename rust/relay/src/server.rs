@@ -12,6 +12,7 @@ use crate::{ClientSocket, IpStack, PeerSocket};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
+use firezone_logging::std_dyn_err;
 use hex_display::HexDisplayExt as _;
 use opentelemetry::metrics::{Counter, UpDownCounter};
 use opentelemetry::KeyValue;
@@ -782,7 +783,7 @@ where
             .value()
             .parse::<Uuid>()
             .map_err(|e| {
-                tracing::debug!(target: "relay", "failed to parse nonce: {e}");
+                tracing::debug!(target: "relay", error = std_dyn_err(&e), "failed to parse nonce");
 
                 self.make_error_response(Unauthorized, request, ResponseErrorLevel::Warn)
             })?;

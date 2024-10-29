@@ -3,8 +3,7 @@ use std::time::Duration;
 
 pub use sentry::{
     add_breadcrumb, capture_error, capture_message, configure_scope, end_session,
-    end_session_with_status, start_transaction, types::protocol::v7::SessionStatus, Breadcrumb,
-    Hub, Level, TransactionContext,
+    end_session_with_status, types::protocol::v7::SessionStatus, Breadcrumb, Hub, Level,
 };
 pub use sentry_anyhow::capture_anyhow;
 
@@ -15,6 +14,9 @@ pub struct Dsn(&'static str);
 // > DSNs are safe to keep public because they only allow submission of new events and related event data; they do not allow read access to any information.
 // <https://docs.sentry.io/concepts/key-terms/dsn-explainer/#dsn-utilization>
 
+pub const ANDROID_DSN: Dsn = Dsn("https://928a6ee1f6af9734100b8bc89b2dc87d@o4507971108339712.ingest.us.sentry.io/4508175126233088");
+pub const APPLE_DSN: Dsn = Dsn("https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488");
+pub const GATEWAY_DSN: Dsn = Dsn("https://f763102cc3937199ec483fbdae63dfdc@o4507971108339712.ingest.us.sentry.io/4508162914451456");
 pub const GUI_DSN: Dsn = Dsn("https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312");
 pub const HEADLESS_DSN: Dsn = Dsn("https://bc27dca8bb37be0142c48c4f89647c13@o4507971108339712.ingest.us.sentry.io/4508010028728320");
 pub const IPC_SERVICE_DSN: Dsn = Dsn("https://0590b89fd4479494a1e7ffa4dc705001@o4507971108339712.ingest.us.sentry.io/4508008896069632");
@@ -56,6 +58,7 @@ impl Telemetry {
         let environment = match api_url {
             "wss://api.firezone.dev" | "wss://api.firezone.dev/" => "production",
             "wss://api.firez.one" | "wss://api.firez.one/" => "staging",
+            "wss://api:8081" | "wss://api:8081/" => "docker-compose",
             _ => "self-hosted",
         };
 
@@ -66,7 +69,7 @@ impl Telemetry {
                 environment: Some(environment.into()),
                 // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
                 release: Some(release.into()),
-                traces_sample_rate: 1.0,
+                traces_sample_rate: 0.1,
                 ..Default::default()
             },
         ));
@@ -101,6 +104,16 @@ impl Telemetry {
     }
 }
 
+/// Sets the Firezone account slug on the Sentry hub
+///
+/// This sets the entire set of "user" info, so it will conflict if we set any other user ID later.
+pub fn set_account_slug(account_slug: String) {
+    let mut user = sentry::User::default();
+    user.other
+        .insert("account_slug".to_string(), account_slug.into());
+    sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -110,23 +123,6 @@ mod tests {
     // To avoid problems with global mutable state, we run unrelated tests in the same test case.
     #[test]
     fn sentry() {
-        // Test this flush problem
-        {
-            let telemetry = sentry::init((
-                HEADLESS_DSN.0,
-                sentry::ClientOptions {
-                    release: sentry::release_name!(),
-                    traces_sample_rate: 1.0,
-                    ..Default::default()
-                },
-            ));
-            sentry::start_session();
-            sentry::end_session();
-            // `flush`'s return value is flipped from the docs
-            // <https://github.com/getsentry/sentry-rust/issues/677>
-            assert!(!telemetry.flush(Some(Duration::from_secs(5))));
-        }
-
         // Smoke-test Sentry itself by turning it on and off a couple times
         {
             let tele = Telemetry::default();

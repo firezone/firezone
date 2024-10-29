@@ -15,6 +15,18 @@ export default function Gateway() {
             Separates CIDR and DNS resources filters, preventing filters
             from one applying to the other.
           </ChangeItem>
+          <ChangeItem pull="6941">
+            Implements support for the new control protocol; delivering faster
+            and more robust connection establishment.
+          </ChangeItem>
+          <ChangeItem pull="7103">
+            Adds on-by-default error reporting using sentry.io.
+            Disable by setting `FIREZONE_NO_TELEMETRY=1`.
+          </ChangeItem>
+          <ChangeItem pull="7164">
+            Fixes an issue where the Gateway would fail to accept connections and
+            had to be restarted.
+          </ChangeItem>
       </Unreleased>
       <Entry version="1.3.2" date={new Date("2024-10-02")}>
         <ChangeItem pull="6733">

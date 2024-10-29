@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
     time::Instant,
 };
 
@@ -14,10 +14,45 @@ use domain::{
 };
 use ip_packet::IpPacket;
 
+pub struct TcpDnsServerResource {
+    server: dns_over_tcp::Server,
+}
+
 #[derive(Debug, Default)]
 pub struct UdpDnsServerResource {
     inbound_packets: VecDeque<IpPacket>,
     outbound_packets: VecDeque<IpPacket>,
+}
+
+impl TcpDnsServerResource {
+    pub fn new(socket: SocketAddr, now: Instant) -> Self {
+        let mut server = dns_over_tcp::Server::new(now);
+        server.set_listen_addresses::<5>(BTreeSet::from([socket]));
+
+        Self { server }
+    }
+
+    pub fn handle_input(&mut self, packet: IpPacket) {
+        self.server.handle_inbound(packet);
+    }
+
+    pub fn handle_timeout(
+        &mut self,
+        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+
+        now: Instant,
+    ) {
+        self.server.handle_timeout(now);
+        while let Some(query) = self.server.poll_queries() {
+            let response = handle_dns_query(query.message.for_slice(), global_dns_records);
+
+            self.server.send_message(query.socket, response).unwrap();
+        }
+    }
+
+    pub fn poll_outbound(&mut self) -> Option<IpPacket> {
+        self.server.poll_outbound()
+    }
 }
 
 impl UdpDnsServerResource {

@@ -7,7 +7,10 @@ publish = false
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nu-ansi-term = { version = "0.46" }
+anyhow = "1"
+nu-ansi-term = { version = "0.50" }
+rand = "0.8"
+sentry-tracing = "0.34.0"
 time = { version = "0.3.36", features = ["formatting"] }
 tracing = { workspace = true }
 tracing-appender = { version = "0.2.2" }

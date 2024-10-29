@@ -1259,7 +1259,7 @@ defmodule API.Client.ChannelTest do
       assert client_id == client.id
       assert resource_id == resource.id
       assert authorization_expires_at == socket.assigns.subject.expires_at
-      assert String.length(preshared_key) == 32
+      assert String.length(preshared_key) == 44
     end
 
     test "returns online gateway connected to an internet resource", %{
@@ -1314,7 +1314,7 @@ defmodule API.Client.ChannelTest do
       assert client_id == client.id
       assert resource_id == resource.id
       assert authorization_expires_at == socket.assigns.subject.expires_at
-      assert String.length(preshared_key) == 32
+      assert String.length(preshared_key) == 44
     end
 
     test "broadcasts authorize_flow to the gateway and flow_created to the client", %{

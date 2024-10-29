@@ -12,6 +12,7 @@ use std::{io, mem};
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use base64::Engine;
+use firezone_logging::std_dyn_err;
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use heartbeat::{Heartbeat, MissedLastHeartbeat};
@@ -155,6 +156,7 @@ impl Error {
     }
 }
 
+#[derive(Debug)]
 enum InternalError {
     WebSocket(tokio_tungstenite::tungstenite::Error),
     Serde(serde_json::Error),
@@ -178,13 +180,28 @@ impl fmt::Display for InternalError {
 
                 write!(f, "http error: {status} - {body}")
             }
-            InternalError::WebSocket(e) => write!(f, "websocket connection failed: {e}"),
-            InternalError::Serde(e) => write!(f, "failed to deserialize message: {e}"),
+            InternalError::WebSocket(_) => write!(f, "websocket connection failed"),
+            InternalError::Serde(_) => write!(f, "failed to deserialize message"),
             InternalError::MissedHeartbeat => write!(f, "portal did not respond to our heartbeat"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
             InternalError::StreamClosed => write!(f, "websocket stream was closed"),
             InternalError::InvalidUrl => write!(f, "failed to resolve url"),
-            InternalError::SocketConnection(e) => write!(f, "failed to connect socket: {e}"),
+            InternalError::SocketConnection(_) => write!(f, "failed to connect socket"),
+        }
+    }
+}
+
+impl std::error::Error for InternalError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            InternalError::WebSocket(tokio_tungstenite::tungstenite::Error::Http(_)) => None,
+            InternalError::WebSocket(e) => Some(e),
+            InternalError::Serde(e) => Some(e),
+            InternalError::SocketConnection(e) => Some(e),
+            InternalError::MissedHeartbeat => None,
+            InternalError::CloseMessage => None,
+            InternalError::StreamClosed => None,
+            InternalError::InvalidUrl => None,
         }
     }
 }
@@ -241,12 +258,15 @@ where
     ) -> io::Result<Self> {
         let next_request_id = Arc::new(AtomicU64::new(0));
 
+        let host_and_port = url.expose_secret().host_and_port();
+
+        let _guard =
+            tracing::trace_span!(target: "telemetry", "resolve_portal_url", host = %host_and_port.0).entered();
+
         // Statically resolve the host in the URL to a set of addresses.
         // We don't use these directly because we need to connect to the domain via TLS which requires a hostname.
         // We expose them to other components that deal with DNS stuff to ensure our domain always resolves to these IPs.
-        let resolved_addresses = url
-            .expose_secret()
-            .host_and_port()
+        let resolved_addresses = host_and_port
             .to_socket_addrs()?
             .map(|addr| addr.ip())
             .collect();
@@ -304,11 +324,17 @@ where
 
     /// Establishes a new connection, dropping the current one if any exists.
     pub fn connect(&mut self, params: TFinish) {
+        let url = self.url_prototype.expose_secret().to_url(params);
+
+        if matches!(self.state, State::Connecting(_)) && Some(&url) == self.last_url.as_ref() {
+            tracing::debug!("We are already connecting");
+            return;
+        }
+
         // 1. Reset the backoff.
         self.reconnect_backoff.reset();
 
         // 2. Set state to `Connecting` without a timer.
-        let url = self.url_prototype.expose_secret().to_url(params);
         let user_agent = self.user_agent.clone();
         self.state = State::connect(url.clone(), user_agent, self.socket_factory.clone());
         self.last_url = Some(url);
@@ -351,7 +377,7 @@ where
                         return Poll::Ready(Ok(Event::Closed));
                     }
                     Poll::Ready(Err(e)) => {
-                        tracing::warn!("Error while closing websocket: {e}");
+                        tracing::warn!(error = std_dyn_err(&e), "Error while closing websocket");
 
                         return Poll::Ready(Ok(Event::Closed));
                     }
@@ -390,7 +416,7 @@ where
                         let user_agent = self.user_agent.clone();
                         let socket_factory = self.socket_factory.clone();
 
-                        tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {e}");
+                        tracing::debug!(error = std_dyn_err(&e), ?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error");
 
                         self.state = State::Connecting(Box::pin(async move {
                             tokio::time::sleep(backoff).await;
@@ -464,7 +490,10 @@ where
                             continue;
                         }
                         Err(e) => {
-                            tracing::warn!("Failed to deserialize message: {e}");
+                            tracing::warn!(
+                                error = std_dyn_err(&e),
+                                "Failed to deserialize message"
+                            );
                             continue;
                         }
                     };
