@@ -5,6 +5,7 @@ use std::{
 
 use connlib_model::{DomainName, DomainRecord};
 use domain::base::{RecordData, Rtype};
+use itertools::Itertools;
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct DnsRecords {
@@ -40,8 +41,11 @@ impl DnsRecords {
         self.inner.extend(other.inner);
     }
 
-    pub(crate) fn domain_rtypes(&self, name: &DomainName) -> impl Iterator<Item = Rtype> + '_ {
-        self.domain_records_iter(name).map(|r| r.rtype())
+    pub(crate) fn domain_rtypes(&self, name: &DomainName) -> Vec<Rtype> {
+        self.domain_records_iter(name)
+            .map(|r| r.rtype())
+            .dedup()
+            .collect_vec()
     }
 }
 

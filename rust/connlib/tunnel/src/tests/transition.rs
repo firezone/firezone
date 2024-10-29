@@ -274,7 +274,7 @@ fn non_dns_ports() -> impl Strategy<Value = u16> {
 
 /// Samples up to 5 DNS queries that will be sent concurrently into connlib.
 pub(crate) fn dns_queries(
-    domain: impl Strategy<Value = DomainName>,
+    domain: impl Strategy<Value = (DomainName, Vec<Rtype>)>,
     dns_server: impl Strategy<Value = SocketAddr>,
 ) -> impl Strategy<Value = Vec<DnsQuery>> {
     // Queries can be uniquely identified by the tuple of DNS server and query ID.
@@ -290,11 +290,11 @@ pub(crate) fn dns_queries(
         let zipped = unique_queries.zip(domains);
 
         zipped
-            .map(move |((dns_server, query_id), domain)| {
+            .map(move |((dns_server, query_id), (domain, rtypes))| {
                 (
                     Just(domain),
                     Just(dns_server),
-                    query_type(),
+                    query_type(rtypes),
                     Just(query_id),
                     ptr_query_ip(),
                     dns_transport(),
@@ -339,13 +339,13 @@ fn dns_transport() -> impl Strategy<Value = DnsTransport> {
     prop_oneof![Just(DnsTransport::Udp), Just(DnsTransport::Tcp),]
 }
 
-pub(crate) fn query_type() -> impl Strategy<Value = Rtype> {
-    prop_oneof![
-        Just(Rtype::A),
-        Just(Rtype::AAAA),
-        Just(Rtype::MX),
-        Just(Rtype::PTR),
-    ]
+pub(crate) fn query_type(mut rtypes: Vec<Rtype>) -> impl Strategy<Value = Rtype> {
+    if rtypes.contains(&Rtype::A) || rtypes.contains(&Rtype::AAAA) {
+        rtypes.push(Rtype::PTR);
+        rtypes.push(Rtype::MX);
+    }
+
+    sample::select(rtypes)
 }
 
 pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {

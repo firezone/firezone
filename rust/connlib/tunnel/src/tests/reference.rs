@@ -699,16 +699,18 @@ impl ReferenceState {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
-    fn all_domains(&self) -> Vec<DomainName> {
+    // We surface what are the existing rtypes for a domain so that it's easier
+    // for the proptests to hit an existing record.
+    fn all_domains(&self) -> Vec<(DomainName, Vec<Rtype>)> {
         self.global_dns_records
             .domains_iter()
-            .chain(
-                self.client
-                    .inner()
-                    .known_hosts
-                    .keys()
-                    .map(|h| DomainName::vec_from_str(h).unwrap()),
-            )
+            .map(|d| (d.clone(), self.global_dns_records.domain_rtypes(&d)))
+            .chain(self.client.inner().known_hosts.keys().map(|h| {
+                (
+                    DomainName::vec_from_str(h).unwrap(),
+                    vec![Rtype::A, Rtype::AAAA],
+                )
+            }))
             .collect()
     }
 

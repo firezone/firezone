@@ -344,6 +344,9 @@ impl SimClient {
                 AllRecordData::Ptr(_) => {
                     continue;
                 }
+                AllRecordData::Txt(_) => {
+                    continue;
+                }
                 unhandled => {
                     panic!("Unexpected record data: {unhandled:?}")
                 }
