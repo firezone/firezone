@@ -744,7 +744,7 @@ where
     fn add_local_as_host_candidate(&mut self, local: SocketAddr) -> Result<(), Error> {
         let host_candidate = Candidate::host(local, Protocol::Udp)?;
 
-        if self.shared_candidates.insert(host_candidate.clone()) {
+        if !self.shared_candidates.insert(host_candidate.clone()) {
             return Ok(());
         }
 
