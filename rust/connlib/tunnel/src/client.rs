@@ -26,7 +26,7 @@ use crate::ClientEvent;
 use domain::base::Message;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{ClientNode, EncryptBuffer, RelaySocket, Transmit};
+use snownet::{ClientNode, EncryptBuffer, NoTurnServers, RelaySocket, Transmit};
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -535,7 +535,7 @@ impl ClientState {
         gateway_id: GatewayId,
         site_id: SiteId,
         now: Instant,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Result<(), NoTurnServers>> {
         tracing::trace!("Updating resource routing table");
 
         let desc = self
@@ -544,7 +544,7 @@ impl ClientState {
             .context("Unknown resource")?;
 
         if self.node.is_expecting_answer(gateway_id) {
-            return Ok(());
+            return Ok(Ok(()));
         }
 
         let awaiting_connection_details = self
@@ -571,7 +571,16 @@ impl ClientState {
                 gateway_id,
                 maybe_domain: awaiting_connection_details.domain,
             });
-            return Ok(());
+            return Ok(Ok(()));
+        };
+
+        let offer = match self.node.new_connection(
+            gateway_id,
+            awaiting_connection_details.last_intent_sent_at,
+            now,
+        ) {
+            Ok(o) => o,
+            Err(e) => return Ok(Err(e)),
         };
 
         self.peers.insert(
@@ -580,12 +589,6 @@ impl ClientState {
         );
         self.peers
             .add_ips_with_resource(&gateway_id, ips.into_iter(), &resource_id);
-
-        let offer = self.node.new_connection(
-            gateway_id,
-            awaiting_connection_details.last_intent_sent_at,
-            now,
-        );
 
         self.buffered_events
             .push_back(ClientEvent::RequestConnection {
@@ -599,7 +602,7 @@ impl ClientState {
                 maybe_domain: awaiting_connection_details.domain,
             });
 
-        Ok(())
+        Ok(Ok(()))
     }
 
     fn is_upstream_set_by_the_portal(&self) -> bool {

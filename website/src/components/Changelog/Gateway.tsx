@@ -23,6 +23,10 @@ export default function Gateway() {
             Adds on-by-default error reporting using sentry.io.
             Disable by setting `FIREZONE_NO_TELEMETRY=1`.
           </ChangeItem>
+          <ChangeItem pull="7164">
+            Fixes an issue where the Gateway would fail to accept connections and
+            had to be restarted.
+          </ChangeItem>
       </Unreleased>
       <Entry version="1.3.2" date={new Date("2024-10-02")}>
         <ChangeItem pull="6733">

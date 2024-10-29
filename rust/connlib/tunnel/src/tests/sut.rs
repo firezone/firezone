@@ -710,6 +710,7 @@ impl TunnelTest {
 
                 self.client
                     .exec_mut(|c| c.sut.on_routing_details(resource, gateway, site, now))
+                    .unwrap()
                     .unwrap();
             }
 
@@ -794,18 +795,21 @@ impl TunnelTest {
                 let client_id = self.client.inner().id;
 
                 let answer = gateway.exec_mut(|g| {
-                    let answer = g.sut.accept(
-                        client_id,
-                        snownet::Offer {
-                            session_key: preshared_key.expose_secret().0.into(),
-                            credentials: snownet::Credentials {
-                                username: offer.username,
-                                password: offer.password,
+                    let answer = g
+                        .sut
+                        .accept(
+                            client_id,
+                            snownet::Offer {
+                                session_key: preshared_key.expose_secret().0.into(),
+                                credentials: snownet::Credentials {
+                                    username: offer.username,
+                                    password: offer.password,
+                                },
                             },
-                        },
-                        self.client.inner().sut.public_key(),
-                        now,
-                    );
+                            self.client.inner().sut.public_key(),
+                            now,
+                        )
+                        .unwrap();
                     g.sut
                         .allow_access(
                             self.client.inner().id,

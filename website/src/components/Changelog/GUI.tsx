@@ -25,6 +25,10 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem pull="6996">
           Supports Ubuntu 24.04, no longer supports Ubuntu 20.04.
         </ChangeItem>
+        <ChangeItem pull="7164">
+          Fixes an issue where Firezone would fail to establish connections to
+          Gateways and the user had to sign-out and in again.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.9" date={new Date("2024-10-09")}>
         <ChangeItem enable={title === "Linux GUI"} pull="6987">
