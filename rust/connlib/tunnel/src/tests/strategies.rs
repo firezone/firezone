@@ -20,10 +20,33 @@ use std::{
 pub(crate) fn global_dns_records() -> impl Strategy<Value = DnsRecords> {
     collection::btree_map(
         domain_name(2..4).prop_map(|d| d.parse().unwrap()),
-        collection::btree_set(non_reserved_ip().prop_map(ip_to_domain_record), 1..6),
+        collection::btree_set(dns_record(), 1..6),
         0..5,
     )
     .prop_map_into()
+}
+
+fn dns_record() -> impl Strategy<Value = DomainRecord> {
+    prop_oneof![
+        3 => non_reserved_ip().prop_map(ip_to_domain_record),
+        1 => collection::vec(txt_record(), 6..=10)
+            .prop_map(|sections| { sections.into_iter().flatten().collect_vec() })
+            .prop_map(|o| domain::rdata::Txt::from_octets(o).unwrap())
+            .prop_map(DomainRecord::Txt)
+    ]
+}
+
+// A maximum length txt record section
+fn txt_record() -> impl Strategy<Value = Vec<u8>> {
+    "[a-z]{255}".prop_map(|s| {
+        let mut b = s.into_bytes();
+        // This is always 255 but this is less error-prone
+        let length = b.len() as u8;
+        let mut section = Vec::new();
+        section.push(length);
+        section.append(&mut b);
+        section
+    })
 }
 
 pub(crate) fn packet_source_v4(client: Ipv4Addr) -> impl Strategy<Value = Ipv4Addr> {

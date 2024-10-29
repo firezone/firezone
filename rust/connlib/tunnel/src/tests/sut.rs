@@ -17,7 +17,7 @@ use crate::utils::earliest;
 use crate::{messages::Interface, ClientEvent, GatewayEvent};
 use connlib_model::{ClientId, GatewayId, RelayId};
 use domain::base::iana::{Class, Rcode};
-use domain::base::{Message, MessageBuilder, Record, ToName as _, Ttl};
+use domain::base::{Message, MessageBuilder, Record, RecordData, ToName as _, Ttl};
 use firezone_logging::anyhow_dyn_err;
 use secrecy::ExposeSecret as _;
 use snownet::Transmit;
@@ -853,6 +853,7 @@ impl TunnelTest {
 
         let records = global_dns_records
             .domain_records_iter(&name)
+            .filter(|record| qtype == record.rtype())
             .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
 
         for record in records {

@@ -6,7 +6,7 @@ use std::{
 
 use domain::base::{
     iana::{Class, Rcode},
-    Message, MessageBuilder, Record, ToName, Ttl,
+    Message, MessageBuilder, Record, RecordData, ToName, Ttl,
 };
 use ip_packet::IpPacket;
 
@@ -88,6 +88,7 @@ fn handle_dns_query(query: &Message<[u8]>, global_dns_records: &DnsRecords) -> M
 
         let records = global_dns_records
             .domain_records_iter(&name)
+            .filter(|r| r.rtype() == query.qtype())
             .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
 
         for record in records {
