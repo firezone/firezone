@@ -5,7 +5,7 @@ defmodule Web.Policies.Edit do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
-           Policies.fetch_policy_by_id(id, socket.assigns.subject,
+           Policies.fetch_policy_by_id_or_persistent_id(id, socket.assigns.subject,
              preload: [:actor_group, :resource],
              filter: [deleted?: false]
            ) do
