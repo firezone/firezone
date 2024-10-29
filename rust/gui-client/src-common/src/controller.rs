@@ -15,7 +15,13 @@ use firezone_headless_client::{
 };
 use firezone_telemetry::{self as telemetry, Telemetry};
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, time::Instant};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ops::ControlFlow,
+    path::PathBuf,
+    str::FromStr,
+    time::Instant,
+};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 
@@ -72,8 +78,15 @@ impl<I: GuiIntegration> Builder<I> {
         // Get the device ID after connecting to the IPC service, this creates a happens-before relationship where we know the IPC service has written a device ID to disk.
         match firezone_headless_client::device_id::get() {
             Ok(id) => {
-                telemetry::Hub::main()
-                    .configure_scope(|scope| scope.set_tag("firezone_id", &id.id));
+                telemetry::Hub::main().configure_scope(|scope| {
+                    scope.set_context(
+                        "firezone",
+                        firezone_telemetry::Context::Other(BTreeMap::from([(
+                            "id".to_string(),
+                            serde_json::Value::from_str(&id.id).unwrap(),
+                        )])),
+                    )
+                });
             }
             Err(error) => {
                 telemetry::capture_anyhow(&error.context("Failed to read device ID"));
