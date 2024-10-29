@@ -1,18 +1,16 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, VecDeque},
-    net::{IpAddr, SocketAddr},
+    collections::{BTreeSet, VecDeque},
+    net::SocketAddr,
     time::Instant,
 };
 
-use connlib_model::DomainName;
-use domain::{
-    base::{
-        iana::{Class, Rcode},
-        Message, MessageBuilder, Name, Record, Rtype, ToName, Ttl,
-    },
-    rdata::AllRecordData,
+use domain::base::{
+    iana::{Class, Rcode},
+    Message, MessageBuilder, Record, ToName, Ttl,
 };
 use ip_packet::IpPacket;
+
+use super::dns_records::DnsRecords;
 
 pub struct TcpDnsServerResource {
     server: dns_over_tcp::Server,
@@ -36,12 +34,7 @@ impl TcpDnsServerResource {
         self.server.handle_inbound(packet);
     }
 
-    pub fn handle_timeout(
-        &mut self,
-        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
-
-        now: Instant,
-    ) {
+    pub fn handle_timeout(&mut self, global_dns_records: &DnsRecords, now: Instant) {
         self.server.handle_timeout(now);
         while let Some(query) = self.server.poll_queries() {
             let response = handle_dns_query(query.message.for_slice(), global_dns_records);
@@ -60,12 +53,7 @@ impl UdpDnsServerResource {
         self.inbound_packets.push_back(packet);
     }
 
-    pub fn handle_timeout(
-        &mut self,
-        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
-
-        _: Instant,
-    ) {
+    pub fn handle_timeout(&mut self, global_dns_records: &DnsRecords, _: Instant) {
         while let Some(packet) = self.inbound_packets.pop_front() {
             let udp = packet.as_udp().unwrap();
             let query = Message::from_octets(udp.payload().to_vec()).unwrap();
@@ -90,10 +78,7 @@ impl UdpDnsServerResource {
     }
 }
 
-fn handle_dns_query(
-    query: &Message<[u8]>,
-    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
-) -> Message<Vec<u8>> {
+fn handle_dns_query(query: &Message<[u8]>, global_dns_records: &DnsRecords) -> Message<Vec<u8>> {
     let response = MessageBuilder::new_vec();
     let mut answers = response.start_answer(query, Rcode::NOERROR).unwrap();
 
@@ -102,19 +87,7 @@ fn handle_dns_query(
         let name = query.qname().to_name::<Vec<u8>>();
 
         let records = global_dns_records
-            .get(&name)
-            .cloned()
-            .into_iter()
-            .flatten()
-            .filter_map(|ip| match (query.qtype(), ip) {
-                (Rtype::A, IpAddr::V4(v4)) => {
-                    Some(AllRecordData::<Vec<_>, Name<Vec<_>>>::A(v4.into()))
-                }
-                (Rtype::AAAA, IpAddr::V6(v6)) => {
-                    Some(AllRecordData::<Vec<_>, Name<Vec<_>>>::Aaaa(v6.into()))
-                }
-                _ => None,
-            })
+            .domain_records_iter(&name)
             .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
 
         for record in records {

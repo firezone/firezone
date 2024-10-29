@@ -1,4 +1,5 @@
 use super::{
+    dns_records::DnsRecords,
     reference::{private_key, PrivateKey},
     sim_net::{any_ip_stack, any_port, host, Host},
     sim_relay::{map_explode, SimRelay},
@@ -928,7 +929,7 @@ impl RefClient {
 
     pub(crate) fn resolved_ip4_for_non_resources(
         &self,
-        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+        global_dns_records: &DnsRecords,
     ) -> Vec<Ipv4Addr> {
         self.resolved_ips_for_non_resources(global_dns_records)
             .filter_map(|ip| match ip {
@@ -940,7 +941,7 @@ impl RefClient {
 
     pub(crate) fn resolved_ip6_for_non_resources(
         &self,
-        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+        global_dns_records: &DnsRecords,
     ) -> Vec<Ipv6Addr> {
         self.resolved_ips_for_non_resources(global_dns_records)
             .filter_map(|ip| match ip {
@@ -952,18 +953,16 @@ impl RefClient {
 
     fn resolved_ips_for_non_resources<'a>(
         &'a self,
-        global_dns_records: &'a BTreeMap<DomainName, BTreeSet<IpAddr>>,
+        global_dns_records: &'a DnsRecords,
     ) -> impl Iterator<Item = IpAddr> + 'a {
         self.dns_records
             .iter()
             .filter_map(|(domain, _)| {
                 self.dns_resource_by_domain(domain)
                     .is_none()
-                    .then_some(global_dns_records.get(domain))
+                    .then_some(global_dns_records.domain_ips_iter(domain))
             })
             .flatten()
-            .flatten()
-            .copied()
     }
 
     /// Returns the resource we will forward the DNS query for the given name to.

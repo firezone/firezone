@@ -1,11 +1,12 @@
+use super::dns_records::{ip_to_domain_record, DnsRecords};
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
 use crate::client::{
     CidrResource, DnsResource, InternetResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6,
     IPV4_RESOURCES, IPV6_RESOURCES,
 };
+use crate::messages::DnsServer;
 use crate::proptest::*;
-use crate::{messages::DnsServer, DomainName};
-use connlib_model::{RelayId, Site};
+use connlib_model::{DomainRecord, RelayId, Site};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
@@ -16,13 +17,13 @@ use std::{
     time::Duration,
 };
 
-pub(crate) fn global_dns_records() -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<IpAddr>>>
-{
+pub(crate) fn global_dns_records() -> impl Strategy<Value = DnsRecords> {
     collection::btree_map(
         domain_name(2..4).prop_map(|d| d.parse().unwrap()),
-        collection::btree_set(non_reserved_ip(), 1..6),
+        collection::btree_set(non_reserved_ip().prop_map(ip_to_domain_record), 1..6),
         0..5,
     )
+    .prop_map_into()
 }
 
 pub(crate) fn packet_source_v4(client: Ipv4Addr) -> impl Strategy<Value = Ipv4Addr> {
@@ -133,7 +134,7 @@ pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
     })
 }
 
-fn non_reserved_ip() -> impl Strategy<Value = IpAddr> {
+pub(crate) fn non_reserved_ip() -> impl Strategy<Value = IpAddr> {
     prop_oneof![
         non_reserved_ipv4().prop_map_into(),
         non_reserved_ipv6().prop_map_into(),
@@ -211,21 +212,21 @@ fn double_star_wildcard_dns_resource(
     })
 }
 
-pub(crate) fn resolved_ips() -> impl Strategy<Value = BTreeSet<IpAddr>> {
-    collection::btree_set(
-        prop_oneof![
-            dns_resource_ip4s().prop_map_into(),
-            dns_resource_ip6s().prop_map_into()
-        ],
-        1..6,
-    )
+pub(crate) fn resolved_ips() -> impl Strategy<Value = BTreeSet<DomainRecord>> {
+    let record = prop_oneof![
+        dns_resource_ip4s().prop_map_into(),
+        dns_resource_ip6s().prop_map_into()
+    ]
+    .prop_map(ip_to_domain_record);
+
+    collection::btree_set(record, 1..6)
 }
 
 /// A strategy for generating a set of DNS records all nested under the provided base domain.
 pub(crate) fn subdomain_records(
     base: String,
     subdomains: impl Strategy<Value = String>,
-) -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<IpAddr>>> {
+) -> impl Strategy<Value = DnsRecords> {
     collection::hash_map(subdomains, resolved_ips(), 1..4).prop_map(move |subdomain_ips| {
         subdomain_ips
             .into_iter()
