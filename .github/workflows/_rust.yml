@@ -114,6 +114,7 @@ jobs:
           rg --count --no-ignore "Packet for Internet resource" $TESTCASES_DIR
           rg --count --no-ignore "Performed IP-NAT46" $TESTCASES_DIR
           rg --count --no-ignore "Performed IP-NAT64" $TESTCASES_DIR
+          rg --count --no-ignore "Too big DNS response, truncating" $TESTCASES_DIR
 
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
@@ -151,14 +152,15 @@ jobs:
         timeout-minutes: 5
         with:
           runtime: true
+        # These steps must be synchronized with build.sh and build.bat in `rust/gui-client`
       - name: pnpm install
         run: |
           pnpm install
           cp "node_modules/flowbite/dist/flowbite.min.js" "src/"
-      - name: Compile TypeScript
-        run: pnpm tsc
       - name: Compile Tailwind
         run: pnpm tailwindcss -i src/input.css -o src/output.css
+      - name: Run Vite bundler
+        run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
       - uses: taiki-e/install-action@v2
