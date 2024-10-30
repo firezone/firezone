@@ -22,7 +22,6 @@ use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
     pin::pin,
-    str::FromStr,
     sync::Arc,
 };
 use tokio::{sync::mpsc, time::Instant};
@@ -182,7 +181,7 @@ fn main() -> Result<()> {
             "firezone",
             firezone_telemetry::Context::Other(BTreeMap::from([(
                 "id".to_string(),
-                serde_json::Value::from_str(&firezone_id).unwrap(),
+                firezone_id.clone().into(),
             )])),
         )
     });

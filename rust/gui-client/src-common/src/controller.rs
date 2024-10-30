@@ -19,7 +19,6 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     ops::ControlFlow,
     path::PathBuf,
-    str::FromStr,
     time::Instant,
 };
 use tokio::sync::{mpsc, oneshot};
@@ -84,7 +83,7 @@ impl<I: GuiIntegration> Builder<I> {
                         "firezone",
                         firezone_telemetry::Context::Other(BTreeMap::from([(
                             "id".to_string(),
-                            serde_json::Value::from_str(&id.id).unwrap(),
+                            id.id.into(),
                         )])),
                     )
                 });
