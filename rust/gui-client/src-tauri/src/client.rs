@@ -98,6 +98,25 @@ fn run_gui(cli: Cli) -> Result<()> {
         firezone_bin_shared::git_version!("gui-client-*"),
         telemetry::GUI_DSN,
     );
+    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
+    // Technically this means we can fail to get the device ID on a newly-installed system, since the IPC service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
+    match firezone_headless_client::device_id::get() {
+        Ok(id) => {
+            // Get the main thread's telemetry hub instead of the current thread
+            telemetry::Hub::main().configure_scope(|scope| {
+                scope.set_context(
+                    "firezone",
+                    firezone_telemetry::Context::Other(BTreeMap::from([(
+                        "id".to_string(),
+                        id.id.into(),
+                    )])),
+                )
+            });
+        }
+        Err(error) => {
+            telemetry::capture_anyhow(&error.context("Failed to read device ID"));
+        }
+    }
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {
         logger: _logger,

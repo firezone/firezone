@@ -74,24 +74,6 @@ impl<I: GuiIntegration> Builder<I> {
 
         let (ipc_tx, ipc_rx) = mpsc::channel(1);
         let ipc_client = ipc::Client::new(ipc_tx).await?;
-        // Get the device ID after connecting to the IPC service, this creates a happens-before relationship where we know the IPC service has written a device ID to disk.
-        match firezone_headless_client::device_id::get() {
-            Ok(id) => {
-                // Get the main thread's telemetry hub instead of the current thread
-                telemetry::Hub::main().configure_scope(|scope| {
-                    scope.set_context(
-                        "firezone",
-                        firezone_telemetry::Context::Other(BTreeMap::from([(
-                            "id".to_string(),
-                            id.id.into(),
-                        )])),
-                    )
-                });
-            }
-            Err(error) => {
-                telemetry::capture_anyhow(&error.context("Failed to read device ID"));
-            }
-        }
 
         Ok(Controller {
             advanced_settings,
