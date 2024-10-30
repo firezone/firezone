@@ -5,6 +5,8 @@ set -euo pipefail
 # Dir where all the bundles are built
 BUNDLES_DIR=../target/release/bundle/deb
 
+docker build -t rpm -f ../Dockerfile-rpm .
+
 # Copy frontend dependencies
 cp node_modules/flowbite/dist/flowbite.min.js src/
 
