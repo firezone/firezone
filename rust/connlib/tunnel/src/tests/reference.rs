@@ -1,3 +1,4 @@
+use super::dns_records::DnsRecords;
 use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
@@ -33,7 +34,7 @@ pub(crate) struct ReferenceState {
     /// All IP addresses a domain resolves to in our test.
     ///
     /// This is used to e.g. mock DNS resolution on the gateway.
-    pub(crate) global_dns_records: BTreeMap<DomainName, BTreeSet<IpAddr>>,
+    pub(crate) global_dns_records: DnsRecords,
 
     pub(crate) network: RoutingTable,
 }
@@ -93,7 +94,7 @@ impl ReferenceState {
                     }
 
                     // Merge all DNS records into `global_dns`.
-                    global_dns.extend(records);
+                    global_dns.merge(records);
 
                     Some((
                         c,
@@ -607,7 +608,7 @@ impl ReferenceState {
                     .is_some();
 
                 let is_ptr_query = matches!(query.r_type, Rtype::PTR);
-                let is_known_domain = state.global_dns_records.contains_key(&query.domain);
+                let is_known_domain = state.global_dns_records.contains_domain(&query.domain);
                 // In case we sampled a PTR query, the domain doesn't have to exist.
                 let ptr_or_known_domain = is_ptr_query || is_known_domain;
 
@@ -698,17 +699,18 @@ impl ReferenceState {
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
-    fn all_domains(&self) -> Vec<DomainName> {
+    // We surface what are the existing rtypes for a domain so that it's easier
+    // for the proptests to hit an existing record.
+    fn all_domains(&self) -> Vec<(DomainName, Vec<Rtype>)> {
         self.global_dns_records
-            .keys()
-            .cloned()
-            .chain(
-                self.client
-                    .inner()
-                    .known_hosts
-                    .keys()
-                    .map(|h| DomainName::vec_from_str(h).unwrap()),
-            )
+            .domains_iter()
+            .map(|d| (d.clone(), self.global_dns_records.domain_rtypes(&d)))
+            .chain(self.client.inner().known_hosts.keys().map(|h| {
+                (
+                    DomainName::vec_from_str(h).unwrap(),
+                    vec![Rtype::A, Rtype::AAAA],
+                )
+            }))
             .collect()
     }
 

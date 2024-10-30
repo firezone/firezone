@@ -24,7 +24,7 @@ where
 
     let subscriber = Registry::default()
         .with(additional_layer.with_filter(filter(&directives)))
-        .with(sentry_layer()) // Sentry layer has its own event filtering mechanism.
+        .with(sentry_layer().with_filter(filter(""))) // Sentry layer has its own event filtering mechanism, so we only exclude the noisy crates.
         .with(
             fmt::layer()
                 .event_format(Format::new())
@@ -51,6 +51,10 @@ pub fn try_filter(directives: &str) -> Result<EnvFilter, ParseError> {
     /// If necessary, you can still activate logs from these crates by restating them in your directive with a lower filter, i.e. `netlink_proto=debug`.
     const IRRELEVANT_CRATES: &str = "netlink_proto=warn,os_info=warn,rustls=warn";
 
+    if directives.is_empty() {
+        return EnvFilter::try_new(IRRELEVANT_CRATES);
+    }
+
     EnvFilter::try_new(format!("{IRRELEVANT_CRATES},{directives}"))
 }
 
@@ -76,9 +80,8 @@ pub fn test_global(directives: &str) {
 ///
 /// ## Events
 ///
-/// - error events are reported as sentry exceptions
-/// - warn events are reported as sentry messages
-/// - info events are captured as breadcrumbs (and submitted together with warns & errors)
+/// - error and warn events are reported as sentry exceptions
+/// - info and debug events are captured as breadcrumbs (and submitted together with warns & errors)
 ///
 /// ## Telemetry events
 ///
@@ -101,7 +104,7 @@ where
     sentry_tracing::layer()
         .event_filter(move |md| match *md.level() {
             tracing::Level::ERROR | tracing::Level::WARN => EventFilter::Exception,
-            tracing::Level::INFO => EventFilter::Breadcrumb,
+            tracing::Level::INFO | tracing::Level::DEBUG => EventFilter::Breadcrumb,
             tracing::Level::TRACE if md.target() == "telemetry" => {
                 // rand::random generates floats in the range of [0, 1).
                 if rand::random::<f32>() < 0.01 {
