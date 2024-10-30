@@ -1,14 +1,12 @@
 use super::{
+    dns_records::DnsRecords,
     sim_client::{ref_client_host, RefClient},
     sim_gateway::{ref_gateway_host, RefGateway},
     sim_net::Host,
     strategies::{resolved_ips, subdomain_records},
 };
+use crate::messages::{gateway, DnsServer};
 use crate::{client, proptest::*};
-use crate::{
-    messages::{gateway, DnsServer},
-    DomainName,
-};
 use connlib_model::GatewayId;
 use connlib_model::{ResourceId, SiteId};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -215,9 +213,7 @@ impl StubPortal {
         )
     }
 
-    pub(crate) fn dns_resource_records(
-        &self,
-    ) -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<IpAddr>>> {
+    pub(crate) fn dns_resource_records(&self) -> impl Strategy<Value = DnsRecords> {
         self.dns_resources
             .values()
             .map(|resource| {
@@ -233,17 +229,17 @@ impl StubPortal {
                     }
                     _ => resolved_ips()
                         .prop_map(move |resolved_ips| {
-                            BTreeMap::from([(address.parse().unwrap(), resolved_ips)])
+                            DnsRecords::from([(address.parse().unwrap(), resolved_ips)])
                         })
                         .boxed(),
                 }
             })
             .collect::<Vec<_>>()
             .prop_map(|records| {
-                let mut map = BTreeMap::default();
+                let mut map = DnsRecords::default();
 
                 for record in records {
-                    map.extend(record)
+                    map.merge(record)
                 }
 
                 map
