@@ -113,6 +113,13 @@ jobs:
           name: ${{ env.ARTIFACT_DST }}-pkg
           path: ${{ env.ARTIFACT_SRC }}.${{ matrix.pkg-extension }}
           if-no-files-found: error
+      - name: Upload rpm package
+        if: ${{ runner.os == 'Linux' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_DST }}-rpm
+          path: ${{ env.ARTIFACT_SRC }}.rpm
+          if-no-files-found: error
       - name: Upload Release Assets
         # Only upload the GUI Client build to the drafted release on main builds
         if: ${{ github.ref_name == 'main' }}

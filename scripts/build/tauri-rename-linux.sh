@@ -20,10 +20,11 @@ ls "$TARGET_DIR/release" "$TARGET_DIR/release/bundle/deb"
 cp "$TARGET_DIR/release/firezone-client-gui" "$BINARY_DEST_PATH"
 cp "$TARGET_DIR/release/firezone-gui-client.dwp" "$BINARY_DEST_PATH.dwp"
 cp "$TARGET_DIR/release/bundle/deb/firezone-client-gui.deb" "$BINARY_DEST_PATH.deb"
+cp "$TARGET_DIR/../gui-client/firezone-client-gui.rpm" "$BINARY_DEST_PATH.rpm"
 # TODO: Debug symbols for Linux
 
 function make_hash() {
-    sha256sum "$1" >"$1.sha256sum.txt"
+    sha256sum "$1" | tee "$1.sha256sum.txt"
 }
 
 # Windows calls it `x64`, Debian `amd64`. Standardize on `x86_64` here since that's
@@ -31,6 +32,7 @@ function make_hash() {
 make_hash "$BINARY_DEST_PATH"
 make_hash "$BINARY_DEST_PATH.dwp"
 make_hash "$BINARY_DEST_PATH.deb"
+make_hash "$BINARY_DEST_PATH.rpm"
 
 # Test the deb package, since this script is the easiest place to get a release build
 DEB_PATH=$(realpath "$BINARY_DEST_PATH.deb")

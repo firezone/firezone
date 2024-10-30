@@ -5,7 +5,6 @@ Summary: The GUI Client for Firezone
 
 URL: https://firezone.dev
 License: Apache-2.0
-Requires: libwebkit2gtk-4.1
 
 %description
 
@@ -16,8 +15,8 @@ Requires: libwebkit2gtk-4.1
 %install
 mkdir -p %{buildroot}/usr/bin
 
-cp /root/rpmbuild/bins/firezone-client-ipc %{buildroot}/usr/bin/
-cp /root/rpmbuild/bins/firezone-gui-client %{buildroot}/usr/bin/
+cp ../../../target/release/firezone-client-ipc %{buildroot}/usr/bin/
+cp ../../../target/release/firezone-gui-client %{buildroot}/usr/bin/
 
 %files
 /usr/bin/firezone-client-ipc

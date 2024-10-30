@@ -15,7 +15,7 @@ runs:
       shell: bash
     - name: Install Tauri build deps
       if: ${{ runner.os == 'Linux' }}
-      run: sudo apt-get --yes install build-essential curl file libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev wget
+      run: sudo apt-get --yes install build-essential curl file libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev rpm wget
       shell: bash
     - name: Install gnome-keyring
       if: ${{ runner.os == 'Linux' }}
