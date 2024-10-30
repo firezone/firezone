@@ -31,6 +31,7 @@ use uuid::Uuid;
 mod eventloop;
 
 const ID_PATH: &str = "/var/lib/firezone/gateway_id";
+const GIT_VERSION: &str = firezone_bin_shared::git_version!("gateway-*");
 
 #[tokio::main]
 async fn main() {
@@ -43,7 +44,7 @@ async fn main() {
     if cli.is_telemetry_allowed() {
         telemetry.start(
             cli.api_url.as_str(),
-            firezone_bin_shared::git_version!("gateway-*"),
+            GIT_VERSION,
             firezone_telemetry::GATEWAY_DSN,
         );
     }
@@ -61,6 +62,8 @@ async fn main() {
 
 async fn try_main(cli: Cli) -> Result<()> {
     firezone_logging::setup_global_subscriber(layer::Identity::default());
+
+    tracing::info!(arch = std::env::consts::ARCH, git_version = GIT_VERSION);
 
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
