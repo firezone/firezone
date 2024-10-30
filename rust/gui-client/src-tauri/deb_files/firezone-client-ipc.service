@@ -42,7 +42,7 @@ EnvironmentFile=-/etc/default/firezone-client-ipc
 
 ExecStart=firezone-client-ipc run
 Type=notify
-# Unfortunately we may need root to control DNS
+# Unfortunately we need root to control DNS
 User=root
 Group=firezone-client
 
