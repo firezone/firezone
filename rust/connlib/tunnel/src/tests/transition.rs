@@ -274,7 +274,7 @@ fn non_dns_ports() -> impl Strategy<Value = u16> {
 
 /// Samples up to 5 DNS queries that will be sent concurrently into connlib.
 pub(crate) fn dns_queries(
-    domain: impl Strategy<Value = DomainName>,
+    domain: impl Strategy<Value = (DomainName, Vec<Rtype>)>,
     dns_server: impl Strategy<Value = SocketAddr>,
 ) -> impl Strategy<Value = Vec<DnsQuery>> {
     // Queries can be uniquely identified by the tuple of DNS server and query ID.
@@ -290,11 +290,11 @@ pub(crate) fn dns_queries(
         let zipped = unique_queries.zip(domains);
 
         zipped
-            .map(move |((dns_server, query_id), domain)| {
+            .map(move |((dns_server, query_id), (domain, existing_rtypes))| {
                 (
                     Just(domain),
                     Just(dns_server),
-                    query_type(),
+                    maybe_available_response_rtypes(existing_rtypes),
                     Just(query_id),
                     ptr_query_ip(),
                     dns_transport(),
@@ -339,13 +339,23 @@ fn dns_transport() -> impl Strategy<Value = DnsTransport> {
     prop_oneof![Just(DnsTransport::Udp), Just(DnsTransport::Tcp),]
 }
 
-pub(crate) fn query_type() -> impl Strategy<Value = Rtype> {
-    prop_oneof![
-        Just(Rtype::A),
-        Just(Rtype::AAAA),
-        Just(Rtype::MX),
-        Just(Rtype::PTR),
-    ]
+/// To make it more likely that sent queries have any response from the server we try to only querty for IP records
+/// when there is any IP record available in the server.
+///
+/// This will probably not happen with TXT records.
+///
+/// We still want to send MX and PTR queries when there is no available record in the server because we neve those before-hand
+/// but we do them inflight.
+///
+/// Similarrly to trigger NAT64 and NAT46 we need to query for A when only AAAA is available and vice versa.
+pub(crate) fn maybe_available_response_rtypes(
+    available_rtypes: Vec<Rtype>,
+) -> impl Strategy<Value = Rtype> {
+    if available_rtypes.contains(&Rtype::A) || available_rtypes.contains(&Rtype::AAAA) {
+        sample::select(vec![Rtype::PTR, Rtype::MX, Rtype::A, Rtype::AAAA])
+    } else {
+        sample::select(available_rtypes)
+    }
 }
 
 pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {

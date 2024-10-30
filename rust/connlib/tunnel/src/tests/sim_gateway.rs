@@ -1,11 +1,11 @@
 use super::{
+    dns_records::DnsRecords,
     dns_server_resource::{TcpDnsServerResource, UdpDnsServerResource},
     reference::{private_key, PrivateKey},
     sim_net::{any_port, dual_ip_stack, host, Host},
     sim_relay::{map_explode, SimRelay},
     strategies::latency,
 };
-use crate::DomainName;
 use crate::GatewayState;
 use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId};
@@ -13,8 +13,8 @@ use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use proptest::prelude::*;
 use snownet::{EncryptBuffer, Transmit};
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap},
-    net::{IpAddr, SocketAddr},
+    collections::{BTreeMap, HashMap},
+    net::SocketAddr,
     time::Instant,
 };
 
@@ -72,7 +72,7 @@ impl SimGateway {
 
     pub(crate) fn advance_resources(
         &mut self,
-        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+        global_dns_records: &DnsRecords,
         now: Instant,
     ) -> Vec<Transmit<'static>> {
         let udp_server_packets = self.udp_dns_server_resources.values_mut().flat_map(|s| {

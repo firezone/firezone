@@ -12,6 +12,7 @@ pub use view::{
 };
 
 pub type DomainName = domain::base::Name<Vec<u8>>;
+pub type DomainRecord = domain::rdata::AllRecordData<Vec<u8>, DomainName>;
 
 use serde::{Deserialize, Serialize};
 use std::fmt;
