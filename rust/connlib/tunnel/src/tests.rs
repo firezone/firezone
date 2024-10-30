@@ -16,6 +16,7 @@ use tracing_subscriber::{
 mod assertions;
 mod buffered_transmits;
 mod composite_strategy;
+mod dns_records;
 mod dns_server_resource;
 mod flux_capacitor;
 mod reference;
