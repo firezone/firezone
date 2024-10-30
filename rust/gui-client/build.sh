@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# These steps must be synchronized with `gui-smoke-test` in `_rust.yml`.
 
 set -euo pipefail
 
