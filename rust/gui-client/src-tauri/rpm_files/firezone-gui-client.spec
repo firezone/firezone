@@ -15,9 +15,9 @@ License: Apache-2.0
 %install
 mkdir -p %{buildroot}/usr/bin
 
-cp ../../../target/release/firezone-client-ipc %{buildroot}/usr/bin/
-cp ../../../target/release/firezone-gui-client %{buildroot}/usr/bin/
+cp %{_topdir}/../../target/release/firezone-client-ipc %{buildroot}/usr/bin/
+cp %{_topdir}/../../target/release/firezone-client-gui %{buildroot}/usr/bin/
 
 %files
 /usr/bin/firezone-client-ipc
-/usr/bin/firezone-gui-client
+/usr/bin/firezone-client-gui
