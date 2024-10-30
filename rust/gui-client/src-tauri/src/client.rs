@@ -102,7 +102,7 @@ fn run_gui(cli: Cli) -> Result<()> {
     // Technically this means we can fail to get the device ID on a newly-installed system, since the IPC service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
     match firezone_headless_client::device_id::get() {
         Ok(id) => {
-            // Get the main thread's telemetry hub instead of the current thread
+            // We should still be in the main thread, but explicitly get the main thread hub anyway.
             telemetry::Hub::main().configure_scope(|scope| {
                 scope.set_context(
                     "firezone",
