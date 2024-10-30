@@ -290,11 +290,11 @@ pub(crate) fn dns_queries(
         let zipped = unique_queries.zip(domains);
 
         zipped
-            .map(move |((dns_server, query_id), (domain, rtypes))| {
+            .map(move |((dns_server, query_id), (domain, existing_rtypes))| {
                 (
                     Just(domain),
                     Just(dns_server),
-                    query_type(rtypes),
+                    maybe_available_response_rtypes(existing_rtypes),
                     Just(query_id),
                     ptr_query_ip(),
                     dns_transport(),
@@ -339,17 +339,23 @@ fn dns_transport() -> impl Strategy<Value = DnsTransport> {
     prop_oneof![Just(DnsTransport::Udp), Just(DnsTransport::Tcp),]
 }
 
-pub(crate) fn query_type(mut rtypes: Vec<Rtype>) -> impl Strategy<Value = Rtype> {
-    if rtypes.contains(&Rtype::A) || rtypes.contains(&Rtype::AAAA) {
-        rtypes.push(Rtype::PTR);
-        rtypes.push(Rtype::MX);
-        rtypes.push(Rtype::A);
-        rtypes.push(Rtype::AAAA);
+/// To make it more likely that sent queries have any response from the server we try to only querty for IP records
+/// when there is any IP record available in the server.
+///
+/// This will probably not happen with TXT records.
+///
+/// We still want to send MX and PTR queries when there is no available record in the server because we neve those before-hand
+/// but we do them inflight.
+///
+/// Similarrly to trigger NAT64 and NAT46 we need to query for A when only AAAA is available and vice versa.
+pub(crate) fn maybe_available_response_rtypes(
+    available_rtypes: Vec<Rtype>,
+) -> impl Strategy<Value = Rtype> {
+    if available_rtypes.contains(&Rtype::A) || available_rtypes.contains(&Rtype::AAAA) {
+        return prop_oneof![Rtype::PTR, Rtype::MX, Rtype::A, Rtype::AAAA];
     }
 
-    rtypes.dedup();
-
-    sample::select(rtypes)
+    sample::select(available_rtypes)
 }
 
 pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
