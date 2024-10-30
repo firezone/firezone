@@ -114,6 +114,7 @@ jobs:
           rg --count --no-ignore "Packet for Internet resource" $TESTCASES_DIR
           rg --count --no-ignore "Performed IP-NAT46" $TESTCASES_DIR
           rg --count --no-ignore "Performed IP-NAT64" $TESTCASES_DIR
+          rg --count --no-ignore "Too big DNS response, truncating, truncating" $TESTCASES_DIR
 
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
