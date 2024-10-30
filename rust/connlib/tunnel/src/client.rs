@@ -1621,23 +1621,19 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     packet
 }
 
-pub(crate) fn truncate_dns_response(message: &Message<Vec<u8>>) -> Vec<u8> {
+fn truncate_dns_response(message: &Message<Vec<u8>>) -> Vec<u8> {
     let mut message_bytes = message.as_octets().to_vec();
 
     if message_bytes.len() > MAX_DATAGRAM_PAYLOAD {
+        tracing::debug!(?message, message_length = %message_bytes.len(), "Too big DNS response, truncating");
+
         let mut new_message = message.clone();
         new_message.header_mut().set_tc(true);
 
         let message_truncation = match message.answer() {
             Ok(answer) if answer.pos() <= MAX_DATAGRAM_PAYLOAD => answer.pos(),
             // This should be very unlikely or impossible.
-            _ => {
-                debug_assert!(
-                    false,
-                    "we shouldn't be able to read packets bigger than our MTU"
-                );
-                message.question().pos()
-            }
+            _ => message.question().pos(),
         };
 
         message_bytes = new_message.as_octets().to_vec();

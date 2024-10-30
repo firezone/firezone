@@ -8,9 +8,7 @@ use domain::base::{
     iana::{Class, Rcode},
     Message, MessageBuilder, Record, RecordData, ToName, Ttl,
 };
-use ip_packet::IpPacket;
-
-use crate::client::truncate_dns_response;
+use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
 
 use super::dns_records::DnsRecords;
 
@@ -99,4 +97,25 @@ fn handle_dns_query(query: &Message<[u8]>, global_dns_records: &DnsRecords) -> M
     }
 
     answers.into_message()
+}
+
+fn truncate_dns_response(message: &Message<Vec<u8>>) -> Vec<u8> {
+    let mut message_bytes = message.as_octets().to_vec();
+
+    if message_bytes.len() > MAX_DATAGRAM_PAYLOAD {
+        let mut new_message = message.clone();
+        new_message.header_mut().set_tc(true);
+
+        let message_truncation = match message.answer() {
+            Ok(answer) if answer.pos() <= MAX_DATAGRAM_PAYLOAD => answer.pos(),
+            // This should be very unlikely or impossible.
+            _ => message.question().pos(),
+        };
+
+        message_bytes = new_message.as_octets().to_vec();
+
+        message_bytes.truncate(message_truncation);
+    }
+
+    message_bytes
 }

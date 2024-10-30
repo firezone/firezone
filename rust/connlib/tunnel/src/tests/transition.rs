@@ -343,7 +343,11 @@ pub(crate) fn query_type(mut rtypes: Vec<Rtype>) -> impl Strategy<Value = Rtype>
     if rtypes.contains(&Rtype::A) || rtypes.contains(&Rtype::AAAA) {
         rtypes.push(Rtype::PTR);
         rtypes.push(Rtype::MX);
+        rtypes.push(Rtype::A);
+        rtypes.push(Rtype::AAAA);
     }
+
+    rtypes.dedup();
 
     sample::select(rtypes)
 }
