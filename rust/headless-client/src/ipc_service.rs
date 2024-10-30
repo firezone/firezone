@@ -222,6 +222,8 @@ async fn ipc_listen(
     let firezone_id = device_id::get_or_create()
         .context("Failed to read / create device ID")?
         .id;
+    // TODO: Telemetry is initialized wrong here:
+    // Sentry's contexts must be set on the main thread hub before starting Tokio, so that other thread hubs will inherit the context.
     firezone_telemetry::configure_scope(|scope| {
         scope.set_context(
             "firezone",

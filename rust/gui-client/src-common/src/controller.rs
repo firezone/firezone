@@ -13,10 +13,10 @@ use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
-use firezone_telemetry::{self as telemetry, Telemetry};
+use firezone_telemetry::Telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     ops::ControlFlow,
     path::PathBuf,
     time::Instant,
