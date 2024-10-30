@@ -15,12 +15,7 @@ use firezone_headless_client::{
 };
 use firezone_telemetry::Telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{
-    collections::BTreeSet,
-    ops::ControlFlow,
-    path::PathBuf,
-    time::Instant,
-};
+use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, time::Instant};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 
