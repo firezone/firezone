@@ -66,7 +66,7 @@ impl UdpDnsServerResource {
                     packet.source(),
                     udp.destination_port(),
                     udp.source_port(),
-                    truncate_dns_response(&response),
+                    truncate_dns_response(response),
                 )
                 .expect("src and dst are retrieved from the same packet"),
             )
@@ -99,7 +99,7 @@ fn handle_dns_query(query: &Message<[u8]>, global_dns_records: &DnsRecords) -> M
     answers.into_message()
 }
 
-fn truncate_dns_response(message: &Message<Vec<u8>>) -> Vec<u8> {
+fn truncate_dns_response(message: Message<Vec<u8>>) -> Vec<u8> {
     let mut message_bytes = message.as_octets().to_vec();
 
     if message_bytes.len() > MAX_DATAGRAM_PAYLOAD {
