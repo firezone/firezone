@@ -24,7 +24,7 @@ pnpm tauri build
 # Build the RPM file
 rpmbuild -bb src-tauri/rpm_files/firezone-gui-client.spec --define "_topdir $PWD/rpmbuild"
 # Give it a predictable name
-mv rpmbuild/RPMS/*/firezone-client-gui-*rpm "../firezone-client-gui.rpm"
+mv rpmbuild/RPMS/*/firezone-client-gui-*rpm "firezone-client-gui.rpm"
 
 # Delete the deb that Tauri built. We're going to modify and rebuild it.
 rm "$BUNDLES_DIR"/*.deb
