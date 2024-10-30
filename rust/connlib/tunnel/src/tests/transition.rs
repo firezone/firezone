@@ -352,10 +352,10 @@ pub(crate) fn maybe_available_response_rtypes(
     available_rtypes: Vec<Rtype>,
 ) -> impl Strategy<Value = Rtype> {
     if available_rtypes.contains(&Rtype::A) || available_rtypes.contains(&Rtype::AAAA) {
-        return prop_oneof![Rtype::PTR, Rtype::MX, Rtype::A, Rtype::AAAA];
+        sample::select(vec![Rtype::PTR, Rtype::MX, Rtype::A, Rtype::AAAA])
+    } else {
+        sample::select(available_rtypes)
     }
-
-    sample::select(available_rtypes)
 }
 
 pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
