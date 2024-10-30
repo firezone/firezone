@@ -27,7 +27,7 @@ cp "%{_topdir}/../src-tauri/rpm_files/gui-shim.sh" "%{buildroot}/usr/bin/firezon
 LIBS="/lib/$(uname -m)-linux-gnu"
 
 cp \
-"$LIBS/ld-linux-aarch64.so.1" \
+"$LIBS/ld-linux-$(uname -m).so.1" \
 "$LIBS/libc.so.6" \
 "%{buildroot}/usr/lib/dev.firezone.client/unused"
 
@@ -83,10 +83,6 @@ cp "%{_topdir}/../src-tauri/deb_files/sysusers.conf" "%{buildroot}/usr/lib/sysus
 /usr/bin/firezone-client-gui
 /usr/lib/dev.firezone.client/firezone-client-gui
 
-# DNF expects libc and ld-linux to be packaged, because it checks the exes with ldd or something, but if we actually use them, the GUI process will segfault. So just dump them somewhere unused.
-/usr/lib/dev.firezone.client/unused/ld-linux-aarch64.so.1
-/usr/lib/dev.firezone.client/unused/libc.so.6
-
 /usr/lib/dev.firezone.client/libappindicator3.so.1
 /usr/lib/dev.firezone.client/libayatana-appindicator3.so.1
 /usr/lib/dev.firezone.client/libayatana-ido3-0.4.so.0
@@ -124,11 +120,19 @@ cp "%{_topdir}/../src-tauri/deb_files/sysusers.conf" "%{buildroot}/usr/lib/sysus
 %ifarch aarch64
 /usr/lib/aarch64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess
 /usr/lib/aarch64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess
+
+# DNF expects libc and ld-linux to be packaged, because it checks the exes with ldd or something, but if we actually use them, the GUI process will segfault. So just dump them somewhere unused.
+/usr/lib/dev.firezone.client/unused/ld-linux-aarch64.so.1
+/usr/lib/dev.firezone.client/unused/libc.so.6
 %endif
 
 %ifarch x86_64
 /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess
 /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess
+
+# DNF expects libc and ld-linux to be packaged, because it checks the exes with ldd or something, but if we actually use them, the GUI process will segfault. So just dump them somewhere unused.
+/usr/lib/dev.firezone.client/unused/ld-linux-x86_64.so.1
+/usr/lib/dev.firezone.client/unused/libc.so.6
 %endif
 
 %post
