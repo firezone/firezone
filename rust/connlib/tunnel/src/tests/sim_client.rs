@@ -266,21 +266,7 @@ impl SimClient {
                 self.received_udp_dns_responses
                     .insert((upstream, message.header().id()), packet.clone());
 
-                if message.header().tc() {
-                    let Some(message) = self
-                        .sent_udp_dns_queries
-                        .get(&(upstream, message.header().id()))
-                    else {
-                        tracing::error!(
-                            "Every received udp response should correspond to a sent query"
-                        );
-                        return;
-                    };
-
-                    let message = Message::from_octets(message.payload().to_vec())
-                        .expect("UDP messages on this map should correspond to DNS queries");
-                    self.tcp_dns_client.send_query(sentinel, message).unwrap();
-                } else {
+                if !message.header().tc() {
                     self.handle_dns_response(message);
                 }
 
