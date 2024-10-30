@@ -24,7 +24,7 @@ where
 
     let subscriber = Registry::default()
         .with(additional_layer.with_filter(filter(&directives)))
-        .with(sentry_layer()) // Sentry layer has its own event filtering mechanism.
+        .with(sentry_layer().with_filter(filter(""))) // Sentry layer has its own event filtering mechanism, so we only exclude the noisy crates.
         .with(
             fmt::layer()
                 .event_format(Format::new())
@@ -50,6 +50,10 @@ pub fn try_filter(directives: &str) -> Result<EnvFilter, ParseError> {
     /// By prepending this directive to the active log filter, a simple directive like `debug` actually produces useful logs.
     /// If necessary, you can still activate logs from these crates by restating them in your directive with a lower filter, i.e. `netlink_proto=debug`.
     const IRRELEVANT_CRATES: &str = "netlink_proto=warn,os_info=warn,rustls=warn";
+
+    if directives.is_empty() {
+        return EnvFilter::try_new(IRRELEVANT_CRATES);
+    }
 
     EnvFilter::try_new(format!("{IRRELEVANT_CRATES},{directives}"))
 }
