@@ -97,8 +97,15 @@ defmodule Web.Groups.Index do
               </:item>
 
               <:tail :let={count}>
-                <span class="pl-1">
-                  and <%= count %> more.
+                <span class="inline-block whitespace-nowrap flex ml-1">
+                  <span>and</span>
+                  <.link
+                    navigate={~p"/#{@account}/groups/#{group}?#actors"}
+                    class={["inline-flex ml-1", link_style()]}
+                  >
+                    <%= count %> more
+                  </.link>
+                  <span>.</span>
                 </span>
               </:tail>
             </.peek>

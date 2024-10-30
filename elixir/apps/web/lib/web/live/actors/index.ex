@@ -102,7 +102,8 @@ defmodule Web.Actors.Index do
                   navigate={~p"/#{@account}/actors/#{actor}?#groups"}
                   class={[
                     "hover:underline hover:decoration-line",
-                    "underline underline-offset-2 decoration-1 decoration-dotted"
+                    "underline underline-offset-2 decoration-1 decoration-dotted",
+                    link_style()
                   ]}
                 >
                   <%= @actor_groups[actor.id].count %>
@@ -137,19 +138,26 @@ defmodule Web.Actors.Index do
               </:empty>
 
               <:item :let={client}>
-                <div class="mr-2">
+                <.link navigate={~p"/#{@account}/clients/#{client}"} class="mr-2">
                   <.client_as_icon client={client} />
                   <div class="relative">
                     <div class="absolute -inset-y-2.5 -right-1">
                       <.online_icon schema={client} />
                     </div>
                   </div>
-                </div>
+                </.link>
               </:item>
 
               <:tail :let={count}>
-                <span class={["inline-block whitespace-nowrap"]}>
-                  and <%= count %> more.
+                <span class="inline-block whitespace-nowrap flex">
+                  <span>and</span>
+                  <.link
+                    navigate={~p"/#{@account}/actors/#{actor}?#clients"}
+                    class={["inline-flex ml-1", link_style()]}
+                  >
+                    <%= count %> more
+                  </.link>
+                  <span>.</span>
                 </span>
               </:tail>
             </.peek>

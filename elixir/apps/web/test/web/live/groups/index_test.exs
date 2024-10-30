@@ -145,7 +145,7 @@ defmodule Web.Live.Groups.IndexTest do
       all_names = Enum.map(actors, & &1.name)
       assert Enum.all?(peeked_names, &(&1 in all_names))
 
-      assert tail == "7 more."
+      assert tail =~ "7 more"
 
       assert around_now?(row["created"])
     end)

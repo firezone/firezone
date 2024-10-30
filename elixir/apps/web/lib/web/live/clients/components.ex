@@ -38,6 +38,12 @@ defmodule Web.Clients.Components do
       <:content>
         <div>
           <%= @client.name %>
+          <.icon
+            :if={not is_nil(@client.verified_at)}
+            name="hero-shield-check"
+            class="h-2.5 w-2.5 text-neutral-500"
+            title="Device attributes of this client are manually verified"
+          />
         </div>
         <div>
           <.client_os_name_and_version client={@client} />
