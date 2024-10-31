@@ -29,12 +29,21 @@ LIBS="/usr/lib/$(uname -m)-linux-gnu"
 # DNF expects libc and ld-linux to be packaged, because it checks the exes with ldd or something, but if we actually use them, the GUI process will segfault. So just dump them somewhere unused.
 UNUSED_DIR="%{buildroot}/usr/lib/dev.firezone.client/unused"
 
-ls "$LIBS/ld-linux*"
+ls $LIBS/ld-linux*
 
+%ifarch aarch64
 cp \
-"$LIBS/ld-linux-$(uname -m).so.1" \
+"$LIBS/ld-linux-aarch64.so.1" \
 "$LIBS/libc.so.6" \
 "$UNUSED_DIR"
+%endif
+
+%ifarch x86_64
+cp \
+"$LIBS/ld-linux-x86-64.so.1" \
+"$LIBS/libc.so.6" \
+"$UNUSED_DIR"
+%endif
 
 cp \
 "$LIBS/libappindicator3.so.1" \
