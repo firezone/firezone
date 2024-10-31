@@ -2198,6 +2198,7 @@ dependencies = [
  "sentry",
  "sentry-anyhow",
  "thiserror",
+ "tokio",
  "tracing",
 ]
 

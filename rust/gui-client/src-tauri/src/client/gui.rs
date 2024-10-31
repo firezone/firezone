@@ -139,7 +139,6 @@ pub(crate) fn run(
         ctlr_tx: ctlr_tx.clone(),
         inject_faults: cli.inject_faults,
     };
-
     let (tray_tx, tray_rx) = oneshot::channel();
     let app = tauri::Builder::default()
         .manage(managed)
@@ -277,7 +276,7 @@ pub(crate) fn run(
                     // In a normal Rust application, Sentry's guard would flush on drop: https://docs.sentry.io/platforms/rust/configuration/draining/
                     // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
                     // TODO: This limit may not exist in Tauri v2
-                    telemetry.stop();
+                    telemetry.stop().await;
 
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);
