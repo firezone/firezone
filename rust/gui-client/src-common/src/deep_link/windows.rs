@@ -72,7 +72,7 @@ async fn bind_to_pipe(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, su
             Err(e) => {
                 tracing::warn!(
                     error = std_dyn_err(&e),
-                    "`create_pipe_server` failed, sleeping... (loop {i})"
+                    "`create_pipe_server` failed, sleeping... (attempt {i}/{NUM_ITERS})"
                 );
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
