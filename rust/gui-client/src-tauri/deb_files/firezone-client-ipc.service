@@ -1,5 +1,6 @@
 [Unit]
 Description=Firezone Client
+After=systemd-resolved.service
 
 [Service]
 AmbientCapabilities=CAP_NET_ADMIN

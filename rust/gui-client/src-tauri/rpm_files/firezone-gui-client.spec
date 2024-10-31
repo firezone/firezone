@@ -85,11 +85,39 @@ cp \
 "/$WEBKIT_DIR/WebKitWebProcess" \
 "%{buildroot}/$WEBKIT_DIR"
 
-mkdir -p "%{buildroot}/usr/lib/systemd/system"
-cp "%{_topdir}/../src-tauri/deb_files/firezone-client-ipc.service" "%{buildroot}/usr/lib/systemd/system/firezone-client-ipc.service"
+ICONS="%{buildroot}/usr/share/icons/hicolor"
 
-mkdir -p "%{buildroot}/usr/lib/sysusers.d"
-cp "%{_topdir}/../src-tauri/deb_files/sysusers.conf" "%{buildroot}/usr/lib/sysusers.d/firezone-client-ipc.conf"
+mkdir -p \
+"%{buildroot}/usr/lib/systemd/system" \
+"%{buildroot}/usr/lib/sysusers.d" \
+"%{buildroot}/usr/share/applications" \
+"$ICONS/32x32/apps" \
+"$ICONS/128x128/apps" \
+"$ICONS/512x512/apps"
+
+cp \
+"%{_topdir}/../src-tauri/deb_files/firezone-client-ipc.service" \
+"%{buildroot}/usr/lib/systemd/system/"
+
+cp \
+"%{_topdir}/../src-tauri/deb_files/sysusers.conf" \
+"%{buildroot}/usr/lib/sysusers.d/firezone-client-ipc.conf"
+
+cp \
+"%{_topdir}/../src-tauri/rpm_files/firezone-client-gui.desktop" \
+"%{buildroot}/usr/share/applications/"
+
+cp \
+"%{_topdir}/../src-tauri/icons/32x32.png" \
+"$ICONS/32x32/apps/firezone-client-gui.png"
+
+cp \
+"%{_topdir}/../src-tauri/icons/128x128.png" \
+"$ICONS/128x128/apps/firezone-client-gui.png"
+
+cp \
+"%{_topdir}/../src-tauri/icons/icon.png" \
+"$ICONS/512x512/apps/firezone-client-gui.png"
 
 %files
 /usr/bin/firezone-client-ipc
@@ -130,6 +158,11 @@ cp "%{_topdir}/../src-tauri/deb_files/sysusers.conf" "%{buildroot}/usr/lib/sysus
 
 /usr/lib/systemd/system/firezone-client-ipc.service
 /usr/lib/sysusers.d/firezone-client-ipc.conf
+
+/usr/share/applications/firezone-client-gui.desktop
+/usr/share/icons/hicolor/32x32/apps/firezone-client-gui.png
+/usr/share/icons/hicolor/128x128/apps/firezone-client-gui.png
+/usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png
 
 %ifarch aarch64
 /usr/lib/aarch64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess
