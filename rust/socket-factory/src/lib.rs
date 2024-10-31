@@ -288,7 +288,7 @@ impl UdpSocket {
 
         self.inner
             .async_io(Interest::WRITABLE, || {
-                self.state.send((&self.inner).into(), &transmit)
+                self.state.try_send((&self.inner).into(), &transmit)
             })
             .await?;
 
@@ -315,7 +315,7 @@ impl UdpSocket {
         };
 
         self.inner.try_io(Interest::WRITABLE, || {
-            self.state.send((&self.inner).into(), &transmit)
+            self.state.try_send((&self.inner).into(), &transmit)
         })
     }
 
