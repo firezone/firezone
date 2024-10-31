@@ -102,9 +102,7 @@ Tauri says it should work on Windows 10, Version 1803 and up. Older versions may
 work if you
 [manually install WebView2](https://tauri.app/v1/guides/getting-started/prerequisites#2-webview2)
 
-`x86_64` architecture is supported at this time. See
-[this issue](https://github.com/firezone/firezone/issues/2992) for `aarch64`
-support.
+`x86_64` architecture is supported for Windows. `aarch64` and `x86_64` are supported for Linux.
 
 ## Threat model
 
