@@ -26,10 +26,11 @@ cp "%{_topdir}/../src-tauri/rpm_files/gui-shim.sh" "%{buildroot}/usr/bin/firezon
 
 LIBS="/lib/$(uname -m)-linux-gnu"
 
-cp \
-"$LIBS/ld-linux-$(uname -m).so.1" \
-"$LIBS/libc.so.6" \
-"%{buildroot}/usr/lib/dev.firezone.client/unused"
+# DNF expects libc and ld-linux to be packaged, because it checks the exes with ldd or something, but if we actually use them, the GUI process will segfault. So just dump them somewhere unused.
+UNUSED_DIR="%{buildroot}/usr/lib/dev.firezone.client/unused"
+touch \
+"$UNUSED_DIR/ld-linux-$(uname -m).so.1" \
+"$UNUSED_DIR/libc.so.6"
 
 cp \
 "$LIBS/libappindicator3.so.1" \
@@ -39,6 +40,7 @@ cp \
 "$LIBS/libdbus-1.so.3" \
 "$LIBS/libdbusmenu-glib.so.4" \
 "$LIBS/libdbusmenu-gtk3.so.4" \
+"$LIBS/libfreetype.so.6" \
 "$LIBS/libgdk-3.so.0" \
 "$LIBS/libgio-2.0.so.0" \
 "$LIBS/libglib-2.0.so.0" \
@@ -90,6 +92,7 @@ cp "%{_topdir}/../src-tauri/deb_files/sysusers.conf" "%{buildroot}/usr/lib/sysus
 /usr/lib/dev.firezone.client/libdbus-1.so.3
 /usr/lib/dev.firezone.client/libdbusmenu-glib.so.4
 /usr/lib/dev.firezone.client/libdbusmenu-gtk3.so.4
+/usr/lib/dev.firezone.client/libfreetype.so.6
 /usr/lib/dev.firezone.client/libgdk-3.so.0
 /usr/lib/dev.firezone.client/libgio-2.0.so.0
 /usr/lib/dev.firezone.client/libglib-2.0.so.0
@@ -121,7 +124,6 @@ cp "%{_topdir}/../src-tauri/deb_files/sysusers.conf" "%{buildroot}/usr/lib/sysus
 /usr/lib/aarch64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess
 /usr/lib/aarch64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess
 
-# DNF expects libc and ld-linux to be packaged, because it checks the exes with ldd or something, but if we actually use them, the GUI process will segfault. So just dump them somewhere unused.
 /usr/lib/dev.firezone.client/unused/ld-linux-aarch64.so.1
 /usr/lib/dev.firezone.client/unused/libc.so.6
 %endif
@@ -130,7 +132,6 @@ cp "%{_topdir}/../src-tauri/deb_files/sysusers.conf" "%{buildroot}/usr/lib/sysus
 /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess
 /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess
 
-# DNF expects libc and ld-linux to be packaged, because it checks the exes with ldd or something, but if we actually use them, the GUI process will segfault. So just dump them somewhere unused.
 /usr/lib/dev.firezone.client/unused/ld-linux-x86_64.so.1
 /usr/lib/dev.firezone.client/unused/libc.so.6
 %endif
