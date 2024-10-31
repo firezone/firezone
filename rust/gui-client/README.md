@@ -75,6 +75,23 @@ If that doesn't work:
 - Click `New client secret`
 - Note down the secret value. This should be entered into the GitHub repository's secrets as `AZURE_CLIENT_SECRET`.
 
+## Installing on CentOS 9
+
+These instructions will move to the knowledge base once the first release supporting CentOS 9 is cut.
+
+1. Download RPM
+2. `sudo dnf install systemd-resolved` (Installing it explicitly prevents it from being auto-removed if Firezone is removed)
+3. `sudo dnf install epel-release` (Needed to get GNOME extensions)
+4. `sudo dnf install ./firezone-client-gui-*.rpm`
+5. `sudo usermod -aG firezone-client $USER`
+6. `sudo systemctl enable firezone-client-ipc.service` (See https://www.freedesktop.org/software/systemd/man/latest/systemd.preset.html, "It is not recommended to ship preset files within the respective software packages implementing the units")
+7. `sudo systemctl enable systemd-resolved.service` (In addition to the preset thing, the family of Fedora distros seem to have a policy that installing a service should never enable or auto-start it. This might be contrary to Debian-family.)
+8. `sudo dnf install gnome-shell-extension-appindicator` (Install the system tray)
+9. Reboot to add user to group fully, start new services, and make the appindicator extension available.
+10. `sudo ln --force --symbolic /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf`
+11. `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com` (Yes, really. Also, this will tab-complete.)
+12. Alt+F2 and run `firezone-client-gui` (Or from it from a screen or tmux session or whatever)
+
 ## Running
 
 From this dir:
