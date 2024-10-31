@@ -29,6 +29,8 @@ jobs:
         working-directory: ./swift/apple
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-rust
         with:
           targets: aarch64-apple-darwin aarch64-apple-ios x86_64-apple-darwin
