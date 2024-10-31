@@ -79,18 +79,28 @@ If that doesn't work:
 
 These instructions will move to the knowledge base once the first release supporting CentOS 9 is cut.
 
-1. Download RPM
+### Install system tray
+
+GNOME Shell 40 in CentOS 9 does not have a system tray by default. Use these steps to install it.
+
+For other desktops like xfce4 or KDE, the system tray may already work properly.
+
+1. `sudo dnf install epel-release` (Needed to get GNOME extensions)
+2. `sudo dnf install gnome-shell-extension-appindicator`
+3. Log out and back in to restart GNOME
+4. `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com` (This will tab-complete.)
+
+### Install Firezone
+
+1. Download the RPM
 2. `sudo dnf install systemd-resolved` (Installing it explicitly prevents it from being auto-removed if Firezone is removed)
-3. `sudo dnf install epel-release` (Needed to get GNOME extensions)
-4. `sudo dnf install ./firezone-client-gui-*.rpm`
-5. `sudo usermod -aG firezone-client $USER`
-6. `sudo systemctl enable firezone-client-ipc.service` (See https://www.freedesktop.org/software/systemd/man/latest/systemd.preset.html, "It is not recommended to ship preset files within the respective software packages implementing the units")
-7. `sudo systemctl enable systemd-resolved.service` (In addition to the preset thing, the family of Fedora distros seem to have a policy that installing a service should never enable or auto-start it. This might be contrary to Debian-family.)
-8. `sudo dnf install gnome-shell-extension-appindicator` (Install the system tray)
-9. Reboot to add user to group fully, start new services, and make the appindicator extension available.
-10. `sudo ln --force --symbolic /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf`
-11. `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com` (Yes, really. Also, this will tab-complete.)
-12. Alt+F2 and run `firezone-client-gui` (Or from it from a screen or tmux session or whatever)
+3. `sudo dnf install ./firezone-client-gui-*.rpm`
+4. `sudo usermod -aG firezone-client $USER`
+5. `sudo systemctl enable firezone-client-ipc.service` (See https://www.freedesktop.org/software/systemd/man/latest/systemd.preset.html, "It is not recommended to ship preset files within the respective software packages implementing the units". The Fedora family of distros also seem to have their own policy that installing a service should not auto-start or enable it.)
+6. Reboot to finish adding yourself to the group. Logging out and back in is not enough. This also starts the new services for us.
+7. `sudo cp /etc/resolv.conf /etc/resolv.conf.before-firezone` Back up your resolv.conf file. If anything goes wrong with your DNS, you can copy this back into place.
+8. `sudo ln --force --symbolic /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf` This puts `systemd-resolved`, and therefore Firezone, in control of the system's DNS. `systemd-resolved` does not do this automatically, since it's under `/etc`.
+9. Run `firezone-client-gui` from the app menu.
 
 ## Running
 
