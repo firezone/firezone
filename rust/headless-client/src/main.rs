@@ -19,6 +19,7 @@ use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use std::{
+    collections::BTreeMap,
     path::{Path, PathBuf},
     pin::pin,
     sync::Arc,
@@ -175,7 +176,15 @@ fn main() -> Result<()> {
         Some(id) => id,
         None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
-    firezone_telemetry::configure_scope(|scope| scope.set_tag("firezone_id", &firezone_id));
+    firezone_telemetry::configure_scope(|scope| {
+        scope.set_context(
+            "firezone",
+            firezone_telemetry::Context::Other(BTreeMap::from([(
+                "id".to_string(),
+                firezone_id.clone().into(),
+            )])),
+        )
+    });
 
     let url = LoginUrl::client(
         cli.api_url,

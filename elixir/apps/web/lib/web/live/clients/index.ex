@@ -111,7 +111,7 @@ defmodule Web.Clients.Index do
           </:col>
           <:empty>
             <div class="text-center text-neutral-500 p-4">
-              No clients to display. Clients are created automatically when a user connects to a resource.
+              No Actors have signed in from any Client.
             </div>
           </:empty>
         </.live_table>

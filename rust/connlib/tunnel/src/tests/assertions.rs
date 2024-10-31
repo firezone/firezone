@@ -1,4 +1,5 @@
 use super::{
+    dns_records::DnsRecords,
     sim_client::{RefClient, SimClient},
     sim_gateway::SimGateway,
     transition::{Destination, ReplyTo},
@@ -7,7 +8,7 @@ use connlib_model::{DomainName, GatewayId};
 use ip_packet::IpPacket;
 use itertools::Itertools;
 use std::{
-    collections::{hash_map::Entry, BTreeMap, BTreeSet, HashMap, VecDeque},
+    collections::{hash_map::Entry, BTreeMap, HashMap, VecDeque},
     hash::Hash,
     marker::PhantomData,
     net::IpAddr,
@@ -26,7 +27,7 @@ pub(crate) fn assert_icmp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
-    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+    global_dns_records: &DnsRecords,
 ) {
     let received_icmp_requests = sim_gateways
         .iter()
@@ -55,7 +56,7 @@ pub(crate) fn assert_udp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
-    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+    global_dns_records: &DnsRecords,
 ) {
     let received_udp_requests = sim_gateways
         .iter()
@@ -84,7 +85,7 @@ pub(crate) fn assert_tcp_packets_properties(
     ref_client: &RefClient,
     sim_client: &SimClient,
     sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
-    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+    global_dns_records: &DnsRecords,
 ) {
     let received_tcp_requests = sim_gateways
         .iter()
@@ -111,7 +112,7 @@ fn assert_packets_properties<T, U>(
     expected_handshakes: &BTreeMap<GatewayId, BTreeMap<u64, (Destination, T, U)>>,
     received_replies: &BTreeMap<(T, U), IpPacket>,
     packet_protocol: &str,
-    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+    global_dns_records: &DnsRecords,
     make_span: impl Fn(T, U) -> Span,
 ) where
     T: Copy + std::fmt::Debug,
@@ -352,14 +353,13 @@ fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket, expe
 
 fn assert_destination_is_dns_resource(
     gateway_received_request: &IpPacket,
-    global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+    global_dns_records: &DnsRecords,
     domain: &DomainName,
 ) {
     let actual = gateway_received_request.destination();
-    let Some(possible_resource_ips) = global_dns_records.get(domain) else {
-        tracing::error!(target: "assertions", %domain, "❌ No DNS records");
-        return;
-    };
+    let possible_resource_ips = global_dns_records
+        .domain_ips_iter(domain)
+        .collect::<Vec<_>>();
 
     if !possible_resource_ips.contains(&actual) {
         tracing::error!(target: "assertions", %actual, ?possible_resource_ips, "❌ Unknown resource IP");
