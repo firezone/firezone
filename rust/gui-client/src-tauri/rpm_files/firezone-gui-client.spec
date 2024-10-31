@@ -24,13 +24,14 @@ cp "$BINS/firezone-client-ipc" "%{buildroot}/usr/bin/"
 cp "$BINS/firezone-client-gui" "%{buildroot}/usr/lib/dev.firezone.client/"
 cp "%{_topdir}/../src-tauri/rpm_files/gui-shim.sh" "%{buildroot}/usr/bin/firezone-client-gui"
 
-LIBS="/lib/$(uname -m)-linux-gnu"
+LIBS="/usr/lib/$(uname -m)-linux-gnu"
 
 # DNF expects libc and ld-linux to be packaged, because it checks the exes with ldd or something, but if we actually use them, the GUI process will segfault. So just dump them somewhere unused.
 UNUSED_DIR="%{buildroot}/usr/lib/dev.firezone.client/unused"
-touch \
-"$UNUSED_DIR/ld-linux-$(uname -m).so.1" \
-"$UNUSED_DIR/libc.so.6"
+cp \
+"$LIBS/ld-linux-$(uname -m).so.1" \
+"$LIBS/libc.so.6" \
+"$UNUSED_DIR"
 
 cp \
 "$LIBS/libappindicator3.so.1" \
