@@ -18,7 +18,7 @@
 # the relevant versions in order to push to a newly drafted release.
 
 # Tracks the current version to use for generating download links and changelogs
-current-apple-version = 1.3.6
+current-apple-version = 1.3.7
 current-android-version = 1.3.6
 current-gateway-version = 1.4.0
 current-gui-version = 1.3.10
