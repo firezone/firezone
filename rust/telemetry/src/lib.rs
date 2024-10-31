@@ -71,7 +71,7 @@ impl Telemetry {
                 environment: Some(environment.into()),
                 // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
                 release: Some(release.into()),
-                traces_sample_rate: 0.1,
+                traces_sample_rate: 0.01,
                 max_breadcrumbs: 500,
                 ..Default::default()
             },
