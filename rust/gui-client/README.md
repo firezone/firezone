@@ -96,7 +96,7 @@ The app's config and logs will be stored at
 
 ## Platform support
 
-Ubuntu 20.04 and newer is supported.
+Ubuntu 22.04 and newer is supported.
 
 Tauri says it should work on Windows 10, Version 1803 and up. Older versions may
 work if you
