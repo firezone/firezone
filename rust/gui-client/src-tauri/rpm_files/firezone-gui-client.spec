@@ -1,5 +1,6 @@
 Name: firezone-client-gui
-Version: 1.0
+# mark:next-gui-version
+Version: 1.3.11
 Release: 1%{?dist}
 Summary: The GUI Client for Firezone
 
