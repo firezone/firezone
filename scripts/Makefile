@@ -19,7 +19,7 @@
 
 # Tracks the current version to use for generating download links and changelogs
 current-apple-version = 1.3.6
-current-android-version = 1.3.5
+current-android-version = 1.3.6
 current-gateway-version = 1.4.0
 current-gui-version = 1.3.9
 current-headless-version = 1.3.4
