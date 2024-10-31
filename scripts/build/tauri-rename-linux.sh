@@ -24,7 +24,7 @@ cp "$TARGET_DIR/../gui-client/firezone-client-gui.rpm" "$BINARY_DEST_PATH.rpm"
 # TODO: Debug symbols for Linux
 
 function make_hash() {
-    sha256sum "$1" | tee "$1.sha256sum.txt"
+    sha256sum "$1" >"$1.sha256sum.txt"
 }
 
 # Windows calls it `x64`, Debian `amd64`. Standardize on `x86_64` here since that's
