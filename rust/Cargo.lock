@@ -1046,7 +1046,7 @@ checksum = "baf0a07a401f374238ab8e2f11a104d2851bf9ce711ec69804834de8af45c7af"
 
 [[package]]
 name = "connlib-client-android"
-version = "1.3.6"
+version = "1.3.7"
 dependencies = [
  "android_log-sys",
  "backoff",
@@ -1074,7 +1074,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.3.7"
+version = "1.3.8"
 dependencies = [
  "anyhow",
  "backoff",
