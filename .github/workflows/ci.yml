@@ -47,7 +47,7 @@ jobs:
       matrix:
         include:
           # mark:next-gateway-version
-          - release_name: gateway-1.3.3
+          - release_name: gateway-1.4.1
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
           - release_name: headless-client-1.3.5

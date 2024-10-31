@@ -57,7 +57,7 @@ macro_rules! git_version {
     ($regex:literal) => {
         $crate::__reexport::git_version!(
             args = ["--always", "--dirty=-modified", "--tags", "--match", $regex],
-            fallback = "unknown"
+            fallback = env!("CARGO_PKG_VERSION")
         )
     };
 }

@@ -324,11 +324,17 @@ where
 
     /// Establishes a new connection, dropping the current one if any exists.
     pub fn connect(&mut self, params: TFinish) {
+        let url = self.url_prototype.expose_secret().to_url(params);
+
+        if matches!(self.state, State::Connecting(_)) && Some(&url) == self.last_url.as_ref() {
+            tracing::debug!("We are already connecting");
+            return;
+        }
+
         // 1. Reset the backoff.
         self.reconnect_backoff.reset();
 
         // 2. Set state to `Connecting` without a timer.
-        let url = self.url_prototype.expose_secret().to_url(params);
         let user_agent = self.user_agent.clone();
         self.state = State::connect(url.clone(), user_agent, self.socket_factory.clone());
         self.last_url = Some(url);

@@ -967,13 +967,14 @@ defmodule Web.CoreComponents do
   attr :datetime, DateTime, default: nil
   attr :relative_to, DateTime, required: false
   attr :negative_class, :string, default: ""
+  attr :popover, :boolean, default: true
 
   def relative_datetime(assigns) do
     assigns =
       assign_new(assigns, :relative_to, fn -> DateTime.utc_now() end)
 
     ~H"""
-    <.popover :if={not is_nil(@datetime)}>
+    <.popover :if={not is_nil(@datetime) and @popover}>
       <:target>
         <span class={[
           "underline underline-offset-2 decoration-1 decoration-dotted",
@@ -987,6 +988,10 @@ defmodule Web.CoreComponents do
         <%= @datetime %>
       </:content>
     </.popover>
+    <span :if={not @popover}>
+      <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to)
+      |> String.capitalize() %>
+    </span>
     <span :if={is_nil(@datetime)}>
       Never
     </span>
@@ -1053,6 +1058,17 @@ defmodule Web.CoreComponents do
         <%= if @schema.online?, do: "Online", else: "Offline" %>
       </span>
     </span>
+    """
+  end
+
+  @doc """
+  Renders online or offline status using an `online?` field of the schema.
+  """
+  attr :schema, :any, required: true
+
+  def online_icon(assigns) do
+    ~H"""
+    <span :if={@schema.online?} class="inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
     """
   end
 
@@ -1459,10 +1475,11 @@ defmodule Web.CoreComponents do
   """
 
   attr :color, :string, default: "info"
+  attr :class, :string, default: nil
 
   def ping_icon(assigns) do
     ~H"""
-    <span class="relative flex h-2.5 w-2.5">
+    <span class={["relative flex h-2.5 w-2.5", @class]}>
       <span class={~w[
         animate-ping absolute inline-flex
         h-full w-full rounded-full opacity-50
