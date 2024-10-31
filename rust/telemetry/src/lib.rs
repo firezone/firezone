@@ -9,6 +9,12 @@ pub use sentry::{
 };
 pub use sentry_anyhow::capture_anyhow;
 
+#[doc(hidden)]
+pub mod __export {
+    pub use rand;
+    pub use tracing;
+}
+
 pub struct Dsn(&'static str);
 
 // TODO: Dynamic DSN
@@ -71,7 +77,9 @@ impl Telemetry {
                 environment: Some(environment.into()),
                 // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
                 release: Some(release.into()),
-                traces_sample_rate: 0.01,
+                // We submit all spans but only send the ones with `target: telemetry`.
+                // Those spans are created further down and are throttled at creation time to save CPU.
+                traces_sample_rate: 1.0,
                 max_breadcrumbs: 500,
                 ..Default::default()
             },
@@ -121,6 +129,20 @@ pub fn set_account_slug(account_slug: String) {
     user.other
         .insert("account_slug".to_string(), account_slug.into());
     sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));
+}
+
+/// Creates a `telemetry` span that will be active until dropped.
+///
+/// In order to save CPU power, `telemetry` spans are sampled at a rate of 1% at creation time.
+#[macro_export]
+macro_rules! span {
+    ($($arg:tt)*) => {
+        if $crate::__export::rand::random::<f32>() < 0.01 {
+            $crate::__export::tracing::trace_span!(target: "telemetry", $($arg)*)
+        } else {
+            $crate::__export::tracing::Span::none()
+        }
+    };
 }
 
 #[cfg(test)]

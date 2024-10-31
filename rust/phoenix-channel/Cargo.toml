@@ -8,6 +8,7 @@ edition = "2021"
 backoff = "0.4.0"
 base64 = "0.22.1"
 firezone-logging = { workspace = true }
+firezone-telemetry = { workspace = true }
 futures = "0.3.29"
 hex = "0.4"
 libc = "0.2"

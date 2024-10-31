@@ -233,6 +233,8 @@ impl StubResolver {
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
     fn match_resource_linear(&self, domain: &DomainName) -> Option<ResourceId> {
+        let _span = firezone_telemetry::span!("match_resource_linear").entered();
+
         let name = Candidate::from_domain(domain);
 
         for (pattern, id) in &self.dns_resources {

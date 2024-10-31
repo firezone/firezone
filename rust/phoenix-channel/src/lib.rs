@@ -271,8 +271,8 @@ where
 
         let host_and_port = url.expose_secret().host_and_port();
 
-        let _guard =
-            tracing::trace_span!(target: "telemetry", "resolve_portal_url", host = %host_and_port.0).entered();
+        let _span =
+            firezone_telemetry::span!("resolve_portal_url", host = %host_and_port.0).entered();
 
         // Statically resolve the host in the URL to a set of addresses.
         // We don't use these directly because we need to connect to the domain via TLS which requires a hostname.

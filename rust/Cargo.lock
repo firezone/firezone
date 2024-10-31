@@ -2195,6 +2195,7 @@ name = "firezone-telemetry"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
+ "rand 0.8.5",
  "sentry",
  "sentry-anyhow",
  "thiserror",
@@ -2219,6 +2220,7 @@ dependencies = [
  "domain",
  "firezone-logging",
  "firezone-relay",
+ "firezone-telemetry",
  "futures",
  "futures-bounded",
  "futures-util",
@@ -4645,6 +4647,7 @@ dependencies = [
  "backoff",
  "base64 0.22.1",
  "firezone-logging",
+ "firezone-telemetry",
  "futures",
  "hex",
  "hostname",

@@ -20,6 +20,7 @@ use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
+use tracing::Instrument;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
@@ -451,7 +452,10 @@ async fn resolve(domain: Option<DomainName>) -> Vec<IpAddr> {
 
     let dname = domain.to_string();
 
-    match tokio::task::spawn_blocking(move || resolve_addresses(&dname)).await {
+    match tokio::task::spawn_blocking(move || resolve_addresses(&dname))
+        .instrument(firezone_telemetry::span!("resolve_dns_resource"))
+        .await
+    {
         Ok(Ok(addresses)) => addresses,
         Ok(Err(e)) => {
             tracing::warn!(error = std_dyn_err(&e), %domain, "DNS resolution failed");

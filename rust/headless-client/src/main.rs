@@ -207,8 +207,7 @@ fn main() -> Result<()> {
     let mut last_connlib_start_instant = Some(Instant::now());
 
     rt.block_on(async {
-        let connect_span =
-            tracing::trace_span!(target: "telemetry", "connect_to_firezone").entered();
+        let connect_span = firezone_telemetry::span!("connect_to_firezone").entered();
 
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
         // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
@@ -250,7 +249,7 @@ fn main() -> Result<()> {
         drop(tokio_handle);
 
         let tun = {
-            let _guard = tracing::trace_span!(target: "telemetry", "create_tun_device").entered();
+            let _guard = firezone_telemetry::span!("create_tun_device").entered();
 
             tun_device.make_tun()?
         };

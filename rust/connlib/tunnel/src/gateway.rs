@@ -259,6 +259,8 @@ impl GatewayState {
         resolved_ips: Vec<IpAddr>,
         now: Instant,
     ) {
+        let _span = firezone_telemetry::span!("refresh_translation").entered();
+
         let Some(peer) = self.peers.get_mut(&client) else {
             return;
         };

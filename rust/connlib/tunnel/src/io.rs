@@ -22,6 +22,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::mpsc,
 };
+use tracing::Instrument;
 use tun::Tun;
 
 /// Bundles together all side-effects that connlib needs to have access to.
@@ -252,7 +253,8 @@ impl Io {
                                 .map_err(|_| io::Error::other("Failed to parse DNS message"))?;
 
                             Ok(message)
-                        },
+                        }
+                        .instrument(firezone_telemetry::span!("recursive_udp_dns_query")),
                         meta,
                     )
                     .is_err()
@@ -294,7 +296,8 @@ impl Io {
                                 .map_err(|_| io::Error::other("Failed to parse DNS message"))?;
 
                             Ok(message)
-                        },
+                        }
+                        .instrument(firezone_telemetry::span!("recursive_tcp_dns_query")),
                         meta,
                     )
                     .is_err()
