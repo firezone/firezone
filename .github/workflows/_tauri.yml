@@ -64,6 +64,8 @@ jobs:
       UPLOAD_SCRIPT: ../../scripts/build/tauri-upload-${{ matrix.os }}.sh
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri-v2
