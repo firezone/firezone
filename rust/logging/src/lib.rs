@@ -24,7 +24,7 @@ where
 
     let subscriber = Registry::default()
         .with(additional_layer.with_filter(filter(&directives)))
-        .with(sentry_layer().with_filter(filter("trace"))) // Sentry layer has its own event filtering mechanism, so we only exclude the noisy crates.
+        .with(sentry_layer()) // Sentry layer has its own event filtering mechanism, so we only exclude the noisy crates.
         .with(
             fmt::layer()
                 .event_format(Format::new())
@@ -97,7 +97,7 @@ pub fn test_global(directives: &str) {
 ///
 /// Only spans with the `telemetry` target on level `TRACE` will be submitted to Sentry.
 /// They are subject to the sampling rate defined in the Sentry client configuration.
-pub fn sentry_layer<S>() -> sentry_tracing::SentryLayer<S>
+pub fn sentry_layer<S>() -> impl Layer<S> + Send + Sync
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
@@ -117,4 +117,5 @@ where
         })
         .span_filter(|md| *md.level() == tracing::Level::TRACE && md.target() == "telemetry")
         .enable_span_attributes()
+        .with_filter(filter("trace")) // Filter out noisy crates but pass all events otherwise.
 }
