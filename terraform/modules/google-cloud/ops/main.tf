@@ -414,3 +414,34 @@ resource "google_monitoring_alert_policy" "ssl_certs_expiring_policy" {
     auto_close = "28800s"
   }
 }
+
+resource "google_monitoring_alert_policy" "load_balancer_latency_policy" {
+  display_name          = "Load balancer latency"
+  combiner              = "OR"
+  notification_channels = local.notification_channels
+
+  documentation {
+    content   = "This alert is triggered when the load balancer latency is higher than 1000ms."
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "Load balancer latency"
+
+    condition_threshold {
+      filter          = "resource.type = \"https_lb_rule\" AND metric.type = \"loadbalancing.googleapis.com/https/backend_latencies\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 1000
+      duration        = "0s"
+
+      trigger {
+        count = 1
+      }
+
+      aggregations {
+        alignment_period   = "300s"
+        per_series_aligner = "ALIGN_PERCENTILE_99"
+      }
+    }
+  }
+}
