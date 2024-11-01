@@ -12,7 +12,7 @@ use firezone_bin_shared::{
 use firezone_headless_client::{
     device_id, signals, CallbackHandler, CliCommon, ConnlibMsg, DnsController,
 };
-use firezone_logging::anyhow_dyn_err;
+use firezone_logging::{anyhow_dyn_err, telemetry_span};
 use firezone_telemetry::Telemetry;
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::get_user_agent;
@@ -207,7 +207,7 @@ fn main() -> Result<()> {
     let mut last_connlib_start_instant = Some(Instant::now());
 
     rt.block_on(async {
-        let connect_span = firezone_telemetry::span!("connect_to_firezone").entered();
+        let connect_span = telemetry_span!("connect_to_firezone").entered();
 
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
         // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
@@ -249,7 +249,7 @@ fn main() -> Result<()> {
         drop(tokio_handle);
 
         let tun = {
-            let _guard = firezone_telemetry::span!("create_tun_device").entered();
+            let _guard = telemetry_span!("create_tun_device").entered();
 
             tun_device.make_tun()?
         };

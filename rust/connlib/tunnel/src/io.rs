@@ -1,6 +1,6 @@
 use crate::{device_channel::Device, dns, sockets::Sockets};
 use domain::base::Message;
-use firezone_logging::std_dyn_err;
+use firezone_logging::{std_dyn_err, telemetry_span};
 use futures::{
     future::{self, Either},
     stream, Stream, StreamExt,
@@ -254,7 +254,7 @@ impl Io {
 
                             Ok(message)
                         }
-                        .instrument(firezone_telemetry::span!("recursive_udp_dns_query")),
+                        .instrument(telemetry_span!("recursive_udp_dns_query")),
                         meta,
                     )
                     .is_err()
@@ -297,7 +297,7 @@ impl Io {
 
                             Ok(message)
                         }
-                        .instrument(firezone_telemetry::span!("recursive_tcp_dns_query")),
+                        .instrument(telemetry_span!("recursive_tcp_dns_query")),
                         meta,
                     )
                     .is_err()

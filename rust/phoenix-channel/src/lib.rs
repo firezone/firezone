@@ -13,7 +13,7 @@ use std::{io, mem};
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use base64::Engine;
-use firezone_logging::std_dyn_err;
+use firezone_logging::{std_dyn_err, telemetry_span};
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use heartbeat::{Heartbeat, MissedLastHeartbeat};
@@ -271,8 +271,7 @@ where
 
         let host_and_port = url.expose_secret().host_and_port();
 
-        let _span =
-            firezone_telemetry::span!("resolve_portal_url", host = %host_and_port.0).entered();
+        let _span = telemetry_span!("resolve_portal_url", host = %host_and_port.0).entered();
 
         // Statically resolve the host in the URL to a set of addresses.
         // We don't use these directly because we need to connect to the domain via TLS which requires a hostname.

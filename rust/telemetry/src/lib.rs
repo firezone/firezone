@@ -9,12 +9,6 @@ pub use sentry::{
 };
 pub use sentry_anyhow::capture_anyhow;
 
-#[doc(hidden)]
-pub mod __export {
-    pub use rand;
-    pub use tracing;
-}
-
 pub struct Dsn(&'static str);
 
 // TODO: Dynamic DSN
@@ -129,20 +123,6 @@ pub fn set_account_slug(account_slug: String) {
     user.other
         .insert("account_slug".to_string(), account_slug.into());
     sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));
-}
-
-/// Creates a `telemetry` span that will be active until dropped.
-///
-/// In order to save CPU power, `telemetry` spans are sampled at a rate of 1% at creation time.
-#[macro_export]
-macro_rules! span {
-    ($($arg:tt)*) => {
-        if $crate::__export::rand::random::<f32>() < 0.01 {
-            $crate::__export::tracing::trace_span!(target: "telemetry", $($arg)*)
-        } else {
-            $crate::__export::tracing::Span::none()
-        }
-    };
 }
 
 #[cfg(test)]

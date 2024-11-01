@@ -4,7 +4,7 @@ use connlib_model::DomainName;
 use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use firezone_logging::{anyhow_dyn_err, std_dyn_err};
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
@@ -453,7 +453,7 @@ async fn resolve(domain: Option<DomainName>) -> Vec<IpAddr> {
     let dname = domain.to_string();
 
     match tokio::task::spawn_blocking(move || resolve_addresses(&dname))
-        .instrument(firezone_telemetry::span!("resolve_dns_resource"))
+        .instrument(telemetry_span!("resolve_dns_resource"))
         .await
     {
         Ok(Ok(addresses)) => addresses,
