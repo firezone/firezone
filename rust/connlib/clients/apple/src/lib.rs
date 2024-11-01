@@ -92,11 +92,6 @@ mod ffi {
 /// This is used by the apple client to interact with our code.
 pub struct WrappedSession {
     inner: Session,
-
-    #[expect(
-        dead_code,
-        reason = "Runtime must be kept alive until Session is dropped"
-    )]
     runtime: Runtime,
 
     #[expect(
@@ -265,8 +260,8 @@ impl WrappedSession {
     }
 
     fn disconnect(self) {
+        self.runtime.block_on(self.telemetry.stop());
         self.inner.disconnect();
-        self.telemetry.stop();
     }
 }
 

@@ -470,8 +470,8 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
     catch_and_throw(&mut env, |_| {
         let session = Box::from_raw(session);
 
+        session.runtime.block_on(session.telemetry.stop());
         session.inner.disconnect();
-        session.telemetry.stop();
     });
 }
 

@@ -91,19 +91,25 @@ impl Telemetry {
     }
 
     /// Flushes events to sentry.io and drops the guard
-    pub fn stop(&self) {
+    pub async fn stop(&self) {
         let Some(inner) = self.inner.swap(None) else {
             return;
         };
         tracing::info!("Stopping telemetry");
         sentry::end_session();
-        // `flush`'s return value is flipped from the docs
-        // <https://github.com/getsentry/sentry-rust/issues/677>
-        if inner.flush(Some(Duration::from_secs(5))) {
-            tracing::error!("Failed to flush telemetry events to sentry.io");
-        } else {
+
+        // Sentry uses blocking IO for flushing ..
+        let _ = tokio::task::spawn_blocking(move || {
+            // `flush`'s return value is flipped from the docs
+            // <https://github.com/getsentry/sentry-rust/issues/677>
+            if inner.flush(Some(Duration::from_secs(5))) {
+                tracing::error!("Failed to flush telemetry events to sentry.io");
+                return;
+            };
+
             tracing::debug!("Flushed telemetry");
-        }
+        })
+        .await;
     }
 }
 
@@ -124,8 +130,8 @@ mod tests {
     const ENV: &str = "unit test";
 
     // To avoid problems with global mutable state, we run unrelated tests in the same test case.
-    #[test]
-    fn sentry() {
+    #[tokio::test]
+    async fn sentry() {
         // Smoke-test Sentry itself by turning it on and off a couple times
         {
             let tele = Telemetry::default();
@@ -141,7 +147,7 @@ mod tests {
                 ..Default::default()
             });
             error("QELADAGH");
-            tele.stop();
+            tele.stop().await;
 
             // Expect no telemetry because the user opted back out.
             negative_error("2RSIYAPX");
@@ -149,7 +155,7 @@ mod tests {
             tele.start("test", ENV, HEADLESS_DSN);
             // Cycle one more time to be sure.
             error("S672IOBZ");
-            tele.stop();
+            tele.stop().await;
 
             // Expect no telemetry after the module is closed.
             negative_error("W57GJKUO");
