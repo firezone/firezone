@@ -4,6 +4,7 @@
 use super::FZ_SCHEME;
 use anyhow::{Context, Result};
 use firezone_bin_shared::BUNDLE_ID;
+use firezone_logging::std_dyn_err;
 use secrecy::Secret;
 use std::{
     io,
@@ -68,23 +69,24 @@ async fn bind_to_pipe(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, su
     for i in 0..NUM_ITERS {
         match create_pipe_server(pipe_path) {
             Ok(server) => return Ok(server),
-            Err(super::Error::CantListen) => {
-                tracing::warn!("`create_pipe_server` failed, sleeping... (loop {i})");
+            Err(e) => {
+                tracing::warn!(
+                    error = std_dyn_err(&e),
+                    "`create_pipe_server` failed, sleeping... (attempt {i}/{NUM_ITERS})"
+                );
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
-            Err(error) => Err(error)?,
         }
     }
     Err(super::Error::CantListen)
 }
 
-fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, super::Error> {
+fn create_pipe_server(pipe_path: &str) -> io::Result<named_pipe::NamedPipeServer> {
     let mut server_options = named_pipe::ServerOptions::new();
     server_options.first_pipe_instance(true);
 
-    let server = server_options
-        .create(pipe_path)
-        .map_err(|_| super::Error::CantListen)?;
+    let server = server_options.create(pipe_path)?;
+
     Ok(server)
 }
 
