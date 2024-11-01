@@ -7,6 +7,10 @@ Summary: The GUI Client for Firezone
 URL: https://firezone.dev
 License: Apache-2.0
 Requires: systemd-resolved
+BuildRequires: systemd-rpm-macros
+
+# For some reason, the Ubuntu version of `rpmbuild` notices that we're providing our own WebKit and other libs, but the CentOS version doesn't. So we explicitly tell it not to worry about all these libs.
+%global __requires_exclude ^(libdbus-1|libgdk-3|libgio-2.0|libglib-2.0|libgtk-3|libjavascriptcoregtk-4.1|libm|libsoup-3.0|libwebkit2gtk-4.1).so.*
 
 %description
 
@@ -25,7 +29,7 @@ cp "$BINS/firezone-client-ipc" "%{buildroot}/usr/bin/"
 cp "$BINS/firezone-client-gui" "%{buildroot}/usr/lib/dev.firezone.client/"
 cp "%{_topdir}/../src-tauri/rpm_files/gui-shim.sh" "%{buildroot}/usr/bin/firezone-client-gui"
 
-LIBS="/usr/lib/$(uname -m)-linux-gnu"
+LIBS="/root/libs/$(uname -m)-linux-gnu"
 
 # DNF expects libc and ld-linux to be packaged, because it checks the exes with ldd or something, but if we actually use them, the GUI process will segfault. So just dump them somewhere unused.
 UNUSED_DIR="%{buildroot}/usr/lib/dev.firezone.client/unused"
@@ -78,13 +82,15 @@ cp \
 "$LIBS/libX11-xcb.so.1" \
 "%{buildroot}/usr/lib/dev.firezone.client/"
 
-WEBKIT_DIR="usr/lib/$(uname -m)-linux-gnu/webkit2gtk-4.1"
-mkdir -p "%{buildroot}/$WEBKIT_DIR"
+ls -lash "%{buildroot}/usr/lib/dev.firezone.client"
+
+WEBKIT_DIR="$(uname -m)-linux-gnu/webkit2gtk-4.1"
+mkdir -p "%{buildroot}/usr/lib/$WEBKIT_DIR"
 
 cp \
-"/$WEBKIT_DIR/WebKitNetworkProcess" \
-"/$WEBKIT_DIR/WebKitWebProcess" \
-"%{buildroot}/$WEBKIT_DIR"
+"/root/libs/$WEBKIT_DIR/WebKitNetworkProcess" \
+"/root/libs/$WEBKIT_DIR/WebKitWebProcess" \
+"%{buildroot}/usr/lib/$WEBKIT_DIR"
 
 ICONS="%{buildroot}/usr/share/icons/hicolor"
 
@@ -182,10 +188,10 @@ cp \
 %endif
 
 %post
-%{?systemd_post firezone-client-ipc.service}
+%systemd_post firezone-client-ipc.service
 
 %preun
-%{?systemd_preun firezone-client-ipc.service}
+%systemd_preun firezone-client-ipc.service
 
 %postun
-%{?systemd_postun_with_restart firezone-client-ipc.service}
+%systemd_postun_with_restart firezone-client-ipc.service
