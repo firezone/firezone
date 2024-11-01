@@ -15,6 +15,8 @@ use std::collections::hash_map::Entry;
 use std::pin::Pin;
 use tokio::io::Interest;
 
+pub const MAX_GSO_SEGMENTS: usize = quinn_udp::BATCH_SIZE;
+
 pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
 
 impl<F, S> SocketFactory<S> for F where F: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}

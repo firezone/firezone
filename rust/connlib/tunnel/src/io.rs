@@ -1,3 +1,5 @@
+mod gso_queue;
+
 use crate::{device_channel::Device, dns, sockets::Sockets};
 use domain::base::Message;
 use firezone_logging::{err_with_src, telemetry_event, telemetry_span};
@@ -7,11 +9,10 @@ use futures::{
 };
 use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
+use gso_queue::GsoQueue;
 use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
-use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    borrow::Cow,
-    collections::BTreeMap,
     collections::VecDeque,
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -32,11 +33,7 @@ use tun::Tun;
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
-    /// Holds UDP datagrams that we need to send, indexed by src, dst and segment size.
-    ///
-    /// Calling [`Io::send_network`] will copy the provided payload into this buffer.
-    /// The buffer is then flushed using GSO in a single syscall.
-    send_queue: BTreeMap<(Option<SocketAddr>, SocketAddr, usize), Vec<u8>>,
+    gso_queue: GsoQueue,
 
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -71,7 +68,6 @@ pub enum Input<I> {
 
 const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 const IP_CHANNEL_SIZE: usize = 1000;
-const ONE_MB: usize = 1024 * 1024;
 
 impl Io {
     /// Creates a new I/O abstraction
@@ -106,7 +102,7 @@ impl Io {
             tcp_socket_factory,
             udp_socket_factory,
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
-            send_queue: Default::default(),
+            gso_queue: GsoQueue::new(socket_factory::MAX_GSO_SEGMENTS),
         }
     }
 
@@ -120,10 +116,7 @@ impl Io {
         ip4_buffer: &'b mut [u8],
         ip6_bffer: &'b mut [u8],
     ) -> Poll<io::Result<Input<impl Iterator<Item = DatagramIn<'b>>>>> {
-        // If our send queue grows beyond 1MB, force flushing before accepting any more work by reading new packets.
-        // If not, we allow the event-loop to do other stuff.
-        // This allows us to handle bursts of packets at once and batching them up into a single syscall.
-        if self.send_queue.values().any(|b| b.len() >= ONE_MB) {
+        if self.gso_queue.should_force_flush() {
             ready!(self.flush_send_queue(cx)?);
         }
 
@@ -162,6 +155,10 @@ impl Io {
                 let deadline = timeout.deadline().into();
                 self.timeout = None; // Clear the timeout.
 
+                // Piggy back onto the timeout we already have.
+                // It is not important when we call this, just needs to be called occasionally.
+                self.gso_queue.handle_timeout(deadline);
+
                 return Poll::Ready(Ok(Input::Timeout(deadline)));
             }
         }
@@ -173,20 +170,16 @@ impl Io {
     }
 
     fn flush_send_queue(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        for ((src, dst, segment_len), payload) in &mut self.send_queue {
-            if payload.is_empty() {
-                continue;
-            }
+        let mut datagrams = self.gso_queue.datagrams();
+
+        loop {
             ready!(self.sockets.poll_send_ready(cx))?;
 
-            self.sockets.send(DatagramOut {
-                src: *src,
-                dst: *dst,
-                packet: Cow::Borrowed(payload),
-                segment_size: Some(*segment_len),
-            })?;
+            let Some(datagram) = datagrams.next() else {
+                break;
+            };
 
-            payload.clear();
+            self.sockets.send(datagram)?;
         }
 
         loop {
@@ -224,7 +217,7 @@ impl Io {
 
     pub fn rebind_sockets(&mut self) {
         self.sockets.rebind(self.udp_socket_factory.as_ref());
-        self.send_queue.clear();
+        self.gso_queue.clear();
     }
 
     pub fn reset_timeout(&mut self, timeout: Instant) {
@@ -240,10 +233,7 @@ impl Io {
     }
 
     pub fn send_network(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8]) {
-        self.send_queue
-            .entry((src, dst, payload.len()))
-            .or_default()
-            .extend_from_slice(payload);
+        self.gso_queue.enqueue(src, dst, payload, Instant::now())
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
