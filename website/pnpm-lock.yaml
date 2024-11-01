@@ -18,8 +18,8 @@ importers:
         specifier: ^3.0.1
         version: 3.0.1(@types/react@18.3.11)(react@18.3.1)
       '@next/mdx':
-        specifier: ~14.2.15
-        version: 14.2.15(@mdx-js/loader@3.0.1(webpack@5.92.0))(@mdx-js/react@3.0.1(@types/react@18.3.11)(react@18.3.1))
+        specifier: ~15.0.2
+        version: 15.0.2(@mdx-js/loader@3.0.1(webpack@5.92.0))(@mdx-js/react@3.0.1(@types/react@18.3.11)(react@18.3.1))
       '@next/third-parties':
         specifier: ^14.2.15
         version: 14.2.15(next@14.2.15(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
@@ -48,8 +48,8 @@ importers:
         specifier: ^3.8.1
         version: 3.8.1
       autoprefixer:
-        specifier: 10.4.19
-        version: 10.4.19(postcss@8.4.47)
+        specifier: 10.4.20
+        version: 10.4.20(postcss@8.4.47)
       fast-xml-parser:
         specifier: ^4.5.0
         version: 4.5.0
@@ -57,8 +57,8 @@ importers:
         specifier: ^0.10.2
         version: 0.10.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.14)
       framer-motion:
-        specifier: ^11.11.8
-        version: 11.11.8(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: ^11.11.11
+        version: 11.11.11(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       highlight.js:
         specifier: ^11.10.0
         version: 11.10.0
@@ -294,8 +294,8 @@ packages:
   '@next/env@14.2.15':
     resolution: {integrity: sha512-S1qaj25Wru2dUpcIZMjxeMVSwkt8BK4dmWHHiBuRstcIyOsMapqT4A4jSB6onvqeygkSSmOkyny9VVx8JIGamQ==}
 
-  '@next/mdx@14.2.15':
-    resolution: {integrity: sha512-OQWxKY5jWtHqPXdN3s5mj/LsD57pxt8CQsY4VQtTfQdQn6rNPd1bjN+kpbtezXdjgrKhvTJAb1yv1XGvzlh0uw==}
+  '@next/mdx@15.0.2':
+    resolution: {integrity: sha512-CANCD3snLdLJxCcqn0DBAl5qMUBvAPdWA2cWljt+lnVtcvIfGXRVLwraqSOHBjddvZ3ClCYcf3AvjEBHA4NBxA==}
     peerDependencies:
       '@mdx-js/loader': '>=0.15.0'
       '@mdx-js/react': '>=0.15.0'
@@ -605,8 +605,8 @@ packages:
     resolution: {integrity: sha512-LElXdjswlqjWrPpJFg1Fx4wpkOCxj1TDHlSV4PlaRxHGWko024xICaa97ZkMfs6DRKlCguiAI+rbXv5GWwXIkg==}
     hasBin: true
 
-  autoprefixer@10.4.19:
-    resolution: {integrity: sha512-BaENR2+zBZ8xXhM4pUaKUxlVdxZ0EZhjvbopwnXmxRUfqDmwSpC2lAi/QXvx7NRdPCo1WKEcEF6mV64si1z4Ew==}
+  autoprefixer@10.4.20:
+    resolution: {integrity: sha512-XY25y5xSv/wEoqzDyXXME4AFfkZI0P23z6Fs3YgymDnKJkCGOnkL0iTxCa85UTqaSgfcqyf3UA6+c7wUvx/16g==}
     engines: {node: ^10 || ^12 || >=14}
     hasBin: true
     peerDependencies:
@@ -891,8 +891,8 @@ packages:
   fraction.js@4.3.7:
     resolution: {integrity: sha512-ZsDfxO51wGAXREY55a7la9LScWpwv9RxIrYABrlvOFBlH/ShPnrtsXeuUIfXKKOVicNxQ+o8JTbJvjS4M89yew==}
 
-  framer-motion@11.11.8:
-    resolution: {integrity: sha512-mnGQNEoz99GtFXBBPw+Ag5K4FcfP5XrXxrxHz+iE4Lmg7W3sf2gKmGuvfkZCW/yIfcdv5vJd6KiSPETH1Pw68Q==}
+  framer-motion@11.11.11:
+    resolution: {integrity: sha512-tuDH23ptJAKUHGydJQII9PhABNJBpB+z0P1bmgKK9QFIssHGlfPd6kxMq00LSKwE27WFsb2z0ovY0bpUyMvfRw==}
     peerDependencies:
       '@emotion/is-prop-valid': '*'
       react: ^18.0.0
@@ -2107,7 +2107,7 @@ snapshots:
 
   '@next/env@14.2.15': {}
 
-  '@next/mdx@14.2.15(@mdx-js/loader@3.0.1(webpack@5.92.0))(@mdx-js/react@3.0.1(@types/react@18.3.11)(react@18.3.1))':
+  '@next/mdx@15.0.2(@mdx-js/loader@3.0.1(webpack@5.92.0))(@mdx-js/react@3.0.1(@types/react@18.3.11)(react@18.3.1))':
     dependencies:
       source-map: 0.7.4
     optionalDependencies:
@@ -2415,7 +2415,7 @@ snapshots:
 
   astring@1.9.0: {}
 
-  autoprefixer@10.4.19(postcss@8.4.47):
+  autoprefixer@10.4.20(postcss@8.4.47):
     dependencies:
       browserslist: 4.24.0
       caniuse-lite: 1.0.30001668
@@ -2686,7 +2686,7 @@ snapshots:
 
   fraction.js@4.3.7: {}
 
-  framer-motion@11.11.8(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  framer-motion@11.11.11(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
       tslib: 2.7.0
     optionalDependencies:

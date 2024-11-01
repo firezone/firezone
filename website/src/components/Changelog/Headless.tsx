@@ -11,13 +11,14 @@ export default function Headless() {
   return (
     <Entries href={href} arches={arches} title="Linux headless">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.3.5" date={new Date("2024-10-31")}>
         <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
         <ChangeItem pull="7164">
           Fixes an issue where Firezone would fail to establish connections to
           Gateways and the client had to be restarted.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.3.4" date={new Date("2024-10-02")}>
         <ChangeItem pull="6831">
           Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is

@@ -527,7 +527,9 @@ impl<'a> Handler<'a> {
                 firezone_bin_shared::git_version!("gui-client-*"),
                 firezone_telemetry::IPC_SERVICE_DSN,
             ),
-            ClientMsg::StopTelemetry => self.telemetry.stop(),
+            ClientMsg::StopTelemetry => {
+                self.telemetry.stop().await;
+            }
         }
         Ok(())
     }

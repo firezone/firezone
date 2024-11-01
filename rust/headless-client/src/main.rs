@@ -327,7 +327,8 @@ fn main() -> Result<()> {
             tracing::error!(?error, "network notifier");
         }
 
-        telemetry.stop(); // Stop telemetry before dropping session. `connlib` needs to be active for this, otherwise we won't be able to resolve the DNS name for sentry.
+        telemetry.stop().await; // Stop telemetry before dropping session. `connlib` needs to be active for this, otherwise we won't be able to resolve the DNS name for sentry.
+
         session.disconnect();
 
         result
