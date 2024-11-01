@@ -16,7 +16,6 @@ divan = { version = "0.1.14", optional = true }
 dns-over-tcp = { workspace = true }
 domain = { workspace = true }
 firezone-logging = { workspace = true }
-firezone-telemetry = { workspace = true }
 futures = { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
 futures-bounded = "0.2.4"
 futures-util = { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
