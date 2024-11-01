@@ -119,8 +119,8 @@ impl ClientTunnel {
                 continue;
             }
 
-            if let Some(transmit) = self.role_state.poll_transmit() {
-                self.io.send_network(transmit)?;
+            if let Some(trans) = self.role_state.poll_transmit() {
+                self.io.send_network(trans.src, trans.dst, &trans.payload);
                 continue;
             }
 
@@ -143,12 +143,13 @@ impl ClientTunnel {
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
                     let now = Instant::now();
-                    let Some(enc_packet) = self.role_state.handle_tun_input(packet, now) else {
+                    let Some(packet) = self.role_state.handle_tun_input(packet, now) else {
                         self.role_state.handle_timeout(now);
                         continue;
                     };
 
-                    self.io.send_encrypted_packet(enc_packet);
+                    self.io
+                        .send_network(packet.src(), packet.dst(), packet.payload());
 
                     continue;
                 }
@@ -213,8 +214,8 @@ impl GatewayTunnel {
                 return Poll::Ready(Ok(other));
             }
 
-            if let Some(transmit) = self.role_state.poll_transmit() {
-                self.io.send_network(transmit)?;
+            if let Some(trans) = self.role_state.poll_transmit() {
+                self.io.send_network(trans.src, trans.dst, &trans.payload);
                 continue;
             }
 
@@ -235,7 +236,7 @@ impl GatewayTunnel {
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
                     let now = Instant::now();
-                    let Some(enc_packet) = self
+                    let Some(packet) = self
                         .role_state
                         .handle_tun_input(packet, now)
                         .map_err(std::io::Error::other)?
@@ -244,7 +245,8 @@ impl GatewayTunnel {
                         continue;
                     };
 
-                    self.io.send_encrypted_packet(enc_packet);
+                    self.io
+                        .send_network(packet.src(), packet.dst(), packet.payload());
 
                     continue;
                 }

@@ -1510,14 +1510,20 @@ impl EncryptedPacket {
         Transmit {
             src: self.src,
             dst: self.dst,
-            payload: Cow::Borrowed(
-                &self.buffer[self.packet_start..(self.packet_start + self.packet_len)],
-            ),
+            payload: Cow::Borrowed(self.payload()),
         }
+    }
+
+    pub fn src(&self) -> Option<SocketAddr> {
+        self.src
     }
 
     pub fn dst(&self) -> SocketAddr {
         self.dst
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        &self.buffer[self.packet_start..(self.packet_start + self.packet_len)]
     }
 }
 

@@ -8,7 +8,6 @@ use futures::{
 use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
 use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
-use snownet::EncryptedPacket;
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     borrow::Cow,
@@ -33,6 +32,10 @@ use tun::Tun;
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
+    /// Holds UDP datagrams that we need to send, indexed by src, dst and segment size.
+    ///
+    /// Calling [`Io::send_network`] will copy the provided payload into this buffer.
+    /// The buffer is then flushed using GSO in a single syscall.
     send_queue: BTreeMap<(Option<SocketAddr>, SocketAddr, usize), Vec<u8>>,
 
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -118,6 +121,8 @@ impl Io {
         ip6_bffer: &'b mut [u8],
     ) -> Poll<io::Result<Input<impl Iterator<Item = DatagramIn<'b>>>>> {
         // If our send queue grows beyond 1MB, force flushing before accepting any more work by reading new packets.
+        // If not, we allow the event-loop to do other stuff.
+        // This allows us to handle bursts of packets at once and batching them up into a single syscall.
         if self.send_queue.values().any(|b| b.len() >= ONE_MB) {
             ready!(self.flush_send_queue(cx)?);
         }
@@ -161,7 +166,7 @@ impl Io {
             }
         }
 
-        // If we don't have anything else to do, flush packets.
+        // If we don't have anything else to do, flush all packets.
         ready!(self.flush_send_queue(cx)?);
 
         Poll::Pending
@@ -234,15 +239,11 @@ impl Io {
         }
     }
 
-    pub fn send_network(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
-        self.sockets.send(DatagramOut {
-            src: transmit.src,
-            dst: transmit.dst,
-            packet: transmit.payload,
-            segment_size: None,
-        })?;
-
-        Ok(())
+    pub fn send_network(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8]) {
+        self.send_queue
+            .entry((src, dst, payload.len()))
+            .or_default()
+            .extend_from_slice(payload);
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
@@ -330,15 +331,6 @@ impl Io {
                 }
             }
         }
-    }
-
-    pub fn send_encrypted_packet(&mut self, packet: EncryptedPacket) {
-        let transmit = packet.to_transmit();
-
-        self.send_queue
-            .entry((transmit.src, transmit.dst, transmit.payload.len()))
-            .or_default()
-            .extend_from_slice(&transmit.payload);
     }
 }
 
