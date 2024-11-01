@@ -24,7 +24,7 @@ where
 
     let subscriber = Registry::default()
         .with(additional_layer.with_filter(filter(&directives)))
-        .with(sentry_layer()) // Sentry layer has its own event filtering mechanism, so we only exclude the noisy crates.
+        .with(sentry_layer())
         .with(
             fmt::layer()
                 .event_format(Format::new())
