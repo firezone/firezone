@@ -11,6 +11,8 @@ use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
 use snownet::EncryptedPacket;
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
+    borrow::Cow,
+    collections::BTreeMap,
     collections::VecDeque,
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -31,7 +33,7 @@ use tun::Tun;
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
-    unwritten_packet: Option<EncryptedPacket>,
+    send_queue: BTreeMap<(Option<SocketAddr>, SocketAddr, usize), Vec<u8>>,
 
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -66,6 +68,7 @@ pub enum Input<I> {
 
 const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 const IP_CHANNEL_SIZE: usize = 1000;
+const ONE_MB: usize = 1024 * 1024;
 
 impl Io {
     /// Creates a new I/O abstraction
@@ -99,8 +102,8 @@ impl Io {
             sockets,
             tcp_socket_factory,
             udp_socket_factory,
-            unwritten_packet: None,
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
+            send_queue: Default::default(),
         }
     }
 
@@ -114,7 +117,10 @@ impl Io {
         ip4_buffer: &'b mut [u8],
         ip6_bffer: &'b mut [u8],
     ) -> Poll<io::Result<Input<impl Iterator<Item = DatagramIn<'b>>>>> {
-        ready!(self.poll_send_unwritten(cx)?);
+        // If our send queue grows beyond 1MB, force flushing before accepting any more work by reading new packets.
+        if self.send_queue.values().any(|b| b.len() >= ONE_MB) {
+            ready!(self.flush_send_queue(cx)?);
+        }
 
         if let Poll::Ready(network) = self.sockets.poll_recv_from(ip4_buffer, ip6_bffer, cx)? {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
@@ -155,16 +161,28 @@ impl Io {
             }
         }
 
+        // If we don't have anything else to do, flush packets.
+        ready!(self.flush_send_queue(cx)?);
+
         Poll::Pending
     }
 
-    fn poll_send_unwritten(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        ready!(self.sockets.poll_send_ready(cx))?;
+    fn flush_send_queue(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        for ((src, dst, segment_len), payload) in &mut self.send_queue {
+            if payload.is_empty() {
+                continue;
+            }
+            ready!(self.sockets.poll_send_ready(cx))?;
 
-        // If the `unwritten_packet` is set, `EncryptBuffer` is still holding a packet that we need so send.
-        if let Some(unwritten_packet) = self.unwritten_packet.take() {
-            self.send_encrypted_packet(unwritten_packet)?;
-        };
+            self.sockets.send(DatagramOut {
+                src: *src,
+                dst: *dst,
+                packet: Cow::Borrowed(payload),
+                segment_size: Some(*segment_len),
+            })?;
+
+            payload.clear();
+        }
 
         loop {
             // First, acquire a slot in the channel.
@@ -201,6 +219,7 @@ impl Io {
 
     pub fn rebind_sockets(&mut self) {
         self.sockets.rebind(self.udp_socket_factory.as_ref());
+        self.send_queue.clear();
     }
 
     pub fn reset_timeout(&mut self, timeout: Instant) {
@@ -220,6 +239,7 @@ impl Io {
             src: transmit.src,
             dst: transmit.dst,
             packet: transmit.payload,
+            segment_size: None,
         })?;
 
         Ok(())
@@ -312,22 +332,13 @@ impl Io {
         }
     }
 
-    pub fn send_encrypted_packet(&mut self, packet: EncryptedPacket) -> io::Result<()> {
+    pub fn send_encrypted_packet(&mut self, packet: EncryptedPacket) {
         let transmit = packet.to_transmit();
-        let res = self.send_network(transmit);
 
-        if res
-            .as_ref()
-            .err()
-            .is_some_and(|e| e.kind() == io::ErrorKind::WouldBlock)
-        {
-            tracing::debug!(dst = %packet.dst(), "Socket busy");
-            self.unwritten_packet = Some(packet);
-        }
-
-        res?;
-
-        Ok(())
+        self.send_queue
+            .entry((transmit.src, transmit.dst, transmit.payload.len()))
+            .or_default()
+            .extend_from_slice(&transmit.payload);
     }
 }
 

@@ -204,6 +204,7 @@ pub struct DatagramOut<'a> {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
     pub packet: Cow<'a, [u8]>,
+    pub segment_size: Option<usize>,
 }
 
 impl UdpSocket {
@@ -299,7 +300,7 @@ impl UdpSocket {
         payload: &[u8],
     ) -> io::Result<Vec<u8>> {
         let transmit = self
-            .prepare_transmit(dst, None, payload)?
+            .prepare_transmit(dst, None, payload, None)?
             .ok_or_else(|| io::Error::other("Failed to prepare `Transmit`"))?;
 
         self.inner
@@ -324,8 +325,12 @@ impl UdpSocket {
     }
 
     fn try_send(&mut self, datagram: DatagramOut) -> io::Result<()> {
-        let Some(transmit) =
-            self.prepare_transmit(datagram.dst, datagram.src.map(|s| s.ip()), &datagram.packet)?
+        let Some(transmit) = self.prepare_transmit(
+            datagram.dst,
+            datagram.src.map(|s| s.ip()),
+            &datagram.packet,
+            datagram.segment_size,
+        )?
         else {
             return Ok(());
         };
@@ -340,6 +345,7 @@ impl UdpSocket {
         dst: SocketAddr,
         src_ip: Option<IpAddr>,
         packet: &'a [u8],
+        segment_size: Option<usize>,
     ) -> io::Result<Option<quinn_udp::Transmit<'a>>> {
         let src_ip = match src_ip {
             Some(src_ip) => Some(src_ip),
@@ -360,7 +366,7 @@ impl UdpSocket {
             destination: dst,
             ecn: None,
             contents: packet,
-            segment_size: None,
+            segment_size,
             src_ip,
         };
 

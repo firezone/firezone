@@ -148,7 +148,7 @@ impl ClientTunnel {
                         continue;
                     };
 
-                    self.io.send_encrypted_packet(enc_packet)?;
+                    self.io.send_encrypted_packet(enc_packet);
 
                     continue;
                 }
@@ -244,7 +244,7 @@ impl GatewayTunnel {
                         continue;
                     };
 
-                    self.io.send_encrypted_packet(enc_packet)?;
+                    self.io.send_encrypted_packet(enc_packet);
 
                     continue;
                 }
