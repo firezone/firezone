@@ -36,10 +36,10 @@ rpmbuild \
 --define "_topdir /root/rpmbuild/gui-client/rpmbuild"
 
 # Un-mess-up the permissions Docker gave it
-sudo chown $USER:$USER rpmbuild/RPMS/*/firezone-client-gui-*rpm
+sudo chown --recursive $USER:$USER rpmbuild
 
 # Give it a predictable name
-mv rpmbuild/RPMS/*/firezone-client-gui-*rpm "firezone-client-gui.rpm"
+cp rpmbuild/RPMS/*/firezone-client-gui-*rpm "firezone-client-gui.rpm"
 
 # Delete the deb that Tauri built. We're going to modify and rebuild it.
 rm "$BUNDLES_DIR"/*.deb
