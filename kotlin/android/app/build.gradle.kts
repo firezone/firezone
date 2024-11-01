@@ -184,7 +184,7 @@ dependencies {
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.52")
     kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.52")
     androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation("androidx.navigation:navigation-testing:2.8.2")
+    androidTestImplementation("androidx.navigation:navigation-testing:2.8.3")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.6.1")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
