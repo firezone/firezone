@@ -26,7 +26,7 @@ pnpm tauri build
 
 # Build the RPM file
 docker run \
--it --rm \
+--rm \
 -v $PWD/..:/root/rpmbuild \
 -v /usr/lib:/root/libs \
 -w /root/rpmbuild/gui-client \
