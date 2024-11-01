@@ -43,7 +43,7 @@ android {
     }
 
     namespace = "dev.firezone.android"
-    compileSdk = 34
+    compileSdk = 35
     ndkVersion = "27.2.12479018" // Must match `.github/actions/setup-android/action.yml`
 
     defaultConfig {
