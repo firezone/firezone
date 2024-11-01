@@ -1,6 +1,6 @@
 # Dockerfile for building RPM packages for CentOS
 # CentOS Stream 9
-FROM quay.io/centos/centos@sha256:83157fe5138fa2964b2698e90ecaa43cf020a4e329653049f4bfb7b04fdde9a0
+FROM quay.io/centos/centos
 
 RUN yum install -y rpm-build systemd-rpm-macros && yum clean all
 
