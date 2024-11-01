@@ -35,6 +35,9 @@ rpmbuild \
 -bb src-tauri/rpm_files/firezone-gui-client.spec \
 --define "_topdir /root/rpmbuild/gui-client/rpmbuild"
 
+# Un-mess-up the permissions Docker gave it
+sudo chown $USER:$USER rpmbuild/RPMS/*/firezone-client-gui-*rpm
+
 # Give it a predictable name
 mv rpmbuild/RPMS/*/firezone-client-gui-*rpm "firezone-client-gui.rpm"
 
