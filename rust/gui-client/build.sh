@@ -6,6 +6,9 @@ set -euo pipefail
 # Dir where all the bundles are built
 BUNDLES_DIR=../target/release/bundle/deb
 
+# Prep the RPM container
+docker build . -f ../Dockerfile-rpm -t rpmbuild
+
 # Copy frontend dependencies
 cp node_modules/flowbite/dist/flowbite.min.js src/
 
@@ -20,6 +23,23 @@ rm -rf "$BUNDLES_DIR"
 
 # Compile Rust and bundle
 pnpm tauri build
+
+# Build the RPM file
+docker run \
+--rm \
+-v $PWD/..:/root/rpmbuild \
+-v /usr/lib:/root/libs \
+-w /root/rpmbuild/gui-client \
+rpmbuild \
+rpmbuild \
+-bb src-tauri/rpm_files/firezone-gui-client.spec \
+--define "_topdir /root/rpmbuild/gui-client/rpmbuild"
+
+# Un-mess-up the permissions Docker gave it
+sudo chown --recursive $USER:$USER rpmbuild
+
+# Give it a predictable name
+cp rpmbuild/RPMS/*/firezone-client-gui-*rpm "firezone-client-gui.rpm"
 
 # Delete the deb that Tauri built. We're going to modify and rebuild it.
 rm "$BUNDLES_DIR"/*.deb
@@ -37,6 +57,6 @@ pushd "$INTERMEDIATE_DIR"
 tar -C "control" -czf "control.tar.gz" control md5sums postinst prerm
 
 # Rebuild the deb package, and give it a predictable name that
-# `tauri-rename-ubuntu.sh` can fix
+# `tauri-rename-linux.sh` can fix
 ar rcs "../firezone-client-gui.deb" debian-binary control.tar.gz data.tar.gz
 popd
