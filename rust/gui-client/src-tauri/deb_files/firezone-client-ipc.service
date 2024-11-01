@@ -1,5 +1,7 @@
 [Unit]
 Description=Firezone Client
+After=systemd-resolved.service
+Wants=systemd-resolved.service
 
 [Service]
 AmbientCapabilities=CAP_NET_ADMIN
@@ -42,7 +44,7 @@ EnvironmentFile=-/etc/default/firezone-client-ipc
 
 ExecStart=firezone-client-ipc run
 Type=notify
-# Unfortunately we may need root to control DNS
+# Unfortunately we need root to control DNS
 User=root
 Group=firezone-client
 
