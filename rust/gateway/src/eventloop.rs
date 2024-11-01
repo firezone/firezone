@@ -454,12 +454,12 @@ async fn resolve(domain: Option<DomainName>) -> Vec<IpAddr> {
     match tokio::task::spawn_blocking(move || resolve_addresses(&dname)).await {
         Ok(Ok(addresses)) => addresses,
         Ok(Err(e)) => {
-            tracing::warn!(error = std_dyn_err(&e), "Failed to resolve '{domain}'");
+            tracing::warn!(error = std_dyn_err(&e), %domain, "DNS resolution failed");
 
             vec![]
         }
         Err(e) => {
-            tracing::warn!(error = std_dyn_err(&e), "Failed to resolve '{domain}'");
+            tracing::warn!(error = std_dyn_err(&e), %domain, "DNS resolution task failed");
 
             vec![]
         }
