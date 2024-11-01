@@ -416,6 +416,8 @@ resource "google_monitoring_alert_policy" "ssl_certs_expiring_policy" {
 }
 
 resource "google_monitoring_alert_policy" "load_balancer_latency_policy" {
+  project = var.project_id
+
   display_name          = "Load balancer latency"
   combiner              = "OR"
   notification_channels = local.notification_channels
