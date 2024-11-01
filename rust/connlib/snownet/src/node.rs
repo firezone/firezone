@@ -545,8 +545,8 @@ where
 
         self.allocations_drain_events();
 
-        for (id, connection) in self.connections.iter_established_mut() {
-            connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
+        for (_, connection) in self.connections.iter_established_mut() {
+            connection.handle_timeout(now, &mut self.allocations, &mut self.buffered_transmits);
         }
 
         for (id, connection) in self.connections.initial.iter_mut() {
@@ -1816,17 +1816,15 @@ where
         Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
     }
 
-    #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    fn handle_timeout<TId>(
+    fn handle_timeout(
         &mut self,
-        cid: TId,
         now: Instant,
         allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit<'static>>,
     ) where
-        TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + fmt::Display,
     {
+        let _guard = self.span.enter();
         self.agent.handle_timeout(now);
         self.state
             .handle_timeout(&mut self.agent, &mut self.wg_timer, now);
