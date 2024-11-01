@@ -8,7 +8,7 @@ use futures::{
 use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
 use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
-use snownet::{EncryptBuffer, EncryptedPacket};
+use snownet::EncryptedPacket;
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::VecDeque,
@@ -113,9 +113,8 @@ impl Io {
         cx: &mut Context<'_>,
         ip4_buffer: &'b mut [u8],
         ip6_bffer: &'b mut [u8],
-        encrypt_buffer: &EncryptBuffer,
     ) -> Poll<io::Result<Input<impl Iterator<Item = DatagramIn<'b>>>>> {
-        ready!(self.poll_send_unwritten(cx, encrypt_buffer)?);
+        ready!(self.poll_send_unwritten(cx)?);
 
         if let Poll::Ready(network) = self.sockets.poll_recv_from(ip4_buffer, ip6_bffer, cx)? {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
@@ -159,16 +158,12 @@ impl Io {
         Poll::Pending
     }
 
-    fn poll_send_unwritten(
-        &mut self,
-        cx: &mut Context<'_>,
-        buf: &EncryptBuffer,
-    ) -> Poll<io::Result<()>> {
+    fn poll_send_unwritten(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         ready!(self.sockets.poll_send_ready(cx))?;
 
         // If the `unwritten_packet` is set, `EncryptBuffer` is still holding a packet that we need so send.
         if let Some(unwritten_packet) = self.unwritten_packet.take() {
-            self.send_encrypted_packet(unwritten_packet, buf)?;
+            self.send_encrypted_packet(unwritten_packet)?;
         };
 
         loop {
@@ -317,12 +312,8 @@ impl Io {
         }
     }
 
-    pub fn send_encrypted_packet(
-        &mut self,
-        packet: EncryptedPacket,
-        buf: &EncryptBuffer,
-    ) -> io::Result<()> {
-        let transmit = packet.to_transmit(buf);
+    pub fn send_encrypted_packet(&mut self, packet: EncryptedPacket) -> io::Result<()> {
+        let transmit = packet.to_transmit();
         let res = self.send_network(transmit);
 
         if res
@@ -455,9 +446,7 @@ mod tests {
 
         io.reset_timeout(now + Duration::from_secs(1));
 
-        let poll_fn = poll_fn(|cx| io.poll(cx, &mut [], &mut [], &EncryptBuffer::new()))
-            .await
-            .unwrap();
+        let poll_fn = poll_fn(|cx| io.poll(cx, &mut [], &mut [])).await.unwrap();
 
         let Input::Timeout(timeout) = poll_fn else {
             panic!("Unexpected result");
@@ -465,12 +454,7 @@ mod tests {
 
         assert_eq!(timeout, now + Duration::from_secs(1));
 
-        let poll = io.poll(
-            &mut Context::from_waker(noop_waker_ref()),
-            &mut [],
-            &mut [],
-            &EncryptBuffer::new(),
-        );
+        let poll = io.poll(&mut Context::from_waker(noop_waker_ref()), &mut [], &mut []);
 
         assert!(poll.is_pending());
         assert!(io.timeout.is_none());

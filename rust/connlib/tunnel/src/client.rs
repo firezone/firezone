@@ -28,7 +28,7 @@ use crate::ClientEvent;
 use domain::base::Message;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{ClientNode, EncryptBuffer, NoTurnServers, RelaySocket, Transmit};
+use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -298,14 +298,13 @@ impl ClientState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-        buffer: &mut EncryptBuffer,
     ) -> Option<snownet::EncryptedPacket> {
         let non_dns_packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
 
-        self.encapsulate(non_dns_packet, now, buffer)
+        self.encapsulate(non_dns_packet, now)
     }
 
     /// Handles UDP packets received on the network interface.
@@ -410,12 +409,7 @@ impl ClientState {
         }
     }
 
-    fn encapsulate(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-        buffer: &mut EncryptBuffer,
-    ) -> Option<snownet::EncryptedPacket> {
+    fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Option<snownet::EncryptedPacket> {
         let dst = packet.destination();
 
         if is_definitely_not_a_resource(dst) {
@@ -448,7 +442,7 @@ impl ClientState {
 
         let transmit = self
             .node
-            .encapsulate(gid, packet, now, buffer)
+            .encapsulate(gid, packet, now)
             .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {}", err_with_src(e)))
             .ok()??;
 
@@ -917,14 +911,12 @@ impl ClientState {
 
             // Check if the client wants to emit any packets.
             if let Some(packet) = self.tcp_dns_client.poll_outbound() {
-                let mut buffer = snownet::EncryptBuffer::new();
-
                 // All packets from the TCP DNS client _should_ go through the tunnel.
-                let Some(encryped_packet) = self.encapsulate(packet, now, &mut buffer) else {
+                let Some(encryped_packet) = self.encapsulate(packet, now) else {
                     continue;
                 };
 
-                let transmit = encryped_packet.to_transmit(&buffer).into_owned();
+                let transmit = encryped_packet.to_transmit().into_owned();
                 self.buffered_transmits.push_back(transmit);
                 continue;
             }

@@ -432,12 +432,13 @@ where
         connection: TId,
         packet: IpPacket,
         now: Instant,
-        buffer: &mut EncryptBuffer,
     ) -> Result<Option<EncryptedPacket>, Error> {
         let conn = self
             .connections
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
+
+        let mut buffer = EncryptBuffer::default();
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
@@ -476,15 +477,15 @@ where
                 dst: remote,
                 packet_start,
                 packet_len,
+                buffer: buffer.inner,
             })),
             PeerSocket::Relay { relay, dest: peer } => {
                 let Some(allocation) = self.allocations.get(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let packet = &mut buffer.inner[..packet_end];
-
-                let Some(enc_packet) = allocation.encode_to_encrypted_packet(peer, packet, now)
+                let Some(enc_packet) =
+                    allocation.encode_to_encrypted_packet(peer, buffer.inner, packet_end, now)
                 else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);
@@ -1477,14 +1478,14 @@ pub enum Event<TId> {
     ConnectionClosed(TId),
 }
 
-pub struct EncryptBuffer {
-    inner: Vec<u8>,
+struct EncryptBuffer {
+    inner: [u8; MAX_DATAGRAM_PAYLOAD],
 }
 
 impl EncryptBuffer {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self {
-            inner: vec![0u8; MAX_DATAGRAM_PAYLOAD], // TODO: Stack-allocate this?
+            inner: [0u8; MAX_DATAGRAM_PAYLOAD],
         }
     }
 }
@@ -1495,21 +1496,22 @@ impl Default for EncryptBuffer {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct EncryptedPacket {
     pub(crate) src: Option<SocketAddr>,
     pub(crate) dst: SocketAddr,
     pub(crate) packet_start: usize,
     pub(crate) packet_len: usize,
+    pub(crate) buffer: [u8; MAX_DATAGRAM_PAYLOAD],
 }
 
 impl EncryptedPacket {
-    pub fn to_transmit(self, buf: &EncryptBuffer) -> Transmit<'_> {
+    pub fn to_transmit(&self) -> Transmit<'_> {
         Transmit {
             src: self.src,
             dst: self.dst,
             payload: Cow::Borrowed(
-                &buf.inner[self.packet_start..(self.packet_start + self.packet_len)],
+                &self.buffer[self.packet_start..(self.packet_start + self.packet_len)],
             ),
         }
     }
