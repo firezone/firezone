@@ -10,6 +10,7 @@ use firezone_gui_client_common::{
     compositor::{self, Image},
     system_tray::{AppState, ConnlibState, Entry, Icon, IconBase, Item, Menu},
 };
+use firezone_logging::anyhow_dyn_err;
 use tauri::AppHandle;
 
 type IsMenuItem = dyn tauri::menu::IsMenuItem<tauri::Wry>;
@@ -88,7 +89,10 @@ impl Tray {
             self.app
                 .run_on_main_thread(move || {
                     if let Err(error) = update(handle, &app, &menu) {
-                        tracing::error!(?error, "Error while updating tray icon");
+                        tracing::error!(
+                            error = anyhow_dyn_err(&error),
+                            "Error while updating tray icon"
+                        );
                     }
                 })
                 .unwrap();

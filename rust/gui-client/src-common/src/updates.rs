@@ -1,6 +1,7 @@
 //! Module to check the Github repo for new releases
 
 use anyhow::{Context, Result};
+use firezone_logging::anyhow_dyn_err;
 use rand::{thread_rng, Rng as _};
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -46,7 +47,10 @@ pub async fn checker_task(
                 tracing::debug!("CheckNetwork");
                 match check().await {
                     Ok(release) => fsm.handle_check(release),
-                    Err(error) => tracing::error!(?error, "Couldn't check website for update"),
+                    Err(error) => tracing::error!(
+                        error = anyhow_dyn_err(&error),
+                        "Couldn't check website for update"
+                    ),
                 }
             }
             Event::WaitInterval => {

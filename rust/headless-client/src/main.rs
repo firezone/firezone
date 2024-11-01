@@ -12,6 +12,7 @@ use firezone_bin_shared::{
 use firezone_headless_client::{
     device_id, signals, CallbackHandler, CliCommon, ConnlibMsg, DnsController,
 };
+use firezone_logging::anyhow_dyn_err;
 use firezone_telemetry::Telemetry;
 use futures::{FutureExt as _, StreamExt as _};
 use phoenix_channel::get_user_agent;
@@ -321,10 +322,10 @@ fn main() -> Result<()> {
         };
 
         if let Err(error) = dns_notifier.close() {
-            tracing::error!(?error, "DNS notifier")
+            tracing::error!(error = anyhow_dyn_err(&error), "DNS notifier")
         }
         if let Err(error) = network_notifier.close() {
-            tracing::error!(?error, "network notifier");
+            tracing::error!(error = anyhow_dyn_err(&error), "network notifier");
         }
 
         telemetry.stop(); // Stop telemetry before dropping session. `connlib` needs to be active for this, otherwise we won't be able to resolve the DNS name for sentry.
