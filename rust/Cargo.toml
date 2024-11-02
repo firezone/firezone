@@ -82,7 +82,7 @@ output_vt100 = "0.1"
 png = "0.17.13"
 proptest = "1"
 proptest-state-machine = "0.3"
-quinn-udp = "0.5.2"
+quinn-udp = { version = "0.5.2", features = ["fast-apple-datapath"] }
 rand = "0.8.5"
 rand_core = "0.6.4"
 rangemap = "1.5.1"
