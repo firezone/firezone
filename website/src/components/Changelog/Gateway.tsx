@@ -12,7 +12,7 @@ export default function Gateway() {
     <Entries href={href} arches={arches} title="Gateway">
       <Entry version="1.4.0" date={new Date("2024-11-04")}>
         <ChangeItem pull="6960">
-          Separates traffic restrictions beween DNS Resources CIDR Resources,
+          Separates traffic restrictions between DNS Resources CIDR Resources,
           preventing them from interfering with each other.
         </ChangeItem>
         <ChangeItem pull="6941">
