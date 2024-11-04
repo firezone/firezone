@@ -38,11 +38,11 @@ jobs:
           if [[ "${{ github.event.release.name }}" =~ gateway* ]]; then
             ARTIFACT=gateway
             # mark:next-gateway-version
-            VERSION="1.3.3"
+            VERSION="1.4.1"
           elif [[ "${{ github.event.release.name }}" =~ headless* ]]; then
             ARTIFACT=client
             # mark:next-headless-version
-            VERSION="1.3.5"
+            VERSION="1.3.6"
           else
             echo "Shouldn't have gotten here. Exiting."
             exit 1

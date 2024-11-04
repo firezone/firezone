@@ -11,12 +11,17 @@ export default function Apple() {
       title="macOS / iOS"
     >
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.3.7" date={new Date("2024-10-31")}>
         <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
         <ChangeItem pull="7152">
           Adds always-on error reporting using sentry.io.
         </ChangeItem>
-      </Unreleased>
+        <ChangeItem pull="7164">
+          Fixes an issue where Firezone would fail to establish connections to
+          Gateways and the user had to sign-out and in again.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.3.6" date={new Date("2024-10-02")}>
         <ChangeItem pull="6831">
           Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is

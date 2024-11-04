@@ -796,7 +796,7 @@ impl IpPacket {
         }
     }
 
-    fn payload(&self) -> &[u8] {
+    pub fn payload(&self) -> &[u8] {
         let start = self.header_length();
         let payload_length = self.payload_length() as usize;
 

@@ -77,7 +77,7 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::warn!(error = std_dyn_err(&e), "Tunnel error");
+                    tracing::debug!(error = std_dyn_err(&e), "Tunnel error");
                     continue;
                 }
                 Poll::Pending => {}
@@ -197,7 +197,7 @@ impl Eventloop {
                 msg: IngressMessages::AuthorizeFlow(msg),
                 ..
             } => {
-                self.tunnel.state_mut().authorize_flow(
+                if let Err(snownet::NoTurnServers {}) = self.tunnel.state_mut().authorize_flow(
                     msg.client.id,
                     PublicKey::from(msg.client.public_key.0),
                     msg.client.preshared_key,
@@ -208,7 +208,14 @@ impl Eventloop {
                     msg.expires_at,
                     msg.resource,
                     Instant::now(),
-                );
+                ) {
+                    tracing::debug!("Failed to authorise flow: No TURN servers available");
+
+                    // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
+                    self.portal
+                        .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
+                    return;
+                };
 
                 self.portal.send(
                     PHOENIX_TOPIC,
@@ -347,7 +354,7 @@ impl Eventloop {
             .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request"))
             .unwrap_or_default();
 
-        let answer = self.tunnel.state_mut().accept(
+        let answer = match self.tunnel.state_mut().accept(
             req.client.id,
             req.client
                 .payload
@@ -355,7 +362,18 @@ impl Eventloop {
                 .into_snownet_offer(req.client.peer.preshared_key),
             PublicKey::from(req.client.peer.public_key.0),
             Instant::now(),
-        );
+        ) {
+            Ok(a) => a,
+            Err(snownet::NoTurnServers {}) => {
+                tracing::debug!("Failed to accept new connection: No TURN servers available");
+
+                // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
+                self.portal
+                    .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
+
+                return;
+            }
+        };
 
         if let Err(e) = self.tunnel.state_mut().allow_access(
             req.client.id,
@@ -436,12 +454,12 @@ async fn resolve(domain: Option<DomainName>) -> Vec<IpAddr> {
     match tokio::task::spawn_blocking(move || resolve_addresses(&dname)).await {
         Ok(Ok(addresses)) => addresses,
         Ok(Err(e)) => {
-            tracing::warn!(error = std_dyn_err(&e), "Failed to resolve '{domain}'");
+            tracing::warn!(error = std_dyn_err(&e), %domain, "DNS resolution failed");
 
             vec![]
         }
         Err(e) => {
-            tracing::warn!(error = std_dyn_err(&e), "Failed to resolve '{domain}'");
+            tracing::warn!(error = std_dyn_err(&e), %domain, "DNS resolution task failed");
 
             vec![]
         }
