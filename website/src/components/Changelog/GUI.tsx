@@ -23,7 +23,7 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem pull="7123">
           Reports the version to the Portal correctly.
         </ChangeItem>
-        <ChangeItem pull="6996" enable={title === "Windows"}>
+        <ChangeItem pull="6996" enable={title === "Linux GUI"}>
           Supports Ubuntu 24.04, no longer supports Ubuntu 20.04.
         </ChangeItem>
         <ChangeItem pull="7164">
