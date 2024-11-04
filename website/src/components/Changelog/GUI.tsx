@@ -23,7 +23,7 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem pull="7123">
           Reports the version to the Portal correctly.
         </ChangeItem>
-        <ChangeItem pull="6996">
+        <ChangeItem pull="6996" enable={title === "Linux GUI"}>
           Supports Ubuntu 24.04, no longer supports Ubuntu 20.04.
         </ChangeItem>
         <ChangeItem pull="7164">
@@ -33,19 +33,19 @@ export default function GUI({ title }: { title: string }) {
       </Entry>
       <Entry version="1.3.9" date={new Date("2024-10-09")}>
         <ChangeItem enable={title === "Linux GUI"} pull="6987">
-          Fixes a crash on startup caused by incorrect permissions on the ID file.
+          Fixes a crash on startup caused by incorrect permissions on the ID
+          file.
         </ChangeItem>
         <ChangeItem enable={title === "Windows"}>
           This is a maintenance release with no user-facing changes.
         </ChangeItem>
       </Entry>
       <Entry version="1.3.8" date={new Date("2024-10-08")}>
-        <ChangeItem pull="6874">
-          Fixes the GUI shutting down slowly.
-        </ChangeItem>
+        <ChangeItem pull="6874">Fixes the GUI shutting down slowly.</ChangeItem>
         <ChangeItem enable={title === "Windows"} pull="6931">
-          Mitigates an issue where `ipconfig` and WSL weren't aware of Firezone DNS resolvers.
-          Users may need to restart WSL after signing in to Firezone.
+          Mitigates an issue where `ipconfig` and WSL weren't aware of Firezone
+          DNS resolvers. Users may need to restart WSL after signing in to
+          Firezone.
         </ChangeItem>
       </Entry>
       <Entry version="1.3.7" date={new Date("2024-10-02")}>

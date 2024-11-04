@@ -10,24 +10,24 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
-      <Unreleased>
-          <ChangeItem pull="6960">
-            Separates CIDR and DNS resources filters, preventing filters
-            from one applying to the other.
-          </ChangeItem>
-          <ChangeItem pull="6941">
-            Implements support for the new control protocol; delivering faster
-            and more robust connection establishment.
-          </ChangeItem>
-          <ChangeItem pull="7103">
-            Adds on-by-default error reporting using sentry.io.
-            Disable by setting `FIREZONE_NO_TELEMETRY=1`.
-          </ChangeItem>
-          <ChangeItem pull="7164">
-            Fixes an issue where the Gateway would fail to accept connections and
-            had to be restarted.
-          </ChangeItem>
-      </Unreleased>
+      <Entry version="1.4.0" date={new Date("2024-11-04")}>
+        <ChangeItem pull="6960">
+          Separates traffic restrictions between DNS Resources CIDR Resources,
+          preventing them from interfering with each other.
+        </ChangeItem>
+        <ChangeItem pull="6941">
+          Implements support for the new control protocol, delivering faster and
+          more robust connection establishment.
+        </ChangeItem>
+        <ChangeItem pull="7103">
+          Adds on-by-default error reporting using sentry.io. Disable by setting
+          `FIREZONE_NO_TELEMETRY=1`.
+        </ChangeItem>
+        <ChangeItem pull="7164">
+          Fixes an issue where the Gateway would fail to accept connections and
+          had to be restarted.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.3.2" date={new Date("2024-10-02")}>
         <ChangeItem pull="6733">
           Reduces log level of the "Couldn't find connection by IP" message so
