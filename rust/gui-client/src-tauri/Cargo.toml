@@ -37,7 +37,7 @@ tauri-plugin-notification = "2.0.1"
 tauri-plugin-shell = "2.0.1"
 tauri-runtime = "2.1.0"
 tauri-utils = "2.0.1"
-thiserror = { version = "1.0.64", default-features = false }
+thiserror = { version = "1.0.67", default-features = false }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }

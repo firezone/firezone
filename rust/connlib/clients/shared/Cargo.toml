@@ -16,7 +16,7 @@ secrecy = { workspace = true }
 serde = { version = "1.0", default-features = false, features = ["std", "derive"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
-thiserror = "1.0.63"
+thiserror = "1.0.67"
 time = { version = "0.3.36", features = ["formatting"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { workspace = true, features = ["std", "attributes"] }
