@@ -4,8 +4,8 @@ import { get } from "@vercel/edge-config";
 // Cache responses
 export const dynamic = "force-static";
 
-// Revalidate cache every 60 seconds
-export const revalidate = 60;
+// Revalidate cache at most every hour
+export const revalidate = 3600;
 
 export async function GET(_req: NextRequest) {
   const versions = {
