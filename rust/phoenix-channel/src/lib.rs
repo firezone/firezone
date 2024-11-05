@@ -6,6 +6,7 @@ use std::collections::{HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{fmt, future, marker::PhantomData};
 use std::{io, mem};
 
@@ -85,7 +86,10 @@ async fn create_and_connect_websocket(
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
     tracing::debug!(host = %url.host().unwrap(), %user_agent, "Connecting to portal");
 
-    let socket = make_socket(&url, &*socket_factory).await?;
+    let duration = Duration::from_secs(5);
+    let socket = tokio::time::timeout(duration, make_socket(&url, &*socket_factory))
+        .await
+        .map_err(|_| InternalError::Timeout { duration })??;
 
     let (stream, _) = client_async_tls(make_request(url, user_agent), socket)
         .await
@@ -167,6 +171,7 @@ enum InternalError {
     StreamClosed,
     InvalidUrl,
     SocketConnection(std::io::Error),
+    Timeout { duration: Duration },
 }
 
 impl fmt::Display for InternalError {
@@ -189,6 +194,9 @@ impl fmt::Display for InternalError {
             InternalError::StreamClosed => write!(f, "websocket stream was closed"),
             InternalError::InvalidUrl => write!(f, "failed to resolve url"),
             InternalError::SocketConnection(_) => write!(f, "failed to connect socket"),
+            InternalError::Timeout { duration, .. } => {
+                write!(f, "operation timed out after {duration:?}")
+            }
         }
     }
 }
@@ -204,6 +212,7 @@ impl std::error::Error for InternalError {
             InternalError::CloseMessage => None,
             InternalError::StreamClosed => None,
             InternalError::InvalidUrl => None,
+            InternalError::Timeout { .. } => None,
         }
     }
 }
