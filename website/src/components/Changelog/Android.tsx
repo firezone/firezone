@@ -13,7 +13,7 @@ export default function Android() {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="7263">
-            Mitigates a crash in case the maximum packet is not respected.
+            Mitigates a crash in case the maximum packet size is not respected.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.3.6" date={new Date("2024-10-31")}>

@@ -15,7 +15,7 @@ export default function GUI({ title }: { title: string }) {
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
-        <ChangeItem pull="7263">Mitigates a crash in case the maximum packet is not respected.</ChangeItem>
+        <ChangeItem pull="7263">Mitigates a crash in case the maximum packet size is not respected.</ChangeItem>
       </Unreleased>
       <Entry version="1.3.10" date={new Date("2024-10-31")}>
         <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
