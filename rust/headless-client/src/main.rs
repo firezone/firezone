@@ -130,7 +130,7 @@ fn main() -> Result<()> {
     let telemetry = Telemetry::default();
     telemetry.start(
         cli.api_url.as_ref(),
-        firezone_bin_shared::git_version!("headless-client-*"),
+        env!("CARGO_PKG_VERSION"),
         firezone_telemetry::HEADLESS_DSN,
     );
 

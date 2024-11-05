@@ -64,7 +64,7 @@ pub(crate) fn run() -> Result<()> {
             let telemetry = telemetry::Telemetry::default();
             telemetry.start(
                 settings.api_url.as_ref(),
-                firezone_bin_shared::git_version!("gui-client-*"),
+                env!("CARGO_PKG_VERSION"),
                 telemetry::GUI_DSN,
             );
             // Don't fix the log filter for smoke tests
@@ -96,7 +96,7 @@ fn run_gui(cli: Cli) -> Result<()> {
     // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
     telemetry.start(
         settings.api_url.as_ref(),
-        firezone_bin_shared::git_version!("gui-client-*"),
+        env!("CARGO_PKG_VERSION"),
         telemetry::GUI_DSN,
     );
     // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
