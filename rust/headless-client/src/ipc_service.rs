@@ -161,7 +161,7 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     let log_filter_reloader = crate::setup_stdout_logging()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = firezone_bin_shared::git_version!("gui-client-*"),
+        // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
     );
     if !platform::elevation_check()? {
@@ -650,7 +650,7 @@ fn setup_logging(
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = firezone_bin_shared::git_version!("gui-client-*"),
+        // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
         ?directives
     );
