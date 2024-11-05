@@ -32,6 +32,8 @@ use url::{Host, Url};
 pub use get_user_agent::get_user_agent;
 pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
 
+const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
+
 pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes, TFinish> {
     state: State,
     waker: Option<Waker>,
@@ -278,7 +280,7 @@ where
             state: State::Closed,
             socket_factory,
             waker: None,
-            pending_messages: Default::default(),
+            pending_messages: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
             _phantom: PhantomData,
             heartbeat: Heartbeat::new(
                 heartbeat::INTERVAL,
@@ -316,6 +318,12 @@ where
 
     /// Send a message to a topic.
     pub fn send(&mut self, topic: impl Into<String>, message: impl Serialize) -> OutboundRequestId {
+        if self.pending_messages.len() > MAX_BUFFERED_MESSAGES {
+            self.pending_messages.clear();
+
+            tracing::warn!("Dropping pending messages to portal because we exceeded the maximum of {MAX_BUFFERED_MESSAGES}");
+        }
+
         let (id, msg) = self.make_message(topic, message);
         self.pending_messages.push_back(msg);
 
