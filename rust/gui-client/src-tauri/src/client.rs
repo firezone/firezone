@@ -156,13 +156,12 @@ fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
 /// Don't drop the log handle or logging will stop.
 fn start_logging(directives: &str) -> Result<common::logging::Handles> {
     let logging_handles = common::logging::setup(directives)?;
-    let git_version = firezone_bin_shared::git_version!("gui-client-*");
     let system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs());
     tracing::info!(
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
+        version = env!("CARGO_PKG_VERSION"),
         ?directives,
-        ?git_version,
         ?system_uptime_seconds,
         "`gui-client` started logging"
     );
@@ -171,7 +170,6 @@ fn start_logging(directives: &str) -> Result<common::logging::Handles> {
         category: None,
         data: BTreeMap::from([
             ("directives".into(), directives.into()),
-            ("git_version".into(), git_version.into()),
             ("system_uptime_seconds".into(), system_uptime_seconds.into()),
         ]),
         ..Default::default()
