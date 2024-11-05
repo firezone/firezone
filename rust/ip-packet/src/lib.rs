@@ -89,13 +89,13 @@ impl Protocol {
 
 /// A buffer for reading a new [`IpPacket`] from the network.
 pub struct IpPacketBuf {
-    inner: [u8; MAX_DATAGRAM_PAYLOAD],
+    inner: [u8; PACKET_SIZE + NAT46_OVERHEAD],
 }
 
 impl IpPacketBuf {
     pub fn new() -> Self {
         Self {
-            inner: [0u8; MAX_DATAGRAM_PAYLOAD],
+            inner: [0u8; PACKET_SIZE + NAT46_OVERHEAD],
         }
     }
 
@@ -155,7 +155,7 @@ impl std::fmt::Debug for IpPacket {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv4Packet {
-    buf: [u8; MAX_DATAGRAM_PAYLOAD],
+    buf: [u8; PACKET_SIZE + NAT46_OVERHEAD],
     start: usize,
     len: usize,
 }
@@ -233,7 +233,7 @@ impl ConvertibleIpv4Packet {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv6Packet {
-    buf: [u8; MAX_DATAGRAM_PAYLOAD],
+    buf: [u8; PACKET_SIZE + NAT46_OVERHEAD],
     start: usize,
     len: usize,
 }
