@@ -104,6 +104,8 @@ enum Cmd {
     Standalone,
 }
 
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn main() -> Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
@@ -130,7 +132,7 @@ fn main() -> Result<()> {
     let telemetry = Telemetry::default();
     telemetry.start(
         cli.api_url.as_ref(),
-        env!("CARGO_PKG_VERSION"),
+        VERSION,
         firezone_telemetry::HEADLESS_DSN,
     );
 
@@ -154,10 +156,7 @@ fn main() -> Result<()> {
         .unzip();
     firezone_logging::setup_global_subscriber(layer);
 
-    tracing::info!(
-        arch = std::env::consts::ARCH,
-        git_version = firezone_bin_shared::git_version!("headless-client-*")
-    );
+    tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
