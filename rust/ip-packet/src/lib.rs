@@ -37,7 +37,7 @@ pub const MAX_DATAGRAM_PAYLOAD: usize =
 /// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
 const WG_OVERHEAD: usize = 32;
 /// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
-pub const NAT46_OVERHEAD: usize = 20;
+const NAT46_OVERHEAD: usize = 20;
 /// TURN's data channels have a 4 byte overhead.
 const DATA_CHANNEL_OVERHEAD: usize = 4;
 
@@ -172,6 +172,18 @@ impl ConvertibleIpv4Packet {
         Some(this)
     }
 
+    pub fn from_slice(packet: &[u8]) -> Option<ConvertibleIpv4Packet> {
+        let len = packet.len();
+        if len > PACKET_SIZE {
+            return None;
+        }
+
+        let mut buf = IpPacketBuf::new();
+        buf.buf()[..len].copy_from_slice(packet);
+
+        Self::new(buf, len)
+    }
+
     fn ip_header(&self) -> Ipv4HeaderSlice {
         Ipv4HeaderSlice::from_slice(self.packet()).expect("we checked this during `new`")
     }
@@ -249,6 +261,18 @@ impl ConvertibleIpv6Packet {
         Ipv6HeaderSlice::from_slice(this.packet()).ok()?;
 
         Some(this)
+    }
+
+    pub fn from_slice(packet: &[u8]) -> Option<ConvertibleIpv6Packet> {
+        let len = packet.len();
+        if len > PACKET_SIZE {
+            return None;
+        }
+
+        let mut buf = IpPacketBuf::new();
+        buf.buf()[..len].copy_from_slice(packet);
+
+        Self::new(buf, len)
     }
 
     fn header(&self) -> Ipv6HeaderSlice {

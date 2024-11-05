@@ -11,9 +11,7 @@ use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
 use firezone_logging::std_dyn_err;
 use hex_display::HexDisplayExt;
-use ip_packet::{
-    ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf, MAX_DATAGRAM_PAYLOAD,
-};
+use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, MAX_DATAGRAM_PAYLOAD};
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, Rng, SeedableRng};
@@ -147,6 +145,8 @@ pub enum Error {
     NotConnected,
     #[error("Invalid local address: {0}")]
     BadLocalAddress(#[from] str0m::error::IceError),
+    #[error("Invalid packet")]
+    InvalidPacket,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -2030,31 +2030,25 @@ where
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, IpPacket> {
         let _guard = self.span.enter();
-        let mut ip_packet = IpPacketBuf::new();
+        let mut ip_packet = [0u8; MAX_DATAGRAM_PAYLOAD]; // TODO: -4 TURN overhead? Technically it would be more correct.
 
-        let control_flow = match self.tunnel.decapsulate(None, packet, ip_packet.buf()) {
+        let control_flow = match self.tunnel.decapsulate(None, packet, &mut ip_packet) {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
 
             // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
-            // I am guessing this was done for convenience reasons.
-            // In our API, we parse the packets directly as an IpPacket.
-            // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
             TunnResult::WriteToTunnelV4(packet, ip) => {
-                let packet_len = packet.len();
-                let ipv4_packet = ConvertibleIpv4Packet::new(ip_packet, packet_len)
-                    .expect("boringtun verifies validity");
+                let Some(ipv4_packet) = ConvertibleIpv4Packet::from_slice(packet) else {
+                    return ControlFlow::Break(Err(Error::InvalidPacket));
+                };
                 debug_assert_eq!(ipv4_packet.get_source(), ip);
 
                 ControlFlow::Continue(ipv4_packet.into())
             }
             TunnResult::WriteToTunnelV6(packet, ip) => {
-                // For ipv4 we need to use buffer to create the ip packet because we need the extra 20 bytes at the beginning
-                // for ipv6 we just need this to convince the borrow-checker that `packet`'s lifetime isn't `'b`, otherwise it's taken
-                // as `'b` for all branches.
-                let packet_len = packet.len();
-                let ipv6_packet = ConvertibleIpv6Packet::new(ip_packet, packet_len)
-                    .expect("boringtun verifies validity");
+                let Some(ipv6_packet) = ConvertibleIpv6Packet::from_slice(packet) else {
+                    return ControlFlow::Break(Err(Error::InvalidPacket));
+                };
                 debug_assert_eq!(ipv6_packet.get_source(), ip);
 
                 ControlFlow::Continue(ipv6_packet.into())
