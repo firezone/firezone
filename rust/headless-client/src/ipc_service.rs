@@ -9,6 +9,7 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
@@ -116,12 +117,17 @@ pub enum ServerMsg {
 }
 
 // All variants are `String` because almost no error type implements `Serialize`
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, thiserror::Error)]
 pub enum Error {
+    #[error("{0}")]
     DeviceId(String),
+    #[error("{0}")]
     LoginUrl(String),
+    #[error("{0}")]
     PortalConnection(String),
+    #[error("{0}")]
     TunnelDevice(String),
+    #[error("{0}")]
     UrlParse(String),
 }
 
@@ -336,7 +342,10 @@ impl<'a> Handler<'a> {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Callback(x) => {
                     if let Err(error) = self.handle_connlib_cb(x).await {
-                        tracing::error!(?error, "Error while handling connlib callback");
+                        tracing::error!(
+                            error = anyhow_dyn_err(&error),
+                            "Error while handling connlib callback"
+                        );
                         continue;
                     }
                 }
@@ -350,7 +359,10 @@ impl<'a> Handler<'a> {
                     let _entered =
                         tracing::error_span!("handle_ipc_msg", msg = %msg_variant).entered();
                     if let Err(error) = self.handle_ipc_msg(msg).await {
-                        tracing::error!(?error, "Error while handling IPC message from client");
+                        tracing::error!(
+                            error = anyhow_dyn_err(&error),
+                            "Error while handling IPC message from client"
+                        );
                         continue;
                     }
                 }
@@ -359,7 +371,10 @@ impl<'a> Handler<'a> {
                     break HandlerOk::ClientDisconnected;
                 }
                 Event::IpcError(error) => {
-                    tracing::error!(?error, "Error while deserializing IPC message");
+                    tracing::error!(
+                        error = anyhow_dyn_err(&error),
+                        "Error while deserializing IPC message"
+                    );
                     continue;
                 }
                 Event::Terminate => {
@@ -468,7 +483,10 @@ impl<'a> Handler<'a> {
                 let token = secrecy::SecretString::from(token);
                 let result = self.connect_to_firezone(&api_url, token);
                 if let Err(error) = &result {
-                    tracing::error!(?error, "Failed to connect connlib session");
+                    tracing::error!(
+                        error = std_dyn_err(error),
+                        "Failed to connect connlib session"
+                    );
                 }
                 self.ipc_tx
                     .send(&ServerMsg::ConnectResult(result))

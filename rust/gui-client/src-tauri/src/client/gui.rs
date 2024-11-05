@@ -18,6 +18,7 @@ use firezone_gui_client_common::{
     updates,
 };
 use firezone_headless_client::LogFilterReloader;
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_telemetry as telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{str::FromStr, time::Duration};
@@ -172,7 +173,7 @@ pub(crate) fn run(
                 tokio::spawn(async move {
                     if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await
                     {
-                        tracing::error!(?error, "Error in updates::checker_task");
+                        tracing::error!(error = anyhow_dyn_err(&error), "Error in updates::checker_task");
                     }
                 });
 
@@ -180,7 +181,7 @@ pub(crate) fn run(
                     let ctlr_tx = ctlr_tx.clone();
                     tokio::spawn(async move {
                         if let Err(error) = smoke_test(ctlr_tx).await {
-                            tracing::error!(?error, "Error during smoke test, crashing on purpose so a dev can see our stacktraces");
+                            tracing::error!(error = anyhow_dyn_err(&error), "Error during smoke test, crashing on purpose so a dev can see our stacktraces");
                             unsafe { sadness_generator::raise_segfault() }
                         }
                     });
@@ -257,12 +258,12 @@ pub(crate) fn run(
 
                     let exit_code = match task.await {
                         Err(error) => {
-                            tracing::error!(?error, "run_controller panicked");
+                            tracing::error!(error = std_dyn_err(&error), "run_controller panicked");
                             telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
                             1
                         }
                         Ok(Err(error)) => {
-                            tracing::error!(?error, "run_controller returned an error");
+                            tracing::error!(error = std_dyn_err(&error), "run_controller returned an error");
                             errors::show_error_dialog(&error).unwrap();
                             telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
                             1
@@ -289,7 +290,7 @@ pub(crate) fn run(
 
             let result = setup_inner();
             if let Err(error) = &result {
-                tracing::error!(?error, "Tauri setup failed");
+                tracing::error!(error, "Tauri setup failed");
             }
 
             result
@@ -299,7 +300,10 @@ pub(crate) fn run(
     let app = match app {
         Ok(x) => x,
         Err(error) => {
-            tracing::error!(?error, "Failed to build Tauri app instance");
+            tracing::error!(
+                error = std_dyn_err(&error),
+                "Failed to build Tauri app instance"
+            );
             #[expect(clippy::wildcard_enum_match_arm)]
             match error {
                 tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(_)) => {
@@ -445,7 +449,10 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
                     .await
                     .ok();
             }
-            Err(error) => tracing::error!(?error, "error while accepting deep link"),
+            Err(error) => tracing::error!(
+                error = anyhow_dyn_err(&error),
+                "error while accepting deep link"
+            ),
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
         server = deep_link::Server::new().await?;

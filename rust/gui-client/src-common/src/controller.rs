@@ -13,6 +13,7 @@ use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_telemetry::Telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, time::Instant};
@@ -300,14 +301,14 @@ impl<I: GuiIntegration> Controller<I> {
         tracing::debug!("Closing...");
 
         if let Err(error) = dns_notifier.close() {
-            tracing::error!(?error, "dns_notifier");
+            tracing::error!(error = anyhow_dyn_err(&error), "dns_notifier");
         }
         if let Err(error) = network_notifier.close() {
-            tracing::error!(?error, "network_notifier");
+            tracing::error!(error = anyhow_dyn_err(&error), "network_notifier");
         }
 
         if let Err(error) = self.ipc_client.disconnect_from_ipc().await {
-            tracing::error!(?error, "ipc_client");
+            tracing::error!(error = anyhow_dyn_err(&error), "ipc_client");
         }
 
         // Don't close telemetry here, `run` will close it.
@@ -379,7 +380,7 @@ impl<I: GuiIntegration> Controller<I> {
                     tracing::error!("Can't clear logs, we're already waiting on another log-clearing operation");
                 }
                 if let Err(error) = logging::clear_gui_logs().await {
-                    tracing::error!(?error, "Failed to clear GUI logs");
+                    tracing::error!(error = anyhow_dyn_err(&error), "Failed to clear GUI logs");
                 }
                 self.ipc_client.send_msg(&IpcClientMsg::ClearLogs).await?;
                 self.clear_logs_callback = Some(completion_tx);
@@ -395,7 +396,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
             Req::SchemeRequest(url) => {
                 if let Err(error) = self.handle_deep_link(&url).await {
-                    tracing::error!(?error, "`handle_deep_link` failed");
+                    tracing::error!(error = std_dyn_err(&error), "`handle_deep_link` failed");
                 }
             }
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
@@ -490,7 +491,7 @@ impl<I: GuiIntegration> Controller<I> {
                 Ok(flow) => Ok(flow),
                 // Handles <https://github.com/firezone/firezone/issues/6547> more gracefully so we can still export logs even if we crashed right after sign-in
                 Err(Error::ConnectToFirezoneFailed(error)) => {
-                    tracing::error!(?error, "Failed to connect to Firezone");
+                    tracing::error!(error = std_dyn_err(&error), "Failed to connect to Firezone");
                     self.sign_out().await?;
                     Ok(ControlFlow::Continue(()))
                 }
@@ -498,7 +499,7 @@ impl<I: GuiIntegration> Controller<I> {
             },
             ipc::Event::ReadFailed(error) => {
                 // IPC errors are always fatal
-                tracing::error!(?error, "IPC read failure");
+                tracing::error!(error = anyhow_dyn_err(&error), "IPC read failure");
                 Err(Error::IpcRead)?
             }
             ipc::Event::Closed => Err(Error::IpcClosed)?,
@@ -554,7 +555,7 @@ impl<I: GuiIntegration> Controller<I> {
                 tracing::debug!(len = resources.len(), "Got new Resources");
                 self.status = Status::TunnelReady { resources };
                 if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to refresh menu");
+                    tracing::error!(error = anyhow_dyn_err(&error), "Failed to refresh menu");
                 }
 
                 self.update_disabled_resources().await?;
@@ -583,7 +584,7 @@ impl<I: GuiIntegration> Controller<I> {
                     )?;
                 }
                 if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to refresh menu");
+                    tracing::error!(error = anyhow_dyn_err(&error), "Failed to refresh menu");
                 }
             }
         }
@@ -617,7 +618,7 @@ impl<I: GuiIntegration> Controller<I> {
                 ran_before::set().await?;
                 self.status = Status::WaitingForTunnel { start_instant };
                 if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to refresh menu");
+                    tracing::error!(error = anyhow_dyn_err(&error), "Failed to refresh menu");
                 }
                 Ok(())
             }
@@ -625,12 +626,12 @@ impl<I: GuiIntegration> Controller<I> {
                 // This is typically something like, we don't have Internet access so we can't
                 // open the PhoenixChannel's WebSocket.
                 tracing::warn!(
-                    ?error,
+                    error,
                     "Failed to connect to Firezone Portal, will try again when the network changes"
                 );
                 self.status = Status::RetryingConnection { token };
                 if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to refresh menu");
+                    tracing::error!(error = anyhow_dyn_err(&error), "Failed to refresh menu");
                 }
                 Ok(())
             }

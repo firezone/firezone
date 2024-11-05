@@ -4,6 +4,7 @@ use firezone_gui_client_common::{
     controller::{ControllerRequest, CtlrTx},
     logging as common,
 };
+use firezone_logging::std_dyn_err;
 use std::path::PathBuf;
 use tauri_plugin_dialog::DialogExt as _;
 
@@ -12,11 +13,17 @@ pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(),
     let (tx, rx) = tokio::sync::oneshot::channel();
     if let Err(error) = managed.ctlr_tx.send(ControllerRequest::ClearLogs(tx)).await {
         // Tauri will only log errors to the JS console for us, so log this ourselves.
-        tracing::error!(?error, "Error while asking `Controller` to clear logs");
+        tracing::error!(
+            error = std_dyn_err(&error),
+            "Error while asking `Controller` to clear logs"
+        );
         return Err(error.to_string());
     }
     if let Err(error) = rx.await {
-        tracing::error!(?error, "Error while awaiting log-clearing operation");
+        tracing::error!(
+            error = std_dyn_err(&error),
+            "Error while awaiting log-clearing operation"
+        );
         return Err(error.to_string());
     }
     Ok(())
