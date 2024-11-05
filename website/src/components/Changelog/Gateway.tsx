@@ -10,6 +10,11 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
+      <Unreleased>
+        <ChangeItem pull="7263">
+            Mitigates a crash in case the maximum packet is not respected.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.0" date={new Date("2024-11-04")}>
         <ChangeItem pull="6960">
           Separates traffic restrictions between DNS Resources CIDR Resources,
