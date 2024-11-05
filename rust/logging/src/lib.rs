@@ -87,7 +87,7 @@ pub fn test_global(directives: &str) {
 ///
 /// This layer configuration supports a special `telemetry` event.
 /// Telemetry events are events logged on the `TRACE` level for the `telemetry` target.
-/// These events SHOULD be created using [`telemetry_span`] to ensure that they are sampled correctly.
+/// These events SHOULD be created using [`telemetry_event`] to ensure that they are sampled correctly.
 /// The idea here is that some events logged via `tracing` should not necessarily end up in the users log file.
 /// Yet, if they happen a lot, we still want to know about them.
 /// Coupling the `telemetry` target to the `TRACE` level pretty much prevents these events from ever showing up in log files.
@@ -96,7 +96,7 @@ pub fn test_global(directives: &str) {
 /// ## Telemetry spans
 ///
 /// Only spans with the `telemetry` target on level `TRACE` will be submitted to Sentry.
-/// Similar to telemetry events, these should be created with [`telemetry_event`] to ensure they are sampled correctly.
+/// Similar to telemetry events, these should be created with [`telemetry_span`] to ensure they are sampled correctly.
 pub fn sentry_layer<S>() -> impl Layer<S> + Send + Sync
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
