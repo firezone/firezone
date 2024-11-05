@@ -374,6 +374,7 @@ impl Drop for Callback {
 
 mod async_dns {
     use anyhow::{Context as _, Result};
+    use firezone_logging::anyhow_dyn_err;
     use futures::FutureExt as _;
     use std::{ffi::c_void, ops::Deref, path::Path, pin::pin};
     use tokio::{
@@ -445,11 +446,17 @@ mod async_dns {
                 }
             }
 
-            if let Err(error) = listener_4.close() {
-                tracing::error!(?error, "Error while closing IPv4 DNS listener");
+            if let Err(e) = listener_4.close() {
+                tracing::error!(
+                    error = anyhow_dyn_err(&e),
+                    "Error while closing IPv4 DNS listener"
+                );
             }
-            if let Err(error) = listener_6.close() {
-                tracing::error!(?error, "Error while closing IPv6 DNS listener");
+            if let Err(e) = listener_6.close() {
+                tracing::error!(
+                    error = anyhow_dyn_err(&e),
+                    "Error while closing IPv6 DNS listener"
+                );
             }
 
             Ok(())

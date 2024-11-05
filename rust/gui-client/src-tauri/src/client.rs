@@ -3,6 +3,7 @@ use clap::{Args, Parser};
 use firezone_gui_client_common::{
     self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_telemetry as telemetry;
 use std::collections::BTreeMap;
 use tracing::instrument;
@@ -53,7 +54,7 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
-                tracing::error!(?error, "Error in `OpenDeepLink`");
+                tracing::error!(error = anyhow_dyn_err(&error), "Error in `OpenDeepLink`");
             }
             Ok(())
         }
@@ -78,7 +79,7 @@ pub(crate) fn run() -> Result<()> {
 
                 // Because of <https://github.com/firezone/firezone/issues/3567>,
                 // errors returned from `gui::run` may not be logged correctly
-                tracing::error!(?error);
+                tracing::error!(error = std_dyn_err(error));
             }
             Ok(result?)
         }
@@ -126,7 +127,7 @@ fn run_gui(cli: Cli) -> Result<()> {
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
-        tracing::error!(?error, error_msg = %error);
+        tracing::error!(error = std_dyn_err(error), error_msg = %error);
         common::errors::show_error_dialog(error)?;
     }
 

@@ -204,7 +204,7 @@ impl Drop for Tun {
         );
         self.packet_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
         if let Err(error) = self.session.shutdown() {
-            tracing::error!(?error, "wintun::Session::shutdown");
+            tracing::error!(error = std_dyn_err(&error), "wintun::Session::shutdown");
         }
         if let Err(error) = self
             .recv_thread
@@ -231,7 +231,7 @@ impl Tun {
         let adapter = match Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid)) {
             Ok(x) => x,
             Err(error) => {
-                tracing::error!(?error, "Failed in `Adapter::create`");
+                tracing::error!(error = std_dyn_err(&error), "Failed in `Adapter::create`");
                 return Err(error)?;
             }
         };
@@ -385,7 +385,7 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
         if family == AF_INET6 && error.code() == windows_core::HRESULT::from_win32(0x80070490) {
             tracing::debug!(?family, "Couldn't set MTU, maybe IPv6 is disabled.");
         } else {
-            tracing::warn!(?family, ?error, "Couldn't set MTU");
+            tracing::warn!(?family, error = std_dyn_err(&error), "Couldn't set MTU");
         }
         return Ok(());
     }

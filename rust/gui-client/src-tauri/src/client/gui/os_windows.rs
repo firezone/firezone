@@ -1,6 +1,7 @@
 use super::{ControllerRequest, CtlrTx};
 use anyhow::{Context, Result};
 use firezone_bin_shared::BUNDLE_ID;
+use firezone_logging::std_dyn_err;
 use tauri::AppHandle;
 
 pub(crate) async fn set_autostart(_enabled: bool) -> Result<()> {
@@ -76,7 +77,7 @@ pub(crate) fn show_clickable_notification(
             if let Some(req) = req.take() {
                 if let Err(error) = tx.blocking_send(req) {
                     tracing::error!(
-                        ?error,
+                        error = std_dyn_err(&error),
                         "User clicked on notification, but we couldn't tell `Controller`"
                     );
                 }

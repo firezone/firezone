@@ -7,6 +7,7 @@ use firezone_gui_client_common::{
     controller::{ControllerRequest, CtlrTx},
     settings::{save, AdvancedSettings},
 };
+use firezone_logging::std_dyn_err;
 use std::time::Duration;
 use tokio::sync::oneshot;
 
@@ -57,7 +58,7 @@ pub(crate) async fn get_advanced_settings(
         .await
     {
         tracing::error!(
-            ?error,
+            error = std_dyn_err(&error),
             "couldn't request advanced settings from controller task"
         );
     }

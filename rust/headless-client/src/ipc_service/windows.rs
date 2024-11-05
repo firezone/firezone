@@ -1,6 +1,7 @@
 use crate::CliCommon;
 use anyhow::{bail, Context as _, Result};
 use firezone_bin_shared::platform::DnsControlMethod;
+use firezone_logging::anyhow_dyn_err;
 use futures::future::{self, Either};
 use std::{
     ffi::{c_void, OsString},
@@ -132,7 +133,10 @@ fn service_run(arguments: Vec<OsString>) {
     let (handle, log_filter_reloader) =
         super::setup_logging(None).expect("Should be able to set up logging");
     if let Err(error) = fallible_service_run(arguments, handle, log_filter_reloader) {
-        tracing::error!(?error, "`fallible_windows_service_run` returned an error");
+        tracing::error!(
+            error = anyhow_dyn_err(&error),
+            "`fallible_windows_service_run` returned an error"
+        );
     }
 }
 
@@ -208,7 +212,7 @@ fn fallible_service_run(
     // Windows that we're shutting down.
     let result = rt.block_on(service_run_async(&log_filter_reloader, shutdown_rx));
     if let Err(error) = &result {
-        tracing::error!(?error);
+        tracing::error!(error = anyhow_dyn_err(error));
     }
 
     // Drop the logging handle so it flushes the logs before we let Windows kill our process.

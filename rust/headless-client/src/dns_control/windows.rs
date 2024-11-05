@@ -16,6 +16,7 @@
 use super::DnsController;
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
+use firezone_logging::std_dyn_err;
 use std::{
     io::ErrorKind, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command,
 };
@@ -33,12 +34,15 @@ impl DnsController {
         let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
         if let Err(error) = hklm.delete_subkey(local_nrpt_path().join(NRPT_REG_KEY)) {
             if error.kind() != ErrorKind::NotFound {
-                tracing::error!(?error, "Couldn't delete local NRPT");
+                tracing::error!(error = std_dyn_err(&error), "Couldn't delete local NRPT");
             }
         }
         if let Err(error) = hklm.delete_subkey(group_nrpt_path().join(NRPT_REG_KEY)) {
             if error.kind() != ErrorKind::NotFound {
-                tracing::error!(?error, "Couldn't delete Group Policy NRPT");
+                tracing::error!(
+                    error = std_dyn_err(&error),
+                    "Couldn't delete Group Policy NRPT"
+                );
             }
         }
         refresh_group_policy()?;

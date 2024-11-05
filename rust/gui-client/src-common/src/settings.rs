@@ -5,6 +5,7 @@ use anyhow::{Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use connlib_model::ResourceId;
 use firezone_headless_client::known_dirs;
+use firezone_logging::std_dyn_err;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, io::Write, path::PathBuf};
 use url::Url;
@@ -73,7 +74,7 @@ pub async fn save(settings: &AdvancedSettings) -> Result<()> {
     // Note: Blocking file write in async function
     if let Err(error) = f.write(|f| f.write_all(settings.log_filter.as_bytes())) {
         tracing::error!(
-            ?error,
+            error = std_dyn_err(&error),
             ?log_filter_path,
             "Couldn't write log filter file for IPC service"
         );
