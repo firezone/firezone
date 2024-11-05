@@ -16,8 +16,7 @@ use std::{
 };
 
 /// The possible transitions of the state machine.
-#[derive(Clone, derivative::Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) enum Transition {
     /// Activate a resource on the client.
     ActivateResource(Resource),
@@ -115,10 +114,12 @@ pub(crate) struct SPort(pub u16);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct DPort(pub u16);
 
-#[derive(Debug, Clone)]
+#[derive(Clone, derivative::Derivative)]
+#[derivative(Debug)]
 #[expect(clippy::large_enum_variant)]
 pub(crate) enum Destination {
     DomainName {
+        #[derivative(Debug = "ignore")]
         resolved_ip: sample::Selector,
         name: DomainName,
     },
