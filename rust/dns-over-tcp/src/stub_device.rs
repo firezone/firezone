@@ -64,7 +64,7 @@ impl<'a> smoltcp::phy::TxToken for SmolTxToken<'a> {
         let max_len = ip_packet::PACKET_SIZE;
 
         if len > max_len {
-            tracing::warn!("Packets larger than {max_len} are not supported");
+            tracing::warn!("Packets larger than {max_len} are not supported; len={len}");
 
             let mut buf = Vec::with_capacity(len);
             return f(&mut buf);
