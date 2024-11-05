@@ -1,7 +1,7 @@
 [package]
 name = "connlib-client-apple"
 # mark:next-apple-version
-version = "1.3.8"
+version = "1.3.9"
 edition = "2021"
 
 [build-dependencies]
