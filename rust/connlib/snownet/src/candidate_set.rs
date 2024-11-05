@@ -10,8 +10,18 @@ pub struct CandidateSet {
 }
 
 impl CandidateSet {
-    pub fn insert(&mut self, c: Candidate) -> bool {
-        self.inner.insert(c)
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "We don't care about the ordering."
+    )]
+    pub fn insert(&mut self, new: Candidate) -> bool {
+        // Hashing a `Candidate` takes longer than checking a handful of entries using their `PartialEq` implementation.
+        // This function is in the hot-path so it needs to be fast ...
+        if self.inner.iter().any(|c| c == &new) {
+            return false;
+        }
+
+        self.inner.insert(new)
     }
 
     pub fn clear(&mut self) {
