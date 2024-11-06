@@ -41,7 +41,7 @@ domain = { version = "0.10", features = ["serde"] }
 dns-lookup = "2.0"
 tokio-tungstenite = "0.23.1"
 rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
-tokio = "1.39"
+tokio = "1.41"
 rustls = { version = "0.23.10", default-features = false, features = ["ring"] }
 
 connlib-client-android = { path = "connlib/clients/android" }

@@ -2,6 +2,7 @@
 
 use anyhow::{bail, Context as _, Result};
 use firezone_headless_client::{known_dirs, LogFilterReloader};
+use firezone_logging::std_dyn_err;
 use serde::Serialize;
 use std::{
     fs,
@@ -56,11 +57,13 @@ pub fn setup(directives: &str) -> Result<Handles> {
     let (layer, logger) = firezone_logging::file::layer(&log_path);
     let layer = layer.and_then(fmt::layer());
     let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(directives)?);
-    let subscriber = Registry::default().with(layer.with_filter(filter));
+    let subscriber = Registry::default()
+        .with(layer.with_filter(filter))
+        .with(firezone_logging::sentry_layer());
     set_global_default(subscriber)?;
     if let Err(error) = output_vt100::try_init() {
         tracing::debug!(
-            ?error,
+            error = std_dyn_err(&error),
             "Failed to init vt100 terminal colors (expected in release builds and in CI)"
         );
     }
@@ -95,6 +98,7 @@ pub async fn clear_gui_logs() -> Result<()> {
 /// * `stem` - A directory containing all the log files inside the zip archive, to avoid creating a ["tar bomb"](https://www.linfo.org/tarbomb.html). This comes from the automatically-generated name of the archive, even if the user changes it to e.g. `logs.zip`
 pub async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     tracing::info!("Exporting logs to {path:?}");
+    let start = std::time::Instant::now();
     // Use a temp path so that if the export fails we don't end up with half a zip file
     let temp_path = path.with_extension(".zip-partial");
 
@@ -111,6 +115,7 @@ pub async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     })
     .await
     .context("Failed to join zip export task")??;
+    tracing::debug!(elapsed_s = ?start.elapsed(), "Exported logs");
     Ok(())
 }
 

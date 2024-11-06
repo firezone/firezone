@@ -1,8 +1,12 @@
+use super::dns_records::{ip_to_domain_record, DnsRecords};
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
-use crate::client::{CidrResource, DnsResource, InternetResource, IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::client::{
+    CidrResource, DnsResource, InternetResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6,
+    IPV4_RESOURCES, IPV6_RESOURCES,
+};
+use crate::messages::DnsServer;
 use crate::proptest::*;
-use crate::{messages::DnsServer, DomainName};
-use connlib_model::{RelayId, Site};
+use connlib_model::{DomainRecord, RelayId, Site};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
@@ -13,13 +17,36 @@ use std::{
     time::Duration,
 };
 
-pub(crate) fn global_dns_records() -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<IpAddr>>>
-{
+pub(crate) fn global_dns_records() -> impl Strategy<Value = DnsRecords> {
     collection::btree_map(
         domain_name(2..4).prop_map(|d| d.parse().unwrap()),
-        collection::btree_set(any::<IpAddr>(), 1..6),
+        collection::btree_set(dns_record(), 1..6),
         0..5,
     )
+    .prop_map_into()
+}
+
+fn dns_record() -> impl Strategy<Value = DomainRecord> {
+    prop_oneof![
+        3 => non_reserved_ip().prop_map(ip_to_domain_record),
+        1 => collection::vec(txt_record(), 6..=10)
+            .prop_map(|sections| { sections.into_iter().flatten().collect_vec() })
+            .prop_map(|o| domain::rdata::Txt::from_octets(o).unwrap())
+            .prop_map(DomainRecord::Txt)
+    ]
+}
+
+// A maximum length txt record section
+fn txt_record() -> impl Strategy<Value = Vec<u8>> {
+    "[a-z]{255}".prop_map(|s| {
+        let mut b = s.into_bytes();
+        // This is always 255 but this is less error-prone
+        let length = b.len() as u8;
+        let mut section = Vec::new();
+        section.push(length);
+        section.append(&mut b);
+        section
+    })
 }
 
 pub(crate) fn packet_source_v4(client: Ipv4Addr) -> impl Strategy<Value = Ipv4Addr> {
@@ -108,23 +135,17 @@ pub(crate) fn relays(
 /// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
 pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
     let ip4_dns_servers = collection::btree_set(
-        any::<Ipv4Addr>()
-            .prop_filter("must not be in sentinel IP range", |ip| {
-                !crate::client::DNS_SENTINELS_V4.contains(*ip)
-            })
-            .prop_filter("must not be in IPv4 resources range", |ip| {
-                !crate::client::IPV4_RESOURCES.contains(*ip)
+        non_reserved_ipv4()
+            .prop_filter("must be addressable IP", |ip| {
+                !ip.is_unspecified() && !ip.is_multicast() && !ip.is_broadcast()
             })
             .prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
     let ip6_dns_servers = collection::btree_set(
-        any::<Ipv6Addr>()
-            .prop_filter("must not be in sentinel IP range", |ip| {
-                !crate::client::DNS_SENTINELS_V6.contains(*ip)
-            })
-            .prop_filter("must not be in IPv6 resources range", |ip| {
-                !crate::client::IPV6_RESOURCES.contains(*ip)
+        non_reserved_ipv6()
+            .prop_filter("must be addressable IP", |ip| {
+                !ip.is_unspecified() && !ip.is_multicast()
             })
             .prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
@@ -136,6 +157,33 @@ pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
     })
 }
 
+pub(crate) fn non_reserved_ip() -> impl Strategy<Value = IpAddr> {
+    prop_oneof![
+        non_reserved_ipv4().prop_map_into(),
+        non_reserved_ipv6().prop_map_into(),
+    ]
+}
+
+fn non_reserved_ipv4() -> impl Strategy<Value = Ipv4Addr> {
+    any::<Ipv4Addr>()
+        .prop_filter("must not be in sentinel IP range", |ip| {
+            !DNS_SENTINELS_V4.contains(*ip)
+        })
+        .prop_filter("must not be in IPv4 resources range", |ip| {
+            !IPV4_RESOURCES.contains(*ip)
+        })
+}
+
+fn non_reserved_ipv6() -> impl Strategy<Value = Ipv6Addr> {
+    any::<Ipv6Addr>()
+        .prop_filter("must not be in sentinel IP range", |ip| {
+            !DNS_SENTINELS_V6.contains(*ip)
+        })
+        .prop_filter("must not be in IPv6 resources range", |ip| {
+            !IPV6_RESOURCES.contains(*ip)
+        })
+}
+
 fn any_site(sites: BTreeSet<Site>) -> impl Strategy<Value = Site> {
     sample::select(Vec::from_iter(sites))
 }
@@ -145,7 +193,7 @@ fn cidr_resource_outside_reserved_ranges(
 ) -> impl Strategy<Value = CidrResource> {
     cidr_resource(any_ip_network(8), sites.prop_map(|s| vec![s]))
         .prop_filter(
-            "tests doesn't support yet CIDR resources overlapping DNS resources",
+            "tests doesn't support CIDR resources overlapping DNS resources",
             |r| {
                 // This works because CIDR resources' host mask is always <8 while IP resource is 21
                 let is_ip4_reserved = IpNetwork::V4(IPV4_RESOURCES)
@@ -187,21 +235,21 @@ fn double_star_wildcard_dns_resource(
     })
 }
 
-pub(crate) fn resolved_ips() -> impl Strategy<Value = BTreeSet<IpAddr>> {
-    collection::btree_set(
-        prop_oneof![
-            dns_resource_ip4s().prop_map_into(),
-            dns_resource_ip6s().prop_map_into()
-        ],
-        1..6,
-    )
+pub(crate) fn resolved_ips() -> impl Strategy<Value = BTreeSet<DomainRecord>> {
+    let record = prop_oneof![
+        dns_resource_ip4s().prop_map_into(),
+        dns_resource_ip6s().prop_map_into()
+    ]
+    .prop_map(ip_to_domain_record);
+
+    collection::btree_set(record, 1..6)
 }
 
 /// A strategy for generating a set of DNS records all nested under the provided base domain.
 pub(crate) fn subdomain_records(
     base: String,
     subdomains: impl Strategy<Value = String>,
-) -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<IpAddr>>> {
+) -> impl Strategy<Value = DnsRecords> {
     collection::hash_map(subdomains, resolved_ips(), 1..4).prop_map(move |subdomain_ips| {
         subdomain_ips
             .into_iter()

@@ -9,17 +9,17 @@ description = "Firezone-specific modules shared between binaries."
 anyhow = "1.0.82"
 axum = { version = "0.7.7", default-features = false, features = ["http1", "tokio"] }
 clap = { version = "4.5.19", features = ["derive", "env"] }
+firezone-logging = { workspace = true }
 futures = "0.3"
 git-version = "0.3.9"
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 socket-factory = { workspace = true }
-thiserror = "1.0.63"
+thiserror = "1.0.68"
 tokio = { workspace = true, features = ["io-util", "net", "rt", "sync"] }
 tracing = { workspace = true }
 tun = { workspace = true }
 
 [dev-dependencies]
-firezone-logging = { workspace = true }
 hex-literal = "0.4.1"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 

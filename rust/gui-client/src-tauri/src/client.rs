@@ -3,6 +3,7 @@ use clap::{Args, Parser};
 use firezone_gui_client_common::{
     self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_telemetry as telemetry;
 use std::collections::BTreeMap;
 use tracing::instrument;
@@ -53,7 +54,7 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
-                tracing::error!(?error, "Error in `OpenDeepLink`");
+                tracing::error!(error = anyhow_dyn_err(&error), "Error in `OpenDeepLink`");
             }
             Ok(())
         }
@@ -78,7 +79,7 @@ pub(crate) fn run() -> Result<()> {
 
                 // Because of <https://github.com/firezone/firezone/issues/3567>,
                 // errors returned from `gui::run` may not be logged correctly
-                tracing::error!(?error);
+                tracing::error!(error = std_dyn_err(error));
             }
             Ok(result?)
         }
@@ -98,6 +99,25 @@ fn run_gui(cli: Cli) -> Result<()> {
         firezone_bin_shared::git_version!("gui-client-*"),
         telemetry::GUI_DSN,
     );
+    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
+    // Technically this means we can fail to get the device ID on a newly-installed system, since the IPC service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
+    match firezone_headless_client::device_id::get() {
+        Ok(id) => {
+            // We should still be in the main thread, but explicitly get the main thread hub anyway.
+            telemetry::Hub::main().configure_scope(|scope| {
+                scope.set_context(
+                    "firezone",
+                    firezone_telemetry::Context::Other(BTreeMap::from([(
+                        "id".to_string(),
+                        id.id.into(),
+                    )])),
+                )
+            });
+        }
+        Err(error) => {
+            telemetry::capture_anyhow(&error.context("Failed to read device ID"));
+        }
+    }
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {
         logger: _logger,
@@ -107,7 +127,7 @@ fn run_gui(cli: Cli) -> Result<()> {
 
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
-        tracing::error!(?error, error_msg = %error);
+        tracing::error!(error = std_dyn_err(error), error_msg = %error);
         common::errors::show_error_dialog(error)?;
     }
 

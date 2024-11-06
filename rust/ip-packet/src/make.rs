@@ -1,23 +1,26 @@
 //! Factory module for making all kinds of packets.
 
 use crate::{IpPacket, IpPacketBuf};
-use anyhow::{Context, Result};
-use domain::base::{iana::Opcode, MessageBuilder, Name, Question, Rtype};
+use anyhow::{bail, Context as _, Result};
 use etherparse::PacketBuilder;
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 
 /// Helper macro to turn a [`PacketBuilder`] into an [`IpPacket`].
 #[macro_export]
 macro_rules! build {
     ($packet:expr, $payload:ident) => {{
+        use ::anyhow::Context as _;
+
         let size = $packet.size($payload.len());
         let mut ip = $crate::IpPacketBuf::new();
 
         $packet
             .write(&mut std::io::Cursor::new(ip.buf()), &$payload)
-            .expect("Buffer should be big enough");
+            .with_context(|| format!("Payload is too big; len={size}"))?;
 
-        IpPacket::new(ip, size).expect("Should be a valid IP packet")
+        let packet = IpPacket::new(ip, size).context("Failed to create IP packet")?;
+
+        Ok(packet)
     }};
 }
 
@@ -45,7 +48,9 @@ pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> Result<IpPacke
             crate::fz_p2p_control::IP_NUMBER,
             &payload_buf,
         )
-        .expect("Buffer should be big enough");
+        .with_context(|| {
+            format!("Buffer should be big enough; ip_payload_size={ip_payload_size}")
+        })?;
     let ip_packet = IpPacket::new(packet_buf, packet_size).context("Unable to create IP packet")?;
 
     Ok(ip_packet)
@@ -57,21 +62,21 @@ pub fn icmp_request_packet(
     seq: u16,
     identifier: u16,
     payload: &[u8],
-) -> Result<IpPacket, IpVersionMismatch> {
+) -> Result<IpPacket> {
     match (src, dst.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
                 .icmpv4_echo_request(identifier, seq);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let packet = PacketBuilder::ipv6(src.octets(), dst.octets(), 64)
                 .icmpv6_echo_request(identifier, seq);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
-        _ => Err(IpVersionMismatch),
+        _ => bail!(IpVersionMismatch),
     }
 }
 
@@ -81,22 +86,52 @@ pub fn icmp_reply_packet(
     seq: u16,
     identifier: u16,
     payload: &[u8],
-) -> Result<IpPacket, IpVersionMismatch> {
+) -> Result<IpPacket> {
     match (src, dst.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64)
                 .icmpv4_echo_reply(identifier, seq);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let packet = PacketBuilder::ipv6(src.octets(), dst.octets(), 64)
                 .icmpv6_echo_reply(identifier, seq);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
-        _ => Err(IpVersionMismatch),
+        _ => bail!(IpVersionMismatch),
     }
+}
+
+pub fn echo_reply(mut req: IpPacket) -> Option<IpPacket> {
+    if !req.is_udp() && !req.is_tcp() {
+        return None;
+    }
+
+    if let Some(mut packet) = req.as_tcp_mut() {
+        let original_src = packet.get_source_port();
+        let original_dst = packet.get_destination_port();
+
+        packet.set_source_port(original_dst);
+        packet.set_destination_port(original_src);
+    }
+
+    if let Some(mut packet) = req.as_udp_mut() {
+        let original_src = packet.get_source_port();
+        let original_dst = packet.get_destination_port();
+
+        packet.set_source_port(original_dst);
+        packet.set_destination_port(original_src);
+    }
+
+    let original_src = req.source();
+    let original_dst = req.destination();
+
+    req.set_dst(original_src);
+    req.set_src(original_dst);
+
+    Some(req)
 }
 
 pub fn tcp_packet<IP>(
@@ -105,7 +140,7 @@ pub fn tcp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> Result<IpPacket, IpVersionMismatch>
+) -> Result<IpPacket>
 where
     IP: Into<IpAddr>,
 {
@@ -114,15 +149,15 @@ where
             let packet =
                 PacketBuilder::ipv4(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let packet =
                 PacketBuilder::ipv6(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
-        _ => Err(IpVersionMismatch),
+        _ => bail!(IpVersionMismatch),
     }
 }
 
@@ -132,7 +167,7 @@ pub fn udp_packet<IP>(
     sport: u16,
     dport: u16,
     payload: Vec<u8>,
-) -> Result<IpPacket, IpVersionMismatch>
+) -> Result<IpPacket>
 where
     IP: Into<IpAddr>,
 {
@@ -140,40 +175,15 @@ where
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let packet = PacketBuilder::ipv4(src.octets(), dst.octets(), 64).udp(sport, dport);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let packet = PacketBuilder::ipv6(src.octets(), dst.octets(), 64).udp(sport, dport);
 
-            Ok(build!(packet, payload))
+            build!(packet, payload)
         }
-        _ => Err(IpVersionMismatch),
+        _ => bail!(IpVersionMismatch),
     }
-}
-
-pub fn dns_query(
-    domain: Name<Vec<u8>>,
-    kind: Rtype,
-    src: SocketAddr,
-    dst: SocketAddr,
-    id: u16,
-) -> Result<IpPacket, IpVersionMismatch> {
-    // Create the DNS query message
-    let mut msg_builder = MessageBuilder::new_vec();
-
-    msg_builder.header_mut().set_opcode(Opcode::QUERY);
-    msg_builder.header_mut().set_rd(true);
-    msg_builder.header_mut().set_id(id);
-
-    // Create the query
-    let mut question_builder = msg_builder.question();
-    question_builder
-        .push(Question::new_in(domain, kind))
-        .unwrap();
-
-    let payload = question_builder.finish();
-
-    udp_packet(src.ip(), dst.ip(), src.port(), dst.port(), payload)
 }
 
 #[derive(thiserror::Error, Debug)]

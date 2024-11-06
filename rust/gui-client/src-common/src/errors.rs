@@ -55,13 +55,12 @@ pub fn show_error_dialog(error: &Error) -> Result<()> {
         Error::IpcServiceTerminating => "The Firezone IPC service is terminating. Please restart the GUI Client.".to_string(),
         Error::Logging(_) => "Logging error".to_string(),
         Error::PortalConnection(error) => {
-            tracing::error!(?error, "Couldn't connect to the Portal");
+            tracing::error!(%error, "Couldn't connect to the Portal");
             "Couldn't connect to the Firezone Portal. Are you connected to the Internet?".to_string()
         }
         Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"),
         Error::Other(error) => error.to_string(),
     };
-    tracing::error!(?user_friendly_error_msg);
 
     // I tried the Tauri dialogs and for some reason they don't show our
     // app icon.

@@ -8,16 +8,14 @@ pub const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 
 /// A menu that can either be assigned to the system tray directly or used as a submenu in another menu.
 ///
-/// Equivalent to `tauri::SystemTrayMenu`
-#[derive(Debug, Default, PartialEq, Serialize)]
+/// Equivalent to `tauri::menu::Menu` or `tauri::menu::Submenu`
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Menu {
     pub entries: Vec<Entry>,
 }
 
 /// Something that can be shown in a menu, including text items, separators, and submenus
-///
-/// Equivalent to `tauri::SystemTrayMenuEntry`
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum Entry {
     Item(Item),
     Separator,
@@ -27,7 +25,7 @@ pub enum Entry {
 /// Something that shows text and may be clickable
 ///
 /// Equivalent to `tauri::CustomMenuItem`
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Item {
     /// An event to send to the app when the item is clicked.
     ///
@@ -40,7 +38,7 @@ pub struct Item {
 }
 
 /// Events that the menu can send to the app
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Event {
     /// Marks this Resource as favorite
     AddFavorite(ResourceId),
@@ -73,7 +71,7 @@ pub enum Event {
     DisableInternetResource,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Window {
     About,
     Settings,

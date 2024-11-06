@@ -61,10 +61,22 @@ impl<'a> smoltcp::phy::TxToken for SmolTxToken<'a> {
     where
         F: FnOnce(&mut [u8]) -> R,
     {
+        let max_len = ip_packet::PACKET_SIZE;
+
+        if len > max_len {
+            tracing::warn!("Packets larger than {max_len} are not supported; len={len}");
+
+            let mut buf = Vec::with_capacity(len);
+            return f(&mut buf);
+        }
+
         let mut ip_packet_buf = IpPacketBuf::new();
         let result = f(ip_packet_buf.buf());
 
-        let mut ip_packet = IpPacket::new(ip_packet_buf, len).unwrap();
+        let Some(mut ip_packet) = IpPacket::new(ip_packet_buf, len) else {
+            tracing::warn!("Received invalid IP packet");
+            return result;
+        };
         ip_packet.update_checksum();
         self.outbound_packets.push_back(ip_packet);
 

@@ -16,6 +16,7 @@ use tracing_subscriber::{
 mod assertions;
 mod buffered_transmits;
 mod composite_strategy;
+mod dns_records;
 mod dns_server_resource;
 mod flux_capacitor;
 mod reference;
@@ -29,8 +30,6 @@ mod sut;
 mod transition;
 
 type QueryId = u16;
-type IcmpSeq = u16;
-type IcmpIdentifier = u16;
 
 #[test]
 #[expect(clippy::print_stdout, clippy::print_stderr)]
@@ -197,7 +196,7 @@ fn init_logging(
 
 fn log_file_filter() -> EnvFilter {
     let default_filter =
-        "debug,firezone_tunnel=trace,firezone_tunnel::tests=debug,ip_packet=trace".to_owned();
+        "debug,firezone_tunnel=trace,firezone_tunnel::tests=debug,tunnel_test_coverage=trace,ip_packet=trace".to_owned();
     let env_filter = std::env::var("RUST_LOG").unwrap_or_default();
 
     EnvFilter::new([default_filter, env_filter].join(","))

@@ -25,7 +25,7 @@ fn smoke() {
         .unwrap();
 
     let mut dns_server = dns_over_tcp::Server::new(Instant::now());
-    dns_server.set_listen_addresses::<1>(vec![resolver_addr]);
+    dns_server.set_listen_addresses::<1>(BTreeSet::from([resolver_addr]));
 
     for id in 0..5 {
         dns_client

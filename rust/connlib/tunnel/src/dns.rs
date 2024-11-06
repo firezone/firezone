@@ -1,6 +1,7 @@
 use crate::client::IpProvider;
 use anyhow::{Context, Result};
 use connlib_model::{DomainName, ResourceId};
+use dns_over_tcp::SocketHandle;
 use domain::rdata::AllRecordData;
 use domain::{
     base::{
@@ -9,6 +10,7 @@ use domain::{
     },
     dep::octseq::OctetsInto,
 };
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::io;
@@ -46,7 +48,7 @@ pub struct StubResolver {
 }
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct RecursiveQuery {
     pub server: SocketAddr,
     pub message: Message<Vec<u8>>,
@@ -70,13 +72,28 @@ impl RecursiveQuery {
             transport: Transport::Udp { source },
         }
     }
+
+    pub(crate) fn via_tcp(
+        source: SocketHandle,
+        server: SocketAddr,
+        message: Message<Vec<u8>>,
+    ) -> Self {
+        Self {
+            server,
+            message,
+            transport: Transport::Tcp { source },
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub(crate) enum Transport {
     Udp {
         /// The original source we received the DNS query on.
         source: SocketAddr,
+    },
+    Tcp {
+        source: SocketHandle,
     },
 }
 
@@ -162,7 +179,7 @@ impl StubResolver {
         let parsed_pattern = match Pattern::new(&pattern) {
             Ok(p) => p,
             Err(e) => {
-                tracing::warn!(%pattern, "Domain pattern is not valid: {e}");
+                tracing::warn!(error = std_dyn_err(&e), %pattern, "Domain pattern is not valid");
                 return false;
             }
         };
@@ -216,6 +233,8 @@ impl StubResolver {
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
     fn match_resource_linear(&self, domain: &DomainName) -> Option<ResourceId> {
+        let _span = telemetry_span!("match_resource_linear").entered();
+
         let name = Candidate::from_domain(domain);
 
         for (pattern, id) in &self.dns_resources {
@@ -257,14 +276,9 @@ impl StubResolver {
         match self.try_handle(message) {
             Ok(s) => s,
             Err(e) => {
-                tracing::trace!("Failed to handle DNS query: {e:#}");
+                tracing::warn!(error = anyhow_dyn_err(&e), "Failed to handle DNS query");
 
-                let response = MessageBuilder::new_vec()
-                    .start_answer(&message, Rcode::SERVFAIL)
-                    .unwrap()
-                    .into_message();
-
-                ResolveStrategy::LocalResponse(response)
+                ResolveStrategy::LocalResponse(servfail(message))
             }
         }
     }
@@ -321,9 +335,11 @@ impl StubResolver {
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
             (Rtype::HTTPS, Some(_)) => {
-                anyhow::bail!(
-                    "Discarding HTTPS record query for resource {domain} because we can't mangle it"
-                );
+                // We must intercept queries for the HTTPS record type to force the client to issue an A / AAAA query instead.
+                // Otherwise, the client won't use the IPs we issue for a particular domain and the traffic cannot be tunneled.
+
+                let response = build_dns_with_answer(message, domain, Vec::default())?;
+                return Ok(ResolveStrategy::LocalResponse(response));
             }
             _ => return Ok(ResolveStrategy::Recurse),
         };
@@ -333,6 +349,13 @@ impl StubResolver {
         let response = build_dns_with_answer(message, domain, resource_records)?;
         Ok(ResolveStrategy::LocalResponse(response))
     }
+}
+
+pub fn servfail(message: Message<&[u8]>) -> Message<Vec<u8>> {
+    MessageBuilder::new_vec()
+        .start_answer(&message, Rcode::SERVFAIL)
+        .expect("should always be able to create a heap-allocated SERVFAIL message")
+        .into_message()
 }
 
 fn to_a_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
@@ -372,7 +395,7 @@ pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
     let pattern = match Pattern::new(resource) {
         Ok(p) => p,
         Err(e) => {
-            tracing::warn!(%resource, "Unable to parse pattern: {e}");
+            tracing::warn!(error = std_dyn_err(&e), %resource, "Unable to parse pattern");
             return false;
         }
     };
