@@ -437,7 +437,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
 async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Result<()> {
     loop {
         match server.accept().await {
-            Ok(bytes) => {
+            Ok(Some(bytes)) => {
                 let url = SecretString::from_str(
                     std::str::from_utf8(bytes.expose_secret())
                         .context("Incoming deep link was not valid UTF-8")?,
@@ -449,10 +449,12 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
                     .await
                     .ok();
             }
-            Err(error) => tracing::error!(
-                error = anyhow_dyn_err(&error),
-                "error while accepting deep link"
-            ),
+            Ok(None) => {
+                tracing::debug!("Accepted deep-link but read 0 bytes, trying again ...");
+            }
+            Err(error) => {
+                tracing::warn!(error = anyhow_dyn_err(&error), "Failed to accept deep link")
+            }
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
         server = deep_link::Server::new().await?;
