@@ -129,11 +129,14 @@ impl Auth {
     ///
     /// Performs I/O.
     pub fn sign_out(&mut self) -> Result<(), Error> {
-        if let Err(error) = self.token_store.delete_credential() {
-            tracing::warn!(
-                error = std_dyn_err(&error),
-                "Couldn't delete token while signing out"
-            );
+        match self.token_store.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(error) => {
+                tracing::warn!(
+                    error = std_dyn_err(&error),
+                    "Couldn't delete token while signing out"
+                );
+            }
         }
         delete_if_exists(&actor_name_path()?)?;
         delete_if_exists(&session_data_path()?)?;
