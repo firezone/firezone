@@ -40,7 +40,7 @@ impl Server {
     /// I assume this is based on the underlying Windows API.
     /// I tried re-using the server and it acted strange. The official Tokio
     /// examples are not clear on this.
-    pub async fn accept(mut self) -> Result<Secret<Vec<u8>>> {
+    pub async fn accept(mut self) -> Result<Option<Secret<Vec<u8>>>> {
         self.inner
             .connect()
             .await
@@ -58,7 +58,7 @@ impl Server {
         let bytes = Secret::new(bytes);
 
         self.inner.disconnect().ok();
-        Ok(bytes)
+        Ok(Some(bytes))
     }
 }
 

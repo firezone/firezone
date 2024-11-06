@@ -12,7 +12,7 @@ impl Server {
         Ok(Self {})
     }
 
-    pub(crate) async fn accept(self) -> Result<Secret<Vec<u8>>> {
+    pub(crate) async fn accept(self) -> Result<Option<Secret<Vec<u8>>>> {
         futures::future::pending().await
     }
 }
