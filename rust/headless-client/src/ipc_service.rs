@@ -9,7 +9,7 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
-use firezone_logging::{anyhow_dyn_err, std_dyn_err};
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
 use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
@@ -558,8 +558,7 @@ impl<'a> Handler<'a> {
     ///
     /// Throws matchable errors for bad URLs, unable to reach the portal, or unable to create the tunnel device
     fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<(), Error> {
-        let _connect_span =
-            tracing::trace_span!(target: "telemetry", "connect_to_firezone").entered();
+        let _connect_span = telemetry_span!("connect_to_firezone").entered();
 
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
@@ -606,7 +605,7 @@ impl<'a> Handler<'a> {
         connlib.set_dns(dns);
 
         let tun = {
-            let _guard = tracing::trace_span!(target: "telemetry", "create_tun_device").entered();
+            let _guard = telemetry_span!("create_tun_device").entered();
 
             self.tun_device
                 .make_tun()

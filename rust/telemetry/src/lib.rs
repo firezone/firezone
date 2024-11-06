@@ -71,7 +71,9 @@ impl Telemetry {
                 environment: Some(environment.into()),
                 // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
                 release: Some(release.into()),
-                traces_sample_rate: 0.1,
+                // We submit all spans but only send the ones with `target: telemetry`.
+                // Those spans are created further down and are throttled at creation time to save CPU.
+                traces_sample_rate: 1.0,
                 max_breadcrumbs: 500,
                 ..Default::default()
             },
