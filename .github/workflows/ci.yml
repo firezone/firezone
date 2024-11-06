@@ -224,35 +224,35 @@ jobs:
         if: "!cancelled()"
         run: docker compose logs iperf3
 
-# TODO: Determine if we want to continue using a benchmark comparison service.
-#   upload-bencher:
-#     needs: perf-tests
-#     runs-on: ubuntu-22.04
-#     permissions:
-#       contents: read
-#       id-token: write
-#       pull-requests: write
-#     steps:
-#       - uses: actions/checkout@v4
-#       - uses: bencherdev/bencher@main
-#       - name: Download performance test results
-#         uses: actions/download-artifact@v4
-#         with:
-#           pattern: '*-${{ github.sha }}-iperf3results'
-#           merge-multiple: true
-#           path: ./${{ github.sha }}
-#       - name: Merge benchmarks results into one report
-#         run: jq -s 'reduce .[] as $item ({}; . * $item)' ./${{ github.sha }}/*.bmf.json > bmf.json
-#       - name: Report results to bencher
-#         run: |
-#           bencher run \
-#             --project firezone-1l75jv1z \
-#             --testbed github-actions \
-#             --file bmf.json \
-#             --adapter json \
-#             --branch "${{ github.head_ref || github.ref_name }}" \
-#             --branch-start-point "${{ github.base_ref }}" \
-#             --github-actions ${{ secrets.GITHUB_TOKEN }} \
-#             --ci-only-on-alert
-#         env:
-#           BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+  upload-bencher:
+    continue-on-error: true
+    needs: perf-tests
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bencherdev/bencher@main
+      - name: Download performance test results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-${{ github.sha }}-iperf3results'
+          merge-multiple: true
+          path: ./${{ github.sha }}
+      - name: Merge benchmarks results into one report
+        run: jq -s 'reduce .[] as $item ({}; . * $item)' ./${{ github.sha }}/*.bmf.json > bmf.json
+      - name: Report results to bencher
+        run: |
+          bencher run \
+            --project firezone-1l75jv1z \
+            --testbed github-actions \
+            --file bmf.json \
+            --adapter json \
+            --branch "${{ github.head_ref || github.ref_name }}" \
+            --branch-start-point "${{ github.base_ref }}" \
+            --github-actions ${{ secrets.GITHUB_TOKEN }} \
+            --ci-only-on-alert
+        env:
+          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
