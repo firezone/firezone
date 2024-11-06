@@ -66,6 +66,19 @@ resource "google_compute_security_policy" "default" {
   }
 
   rule {
+    description = "block sanctioned countries"
+
+    action   = "deny(451)"
+    priority = "101"
+
+    match {
+      expr {
+        expression = "request.path.matches(\"/sign_up\") && origin.region_code in ('RU', 'BY', 'KP', 'IR', 'SY', 'CU', 'VE', 'XC', 'XD')"
+      }
+    }
+  }
+
+  rule {
     description = "log all requests that match preconfigured sqli-v33-stable OWASP rule"
     preview     = true
 
