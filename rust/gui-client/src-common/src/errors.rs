@@ -19,8 +19,6 @@ pub enum Error {
     IpcClosed,
     #[error("IPC read failed")]
     IpcRead,
-    #[error("IPC service terminating")]
-    IpcServiceTerminating,
     #[error("Failed to connect to portal")]
     PortalConnection(String),
     #[error("UserNotInFirezoneGroup")]
@@ -52,7 +50,6 @@ pub fn show_error_dialog(error: &Error) -> Result<()> {
         Error::Ipc(ipc::Error::Other(error)) => error.to_string(),
         Error::IpcClosed => "IPC connection closed".to_string(),
         Error::IpcRead => "IPC read failure".to_string(),
-        Error::IpcServiceTerminating => "The Firezone IPC service is terminating. Please restart the GUI Client.".to_string(),
         Error::Logging(_) => "Logging error".to_string(),
         Error::PortalConnection(error) => {
             tracing::error!(%error, "Couldn't connect to the Portal");
