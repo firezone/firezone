@@ -1,11 +1,8 @@
 locals {
   project_owners = [
-    "a@firezone.dev",
     "bmanifold@firezone.dev",
-    "gabriel@firezone.dev",
     "jamil@firezone.dev",
     "thomas@firezone.dev",
-    "trish@firezone.dev"
   ]
 
   # list of emails for users that should be able to SSH into a demo instance
