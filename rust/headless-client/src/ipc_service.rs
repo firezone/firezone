@@ -579,9 +579,10 @@ impl<'a> Handler<'a> {
         // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
             Secret::new(url),
-            // The IPC service must use the GUI's version number, not the Headless Client's. But refactoring to separate the IPC service from the Headless Client will take a while.
+            // The IPC service must use the GUI's version number, not the Headless Client's.
+            // But refactoring to separate the IPC service from the Headless Client will take a while.
             // mark:next-gui-version
-            get_user_agent(None, "1.3.10"),
+            get_user_agent(None, "1.3.12"),
             "client",
             (),
             ExponentialBackoffBuilder::default()
