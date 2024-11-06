@@ -225,6 +225,7 @@ jobs:
         run: docker compose logs iperf3
 
   upload-bencher:
+    continue-on-error: true
     needs: perf-tests
     runs-on: ubuntu-22.04
     permissions:
