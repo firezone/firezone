@@ -14,7 +14,9 @@ use bimap::BiMap;
 use connlib_model::PublicKey;
 use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
 use connlib_model::{Site, SiteId};
-use firezone_logging::{anyhow_dyn_err, std_dyn_err, unwrap_or_debug, unwrap_or_warn};
+use firezone_logging::{
+    anyhow_dyn_err, std_dyn_err, telemetry_event, unwrap_or_debug, unwrap_or_warn,
+};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, UdpSlice, MAX_DATAGRAM_PAYLOAD};
@@ -381,7 +383,7 @@ impl ClientState {
                     .unwrap_or_else(|e| {
                         let error = std_dyn_err(&e);
                         tracing::debug!(error, "Recursive UDP DNS query failed");
-                        tracing::trace!(target: "telemetry", error, "Recursive UDP DNS query failed");
+                        telemetry_event!(error, "Recursive UDP DNS query failed");
 
                         dns::servfail(response.query.for_slice_ref())
                     });
@@ -399,7 +401,7 @@ impl ClientState {
                     .unwrap_or_else(|e| {
                         let error = std_dyn_err(&e);
                         tracing::debug!(error, "Recursive TCP DNS query failed");
-                        tracing::trace!(target: "telemetry", error, "Recursive TCP DNS query failed");
+                        telemetry_event!(error, "Recursive TCP DNS query failed");
 
                         dns::servfail(response.query.for_slice_ref())
                     });

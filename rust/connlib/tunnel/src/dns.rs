@@ -10,7 +10,7 @@ use domain::{
     },
     dep::octseq::OctetsInto,
 };
-use firezone_logging::{anyhow_dyn_err, std_dyn_err};
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::io;
@@ -233,6 +233,8 @@ impl StubResolver {
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
     fn match_resource_linear(&self, domain: &DomainName) -> Option<ResourceId> {
+        let _span = telemetry_span!("match_resource_linear").entered();
+
         let name = Candidate::from_domain(domain);
 
         for (pattern, id) in &self.dns_resources {
