@@ -539,7 +539,7 @@ impl<I: GuiIntegration> Controller<I> {
                         "To access resources, sign in again.",
                     )?;
                 } else {
-                    tracing::error!(?error_msg, "Disconnected");
+                    tracing::error!("Connlib disconnected: {error_msg}");
                     native_dialog::MessageDialog::new()
                         .set_title("Firezone Error")
                         .set_text(&error_msg)
