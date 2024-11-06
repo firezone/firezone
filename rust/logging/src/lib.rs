@@ -101,12 +101,24 @@ pub fn sentry_layer<S>() -> impl Layer<S> + Send + Sync
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
+    const IGNORED_TARGETS: &[IgnoredEvent] = &[IgnoredEvent::warn(
+        "tao::platform_impl::platform::event_loop::runner",
+    )];
+
     sentry_tracing::layer()
-        .event_filter(move |md| match *md.level() {
-            tracing::Level::ERROR | tracing::Level::WARN => EventFilter::Exception,
-            tracing::Level::INFO | tracing::Level::DEBUG => EventFilter::Breadcrumb,
-            tracing::Level::TRACE if md.target() == TELEMETRY_TARGET => EventFilter::Event,
-            _ => EventFilter::Ignore,
+        .event_filter(move |md| {
+            let level = *md.level();
+
+            if IGNORED_TARGETS.contains(&IgnoredEvent::new(*md.level(), md.target())) {
+                return EventFilter::Ignore;
+            }
+
+            match level {
+                tracing::Level::ERROR | tracing::Level::WARN => EventFilter::Exception,
+                tracing::Level::INFO | tracing::Level::DEBUG => EventFilter::Breadcrumb,
+                tracing::Level::TRACE if md.target() == TELEMETRY_TARGET => EventFilter::Event,
+                _ => EventFilter::Ignore,
+            }
         })
         .span_filter(|md| *md.level() == tracing::Level::TRACE && md.target() == TELEMETRY_TARGET)
         .enable_span_attributes()
@@ -148,4 +160,23 @@ macro_rules! telemetry_event {
 pub mod __export {
     pub use rand;
     pub use tracing;
+}
+
+#[derive(Debug, PartialEq)]
+struct IgnoredEvent<'a> {
+    level: tracing::Level,
+    target: &'a str,
+}
+
+impl<'a> IgnoredEvent<'a> {
+    fn new(level: tracing::Level, target: &'a str) -> Self {
+        Self { level, target }
+    }
+
+    const fn warn(target: &'static str) -> Self {
+        Self {
+            target,
+            level: tracing::Level::WARN,
+        }
+    }
 }
