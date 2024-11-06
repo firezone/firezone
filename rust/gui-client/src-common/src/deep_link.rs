@@ -170,7 +170,7 @@ mod tests {
         let expected_url = url::Url::parse(&format!("bogus-test-schema://{id}"))?;
         super::open(&expected_url).await?;
 
-        let bytes = server_task.await??;
+        let bytes = server_task.await??.unwrap();
         let s = std::str::from_utf8(bytes.expose_secret())?;
         let url = url::Url::parse(s)?;
         assert_eq!(url, expected_url);

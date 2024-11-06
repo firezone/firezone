@@ -58,7 +58,7 @@ impl Server {
     /// Await one incoming deep link
     ///
     /// To match the Windows API, this consumes the `Server`.
-    pub async fn accept(self) -> Result<Secret<Vec<u8>>> {
+    pub async fn accept(self) -> Result<Option<Secret<Vec<u8>>>> {
         tracing::debug!("deep_link::accept");
         let (mut stream, _) = self.listener.accept().await?;
         tracing::debug!("Accepted Unix domain socket connection");
@@ -71,14 +71,14 @@ impl Server {
             .await
             .context("failed to read incoming deep link over Unix socket stream")?;
         if bytes.is_empty() {
-            bail!("Got zero bytes from the deep link socket - probably a 2nd instance was blocked");
+            return Ok(None);
         }
         let bytes = Secret::new(bytes);
         tracing::debug!(
             len = bytes.expose_secret().len(),
             "Got data from Unix domain socket"
         );
-        Ok(bytes)
+        Ok(Some(bytes))
     }
 }
 

@@ -437,7 +437,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
 async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Result<()> {
     loop {
         match server.accept().await {
-            Ok(bytes) => {
+            Ok(Some(bytes)) => {
                 let url = SecretString::from_str(
                     std::str::from_utf8(bytes.expose_secret())
                         .context("Incoming deep link was not valid UTF-8")?,
@@ -448,6 +448,9 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
                     .send(ControllerRequest::SchemeRequest(url))
                     .await
                     .ok();
+            }
+            Ok(None) => {
+                tracing::debug!("Accepted deep-link but read 0 bytes, trying again ...");
             }
             Err(error) => {
                 tracing::warn!(error = anyhow_dyn_err(&error), "Failed to accept deep link")
