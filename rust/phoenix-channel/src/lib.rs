@@ -28,7 +28,7 @@ use tokio_tungstenite::{
     tungstenite::{handshake::client::Request, Message},
     MaybeTlsStream, WebSocketStream,
 };
-use url::{Host, Url};
+use url::Url;
 
 pub use get_user_agent::get_user_agent;
 pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
@@ -72,15 +72,19 @@ enum State {
 impl State {
     fn connect(
         url: Url,
+        addresses: Vec<SocketAddr>,
         user_agent: String,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
-        Self::Connecting(create_and_connect_websocket(url, user_agent, socket_factory).boxed())
+        Self::Connecting(
+            create_and_connect_websocket(url, addresses, user_agent, socket_factory).boxed(),
+        )
     }
 }
 
 async fn create_and_connect_websocket(
     url: Url,
+    addresses: Vec<SocketAddr>,
     user_agent: String,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
@@ -89,7 +93,7 @@ async fn create_and_connect_websocket(
     tracing::debug!(%host, %user_agent, "Connecting to portal");
 
     let duration = Duration::from_secs(5);
-    let socket = tokio::time::timeout(duration, make_socket(&url, &*socket_factory))
+    let socket = tokio::time::timeout(duration, connect(addresses, &*socket_factory))
         .await
         .map_err(|_| InternalError::Timeout { duration })??;
 
@@ -108,28 +112,12 @@ async fn create_and_connect_websocket(
     Ok(stream)
 }
 
-async fn make_socket(
-    url: &Url,
+async fn connect(
+    addresses: Vec<SocketAddr>,
     socket_factory: &dyn SocketFactory<TcpSocket>,
 ) -> Result<TcpStream, InternalError> {
-    let port = url
-        .port_or_known_default()
-        .expect("scheme to be http, https, ws or wss");
-    let addrs: Vec<SocketAddr> = match url.host().ok_or(InternalError::InvalidUrl)? {
-        Host::Domain(n) => tokio::net::lookup_host((n, port))
-            .await
-            .map_err(|_| InternalError::InvalidUrl)?
-            .collect(),
-        Host::Ipv6(ip) => {
-            vec![(ip, port).into()]
-        }
-        Host::Ipv4(ip) => {
-            vec![(ip, port).into()]
-        }
-    };
-
     let mut last_error = None;
-    for addr in addrs {
+    for addr in addresses {
         let Ok(socket) = socket_factory(&addr) else {
             continue;
         };
@@ -362,7 +350,12 @@ where
 
         // 2. Set state to `Connecting` without a timer.
         let user_agent = self.user_agent.clone();
-        self.state = State::connect(url.clone(), user_agent, self.socket_factory.clone());
+        self.state = State::connect(
+            url.clone(),
+            self.socket_addresses(),
+            user_agent,
+            self.socket_factory.clone(),
+        );
         self.last_url = Some(url);
 
         // 3. In case we were already re-connecting, we need to wake the suspended task.
@@ -438,13 +431,19 @@ where
                             .clone();
                         let user_agent = self.user_agent.clone();
                         let socket_factory = self.socket_factory.clone();
+                        let socket_addresses = self.socket_addresses();
 
                         tracing::debug!(error = std_dyn_err(&e), ?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error");
 
                         self.state = State::Connecting(Box::pin(async move {
                             tokio::time::sleep(backoff).await;
-                            create_and_connect_websocket(secret_url, user_agent, socket_factory)
-                                .await
+                            create_and_connect_websocket(
+                                secret_url,
+                                socket_addresses,
+                                user_agent,
+                                socket_factory,
+                            )
+                            .await
                         }));
 
                         continue;
@@ -651,6 +650,15 @@ where
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
         OutboundRequestId(next_id)
+    }
+
+    fn socket_addresses(&self) -> Vec<SocketAddr> {
+        let port = self.url_prototype.expose_secret().host_and_port().1;
+
+        self.resolved_addresses()
+            .into_iter()
+            .map(|ip| SocketAddr::new(ip, port))
+            .collect()
     }
 }
 
