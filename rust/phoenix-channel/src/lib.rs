@@ -262,8 +262,7 @@ where
         let _span = telemetry_span!("resolve_portal_url", host = %host_and_port.0).entered();
 
         // Statically resolve the host in the URL to a set of addresses.
-        // We don't use these directly because we need to connect to the domain via TLS which requires a hostname.
-        // We expose them to other components that deal with DNS stuff to ensure our domain always resolves to these IPs.
+        // We use these when connecting the socket to avoid a dependency on DNS resolution later on.
         let resolved_addresses = host_and_port
             .to_socket_addrs()?
             .map(|addr| addr.ip())
