@@ -84,16 +84,26 @@ async fn create_and_connect_websocket(
     user_agent: String,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
-    tracing::debug!(host = %url.host().unwrap(), %user_agent, "Connecting to portal");
+    let host = url.host().unwrap().to_owned();
+
+    tracing::debug!(%host, %user_agent, "Connecting to portal");
 
     let duration = Duration::from_secs(5);
     let socket = tokio::time::timeout(duration, make_socket(&url, &*socket_factory))
         .await
         .map_err(|_| InternalError::Timeout { duration })??;
 
-    let (stream, _) = client_async_tls(make_request(url, user_agent), socket)
-        .await
-        .map_err(InternalError::WebSocket)?;
+    tracing::debug!("Created new socket");
+
+    let (stream, _) = tokio::time::timeout(
+        duration,
+        client_async_tls(make_request(url, user_agent), socket),
+    )
+    .await
+    .map_err(|_| InternalError::Timeout { duration })?
+    .map_err(InternalError::WebSocket)?;
+
+    tracing::info!(%host, "Connected to portal");
 
     Ok(stream)
 }
@@ -406,9 +416,6 @@ where
                         self.heartbeat.reset();
                         self.state = State::Connected(stream);
 
-                        let (host, _) = self.url_prototype.expose_secret().host_and_port();
-
-                        tracing::info!(%host, "Connected to portal");
                         self.join(self.login, self.init_req.clone());
 
                         continue;
