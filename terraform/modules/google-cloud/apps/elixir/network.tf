@@ -73,7 +73,16 @@ resource "google_compute_security_policy" "default" {
 
     match {
       expr {
-        expression = "request.path.matches(\"/sign_up\") && ['RU', 'BY', 'KP', 'IR', 'SY', 'CU', 'VE', 'XC', 'XD'].exists(r, r == origin.region_code)"
+        expression = "request.path.matches(\"/sign_up\") && (\
+          origin.region_code == 'RU' || \
+          origin.region_code == 'BY' || \
+          origin.region_code == 'KP' || \
+          origin.region_code == 'IR' || \
+          origin.region_code == 'SY' || \
+          origin.region_code == 'CU' || \
+          origin.region_code == 'VE' || \
+          origin.region_code == 'XC' || \
+          origin.region_code == 'XD')"
       }
     }
   }
