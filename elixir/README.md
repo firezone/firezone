@@ -463,20 +463,6 @@ iex(web@web-xxxx.us-east1-d.c.firezone-staging.internal)2> {:ok, token} = Domain
 ...
 ```
 
-## Apply Terraform changes without deploying new containers
-
-Switch to environment you want to apply changes to:
-
-```bash
-cd terraform/environments/staging
-```
-
-and apply changes:
-
-```bash
-terraform apply -var image_tag=$(terraform output -raw image_tag)
-```
-
 ## Connection to production Cloud SQL instance
 
 Install
@@ -502,7 +488,101 @@ token:
 gcloud auth application-default login
 ```
 
-## Viewing logs
+## Deploying
+
+### Apply Terraform changes without deploying new containers
+
+This can be helpful when you want to quickly iterate over Terraform configuration in staging environment, without
+having to merge for every single apply attempt.
+
+Switch to the staging environment:
+
+```bash
+cd terraform/environments/staging
+```
+
+and apply changes reusing previous container versions:
+
+```bash
+terraform apply -var image_tag=$(terraform output -raw image_tag)
+```
+
+### Deploying production
+
+Before deploying, check if the `main` branch has any breaking changes since the last deployment. You can do this by comparing the `main` branch with the last deployed commit, which you can find [here](https://github.com/firezone/firezone/deployments/gcp_production).
+
+Here is a one-liner to open the comparison in your browser:
+
+```bash
+open "https://github.com/firezone/firezone/compare/$(curl -L -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" "https://api.github.com/repos/firezone/firezone/actions/workflows/deploy.yml/runs?status=completed&per_page=1" | jq -r '.workflow_runs[0].head_commit.id')...main"
+```
+
+If there are any breaking changes, make sure to confirm with the rest of the team on a rollout strategy before proceeding with any of the steps listed below.
+
+Then, go to ["Deploy Production"](https://github.com/firezone/firezone/actions/workflows/deploy.yml) CI workflow and click "Run Workflow".
+
+1. In the form that appears, read the warning and check the checkbox next to it.
+2. The main branch is selected by default for deployment. To deploy a previous version, enter the commit SHA in the "Image tag to deploy" field.
+   The commit MUST be from the `main` branch.
+3. Click "Run Workflow" to start the process.
+
+The workflow will run all the way till the `deploy-production` step (which runs `terraform apply`) and wait for an approval from one of the project owners,
+message one of your colleagues to approve it.
+
+#### Deployment Takes Too Long to Complete
+
+Typically, `terraform apply` takes around 15 minutes in production. If it's taking longer (or you want to monitor the status), here are a few things you can check:
+
+1. **Monitor the run status in [Terraform Cloud](https://app.terraform.io/app/firezone/workspaces/production/runs).**
+2. **Check the status of Instance Groups in [Google Cloud Console](https://console.cloud.google.com/compute/instanceGroups/list?project=firezone-prod).**
+3. [Check the logs](#viewing-logs) for the deployed instances.
+
+For instance groups stuck in the `UPDATING` state:
+
+- Open the group and look for any errors. Typically, if deployment is stuck, you'll find one instance in the group with an error (and a recent creation time), while the others are pending updates.
+- To quickly view logs for that instance, click the instance name and then click the `Logging` link.
+
+_Do not panic—our production environment should remain stable. GCP and Terraform are designed to keep old instances running until the new ones are healthy._
+
+#### Common Reasons for Deployment Issues
+
+**1. A Bug in the Code**
+
+- This can either crash the instance or make it unresponsive (you’ll notice failing health checks and error logs).
+- If this happens, ensure there were no database migrations as part of the changes (check `priv/repo/migrations`).
+- If no migrations are involved, rollback the deployment. To do this, cancel the currently running deployment,
+  find the last successful deployment in Terraform Cloud, copy the `image_tag` from its output, and run:
+
+  ```bash
+  cd terraform/environments/production
+  terraform apply -var image_tag=<LAST_SUCCESSFUL_IMAGE_TAG_HERE>
+  ```
+
+- You can also rollback a specific component by overriding its image tag in the `terraform apply` command:
+
+  ```bash
+  terraform apply -var image_tag=<CURRENT_IMAGE_TAG> -var <COMPONENT_NAME>_image_tag=<LAST_SUCCESSFUL_IMAGE_TAG_HERE>
+  ```
+
+  _If there were migrations and they’ve already been applied, proceed to the next option._
+
+**2. An Issue with the Migration**
+
+- You’ll notice failing health checks and error logs related to the migration.
+- You can either:
+  - Fix the data causing the migration to fail (refer to [Connection to Production Cloud SQL Instance](#connection-to-production-cloud-sql-instance)).
+  - Fix the migration code and redeploy.
+
+**3. Insufficient Resources to Deploy New Instances**
+
+- If there are no errors but updates are pending, there might not be enough resources to deploy new instances.
+- This can be found in the Errors tab of the instance group.
+
+  Typically, this issue resolves itself as old reservations are freed up.
+
+## Monitoring and Troubleshooting
+
+### Viewing logs
 
 Logs can be viewed via th [Logs Explorer](https://console.cloud.google.com/logs)
 in GCP, or via the `gcloud` CLI:
@@ -533,3 +613,50 @@ firezone-staging
 # For more info on the filter expression syntax, see:
 # https://cloud.google.com/logging/docs/view/logging-query-language
 ```
+
+Here is a helpful filter to show all errors and crashes:
+
+```
+resource.type="gce_instance"
+(severity>=ERROR OR "Kernel pid terminated" OR "Crash dump is being written")
+-protoPayload.@type="type.googleapis.com/google.cloud.audit.AuditLog"
+-logName:"/logs/GCEGuestAgent"
+-logName:"/logs/OSConfigAgent"
+-logName:"/logs/ops-agent-fluent-bit"
+```
+
+An alert will be sent to the `#feed-proudction` Slack channel when a new error is logged that matches this filter.
+You can also see all errors in [Google Cloud Error Reporting](https://console.cloud.google.com/errors?project=firezone-prod).
+
+Sometimes logs will not provide enough context to understand the issue. In those cases you can
+try to filter by the `trace` field to get more information. Copy the `trace` value from a log entry
+and use it in the filter:
+
+```
+resource.type="gce_instance"
+jsonPayload.trace:"<trace_id>"
+```
+
+Note: If you simply click "Show entries for this trace" in the log entry, it will
+automatically **append** the filter for you. You might want to remove rest of filters
+so you can see all logs for that trace.
+
+## Viewing metrics
+
+Metrics can be viewed via the [Metrics Explorer](https://console.cloud.google.com/monitoring/metrics-explorer) in GCP.
+
+## Viewing traces
+
+Traces can be viewed via the [Trace Explorer](https://console.cloud.google.com/traces/list) in GCP.
+They are mostly helpful for debugging Clients, Relays and Gateways.
+
+For example, if you want to find all traces for client management processes, you can use the following filter:
+
+```
+RootSpan: client.connect
+```
+
+Then you can drill down either by using a `client_id: <ID>` or an `account_id: <ID>`.
+
+Note: For WS API processes, the total trace duration might not be helpful since a single trace is defined for
+the entire connection lifespan.
