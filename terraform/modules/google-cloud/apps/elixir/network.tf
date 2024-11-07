@@ -73,7 +73,8 @@ resource "google_compute_security_policy" "default" {
 
     match {
       expr {
-        expression = "request.path.matches(\"/sign_up\") && (\
+        expression = <<EOT
+          request.path.matches(\"/sign_up\") && (\
           origin.region_code == 'RU' || \
           origin.region_code == 'BY' || \
           origin.region_code == 'KP' || \
@@ -83,6 +84,7 @@ resource "google_compute_security_policy" "default" {
           origin.region_code == 'VE' || \
           origin.region_code == 'XC' || \
           origin.region_code == 'XD')"
+        EOT
       }
     }
   }
