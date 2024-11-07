@@ -66,11 +66,11 @@ defmodule Domain.ComponentVersions do
         {:ok, Enum.into(versions, [])}
 
       {:ok, response} ->
-        Logger.error("Can't fetch Firezone versions", reason: inspect(response))
+        Logger.warning("Can't fetch Firezone versions", reason: inspect(response))
         {:error, {response.status, response.body}}
 
       {:error, reason} ->
-        Logger.error("Can't fetch Firezone versions", reason: inspect(reason))
+        Logger.warning("Can't fetch Firezone versions", reason: inspect(reason))
         {:error, reason}
     end
   end
