@@ -24,7 +24,7 @@ where
 
     let subscriber = Registry::default()
         .with(additional_layer.with_filter(filter(&directives)))
-        .with(sentry_layer().with_filter(filter(""))) // Sentry layer has its own event filtering mechanism, so we only exclude the noisy crates.
+        .with(sentry_layer())
         .with(
             fmt::layer()
                 .event_format(Format::new())
@@ -87,7 +87,7 @@ pub fn test_global(directives: &str) {
 ///
 /// This layer configuration supports a special `telemetry` event.
 /// Telemetry events are events logged on the `TRACE` level for the `telemetry` target.
-/// They are sampled at a rate of 1%.
+/// These events SHOULD be created using [`telemetry_event`] to ensure that they are sampled correctly.
 /// The idea here is that some events logged via `tracing` should not necessarily end up in the users log file.
 /// Yet, if they happen a lot, we still want to know about them.
 /// Coupling the `telemetry` target to the `TRACE` level pretty much prevents these events from ever showing up in log files.
@@ -96,25 +96,87 @@ pub fn test_global(directives: &str) {
 /// ## Telemetry spans
 ///
 /// Only spans with the `telemetry` target on level `TRACE` will be submitted to Sentry.
-/// They are subject to the sampling rate defined in the Sentry client configuration.
-pub fn sentry_layer<S>() -> sentry_tracing::SentryLayer<S>
+/// Similar to telemetry events, these should be created with [`telemetry_span`] to ensure they are sampled correctly.
+pub fn sentry_layer<S>() -> impl Layer<S> + Send + Sync
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
+    const IGNORED_TARGETS: &[IgnoredEvent] = &[IgnoredEvent::warn(
+        "tao::platform_impl::platform::event_loop::runner",
+    )];
+
     sentry_tracing::layer()
-        .event_filter(move |md| match *md.level() {
-            tracing::Level::ERROR | tracing::Level::WARN => EventFilter::Exception,
-            tracing::Level::INFO | tracing::Level::DEBUG => EventFilter::Breadcrumb,
-            tracing::Level::TRACE if md.target() == "telemetry" => {
-                // rand::random generates floats in the range of [0, 1).
-                if rand::random::<f32>() < 0.01 {
-                    EventFilter::Event
-                } else {
-                    EventFilter::Ignore
-                }
+        .event_filter(move |md| {
+            let level = *md.level();
+
+            if IGNORED_TARGETS.contains(&IgnoredEvent::new(*md.level(), md.target())) {
+                return EventFilter::Ignore;
             }
-            _ => EventFilter::Ignore,
+
+            match level {
+                tracing::Level::ERROR | tracing::Level::WARN => EventFilter::Exception,
+                tracing::Level::INFO | tracing::Level::DEBUG => EventFilter::Breadcrumb,
+                tracing::Level::TRACE if md.target() == TELEMETRY_TARGET => EventFilter::Event,
+                _ => EventFilter::Ignore,
+            }
         })
-        .span_filter(|md| *md.level() == tracing::Level::TRACE && md.target() == "telemetry")
+        .span_filter(|md| *md.level() == tracing::Level::TRACE && md.target() == TELEMETRY_TARGET)
         .enable_span_attributes()
+        .with_filter(filter("trace")) // Filter out noisy crates but pass all events otherwise.
+}
+
+#[doc(hidden)]
+pub const TELEMETRY_TARGET: &str = "telemetry";
+#[doc(hidden)]
+pub const TELEMETRY_SAMPLE_RATE: f32 = 0.01;
+
+/// Creates a `telemetry` span that will be active until dropped.
+///
+/// In order to save CPU power, `telemetry` spans are sampled at a rate of 1% at creation time.
+#[macro_export]
+macro_rules! telemetry_span {
+    ($($arg:tt)*) => {
+        if $crate::__export::rand::random::<f32>() < $crate::TELEMETRY_SAMPLE_RATE {
+            $crate::__export::tracing::trace_span!(target: $crate::TELEMETRY_TARGET, $($arg)*)
+        } else {
+            $crate::__export::tracing::Span::none()
+        }
+    };
+}
+
+/// Creates a `telemetry` event.
+///
+/// In order to save CPU power, `telemetry` events are sampled at a rate of 1% at creation time.
+#[macro_export]
+macro_rules! telemetry_event {
+    ($($arg:tt)*) => {
+        if $crate::__export::rand::random::<f32>() < $crate::TELEMETRY_SAMPLE_RATE {
+            $crate::__export::tracing::trace!(target: $crate::TELEMETRY_TARGET, $($arg)*);
+        }
+    };
+}
+
+#[doc(hidden)]
+pub mod __export {
+    pub use rand;
+    pub use tracing;
+}
+
+#[derive(Debug, PartialEq)]
+struct IgnoredEvent<'a> {
+    level: tracing::Level,
+    target: &'a str,
+}
+
+impl<'a> IgnoredEvent<'a> {
+    fn new(level: tracing::Level, target: &'a str) -> Self {
+        Self { level, target }
+    }
+
+    const fn warn(target: &'static str) -> Self {
+        Self {
+            target,
+            level: tracing::Level::WARN,
+        }
+    }
 }

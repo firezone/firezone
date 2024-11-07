@@ -1,0 +1,8 @@
+[Desktop Entry]
+Categories=
+Comment=Firezone
+Exec=firezone-client-gui
+Icon=firezone-client-gui
+Name=firezone-client-gui
+Terminal=false
+Type=Application

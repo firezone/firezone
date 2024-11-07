@@ -6,13 +6,14 @@ use std::collections::{HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{fmt, future, marker::PhantomData};
 use std::{io, mem};
 
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use base64::Engine;
-use firezone_logging::std_dyn_err;
+use firezone_logging::{std_dyn_err, telemetry_span};
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use heartbeat::{Heartbeat, MissedLastHeartbeat};
@@ -31,6 +32,8 @@ use url::{Host, Url};
 
 pub use get_user_agent::get_user_agent;
 pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
+
+const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
 
 pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes, TFinish> {
     state: State,
@@ -83,7 +86,10 @@ async fn create_and_connect_websocket(
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
     tracing::debug!(host = %url.host().unwrap(), %user_agent, "Connecting to portal");
 
-    let socket = make_socket(&url, &*socket_factory).await?;
+    let duration = Duration::from_secs(5);
+    let socket = tokio::time::timeout(duration, make_socket(&url, &*socket_factory))
+        .await
+        .map_err(|_| InternalError::Timeout { duration })??;
 
     let (stream, _) = client_async_tls(make_request(url, user_agent), socket)
         .await
@@ -165,6 +171,7 @@ enum InternalError {
     StreamClosed,
     InvalidUrl,
     SocketConnection(std::io::Error),
+    Timeout { duration: Duration },
 }
 
 impl fmt::Display for InternalError {
@@ -187,6 +194,9 @@ impl fmt::Display for InternalError {
             InternalError::StreamClosed => write!(f, "websocket stream was closed"),
             InternalError::InvalidUrl => write!(f, "failed to resolve url"),
             InternalError::SocketConnection(_) => write!(f, "failed to connect socket"),
+            InternalError::Timeout { duration, .. } => {
+                write!(f, "operation timed out after {duration:?}")
+            }
         }
     }
 }
@@ -202,6 +212,7 @@ impl std::error::Error for InternalError {
             InternalError::CloseMessage => None,
             InternalError::StreamClosed => None,
             InternalError::InvalidUrl => None,
+            InternalError::Timeout { .. } => None,
         }
     }
 }
@@ -260,8 +271,7 @@ where
 
         let host_and_port = url.expose_secret().host_and_port();
 
-        let _guard =
-            tracing::trace_span!(target: "telemetry", "resolve_portal_url", host = %host_and_port.0).entered();
+        let _span = telemetry_span!("resolve_portal_url", host = %host_and_port.0).entered();
 
         // Statically resolve the host in the URL to a set of addresses.
         // We don't use these directly because we need to connect to the domain via TLS which requires a hostname.
@@ -278,7 +288,7 @@ where
             state: State::Closed,
             socket_factory,
             waker: None,
-            pending_messages: Default::default(),
+            pending_messages: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
             _phantom: PhantomData,
             heartbeat: Heartbeat::new(
                 heartbeat::INTERVAL,
@@ -316,6 +326,12 @@ where
 
     /// Send a message to a topic.
     pub fn send(&mut self, topic: impl Into<String>, message: impl Serialize) -> OutboundRequestId {
+        if self.pending_messages.len() > MAX_BUFFERED_MESSAGES {
+            self.pending_messages.clear();
+
+            tracing::warn!("Dropping pending messages to portal because we exceeded the maximum of {MAX_BUFFERED_MESSAGES}");
+        }
+
         let (id, msg) = self.make_message(topic, message);
         self.pending_messages.push_back(msg);
 

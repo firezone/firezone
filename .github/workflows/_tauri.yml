@@ -46,24 +46,26 @@ jobs:
             syms-extension: pdb
     env:
       # mark:next-gui-version
-      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.3.11_${{ matrix.arch }}
+      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.3.12_${{ matrix.arch }}
       # mark:next-gui-version
-      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.3.11_${{ matrix.arch }}
+      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.3.12_${{ matrix.arch }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
       # mark:next-gui-version
-      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.3.11_${{ matrix.arch }}
+      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.3.12_${{ matrix.arch }}
       # Seems like there's no way to de-dupe env vars that depend on each other
       # mark:next-gui-version
-      FIREZONE_GUI_VERSION: 1.3.11
+      FIREZONE_GUI_VERSION: 1.3.12
       RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
       TARGET_DIR: ../target
       UPLOAD_SCRIPT: ../../scripts/build/tauri-upload-${{ matrix.os }}.sh
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri-v2
@@ -112,6 +114,13 @@ jobs:
         with:
           name: ${{ env.ARTIFACT_DST }}-pkg
           path: ${{ env.ARTIFACT_SRC }}.${{ matrix.pkg-extension }}
+          if-no-files-found: error
+      - name: Upload rpm package
+        if: ${{ runner.os == 'Linux' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT_DST }}-rpm
+          path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
       - name: Upload Release Assets
         # Only upload the GUI Client build to the drafted release on main builds

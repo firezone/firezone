@@ -4,7 +4,7 @@ use connlib_model::DomainName;
 use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use firezone_logging::{anyhow_dyn_err, std_dyn_err};
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
@@ -20,6 +20,7 @@ use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
+use tracing::Instrument;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
@@ -451,15 +452,18 @@ async fn resolve(domain: Option<DomainName>) -> Vec<IpAddr> {
 
     let dname = domain.to_string();
 
-    match tokio::task::spawn_blocking(move || resolve_addresses(&dname)).await {
+    match tokio::task::spawn_blocking(move || resolve_addresses(&dname))
+        .instrument(telemetry_span!("resolve_dns_resource"))
+        .await
+    {
         Ok(Ok(addresses)) => addresses,
         Ok(Err(e)) => {
-            tracing::warn!(error = std_dyn_err(&e), "Failed to resolve '{domain}'");
+            tracing::warn!(error = std_dyn_err(&e), %domain, "DNS resolution failed");
 
             vec![]
         }
         Err(e) => {
-            tracing::warn!(error = std_dyn_err(&e), "Failed to resolve '{domain}'");
+            tracing::warn!(error = std_dyn_err(&e), %domain, "DNS resolution task failed");
 
             vec![]
         }

@@ -7,10 +7,12 @@ edition = "2021"
 arc-swap = "1.7.1"
 sentry = { version = "0.34.0", default-features = false, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls", "tracing"] }
 sentry-anyhow = "0.34.0"
+tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-thiserror = "1.0.63"
+thiserror = "1.0.68"
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
 workspace = true

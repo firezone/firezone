@@ -8,7 +8,7 @@ use anyhow::Context;
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, DomainName, RelayId, ResourceId};
-use firezone_logging::{anyhow_dyn_err, std_dyn_err};
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::{ExposeSecret as _, Secret};
@@ -259,6 +259,8 @@ impl GatewayState {
         resolved_ips: Vec<IpAddr>,
         now: Instant,
     ) {
+        let _span = telemetry_span!("refresh_translation").entered();
+
         let Some(peer) = self.peers.get_mut(&client) else {
             return;
         };

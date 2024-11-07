@@ -27,6 +27,8 @@ jobs:
     name: build-release
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-android
       - name: Bundle and sign release
         env:
