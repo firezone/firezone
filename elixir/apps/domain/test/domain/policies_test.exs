@@ -73,6 +73,88 @@ defmodule Domain.PoliciesTest do
     end
   end
 
+  describe "fetch_policy_by_id_or_persistent_id/3" do
+    test "returns error when policy does not exist", %{subject: subject} do
+      assert fetch_policy_by_id_or_persistent_id(Ecto.UUID.generate(), subject) ==
+               {:error, :not_found}
+    end
+
+    test "returns error when UUID is invalid", %{subject: subject} do
+      assert fetch_policy_by_id_or_persistent_id("foo", subject) == {:error, :not_found}
+    end
+
+    test "returns policy when policy exists", %{account: account, subject: subject} do
+      policy = Fixtures.Policies.create_policy(account: account)
+
+      assert {:ok, fetched_policy} = fetch_policy_by_id_or_persistent_id(policy.id, subject)
+      assert fetched_policy.id == policy.id
+
+      assert {:ok, fetched_policy} =
+               fetch_policy_by_id_or_persistent_id(policy.persistent_id, subject)
+
+      assert fetched_policy.id == policy.id
+    end
+
+    test "returns deleted policies", %{account: account, subject: subject} do
+      {:ok, policy} =
+        Fixtures.Policies.create_policy(account: account)
+        |> delete_policy(subject)
+
+      assert {:ok, fetched_policy} = fetch_policy_by_id_or_persistent_id(policy.id, subject)
+      assert fetched_policy.id == policy.id
+
+      assert {:ok, fetched_policy} =
+               fetch_policy_by_id_or_persistent_id(policy.persistent_id, subject)
+
+      assert fetched_policy.id == policy.id
+    end
+
+    test "does not return policies in other accounts", %{subject: subject} do
+      policy = Fixtures.Policies.create_policy()
+      assert fetch_policy_by_id_or_persistent_id(policy.id, subject) == {:error, :not_found}
+
+      assert fetch_policy_by_id_or_persistent_id(policy.persistent_id, subject) ==
+               {:error, :not_found}
+    end
+
+    test "returns error when subject has no permission to view policies", %{subject: subject} do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert fetch_policy_by_id_or_persistent_id(Ecto.UUID.generate(), subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Policies.Authorizer.manage_policies_permission(),
+                      Policies.Authorizer.view_available_policies_permission()
+                    ]}
+                 ]}}
+    end
+
+    # TODO: add a test that soft-deleted assocs are not preloaded
+    test "associations are preloaded when opts given", %{account: account, subject: subject} do
+      policy = Fixtures.Policies.create_policy(account: account)
+
+      {:ok, policy} =
+        fetch_policy_by_id_or_persistent_id(policy.id, subject,
+          preload: [:actor_group, :resource]
+        )
+
+      assert Ecto.assoc_loaded?(policy.actor_group)
+      assert Ecto.assoc_loaded?(policy.resource)
+
+      {:ok, policy} =
+        fetch_policy_by_id_or_persistent_id(policy.persistent_id, subject,
+          preload: [:actor_group, :resource]
+        )
+
+      assert Ecto.assoc_loaded?(policy.actor_group)
+      assert Ecto.assoc_loaded?(policy.resource)
+    end
+  end
+
   describe "list_policies/2" do
     test "returns empty list when there are no policies", %{subject: subject} do
       assert {:ok, [], _metadata} = list_policies(subject)

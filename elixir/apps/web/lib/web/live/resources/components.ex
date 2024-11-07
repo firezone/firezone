@@ -10,7 +10,7 @@ defmodule Web.Resources.Components do
   }
 
   def fetch_resource_option(id, subject) do
-    {:ok, resource} = Resources.fetch_resource_by_id(id, subject)
+    {:ok, resource} = Resources.fetch_resource_by_id_or_persistent_id(id, subject)
     {:ok, resource_option(resource)}
   end
 

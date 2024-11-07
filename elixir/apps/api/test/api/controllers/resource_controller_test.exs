@@ -98,7 +98,7 @@ defmodule API.ResourceControllerTest do
       assert json_response(conn, 200) == %{
                "data" => %{
                  "address" => resource.address,
-                 "description" => resource.address_description,
+                 "address_description" => resource.address_description,
                  "id" => resource.id,
                  "name" => resource.name,
                  "type" => Atom.to_string(resource.type)
@@ -169,7 +169,7 @@ defmodule API.ResourceControllerTest do
       assert resp = json_response(conn, 201)
 
       assert resp["data"]["address"] == attrs["address"]
-      assert resp["data"]["description"] == nil
+      assert resp["data"]["address_description"] == nil
       assert resp["data"]["name"] == attrs["name"]
       assert resp["data"]["type"] == attrs["type"]
     end
@@ -209,7 +209,7 @@ defmodule API.ResourceControllerTest do
       assert resp = json_response(conn, 200)
 
       assert resp["data"]["address"] == resource.address
-      assert resp["data"]["description"] == resource.address_description
+      assert resp["data"]["address_description"] == resource.address_description
       assert resp["data"]["name"] == attrs["name"]
     end
   end
@@ -233,7 +233,7 @@ defmodule API.ResourceControllerTest do
       assert json_response(conn, 200) == %{
                "data" => %{
                  "address" => resource.address,
-                 "description" => resource.address_description,
+                 "address_description" => resource.address_description,
                  "id" => resource.id,
                  "name" => resource.name,
                  "type" => Atom.to_string(resource.type)

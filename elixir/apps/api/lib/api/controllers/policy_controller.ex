@@ -43,7 +43,7 @@ defmodule API.PolicyController do
 
   # Show a specific Policy
   def show(conn, %{"id" => id}) do
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, conn.assigns.subject) do
+    with {:ok, policy} <- Policies.fetch_policy_by_id_or_persistent_id(id, conn.assigns.subject) do
       render(conn, :show, policy: policy)
     end
   end
@@ -91,7 +91,7 @@ defmodule API.PolicyController do
   def update(conn, %{"id" => id, "policy" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, subject) do
+    with {:ok, policy} <- Policies.fetch_policy_by_id_or_persistent_id(id, subject) do
       case Policies.update_or_replace_policy(policy, params, subject) do
         {:updated, updated_policy} ->
           render(conn, :show, policy: updated_policy)
@@ -127,7 +127,7 @@ defmodule API.PolicyController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, subject),
+    with {:ok, policy} <- Policies.fetch_policy_by_id_or_persistent_id(id, subject),
          {:ok, policy} <- Policies.delete_policy(policy, subject) do
       render(conn, :show, policy: policy)
     end

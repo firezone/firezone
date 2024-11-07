@@ -26,6 +26,14 @@ defmodule Domain.Resources.Resource.Query do
     where(queryable, [resources: resources], resources.id == ^id)
   end
 
+  def by_id_or_persistent_id(queryable, id) do
+    where(queryable, [resources: resources], resources.id == ^id)
+    |> or_where(
+      [resources: resources],
+      resources.persistent_id == ^id and is_nil(resources.replaced_by_resource_id)
+    )
+  end
+
   def by_account_id(queryable, account_id) do
     where(queryable, [resources: resources], resources.account_id == ^account_id)
   end

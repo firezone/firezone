@@ -104,6 +104,123 @@ defmodule Domain.ResourcesTest do
     end
   end
 
+  describe "fetch_resource_by_id_or_persistent_id/3" do
+    test "returns error when resource does not exist", %{subject: subject} do
+      assert fetch_resource_by_id_or_persistent_id(Ecto.UUID.generate(), subject) ==
+               {:error, :not_found}
+    end
+
+    test "returns error when UUID is invalid", %{subject: subject} do
+      assert fetch_resource_by_id_or_persistent_id("foo", subject) == {:error, :not_found}
+    end
+
+    test "returns resource for account admin", %{account: account, subject: subject} do
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      assert {:ok, fetched_resource} = fetch_resource_by_id_or_persistent_id(resource.id, subject)
+      assert fetched_resource.id == resource.id
+
+      assert {:ok, fetched_resource} =
+               fetch_resource_by_id_or_persistent_id(resource.persistent_id, subject)
+
+      assert fetched_resource.id == resource.id
+    end
+
+    test "returns authorized resource for account user", %{
+      account: account
+    } do
+      actor_group = Fixtures.Actors.create_group(account: account)
+      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      assert fetch_resource_by_id_or_persistent_id(resource.id, subject) == {:error, :not_found}
+
+      assert fetch_resource_by_id_or_persistent_id(resource.persistent_id, subject) ==
+               {:error, :not_found}
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group,
+          resource: resource
+        )
+
+      assert {:ok, fetched_resource} = fetch_resource_by_id_or_persistent_id(resource.id, subject)
+      assert fetched_resource.id == resource.id
+      assert Enum.map(fetched_resource.authorized_by_policies, & &1.id) == [policy.id]
+
+      assert {:ok, fetched_resource} =
+               fetch_resource_by_id_or_persistent_id(resource.persistent_id, subject)
+
+      assert fetched_resource.id == resource.id
+      assert Enum.map(fetched_resource.authorized_by_policies, & &1.id) == [policy.id]
+    end
+
+    test "returns deleted resources", %{account: account, subject: subject} do
+      {:ok, resource} =
+        Fixtures.Resources.create_resource(account: account)
+        |> delete_resource(subject)
+
+      assert {:ok, _resource} = fetch_resource_by_id_or_persistent_id(resource.id, subject)
+
+      assert {:ok, _resource} =
+               fetch_resource_by_id_or_persistent_id(resource.persistent_id, subject)
+    end
+
+    test "does not return resources in other accounts", %{subject: subject} do
+      resource = Fixtures.Resources.create_resource()
+      assert fetch_resource_by_id_or_persistent_id(resource.id, subject) == {:error, :not_found}
+
+      assert fetch_resource_by_id_or_persistent_id(resource.persistent_id, subject) ==
+               {:error, :not_found}
+    end
+
+    test "returns error when subject has no permission to view resources", %{subject: subject} do
+      subject = Fixtures.Auth.remove_permissions(subject)
+
+      assert fetch_resource_by_id_or_persistent_id(Ecto.UUID.generate(), subject) ==
+               {:error,
+                {:unauthorized,
+                 reason: :missing_permissions,
+                 missing_permissions: [
+                   {:one_of,
+                    [
+                      Resources.Authorizer.manage_resources_permission(),
+                      Resources.Authorizer.view_available_resources_permission()
+                    ]}
+                 ]}}
+    end
+
+    test "associations are preloaded when opts given", %{account: account, subject: subject} do
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      assert {:ok, resource} =
+               fetch_resource_by_id_or_persistent_id(resource.id, subject, preload: :connections)
+
+      assert Ecto.assoc_loaded?(resource.connections)
+      assert length(resource.connections) == 1
+
+      assert {:ok, resource} =
+               fetch_resource_by_id_or_persistent_id(resource.persistent_id, subject,
+                 preload: :connections
+               )
+
+      assert Ecto.assoc_loaded?(resource.connections)
+      assert length(resource.connections) == 1
+    end
+  end
+
   describe "fetch_and_authorize_resource_by_id/3" do
     test "returns error when resource does not exist", %{subject: subject} do
       assert fetch_and_authorize_resource_by_id(Ecto.UUID.generate(), subject) ==
