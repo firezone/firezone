@@ -95,7 +95,7 @@ pub enum ClientMsg {
     SetDisabledResources(BTreeSet<ResourceId>),
     StartTelemetry {
         environment: String,
-        version: &'static str,
+        version: String,
     },
     StopTelemetry,
 }

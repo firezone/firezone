@@ -215,7 +215,7 @@ impl<I: GuiIntegration> Controller<I> {
             self.ipc_client
                 .send_msg(&IpcClientMsg::StartTelemetry {
                     environment,
-                    version: VERSION,
+                    version: VERSION.to_owned(),
                 })
                 .await?;
         }

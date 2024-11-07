@@ -15,7 +15,6 @@ mod tests {
     #[test]
     fn version() {
         let cargo = super::get_cargo_version();
-        let git = super::get_git_version();
 
         assert!(cargo != "Unknown", "{}", cargo);
         assert!(cargo.starts_with("1."));
