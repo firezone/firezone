@@ -14,6 +14,9 @@ export default function Gateway() {
         <ChangeItem pull="7263">
             Mitigates a crash in case the maximum packet size is not respected.
         </ChangeItem>
+        <ChangeItem pull="7283">
+          Prevents TLS handshake with the portal from hanging for longer than 5s.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.0" date={new Date("2024-11-04")}>
         <ChangeItem pull="6960">

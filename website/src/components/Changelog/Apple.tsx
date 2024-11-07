@@ -11,7 +11,11 @@ export default function Apple() {
       title="macOS / iOS"
     >
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="7283">
+          Prevents TLS handshake with the portal from hanging for longer than 5s.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.3.8" date={new Date("2024-11-05")}>
         <ChangeItem pull="7263">
           Mitigates a crash in case the maximum packet size is not respected.
