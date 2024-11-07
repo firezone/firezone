@@ -48,7 +48,7 @@ impl Clone for Telemetry {
 }
 
 impl Telemetry {
-    pub fn start(&self, api_url: &str, release: &'static str, dsn: Dsn) {
+    pub fn start(&self, api_url: &str, release: &str, dsn: Dsn) {
         // Since it's `arc_swap` and not `Option`, there is a TOCTOU here,
         // but in practice it should never trigger
         if self.inner.load().is_some() {
@@ -70,7 +70,7 @@ impl Telemetry {
             sentry::ClientOptions {
                 environment: Some(environment.into()),
                 // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
-                release: Some(release.into()),
+                release: Some(release.to_owned().into()),
                 // We submit all spans but only send the ones with `target: telemetry`.
                 // Those spans are created further down and are throttled at creation time to save CPU.
                 traces_sample_rate: 1.0,

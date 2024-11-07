@@ -84,13 +84,19 @@ impl Default for Cmd {
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub enum ClientMsg {
     ClearLogs,
-    Connect { api_url: String, token: String },
+    Connect {
+        api_url: String,
+        token: String,
+    },
     Disconnect,
     ReloadLogFilter,
     Reset,
     SetDns(Vec<IpAddr>),
     SetDisabledResources(BTreeSet<ResourceId>),
-    StartTelemetry { environment: String },
+    StartTelemetry {
+        environment: String,
+        version: String,
+    },
     StopTelemetry,
 }
 
@@ -155,7 +161,7 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     let log_filter_reloader = crate::setup_stdout_logging()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = firezone_bin_shared::git_version!("gui-client-*"),
+        // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
     );
     if !platform::elevation_check()? {
@@ -540,11 +546,12 @@ impl<'a> Handler<'a> {
 
                 session.connlib.set_disabled_resources(disabled_resources);
             }
-            ClientMsg::StartTelemetry { environment } => self.telemetry.start(
-                &environment,
-                firezone_bin_shared::git_version!("gui-client-*"),
-                firezone_telemetry::IPC_SERVICE_DSN,
-            ),
+            ClientMsg::StartTelemetry {
+                environment,
+                version,
+            } => self
+                .telemetry
+                .start(&environment, &version, firezone_telemetry::IPC_SERVICE_DSN),
             ClientMsg::StopTelemetry => {
                 self.telemetry.stop().await;
             }
@@ -643,7 +650,7 @@ fn setup_logging(
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = firezone_bin_shared::git_version!("gui-client-*"),
+        // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
         ?directives
     );
