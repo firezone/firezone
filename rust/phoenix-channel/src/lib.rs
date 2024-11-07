@@ -86,7 +86,7 @@ async fn create_and_connect_websocket(
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
     let host = url.host().unwrap().to_owned();
 
-    tracing::debug!(%host, %user_agent, "Connecting to portal");
+    tracing::debug!(%host, ?addresses, %user_agent, "Connecting to portal");
 
     let duration = Duration::from_secs(5);
     let socket = tokio::time::timeout(duration, make_socket(&url, &*socket_factory))
