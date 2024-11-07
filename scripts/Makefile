@@ -18,18 +18,18 @@
 # the relevant versions in order to push to a newly drafted release.
 
 # Tracks the current version to use for generating download links and changelogs
-current-apple-version = 1.3.6
-current-android-version = 1.3.5
-current-gateway-version = 1.3.2
-current-gui-version = 1.3.9
-current-headless-version = 1.3.4
+current-apple-version = 1.3.8
+current-android-version = 1.3.6
+current-gateway-version = 1.4.0
+current-gui-version = 1.3.11
+current-headless-version = 1.3.5
 
 # Tracks the next version to release for each platform
-next-apple-version = 1.3.7
-next-android-version = 1.3.6
-next-gateway-version = 1.3.3
-next-gui-version = 1.3.10
-next-headless-version = 1.3.5
+next-apple-version = 1.3.9
+next-android-version = 1.3.7
+next-gateway-version = 1.4.1
+next-gui-version = 1.3.12
+next-headless-version = 1.3.6
 
 # macOS uses a slightly different sed syntax
 ifeq ($(shell uname),Darwin)
@@ -68,6 +68,7 @@ gui-version:
 	@find website -type f -name "route.ts" -exec sed $(SEDARG) -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/$(current-gui-version)/g;}' {} \;
 	@find .github -type f -exec sed $(SEDARG) -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/$(next-gui-version)/g;}' {} \;
 	@find rust -path rust/gui-client/node_modules -prune -o -name "Cargo.toml" -exec sed $(SEDARG) -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/$(next-gui-version)/;}' {} \;
+	@find rust -path rust/gui-client/node_modules -prune -o -name "*.rs" -exec sed $(SEDARG) -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/$(next-gui-version)/;}' {} \;
 	@cd rust && cargo update --workspace
 
 headless-version:

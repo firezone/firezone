@@ -11,19 +11,20 @@ import { HiArrowLongRight } from "react-icons/hi2";
 import { usePathname, useSearchParams } from "next/navigation";
 import Analytics from "@/components/Analytics";
 import { Source_Sans_3, Manrope } from "next/font/google";
+import { GoogleTagManager } from "@next/third-parties/google";
 
 const source_sans_3 = Source_Sans_3({
   subsets: ["latin"],
-  variable: "--font-source-sans",
+  variable: "--font-source-sans-3",
   display: "swap",
-  weight: ["200", "300", "400", "500", "600", "700", "800", "900"],
 });
 const manrope = Manrope({
   subsets: ["latin"],
   variable: "--font-manrope",
   display: "swap",
-  weight: ["200", "300", "400", "500", "600", "700", "800"],
 });
+
+const gtmId = process.env.NEXT_PUBLIC_GOOGLE_TAG_MANAGER_ID;
 
 export const metadata: Metadata = {
   title: "WireGuard® for Enterprise • Firezone",
@@ -41,6 +42,7 @@ export default function RootLayout({
         type="text/javascript"
         src="https://app.termly.io/resource-blocker/c4df1a31-22d9-4000-82e6-a86cbec0bba0?autoBlock=on"
       />
+      {gtmId && <GoogleTagManager gtmId={gtmId} />}
       <body className={"subpixel-antialiased text-neutral-900 font-sans"}>
         <Banner active={false}>
           <p className="mx-auto text-center">

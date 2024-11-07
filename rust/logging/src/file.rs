@@ -40,7 +40,7 @@ where
     let (appender_fmt, handle_fmt) = new_appender(log_dir.to_path_buf(), "log");
     let layer_fmt = tracing_subscriber::fmt::layer()
         .with_writer(appender_fmt)
-        .with_ansi(false)
+        .event_format(crate::Format::new().without_ansi())
         .boxed();
 
     let handle = Handle {

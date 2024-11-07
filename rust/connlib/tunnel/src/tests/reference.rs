@@ -1,3 +1,4 @@
+use super::dns_records::DnsRecords;
 use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
@@ -6,7 +7,10 @@ use crate::{client, DomainName};
 use crate::{dns::is_subdomain, proptest::relay_id};
 use connlib_model::{GatewayId, RelayId, ResourceId, StaticSecret};
 use domain::base::Rtype;
+use ip_network::{Ipv4Network, Ipv6Network};
+use prop::sample::select;
 use proptest::{prelude::*, sample};
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     fmt, iter,
@@ -30,16 +34,9 @@ pub(crate) struct ReferenceState {
     /// All IP addresses a domain resolves to in our test.
     ///
     /// This is used to e.g. mock DNS resolution on the gateway.
-    pub(crate) global_dns_records: BTreeMap<DomainName, BTreeSet<IpAddr>>,
+    pub(crate) global_dns_records: DnsRecords,
 
     pub(crate) network: RoutingTable,
-}
-
-#[derive(Debug, Clone)]
-pub(crate) enum ResourceDst {
-    Internet(IpAddr),
-    Cidr(IpAddr),
-    Dns(DomainName),
 }
 
 /// Implementation of our reference state machine.
@@ -97,7 +94,7 @@ impl ReferenceState {
                     }
 
                     // Merge all DNS records into `global_dns`.
-                    global_dns.extend(records);
+                    global_dns.merge(records);
 
                     Some((
                         c,
@@ -189,40 +186,52 @@ impl ReferenceState {
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
                 |ip4_resources| {
-                    icmp_to_cidr_resource(
-                        packet_source_v4(state.client.inner().tunnel_ip4),
-                        sample::select(ip4_resources).prop_flat_map(crate::proptest::host_v4),
-                    )
+                    let tunnel_ip4 = state.client.inner().tunnel_ip4;
+
+                    prop_oneof![
+                        icmp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&ip4_resources)),
+                        udp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&ip4_resources)),
+                        tcp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&ip4_resources)),
+                    ]
                 },
             )
             .with_if_not_empty(
                 10,
                 state.client.inner().ipv6_cidr_resource_dsts(),
                 |ip6_resources| {
-                    icmp_to_cidr_resource(
-                        packet_source_v6(state.client.inner().tunnel_ip6),
-                        sample::select(ip6_resources).prop_flat_map(crate::proptest::host_v6),
-                    )
+                    let tunnel_ip6 = state.client.inner().tunnel_ip6;
+
+                    prop_oneof![
+                        icmp_packet(packet_source_v6(tunnel_ip6), select_host_v6(&ip6_resources)),
+                        udp_packet(packet_source_v6(tunnel_ip6), select_host_v6(&ip6_resources)),
+                        tcp_packet(packet_source_v6(tunnel_ip6), select_host_v6(&ip6_resources)),
+                    ]
                 },
             )
             .with_if_not_empty(
                 10,
                 state.client.inner().resolved_v4_domains(),
                 |dns_v4_domains| {
-                    icmp_to_dns_resource(
-                        packet_source_v4(state.client.inner().tunnel_ip4),
-                        sample::select(dns_v4_domains),
-                    )
+                    let tunnel_ip4 = state.client.inner().tunnel_ip4;
+
+                    prop_oneof![
+                        icmp_packet(packet_source_v4(tunnel_ip4), select(dns_v4_domains.clone())),
+                        udp_packet(packet_source_v4(tunnel_ip4), select(dns_v4_domains.clone())),
+                        tcp_packet(packet_source_v4(tunnel_ip4), select(dns_v4_domains)),
+                    ]
                 },
             )
             .with_if_not_empty(
                 10,
                 state.client.inner().resolved_v6_domains(),
                 |dns_v6_domains| {
-                    icmp_to_dns_resource(
-                        packet_source_v6(state.client.inner().tunnel_ip6),
-                        sample::select(dns_v6_domains),
-                    )
+                    let tunnel_ip6 = state.client.inner().tunnel_ip6;
+
+                    prop_oneof![
+                        icmp_packet(packet_source_v6(tunnel_ip6), select(dns_v6_domains.clone()),),
+                        udp_packet(packet_source_v6(tunnel_ip6), select(dns_v6_domains.clone()),),
+                        tcp_packet(packet_source_v6(tunnel_ip6), select(dns_v6_domains),),
+                    ]
                 },
             )
             .with_if_not_empty(
@@ -240,10 +249,22 @@ impl ReferenceState {
                     .inner()
                     .resolved_ip4_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip4s| {
-                    ping_random_ip(
-                        packet_source_v4(state.client.inner().tunnel_ip4),
-                        sample::select(resolved_non_resource_ip4s),
-                    )
+                    let tunnel_ip4 = state.client.inner().tunnel_ip4;
+
+                    prop_oneof![
+                        icmp_packet(
+                            packet_source_v4(tunnel_ip4),
+                            select(resolved_non_resource_ip4s.clone()),
+                        ),
+                        udp_packet(
+                            packet_source_v4(tunnel_ip4),
+                            select(resolved_non_resource_ip4s.clone()),
+                        ),
+                        tcp_packet(
+                            packet_source_v4(tunnel_ip4),
+                            select(resolved_non_resource_ip4s),
+                        ),
+                    ]
                 },
             )
             .with_if_not_empty(
@@ -253,10 +274,22 @@ impl ReferenceState {
                     .inner()
                     .resolved_ip6_for_non_resources(&state.global_dns_records),
                 |resolved_non_resource_ip6s| {
-                    ping_random_ip(
-                        packet_source_v6(state.client.inner().tunnel_ip6),
-                        sample::select(resolved_non_resource_ip6s),
-                    )
+                    let tunnel_ip6 = state.client.inner().tunnel_ip6;
+
+                    prop_oneof![
+                        icmp_packet(
+                            packet_source_v6(tunnel_ip6),
+                            select(resolved_non_resource_ip6s.clone()),
+                        ),
+                        udp_packet(
+                            packet_source_v6(tunnel_ip6),
+                            select(resolved_non_resource_ip6s.clone()),
+                        ),
+                        tcp_packet(
+                            packet_source_v6(tunnel_ip6),
+                            select(resolved_non_resource_ip6s),
+                        ),
+                    ]
                 },
             )
             .boxed()
@@ -299,7 +332,10 @@ impl ReferenceState {
                 }
             }),
             Transition::SendDnsQueries(queries) => {
-                let mut new_connections_via_gateways = BTreeMap::<_, BTreeSet<ResourceId>>::new();
+                let mut new_connections_via_gateways_udp_triggered =
+                    BTreeMap::<_, BTreeSet<ResourceId>>::new();
+                let mut new_connections_via_gateways_tcp_triggered =
+                    BTreeMap::<_, BTreeSet<ResourceId>>::new();
 
                 for query in queries {
                     // Some queries get answered locally.
@@ -335,15 +371,27 @@ impl ReferenceState {
                     {
                         tracing::debug!(%resource, %gateway, "Not connected yet, dropping packet");
 
-                        let connected_resources =
-                            new_connections_via_gateways.entry(gateway).or_default();
+                        let connected_resources = match query.transport {
+                            DnsTransport::Udp => &mut new_connections_via_gateways_udp_triggered,
+                            DnsTransport::Tcp => &mut new_connections_via_gateways_tcp_triggered,
+                        }
+                        .entry(gateway)
+                        .or_default();
 
                         if state.client.inner().is_connected_gateway(gateway) {
                             connected_resources.insert(resource);
                         } else {
-                            // As part of batch-processing DNS queries, only the first resource per gateway will be connected / authorized.
-                            if connected_resources.is_empty() {
-                                connected_resources.insert(resource);
+                            match query.transport {
+                                DnsTransport::Udp => {
+                                    // As part of batch-processing DNS queries, only the first resource per gateway will be connected / authorized.
+                                    if connected_resources.is_empty() {
+                                        connected_resources.insert(resource);
+                                    }
+                                }
+                                DnsTransport::Tcp => {
+                                    // TCP has retries, so those will always connect.
+                                    connected_resources.insert(resource);
+                                }
                             }
                         }
 
@@ -353,7 +401,10 @@ impl ReferenceState {
                     state.client.exec_mut(|client| client.on_dns_query(query));
                 }
 
-                for (gateway, resources) in new_connections_via_gateways {
+                for (gateway, resources) in new_connections_via_gateways_udp_triggered
+                    .into_iter()
+                    .chain(new_connections_via_gateways_tcp_triggered)
+                {
                     for resource in resources {
                         state.client.exec_mut(|client| {
                             client.connect_to_internet_or_cidr_resource(resource, gateway)
@@ -361,7 +412,7 @@ impl ReferenceState {
                     }
                 }
             }
-            Transition::SendICMPPacketToNonResourceIp {
+            Transition::SendIcmpPacket {
                 src,
                 dst,
                 seq,
@@ -369,44 +420,37 @@ impl ReferenceState {
                 payload,
             } => {
                 state.client.exec_mut(|client| {
-                    // If the Internet Resource is active, all packets are expected to be routed.
-                    if client.active_internet_resource().is_some() {
-                        client.on_icmp_packet_to_internet(
-                            *src,
-                            *dst,
-                            *seq,
-                            *identifier,
-                            *payload,
-                            |r| state.portal.gateway_for_resource(r).copied(),
-                        )
-                    }
-                });
-            }
-            Transition::SendICMPPacketToCidrResource {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
-            } => {
-                state.client.exec_mut(|client| {
-                    client.on_icmp_packet_to_cidr(*src, *dst, *seq, *identifier, *payload, |r| {
+                    client.on_icmp_packet(*src, dst.clone(), *seq, *identifier, *payload, |r| {
                         state.portal.gateway_for_resource(r).copied()
                     })
                 });
             }
-            Transition::SendICMPPacketToDnsResource {
+            Transition::SendUdpPacket {
                 src,
                 dst,
-                seq,
-                identifier,
+                sport,
+                dport,
                 payload,
-                ..
-            } => state.client.exec_mut(|client| {
-                client.on_icmp_packet_to_dns(*src, dst.clone(), *seq, *identifier, *payload, |r| {
-                    state.portal.gateway_for_resource(r).copied()
-                })
-            }),
+            } => {
+                state.client.exec_mut(|client| {
+                    client.on_udp_packet(*src, dst.clone(), *sport, *dport, *payload, |r| {
+                        state.portal.gateway_for_resource(r).copied()
+                    })
+                });
+            }
+            Transition::SendTcpPayload {
+                src,
+                dst,
+                sport,
+                dport,
+                payload,
+            } => {
+                state.client.exec_mut(|client| {
+                    client.on_tcp_packet(*src, dst.clone(), *sport, *dport, *payload, |r| {
+                        state.portal.gateway_for_resource(r).copied()
+                    })
+                });
+            }
             Transition::UpdateSystemDnsServers(servers) => {
                 state
                     .client
@@ -469,61 +513,75 @@ impl ReferenceState {
                     .iter()
                     .all(|r| state.client.inner().has_resource(*r))
             }
-            Transition::SendICMPPacketToNonResourceIp {
-                dst,
-                seq,
-                identifier,
-                payload,
-                ..
-            } => {
-                let is_valid_icmp_packet = state
-                    .client
-                    .inner()
-                    .is_valid_icmp_packet(seq, identifier, payload);
-                let is_cidr_resource = state.client.inner().cidr_resource_by_ip(*dst).is_some();
-
-                is_valid_icmp_packet && !is_cidr_resource
-            }
-            Transition::SendICMPPacketToCidrResource {
-                seq,
-                identifier,
-                dst,
-                payload,
-                ..
-            } => {
-                let ref_client = state.client.inner();
-                let Some(rid) = ref_client.cidr_resource_by_ip(*dst) else {
-                    return false;
-                };
-                let Some(gateway) = state.portal.gateway_for_resource(rid) else {
-                    return false;
-                };
-
-                ref_client.is_valid_icmp_packet(seq, identifier, payload)
-                    && state.gateways.contains_key(gateway)
-            }
-            Transition::SendICMPPacketToDnsResource {
-                seq,
-                identifier,
-                dst,
+            Transition::SendIcmpPacket {
                 src,
+                dst: Destination::DomainName { name, .. },
+                seq,
+                identifier,
+                payload,
+            } => {
+                let ref_client = state.client.inner();
+
+                ref_client.is_valid_icmp_packet(seq, identifier, payload)
+                    && state.is_valid_dst_domain(name, src)
+            }
+            Transition::SendUdpPacket {
+                src,
+                dst: Destination::DomainName { name, .. },
+                sport,
+                dport,
+                payload,
+            } => {
+                let ref_client = state.client.inner();
+
+                ref_client.is_valid_udp_packet(sport, dport, payload)
+                    && state.is_valid_dst_domain(name, src)
+            }
+            Transition::SendTcpPayload {
+                src,
+                dst: Destination::DomainName { name, .. },
+                sport,
+                dport,
+                payload,
+            } => {
+                let ref_client = state.client.inner();
+
+                ref_client.is_valid_tcp_packet(sport, dport, payload)
+                    && state.is_valid_dst_domain(name, src)
+            }
+            Transition::SendIcmpPacket {
+                dst: Destination::IpAddr(dst),
+                seq,
+                identifier,
                 payload,
                 ..
             } => {
                 let ref_client = state.client.inner();
-                let Some(resource) = ref_client.dns_resource_by_domain(dst) else {
-                    return false;
-                };
-                let Some(gateway) = state.portal.gateway_for_resource(resource) else {
-                    return false;
-                };
 
                 ref_client.is_valid_icmp_packet(seq, identifier, payload)
-                    && ref_client.dns_records.get(dst).is_some_and(|r| match src {
-                        IpAddr::V4(_) => r.contains(&Rtype::A),
-                        IpAddr::V6(_) => r.contains(&Rtype::AAAA),
-                    })
-                    && state.gateways.contains_key(gateway)
+                    && state.is_valid_dst_ip(*dst)
+            }
+            Transition::SendUdpPacket {
+                dst: Destination::IpAddr(dst),
+                sport,
+                dport,
+                payload,
+                ..
+            } => {
+                let ref_client = state.client.inner();
+
+                ref_client.is_valid_udp_packet(sport, dport, payload) && state.is_valid_dst_ip(*dst)
+            }
+            Transition::SendTcpPayload {
+                dst: Destination::IpAddr(dst),
+                sport,
+                dport,
+                payload,
+                ..
+            } => {
+                let ref_client = state.client.inner();
+
+                ref_client.is_valid_tcp_packet(sport, dport, payload) && state.is_valid_dst_ip(*dst)
             }
             Transition::UpdateSystemDnsServers(servers) => {
                 if servers.is_empty() {
@@ -550,7 +608,7 @@ impl ReferenceState {
                     .is_some();
 
                 let is_ptr_query = matches!(query.r_type, Rtype::PTR);
-                let is_known_domain = state.global_dns_records.contains_key(&query.domain);
+                let is_known_domain = state.global_dns_records.contains_domain(&query.domain);
                 // In case we sampled a PTR query, the domain doesn't have to exist.
                 let ptr_or_known_domain = is_ptr_query || is_known_domain;
 
@@ -606,21 +664,53 @@ impl ReferenceState {
             Transition::PartitionRelaysFromPortal => true,
         }
     }
+
+    fn is_valid_dst_ip(&self, dst: IpAddr) -> bool {
+        let Some(rid) = self.client.inner().cidr_resource_by_ip(dst) else {
+            // As long as the packet is valid it's always valid to send to a non-resource
+            return true;
+        };
+        let Some(gateway) = self.portal.gateway_for_resource(rid) else {
+            return false;
+        };
+
+        self.gateways.contains_key(gateway)
+    }
+
+    fn is_valid_dst_domain(&self, name: &DomainName, src: &IpAddr) -> bool {
+        let Some(resource) = self.client.inner().dns_resource_by_domain(name) else {
+            return false;
+        };
+        let Some(gateway) = self.portal.gateway_for_resource(resource) else {
+            return false;
+        };
+
+        self.client
+            .inner()
+            .dns_records
+            .get(name)
+            .is_some_and(|r| match src {
+                IpAddr::V4(_) => r.contains(&Rtype::A),
+                IpAddr::V6(_) => r.contains(&Rtype::AAAA),
+            })
+            && self.gateways.contains_key(gateway)
+    }
 }
 
 /// Several helper functions to make the reference state more readable.
 impl ReferenceState {
-    fn all_domains(&self) -> Vec<DomainName> {
+    // We surface what are the existing rtypes for a domain so that it's easier
+    // for the proptests to hit an existing record.
+    fn all_domains(&self) -> Vec<(DomainName, Vec<Rtype>)> {
         self.global_dns_records
-            .keys()
-            .cloned()
-            .chain(
-                self.client
-                    .inner()
-                    .known_hosts
-                    .keys()
-                    .map(|h| DomainName::vec_from_str(h).unwrap()),
-            )
+            .domains_iter()
+            .map(|d| (d.clone(), self.global_dns_records.domain_rtypes(&d)))
+            .chain(self.client.inner().known_hosts.keys().map(|h| {
+                (
+                    DomainName::vec_from_str(h).unwrap(),
+                    vec![Rtype::A, Rtype::AAAA],
+                )
+            }))
             .collect()
     }
 
@@ -660,6 +750,14 @@ impl ReferenceState {
             self.client.exec_mut(|client| client.reset_connections());
         }
     }
+}
+
+fn select_host_v4(hosts: &[Ipv4Network]) -> impl Strategy<Value = Ipv4Addr> {
+    sample::select(hosts.to_vec()).prop_flat_map(crate::proptest::host_v4)
+}
+
+fn select_host_v6(hosts: &[Ipv6Network]) -> impl Strategy<Value = Ipv6Addr> {
+    sample::select(hosts.to_vec()).prop_flat_map(crate::proptest::host_v6)
 }
 
 pub(crate) fn private_key() -> impl Strategy<Value = PrivateKey> {

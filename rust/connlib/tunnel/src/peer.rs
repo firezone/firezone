@@ -1,7 +1,9 @@
 use std::collections::{hash_map, BTreeMap, HashMap, HashSet, VecDeque};
+use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
+use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{gateway::Filter, gateway::Filters};
 use chrono::{DateTime, Utc};
@@ -34,10 +36,6 @@ struct AllowRules {
 }
 
 impl FilterEngine {
-    fn empty() -> FilterEngine {
-        Self::PermitSome(AllowRules::new())
-    }
-
     fn is_allowed(&self, packet: &IpPacket) -> bool {
         match self {
             FilterEngine::PermitAll => true,
@@ -45,15 +43,16 @@ impl FilterEngine {
         }
     }
 
-    fn permit_all(&mut self) {
-        *self = FilterEngine::PermitAll;
-    }
-
-    fn add_filters<'a>(&mut self, filters: impl IntoIterator<Item = &'a Filter>) {
-        match self {
-            FilterEngine::PermitAll => {}
-            FilterEngine::PermitSome(filter_engine) => filter_engine.add_filters(filters),
+    fn with_filters<'a>(filters: impl Iterator<Item = &'a Filters> + Clone) -> FilterEngine {
+        // Empty filters means permit all
+        if filters.clone().any(|f| f.is_empty()) {
+            return Self::PermitAll;
         }
+
+        let mut allow_rules = AllowRules::new();
+        allow_rules.add_filters(filters.flatten());
+
+        Self::PermitSome(allow_rules)
     }
 }
 
@@ -138,6 +137,8 @@ pub struct ClientOnGateway {
     ipv4: Ipv4Addr,
     ipv6: Ipv6Addr,
     resources: HashMap<ResourceId, ResourceOnGateway>,
+    /// Caches the existence of internet resource
+    internet_resource_enabled: bool,
     filters: IpNetworkTable<FilterEngine>,
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
@@ -155,6 +156,7 @@ impl ClientOnGateway {
             permanent_translations: Default::default(),
             nat_table: Default::default(),
             buffered_events: Default::default(),
+            internet_resource_enabled: false,
         }
     }
 
@@ -200,31 +202,37 @@ impl ClientOnGateway {
             })
             .collect_vec();
 
-        self.assign_translations(name, resource_id, &resolved_ips, proxy_ips, now)?;
+        self.setup_nat(name, resource_id, &resolved_ips, proxy_ips, now)?;
 
         Ok(())
     }
 
+    /// Setup the NAT for a particular domain within a wildcard DNS resource.
     #[tracing::instrument(level = "debug", skip_all, fields(cid = %self.id))]
-    pub(crate) fn assign_translations(
+    pub(crate) fn setup_nat(
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
-        mapped_ips: &[IpAddr],
+        resolved_ips: &[IpAddr],
         proxy_ips: Vec<IpAddr>,
         now: Instant,
     ) -> Result<()> {
-        let Some(ResourceOnGateway::Dns {
+        let resource = self
+            .resources
+            .get_mut(&resource_id)
+            .context("Unknown resource")?;
+
+        let ResourceOnGateway::Dns {
             address, domains, ..
-        }) = self.resources.get_mut(&resource_id)
+        } = resource
         else {
-            bail!("Cannot assign translation for non-DNS resource")
+            bail!("Cannot setup NAT for non-DNS resource")
         };
 
         anyhow::ensure!(crate::dns::is_subdomain(&name, address));
 
-        let mapped_ipv4 = mapped_ipv4(mapped_ips);
-        let mapped_ipv6 = mapped_ipv6(mapped_ips);
+        let mapped_ipv4 = mapped_ipv4(resolved_ips);
+        let mapped_ipv6 = mapped_ipv6(resolved_ips);
 
         let ipv4_maps = proxy_ips
             .iter()
@@ -247,7 +255,9 @@ impl ClientOnGateway {
             );
         }
 
-        domains.insert(name, mapped_ips.to_vec());
+        tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Set up DNS resource NAT");
+
+        domains.insert(name, resolved_ips.to_vec());
         self.recalculate_filters();
 
         Ok(())
@@ -328,6 +338,8 @@ impl ClientOnGateway {
         resource: crate::messages::gateway::ResourceDescription,
         expires_at: Option<DateTime<Utc>>,
     ) {
+        tracing::info!(client = %self.id, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
+
         match self.resources.entry(resource.id()) {
             hash_map::Entry::Vacant(v) => {
                 v.insert(ResourceOnGateway::new(resource, expires_at));
@@ -356,9 +368,15 @@ impl ClientOnGateway {
     // in case that 2 or more resources have overlapping rules.
     fn recalculate_filters(&mut self) {
         self.filters = IpNetworkTable::new();
-        for resource in self.resources.values() {
+        self.recalculate_cidr_filters();
+        self.recalculate_dns_filters();
+
+        self.internet_resource_enabled = self.resources.values().any(|r| r.is_internet_resource());
+    }
+
+    fn recalculate_cidr_filters(&mut self) {
+        for resource in self.resources.values().filter(|r| r.is_cidr()) {
             for ip in &resource.ips() {
-                let mut filter_engine = FilterEngine::empty();
                 let filters = self.resources.values().filter_map(|r| {
                     r.ips()
                         .iter()
@@ -366,17 +384,24 @@ impl ClientOnGateway {
                         .then_some(r.filters())
                 });
 
-                // Empty filters means permit all
-                if filters.clone().any(|f| f.is_empty()) {
-                    filter_engine.permit_all();
-                }
-
-                filter_engine.add_filters(filters.flatten());
-
-                tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
-
-                self.filters.insert(*ip, filter_engine);
+                insert_filters(&mut self.filters, *ip, filters);
             }
+        }
+    }
+
+    fn recalculate_dns_filters(&mut self) {
+        for (addr, TranslationState { resource_id, .. }) in &self.permanent_translations {
+            let Some(resource) = self.resources.get(resource_id) else {
+                continue;
+            };
+
+            debug_assert!(resource.is_dns());
+
+            insert_filters(
+                &mut self.filters,
+                IpNetwork::from(*addr),
+                iter::once(resource.filters()),
+            );
         }
     }
 
@@ -405,10 +430,9 @@ impl ClientOnGateway {
 
     pub fn decapsulate(&mut self, packet: IpPacket, now: Instant) -> anyhow::Result<IpPacket> {
         self.ensure_allowed_src(&packet)?;
+        self.ensure_allowed_dst(&packet)?;
 
         let packet = self.transform_network_to_tun(packet, now)?;
-
-        self.ensure_allowed_dst(&packet)?;
 
         Ok(packet)
     }
@@ -436,6 +460,10 @@ impl ClientOnGateway {
         Ok(Some(packet))
     }
 
+    pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
+        self.resources.contains_key(&resource)
+    }
+
     fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
         let src = packet.source();
 
@@ -449,6 +477,12 @@ impl ClientOnGateway {
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
     fn ensure_allowed_dst(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
         let dst = packet.destination();
+
+        // Note a Gateway with Internet resource should never get packets for other resources
+        if self.internet_resource_enabled && !is_dns_addr(packet.destination()) {
+            return Ok(());
+        }
+
         if !self
             .filters
             .longest_match(dst)
@@ -584,6 +618,18 @@ impl ResourceOnGateway {
             ResourceOnGateway::Internet { expires_at } => expires_at.as_ref(),
         }
     }
+
+    fn is_cidr(&self) -> bool {
+        matches!(self, ResourceOnGateway::Cidr { .. })
+    }
+
+    fn is_dns(&self) -> bool {
+        matches!(self, ResourceOnGateway::Dns { .. })
+    }
+
+    fn is_internet_resource(&self) -> bool {
+        matches!(self, ResourceOnGateway::Internet { .. })
+    }
 }
 
 // Current state of a translation for a given proxy ip
@@ -691,12 +737,28 @@ fn mapped_ipv4(ips: &[IpAddr]) -> Vec<IpAddr> {
         ipv6_addresses(ips)
     }
 }
+
 fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
     if !ipv6_addresses(ips).is_empty() {
         ipv6_addresses(ips)
     } else {
         ipv4_addresses(ips)
     }
+}
+
+fn is_dns_addr(addr: IpAddr) -> bool {
+    IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
+}
+
+fn insert_filters<'a>(
+    filter_store: &mut IpNetworkTable<FilterEngine>,
+    ip: IpNetwork,
+    filters: impl Iterator<Item = &'a Filters> + Clone,
+) {
+    let filter_engine = FilterEngine::with_filters(filters);
+
+    tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
+    filter_store.insert(ip, filter_engine);
 }
 
 #[cfg(test)]
@@ -711,7 +773,7 @@ mod tests {
     };
     use chrono::Utc;
     use connlib_model::{ClientId, ResourceId};
-    use ip_network::Ipv4Network;
+    use ip_network::{IpNetwork, Ipv4Network};
 
     use super::{ClientOnGateway, TranslationState};
 
@@ -1045,6 +1107,179 @@ mod tests {
         now += Duration::from_secs(1);
 
         assert!(state.is_expired(now));
+    }
+
+    #[test]
+    fn dns_and_cidr_filters_dot_mix() {
+        let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
+        peer.add_resource(foo_dns_resource(), None);
+        peer.add_resource(bar_cidr_resource(), None);
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            resource_id(),
+            &[foo_real_ip().into()],
+            vec![foo_proxy_ip().into()],
+            Instant::now(),
+        )
+        .unwrap();
+
+        assert_eq!(bar_contained_ip(), foo_real_ip());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            bar_contained_ip(),
+            1,
+            bar_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_ok());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            bar_contained_ip(),
+            1,
+            foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_err());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            bar_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_err());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_ok());
+    }
+
+    #[test]
+    fn internet_resource_doesnt_allow_all_traffic_for_dns_resources() {
+        let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
+        peer.add_resource(foo_dns_resource(), None);
+        peer.add_resource(internet_resource(), None);
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            resource_id(),
+            &[foo_real_ip().into()],
+            vec![foo_proxy_ip().into()],
+            Instant::now(),
+        )
+        .unwrap();
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_ok());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            600,
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_err());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            "1.1.1.1".parse().unwrap(),
+            1,
+            600,
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.decapsulate(pkt, Instant::now()).is_ok());
+    }
+
+    fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Dns(
+            crate::messages::gateway::ResourceDescriptionDns {
+                id: resource_id(),
+                address: foo_name(),
+                name: "foo".to_string(),
+                filters: vec![Filter::Udp(PortRange {
+                    port_range_end: foo_allowed_port(),
+                    port_range_start: foo_allowed_port(),
+                })],
+            },
+        )
+    }
+
+    fn bar_cidr_resource() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Cidr(
+            crate::messages::gateway::ResourceDescriptionCidr {
+                id: resource2_id(),
+                address: bar_address(),
+                name: "foo".to_string(),
+                filters: vec![Filter::Udp(PortRange {
+                    port_range_end: bar_allowed_port(),
+                    port_range_start: bar_allowed_port(),
+                })],
+            },
+        )
+    }
+
+    fn internet_resource() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Internet(
+            crate::messages::gateway::ResourceDescriptionInternet {
+                id: "ed29c148-2acf-4ceb-8db5-d796c267163a".parse().unwrap(),
+            },
+        )
+    }
+
+    fn foo_allowed_port() -> u16 {
+        80
+    }
+
+    fn bar_allowed_port() -> u16 {
+        443
+    }
+
+    fn foo_real_ip() -> Ipv4Addr {
+        "10.0.0.1".parse().unwrap()
+    }
+
+    fn bar_contained_ip() -> Ipv4Addr {
+        "10.0.0.1".parse().unwrap()
+    }
+
+    fn foo_proxy_ip() -> Ipv4Addr {
+        "100.96.0.1".parse().unwrap()
+    }
+
+    fn foo_name() -> String {
+        "foo.com".to_string()
+    }
+
+    fn bar_address() -> IpNetwork {
+        "10.0.0.0/24".parse().unwrap()
     }
 
     fn source_v4_addr() -> Ipv4Addr {

@@ -15,5 +15,7 @@ fi
 gh release upload "$TAG_NAME" \
     "$BINARY_DEST_PATH".deb \
     "$BINARY_DEST_PATH".deb.sha256sum.txt \
+    "$BINARY_DEST_PATH".rpm \
+    "$BINARY_DEST_PATH".rpm.sha256sum.txt \
     $clobber \
     --repo "$REPOSITORY"

@@ -41,7 +41,7 @@ domain = { version = "0.10", features = ["serde"] }
 dns-lookup = "2.0"
 tokio-tungstenite = "0.23.1"
 rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
-tokio = "1.39"
+tokio = "1.41"
 rustls = { version = "0.23.10", default-features = false, features = ["ring"] }
 
 connlib-client-android = { path = "connlib/clients/android" }
@@ -75,6 +75,7 @@ redundant_clone = "warn"
 private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
 
 [patch.crates-io]
+smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp", branch = "main" }
 boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
@@ -85,7 +86,7 @@ tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdr
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
-tracing = "0.1"
+tracing = "0.1.40"
 
 [profile.release]
 strip = true

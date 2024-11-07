@@ -52,7 +52,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         id: setup-rust
-      - uses: ./.github/actions/setup-tauri
+      - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 5
       - uses: taiki-e/install-action@cargo-udeps
         env:
@@ -76,9 +76,8 @@ jobs:
       matrix:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         runs-on: [
-          ubuntu-20.04,
           ubuntu-22.04,
-          macos-12,
+          ubuntu-24.04,
           macos-13,
           macos-14,
           windows-2019,
@@ -89,7 +88,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
         id: setup-rust
-      - uses: ./.github/actions/setup-tauri
+      - uses: ./.github/actions/setup-tauri-v2
       - uses: taiki-e/install-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -105,11 +104,16 @@ jobs:
           cargo test --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored --nocapture
 
           # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
-          rg --count --no-ignore SendICMPPacketToCidrResource $TESTCASES_DIR
-          rg --count --no-ignore SendICMPPacketToDnsResource $TESTCASES_DIR
+          rg --count --no-ignore SendIcmpPacket $TESTCASES_DIR
+          rg --count --no-ignore SendUdpPacket $TESTCASES_DIR
+          rg --count --no-ignore SendTcpPayload $TESTCASES_DIR
           rg --count --no-ignore SendDnsQueries $TESTCASES_DIR
+          rg --count --no-ignore "Packet for DNS resource" $TESTCASES_DIR
+          rg --count --no-ignore "Packet for CIDR resource" $TESTCASES_DIR
+          rg --count --no-ignore "Packet for Internet resource" $TESTCASES_DIR
           rg --count --no-ignore "Performed IP-NAT46" $TESTCASES_DIR
           rg --count --no-ignore "Performed IP-NAT64" $TESTCASES_DIR
+          rg --count --no-ignore "Too big DNS response, truncating" $TESTCASES_DIR
 
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
@@ -128,8 +132,8 @@ jobs:
       fail-fast: false
       matrix:
         runs-on: [
-          ubuntu-20.04,
           ubuntu-22.04,
+          ubuntu-24.04,
           windows-2019,
           windows-2022
         ]
@@ -143,18 +147,19 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-rust
-      - uses: ./.github/actions/setup-tauri
+      - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 5
         with:
           runtime: true
+        # These steps must be synchronized with build.sh and build.bat in `rust/gui-client`
       - name: pnpm install
         run: |
           pnpm install
           cp "node_modules/flowbite/dist/flowbite.min.js" "src/"
-      - name: Compile TypeScript
-        run: pnpm tsc
       - name: Compile Tailwind
         run: pnpm tailwindcss -i src/input.css -o src/output.css
+      - name: Run Vite bundler
+        run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
       - uses: taiki-e/install-action@v2
@@ -172,13 +177,13 @@ jobs:
       fail-fast: false
       matrix:
         # TODO: Add Windows as part of issue #3782
-        runs-on: [ubuntu-20.04, ubuntu-22.04]
+        runs-on: [ubuntu-22.04, ubuntu-24.04]
         test: [linux-group, token-path]
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-rust
-      - uses: ./.github/actions/setup-tauri
+      - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 5
       - run: scripts/tests/${{ matrix.test }}.sh
         name: "test script"

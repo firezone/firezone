@@ -7,6 +7,7 @@ edition = "2021"
 [dependencies]
 backoff = "0.4.0"
 base64 = "0.22.1"
+firezone-logging = { workspace = true }
 futures = "0.3.29"
 hex = "0.4"
 libc = "0.2"
@@ -14,10 +15,10 @@ os_info = { version = "3", default-features = false }
 rand_core = "0.6.4"
 secrecy = { workspace = true }
 serde = { version = "1.0.210", features = ["derive"] }
-serde_json = "1.0.125"
+serde_json = "1.0.132"
 sha2 = "0.10.8"
 socket-factory = { workspace = true }
-thiserror = "1.0.61"
+thiserror = "1.0.68"
 tokio = { workspace = true, features = ["net", "time"] }
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
@@ -28,7 +29,6 @@ uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
 hostname = "0.4.0"
 
 [dev-dependencies]
-firezone-logging = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "tracing"] }
 
 [lints]

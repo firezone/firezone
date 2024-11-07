@@ -3,9 +3,10 @@ mod codec;
 mod interface;
 mod server;
 mod stub_device;
+mod time;
 
 pub use client::{Client, QueryResult};
-pub use server::{Server, SocketHandle};
+pub use server::{Query, Server, SocketHandle};
 
 fn create_tcp_socket() -> smoltcp::socket::tcp::Socket<'static> {
     /// The 2-byte length prefix of DNS over TCP messages limits their size to effectively u16::MAX.

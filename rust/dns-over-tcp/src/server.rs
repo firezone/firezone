@@ -1,15 +1,19 @@
 use std::{
     collections::{BTreeSet, HashMap, VecDeque},
     net::SocketAddr,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
-use crate::{codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice};
+use crate::{
+    codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice,
+    time::smol_now,
+};
 use anyhow::{Context as _, Result};
 use domain::{base::Message, dep::octseq::OctetsInto as _};
+use firezone_logging::anyhow_dyn_err;
 use ip_packet::IpPacket;
 use smoltcp::{
-    iface::{Interface, SocketSet},
+    iface::{Interface, PollResult, SocketSet},
     socket::tcp,
     wire::IpEndpoint,
 };
@@ -25,6 +29,9 @@ pub struct Server {
     listen_endpoints: HashMap<smoltcp::iface::SocketHandle, SocketAddr>,
 
     received_queries: VecDeque<Query>,
+
+    created_at: Instant,
+    last_now: Instant,
 }
 
 /// Opaque handle to a TCP socket.
@@ -44,7 +51,7 @@ pub struct Query {
 impl Server {
     pub fn new(now: Instant) -> Self {
         let mut device = InMemoryDevice::default();
-        let interface = create_interface(&mut device, now);
+        let interface = create_interface(&mut device);
 
         Self {
             device,
@@ -52,6 +59,8 @@ impl Server {
             sockets: SocketSet::new(Vec::default()),
             listen_endpoints: Default::default(),
             received_queries: Default::default(),
+            created_at: now,
+            last_now: now,
         }
     }
 
@@ -62,8 +71,23 @@ impl Server {
     /// The constant configures, how many concurrent clients you would like to be able to serve per listen address.
     pub fn set_listen_addresses<const NUM_CONCURRENT_CLIENTS: usize>(
         &mut self,
-        addresses: Vec<SocketAddr>,
+        addresses: BTreeSet<SocketAddr>,
     ) {
+        let current_listen_endpoints = self
+            .listen_endpoints
+            .values()
+            .copied()
+            .collect::<BTreeSet<_>>();
+
+        if current_listen_endpoints == addresses {
+            tracing::debug!(
+                ?current_listen_endpoints,
+                "Already listening on this exact set of addresses"
+            );
+
+            return;
+        }
+
         assert!(NUM_CONCURRENT_CLIENTS > 0);
 
         let mut sockets =
@@ -135,24 +159,19 @@ impl Server {
         Ok(())
     }
 
-    /// Resets the socket associated with the given handle.
-    ///
-    /// Use this if you encountered an error while processing a previously emitted DNS query.
-    pub fn reset(&mut self, handle: SocketHandle) {
-        self.sockets.get_mut::<tcp::Socket>(handle.0).abort();
-    }
-
     /// Inform the server that time advanced.
     ///
     /// Typical for a sans-IO design, `handle_timeout` will work through all local buffers and process them as much as possible.
     pub fn handle_timeout(&mut self, now: Instant) {
-        let changed = self.interface.poll(
-            smoltcp::time::Instant::from(now),
+        self.last_now = now;
+
+        let result = self.interface.poll(
+            smol_now(self.created_at, now),
             &mut self.device,
             &mut self.sockets,
         );
 
-        if !changed {
+        if result == PollResult::None {
             return;
         }
 
@@ -169,13 +188,21 @@ impl Server {
                         });
                     }
                     Err(e) => {
-                        tracing::debug!("Error on receiving DNS query: {e}");
+                        tracing::debug!(error = anyhow_dyn_err(&e), "Error on receiving DNS query");
                         socket.abort();
                         break;
                     }
                 }
             }
         }
+    }
+
+    pub fn poll_timeout(&mut self) -> Option<Instant> {
+        let now = smol_now(self.created_at, self.last_now);
+
+        let poll_in = self.interface.poll_delay(now, &self.sockets)?;
+
+        Some(self.last_now + Duration::from(poll_in))
     }
 
     /// Returns [`IpPacket`]s that should be sent.

@@ -18,10 +18,12 @@ use firezone_gui_client_common::{
     updates,
 };
 use firezone_headless_client::LogFilterReloader;
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_telemetry as telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{str::FromStr, time::Duration};
-use tauri::{Manager, SystemTrayEvent};
+use tauri::Manager;
+use tauri_plugin_shell::ShellExt as _;
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 
@@ -61,7 +63,7 @@ impl GuiIntegration for TauriIntegration {
     fn set_welcome_window_visible(&self, visible: bool) -> Result<()> {
         let win = self
             .app
-            .get_window("welcome")
+            .get_webview_window("welcome")
             .context("Couldn't get handle to Welcome window")?;
 
         if visible {
@@ -73,7 +75,7 @@ impl GuiIntegration for TauriIntegration {
     }
 
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
-        Ok(tauri::api::shell::open(&self.app.shell_scope(), url, None)?)
+        Ok(self.app.shell().open(url.as_ref(), None)?)
     }
 
     fn set_tray_icon(&mut self, icon: common::system_tray::Icon) -> Result<()> {
@@ -85,11 +87,11 @@ impl GuiIntegration for TauriIntegration {
     }
 
     fn show_notification(&self, title: &str, body: &str) -> Result<()> {
-        os::show_notification(title, body)
+        os::show_notification(&self.app, title, body)
     }
 
     fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()> {
-        os::show_update_notification(ctlr_tx, title, url)
+        os::show_update_notification(&self.app, ctlr_tx, title, url)
     }
 
     fn show_window(&self, window: common::system_tray::Window) -> Result<()> {
@@ -100,7 +102,7 @@ impl GuiIntegration for TauriIntegration {
 
         let win = self
             .app
-            .get_window(id)
+            .get_webview_window(id)
             .context("Couldn't get handle to `{id}` window")?;
 
         // Needed to bring shown windows to the front
@@ -138,17 +140,16 @@ pub(crate) fn run(
         ctlr_tx: ctlr_tx.clone(),
         inject_faults: cli.inject_faults,
     };
-
-    let (setup_result_tx, mut setup_result_rx) = oneshot::channel::<Result<(), Error>>();
+    let (tray_tx, tray_rx) = oneshot::channel();
     let app = tauri::Builder::default()
         .manage(managed)
-        .on_window_event(|event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Keep the frontend running but just hide this webview
                 // Per https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
                 // Closing the window fully seems to deallocate it or something.
 
-                event.window().hide().unwrap();
+                window.hide().unwrap();
                 api.prevent_close();
             }
         })
@@ -163,30 +164,16 @@ pub(crate) fn run(
             settings::get_advanced_settings,
             crate::client::welcome::sign_in,
         ])
-        .system_tray(system_tray::loading())
-        .on_system_tray_event(|app, event| {
-            if let SystemTrayEvent::MenuItemClick { id, .. } = event {
-                tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
-                let event = match serde_json::from_str::<TrayMenuEvent>(&id) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        tracing::error!("{e}");
-                        return;
-                    }
-                };
-                match handle_system_tray_event(app, event) {
-                    Ok(_) => {}
-                    Err(e) => tracing::error!("{e}"),
-                }
-            }
-        })
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_shell::init())
         .setup(move |app| {
             let setup_inner = move || {
                 // Check for updates
                 tokio::spawn(async move {
                     if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await
                     {
-                        tracing::error!(?error, "Error in updates::checker_task");
+                        tracing::error!(error = anyhow_dyn_err(&error), "Error in updates::checker_task");
                     }
                 });
 
@@ -194,7 +181,7 @@ pub(crate) fn run(
                     let ctlr_tx = ctlr_tx.clone();
                     tokio::spawn(async move {
                         if let Err(error) = smoke_test(ctlr_tx).await {
-                            tracing::error!(?error, "Error during smoke test, crashing on purpose so a dev can see our stacktraces");
+                            tracing::error!(error = anyhow_dyn_err(&error), "Error during smoke test, crashing on purpose so a dev can see our stacktraces");
                             unsafe { sadness_generator::raise_segfault() }
                         }
                     });
@@ -241,16 +228,20 @@ pub(crate) fn run(
 
                 assert_eq!(
                     firezone_bin_shared::BUNDLE_ID,
-                    app.handle().config().tauri.bundle.identifier,
+                    app.handle().config().identifier,
                     "BUNDLE_ID should match bundle ID in tauri.conf.json"
                 );
 
-                let app_handle = app.handle();
+                let tray = tray_rx.blocking_recv().expect("tray_rx failed");
+                let tray = system_tray::Tray::new(app.handle().clone(), tray);
+                let integration = TauriIntegration { app: app.handle().clone(), tray };
+
+                let app_handle = app.handle().clone();
                 let _ctlr_task = tokio::spawn(async move {
                     // Spawn two nested Tasks so the outer can catch panics from the inner
                     let task = tokio::spawn(run_controller(
-                        app_handle.clone(),
                         ctlr_tx,
+                        integration,
                         ctlr_rx,
                         advanced_settings,
                         reloader,
@@ -267,14 +258,12 @@ pub(crate) fn run(
 
                     let exit_code = match task.await {
                         Err(error) => {
-                            telemetry::capture_error(&error);
-                            tracing::error!(?error, "run_controller panicked");
+                            tracing::error!(error = std_dyn_err(&error), "run_controller panicked");
                             telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
                             1
                         }
                         Ok(Err(error)) => {
-                            telemetry::capture_error(&error);
-                            tracing::error!(?error, "run_controller returned an error");
+                            tracing::error!(error = std_dyn_err(&error), "run_controller returned an error");
                             errors::show_error_dialog(&error).unwrap();
                             telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
                             1
@@ -287,29 +276,34 @@ pub(crate) fn run(
 
                     // In a normal Rust application, Sentry's guard would flush on drop: https://docs.sentry.io/platforms/rust/configuration/draining/
                     // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
-                    telemetry.stop();
+                    // TODO: This limit may not exist in Tauri v2
+                    telemetry.stop().await;
 
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);
+                    // In Tauri v1, calling `App::exit` internally exited the process.
+                    // In Tauri v2, that doesn't happen, but `App::run` still doesn't return, so we have to bail out of the process manually.
+                    std::process::exit(exit_code);
                 });
                 Ok(())
             };
 
-            setup_result_tx.send(setup_inner()).expect("should be able to send setup result");
+            let result = setup_inner();
+            if let Err(error) = &result {
+                tracing::error!(error, "Tauri setup failed");
+            }
 
-            Ok(())
+            result
         });
-    tracing::debug!("Building Tauri app...");
     let app = app.build(tauri::generate_context!());
-
-    setup_result_rx
-        .try_recv()
-        .context("couldn't receive result of setup")??;
 
     let app = match app {
         Ok(x) => x,
         Err(error) => {
-            tracing::error!(?error, "Failed to build Tauri app instance");
+            tracing::error!(
+                error = std_dyn_err(&error),
+                "Failed to build Tauri app instance"
+            );
             #[expect(clippy::wildcard_enum_match_arm)]
             match error {
                 tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(_)) => {
@@ -320,6 +314,36 @@ pub(crate) fn run(
         }
     };
 
+    let tray = tauri::tray::TrayIconBuilder::new()
+        .icon(system_tray::icon_to_tauri_icon(
+            &firezone_gui_client_common::system_tray::Icon::default(),
+        ))
+        .menu(&system_tray::build_app_state(
+            app.handle(),
+            &firezone_gui_client_common::system_tray::AppState::default().into_menu(),
+        )?)
+        .on_menu_event(|app, event| {
+            let id = &event.id.0;
+            tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
+            let event = match serde_json::from_str::<TrayMenuEvent>(id) {
+                Ok(x) => x,
+                Err(e) => {
+                    tracing::error!("{e}");
+                    return;
+                }
+            };
+            match handle_system_tray_event(app, event) {
+                Ok(_) => {}
+                Err(e) => tracing::error!("{e}"),
+            }
+        })
+        .tooltip("Firezone")
+        .build(&app)
+        .context("Cannot build Tauri tray icon")?;
+    if tray_tx.send(tray).is_err() {
+        panic!("Couldn't send tray through the channel");
+    }
+
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
             // Don't exit if we close our main window
@@ -328,6 +352,7 @@ pub(crate) fn run(
             api.prevent_exit();
         }
     });
+    tracing::warn!("app.run returned, this is normally unreachable even in Tauri v2");
     Ok(())
 }
 
@@ -412,7 +437,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
 async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Result<()> {
     loop {
         match server.accept().await {
-            Ok(bytes) => {
+            Ok(Some(bytes)) => {
                 let url = SecretString::from_str(
                     std::str::from_utf8(bytes.expose_secret())
                         .context("Incoming deep link was not valid UTF-8")?,
@@ -424,7 +449,12 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
                     .await
                     .ok();
             }
-            Err(error) => tracing::error!(?error, "error while accepting deep link"),
+            Ok(None) => {
+                tracing::debug!("Accepted deep-link but read 0 bytes, trying again ...");
+            }
+            Err(error) => {
+                tracing::warn!(error = anyhow_dyn_err(&error), "Failed to accept deep link")
+            }
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
         server = deep_link::Server::new().await?;
@@ -441,8 +471,8 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
 
 // TODO: Move this into `impl Controller`
 async fn run_controller(
-    app: tauri::AppHandle,
     ctlr_tx: CtlrTx,
+    integration: TauriIntegration,
     rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: LogFilterReloader,
@@ -450,11 +480,11 @@ async fn run_controller(
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
     tracing::debug!("Entered `run_controller`");
-    let tray = system_tray::Tray::new(app.tray_handle());
+
     let controller = firezone_gui_client_common::controller::Builder {
         advanced_settings,
         ctlr_tx,
-        integration: TauriIntegration { app, tray },
+        integration,
         log_filter_reloader,
         rx,
         telemetry,

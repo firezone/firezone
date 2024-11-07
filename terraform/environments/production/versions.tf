@@ -1,5 +1,5 @@
 terraform {
-  required_version = "1.9.7"
+  required_version = "~> 1.9.0"
 
   required_providers {
     random = {
@@ -29,7 +29,7 @@ terraform {
 
     postgresql = {
       source  = "cyrilgdn/postgresql"
-      version = "1.23.0"
+      version = "1.24.0"
     }
   }
 }

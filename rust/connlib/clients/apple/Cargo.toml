@@ -1,11 +1,8 @@
 [package]
 name = "connlib-client-apple"
 # mark:next-apple-version
-version = "1.3.7"
+version = "1.3.9"
 edition = "2021"
-
-[features]
-mock = ["connlib-client-shared/mock"]
 
 [build-dependencies]
 swift-bridge-build = "0.1.57"
@@ -16,6 +13,7 @@ backoff = "0.4.0"
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
 firezone-logging = { workspace = true }
+firezone-telemetry = { workspace = true }
 ip_network = "0.4"
 libc = "0.2"
 phoenix-channel = { workspace = true }

@@ -48,6 +48,15 @@ defmodule Domain.Clients.Client.Query do
     |> distinct(true)
   end
 
+  def count_clients_by_actor_id(queryable \\ not_deleted()) do
+    queryable
+    |> group_by([clients: clients], clients.actor_id)
+    |> select([clients: clients], %{
+      actor_id: clients.actor_id,
+      count: count(clients.id)
+    })
+  end
+
   def returning_not_deleted(queryable) do
     select(queryable, [clients: clients], clients)
   end
@@ -124,6 +133,16 @@ defmodule Domain.Clients.Client.Query do
         fun: &filter_by_verification/2
       },
       %Domain.Repo.Filter{
+        name: :presence,
+        title: "Presence",
+        type: :string,
+        values: [
+          {"Online", "online"},
+          {"Offline", "offline"}
+        ],
+        fun: &filter_by_presence/2
+      },
+      %Domain.Repo.Filter{
         name: :client_or_actor_name,
         title: "Client Name or Actor Name",
         type: {:string, :websearch},
@@ -141,6 +160,40 @@ defmodule Domain.Clients.Client.Query do
 
   def filter_by_verification(queryable, "not_verified") do
     {queryable, dynamic([clients: clients], is_nil(clients.verified_at))}
+  end
+
+  def filter_by_presence(queryable, "online") do
+    ids =
+      queryable
+      |> fetch_queried_account_id()
+      |> Domain.Clients.online_client_ids()
+
+    {queryable, dynamic([clients: clients], clients.id in ^ids)}
+  end
+
+  def filter_by_presence(queryable, "offline") do
+    ids =
+      queryable
+      |> fetch_queried_account_id()
+      |> Domain.Clients.online_client_ids()
+
+    {queryable, dynamic([clients: clients], clients.id not in ^ids)}
+  end
+
+  # there is no easy way to pass additional data to our filters right now so we
+  # extract the account_id from the queryable instead
+  defp fetch_queried_account_id(queryable) do
+    Enum.find_value(queryable.wheres, fn
+      %Ecto.Query.BooleanExpr{
+        op: :and,
+        expr: {:==, _, [{{_, _, [_, :account_id]}, _, _}, {:^, _, [b_idx]}]},
+        params: [{account_id, {b_idx, :account_id}}]
+      } ->
+        account_id
+
+      _ ->
+        nil
+    end)
   end
 
   def filter_by_client_or_actor_name(queryable, name) do

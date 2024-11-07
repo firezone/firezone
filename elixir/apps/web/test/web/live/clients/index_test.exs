@@ -48,7 +48,7 @@ defmodule Web.Live.Clients.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients")
 
-    assert html =~ "No clients to display"
+    assert html =~ "No Actors have signed in from any Client"
   end
 
   test "renders clients table", %{
@@ -74,11 +74,17 @@ defmodule Web.Live.Clients.IndexTest do
       assert row["status"] == "Online"
       name = Repo.preload(online_client, :actor).actor.name
       assert row["user"] =~ name
+      assert row[""] =~ "Apple iOS"
+      assert row["last started"]
+      assert row["created"]
     end)
     |> with_table_row("name", offline_client.name, fn row ->
       assert row["status"] == "Offline"
       name = Repo.preload(offline_client, :actor).actor.name
       assert row["user"] =~ name
+      assert row[""]
+      assert row["last started"]
+      assert row["created"]
     end)
   end
 

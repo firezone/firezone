@@ -13,29 +13,29 @@
   },
   "dependencies": {
     "@docsearch/react": "^3.6.2",
-    "@mdx-js/loader": "^3.0.1",
+    "@mdx-js/loader": "^3.1.0",
     "@mdx-js/react": "^3.0.1",
-    "@next/mdx": "~14.2.15",
-    "@next/third-parties": "^14.2.15",
+    "@next/mdx": "~15.0.2",
+    "@next/third-parties": "^15.0.2",
     "@types/mdx": "^2.0.13",
     "@types/mixpanel-browser": "^2.50.0",
     "@types/node": "20.14.12",
-    "@types/react": "18.3.10",
-    "@types/react-dom": "18.3.0",
+    "@types/react": "18.3.11",
+    "@types/react-dom": "18.3.1",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@vercel/edge-config": "^1.3.0",
     "asciinema-player": "^3.8.1",
-    "autoprefixer": "10.4.19",
+    "autoprefixer": "10.4.20",
     "fast-xml-parser": "^4.5.0",
     "flowbite-react": "^0.10.2",
-    "framer-motion": "^11.11.8",
+    "framer-motion": "^11.11.11",
     "highlight.js": "^11.10.0",
     "md5": "^2.3.0",
     "mixpanel-browser": "^2.55.1",
     "next": "^14.2.15",
     "next-hubspot": "^1.3.0",
     "next-sitemap": "^4.2.3",
-    "postcss": "8.4.39",
+    "postcss": "8.4.47",
     "react": "18.3.1",
     "react-dom": "18.3.1",
     "react-fast-marquee": "^1.6.5",
@@ -48,11 +48,11 @@
     "rehype-stringify": "^10.0.1",
     "remark-gfm": "^4.0.0",
     "remark-parse": "^11.0.0",
-    "tailwindcss": "3.4.10"
+    "tailwindcss": "3.4.14"
   },
   "devDependencies": {
     "flowbite-typography": "^1.0.4",
     "hastscript": "^9.0.0",
-    "typescript": "5.5.4"
+    "typescript": "5.6.3"
   }
 }

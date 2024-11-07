@@ -1,6 +1,7 @@
 defmodule Web.Actors.Show do
   use Web, :live_view
   import Web.Actors.Components
+  import Web.Clients.Components
   alias Domain.{Accounts, Auth, Tokens, Flows, Clients}
   alias Domain.Actors
 
@@ -31,7 +32,7 @@ defmodule Web.Actors.Show do
         |> assign_live_table("clients",
           query_module: Clients.Client.Query,
           sortable_fields: [],
-          hide_filters: [:client_or_actor_name],
+          hide_filters: [:client_or_actor_name, :presence, :verification],
           callback: &handle_clients_update!/2
         )
         |> assign_live_table("flows",
@@ -467,16 +468,42 @@ defmodule Web.Actors.Show do
           ordered_by={@order_by_table_id["clients"]}
           metadata={@clients_metadata}
         >
-          <:col :let={client} label="name">
-            <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
-              <%= client.name %>
-            </.link>
+          <:col :let={client} class="w-8">
+            <.popover placement="right">
+              <:target>
+                <.client_os_icon client={client} />
+              </:target>
+              <:content>
+                <.client_os_name_and_version client={client} />
+              </:content>
+            </.popover>
+          </:col>
+          <:col :let={client} field={{:clients, :name}} label="name">
+            <div class="flex items-center space-x-1">
+              <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
+                <%= client.name %>
+              </.link>
+              <.icon
+                :if={not is_nil(client.verified_at)}
+                name="hero-shield-check"
+                class="w-4 h-4"
+                title="Device attributes of this client are manually verified"
+              />
+            </div>
           </:col>
           <:col :let={client} label="status">
             <.connection_status schema={client} />
           </:col>
+          <:col :let={client} field={{:clients, :last_seen_at}} label="last started">
+            <.relative_datetime datetime={client.last_seen_at} />
+          </:col>
+          <:col :let={client} field={{:clients, :inserted_at}} label="created">
+            <.relative_datetime datetime={client.inserted_at} />
+          </:col>
           <:empty>
-            <div class="text-center text-neutral-500 p-4">No clients to display.</div>
+            <div class="text-center text-neutral-500 p-4">
+              Actor has not signed in from any Client.
+            </div>
           </:empty>
         </.live_table>
       </:content>

@@ -15,7 +15,7 @@ runs:
       shell: bash
     - name: Install Tauri build deps
       if: ${{ runner.os == 'Linux' }}
-      run: sudo apt-get --yes install build-essential libwebkit2gtk-4.0-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+      run: sudo apt-get --yes install build-essential curl file libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev wget
       shell: bash
     - name: Install gnome-keyring
       if: ${{ runner.os == 'Linux' }}
@@ -49,3 +49,7 @@ runs:
       # Currently the MSI does this and it's a little janky.
       run: Start-Process WebView2Installer.exe -ArgumentList "/install" -Wait
       shell: pwsh
+      # Otherwise one of the Tauri macros panics in static analysis
+    - name: Create `rust/gui-client/dist`
+      run: mkdir "$GITHUB_WORKSPACE/rust/gui-client/dist"
+      shell: bash

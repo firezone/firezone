@@ -1,21 +1,21 @@
 [package]
 name = "firezone-gui-client"
 # mark:next-gui-version
-version = "1.3.10"
+version = "1.3.12"
 description = "Firezone"
 edition = "2021"
 default-run = "firezone-gui-client"
 authors = ["Firezone, Inc."]
 
 [build-dependencies]
-anyhow = { version = "1.0" }
-tauri-build = { version = "1.5", features = [] }
+anyhow = { version = "1.0.89" }
+tauri-build = { version = "2.0.1", features = [] }
 
 [dependencies]
-anyhow = { version = "1.0" }
+anyhow = { version = "1.0.89" }
 atomicwrites = { workspace = true }
 chrono = { workspace = true }
-clap = { version = "4.5", features = ["derive", "env"] }
+clap = { version = "4.5.20", features = ["derive", "env"] }
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
 firezone-bin-shared = { workspace = true }
@@ -28,14 +28,16 @@ rand = "0.8.5"
 rustls = { workspace = true }
 sadness-generator = "0.6.0"
 secrecy = { workspace = true }
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.132"
 subtle = "2.5.0"
-# `notification` is not needed on Windows, but if we remove it, Tauri's bundler will just add it back. #6597
-tauri = { version = "1.7.1", features = ["dialog", "icon-png", "notification", "shell-open-api", "system-tray"] }
-tauri-runtime = "0.14.5"
-tauri-utils = "1.6.0"
-thiserror = { version = "1.0", default-features = false }
+tauri = { version = "2.0.3", features = ["tray-icon", "image-png"] }
+tauri-plugin-dialog = "2.0.1"
+tauri-plugin-notification = "2.0.1"
+tauri-plugin-shell = "2.0.2"
+tauri-runtime = "2.1.0"
+tauri-utils = "2.0.1"
+thiserror = { version = "1.0.68", default-features = false }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
 tokio-util = { version = "0.7.11", features = ["codec"] }
 tracing = { workspace = true }

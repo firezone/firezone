@@ -1,3 +1,4 @@
+use firezone_logging::std_dyn_err;
 use std::collections::HashMap;
 use std::fmt;
 use std::{
@@ -287,7 +288,7 @@ impl UdpSocket {
 
         self.inner
             .async_io(Interest::WRITABLE, || {
-                self.state.send((&self.inner).into(), &transmit)
+                self.state.try_send((&self.inner).into(), &transmit)
             })
             .await?;
 
@@ -314,7 +315,7 @@ impl UdpSocket {
         };
 
         self.inner.try_io(Interest::WRITABLE, || {
-            self.state.send((&self.inner).into(), &transmit)
+            self.state.try_send((&self.inner).into(), &transmit)
         })
     }
 
@@ -330,8 +331,9 @@ impl UdpSocket {
                 Ok(src_ip) => src_ip,
                 Err(e) => {
                     tracing::trace!(
+                        error = std_dyn_err(&e),
                         dst = %dst.ip(),
-                        "No available interface for packet: {e}"
+                        "No available interface for packet"
                     );
                     return Ok(None); // Not an error because we log it above already.
                 }

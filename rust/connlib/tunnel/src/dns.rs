@@ -1,6 +1,7 @@
 use crate::client::IpProvider;
 use anyhow::{Context, Result};
 use connlib_model::{DomainName, ResourceId};
+use dns_over_tcp::SocketHandle;
 use domain::rdata::AllRecordData;
 use domain::{
     base::{
@@ -9,6 +10,7 @@ use domain::{
     },
     dep::octseq::OctetsInto,
 };
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::io;
@@ -46,7 +48,7 @@ pub struct StubResolver {
 }
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct RecursiveQuery {
     pub server: SocketAddr,
     pub message: Message<Vec<u8>>,
@@ -70,13 +72,28 @@ impl RecursiveQuery {
             transport: Transport::Udp { source },
         }
     }
+
+    pub(crate) fn via_tcp(
+        source: SocketHandle,
+        server: SocketAddr,
+        message: Message<Vec<u8>>,
+    ) -> Self {
+        Self {
+            server,
+            message,
+            transport: Transport::Tcp { source },
+        }
+    }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub(crate) enum Transport {
     Udp {
         /// The original source we received the DNS query on.
         source: SocketAddr,
+    },
+    Tcp {
+        source: SocketHandle,
     },
 }
 
@@ -84,7 +101,7 @@ pub(crate) enum Transport {
 #[derive(Debug)]
 pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(Vec<u8>),
+    LocalResponse(Message<Vec<u8>>),
     /// The query is for a non-Resource, forward it to an upstream or system resolver.
     Recurse,
 }
@@ -162,7 +179,7 @@ impl StubResolver {
         let parsed_pattern = match Pattern::new(&pattern) {
             Ok(p) => p,
             Err(e) => {
-                tracing::warn!(%pattern, "Domain pattern is not valid: {e}");
+                tracing::warn!(error = std_dyn_err(&e), %pattern, "Domain pattern is not valid");
                 return false;
             }
         };
@@ -216,6 +233,8 @@ impl StubResolver {
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
     fn match_resource_linear(&self, domain: &DomainName) -> Option<ResourceId> {
+        let _span = telemetry_span!("match_resource_linear").entered();
+
         let name = Candidate::from_domain(domain);
 
         for (pattern, id) in &self.dns_resources {
@@ -250,13 +269,21 @@ impl StubResolver {
         self.dns_resources.values().contains(resource)
     }
 
-    /// Parses an incoming packet as a DNS query and decides how to respond to it
+    /// Processes the incoming DNS query.
     ///
-    /// Returns:
-    /// - `Ok(ControlFlow::Break)` if the packet was successfully parsed a DNS packet
-    /// - `Ok(ControlFlow::Continue)` if the packet isn't a DNS packet
-    /// - `Err()` if the packet was directed at our DNS resolver but processing failed
-    pub(crate) fn handle(&mut self, message: Message<&[u8]>) -> Result<ResolveStrategy> {
+    /// Any errors will result in an immediate `SERVFAIL` response.
+    pub(crate) fn handle(&mut self, message: Message<&[u8]>) -> ResolveStrategy {
+        match self.try_handle(message) {
+            Ok(s) => s,
+            Err(e) => {
+                tracing::warn!(error = anyhow_dyn_err(&e), "Failed to handle DNS query");
+
+                ResolveStrategy::LocalResponse(servfail(message))
+            }
+        }
+    }
+
+    fn try_handle(&mut self, message: Message<&[u8]>) -> Result<ResolveStrategy> {
         anyhow::ensure!(
             !message.header().qr(),
             "Can only handle DNS queries, not responses"
@@ -279,7 +306,7 @@ impl StubResolver {
             let payload = MessageBuilder::new_vec()
                 .start_answer(&message, Rcode::NXDOMAIN)
                 .unwrap()
-                .finish();
+                .into_message();
 
             return Ok(ResolveStrategy::LocalResponse(payload));
         }
@@ -308,9 +335,11 @@ impl StubResolver {
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
             }
             (Rtype::HTTPS, Some(_)) => {
-                anyhow::bail!(
-                    "Discarding HTTPS record query for resource {domain} because we can't mangle it"
-                );
+                // We must intercept queries for the HTTPS record type to force the client to issue an A / AAAA query instead.
+                // Otherwise, the client won't use the IPs we issue for a particular domain and the traffic cannot be tunneled.
+
+                let response = build_dns_with_answer(message, domain, Vec::default())?;
+                return Ok(ResolveStrategy::LocalResponse(response));
             }
             _ => return Ok(ResolveStrategy::Recurse),
         };
@@ -320,6 +349,13 @@ impl StubResolver {
         let response = build_dns_with_answer(message, domain, resource_records)?;
         Ok(ResolveStrategy::LocalResponse(response))
     }
+}
+
+pub fn servfail(message: Message<&[u8]>) -> Message<Vec<u8>> {
+    MessageBuilder::new_vec()
+        .start_answer(&message, Rcode::SERVFAIL)
+        .expect("should always be able to create a heap-allocated SERVFAIL message")
+        .into_message()
 }
 
 fn to_a_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
@@ -340,7 +376,7 @@ fn build_dns_with_answer(
     message: Message<&[u8]>,
     qname: DomainName,
     records: Vec<AllRecordData<Vec<u8>, DomainName>>,
-) -> Result<Vec<u8>> {
+) -> Result<Message<Vec<u8>>> {
     let mut answer_builder = MessageBuilder::new_vec()
         .start_answer(&message, Rcode::NOERROR)
         .context("Failed to create answer from query")?;
@@ -352,14 +388,14 @@ fn build_dns_with_answer(
             .context("Failed to push record")?;
     }
 
-    Ok(answer_builder.finish())
+    Ok(answer_builder.into_message())
 }
 
 pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
     let pattern = match Pattern::new(resource) {
         Ok(p) => p,
         Err(e) => {
-            tracing::warn!(%resource, "Unable to parse pattern: {e}");
+            tracing::warn!(error = std_dyn_err(&e), %resource, "Unable to parse pattern");
             return false;
         }
     };
@@ -741,19 +777,15 @@ mod tests {
                 Rtype::A,
             ))
             .unwrap();
-        let message = builder.into_message();
+        let query = builder.into_message();
 
-        let strategy = resolver.handle(message.for_slice_ref()).unwrap();
-
-        let ResolveStrategy::LocalResponse(response) = strategy else {
-            panic!("Unexpected result: {strategy:?}")
+        let ResolveStrategy::LocalResponse(response) = resolver.handle(query.for_slice_ref())
+        else {
+            panic!("Unexpected result")
         };
 
-        let message = Message::from_slice(&response).unwrap();
-        let answers = message.answer().unwrap();
-
-        assert_eq!(message.header().rcode(), Rcode::NXDOMAIN);
-        assert_eq!(answers.count(), 0);
+        assert_eq!(response.header().rcode(), Rcode::NXDOMAIN);
+        assert_eq!(response.answer().unwrap().count(), 0);
     }
 }
 

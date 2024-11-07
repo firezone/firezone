@@ -88,16 +88,17 @@ mod tests {
     use futures::future::Either;
     use std::{future::poll_fn, time::Instant};
 
-    const INTERVAL: Duration = Duration::from_millis(30);
-    const TIMEOUT: Duration = Duration::from_millis(5);
+    const INTERVAL: Duration = Duration::from_millis(180);
+    // Windows won't allow Tokio to schedule any timer shorter than about 15 ms.
+    // If we only set 15 here, sometimes the timeout and heartbeat may both fall on a 30-ms tick, so it has to be longer.
+    const TIMEOUT: Duration = Duration::from_millis(30);
 
     #[tokio::test]
     async fn returns_heartbeat_after_interval() {
+        let start = Instant::now();
         let mut heartbeat = Heartbeat::new(INTERVAL, TIMEOUT, Arc::new(AtomicU64::new(0)));
         let id = poll_fn(|cx| heartbeat.poll(cx)).await.unwrap(); // Tick once at startup.
         heartbeat.maybe_handle_reply(id);
-
-        let start = Instant::now();
 
         let result = poll_fn(|cx| heartbeat.poll(cx)).await;
 

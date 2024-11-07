@@ -793,6 +793,43 @@ defmodule API.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :create_resource" do
+    test "pushes message to the socket for authorized clients", %{
+      gateway_group: gateway_group,
+      dns_resource: resource,
+      socket: socket
+    } do
+      send(socket.channel_pid, {:create_resource, resource.id})
+
+      assert_push "resource_created_or_updated", payload
+
+      assert payload == %{
+               id: resource.id,
+               type: :dns,
+               name: resource.name,
+               address: resource.address,
+               address_description: resource.address_description,
+               gateway_groups: [
+                 %{id: gateway_group.id, name: gateway_group.name}
+               ],
+               filters: [
+                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
+                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
+                 %{protocol: :udp, port_range_end: 200, port_range_start: 100},
+                 %{protocol: :icmp}
+               ]
+             }
+    end
+
+    test "does not push resources that can't be access by the client", %{
+      nonconforming_resource: resource,
+      socket: socket
+    } do
+      send(socket.channel_pid, {:create_resource, resource.id})
+      refute_push "resource_created_or_updated", %{}
+    end
+  end
+
   describe "handle_info/2 :update_resource" do
     test "pushes message to the socket for authorized clients", %{
       gateway_group: gateway_group,
@@ -1044,6 +1081,512 @@ defmodule API.Client.ChannelTest do
              )
 
       assert String.ends_with?(signed_uri.path, ".json")
+    end
+  end
+
+  describe "handle_in/3 create_flow" do
+    test "returns error when resource is not found", %{socket: socket} do
+      resource_id = Ecto.UUID.generate()
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource_id,
+        "connected_gateway_ids" => []
+      })
+
+      # assert_reply ref, :error, %{reason: :not_found}
+      assert_push "flow_creation_failed", %{reason: :not_found, resource_id: ^resource_id}
+    end
+
+    test "returns error when all gateways are offline", %{
+      dns_resource: resource,
+      socket: socket
+    } do
+      global_relay_group = Fixtures.Relays.create_global_group()
+
+      global_relay =
+        Fixtures.Relays.create_relay(
+          group: global_relay_group,
+          last_seen_remote_ip_location_lat: 37,
+          last_seen_remote_ip_location_lon: -120
+        )
+
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      # assert_reply ref, :error, %{reason: :offline}
+      assert_push "flow_creation_failed", %{reason: :offline, resource_id: resource_id}
+      assert resource_id == resource.id
+    end
+
+    test "returns error when client has no policy allowing access to resource", %{
+      account: account,
+      socket: socket
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      attrs = %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      }
+
+      push(socket, "create_flow", attrs)
+
+      # assert_reply ref, :error, %{reason: :not_found}
+
+      assert_push "flow_creation_failed", %{reason: :not_found, resource_id: resource_id}
+      assert resource_id == resource.id
+    end
+
+    test "returns error when flow is not authorized due to failing conditions", %{
+      account: account,
+      client: client,
+      actor_group: actor_group,
+      gateway_group: gateway_group,
+      gateway: gateway,
+      socket: socket
+    } do
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource,
+        conditions: [
+          %{
+            property: :remote_ip_location_region,
+            operator: :is_not_in,
+            values: [client.last_seen_remote_ip_location_region]
+          }
+        ]
+      )
+
+      attrs = %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      }
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      push(socket, "create_flow", attrs)
+      # assert_reply ref, :error, %{reason: :not_found}
+
+      assert_push "flow_creation_failed", %{
+        reason: :forbidden,
+        violated_properties: [:remote_ip_location_region],
+        resource_id: resource_id
+      }
+
+      assert resource_id == resource.id
+    end
+
+    test "returns error when all gateways connected to the resource are offline", %{
+      account: account,
+      dns_resource: resource,
+      socket: socket
+    } do
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      # assert_reply ref, :error, %{reason: :offline}
+
+      assert_push "flow_creation_failed", %{
+        reason: :offline,
+        resource_id: resource_id
+      }
+
+      assert resource_id == resource.id
+    end
+
+    test "returns online gateway connected to a resource", %{
+      dns_resource: resource,
+      client: client,
+      gateway_group_token: gateway_group_token,
+      gateway: gateway,
+      socket: socket
+    } do
+      global_relay_group = Fixtures.Relays.create_global_group()
+
+      global_relay =
+        Fixtures.Relays.create_relay(
+          group: global_relay_group,
+          last_seen_remote_ip_location_lat: 37,
+          last_seen_remote_ip_location_lon: -120
+        )
+
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
+
+      Fixtures.Relays.update_relay(global_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+      Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_flow, {_channel_pid, _socket_ref}, payload, _opentelemetry_ctx}
+
+      assert %{
+               client_id: client_id,
+               resource_id: resource_id,
+               flow_id: _flow_id,
+               authorization_expires_at: authorization_expires_at,
+               ice_credentials: _ice_credentials,
+               preshared_key: preshared_key
+             } = payload
+
+      assert client_id == client.id
+      assert resource_id == resource.id
+      assert authorization_expires_at == socket.assigns.subject.expires_at
+      assert String.length(preshared_key) == 44
+    end
+
+    test "returns online gateway connected to an internet resource", %{
+      account: account,
+      internet_resource: resource,
+      client: client,
+      gateway_group_token: gateway_group_token,
+      gateway: gateway,
+      socket: socket
+    } do
+      Fixtures.Accounts.update_account(account,
+        features: %{
+          internet_resource: true
+        }
+      )
+
+      global_relay_group = Fixtures.Relays.create_global_group()
+
+      global_relay =
+        Fixtures.Relays.create_relay(
+          group: global_relay_group,
+          last_seen_remote_ip_location_lat: 37,
+          last_seen_remote_ip_location_lon: -120
+        )
+
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
+
+      Fixtures.Relays.update_relay(global_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+      Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_flow, {_channel_pid, _socket_ref}, payload, _opentelemetry_ctx}
+
+      assert %{
+               client_id: client_id,
+               resource_id: resource_id,
+               flow_id: _flow_id,
+               authorization_expires_at: authorization_expires_at,
+               ice_credentials: _ice_credentials,
+               preshared_key: preshared_key
+             } = payload
+
+      assert client_id == client.id
+      assert resource_id == resource.id
+      assert authorization_expires_at == socket.assigns.subject.expires_at
+      assert String.length(preshared_key) == 44
+    end
+
+    test "broadcasts authorize_flow to the gateway and flow_created to the client", %{
+      dns_resource: resource,
+      dns_resource_policy: policy,
+      client: client,
+      gateway_group_token: gateway_group_token,
+      gateway: gateway,
+      subject: subject,
+      socket: socket
+    } do
+      global_relay_group = Fixtures.Relays.create_global_group()
+
+      global_relay =
+        Fixtures.Relays.create_relay(
+          group: global_relay_group,
+          last_seen_remote_ip_location_lat: 37,
+          last_seen_remote_ip_location_lon: -120
+        )
+
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
+
+      Fixtures.Relays.update_relay(global_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+      Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_flow, {channel_pid, socket_ref}, payload, _opentelemetry_ctx}
+
+      assert %{
+               client_id: client_id,
+               resource_id: resource_id,
+               flow_id: flow_id,
+               authorization_expires_at: authorization_expires_at,
+               ice_credentials: ice_credentials,
+               preshared_key: preshared_key
+             } = payload
+
+      assert flow = Repo.get(Domain.Flows.Flow, flow_id)
+      assert flow.client_id == client.id
+      assert flow.resource_id == resource_id
+      assert flow.gateway_id == gateway.id
+      assert flow.policy_id == policy.id
+      assert flow.token_id == subject.token_id
+
+      assert client_id == client.id
+      assert resource_id == resource.id
+      assert authorization_expires_at == socket.assigns.subject.expires_at
+
+      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
+
+      send(
+        channel_pid,
+        {:connect, socket_ref, resource_id, gateway.group_id, gateway.id, gateway.public_key,
+         preshared_key, ice_credentials, otel_ctx}
+      )
+
+      gateway_group_id = gateway.group_id
+      gateway_id = gateway.id
+      gateway_public_key = gateway.public_key
+
+      assert_push "flow_created", %{
+        gateway_public_key: ^gateway_public_key,
+        resource_id: ^resource_id,
+        client_ice_credentials: %{username: client_ice_username, password: client_ice_password},
+        gateway_group_id: ^gateway_group_id,
+        gateway_id: ^gateway_id,
+        gateway_ice_credentials: %{username: gateway_ice_username, password: gateway_ice_password},
+        preshared_key: ^preshared_key
+      }
+
+      assert String.length(client_ice_username) == 4
+      assert String.length(client_ice_password) == 22
+      assert String.length(gateway_ice_username) == 4
+      assert String.length(gateway_ice_password) == 22
+      assert client_ice_username != gateway_ice_username
+      assert client_ice_password != gateway_ice_password
+    end
+
+    test "works with service accounts", %{
+      account: account,
+      dns_resource: resource,
+      gateway: gateway,
+      gateway_group_token: gateway_group_token,
+      actor_group: actor_group
+    } do
+      actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
+
+      {:ok, _reply, socket} =
+        API.Client.Socket
+        |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+          client: client,
+          subject: subject
+        })
+        |> subscribe_and_join(API.Client.Channel, "client")
+
+      global_relay_group = Fixtures.Relays.create_global_group()
+
+      global_relay =
+        Fixtures.Relays.create_relay(
+          group: global_relay_group,
+          last_seen_remote_ip_location_lat: 37,
+          last_seen_remote_ip_location_lon: -120
+        )
+
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(global_relay, stamp_secret)
+
+      Fixtures.Relays.update_relay(global_relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+      Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_flow, {_channel_pid, _socket_ref}, _payload, _opentelemetry_ctx}
+    end
+
+    test "selects compatible gateway versions", %{
+      account: account,
+      gateway_group: gateway_group,
+      dns_resource: resource,
+      subject: subject,
+      client: client
+    } do
+      global_relay_group = Fixtures.Relays.create_global_group()
+
+      relay =
+        Fixtures.Relays.create_relay(
+          group: global_relay_group,
+          last_seen_remote_ip_location_lat: 37,
+          last_seen_remote_ip_location_lon: -120
+        )
+
+      :ok = Domain.Relays.connect_relay(relay, Ecto.UUID.generate())
+
+      Fixtures.Relays.update_relay(relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      client = %{client | last_seen_version: "1.4.55"}
+
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group,
+          context:
+            Fixtures.Auth.build_context(
+              type: :gateway_group,
+              user_agent: "Linux/24.04 connlib/1.0.412"
+            )
+        )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      {:ok, _reply, socket} =
+        API.Client.Socket
+        |> socket("client:#{client.id}", %{
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
+          client: client,
+          subject: subject
+        })
+        |> subscribe_and_join(API.Client.Channel, "client")
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_push "flow_creation_failed", %{
+        reason: :not_found,
+        resource_id: resource_id
+      }
+
+      assert resource_id == resource.id
+
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group,
+          context:
+            Fixtures.Auth.build_context(
+              type: :gateway_group,
+              user_agent: "Linux/24.04 connlib/1.4.11"
+            )
+        )
+
+      :ok = Domain.Gateways.connect_gateway(gateway)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => []
+      })
+
+      assert_receive {:authorize_flow, {_channel_pid, _socket_ref}, _payload, _opentelemetry_ctx}
+    end
+
+    test "selects already connected gateway", %{
+      account: account,
+      gateway_group: gateway_group,
+      dns_resource: resource,
+      socket: socket
+    } do
+      global_relay_group = Fixtures.Relays.create_global_group()
+
+      relay =
+        Fixtures.Relays.create_relay(
+          group: global_relay_group,
+          last_seen_remote_ip_location_lat: 37,
+          last_seen_remote_ip_location_lon: -120
+        )
+
+      :ok = Domain.Relays.connect_relay(relay, Ecto.UUID.generate())
+
+      Fixtures.Relays.update_relay(relay,
+        last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
+      )
+
+      gateway1 =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group
+        )
+
+      :ok = Domain.Gateways.connect_gateway(gateway1)
+
+      gateway2 =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          group: gateway_group
+        )
+
+      :ok = Domain.Gateways.connect_gateway(gateway2)
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => [gateway2.id]
+      })
+
+      assert_receive {:authorize_flow, {_channel_pid, _socket_ref}, %{flow_id: flow_id}, _}
+      assert flow = Repo.get(Domain.Flows.Flow, flow_id)
+      assert flow.gateway_id == gateway2.id
+
+      push(socket, "create_flow", %{
+        "resource_id" => resource.id,
+        "connected_gateway_ids" => [gateway1.id]
+      })
+
+      assert_receive {:authorize_flow, {_channel_pid, _socket_ref}, %{flow_id: flow_id}, _}
+      assert flow = Repo.get(Domain.Flows.Flow, flow_id)
+      assert flow.gateway_id == gateway1.id
     end
   end
 

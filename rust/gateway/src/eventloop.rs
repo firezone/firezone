@@ -4,14 +4,13 @@ use connlib_model::DomainName;
 use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use firezone_tunnel::messages::{
-    gateway::{
-        AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
-        IngressMessages, RejectAccess, RequestConnection,
-    },
-    ConnectionAccepted, GatewayResponse, Interface, RelaysPresence,
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
+use firezone_tunnel::messages::gateway::{
+    AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
+    IngressMessages, RejectAccess, RequestConnection,
 };
-use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel};
+use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
+use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel, ResolveDnsRequest};
 use futures::channel::mpsc;
 use futures_bounded::Timeout;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
@@ -21,6 +20,7 @@ use std::io;
 use std::net::IpAddr;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
+use tracing::Instrument;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
@@ -33,11 +33,12 @@ static_assertions::const_assert!(
     DNS_RESOLUTION_TIMEOUT.as_secs() < snownet::HANDSHAKE_TIMEOUT.as_secs()
 );
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum ResolveTrigger {
-    RequestConnection(RequestConnection),
-    AllowAccess(AllowAccess),
-    Refresh(DomainName, ClientId, ResourceId),
+    RequestConnection(RequestConnection),      // Deprecated
+    AllowAccess(AllowAccess),                  // Deprecated
+    Refresh(DomainName, ClientId, ResourceId), // TODO: Can we delete this perhaps?
+    SetupNat(ResolveDnsRequest),
 }
 
 pub struct Eventloop {
@@ -59,7 +60,7 @@ impl Eventloop {
         Self {
             tunnel,
             portal,
-            resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 100),
+            resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 1000),
             tun_device_channel,
         }
     }
@@ -77,7 +78,7 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::warn!("Tunnel error: {e}");
+                    tracing::debug!(error = std_dyn_err(&e), "Tunnel error");
                     continue;
                 }
                 Poll::Pending => {}
@@ -94,6 +95,29 @@ impl Eventloop {
                 }
                 Poll::Ready((result, ResolveTrigger::Refresh(name, conn_id, resource_id))) => {
                     self.refresh_translation(result, conn_id, resource_id, name);
+                    continue;
+                }
+                Poll::Ready((result, ResolveTrigger::SetupNat(request))) => {
+                    let addresses = result
+                        .inspect_err(|e| {
+                            tracing::debug!(
+                                error = std_dyn_err(e),
+                                "DNS resolution timed out as part of setup NAT request"
+                            )
+                        })
+                        .unwrap_or_default();
+
+                    if let Err(e) = self.tunnel.state_mut().handle_domain_resolved(
+                        request,
+                        addresses,
+                        Instant::now(),
+                    ) {
+                        tracing::warn!(
+                            error = anyhow_dyn_err(&e),
+                            "Failed to set DNS resource NAT"
+                        );
+                    };
+
                     continue;
                 }
                 Poll::Pending => {}
@@ -153,11 +177,54 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
+            firezone_tunnel::GatewayEvent::ResolveDns(setup_nat) => {
+                if self
+                    .resolve_tasks
+                    .try_push(
+                        resolve(Some(setup_nat.domain().clone())),
+                        ResolveTrigger::SetupNat(setup_nat),
+                    )
+                    .is_err()
+                {
+                    tracing::warn!("Too many dns resolution requests, dropping existing one");
+                };
+            }
         }
     }
 
     fn handle_portal_event(&mut self, event: phoenix_channel::Event<IngressMessages, ()>) {
         match event {
+            phoenix_channel::Event::InboundMessage {
+                msg: IngressMessages::AuthorizeFlow(msg),
+                ..
+            } => {
+                if let Err(snownet::NoTurnServers {}) = self.tunnel.state_mut().authorize_flow(
+                    msg.client.id,
+                    PublicKey::from(msg.client.public_key.0),
+                    msg.client.preshared_key,
+                    msg.client_ice_credentials,
+                    msg.gateway_ice_credentials,
+                    msg.client.ipv4,
+                    msg.client.ipv6,
+                    msg.expires_at,
+                    msg.resource,
+                    Instant::now(),
+                ) {
+                    tracing::debug!("Failed to authorise flow: No TURN servers available");
+
+                    // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
+                    self.portal
+                        .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
+                    return;
+                };
+
+                self.portal.send(
+                    PHOENIX_TOPIC,
+                    EgressMessages::FlowAuthorized {
+                        reference: msg.reference,
+                    },
+                );
+            }
             phoenix_channel::Event::InboundMessage {
                 msg: IngressMessages::RequestConnection(req),
                 ..
@@ -256,7 +323,7 @@ impl Eventloop {
                 // For the gateway, it doesn't do anything else so in an ideal world, we would cause the side-effect out here and just pass an opaque `Device` to the `Tunnel`.
                 // That requires more refactoring of other platforms, so for now, we need to rely on the `Tunnel` interface and cause the side-effect separately via the `TunDeviceManager`.
                 if let Err(e) = self.tun_device_channel.try_send(init.interface) {
-                    tracing::warn!("Failed to set interface: {e}");
+                    tracing::warn!(error = std_dyn_err(&e), "Failed to set interface");
                 }
             }
             phoenix_channel::Event::InboundMessage {
@@ -285,10 +352,10 @@ impl Eventloop {
         req: RequestConnection,
     ) {
         let addresses = result
-            .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {e}"))
+            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request"))
             .unwrap_or_default();
 
-        let answer = self.tunnel.state_mut().accept(
+        let answer = match self.tunnel.state_mut().accept(
             req.client.id,
             req.client
                 .payload
@@ -296,7 +363,18 @@ impl Eventloop {
                 .into_snownet_offer(req.client.peer.preshared_key),
             PublicKey::from(req.client.peer.public_key.0),
             Instant::now(),
-        );
+        ) {
+            Ok(a) => a,
+            Err(snownet::NoTurnServers {}) => {
+                tracing::debug!("Failed to accept new connection: No TURN servers available");
+
+                // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
+                self.portal
+                    .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
+
+                return;
+            }
+        };
 
         if let Err(e) = self.tunnel.state_mut().allow_access(
             req.client.id,
@@ -313,7 +391,7 @@ impl Eventloop {
             let client = req.client.id;
 
             self.tunnel.state_mut().cleanup_connection(&client);
-            tracing::debug!(%client, "Connection request failed: {e:#}");
+            tracing::debug!(error = anyhow_dyn_err(&e), %client, "Connection request failed");
             return;
         }
 
@@ -323,7 +401,6 @@ impl Eventloop {
                 reference: req.reference,
                 gateway_payload: GatewayResponse::ConnectionAccepted(ConnectionAccepted {
                     ice_parameters: answer,
-                    domain_response: None,
                 }),
             }),
         );
@@ -331,7 +408,7 @@ impl Eventloop {
 
     pub fn allow_access(&mut self, result: Result<Vec<IpAddr>, Timeout>, req: AllowAccess) {
         let addresses = result
-            .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {e}"))
+            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request"))
             .unwrap_or_default();
 
         if let Err(e) = self.tunnel.state_mut().allow_access(
@@ -343,7 +420,7 @@ impl Eventloop {
             req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),
             Instant::now(),
         ) {
-            tracing::warn!(client = %req.client_id, "Allow access request failed: {e:#}");
+            tracing::warn!(error = anyhow_dyn_err(&e), client = %req.client_id, "Allow access request failed");
         };
     }
 
@@ -355,7 +432,7 @@ impl Eventloop {
         name: DomainName,
     ) {
         let addresses = result
-            .inspect_err(|e| tracing::debug!(%conn_id, "DNS resolution timed out as part of allow access request: {e}"))
+            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %conn_id, "DNS resolution timed out as part of allow access request"))
             .unwrap_or_default();
 
         self.tunnel.state_mut().refresh_translation(
@@ -375,15 +452,18 @@ async fn resolve(domain: Option<DomainName>) -> Vec<IpAddr> {
 
     let dname = domain.to_string();
 
-    match tokio::task::spawn_blocking(move || resolve_addresses(&dname)).await {
+    match tokio::task::spawn_blocking(move || resolve_addresses(&dname))
+        .instrument(telemetry_span!("resolve_dns_resource"))
+        .await
+    {
         Ok(Ok(addresses)) => addresses,
         Ok(Err(e)) => {
-            tracing::warn!("Failed to resolve '{domain}': {e}");
+            tracing::warn!(error = std_dyn_err(&e), %domain, "DNS resolution failed");
 
             vec![]
         }
         Err(e) => {
-            tracing::warn!("Failed to resolve '{domain}': {e}");
+            tracing::warn!(error = std_dyn_err(&e), %domain, "DNS resolution task failed");
 
             vec![]
         }

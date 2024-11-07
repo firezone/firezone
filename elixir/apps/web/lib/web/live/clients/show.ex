@@ -1,6 +1,7 @@
 defmodule Web.Clients.Show do
   use Web, :live_view
   import Web.Policies.Components
+  import Web.Clients.Components
   alias Domain.{Accounts, Clients, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
@@ -148,7 +149,9 @@ defmodule Web.Clients.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>User agent</:label>
-            <:value><%= @client.last_seen_user_agent %></:value>
+            <:value>
+              <%= @client.last_seen_user_agent %>
+            </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
@@ -273,6 +276,13 @@ defmodule Web.Clients.Show do
               <.verified_by account={@account} schema={@client} />
             </:value>
           </.vertical_table_row>
+
+          <.vertical_table_row>
+            <:label>Operating System</:label>
+            <:value>
+              <.client_os client={@client} />
+            </:value>
+          </.vertical_table_row>
         </.vertical_table>
       </:content>
     </.section>
@@ -324,6 +334,40 @@ defmodule Web.Clients.Show do
         </.live_table>
       </:content>
     </.section>
+
+    <.danger_zone :if={is_nil(@client.deleted_at)}>
+      <:action>
+        <.button_with_confirmation
+          id="delete_client"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
+        >
+          <:dialog_title>Confirm deletion of client</:dialog_title>
+          <:dialog_content>
+            <p>
+              Deleting the client doesn't remove it from the device; it will be re-created with the same
+              hardware attributes upon the next sign-in, but the verification status won't carry over.
+            </p>
+
+            <p class="mt-2">
+              To prevent the client owner from logging in again,
+              <.link navigate={~p"/#{@account}/actors/#{@client.actor_id}"} class={link_style()}>
+                disable the owning actor
+              </.link>
+              instead.
+            </p>
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Client
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
+          Delete Client
+        </.button_with_confirmation>
+      </:action>
+    </.danger_zone>
     """
   end
 
@@ -401,6 +445,9 @@ defmodule Web.Clients.Show do
     {:noreply, socket}
   end
 
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
+
   def handle_event("verify_client", _params, socket) do
     {:ok, client} = Clients.verify_client(socket.assigns.client, socket.assigns.subject)
 
@@ -428,6 +475,14 @@ defmodule Web.Clients.Show do
     {:noreply, assign(socket, :client, client)}
   end
 
-  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
-    do: handle_live_table_event(event, params, socket)
+  def handle_event("delete", _params, socket) do
+    {:ok, _client} = Clients.delete_client(socket.assigns.client, socket.assigns.subject)
+
+    socket =
+      socket
+      |> put_flash(:info, "Client was deleted.")
+      |> push_navigate(to: ~p"/#{socket.assigns.account}/clients")
+
+    {:noreply, socket}
+  end
 end

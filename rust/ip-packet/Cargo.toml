@@ -11,8 +11,7 @@ proptest = ["dep:proptest"]
 
 [dependencies]
 anyhow = "1.0.86"
-domain = "0.10.1"
-etherparse = "0.15"
+etherparse = "0.16"
 proptest = { version = "1", optional = true }
 thiserror = "1"
 tracing = "0.1"

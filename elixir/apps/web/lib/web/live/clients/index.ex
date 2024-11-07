@@ -1,6 +1,7 @@
 defmodule Web.Clients.Index do
   use Web, :live_view
   import Web.Actors.Components
+  import Web.Clients.Components
   alias Domain.Clients
 
   def mount(_params, _session, socket) do
@@ -15,7 +16,9 @@ defmodule Web.Clients.Index do
         query_module: Clients.Client.Query,
         sortable_fields: [
           {:clients, :name},
-          {:clients, :inserted_at}
+          {:clients, :last_seen_at},
+          {:clients, :inserted_at},
+          {:clients, :last_seen_user_agent}
         ],
         hide_filters: [
           :name
@@ -69,6 +72,16 @@ defmodule Web.Clients.Index do
           ordered_by={@order_by_table_id["clients"]}
           metadata={@clients_metadata}
         >
+          <:col :let={client} class="w-8">
+            <.popover placement="right">
+              <:target>
+                <.client_os_icon client={client} />
+              </:target>
+              <:content>
+                <.client_os_name_and_version client={client} />
+              </:content>
+            </.popover>
+          </:col>
           <:col :let={client} field={{:clients, :name}} label="name">
             <div class="flex items-center space-x-1">
               <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
@@ -90,12 +103,15 @@ defmodule Web.Clients.Index do
           <:col :let={client} label="status">
             <.connection_status schema={client} />
           </:col>
-          <:col :let={client} field={{:clients, :inserted_at}} label="created at">
+          <:col :let={client} field={{:clients, :last_seen_at}} label="last started">
+            <.relative_datetime datetime={client.last_seen_at} />
+          </:col>
+          <:col :let={client} field={{:clients, :inserted_at}} label="created">
             <.relative_datetime datetime={client.inserted_at} />
           </:col>
           <:empty>
             <div class="text-center text-neutral-500 p-4">
-              No clients to display. Clients are created automatically when a user connects to a resource.
+              No Actors have signed in from any Client.
             </div>
           </:empty>
         </.live_table>

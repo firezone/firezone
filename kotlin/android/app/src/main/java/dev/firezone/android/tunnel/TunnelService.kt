@@ -196,6 +196,11 @@ class TunnelService : VpnService() {
                 "disallowedApplications",
             ) { addDisallowedApplication(it) }
 
+            // Never route GCM notifications through the tunnel.
+            addDisallowedApplication("com.google.android.gms") // Google Mobile Services
+            addDisallowedApplication("com.google.firebase.messaging") // Firebase Cloud Messaging
+            addDisallowedApplication("com.google.android.gsf") // Google Services Framework
+
             tunnelRoutes.forEach {
                 addRoute(it.address, it.prefix)
             }

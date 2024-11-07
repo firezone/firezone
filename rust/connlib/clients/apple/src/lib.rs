@@ -8,6 +8,8 @@ use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
+use firezone_telemetry::Telemetry;
+use firezone_telemetry::APPLE_DSN;
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
@@ -90,11 +92,6 @@ mod ffi {
 /// This is used by the apple client to interact with our code.
 pub struct WrappedSession {
     inner: Session,
-
-    #[expect(
-        dead_code,
-        reason = "Runtime must be kept alive until Session is dropped"
-    )]
     runtime: Runtime,
 
     #[expect(
@@ -102,6 +99,8 @@ pub struct WrappedSession {
         reason = "Logger handle must be kept alive until Session is dropped"
     )]
     logger: firezone_logging::file::Handle,
+
+    telemetry: Telemetry,
 }
 
 // SAFETY: `CallbackHandler.swift` promises to be thread-safe.
@@ -193,6 +192,9 @@ impl WrappedSession {
         callback_handler: ffi::CallbackHandler,
         device_info: String,
     ) -> Result<Self> {
+        let telemetry = Telemetry::default();
+        telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), APPLE_DSN);
+
         let logger = init_logging(log_dir.into(), log_filter)?;
         install_rustls_crypto_provider();
 
@@ -239,6 +241,7 @@ impl WrappedSession {
             inner: session,
             runtime,
             logger,
+            telemetry,
         })
     }
 
@@ -257,7 +260,8 @@ impl WrappedSession {
     }
 
     fn disconnect(self) {
-        self.inner.disconnect()
+        self.runtime.block_on(self.telemetry.stop());
+        self.inner.disconnect();
     }
 }
 

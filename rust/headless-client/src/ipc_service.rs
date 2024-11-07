@@ -9,6 +9,7 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
 use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
@@ -18,7 +19,14 @@ use futures::{
 use phoenix_channel::LoginUrl;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeSet, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    net::IpAddr,
+    path::PathBuf,
+    pin::pin,
+    sync::Arc,
+    time::Duration,
+};
 use tokio::{sync::mpsc, task::spawn_blocking, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -109,12 +117,17 @@ pub enum ServerMsg {
 }
 
 // All variants are `String` because almost no error type implements `Serialize`
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, thiserror::Error)]
 pub enum Error {
+    #[error("{0}")]
     DeviceId(String),
+    #[error("{0}")]
     LoginUrl(String),
+    #[error("{0}")]
     PortalConnection(String),
+    #[error("{0}")]
     TunnelDevice(String),
+    #[error("{0}")]
     UrlParse(String),
 }
 
@@ -215,7 +228,17 @@ async fn ipc_listen(
     let firezone_id = device_id::get_or_create()
         .context("Failed to read / create device ID")?
         .id;
-    firezone_telemetry::configure_scope(|scope| scope.set_tag("firezone_id", &firezone_id));
+    // TODO: Telemetry is initialized wrong here:
+    // Sentry's contexts must be set on the main thread hub before starting Tokio, so that other thread hubs will inherit the context.
+    firezone_telemetry::configure_scope(|scope| {
+        scope.set_context(
+            "firezone",
+            firezone_telemetry::Context::Other(BTreeMap::from([(
+                "id".to_string(),
+                firezone_id.into(),
+            )])),
+        )
+    });
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController { dns_control_method };
     let telemetry = Telemetry::default();
@@ -319,7 +342,10 @@ impl<'a> Handler<'a> {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Callback(x) => {
                     if let Err(error) = self.handle_connlib_cb(x).await {
-                        tracing::error!(?error, "Error while handling connlib callback");
+                        tracing::error!(
+                            error = anyhow_dyn_err(&error),
+                            "Error while handling connlib callback"
+                        );
                         continue;
                     }
                 }
@@ -333,7 +359,10 @@ impl<'a> Handler<'a> {
                     let _entered =
                         tracing::error_span!("handle_ipc_msg", msg = %msg_variant).entered();
                     if let Err(error) = self.handle_ipc_msg(msg).await {
-                        tracing::error!(?error, "Error while handling IPC message from client");
+                        tracing::error!(
+                            error = anyhow_dyn_err(&error),
+                            "Error while handling IPC message from client"
+                        );
                         continue;
                     }
                 }
@@ -342,7 +371,10 @@ impl<'a> Handler<'a> {
                     break HandlerOk::ClientDisconnected;
                 }
                 Event::IpcError(error) => {
-                    tracing::error!(?error, "Error while deserializing IPC message");
+                    tracing::error!(
+                        error = anyhow_dyn_err(&error),
+                        "Error while deserializing IPC message"
+                    );
                     continue;
                 }
                 Event::Terminate => {
@@ -451,7 +483,10 @@ impl<'a> Handler<'a> {
                 let token = secrecy::SecretString::from(token);
                 let result = self.connect_to_firezone(&api_url, token);
                 if let Err(error) = &result {
-                    tracing::error!(?error, "Failed to connect connlib session");
+                    tracing::error!(
+                        error = std_dyn_err(error),
+                        "Failed to connect connlib session"
+                    );
                 }
                 self.ipc_tx
                     .send(&ServerMsg::ConnectResult(result))
@@ -510,7 +545,9 @@ impl<'a> Handler<'a> {
                 firezone_bin_shared::git_version!("gui-client-*"),
                 firezone_telemetry::IPC_SERVICE_DSN,
             ),
-            ClientMsg::StopTelemetry => self.telemetry.stop(),
+            ClientMsg::StopTelemetry => {
+                self.telemetry.stop().await;
+            }
         }
         Ok(())
     }
@@ -521,11 +558,8 @@ impl<'a> Handler<'a> {
     ///
     /// Throws matchable errors for bad URLs, unable to reach the portal, or unable to create the tunnel device
     fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<(), Error> {
-        let ctx = firezone_telemetry::TransactionContext::new(
-            "connect_to_firezone",
-            "Connecting to Firezone",
-        );
-        let transaction = firezone_telemetry::start_transaction(ctx);
+        let _connect_span = telemetry_span!("connect_to_firezone").entered();
+
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
 
@@ -543,10 +577,12 @@ impl<'a> Handler<'a> {
         let callbacks = CallbackHandler { cb_tx };
 
         // Synchronous DNS resolution here
-        let phoenix_span = transaction.start_child("phoenix", "Resolve DNS for PhoenixChannel");
         let portal = PhoenixChannel::disconnected(
             Secret::new(url),
-            get_user_agent(None, env!("CARGO_PKG_VERSION")),
+            // The IPC service must use the GUI's version number, not the Headless Client's.
+            // But refactoring to separate the IPC service from the Headless Client will take a while.
+            // mark:next-gui-version
+            get_user_agent(None, "1.3.12"),
             "client",
             (),
             ExponentialBackoffBuilder::default()
@@ -555,7 +591,6 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
         )
         .map_err(|e| Error::PortalConnection(e.to_string()))?;
-        phoenix_span.finish();
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
@@ -569,18 +604,19 @@ impl<'a> Handler<'a> {
         // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
         tracing::debug!(?dns, "Calling `set_dns`...");
         connlib.set_dns(dns);
-        let tun_span = transaction.start_child("tun", "Raise tunnel with `make_tun`");
-        let tun = self
-            .tun_device
-            .make_tun()
-            .map_err(|e| Error::TunnelDevice(e.to_string()))?;
+
+        let tun = {
+            let _guard = telemetry_span!("create_tun_device").entered();
+
+            self.tun_device
+                .make_tun()
+                .map_err(|e| Error::TunnelDevice(e.to_string()))?
+        };
         connlib.set_tun(Box::new(tun));
-        tun_span.finish();
 
         let session = Session { cb_rx, connlib };
         self.session = Some(session);
 
-        transaction.finish();
         Ok(())
     }
 }
