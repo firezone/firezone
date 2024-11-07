@@ -291,16 +291,6 @@ where
         })
     }
 
-    /// Returns the addresses that have been resolved for our server host.
-    pub fn resolved_addresses(&self) -> Vec<IpAddr> {
-        self.resolved_addresses.clone()
-    }
-
-    /// The host we are connecting / connected to.
-    pub fn server_host(&self) -> &str {
-        self.url_prototype.expose_secret().host_and_port().0
-    }
-
     /// Join the provided room.
     ///
     /// If successful, a [`Event::JoinedRoom`] event will be emitted.
@@ -647,9 +637,9 @@ where
     fn socket_addresses(&self) -> Vec<SocketAddr> {
         let port = self.url_prototype.expose_secret().host_and_port().1;
 
-        self.resolved_addresses()
-            .into_iter()
-            .map(|ip| SocketAddr::new(ip, port))
+        self.resolved_addresses
+            .iter()
+            .map(|ip| SocketAddr::new(*ip, port))
             .collect()
     }
 }
