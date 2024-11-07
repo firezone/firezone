@@ -23,6 +23,26 @@ defmodule Domain.Policies do
     end
   end
 
+  def fetch_policy_by_id_or_persistent_id(id, %Auth.Subject{} = subject, opts \\ []) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_policies_permission(),
+         Authorizer.view_available_policies_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
+         true <- Repo.valid_uuid?(id) do
+      Policy.Query.all()
+      |> Policy.Query.by_id_or_persistent_id(id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.fetch(Policy.Query, opts)
+    else
+      false -> {:error, :not_found}
+      other -> other
+    end
+  end
+
   def list_policies(%Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
       {:one_of,

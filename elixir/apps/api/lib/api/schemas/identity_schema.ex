@@ -35,7 +35,7 @@ defmodule API.Schemas.Identity do
       description: "POST body for creating a Identity",
       type: :object,
       properties: %{
-        identity: %Schema{anyOf: [Identity.Schema]}
+        identity: Identity.Schema
       },
       required: [:identity],
       example: %{

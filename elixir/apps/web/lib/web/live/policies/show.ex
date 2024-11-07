@@ -5,7 +5,7 @@ defmodule Web.Policies.Show do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
-           Policies.fetch_policy_by_id(id, socket.assigns.subject,
+           Policies.fetch_policy_by_id_or_persistent_id(id, socket.assigns.subject,
              preload: [
                actor_group: [:provider],
                resource: [],
@@ -314,7 +314,9 @@ defmodule Web.Policies.Show do
 
   def handle_info({_action, _policy_id}, socket) do
     {:ok, policy} =
-      Policies.fetch_policy_by_id(socket.assigns.policy.id, socket.assigns.subject,
+      Policies.fetch_policy_by_id_or_persistent_id(
+        socket.assigns.policy.id,
+        socket.assigns.subject,
         preload: [
           actor_group: [:provider],
           resource: [],

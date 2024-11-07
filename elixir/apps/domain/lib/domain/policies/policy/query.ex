@@ -22,6 +22,14 @@ defmodule Domain.Policies.Policy.Query do
     where(queryable, [policies: policies], policies.id == ^id)
   end
 
+  def by_id_or_persistent_id(queryable, id) do
+    where(queryable, [policies: policies], policies.id == ^id)
+    |> or_where(
+      [policies: policies],
+      policies.persistent_id == ^id and is_nil(policies.replaced_by_policy_id)
+    )
+  end
+
   def by_account_id(queryable, account_id) do
     where(queryable, [policies: policies], policies.account_id == ^account_id)
   end

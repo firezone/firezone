@@ -37,7 +37,7 @@ defmodule API.Schemas.Actor do
       description: "POST body for creating an Actor",
       type: :object,
       properties: %{
-        actor: %Schema{anyOf: [Actor.Schema]}
+        actor: Actor.Schema
       },
       required: [:actor],
       example: %{
