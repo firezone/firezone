@@ -11,7 +11,8 @@ export default function Headless() {
   return (
     <Entries href={href} arches={arches} title="Linux headless">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.3.6" date={new Date("2024-11-08")}>
         <ChangeItem pull="7263">
           Mitigates a crash in case the maximum packet size is not respected.
         </ChangeItem>
@@ -26,7 +27,7 @@ export default function Headless() {
           Fixes an issue where subsequent SIGHUP signals after the first one
           were ignored.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.3.5" date={new Date("2024-10-31")}>
         <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
         <ChangeItem pull="7164">

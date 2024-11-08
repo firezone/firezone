@@ -11,7 +11,8 @@ export default function Android() {
       title="Android"
     >
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.7" date={new Date("2024-11-08")}>
         <ChangeItem pull="7263">
           Mitigates a crash in case the maximum packet size is not respected.
         </ChangeItem>
@@ -19,10 +20,10 @@ export default function Android() {
           Prevents re-connections to the portal from hanging for longer than 5s.
         </ChangeItem>
         <ChangeItem pull="7288">
-            Fixes an issue where network roaming would cause Firezone to become
-            unresponsive.
-          </ChangeItem>
-      </Unreleased>
+          Fixes an issue where network roaming would cause Firezone to become
+          unresponsive.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.3.6" date={new Date("2024-10-31")}>
         <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
         <ChangeItem pull="7151">
