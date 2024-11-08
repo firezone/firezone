@@ -11,13 +11,13 @@ export async function GET(_req: NextRequest) {
   const versions = {
     portal: await get("deployed_sha"),
     // mark:current-apple-version
-    apple: "1.3.8",
+    apple: "1.3.9",
     // mark:current-android-version
-    android: "1.3.6",
+    android: "1.3.7",
     // mark:current-gui-version
-    gui: "1.3.11",
+    gui: "1.3.12",
     // mark:current-headless-version
-    headless: "1.3.5",
+    headless: "1.3.6",
     // mark:current-gateway-version
     gateway: "1.4.0",
   };
