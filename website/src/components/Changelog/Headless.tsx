@@ -19,9 +19,13 @@ export default function Headless() {
           Prevents re-connections to the portal from hanging for longer than 5s.
         </ChangeItem>
         <ChangeItem pull="7288">
-            Fixes an issue where network roaming would cause Firezone to become
-            unresponsive.
-          </ChangeItem>
+          Fixes an issue where network roaming would cause Firezone to become
+          unresponsive.
+        </ChangeItem>
+        <ChangeItem pull="7287">
+          Fixes an issue where subsequent SIGHUP signals after the first one
+          were ignored.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.5" date={new Date("2024-10-31")}>
         <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
