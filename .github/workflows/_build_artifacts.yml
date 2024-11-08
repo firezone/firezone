@@ -155,9 +155,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.3.6
+            release_name: headless-client-1.3.7
             # mark:next-headless-version
-            version: 1.3.6
+            version: 1.3.7
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
