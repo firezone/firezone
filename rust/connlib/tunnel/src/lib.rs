@@ -89,11 +89,10 @@ impl ClientTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        known_hosts: BTreeMap<String, Vec<IpAddr>>,
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
-            role_state: ClientState::new(known_hosts, rand::random(), Instant::now()),
+            role_state: ClientState::new(BTreeMap::default(), rand::random(), Instant::now()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             encrypt_buf: Default::default(),
