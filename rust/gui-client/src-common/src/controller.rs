@@ -207,14 +207,16 @@ impl<I: GuiIntegration> Controller<I> {
     pub async fn main_loop(mut self) -> Result<(), Error> {
         // Start telemetry
         {
+            const VERSION: &str = env!("CARGO_PKG_VERSION");
+
             let environment = self.advanced_settings.api_url.to_string();
-            self.telemetry.start(
-                &environment,
-                firezone_bin_shared::git_version!("gui-client-*"),
-                firezone_telemetry::GUI_DSN,
-            );
+            self.telemetry
+                .start(&environment, VERSION, firezone_telemetry::GUI_DSN);
             self.ipc_client
-                .send_msg(&IpcClientMsg::StartTelemetry { environment })
+                .send_msg(&IpcClientMsg::StartTelemetry {
+                    environment,
+                    version: VERSION.to_owned(),
+                })
                 .await?;
         }
 

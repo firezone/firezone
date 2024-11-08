@@ -12,7 +12,7 @@ use eventloop::Command;
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -124,12 +124,7 @@ async fn connect<CB>(
 where
     CB: Callbacks + 'static,
 {
-    let tunnel = ClientTunnel::new(
-        tcp_socket_factory,
-        udp_socket_factory,
-        BTreeMap::from([(portal.server_host().to_owned(), portal.resolved_addresses())]),
-    );
-
+    let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory);
     let mut eventloop = Eventloop::new(tunnel, callbacks, portal, rx);
 
     std::future::poll_fn(|cx| eventloop.poll(cx)).await?;
