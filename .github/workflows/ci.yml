@@ -118,7 +118,7 @@ jobs:
             tag: "latest"
             ci-name: latest
     # Don't run compatibility tests when called from hotfix.yml or publish.yml on `main` because
-    # it'll be red if there was a breaking change we're tring to publish,
+    # it'll be red if there was a breaking change we're trying to publish,
     # and the deploy_production workflow checks for main to be green.
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     name: compatibility-tests-client(${{ matrix.client.tag }})-gateway(${{ matrix.gateway.ci-name }})
@@ -232,6 +232,7 @@ jobs:
       contents: read
       id-token: write
       pull-requests: write
+      checks: write
     steps:
       - uses: actions/checkout@v4
       - uses: bencherdev/bencher@main
