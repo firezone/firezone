@@ -145,7 +145,7 @@ impl Io {
         if let Some(timeout) = self.timeout.as_mut() {
             if timeout.poll_unpin(cx).is_ready() {
                 let deadline = timeout.deadline().into();
-                self.timeout.as_mut().take(); // Clear the timeout.
+                self.timeout = None; // Clear the timeout.
 
                 return Poll::Ready(Ok(Input::Timeout(deadline)));
             }
