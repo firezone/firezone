@@ -14,7 +14,7 @@ use firezone_headless_client::{
 };
 use firezone_logging::{anyhow_dyn_err, telemetry_span};
 use firezone_telemetry::Telemetry;
-use futures::{FutureExt as _, StreamExt as _};
+use futures::StreamExt as _;
 use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
@@ -22,7 +22,6 @@ use secrecy::{Secret, SecretString};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
-    pin::pin,
     sync::Arc,
 };
 use tokio::{sync::mpsc, time::Instant};
@@ -233,8 +232,6 @@ fn main() -> Result<()> {
 
         let mut terminate = signals::Terminate::new()?;
         let mut hangup = signals::Hangup::new()?;
-        let mut terminate = pin!(terminate.recv().fuse());
-        let mut hangup = pin!(hangup.recv().fuse());
 
         let mut tun_device = TunDeviceManager::new(ip_packet::PACKET_SIZE)?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
@@ -258,20 +255,17 @@ fn main() -> Result<()> {
         drop(connect_span);
 
         let result = loop {
-            let mut dns_changed = pin!(dns_notifier.notified().fuse());
-            let mut network_changed = pin!(network_notifier.notified().fuse());
-
-            let cb = futures::select! {
-                () = terminate => {
+            let cb = tokio::select! {
+                () = terminate.recv() => {
                     tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C");
                     break Ok(());
                 },
-                () = hangup => {
+                () = hangup.recv() => {
                     tracing::info!("Caught SIGHUP");
                     session.reset();
                     continue;
                 },
-                result = dns_changed => {
+                result = dns_notifier.notified() => {
                     result?;
                     // If the DNS control method is not `systemd-resolved`
                     // then we'll use polling here, so no point logging every 5 seconds that we're checking the DNS
@@ -279,7 +273,7 @@ fn main() -> Result<()> {
                     session.set_dns(dns_controller.system_resolvers());
                     continue;
                 },
-                result = network_changed => {
+                result = network_notifier.notified() => {
                     result?;
                     tracing::info!("Network change, resetting Session");
                     session.reset();
