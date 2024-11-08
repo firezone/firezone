@@ -82,7 +82,7 @@ ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "mas
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" }
 proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "main" }
-tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.23" } # Waiting for release.
+tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.26" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
