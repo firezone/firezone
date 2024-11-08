@@ -79,11 +79,11 @@ config :domain, Domain.ComponentVersions,
   firezone_releases_url: "https://www.firezone.dev/api/releases",
   fetch_from_url: true,
   versions: [
-    apple: "1.3.6",
-    android: "1.3.5",
-    gateway: "1.3.2",
-    gui: "1.3.8",
-    headless: "1.3.4"
+    apple: "1.3.8",
+    android: "1.3.6",
+    gateway: "1.4.0",
+    gui: "1.3.11",
+    headless: "1.3.5"
   ]
 
 config :domain, Domain.Cluster,
