@@ -421,6 +421,11 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::future::poll_fn;
+
+    use domain::base::scan::ScannerError;
+    use futures::task::noop_waker_ref;
+
     use super::*;
 
     #[test]
@@ -429,5 +434,37 @@ mod tests {
         let max_channel_size = IP_CHANNEL_SIZE * one_ip_packet;
 
         assert_eq!(max_channel_size, 1_360_000); // 1.36MB is fine, we only have 2 of these channels, meaning less than 3MB additional buffer in total.
+    }
+
+    #[tokio::test]
+    async fn timer_is_reset_after_it_fires() {
+        let now = Instant::now();
+
+        let mut io = Io::new(
+            Arc::new(|_| Err(io::Error::custom("not implemented"))),
+            Arc::new(|_| Err(io::Error::custom("not implemented"))),
+        );
+
+        io.reset_timeout(now + Duration::from_secs(1));
+
+        let poll_fn = poll_fn(|cx| io.poll(cx, &mut [], &mut [], &EncryptBuffer::new()))
+            .await
+            .unwrap();
+
+        let Input::Timeout(timeout) = poll_fn else {
+            panic!("Unexpected result");
+        };
+
+        assert_eq!(timeout, now + Duration::from_secs(1));
+
+        let poll = io.poll(
+            &mut Context::from_waker(noop_waker_ref()),
+            &mut [],
+            &mut [],
+            &EncryptBuffer::new(),
+        );
+
+        assert!(poll.is_pending());
+        assert!(io.timeout.is_none());
     }
 }
