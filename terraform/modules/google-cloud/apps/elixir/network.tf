@@ -68,23 +68,12 @@ resource "google_compute_security_policy" "default" {
   rule {
     description = "block sanctioned countries"
 
-    action   = "deny(451)"
+    action   = "deny(403)"
     priority = "101"
 
     match {
       expr {
-        expression = <<EOT
-          request.path.matches(\"/sign_up\") && (\
-          origin.region_code == 'RU' || \
-          origin.region_code == 'BY' || \
-          origin.region_code == 'KP' || \
-          origin.region_code == 'IR' || \
-          origin.region_code == 'SY' || \
-          origin.region_code == 'CU' || \
-          origin.region_code == 'VE' || \
-          origin.region_code == 'XC' || \
-          origin.region_code == 'XD')"
-        EOT
+        expression = "request.path.matches('/sign_up') && !origin.region_code.matches('^RU|BY|KP|IR|SY|CU|VE|XC|XD$')"
       }
     }
   }
