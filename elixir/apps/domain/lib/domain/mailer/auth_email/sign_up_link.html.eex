@@ -95,7 +95,7 @@
                     <p></p>
                     <div>
                       <a
-                        href={@sign_in_form_url}
+                        href="<%= @sign_in_form_url %>"
                         style="display: inline-block; border-radius: 4px; background-color: #5e00d6; padding: 16px 24px; font-size: 16px; font-weight: 600; line-height: 1; color: #f6f6f6; text-decoration: none"
                       >
                         <!--[if mso]>
@@ -155,7 +155,7 @@
                           Sign In URL
                         </th>
                         <td style="padding: 16px 24px;">
-                          <a href={@sign_in_form_url}><%= @sign_in_form_url %></a>
+                          <a href="<%= @sign_in_form_url %>"><%= @sign_in_form_url %></a>
                         </td>
                       </tr>
                     </table>

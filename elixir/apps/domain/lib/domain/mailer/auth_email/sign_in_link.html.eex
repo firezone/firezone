@@ -99,7 +99,7 @@
                     <div role="separator" style="line-height: 16px">&zwj;</div>
                     <div>
                       <a
-                        href={@sign_in_url}
+                        href="<%= @sign_in_url %>"
                         target="_blank"
                         style="display: inline-block; border-radius: 4px; background-color: #5e00d6; padding: 16px 24px; font-size: 16px; font-weight: 600; line-height: 1; color: #f6f6f6; text-decoration: none"
                       >
