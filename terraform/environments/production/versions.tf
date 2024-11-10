@@ -14,12 +14,12 @@ terraform {
 
     google = {
       source  = "hashicorp/google"
-      version = "~> 5.20"
+      version = "~> 6.10"
     }
 
     google-beta = {
       source  = "hashicorp/google-beta"
-      version = "~> 5.20"
+      version = "~> 6.10"
     }
 
     tls = {
