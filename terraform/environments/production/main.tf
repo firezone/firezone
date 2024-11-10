@@ -1,8 +1,6 @@
 locals {
   project_owners = [
-    "a@firezone.dev",
     "bmanifold@firezone.dev",
-    "gabriel@firezone.dev",
     "jamil@firezone.dev",
   ]
 
