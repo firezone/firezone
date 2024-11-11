@@ -20,7 +20,6 @@ use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use std::{
-    collections::BTreeMap,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -128,7 +127,7 @@ fn main() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
 
-    let telemetry = Telemetry::default();
+    let mut telemetry = Telemetry::default();
     telemetry.start(
         cli.api_url.as_ref(),
         VERSION,
@@ -175,15 +174,7 @@ fn main() -> Result<()> {
         Some(id) => id,
         None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
-    firezone_telemetry::configure_scope(|scope| {
-        scope.set_context(
-            "firezone",
-            firezone_telemetry::Context::Other(BTreeMap::from([(
-                "id".to_string(),
-                firezone_id.clone().into(),
-            )])),
-        )
-    });
+    telemetry.set_firezone_id(firezone_id.clone());
 
     let url = LoginUrl::client(
         cli.api_url,

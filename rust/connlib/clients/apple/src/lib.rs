@@ -193,8 +193,9 @@ impl WrappedSession {
         callback_handler: ffi::CallbackHandler,
         device_info: String,
     ) -> Result<Self> {
-        let telemetry = Telemetry::default();
+        let mut telemetry = Telemetry::default();
         telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), APPLE_DSN);
+        telemetry.set_firezone_id(device_id.clone());
 
         let logger = init_logging(log_dir.into(), log_filter)?;
         install_rustls_crypto_provider();
@@ -264,7 +265,7 @@ impl WrappedSession {
         self.inner.set_disabled_resources(disabled_resources)
     }
 
-    fn disconnect(self) {
+    fn disconnect(mut self) {
         self.runtime.block_on(self.telemetry.stop());
         self.inner.disconnect();
     }

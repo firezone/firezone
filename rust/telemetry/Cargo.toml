@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-arc-swap = "1.7.1"
 sentry = { version = "0.34.0", default-features = false, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls", "tracing"] }
 sentry-anyhow = "0.34.0"
 tokio = { workspace = true, features = ["rt"] }
