@@ -452,7 +452,7 @@ impl ClientOnGateway {
 
         self.permanent_translations
             .get_mut(&ip)
-            .expect("inconsistent state")
+            .context("No translation state for outgoing packet")?
             .on_incoming_traffic(now);
 
         packet.update_checksum();

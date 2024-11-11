@@ -172,7 +172,14 @@ impl StubResolver {
 
     pub(crate) fn get_fqdn(&self, ip: &IpAddr) -> Option<(&DomainName, &Vec<IpAddr>)> {
         let (fqdn, _) = self.ips_to_fqdn.get(ip)?;
-        Some((fqdn, self.fqdn_to_ips.get(fqdn).unwrap()))
+        let ips = self.fqdn_to_ips.get(fqdn);
+
+        debug_assert!(
+            ips.is_some(),
+            "fqdn_to_ips and ips_to_fqdn are inconsistent"
+        );
+
+        Some((fqdn, ips?))
     }
 
     pub(crate) fn add_resource(&mut self, id: ResourceId, pattern: String) -> bool {
@@ -305,7 +312,7 @@ impl StubResolver {
         if domain == *DOH_CANARY_DOMAIN {
             let payload = MessageBuilder::new_vec()
                 .start_answer(&message, Rcode::NXDOMAIN)
-                .unwrap()
+                .context("Failed to create answer from DNS query")?
                 .into_message();
 
             return Ok(ResolveStrategy::LocalResponse(payload));
