@@ -1,8 +1,7 @@
 use std::time::Duration;
 
 pub use sentry::{
-    add_breadcrumb, capture_error, capture_message, configure_scope, end_session,
-    end_session_with_status,
+    add_breadcrumb, capture_error, capture_message, end_session, end_session_with_status,
     types::protocol::v7::{Context, SessionStatus},
     Breadcrumb, Hub, Level,
 };
@@ -38,6 +37,7 @@ pub struct Telemetry {
     inner: Option<sentry::ClientInitGuard>,
 
     account_slug: Option<String>,
+    firezone_id: Option<String>,
 }
 
 impl Telemetry {
@@ -114,12 +114,22 @@ impl Telemetry {
         self.update_user_context();
     }
 
+    pub fn set_firezone_id(&mut self, id: String) {
+        self.firezone_id = Some(id);
+        self.update_user_context();
+    }
+
     fn update_user_context(&self) {
         let mut user = sentry::User::default();
 
         if let Some(account_slug) = self.account_slug.clone() {
             user.other
                 .insert("account_slug".to_string(), account_slug.into());
+        }
+
+        if let Some(firezone_id) = self.firezone_id.clone() {
+            user.other
+                .insert("firezone_id".to_string(), firezone_id.into());
         }
 
         sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));

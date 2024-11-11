@@ -19,14 +19,7 @@ use futures::{
 use phoenix_channel::LoginUrl;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    net::IpAddr,
-    path::PathBuf,
-    pin::pin,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeSet, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, task::spawn_blocking, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -234,20 +227,12 @@ async fn ipc_listen(
     let firezone_id = device_id::get_or_create()
         .context("Failed to read / create device ID")?
         .id;
-    // TODO: Telemetry is initialized wrong here:
-    // Sentry's contexts must be set on the main thread hub before starting Tokio, so that other thread hubs will inherit the context.
-    firezone_telemetry::configure_scope(|scope| {
-        scope.set_context(
-            "firezone",
-            firezone_telemetry::Context::Other(BTreeMap::from([(
-                "id".to_string(),
-                firezone_id.into(),
-            )])),
-        )
-    });
+
+    let mut telemetry = Telemetry::default();
+    telemetry.set_firezone_id(firezone_id);
+
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController { dns_control_method };
-    let mut telemetry = Telemetry::default();
     loop {
         let mut handler_fut = pin!(Handler::new(
             &mut server,
