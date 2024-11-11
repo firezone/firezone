@@ -259,15 +259,11 @@ impl Tun {
     }
 
     // Moves packets from the Internet towards the user
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "Fn signature must align with other platform implementations"
-    )]
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
         let len = bytes
             .len()
             .try_into()
-            .expect("Packet length should fit into u16");
+            .map_err(|_| io::Error::other("Packet too large; length does not fit into u16"))?;
 
         let Ok(mut pkt) = self.session.allocate_send_packet(len) else {
             // Ring buffer is full, just drop the packet since we're at the IP layer
