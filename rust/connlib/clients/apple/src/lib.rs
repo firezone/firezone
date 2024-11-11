@@ -193,7 +193,7 @@ impl WrappedSession {
         callback_handler: ffi::CallbackHandler,
         device_info: String,
     ) -> Result<Self> {
-        let telemetry = Telemetry::default();
+        let mut telemetry = Telemetry::default();
         telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), APPLE_DSN);
 
         let logger = init_logging(log_dir.into(), log_filter)?;
@@ -264,7 +264,7 @@ impl WrappedSession {
         self.inner.set_disabled_resources(disabled_resources)
     }
 
-    fn disconnect(self) {
+    fn disconnect(mut self) {
         self.runtime.block_on(self.telemetry.stop());
         self.inner.disconnect();
     }

@@ -41,7 +41,7 @@ pub struct Controller<'a, I: GuiIntegration> {
     release: Option<updates::Release>,
     rx: mpsc::Receiver<ControllerRequest>,
     status: Status,
-    telemetry: &'a Telemetry,
+    telemetry: &'a mut Telemetry,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
     uptime: crate::uptime::Tracker,
 }
@@ -52,7 +52,7 @@ pub struct Builder<'a, I: GuiIntegration> {
     pub integration: I,
     pub log_filter_reloader: LogFilterReloader,
     pub rx: mpsc::Receiver<ControllerRequest>,
-    pub telemetry: &'a Telemetry,
+    pub telemetry: &'a mut Telemetry,
     pub updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 }
 

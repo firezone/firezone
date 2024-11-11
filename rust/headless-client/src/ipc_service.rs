@@ -201,7 +201,7 @@ fn run_smoke_test() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
     let mut signals = signals::Terminate::new()?;
-    let telemetry = Telemetry::default();
+    let mut telemetry = Telemetry::default();
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
@@ -211,7 +211,7 @@ fn run_smoke_test() -> Result<()> {
             &mut server,
             &mut dns_controller,
             &log_filter_reloader,
-            &telemetry,
+            &mut telemetry,
         )
         .await?
         .run(&mut signals)
@@ -247,13 +247,13 @@ async fn ipc_listen(
     });
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController { dns_control_method };
-    let telemetry = Telemetry::default();
+    let mut telemetry = Telemetry::default();
     loop {
         let mut handler_fut = pin!(Handler::new(
             &mut server,
             &mut dns_controller,
             log_filter_reloader,
-            &telemetry,
+            &mut telemetry,
         ));
         let Some(handler) = poll_fn(|cx| {
             if let Poll::Ready(()) = signals.poll_recv(cx) {
@@ -285,7 +285,7 @@ struct Handler<'a> {
     last_connlib_start_instant: Option<Instant>,
     log_filter_reloader: &'a LogFilterReloader,
     session: Option<Session>,
-    telemetry: &'a Telemetry, // Handle to the sentry.io telemetry module
+    telemetry: &'a mut Telemetry, // Handle to the sentry.io telemetry module
     tun_device: TunDeviceManager,
 }
 
@@ -316,7 +316,7 @@ impl<'a> Handler<'a> {
         server: &mut IpcServer,
         dns_controller: &'a mut DnsController,
         log_filter_reloader: &'a LogFilterReloader,
-        telemetry: &'a Telemetry,
+        telemetry: &'a mut Telemetry,
     ) -> Result<Self> {
         dns_controller.deactivate()?;
         let (ipc_rx, ipc_tx) = server

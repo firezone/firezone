@@ -123,7 +123,7 @@ pub(crate) fn run(
     cli: client::Cli,
     advanced_settings: AdvancedSettings,
     reloader: LogFilterReloader,
-    telemetry: telemetry::Telemetry,
+    mut telemetry: telemetry::Telemetry,
 ) -> Result<(), Error> {
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
@@ -245,7 +245,7 @@ pub(crate) fn run(
                         ctlr_rx,
                         advanced_settings,
                         reloader,
-                        &telemetry,
+                        &mut telemetry,
                         updates_rx,
                     )).catch_unwind().await;
 
@@ -476,7 +476,7 @@ async fn run_controller(
     rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: LogFilterReloader,
-    telemetry: &telemetry::Telemetry,
+    telemetry: &mut telemetry::Telemetry,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
     tracing::debug!("Entered `run_controller`");

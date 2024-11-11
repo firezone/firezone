@@ -128,7 +128,7 @@ fn main() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
 
-    let telemetry = Telemetry::default();
+    let mut telemetry = Telemetry::default();
     telemetry.start(
         cli.api_url.as_ref(),
         VERSION,

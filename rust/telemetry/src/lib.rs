@@ -1,4 +1,3 @@
-use arc_swap::ArcSwapOption;
 use std::time::Duration;
 
 pub use sentry::{
@@ -36,14 +35,14 @@ pub struct Telemetry {
     /// be able to gracefully close down Sentry, even though it won't have
     /// a mutable handle to it, and even though `main` is actually what holds
     /// the handle. Wrapping it all in `ArcSwap` makes it simpler.
-    inner: ArcSwapOption<sentry::ClientInitGuard>,
+    inner: Option<sentry::ClientInitGuard>,
 }
 
 impl Telemetry {
-    pub fn start(&self, api_url: &str, release: &str, dsn: Dsn) {
+    pub fn start(&mut self, api_url: &str, release: &str, dsn: Dsn) {
         // Since it's `arc_swap` and not `Option`, there is a TOCTOU here,
         // but in practice it should never trigger
-        if self.inner.load().is_some() {
+        if self.inner.is_some() {
             return;
         }
 
@@ -80,13 +79,13 @@ impl Telemetry {
             let ctx = sentry::integrations::contexts::utils::rust_context();
             scope.set_context("rust", ctx);
         });
-        self.inner.swap(Some(inner.into()));
+        self.inner.replace(inner);
         sentry::start_session();
     }
 
     /// Flushes events to sentry.io and drops the guard
-    pub async fn stop(&self) {
-        let Some(inner) = self.inner.swap(None) else {
+    pub async fn stop(&mut self) {
+        let Some(inner) = self.inner.take() else {
             return;
         };
         tracing::info!("Stopping telemetry");
@@ -128,7 +127,7 @@ mod tests {
     async fn sentry() {
         // Smoke-test Sentry itself by turning it on and off a couple times
         {
-            let tele = Telemetry::default();
+            let mut tele = Telemetry::default();
 
             // Expect no telemetry because the telemetry module needs to be enabled before it can do anything
             negative_error("X7X4CKH3");
@@ -158,13 +157,13 @@ mod tests {
         // Test starting up with the choice opted-in
         {
             {
-                let tele = Telemetry::default();
+                let mut tele = Telemetry::default();
                 negative_error("4H7HFTNX");
                 tele.start("test", ENV, HEADLESS_DSN);
             }
             {
                 negative_error("GF46D6IL");
-                let tele = Telemetry::default();
+                let mut tele = Telemetry::default();
                 tele.start("test", ENV, HEADLESS_DSN);
                 error("OKOEUKSW");
             }
