@@ -89,6 +89,7 @@ pub enum ClientMsg {
     StartTelemetry {
         environment: String,
         version: String,
+        account_slug: Option<String>,
     },
     StopTelemetry,
 }
@@ -534,9 +535,15 @@ impl<'a> Handler<'a> {
             ClientMsg::StartTelemetry {
                 environment,
                 version,
-            } => self
-                .telemetry
-                .start(&environment, &version, firezone_telemetry::IPC_SERVICE_DSN),
+                account_slug,
+            } => {
+                self.telemetry
+                    .start(&environment, &version, firezone_telemetry::IPC_SERVICE_DSN);
+
+                if let Some(account_slug) = account_slug {
+                    self.telemetry.set_account_slug(account_slug);
+                }
+            }
             ClientMsg::StopTelemetry => {
                 self.telemetry.stop().await;
             }
@@ -554,6 +561,7 @@ impl<'a> Handler<'a> {
 
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
+        self.telemetry.set_firezone_id(device_id.id.clone());
 
         let url = LoginUrl::client(
             Url::parse(api_url).map_err(|e| Error::UrlParse(e.to_string()))?,

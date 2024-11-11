@@ -205,6 +205,8 @@ impl Status {
 
 impl<'a, I: GuiIntegration> Controller<'a, I> {
     pub async fn main_loop(mut self) -> Result<(), Error> {
+        let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
+
         // Start telemetry
         {
             const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -212,10 +214,15 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             let environment = self.advanced_settings.api_url.to_string();
             self.telemetry
                 .start(&environment, VERSION, firezone_telemetry::GUI_DSN);
+            if let Some(account_slug) = account_slug.clone() {
+                self.telemetry.set_account_slug(account_slug);
+            }
+
             self.ipc_client
                 .send_msg(&IpcClientMsg::StartTelemetry {
                     environment,
                     version: VERSION.to_owned(),
+                    account_slug,
                 })
                 .await?;
         }
@@ -229,11 +236,6 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
         } else {
             tracing::info!("No token / actor_name on disk, starting in signed-out state");
             self.refresh_system_tray_menu()?;
-        }
-
-        if let Some(session) = self.auth.session() {
-            self.telemetry
-                .set_account_slug(session.account_slug().to_owned());
         }
 
         if !ran_before::get().await? {
