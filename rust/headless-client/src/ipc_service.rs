@@ -19,7 +19,9 @@ use futures::{
 use phoenix_channel::LoginUrl;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeSet, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet, io, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration,
+};
 use tokio::{sync::mpsc, task::spawn_blocking, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -119,16 +121,22 @@ pub enum ServerMsg {
 // All variants are `String` because almost no error type implements `Serialize`
 #[derive(Debug, Deserialize, Serialize, thiserror::Error)]
 pub enum Error {
+    #[error("IO error: {0}")]
+    Io(String),
     #[error("{0}")]
-    DeviceId(String),
-    #[error("{0}")]
-    LoginUrl(String),
-    #[error("{0}")]
-    PortalConnection(String),
-    #[error("{0}")]
-    TunnelDevice(String),
-    #[error("{0}")]
-    UrlParse(String),
+    Other(String),
+}
+
+impl From<io::Error> for Error {
+    fn from(v: io::Error) -> Self {
+        Self::Io(v.to_string())
+    }
+}
+
+impl From<anyhow::Error> for Error {
+    fn from(v: anyhow::Error) -> Self {
+        Self::Other(format!("{v:#}"))
+    }
 }
 
 /// Only called from the GUI Client's build of the IPC service
@@ -560,17 +568,17 @@ impl<'a> Handler<'a> {
         let _connect_span = telemetry_span!("connect_to_firezone").entered();
 
         assert!(self.session.is_none());
-        let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
+        let device_id = device_id::get_or_create().context("Failed to get-or-create device ID")?;
         self.telemetry.set_firezone_id(device_id.id.clone());
 
         let url = LoginUrl::client(
-            Url::parse(api_url).map_err(|e| Error::UrlParse(e.to_string()))?,
+            Url::parse(api_url).context("Failed to parse URL")?,
             &token,
             device_id.id,
             None,
             device_id::device_info(),
         )
-        .map_err(|e| Error::LoginUrl(e.to_string()))?;
+        .context("Failed to create `LoginUrl`")?;
 
         self.last_connlib_start_instant = Some(Instant::now());
         let (cb_tx, cb_rx) = mpsc::channel(1_000);
@@ -589,8 +597,7 @@ impl<'a> Handler<'a> {
                 .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
                 .build(),
             Arc::new(tcp_socket_factory),
-        )
-        .map_err(|e| Error::PortalConnection(e.to_string()))?;
+        )?; // Turn this `io::Error` directly into an `Error` so we can distinguish it from others in the GUI client.
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
@@ -610,7 +617,7 @@ impl<'a> Handler<'a> {
 
             self.tun_device
                 .make_tun()
-                .map_err(|e| Error::TunnelDevice(e.to_string()))?
+                .context("Failed to create TUN device")?
         };
         connlib.set_tun(Box::new(tun));
 
