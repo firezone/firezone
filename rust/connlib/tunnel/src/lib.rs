@@ -34,6 +34,7 @@ mod peer_store;
 mod proptest;
 mod sockets;
 #[cfg(all(test, feature = "proptest"))]
+#[allow(clippy::unwrap_in_result)]
 mod tests;
 mod utils;
 

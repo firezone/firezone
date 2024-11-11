@@ -11,7 +11,6 @@ use std::{
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    str::FromStr,
     sync::Arc,
     task::{ready, Context, Poll},
 };
@@ -225,10 +224,12 @@ impl Tun {
         let wintun = unsafe { wintun::load_from_path(path) }?;
 
         // Create wintun adapter
-        let uuid = uuid::Uuid::from_str(TUNNEL_UUID)
-            .expect("static UUID should always parse correctly")
-            .as_u128();
-        let adapter = match Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid)) {
+        let adapter = match Adapter::create(
+            &wintun,
+            TUNNEL_NAME,
+            TUNNEL_NAME,
+            Some(TUNNEL_UUID.as_u128()),
+        ) {
             Ok(x) => x,
             Err(error) => {
                 tracing::error!(error = std_dyn_err(&error), "Failed in `Adapter::create`");
@@ -258,15 +259,11 @@ impl Tun {
     }
 
     // Moves packets from the Internet towards the user
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "Fn signature must align with other platform implementations"
-    )]
     fn write(&self, bytes: &[u8]) -> io::Result<usize> {
         let len = bytes
             .len()
             .try_into()
-            .expect("Packet length should fit into u16");
+            .map_err(|_| io::Error::other("Packet too large; length does not fit into u16"))?;
 
         let Ok(mut pkt) = self.session.allocate_send_packet(len) else {
             // Ring buffer is full, just drop the packet since we're at the IP layer
