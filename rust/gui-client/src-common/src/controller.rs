@@ -231,6 +231,11 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             self.refresh_system_tray_menu()?;
         }
 
+        if let Some(session) = self.auth.session() {
+            self.telemetry
+                .set_account_slug(session.account_slug().to_owned());
+        }
+
         if !ran_before::get().await? {
             self.integration.set_welcome_window_visible(true)?;
         }

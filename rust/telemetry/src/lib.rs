@@ -36,6 +36,8 @@ pub struct Telemetry {
     /// a mutable handle to it, and even though `main` is actually what holds
     /// the handle. Wrapping it all in `ArcSwap` makes it simpler.
     inner: Option<sentry::ClientInitGuard>,
+
+    account_slug: Option<String>,
 }
 
 impl Telemetry {
@@ -81,6 +83,8 @@ impl Telemetry {
         });
         self.inner.replace(inner);
         sentry::start_session();
+
+        self.update_user_context();
     }
 
     /// Flushes events to sentry.io and drops the guard
@@ -104,16 +108,22 @@ impl Telemetry {
         })
         .await;
     }
-}
 
-/// Sets the Firezone account slug on the Sentry hub
-///
-/// This sets the entire set of "user" info, so it will conflict if we set any other user ID later.
-pub fn set_account_slug(account_slug: String) {
-    let mut user = sentry::User::default();
-    user.other
-        .insert("account_slug".to_string(), account_slug.into());
-    sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));
+    pub fn set_account_slug(&mut self, slug: String) {
+        self.account_slug = Some(slug);
+        self.update_user_context();
+    }
+
+    fn update_user_context(&self) {
+        let mut user = sentry::User::default();
+
+        if let Some(account_slug) = self.account_slug.clone() {
+            user.other
+                .insert("account_slug".to_string(), account_slug.into());
+        }
+
+        sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));
+    }
 }
 
 #[cfg(test)]
