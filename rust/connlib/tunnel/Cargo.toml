@@ -48,7 +48,7 @@ ip-packet = { workspace = true, features = ["proptest"] }
 proptest-state-machine = "0.3"
 rand = "0.8"
 test-case = "3.3.1"
-test-strategy = "0.3.1"
+test-strategy = "0.4.0"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [[bench]]
