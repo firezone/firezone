@@ -4,7 +4,7 @@ use connlib_model::DomainName;
 use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_event, telemetry_span};
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
@@ -79,6 +79,7 @@ impl Eventloop {
                 }
                 Poll::Ready(Err(e)) => {
                     tracing::debug!(error = std_dyn_err(&e), "Tunnel error");
+                    telemetry_event!(error = std_dyn_err(&e), "Tunnel error");
                     continue;
                 }
                 Poll::Pending => {}

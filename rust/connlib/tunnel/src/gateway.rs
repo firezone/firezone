@@ -4,11 +4,11 @@ use crate::messages::{
 use crate::utils::earliest;
 use crate::{p2p_control, GatewayEvent};
 use crate::{peer::ClientOnGateway, peer_store::PeerStore};
-use anyhow::Context;
+use anyhow::{Context, Result};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, DomainName, RelayId, ResourceId};
-use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
+use firezone_logging::{anyhow_dyn_err, telemetry_span};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::{ExposeSecret as _, Secret};
@@ -85,32 +85,30 @@ impl GatewayState {
         packet: IpPacket,
         now: Instant,
         buffer: &mut EncryptBuffer,
-    ) -> Option<snownet::EncryptedPacket> {
+    ) -> Result<Option<snownet::EncryptedPacket>> {
         let dst = packet.destination();
 
-        if !is_client(dst) {
-            return None;
-        }
+        anyhow::ensure!(is_client(dst), "Packet not destined for a client");
 
-        let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
-            tracing::trace!(%dst, "Couldn't find connection by IP");
-
-            return None;
-        };
+        let peer = self
+            .peers
+            .peer_by_ip_mut(dst)
+            .context("Couldn't find connection by IP")?;
         let cid = peer.id();
 
         let packet = peer
-            .encapsulate(packet, now)
-            .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e:#}"))
-            .ok()??;
+            .translate_inbound(packet, now)
+            .context("Failed to translate packet")?;
 
-        let transmit = self
+        let Some(encrypted_packet) = self
             .node
             .encapsulate(cid, packet, now, buffer)
-            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %cid, "Failed to encapsulate"))
-            .ok()??;
+            .context("Failed to encapsulate")?
+        else {
+            return Ok(None);
+        };
 
-        Some(transmit)
+        Ok(Some(encrypted_packet))
     }
 
     /// Handles UDP packets received on the network interface.
@@ -125,40 +123,44 @@ impl GatewayState {
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Option<IpPacket> {
-        let (cid, packet) = self.node.decapsulate(
-            local,
-            from,
-            packet,
-            now,
-        )
-        .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %from, num_bytes = %packet.len(), "Failed to decapsulate incoming packet"))
-        .ok()??;
-
-        let Some(peer) = self.peers.get_mut(&cid) else {
-            tracing::warn!(%cid, "Couldn't find connection by ID");
-
-            return None;
+    ) -> Result<Option<IpPacket>> {
+        let Some((cid, packet)) = self
+            .node
+            .decapsulate(local, from, packet, now)
+            .context("Failed to decapsulate")?
+        else {
+            return Ok(None);
         };
 
+        let peer = self
+            .peers
+            .get_mut(&cid)
+            .context("Failed to find connection by ID")?;
+
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
-            let response =
-                handle_p2p_control_packet(fz_p2p_control, peer, &mut self.buffered_events)?;
+            let Some(immediate_response) =
+                handle_p2p_control_packet(fz_p2p_control, peer, &mut self.buffered_events)
+            else {
+                return Ok(None);
+            };
 
             let mut buffer = EncryptBuffer::new();
-            let transmit = encrypt_packet(response, cid, &mut self.node, &mut buffer, now)?;
+            let Some(transmit) =
+                encrypt_packet(immediate_response, cid, &mut self.node, &mut buffer, now)?
+            else {
+                return Ok(None);
+            };
 
             self.buffered_transmits.push_back(transmit.into_owned());
 
-            return None;
+            return Ok(None);
         }
 
         let packet = peer
-            .decapsulate(packet, now)
-            .inspect_err(|e| tracing::debug!(%cid, "Invalid packet: {e:#}"))
-            .ok()?;
+            .translate_outbound(packet, now)
+            .context("Failed to translate packet")?;
 
-        Some(packet)
+        Ok(Some(packet))
     }
 
     pub fn cleanup_connection(&mut self, id: &ClientId) {
@@ -336,7 +338,7 @@ impl GatewayState {
         let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status);
 
         let mut buffer = EncryptBuffer::new();
-        let Some(transmit) = encrypt_packet(packet, req.client, &mut self.node, &mut buffer, now)
+        let Some(transmit) = encrypt_packet(packet, req.client, &mut self.node, &mut buffer, now)?
         else {
             return Ok(());
         };
@@ -499,13 +501,15 @@ fn encrypt_packet<'a>(
     node: &mut ServerNode<ClientId, RelayId>,
     buffer: &'a mut EncryptBuffer,
     now: Instant,
-) -> Option<Transmit<'a>> {
-    let encrypted_packet = node
+) -> Result<Option<Transmit<'a>>> {
+    let Some(encrypted_packet) = node
         .encapsulate(cid, packet, now, buffer)
-        .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %cid, "Failed to encapsulate"))
-        .ok()??;
+        .context("Failed to encapsulate packet")?
+    else {
+        return Ok(None);
+    };
 
-    Some(encrypted_packet.to_transmit(buffer))
+    Ok(Some(encrypted_packet.to_transmit(buffer)))
 }
 
 /// Opaque request struct for when a domain name needs to be resolved.

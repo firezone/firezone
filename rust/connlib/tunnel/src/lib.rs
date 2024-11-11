@@ -246,9 +246,10 @@ impl GatewayTunnel {
                 }
                 Poll::Ready(io::Input::Device(packet)) => {
                     let now = Instant::now();
-                    let Some(enc_packet) =
-                        self.role_state
-                            .handle_tun_input(packet, now, &mut self.encrypt_buf)
+                    let Some(enc_packet) = self
+                        .role_state
+                        .handle_tun_input(packet, now, &mut self.encrypt_buf)
+                        .map_err(std::io::Error::other)?
                     else {
                         self.role_state.handle_timeout(now, Utc::now());
                         continue;
@@ -264,12 +265,16 @@ impl GatewayTunnel {
                     let utc_now = Utc::now();
 
                     for received in packets {
-                        let Some(packet) = self.role_state.handle_network_input(
-                            received.local,
-                            received.from,
-                            received.packet,
-                            now,
-                        ) else {
+                        let Some(packet) = self
+                            .role_state
+                            .handle_network_input(
+                                received.local,
+                                received.from,
+                                received.packet,
+                                now,
+                            )
+                            .map_err(std::io::Error::other)?
+                        else {
                             self.role_state.handle_timeout(now, utc_now);
                             continue;
                         };
