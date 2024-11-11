@@ -101,8 +101,10 @@ impl GatewayState {
 
         let packet = peer
             .encapsulate(packet, now)
-            .inspect_err(|e| tracing::debug!(%cid, "Failed to encapsulate: {e:#}"))
-            .ok()??;
+            .inspect_err(
+                |e| tracing::debug!(error = anyhow_dyn_err(e), %cid, "Failed to encapsulate"),
+            )
+            .ok()?;
 
         let transmit = self
             .node

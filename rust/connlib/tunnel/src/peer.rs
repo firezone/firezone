@@ -437,18 +437,12 @@ impl ClientOnGateway {
         Ok(packet)
     }
 
-    pub fn encapsulate(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> anyhow::Result<Option<IpPacket>> {
+    pub fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> anyhow::Result<IpPacket> {
         let Some((proto, ip)) = self.nat_table.translate_incoming(&packet, now)? else {
-            return Ok(Some(packet));
+            return Ok(packet);
         };
 
-        let Some(mut packet) = packet.translate_source(self.ipv4, self.ipv6, proto, ip) else {
-            return Ok(None);
-        };
+        let mut packet = packet.translate_source(self.ipv4, self.ipv6, proto, ip)?;
 
         self.permanent_translations
             .get_mut(&ip)
@@ -457,7 +451,7 @@ impl ClientOnGateway {
 
         packet.update_checksum();
 
-        Ok(Some(packet))
+        Ok(packet)
     }
 
     pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
