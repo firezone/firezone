@@ -8,6 +8,7 @@ use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
+use firezone_logging::anyhow_dyn_err;
 use firezone_telemetry::Telemetry;
 use firezone_telemetry::APPLE_DSN;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -266,7 +267,11 @@ impl WrappedSession {
 }
 
 fn err_to_string(result: Result<WrappedSession>) -> Result<WrappedSession, String> {
-    result.map_err(|e| format!("{e:#}"))
+    result.map_err(|e| {
+        tracing::error!(error = anyhow_dyn_err(&e), "Failed to create session");
+
+        format!("{e:#}")
+    })
 }
 
 /// Installs the `ring` crypto provider for rustls.
