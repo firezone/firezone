@@ -627,7 +627,7 @@ impl<I: GuiIntegration> Controller<I> {
             Err(IpcServiceError::PortalConnection(error)) => {
                 // This is typically something like, we don't have Internet access so we can't
                 // open the PhoenixChannel's WebSocket.
-                tracing::warn!(
+                tracing::info!(
                     error,
                     "Failed to connect to Firezone Portal, will try again when the network changes"
                 );
