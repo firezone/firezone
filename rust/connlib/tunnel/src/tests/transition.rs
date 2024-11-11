@@ -1,14 +1,20 @@
 use crate::{
-    client::{Resource, IPV4_RESOURCES, IPV6_RESOURCES},
+    client::{IPV4_RESOURCES, IPV6_RESOURCES},
+    messages::gateway::{Filter, PortRange},
     proptest::{host_v4, host_v6},
 };
 use connlib_model::RelayId;
+use ip_packet::Protocol;
+use itertools::Itertools;
 
-use super::sim_net::{any_ip_stack, any_port, Host};
+use super::{
+    sim_net::{any_ip_stack, any_port, Host},
+    stub_portal::Resource,
+};
 use crate::messages::DnsServer;
 use connlib_model::{DomainName, ResourceId};
 use domain::base::Rtype;
-use prop::collection;
+use prop::{collection, sample::select};
 use proptest::{prelude::*, sample};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -96,10 +102,19 @@ pub(crate) struct DnsQuery {
     pub(crate) transport: DnsTransport,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum DnsTransport {
     Udp,
     Tcp,
+}
+
+impl From<DnsTransport> for Protocol {
+    fn from(value: DnsTransport) -> Self {
+        match value {
+            DnsTransport::Udp => Protocol::Udp(53),
+            DnsTransport::Tcp => Protocol::Tcp(53),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -214,6 +229,7 @@ where
 pub(crate) fn udp_packet<I, D>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = D>,
+    resource: Option<&Resource>,
 ) -> impl Strategy<Value = Transition>
 where
     I: Into<IpAddr>,
@@ -223,10 +239,20 @@ where
         src.prop_map(Into::into),
         dst.prop_map(Into::into),
         any::<u16>(),
-        non_dns_ports(),
+        port_from_resource(resource, |f| {
+            if let Filter::Udp(p) = f {
+                Some(p)
+            } else {
+                None
+            }
+        }),
         any::<sample::Selector>(),
         any::<u64>(),
     )
+        .prop_filter(
+            "avoid using port 53 for non-dns queries for simplicity",
+            |(_, _, _, dport, _, _)| *dport != 53,
+        )
         .prop_map(
             |(src, dst, sport, dport, resolved_ip, payload)| Transition::SendUdpPacket {
                 src,
@@ -242,6 +268,7 @@ where
 pub(crate) fn tcp_packet<I, D>(
     src: impl Strategy<Value = I>,
     dst: impl Strategy<Value = D>,
+    resource: Option<&Resource>,
 ) -> impl Strategy<Value = Transition>
 where
     I: Into<IpAddr>,
@@ -251,26 +278,55 @@ where
         src.prop_map(Into::into),
         dst.prop_map(Into::into),
         any::<u16>(),
-        non_dns_ports(),
+        port_from_resource(resource, |f| {
+            if let Filter::Tcp(p) = f {
+                Some(p)
+            } else {
+                None
+            }
+        }),
         any::<sample::Selector>(),
         any::<u64>(),
     )
-        .prop_map(|(src, dst, sport, dport, resolved_ip, payload)| {
-            Transition::SendTcpPayload {
+        .prop_filter(
+            "avoid using port 53 for non-dns queries for simplicity",
+            |(_, _, _, dport, _, _)| *dport != 53,
+        )
+        .prop_map(
+            |(src, dst, sport, dport, resolved_ip, payload)| Transition::SendTcpPayload {
                 src,
                 dst: dst.into_destination(resolved_ip),
                 sport: SPort(sport),
                 dport: DPort(dport),
                 payload,
-            }
-        })
+            },
+        )
 }
 
-fn non_dns_ports() -> impl Strategy<Value = u16> {
-    any::<u16>().prop_filter(
-        "avoid using port 53 for non-dns queries for simplicity",
-        |p| *p != 53,
-    )
+fn port_from_resource(
+    resource: Option<&Resource>,
+    filter_kind: impl Fn(&Filter) -> Option<&PortRange>,
+) -> impl Strategy<Value = u16> {
+    let Some(resource) = resource else {
+        return any::<u16>().boxed();
+    };
+
+    let filters = resource
+        .filters()
+        .iter()
+        .filter_map(filter_kind)
+        .cloned()
+        .collect_vec();
+
+    if !filters.is_empty() {
+        prop_oneof![
+            select(filters).prop_flat_map(|f| f.port_range_start..=f.port_range_end),
+            any::<u16>()
+        ]
+        .boxed()
+    } else {
+        any::<u16>().boxed()
+    }
 }
 
 /// Samples up to 5 DNS queries that will be sent concurrently into connlib.

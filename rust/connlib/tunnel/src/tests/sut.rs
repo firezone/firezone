@@ -5,9 +5,8 @@ use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
-use super::stub_portal::StubPortal;
+use super::stub_portal::{Resource, StubPortal};
 use super::transition::{Destination, DnsQuery};
-use crate::client::Resource;
 use crate::dns::{self, is_subdomain};
 use crate::gateway::DnsResourceNatEntry;
 use crate::tests::assertions::*;
@@ -129,7 +128,12 @@ impl TunnelTest {
                 });
             }
             Transition::DeactivateResource(id) => {
-                state.client.exec_mut(|c| c.sut.remove_resource(id))
+                state.client.exec_mut(|c| c.sut.remove_resource(id));
+
+                let client_id = state.client.inner().id;
+                for gateway in state.gateways.values_mut() {
+                    gateway.exec_mut(|g| g.sut.remove_access(&client_id, &id));
+                }
             }
             Transition::DisableResources(resources) => state
                 .client
@@ -725,7 +729,7 @@ impl TunnelTest {
                     DnsResourceNatEntry::new(r, resolved_ips)
                 });
 
-                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
+                let resource = portal.map_portal_resource_to_gateway_resource(resource_id);
 
                 gateway.exec_mut(|g| {
                     g.sut
@@ -784,7 +788,7 @@ impl TunnelTest {
 
                     DnsResourceNatEntry::new(r, resolved_ips)
                 });
-                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
+                let resource = portal.map_portal_resource_to_gateway_resource(resource_id);
 
                 let Some(gateway) = self.gateways.get_mut(&gateway_id) else {
                     tracing::error!("Unknown gateway");

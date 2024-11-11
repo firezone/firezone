@@ -4,12 +4,13 @@ use super::{
     sim_net::{any_ip_stack, any_port, host, Host},
     sim_relay::{map_explode, SimRelay},
     strategies::latency,
+    stub_portal::StubPortal,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
     QueryId,
 };
 use crate::{
-    client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::{DnsServer, Interface},
+    utils::network_contains_network,
     DomainName,
 };
 use crate::{proptest::*, ClientState};
@@ -21,7 +22,7 @@ use domain::{
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket};
+use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Protocol};
 use itertools::Itertools as _;
 use prop::collection;
 use proptest::prelude::*;
@@ -246,7 +247,7 @@ impl SimClient {
             return;
         };
 
-        self.on_received_packet(packet);
+        self.on_received_packet(dbg!(packet));
     }
 
     /// Process an IP packet received on the client.
@@ -385,14 +386,14 @@ pub struct RefClient {
     #[derivative(Debug = "ignore")]
     upstream_dns_resolvers: Vec<DnsServer>,
 
-    ipv4_routes: BTreeMap<ResourceId, Ipv4Network>,
-    ipv6_routes: BTreeMap<ResourceId, Ipv6Network>,
+    pub(crate) ipv4_routes: BTreeMap<ResourceId, Ipv4Network>,
+    pub(crate) ipv6_routes: BTreeMap<ResourceId, Ipv6Network>,
 
     /// Tracks all resources in the order they have been added in.
     ///
     /// When reconnecting to the portal, we simulate them being re-added in the same order.
     #[derivative(Debug = "ignore")]
-    resources: Vec<Resource>,
+    resources: Vec<crate::client::Resource>,
 
     #[derivative(Debug = "ignore")]
     internet_resource: Option<ResourceId>,
@@ -410,15 +411,21 @@ pub struct RefClient {
 
     /// Whether we are connected to the gateway serving the Internet resource.
     #[derivative(Debug = "ignore")]
-    pub(crate) connected_internet_resource: bool,
+    pub(crate) connected_internet_resource: Option<GatewayId>,
+    #[derivative(Debug = "ignore")]
+    pub(crate) gateway_known_internet_resource: Option<GatewayId>,
 
     /// The CIDR resources the client is connected to.
     #[derivative(Debug = "ignore")]
-    pub(crate) connected_cidr_resources: HashSet<ResourceId>,
+    pub(crate) connected_cidr_resources: BTreeMap<ResourceId, GatewayId>,
+    #[derivative(Debug = "ignore")]
+    pub(crate) gateway_known_cidr_resources: BTreeMap<ResourceId, GatewayId>,
 
     /// The DNS resources the client is connected to.
     #[derivative(Debug = "ignore")]
-    pub(crate) connected_dns_resources: HashSet<(ResourceId, DomainName)>,
+    pub(crate) connected_dns_resources: BTreeMap<(ResourceId, DomainName), GatewayId>,
+    #[derivative(Debug = "ignore")]
+    pub(crate) gateway_known_dns_resources: BTreeMap<(ResourceId, DomainName), GatewayId>,
 
     #[derivative(Debug = "ignore")]
     pub(crate) connected_gateways: BTreeSet<GatewayId>,
@@ -466,20 +473,21 @@ impl RefClient {
         SimClient::new(self.id, client_state, now)
     }
 
-    pub(crate) fn disconnect_resource(&mut self, resource: &ResourceId) {
+    pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
         self.ipv4_routes.remove(resource);
         self.ipv6_routes.remove(resource);
 
         self.connected_cidr_resources.remove(resource);
-        self.connected_dns_resources.retain(|(r, _)| r != resource);
+        self.gateway_known_cidr_resources.remove(resource);
+        self.connected_dns_resources
+            .retain(|(r, _), _| r != resource);
+        self.gateway_known_dns_resources
+            .retain(|(r, _), _| r != resource);
 
         if self.internet_resource.is_some_and(|r| &r == resource) {
-            self.connected_internet_resource = false;
+            self.connected_internet_resource = None;
+            self.gateway_known_internet_resource = None;
         }
-    }
-
-    pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
-        self.disconnect_resource(resource);
 
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.internet_resource = None;
@@ -493,7 +501,7 @@ impl RefClient {
     fn recalculate_cidr_routes(&mut self) -> IpNetworkTable<ResourceId> {
         let mut table = IpNetworkTable::<ResourceId>::new();
         for resource in self.resources.iter().sorted_by_key(|r| r.id()) {
-            let Resource::Cidr(resource) = resource else {
+            let crate::client::Resource::Cidr(resource) = resource else {
                 continue;
             };
 
@@ -516,13 +524,29 @@ impl RefClient {
     pub(crate) fn reset_connections(&mut self) {
         self.connected_cidr_resources.clear();
         self.connected_dns_resources.clear();
-        self.connected_internet_resource = false;
+        self.connected_internet_resource = None;
         self.connected_gateways.clear();
     }
 
-    pub(crate) fn add_internet_resource(&mut self, r: InternetResource) {
+    pub(crate) fn reset_gateway_known_resources(&mut self) {
+        self.gateway_known_internet_resource.take();
+        self.gateway_known_cidr_resources.clear();
+        self.gateway_known_dns_resources.clear();
+    }
+
+    pub(crate) fn cleanup_gateway_known_resources(&mut self) {
+        self.gateway_known_internet_resource
+            .take_if(|g| !self.connected_gateways.contains(g));
+        self.gateway_known_cidr_resources
+            .retain(|_, g| self.connected_gateways.contains(g));
+        self.gateway_known_dns_resources
+            .retain(|_, g| self.connected_gateways.contains(g));
+    }
+
+    pub(crate) fn add_internet_resource(&mut self, r: crate::client::InternetResource) {
         self.internet_resource = Some(r.id);
-        self.resources.push(Resource::Internet(r.clone()));
+        self.resources
+            .push(crate::client::Resource::Internet(r.clone()));
 
         if self.disabled_resources.contains(&r.id) {
             return;
@@ -532,8 +556,9 @@ impl RefClient {
         self.ipv6_routes.insert(r.id, Ipv6Network::DEFAULT_ROUTE);
     }
 
-    pub(crate) fn add_cidr_resource(&mut self, r: CidrResource) {
-        self.resources.push(Resource::Cidr(r.clone()));
+    pub(crate) fn add_cidr_resource(&mut self, r: crate::client::CidrResource) {
+        self.resources
+            .push(crate::client::Resource::Cidr(r.clone()));
         self.cidr_resources = self.recalculate_cidr_routes();
 
         if self.disabled_resources.contains(&r.id) {
@@ -550,8 +575,8 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn add_dns_resource(&mut self, r: DnsResource) {
-        self.resources.push(Resource::Dns(r));
+    pub(crate) fn add_dns_resource(&mut self, r: crate::client::DnsResource) {
+        self.resources.push(crate::client::Resource::Dns(r));
     }
 
     /// Re-adds all resources in the order they have been initially added.
@@ -561,9 +586,9 @@ impl RefClient {
 
         for resource in mem::take(&mut self.resources) {
             match resource {
-                Resource::Dns(d) => self.add_dns_resource(d),
-                Resource::Cidr(c) => self.add_cidr_resource(c),
-                Resource::Internet(i) => self.add_internet_resource(i),
+                crate::client::Resource::Dns(d) => self.add_dns_resource(d),
+                crate::client::Resource::Cidr(c) => self.add_cidr_resource(c),
+                crate::client::Resource::Internet(i) => self.add_internet_resource(i),
             }
         }
     }
@@ -582,85 +607,100 @@ impl RefClient {
         }
     }
 
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn on_icmp_packet(
         &mut self,
         src: IpAddr,
         dst: Destination,
         seq: Seq,
         identifier: Identifier,
+        dprotocol: Protocol,
         payload: u64,
-        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+        stub_portal: &StubPortal,
     ) {
         self.on_packet(
             src,
             dst.clone(),
+            dprotocol,
             (dst, seq, identifier),
             |ref_client| &mut ref_client.expected_icmp_handshakes,
             payload,
-            gateway_by_resource,
+            stub_portal,
         );
     }
 
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn on_udp_packet(
         &mut self,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
         dport: DPort,
+        dprotocol: Protocol,
         payload: u64,
-        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+        stub_portal: &StubPortal,
     ) {
         self.on_packet(
             src,
             dst.clone(),
+            dprotocol,
             (dst, sport, dport),
             |ref_client| &mut ref_client.expected_udp_handshakes,
             payload,
-            gateway_by_resource,
+            stub_portal,
         );
     }
 
+    #[expect(clippy::too_many_arguments)]
     pub(crate) fn on_tcp_packet(
         &mut self,
         src: IpAddr,
         dst: Destination,
         sport: SPort,
         dport: DPort,
+        dprotocol: Protocol,
         payload: u64,
-        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+        stub_portal: &StubPortal,
     ) {
         self.on_packet(
             src,
             dst.clone(),
+            dprotocol,
             (dst, sport, dport),
             |ref_client| &mut ref_client.expected_tcp_exchanges,
             payload,
-            gateway_by_resource,
+            stub_portal,
         );
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
+    #[expect(clippy::too_many_arguments)]
     fn on_packet<E>(
         &mut self,
         src: IpAddr,
         dst: Destination,
+        dprotocol: Protocol,
         packet_id: E,
         map: impl FnOnce(&mut Self) -> &mut BTreeMap<GatewayId, BTreeMap<u64, E>>,
         payload: u64,
-        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+        stub_portal: &StubPortal,
     ) {
         let Some(resource) = self.resource_by_dst(&dst) else {
+            tracing::debug!("Destination is not a resource");
             return;
         };
 
         tracing::Span::current().record("resource", tracing::field::display(resource));
 
-        let Some(gateway) = gateway_by_resource(resource) else {
+        let Some(gateway) = stub_portal.gateway_for_resource(resource).copied() else {
             tracing::error!("No gateway for resource");
             return;
         };
 
-        if self.is_connected_to_resource(resource, &dst) && self.is_tunnel_ip(src) {
+        if self.is_connected_to_resource(resource, &dst)
+            && self.is_tunnel_ip(src)
+            && self.is_packet_allowed(&resource, &gateway, stub_portal, dprotocol)
+        {
             tracing::debug!("Connected to resource, expecting packet to be routed");
             map(self)
                 .entry(gateway)
@@ -689,7 +729,10 @@ impl RefClient {
         match destination {
             Destination::DomainName { name, .. } => {
                 if !self.disabled_resources.contains(&resource) {
-                    self.connected_dns_resources.insert((resource, name));
+                    self.connected_dns_resources
+                        .insert((resource, name.clone()), gateway);
+                    self.gateway_known_dns_resources
+                        .insert((resource, name), gateway);
                     self.connected_gateways.insert(gateway);
                 }
             }
@@ -711,13 +754,15 @@ impl RefClient {
         gateway: GatewayId,
     ) {
         if self.internet_resource.is_some_and(|r| r == resource) {
-            self.connected_internet_resource = true;
+            self.connected_internet_resource = Some(gateway);
+            self.gateway_known_internet_resource = Some(gateway);
             self.connected_gateways.insert(gateway);
             return;
         }
 
         if self.cidr_resources.iter().any(|(_, r)| *r == resource) {
-            self.connected_cidr_resources.insert(resource);
+            self.connected_cidr_resources.insert(resource, gateway);
+            self.gateway_known_cidr_resources.insert(resource, gateway);
             self.connected_gateways.insert(gateway);
         }
     }
@@ -740,18 +785,59 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Network> {
+    pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<(Ipv4Network, ResourceId)> {
         self.cidr_resources
             .iter_ipv4()
-            .map(|(n, _)| n)
+            .map(|(n, r)| (n, *r))
             .collect_vec()
     }
 
-    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<Ipv6Network> {
+    pub(crate) fn ipv6_cidr_resource_dsts(&self) -> Vec<(Ipv6Network, ResourceId)> {
         self.cidr_resources
             .iter_ipv6()
-            .map(|(n, _)| n)
+            .map(|(n, r)| (n, *r))
             .collect_vec()
+    }
+
+    pub(crate) fn is_packet_allowed(
+        &self,
+        resource: &ResourceId,
+        gateway: &GatewayId,
+        portal: &StubPortal,
+        dprotocol: Protocol,
+    ) -> bool {
+        let Some(resource) = portal.resource_by_id(resource) else {
+            return false;
+        };
+
+        match resource {
+            super::stub_portal::Resource::Cidr(resource) => {
+                // TODO: Remove in the future when a gateway with internet resoruce can't have non-internet resource
+                if self
+                    .gateway_known_internet_resource
+                    .is_some_and(|g| g == *gateway)
+                {
+                    return true;
+                }
+
+                dbg!(&self.gateway_known_cidr_resources);
+
+                self.gateway_known_cidr_resources
+                    .iter()
+                    .filter(|(_, g)| *g == gateway)
+                    .filter_map(|(r, _)| {
+                        if let super::stub_portal::Resource::Cidr(r) = portal.resource_by_id(r)? {
+                            Some(r)
+                        } else {
+                            None
+                        }
+                    })
+                    .filter(|r| network_contains_network(r.address, resource.address))
+                    .any(|r| r.is_allowed(&dprotocol))
+            }
+            super::stub_portal::Resource::Dns(r) => r.is_allowed(&dprotocol),
+            super::stub_portal::Resource::Internet(_) => true,
+        }
     }
 
     fn is_connected_to_resource(&self, resource: ResourceId, destination: &Destination) -> bool {
@@ -764,20 +850,19 @@ impl RefClient {
         };
 
         self.connected_dns_resources
-            .contains(&(resource, name.clone()))
+            .contains_key(&(resource, name.clone()))
     }
 
     fn is_connected_to_internet(&self, id: ResourceId) -> bool {
-        self.active_internet_resource() == Some(id) && self.connected_internet_resource
+        self.active_internet_resource() == Some(id) && self.connected_internet_resource.is_some()
     }
 
     pub(crate) fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
-        self.connected_cidr_resources.contains(&id)
+        self.connected_cidr_resources.contains_key(&id)
     }
 
     pub(crate) fn active_internet_resource(&self) -> Option<ResourceId> {
         self.internet_resource
-            .filter(|r| !self.disabled_resources.contains(r))
     }
 
     pub(crate) fn is_locally_answered_query(&self, domain: &DomainName, rtype: Rtype) -> bool {
@@ -796,20 +881,15 @@ impl RefClient {
     }
 
     fn resource_by_dst(&self, destination: &Destination) -> Option<ResourceId> {
-        match destination {
-            Destination::DomainName { name, .. } => {
-                if let Some(id) = self.dns_resource_by_domain(name) {
-                    return Some(id);
-                }
-            }
-            Destination::IpAddr(addr) => {
-                if let Some(id) = self.cidr_resource_by_ip(*addr) {
-                    return Some(id);
-                }
-            }
-        }
+        let specific_resource = match destination {
+            Destination::DomainName { name, .. } => self.dns_resource_by_domain(name),
+            Destination::IpAddr(addr) => self.cidr_resource_by_ip(*addr),
+        };
 
-        self.active_internet_resource()
+        specific_resource
+            .filter(|r| !self.disabled_resources.contains(r))
+            .or(self.active_internet_resource())
+            .filter(|r| !self.disabled_resources.contains(r))
     }
 
     pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
@@ -926,7 +1006,6 @@ impl RefClient {
         let (_, r) = self
             .cidr_resources
             .matches(ip)
-            .filter(|(_, r)| !self.disabled_resources.contains(r))
             .sorted_by(|(n1, _), (n2, _)| n1.netmask().cmp(&n2.netmask()).reverse()) // Highest netmask is most specific.
             .next()?;
 
@@ -990,7 +1069,10 @@ impl RefClient {
         let maybe_active_cidr_resource = self.cidr_resource_by_ip(query.dns_server.ip());
         let maybe_active_internet_resource = self.active_internet_resource();
 
-        maybe_active_cidr_resource.or(maybe_active_internet_resource)
+        maybe_active_cidr_resource
+            .filter(|r| !self.disabled_resources.contains(r))
+            .or(maybe_active_internet_resource)
+            .filter(|r| !self.disabled_resources.contains(r))
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
@@ -1001,7 +1083,7 @@ impl RefClient {
         self.resources.iter().any(|r| r.id() == resource_id)
     }
 
-    pub(crate) fn all_resources(&self) -> Vec<Resource> {
+    pub(crate) fn all_resources(&self) -> Vec<crate::client::Resource> {
         self.resources.clone()
     }
 
@@ -1092,6 +1174,9 @@ fn ref_client(
                     connected_cidr_resources: Default::default(),
                     connected_dns_resources: Default::default(),
                     connected_internet_resource: Default::default(),
+                    gateway_known_internet_resource: Default::default(),
+                    gateway_known_cidr_resources: Default::default(),
+                    gateway_known_dns_resources: Default::default(),
                     expected_icmp_handshakes: Default::default(),
                     expected_udp_handshakes: Default::default(),
                     expected_tcp_exchanges: Default::default(),

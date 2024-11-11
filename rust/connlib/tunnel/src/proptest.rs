@@ -10,70 +10,45 @@ use std::{
     ops::Range,
 };
 
-use crate::client::{CidrResource, DnsResource, InternetResource, Resource};
+use crate::messages::gateway::{Filter, Filters, PortRange};
 
-pub fn resource(
-    sites: impl Strategy<Value = Vec<Site>> + Clone + 'static,
-) -> impl Strategy<Value = Resource> {
-    any::<bool>().prop_flat_map(move |is_dns| {
-        if is_dns {
-            dns_resource(sites.clone()).prop_map(Resource::Dns).boxed()
-        } else {
-            cidr_resource(any_ip_network(8), sites.clone())
-                .prop_map(Resource::Cidr)
-                .boxed()
-        }
+pub(crate) fn port_range() -> impl Strategy<Value = PortRange> {
+    any::<u16>().prop_flat_map(|s| {
+        (s..=u16::MAX).prop_map(move |d| PortRange {
+            port_range_start: s,
+            port_range_end: d,
+        })
     })
 }
 
-pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Value = DnsResource> {
-    (
-        resource_id(),
-        resource_name(),
-        domain_name(2..4),
-        address_description(),
-        sites,
+pub(crate) fn filters() -> impl Strategy<Value = Filters> {
+    collection::vec(
+        prop_oneof![
+            port_range().prop_map(Filter::Udp),
+            port_range().prop_map(Filter::Tcp),
+        ],
+        0..=4,
     )
-        .prop_map(
-            move |(id, name, address, address_description, sites)| DnsResource {
-                id,
-                address,
-                name,
-                sites,
-                address_description,
-            },
-        )
-}
+    .prop_flat_map(|non_icmp_filters| {
+        let mut filters = non_icmp_filters.clone();
+        filters.push(Filter::Icmp);
 
-pub fn cidr_resource(
-    ip_network: impl Strategy<Value = IpNetwork>,
-    sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = CidrResource> {
-    (
-        resource_id(),
-        resource_name(),
-        ip_network,
-        address_description(),
-        sites,
-    )
-        .prop_map(
-            move |(id, name, address, address_description, sites)| CidrResource {
-                id,
-                address,
-                name,
-                sites,
-                address_description,
-            },
-        )
-}
-
-pub fn internet_resource(
-    sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = InternetResource> {
-    (resource_id(), sites).prop_map(move |(id, sites)| InternetResource {
-        name: "Internet Resource".to_string(),
-        id,
-        sites,
+        prop_oneof![Just(non_icmp_filters), Just(filters)]
+    })
+    .prop_map(|mut filters| {
+        if !filters.is_empty() {
+            // When we send TCP packets to our dns servers that are resources on our test
+            // disallowing TCP generates a lot of retries.
+            // This causes an spike in packets which skew the tests when IDLE and if we have to account for this
+            // it wouldn't allow us to detect other sources of traffic spike.
+            filters.push(Filter::Tcp(PortRange {
+                port_range_end: 53,
+                port_range_start: 53,
+            }));
+            filters
+        } else {
+            filters
+        }
     })
 }
 

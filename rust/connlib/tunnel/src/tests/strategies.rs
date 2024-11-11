@@ -1,9 +1,9 @@
 use super::dns_records::{ip_to_domain_record, DnsRecords};
-use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
-use crate::client::{
-    CidrResource, DnsResource, InternetResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6,
-    IPV4_RESOURCES, IPV6_RESOURCES,
+use super::stub_portal::{
+    cidr_resource, dns_resource, CidrResource, DnsResource, InternetResource,
 };
+use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
+use crate::client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::messages::DnsServer;
 use crate::proptest::*;
 use connlib_model::{DomainRecord, RelayId, Site};
@@ -208,7 +208,7 @@ fn cidr_resource_outside_reserved_ranges(
 }
 
 fn internet_resource(site: impl Strategy<Value = Site>) -> impl Strategy<Value = InternetResource> {
-    crate::proptest::internet_resource(site.prop_map(|s| vec![s]))
+    super::stub_portal::internet_resource(site.prop_map(|s| vec![s]))
 }
 
 fn non_wildcard_dns_resource(
