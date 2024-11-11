@@ -500,7 +500,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 Ok(flow) => Ok(flow),
                 // Handles <https://github.com/firezone/firezone/issues/6547> more gracefully so we can still export logs even if we crashed right after sign-in
                 Err(Error::ConnectToFirezoneFailed(error)) => {
-                    tracing::error!(error = std_dyn_err(&error), "Failed to connect to Firezone");
+                    tracing::error!("Failed to connect to Firezone: {error}");
                     self.sign_out().await?;
                     Ok(ControlFlow::Continue(()))
                 }
@@ -644,7 +644,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 }
                 Ok(())
             }
-            Err(msg) => Err(Error::ConnectToFirezoneFailed(msg)),
+            Err(IpcServiceError::Other(error)) => Err(Error::ConnectToFirezoneFailed(error)),
         }
     }
 
