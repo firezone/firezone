@@ -73,9 +73,15 @@ pub(crate) struct Response {
 }
 
 #[derive(Default, Deserialize, Serialize)]
-pub(crate) struct Session {
+pub struct Session {
     pub(crate) account_slug: String,
     pub(crate) actor_name: String,
+}
+
+impl Session {
+    pub fn account_slug(&self) -> &str {
+        &self.account_slug
+    }
 }
 
 struct SessionAndToken {
@@ -118,7 +124,7 @@ impl Auth {
     }
 
     /// Returns the session iff we are signed in.
-    pub(crate) fn session(&self) -> Option<&Session> {
+    pub fn session(&self) -> Option<&Session> {
         match &self.state {
             State::SignedIn(x) => Some(x),
             State::NeedResponse(_) | State::SignedOut => None,
@@ -234,7 +240,6 @@ impl Auth {
         match std::fs::read_to_string(session_data_path()?) {
             Ok(x) => {
                 session = serde_json::from_str(&x).map_err(|_| Error::Serde)?;
-                firezone_telemetry::set_account_slug(session.account_slug.to_string());
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(Error::ReadFile(e)),

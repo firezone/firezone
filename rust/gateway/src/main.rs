@@ -39,7 +39,7 @@ async fn main() {
         .expect("Calling `install_default` only once per process should always succeed");
 
     let cli = Cli::parse();
-    let telemetry = Telemetry::default();
+    let mut telemetry = Telemetry::default();
     if cli.is_telemetry_allowed() {
         telemetry.start(
             cli.api_url.as_str(),
@@ -53,17 +53,18 @@ async fn main() {
     //
     // By default, `anyhow` prints a stacktrace when it exits.
     // That looks like a "crash" but we "just" exit with a fatal error.
-    if let Err(e) = try_main(cli).await {
+    if let Err(e) = try_main(cli, &mut telemetry).await {
         tracing::error!(error = anyhow_dyn_err(&e));
         std::process::exit(1);
     }
 }
 
-async fn try_main(cli: Cli) -> Result<()> {
+async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     firezone_logging::setup_global_subscriber(layer::Identity::default());
 
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
+    telemetry.set_firezone_id(firezone_id.clone());
 
     let login = LoginUrl::gateway(
         cli.api_url,

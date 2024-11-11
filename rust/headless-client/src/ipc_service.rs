@@ -19,14 +19,7 @@ use futures::{
 use phoenix_channel::LoginUrl;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    net::IpAddr,
-    path::PathBuf,
-    pin::pin,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeSet, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, task::spawn_blocking, time::Instant};
 use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
@@ -96,6 +89,7 @@ pub enum ClientMsg {
     StartTelemetry {
         environment: String,
         version: String,
+        account_slug: Option<String>,
     },
     StopTelemetry,
 }
@@ -201,7 +195,7 @@ fn run_smoke_test() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
     let mut signals = signals::Terminate::new()?;
-    let telemetry = Telemetry::default();
+    let mut telemetry = Telemetry::default();
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
@@ -211,7 +205,7 @@ fn run_smoke_test() -> Result<()> {
             &mut server,
             &mut dns_controller,
             &log_filter_reloader,
-            telemetry,
+            &mut telemetry,
         )
         .await?
         .run(&mut signals)
@@ -234,26 +228,18 @@ async fn ipc_listen(
     let firezone_id = device_id::get_or_create()
         .context("Failed to read / create device ID")?
         .id;
-    // TODO: Telemetry is initialized wrong here:
-    // Sentry's contexts must be set on the main thread hub before starting Tokio, so that other thread hubs will inherit the context.
-    firezone_telemetry::configure_scope(|scope| {
-        scope.set_context(
-            "firezone",
-            firezone_telemetry::Context::Other(BTreeMap::from([(
-                "id".to_string(),
-                firezone_id.into(),
-            )])),
-        )
-    });
+
+    let mut telemetry = Telemetry::default();
+    telemetry.set_firezone_id(firezone_id);
+
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController { dns_control_method };
-    let telemetry = Telemetry::default();
     loop {
         let mut handler_fut = pin!(Handler::new(
             &mut server,
             &mut dns_controller,
             log_filter_reloader,
-            telemetry.clone(),
+            &mut telemetry,
         ));
         let Some(handler) = poll_fn(|cx| {
             if let Poll::Ready(()) = signals.poll_recv(cx) {
@@ -285,7 +271,7 @@ struct Handler<'a> {
     last_connlib_start_instant: Option<Instant>,
     log_filter_reloader: &'a LogFilterReloader,
     session: Option<Session>,
-    telemetry: Telemetry, // Handle to the sentry.io telemetry module
+    telemetry: &'a mut Telemetry, // Handle to the sentry.io telemetry module
     tun_device: TunDeviceManager,
 }
 
@@ -316,7 +302,7 @@ impl<'a> Handler<'a> {
         server: &mut IpcServer,
         dns_controller: &'a mut DnsController,
         log_filter_reloader: &'a LogFilterReloader,
-        telemetry: Telemetry,
+        telemetry: &'a mut Telemetry,
     ) -> Result<Self> {
         dns_controller.deactivate()?;
         let (ipc_rx, ipc_tx) = server
@@ -549,9 +535,15 @@ impl<'a> Handler<'a> {
             ClientMsg::StartTelemetry {
                 environment,
                 version,
-            } => self
-                .telemetry
-                .start(&environment, &version, firezone_telemetry::IPC_SERVICE_DSN),
+                account_slug,
+            } => {
+                self.telemetry
+                    .start(&environment, &version, firezone_telemetry::IPC_SERVICE_DSN);
+
+                if let Some(account_slug) = account_slug {
+                    self.telemetry.set_account_slug(account_slug);
+                }
+            }
             ClientMsg::StopTelemetry => {
                 self.telemetry.stop().await;
             }
@@ -569,6 +561,7 @@ impl<'a> Handler<'a> {
 
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
+        self.telemetry.set_firezone_id(device_id.id.clone());
 
         let url = LoginUrl::client(
             Url::parse(api_url).map_err(|e| Error::UrlParse(e.to_string()))?,

@@ -348,8 +348,9 @@ fn connect(
     let device_info = string_from_jstring!(env, device_info);
     let device_info = serde_json::from_str(&device_info).unwrap();
 
-    let telemetry = Telemetry::default();
+    let mut telemetry = Telemetry::default();
     telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), ANDROID_DSN);
+    telemetry.set_firezone_id(device_id.clone());
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);
     install_rustls_crypto_provider();
@@ -469,7 +470,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 ) {
     let session = session_ptr as *mut SessionWrapper;
     catch_and_throw(&mut env, |_| {
-        let session = Box::from_raw(session);
+        let mut session = Box::from_raw(session);
 
         session.runtime.block_on(session.telemetry.stop());
         session.inner.disconnect();

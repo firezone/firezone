@@ -1,9 +1,7 @@
-use arc_swap::ArcSwapOption;
 use std::time::Duration;
 
 pub use sentry::{
-    add_breadcrumb, capture_error, capture_message, configure_scope, end_session,
-    end_session_with_status,
+    add_breadcrumb, capture_error, capture_message, end_session, end_session_with_status,
     types::protocol::v7::{Context, SessionStatus},
     Breadcrumb, Hub, Level,
 };
@@ -36,22 +34,17 @@ pub struct Telemetry {
     /// be able to gracefully close down Sentry, even though it won't have
     /// a mutable handle to it, and even though `main` is actually what holds
     /// the handle. Wrapping it all in `ArcSwap` makes it simpler.
-    inner: ArcSwapOption<sentry::ClientInitGuard>,
-}
+    inner: Option<sentry::ClientInitGuard>,
 
-impl Clone for Telemetry {
-    fn clone(&self) -> Self {
-        Self {
-            inner: ArcSwapOption::new(self.inner.load().clone()),
-        }
-    }
+    account_slug: Option<String>,
+    firezone_id: Option<String>,
 }
 
 impl Telemetry {
-    pub fn start(&self, api_url: &str, release: &str, dsn: Dsn) {
+    pub fn start(&mut self, api_url: &str, release: &str, dsn: Dsn) {
         // Since it's `arc_swap` and not `Option`, there is a TOCTOU here,
         // but in practice it should never trigger
-        if self.inner.load().is_some() {
+        if self.inner.is_some() {
             return;
         }
 
@@ -88,13 +81,15 @@ impl Telemetry {
             let ctx = sentry::integrations::contexts::utils::rust_context();
             scope.set_context("rust", ctx);
         });
-        self.inner.swap(Some(inner.into()));
+        self.inner.replace(inner);
         sentry::start_session();
+
+        self.update_user_context();
     }
 
     /// Flushes events to sentry.io and drops the guard
-    pub async fn stop(&self) {
-        let Some(inner) = self.inner.swap(None) else {
+    pub async fn stop(&mut self) {
+        let Some(inner) = self.inner.take() else {
             return;
         };
         tracing::info!("Stopping telemetry");
@@ -113,16 +108,31 @@ impl Telemetry {
         })
         .await;
     }
-}
 
-/// Sets the Firezone account slug on the Sentry hub
-///
-/// This sets the entire set of "user" info, so it will conflict if we set any other user ID later.
-pub fn set_account_slug(account_slug: String) {
-    let mut user = sentry::User::default();
-    user.other
-        .insert("account_slug".to_string(), account_slug.into());
-    sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));
+    pub fn set_account_slug(&mut self, slug: String) {
+        self.account_slug = Some(slug);
+        self.update_user_context();
+    }
+
+    pub fn set_firezone_id(&mut self, id: String) {
+        self.firezone_id = Some(id);
+        self.update_user_context();
+    }
+
+    fn update_user_context(&self) {
+        let mut user = sentry::User {
+            id: self.firezone_id.clone(),
+            ..Default::default()
+        };
+
+        user.other.extend(
+            self.account_slug
+                .clone()
+                .map(|slug| ("account_slug".to_owned(), slug.into())),
+        );
+
+        sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));
+    }
 }
 
 #[cfg(test)]
@@ -136,7 +146,7 @@ mod tests {
     async fn sentry() {
         // Smoke-test Sentry itself by turning it on and off a couple times
         {
-            let tele = Telemetry::default();
+            let mut tele = Telemetry::default();
 
             // Expect no telemetry because the telemetry module needs to be enabled before it can do anything
             negative_error("X7X4CKH3");
@@ -166,13 +176,13 @@ mod tests {
         // Test starting up with the choice opted-in
         {
             {
-                let tele = Telemetry::default();
+                let mut tele = Telemetry::default();
                 negative_error("4H7HFTNX");
                 tele.start("test", ENV, HEADLESS_DSN);
             }
             {
                 negative_error("GF46D6IL");
-                let tele = Telemetry::default();
+                let mut tele = Telemetry::default();
                 tele.start("test", ENV, HEADLESS_DSN);
                 error("OKOEUKSW");
             }
