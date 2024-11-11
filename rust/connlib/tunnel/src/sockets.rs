@@ -1,4 +1,3 @@
-use firezone_logging::std_dyn_err;
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, UdpSocket};
 use std::{
     io,
@@ -20,10 +19,10 @@ pub(crate) struct Sockets {
 impl Sockets {
     pub fn rebind(&mut self, socket_factory: &dyn SocketFactory<UdpSocket>) {
         self.socket_v4 = socket_factory(&SocketAddr::V4(UNSPECIFIED_V4_SOCKET))
-            .inspect_err(|e| tracing::warn!(error = std_dyn_err(e), "Failed to bind IPv4 socket"))
+            .inspect_err(|e| tracing::info!("Failed to bind IPv4 socket: {e}"))
             .ok();
         self.socket_v6 = socket_factory(&SocketAddr::V6(UNSPECIFIED_V6_SOCKET))
-            .inspect_err(|e| tracing::warn!(error = std_dyn_err(e), "Failed to bind IPv6 socket"))
+            .inspect_err(|e| tracing::info!("Failed to bind IPv6 socket: {e}"))
             .ok();
 
         if let Some(waker) = self.waker.take() {
