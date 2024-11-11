@@ -4,10 +4,12 @@
 mod make_writer;
 mod tun;
 
+use anyhow::Context;
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
+use firezone_logging::anyhow_dyn_err;
 use firezone_telemetry::Telemetry;
 use firezone_telemetry::APPLE_DSN;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -177,6 +179,22 @@ fn init_logging(
     Ok(handle)
 }
 
+macro_rules! try_deserialize {
+    (
+        $json:ident
+    ) => {
+        match ::serde_json::from_str(&$json)
+            .with_context(|| format!("Failed to deserialize '{}'", stringify!($json)))
+        {
+            Ok(v) => v,
+            Err(e) => {
+                ::tracing::error!(error = anyhow_dyn_err(&e));
+                return;
+            }
+        }
+    };
+}
+
 impl WrappedSession {
     // TODO: Refactor this when we refactor PhoenixChannel.
     // See https://github.com/firezone/firezone/issues/2158
@@ -250,13 +268,15 @@ impl WrappedSession {
     }
 
     fn set_dns(&mut self, dns_servers: String) {
-        self.inner
-            .set_dns(serde_json::from_str(&dns_servers).unwrap())
+        let dns_servers = try_deserialize!(dns_servers);
+
+        self.inner.set_dns(dns_servers)
     }
 
     fn set_disabled_resources(&mut self, disabled_resources: String) {
-        self.inner
-            .set_disabled_resources(serde_json::from_str(&disabled_resources).unwrap())
+        let disabled_resources = try_deserialize!(disabled_resources);
+
+        self.inner.set_disabled_resources(disabled_resources)
     }
 
     fn disconnect(self) {
