@@ -1,12 +1,12 @@
 use crate::{self as common, deep_link};
 use anyhow::Result;
-use firezone_headless_client::{ipc, IpcServiceError, FIREZONE_GROUP};
+use firezone_headless_client::{ipc, FIREZONE_GROUP};
 
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Failed to connect to Firezone for non-Portal-related reason")]
-    ConnectToFirezoneFailed(IpcServiceError),
+    #[error("Failed to connect to Firezone")]
+    ConnectToFirezoneFailed(String),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
     #[error("Logging module error: {0}")]
