@@ -428,7 +428,11 @@ impl ClientOnGateway {
         Ok(packet)
     }
 
-    pub fn decapsulate(&mut self, packet: IpPacket, now: Instant) -> anyhow::Result<IpPacket> {
+    pub fn translate_outbound(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> anyhow::Result<IpPacket> {
         self.ensure_allowed_src(&packet)?;
         self.ensure_allowed_dst(&packet)?;
 
@@ -437,7 +441,11 @@ impl ClientOnGateway {
         Ok(packet)
     }
 
-    pub fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> anyhow::Result<IpPacket> {
+    pub fn translate_inbound(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> anyhow::Result<IpPacket> {
         let Some((proto, ip)) = self.nat_table.translate_incoming(&packet, now)? else {
             return Ok(packet);
         };
@@ -1128,7 +1136,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.decapsulate(pkt, Instant::now()).is_ok());
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
 
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
@@ -1139,7 +1147,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.decapsulate(pkt, Instant::now()).is_err());
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_err());
 
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
@@ -1150,7 +1158,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.decapsulate(pkt, Instant::now()).is_err());
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_err());
 
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
@@ -1161,7 +1169,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.decapsulate(pkt, Instant::now()).is_ok());
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
     }
 
     #[test]
@@ -1187,7 +1195,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.decapsulate(pkt, Instant::now()).is_ok());
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
 
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
@@ -1198,7 +1206,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.decapsulate(pkt, Instant::now()).is_err());
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_err());
 
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
@@ -1209,7 +1217,7 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.decapsulate(pkt, Instant::now()).is_ok());
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
     }
 
     fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
