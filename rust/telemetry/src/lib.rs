@@ -39,14 +39,6 @@ pub struct Telemetry {
     inner: ArcSwapOption<sentry::ClientInitGuard>,
 }
 
-impl Clone for Telemetry {
-    fn clone(&self) -> Self {
-        Self {
-            inner: ArcSwapOption::new(self.inner.load().clone()),
-        }
-    }
-}
-
 impl Telemetry {
     pub fn start(&self, api_url: &str, release: &str, dsn: Dsn) {
         // Since it's `arc_swap` and not `Option`, there is a TOCTOU here,

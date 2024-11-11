@@ -211,7 +211,7 @@ fn run_smoke_test() -> Result<()> {
             &mut server,
             &mut dns_controller,
             &log_filter_reloader,
-            telemetry,
+            &telemetry,
         )
         .await?
         .run(&mut signals)
@@ -253,7 +253,7 @@ async fn ipc_listen(
             &mut server,
             &mut dns_controller,
             log_filter_reloader,
-            telemetry.clone(),
+            &telemetry,
         ));
         let Some(handler) = poll_fn(|cx| {
             if let Poll::Ready(()) = signals.poll_recv(cx) {
@@ -285,7 +285,7 @@ struct Handler<'a> {
     last_connlib_start_instant: Option<Instant>,
     log_filter_reloader: &'a LogFilterReloader,
     session: Option<Session>,
-    telemetry: Telemetry, // Handle to the sentry.io telemetry module
+    telemetry: &'a Telemetry, // Handle to the sentry.io telemetry module
     tun_device: TunDeviceManager,
 }
 
@@ -316,7 +316,7 @@ impl<'a> Handler<'a> {
         server: &mut IpcServer,
         dns_controller: &'a mut DnsController,
         log_filter_reloader: &'a LogFilterReloader,
-        telemetry: Telemetry,
+        telemetry: &'a Telemetry,
     ) -> Result<Self> {
         dns_controller.deactivate()?;
         let (ipc_rx, ipc_tx) = server

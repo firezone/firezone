@@ -245,7 +245,7 @@ pub(crate) fn run(
                         ctlr_rx,
                         advanced_settings,
                         reloader,
-                        telemetry.clone(),
+                        &telemetry,
                         updates_rx,
                     )).catch_unwind().await;
 
@@ -476,7 +476,7 @@ async fn run_controller(
     rx: mpsc::Receiver<ControllerRequest>,
     advanced_settings: AdvancedSettings,
     log_filter_reloader: LogFilterReloader,
-    telemetry: telemetry::Telemetry,
+    telemetry: &telemetry::Telemetry,
     updates_rx: mpsc::Receiver<Option<updates::Notification>>,
 ) -> Result<(), Error> {
     tracing::debug!("Entered `run_controller`");
