@@ -11,6 +11,7 @@ use std::{
     path::PathBuf,
     ptr::null,
 };
+use uuid::Uuid;
 use windows::Win32::NetworkManagement::{
     IpHelper::{GetAdaptersAddresses, MIB_IPFORWARD_TABLE2},
     Ndis::NET_LUID_LH,
@@ -33,7 +34,7 @@ pub const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// A UUID we generated at dev time for our tunnel.
 ///
 /// This ends up in registry keys and tunnel management.
-pub const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
+pub const TUNNEL_UUID: Uuid = Uuid::from_u128(0xe924_5bc1_b8c1_44ca_ab1d_c6aa_d4f1_3b9c);
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
 pub enum DnsControlMethod {

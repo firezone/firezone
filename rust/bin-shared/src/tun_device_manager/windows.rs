@@ -11,7 +11,6 @@ use std::{
     os::windows::process::CommandExt,
     path::{Path, PathBuf},
     process::{Command, Stdio},
-    str::FromStr,
     sync::Arc,
     task::{ready, Context, Poll},
 };
@@ -225,10 +224,12 @@ impl Tun {
         let wintun = unsafe { wintun::load_from_path(path) }?;
 
         // Create wintun adapter
-        let uuid = uuid::Uuid::from_str(TUNNEL_UUID)
-            .expect("static UUID should always parse correctly")
-            .as_u128();
-        let adapter = match Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid)) {
+        let adapter = match Adapter::create(
+            &wintun,
+            TUNNEL_NAME,
+            TUNNEL_NAME,
+            Some(TUNNEL_UUID.as_u128()),
+        ) {
             Ok(x) => x,
             Err(error) => {
                 tracing::error!(error = std_dyn_err(&error), "Failed in `Adapter::create`");
