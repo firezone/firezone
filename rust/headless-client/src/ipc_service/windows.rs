@@ -57,7 +57,7 @@ impl ProcessToken {
     fn is_elevated(&self) -> Result<bool> {
         let mut elevation = TOKEN_ELEVATION::default();
         let token_elevation_sz = u32::try_from(size_of::<TOKEN_ELEVATION>())
-            .expect("`TOKEN_ELEVATION` size should fit into a u32");
+            .context("Failed to convert `TOKEN_ELEVATION` to u32")?;
         let mut return_size = 0u32;
         // SAFETY: Docs say nothing about threads or safety <https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation>
         // The type of `elevation` varies based on the 2nd parameter, but we hard-coded that.

@@ -4,6 +4,7 @@
 mod make_writer;
 mod tun;
 
+use anyhow::Context;
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
@@ -201,7 +202,8 @@ impl WrappedSession {
         install_rustls_crypto_provider();
 
         let secret = SecretString::from(token);
-        let device_info = serde_json::from_str(&device_info).unwrap();
+        let device_info =
+            serde_json::from_str(&device_info).context("Failed to deserialize `DeviceInfo`")?;
 
         let url = LoginUrl::client(
             api_url.as_str(),

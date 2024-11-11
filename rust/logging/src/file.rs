@@ -107,11 +107,10 @@ impl Appender {
 
     // Inspired from `tracing-appender/src/rolling.rs`.
     fn create_new_writer(&self) -> io::Result<(fs::File, String)> {
-        let format = time::format_description::parse(TIME_FORMAT)
-            .expect("static format description should always be parsable");
+        let format = time::format_description::parse(TIME_FORMAT).map_err(io::Error::other)?;
         let date = OffsetDateTime::now_utc()
             .format(&format)
-            .expect("formatting a timestamp should always be possible");
+            .map_err(|_| io::Error::other("Failed to format timestamp"))?;
 
         let filename = format!("{LOG_FILE_BASE_NAME}.{date}.{}", self.file_extension);
 

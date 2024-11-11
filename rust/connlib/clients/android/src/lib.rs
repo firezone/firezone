@@ -4,9 +4,10 @@
 // ecosystem, so it's used here for consistency.
 
 use crate::tun::Tun;
+use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
-use connlib_model::{ResourceId, ResourceView};
+use connlib_model::ResourceView;
 use firezone_logging::std_dyn_err;
 use firezone_telemetry::{Telemetry, ANDROID_DSN};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -17,11 +18,11 @@ use jni::{
     JNIEnv, JavaVM,
 };
 use phoenix_channel::get_user_agent;
+use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
-use phoenix_channel::{LoginUrl, LoginUrlError};
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use std::{collections::BTreeSet, io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
+use std::{io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
@@ -291,34 +292,12 @@ fn catch_and_throw<F: FnOnce(&mut JNIEnv) -> R, R>(env: &mut JNIEnv, f: F) -> Op
         .ok()
 }
 
-#[derive(Debug, Error)]
-enum ConnectError {
-    #[error("Failed to access {name:?}: {source}")]
-    StringInvalid {
-        name: &'static str,
-        source: jni::errors::Error,
-    },
-    #[error("Failed to get Java VM: {0}")]
-    GetJavaVmFailed(#[source] jni::errors::Error),
-    #[error(transparent)]
-    ConnectFailed(#[from] DisconnectError),
-    #[error(transparent)]
-    InvalidLoginUrl(#[from] LoginUrlError<url::ParseError>),
-    #[error("Unable to create tokio runtime: {0}")]
-    UnableToCreateRuntime(#[from] io::Error),
-    #[error(transparent)]
-    CallbackError(#[from] CallbackError),
-}
-
 macro_rules! string_from_jstring {
     ($env:expr, $j:ident) => {
         String::from(
             ($env)
                 .get_string(&($j))
-                .map_err(|source| ConnectError::StringInvalid {
-                    name: stringify!($j),
-                    source,
-                })?,
+                .with_context(|| format!("Failed to get string {} from JNIEnv", stringify!($j)))?,
         )
     };
 }
@@ -337,7 +316,7 @@ fn connect(
     log_filter: JString,
     callback_handler: GlobalRef,
     device_info: JString,
-) -> Result<SessionWrapper, ConnectError> {
+) -> Result<SessionWrapper> {
     let api_url = string_from_jstring!(env, api_url);
     let secret = SecretString::from(string_from_jstring!(env, token));
     let device_id = string_from_jstring!(env, device_id);
@@ -346,7 +325,8 @@ fn connect(
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);
     let device_info = string_from_jstring!(env, device_info);
-    let device_info = serde_json::from_str(&device_info).unwrap();
+    let device_info =
+        serde_json::from_str(&device_info).context("Failed to deserialize `DeviceInfo`")?;
 
     let mut telemetry = Telemetry::default();
     telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), ANDROID_DSN);
@@ -356,7 +336,7 @@ fn connect(
     install_rustls_crypto_provider();
 
     let callbacks = CallbackHandler {
-        vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
+        vm: env.get_java_vm()?,
         callback_handler,
         handle,
     };
@@ -477,8 +457,6 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
     });
 }
 
-///
-///
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
@@ -491,14 +469,11 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 ) {
     let disabled_resources = String::from(
         env.get_string(&disabled_resources)
-            .map_err(|source| ConnectError::StringInvalid {
-                name: "disabled_resources",
-                source,
-            })
             .expect("Invalid string returned from android client"),
     );
-    let disabled_resources: BTreeSet<ResourceId> =
-        serde_json::from_str(&disabled_resources).unwrap();
+    let disabled_resources = serde_json::from_str(&disabled_resources)
+        .expect("Failed to deserialize disabled resource IDs");
+
     tracing::debug!("disabled resource: {disabled_resources:?}");
     let session = &*(session_ptr as *const SessionWrapper);
     session.inner.set_disabled_resources(disabled_resources);
@@ -522,13 +497,9 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 ) {
     let dns = String::from(
         env.get_string(&dns_list)
-            .map_err(|source| ConnectError::StringInvalid {
-                name: "dns_list",
-                source,
-            })
             .expect("Invalid string returned from android client"),
     );
-    let dns: Vec<IpAddr> = serde_json::from_str(&dns).unwrap();
+    let dns = serde_json::from_str::<Vec<IpAddr>>(&dns).expect("Failed to deserialize DNS IPs");
     let session = &*(session_ptr as *const SessionWrapper);
     session.inner.set_dns(dns);
 }

@@ -247,8 +247,11 @@ impl GatewayState {
             now,
         )?;
 
-        self.allow_access(client_id, ipv4, ipv6, expires_at, resource, None, now)
-            .expect("Should never fail without a `DnsResourceNatEntry`");
+        let result = self.allow_access(client_id, ipv4, ipv6, expires_at, resource, None, now);
+        debug_assert!(
+            result.is_ok(),
+            "`allow_access` should never fail without a `DnsResourceEntry`"
+        );
 
         Ok(())
     }

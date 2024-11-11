@@ -369,7 +369,9 @@ fn create_tun_device() -> io::Result<()> {
         return Ok(());
     }
 
-    let parent_dir = path.parent().unwrap();
+    let parent_dir = path
+        .parent()
+        .expect("const-declared path always has a parent");
     fs::create_dir_all(parent_dir)?;
     let permissions = fs::Permissions::from_mode(0o751);
     fs::set_permissions(parent_dir, permissions)?;

@@ -5,12 +5,12 @@
 //! "Notification Area" is Microsoft's official name instead of "System tray":
 //! <https://learn.microsoft.com/en-us/windows/win32/shell/notification-area?redirectedfrom=MSDN#notifications-and-the-notification-area>
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use firezone_gui_client_common::{
     compositor::{self, Image},
     system_tray::{AppState, ConnlibState, Entry, Icon, IconBase, Item, Menu},
 };
-use firezone_logging::anyhow_dyn_err;
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use tauri::AppHandle;
 
 type IsMenuItem = dyn tauri::menu::IsMenuItem<tauri::Wry>;
@@ -95,7 +95,7 @@ impl Tray {
                         );
                     }
                 })
-                .unwrap();
+                .context("Failed to update tray icon")?;
         }
         self.set_icon(new_icon)?;
         self.last_menu_set = Some(menu_clone);
@@ -117,8 +117,9 @@ impl Tray {
         let handle = self.handle.clone();
         self.last_icon_set = icon.clone();
         self.app.run_on_main_thread(move || {
-            // These closures can't return any value for some reason
-            handle.set_icon(Some(icon_to_tauri_icon(&icon))).unwrap();
+            if let Err(e) = handle.set_icon(Some(icon_to_tauri_icon(&icon))) {
+                tracing::warn!(error = std_dyn_err(&e), "Failed to set tray icon")
+            }
         })?;
         Ok(())
     }

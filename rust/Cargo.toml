@@ -70,6 +70,7 @@ unused_async = "warn"
 wildcard_enum_match_arm = "warn" # Ensures we match on all combinations of `Poll`, preventing erroneous suspensions.
 redundant_else = "warn"
 redundant_clone = "warn"
+unwrap_in_result = "warn"
 
 [workspace.lints.rustdoc]
 private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
