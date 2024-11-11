@@ -120,17 +120,16 @@ impl Telemetry {
     }
 
     fn update_user_context(&self) {
-        let mut user = sentry::User::default();
+        let mut user = sentry::User {
+            id: self.firezone_id.clone(),
+            ..Default::default()
+        };
 
-        if let Some(account_slug) = self.account_slug.clone() {
-            user.other
-                .insert("account_slug".to_string(), account_slug.into());
-        }
-
-        if let Some(firezone_id) = self.firezone_id.clone() {
-            user.other
-                .insert("firezone_id".to_string(), firezone_id.into());
-        }
+        user.other.extend(
+            self.account_slug
+                .clone()
+                .map(|slug| ("account_slug".to_owned(), slug.into())),
+        );
 
         sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));
     }
