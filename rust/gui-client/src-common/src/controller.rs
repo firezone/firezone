@@ -631,7 +631,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 }
                 Ok(())
             }
-            Err(IpcServiceError::PortalConnection(error)) => {
+            Err(IpcServiceError::Io(error)) => {
                 // This is typically something like, we don't have Internet access so we can't
                 // open the PhoenixChannel's WebSocket.
                 tracing::info!(
