@@ -251,13 +251,17 @@ impl WrappedSession {
     }
 
     fn set_dns(&mut self, dns_servers: String) {
-        self.inner
-            .set_dns(serde_json::from_str(&dns_servers).unwrap())
+        let dns_servers =
+            serde_json::from_str(&dns_servers).expect("Failed to deserialize DNS servers");
+
+        self.inner.set_dns(dns_servers)
     }
 
     fn set_disabled_resources(&mut self, disabled_resources: String) {
-        self.inner
-            .set_disabled_resources(serde_json::from_str(&disabled_resources).unwrap())
+        let disabled_resources = serde_json::from_str(&disabled_resources)
+            .expect("Failed to deserialize disabled resources");
+
+        self.inner.set_disabled_resources(disabled_resources)
     }
 
     fn disconnect(self) {
