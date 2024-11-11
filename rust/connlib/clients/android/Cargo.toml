@@ -10,6 +10,7 @@ crate-type = ["lib", "cdylib"]
 doc = false
 
 [dependencies]
+anyhow = "1.0.93"
 backoff = "0.4.0"
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
