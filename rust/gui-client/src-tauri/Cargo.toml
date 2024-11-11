@@ -23,6 +23,7 @@ firezone-gui-client-common = { path = "../src-common" }
 firezone-headless-client = { path = "../../headless-client" }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
+futures = "0.3.31"
 native-dialog = "0.7.0"
 rand = "0.8.5"
 rustls = { workspace = true }
