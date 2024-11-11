@@ -2,12 +2,11 @@
 //! advanced settings and code for manipulating diagnostic logs.
 
 use crate::client::gui::Managed;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use firezone_gui_client_common::{
     controller::{ControllerRequest, CtlrTx},
     settings::{save, AdvancedSettings},
 };
-use firezone_logging::std_dyn_err;
 use std::time::Duration;
 use tokio::sync::oneshot;
 
@@ -52,16 +51,14 @@ pub(crate) async fn get_advanced_settings(
     managed: tauri::State<'_, Managed>,
 ) -> Result<AdvancedSettings, String> {
     let (tx, rx) = oneshot::channel();
-    if let Err(error) = managed
+
+    managed
         .ctlr_tx
         .send(ControllerRequest::GetAdvancedSettings(tx))
         .await
-    {
-        tracing::error!(
-            error = std_dyn_err(&error),
-            "couldn't request advanced settings from controller task"
-        );
-    }
+        .context("couldn't request advanced settings from controller task")
+        .map_err(|e| e.to_string())?;
+
     rx.await.map_err(|_| {
         "Couldn't get settings from `Controller`, maybe the program is crashing".to_string()
     })
