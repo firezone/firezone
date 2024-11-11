@@ -2013,6 +2013,7 @@ dependencies = [
  "firezone-headless-client",
  "firezone-logging",
  "firezone-telemetry",
+ "futures",
  "native-dialog",
  "nix 0.29.0",
  "rand 0.8.5",

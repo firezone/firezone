@@ -20,8 +20,9 @@ use firezone_gui_client_common::{
 use firezone_headless_client::LogFilterReloader;
 use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_telemetry as telemetry;
+use futures::FutureExt;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{str::FromStr, time::Duration};
+use std::{panic::AssertUnwindSafe, str::FromStr, time::Duration};
 use tauri::Manager;
 use tauri_plugin_shell::ShellExt as _;
 use tokio::sync::{mpsc, oneshot};
@@ -238,8 +239,7 @@ pub(crate) fn run(
 
                 let app_handle = app.handle().clone();
                 let _ctlr_task = tokio::spawn(async move {
-                    // Spawn two nested Tasks so the outer can catch panics from the inner
-                    let task = tokio::spawn(run_controller(
+                    let result = AssertUnwindSafe(run_controller(
                         ctlr_tx,
                         integration,
                         ctlr_rx,
@@ -247,7 +247,7 @@ pub(crate) fn run(
                         reloader,
                         telemetry.clone(),
                         updates_rx,
-                    ));
+                    )).catch_unwind().await;
 
                     // See <https://github.com/tauri-apps/tauri/issues/8631>
                     // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
@@ -256,9 +256,9 @@ pub(crate) fn run(
                     // This seems to be a platform limitation that Tauri is unable to hide
                     // from us. It was the source of much consternation at time of writing.
 
-                    let exit_code = match task.await {
-                        Err(error) => {
-                            tracing::error!(error = std_dyn_err(&error), "run_controller panicked");
+                    let exit_code = match result {
+                        Err(_panic) => {
+                            // The panic will have been recorded already by Sentry's panic hook.
                             telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
                             1
                         }
