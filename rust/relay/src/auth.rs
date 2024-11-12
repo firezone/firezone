@@ -11,7 +11,8 @@ use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
 use uuid::Uuid;
 
 // TODO: Upstream a const constructor to `stun-codec`.
-pub static FIREZONE: Lazy<Realm> = Lazy::new(|| Realm::new("firezone".to_owned()).unwrap());
+pub static FIREZONE: Lazy<Realm> =
+    Lazy::new(|| Realm::new("firezone".to_owned()).expect("static realm is less than 128 chars"));
 
 pub(crate) trait MessageIntegrityExt {
     fn verify(
@@ -91,11 +92,15 @@ impl Nonces {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, thiserror::Error)]
 pub(crate) enum Error {
+    #[error("expired")]
     Expired,
+    #[error("invalid password")]
     InvalidPassword,
+    #[error("invalid username")]
     InvalidUsername,
+    #[error("invalid nonce")]
     InvalidNonce,
 }
 

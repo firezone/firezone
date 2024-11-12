@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 mod dyn_err;
 pub mod file;
 mod format;
@@ -5,6 +7,7 @@ mod format;
 mod unwrap_or;
 mod err_with_sources;
 
+use anyhow::{Context, Result};
 use sentry_tracing::EventFilter;
 use tracing::{subscriber::DefaultGuard, Subscriber};
 use tracing_log::LogTracer;
@@ -18,27 +21,27 @@ pub use err_with_sources::{err_with_sources, ErrorWithSources};
 pub use format::Format;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`
-pub fn setup_global_subscriber<L>(additional_layer: L)
+pub fn setup_global_subscriber<L>(additional_layer: L) -> Result<()>
 where
     L: Layer<Registry> + Send + Sync,
 {
     let directives = std::env::var("RUST_LOG").unwrap_or_default();
 
     let subscriber = Registry::default()
-        .with(additional_layer.with_filter(filter(&directives)))
+        .with(
+            additional_layer
+                .with_filter(try_filter(&directives).context("Failed to parse directives")?),
+        )
         .with(sentry_layer())
         .with(
             fmt::layer()
                 .event_format(Format::new())
-                .with_filter(filter(&directives)),
+                .with_filter(try_filter(&directives).context("Failed to parse directives")?),
         );
-    tracing::subscriber::set_global_default(subscriber).expect("Could not set global default");
-    LogTracer::init().unwrap();
-}
+    tracing::subscriber::set_global_default(subscriber).context("Could not set global default")?;
+    LogTracer::init().context("Failed to init LogTracer")?;
 
-/// Constructs an opinionated [`EnvFilter`] with some crates already silenced.
-pub fn filter(directives: &str) -> EnvFilter {
-    try_filter(directives).unwrap()
+    Ok(())
 }
 
 /// Constructs an opinionated [`EnvFilter`] with some crates already silenced.
@@ -124,7 +127,7 @@ where
         })
         .span_filter(|md| *md.level() == tracing::Level::TRACE && md.target() == TELEMETRY_TARGET)
         .enable_span_attributes()
-        .with_filter(filter("trace")) // Filter out noisy crates but pass all events otherwise.
+        .with_filter(try_filter("trace").expect("static filter always parses")) // Filter out noisy crates but pass all events otherwise.
 }
 
 #[doc(hidden)]

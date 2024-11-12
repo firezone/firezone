@@ -3,6 +3,8 @@
 //! This is both the wireguard and ICE implementation that should work in tandem.
 //! [Tunnel] is the main entry-point for this crate.
 
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use crate::messages::{Offer, ResolveRequest, SecretKey};
 use bimap::BiMap;
 use chrono::Utc;

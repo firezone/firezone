@@ -2175,6 +2175,7 @@ dependencies = [
  "socket2",
  "stun_codec",
  "test-strategy",
+ "thiserror",
  "tokio",
  "tracing",
  "tracing-core",

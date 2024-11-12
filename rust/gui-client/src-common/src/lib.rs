@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 pub mod auth;
 pub mod compositor;
 pub mod controller;

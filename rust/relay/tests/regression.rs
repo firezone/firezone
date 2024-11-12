@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use bytecodec::{DecodeExt, EncodeExt};
 use firezone_relay::{
     AddressFamily, Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData,
@@ -61,7 +63,8 @@ fn deallocate_once_time_expired(
                 valid_username(&username_salt),
                 secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -121,7 +124,8 @@ fn unauthenticated_allocate_triggers_authentication(
                 valid_username(&username_salt),
                 &secret,
                 first_nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -165,7 +169,8 @@ fn when_refreshed_in_time_allocation_does_not_expire(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -198,7 +203,8 @@ fn when_refreshed_in_time_allocation_does_not_expire(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [send_message(
@@ -243,7 +249,8 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -275,7 +282,8 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -315,36 +323,45 @@ fn freeing_allocation_clears_all_channels(
     let secret = server.auth_secret().to_owned();
 
     let _ = server.server.handle_client_message(
-        ClientMessage::Allocate(Allocate::new_authenticated_udp_implicit_ip4(
-            allocate_transaction_id,
-            None,
-            valid_username(&username_salt),
-            &secret,
-            nonce,
-        )),
+        ClientMessage::Allocate(
+            Allocate::new_authenticated_udp_implicit_ip4(
+                allocate_transaction_id,
+                None,
+                valid_username(&username_salt),
+                &secret,
+                nonce,
+            )
+            .unwrap(),
+        ),
         ClientSocket::new(source),
         now,
     );
     let _ = server.server.handle_client_message(
-        ClientMessage::ChannelBind(ChannelBind::new(
-            channel_bind_transaction_id,
-            channel,
-            XorPeerAddress::new(peer.into()),
-            valid_username(&username_salt),
-            &secret,
-            nonce,
-        )),
+        ClientMessage::ChannelBind(
+            ChannelBind::new(
+                channel_bind_transaction_id,
+                channel,
+                XorPeerAddress::new(peer.into()),
+                valid_username(&username_salt),
+                &secret,
+                nonce,
+            )
+            .unwrap(),
+        ),
         ClientSocket::new(source),
         now,
     );
     let _ = server.server.handle_client_message(
-        ClientMessage::Refresh(Refresh::new(
-            refresh_transaction_id,
-            Some(Lifetime::new(Duration::ZERO).unwrap()),
-            valid_username(&username_salt),
-            &secret,
-            nonce,
-        )),
+        ClientMessage::Refresh(
+            Refresh::new(
+                refresh_transaction_id,
+                Some(Lifetime::new(Duration::ZERO).unwrap()),
+                valid_username(&username_salt),
+                &secret,
+                nonce,
+            )
+            .unwrap(),
+        ),
         ClientSocket::new(source),
         now,
     );
@@ -387,7 +404,8 @@ fn ping_pong_relay(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -422,7 +440,8 @@ fn ping_pong_relay(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [send_message(
@@ -496,7 +515,8 @@ fn allows_rebind_channel_after_expiry(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -531,7 +551,8 @@ fn allows_rebind_channel_after_expiry(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [send_message(
@@ -566,7 +587,8 @@ fn allows_rebind_channel_after_expiry(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [send_message(
@@ -614,7 +636,8 @@ fn ping_pong_ip6_relay(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -649,7 +672,8 @@ fn ping_pong_ip6_relay(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [send_message(

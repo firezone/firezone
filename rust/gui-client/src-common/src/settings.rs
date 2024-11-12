@@ -38,8 +38,8 @@ mod defaults {
 impl Default for AdvancedSettings {
     fn default() -> Self {
         Self {
-            auth_base_url: Url::parse(defaults::AUTH_BASE_URL).unwrap(),
-            api_url: Url::parse(defaults::API_URL).unwrap(),
+            auth_base_url: Url::parse(defaults::AUTH_BASE_URL).expect("static URL is a valid URL"),
+            api_url: Url::parse(defaults::API_URL).expect("static URL is a valid URL"),
             favorite_resources: Default::default(),
             internet_resource_enabled: Default::default(),
             log_filter: defaults::LOG_FILTER.to_string(),

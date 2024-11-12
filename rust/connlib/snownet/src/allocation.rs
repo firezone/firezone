@@ -225,7 +225,8 @@ impl Allocation {
             channel_bindings: Default::default(),
             last_now: now,
             buffered_channel_bindings: RingBuffer::new(100),
-            software: Software::new(format!("snownet; session={session_id}")).unwrap(),
+            software: Software::new(format!("snownet; session={session_id}"))
+                .expect("description has less then 128 chars"),
         };
 
         allocation.send_binding_requests();
@@ -1119,7 +1120,7 @@ fn make_channel_bind_request(
     );
 
     message.add_attribute(XorPeerAddress::new(target));
-    message.add_attribute(ChannelNumber::new(channel).unwrap());
+    message.add_attribute(ChannelNumber::new(channel).expect("channel number out of range")); // Panic is fine here, because we control the channel number within this module.
     message.add_attribute(software);
 
     message
