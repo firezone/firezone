@@ -132,7 +132,7 @@ pub(crate) fn run(
     // Make sure we're single-instance
     // We register our deep links to call the `open-deep-link` subcommand,
     // so if we're at this point, we know we've been launched manually
-    let deep_link_server = rt.block_on(async { deep_link::Server::new().await })?;
+    let deep_link_server = rt.block_on(deep_link::Server::new())?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let (updates_tx, updates_rx) = mpsc::channel(1);
