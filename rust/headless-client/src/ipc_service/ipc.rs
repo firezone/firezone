@@ -1,6 +1,5 @@
 use crate::{IpcClientMsg, IpcServerMsg};
 use anyhow::{Context as _, Result};
-use firezone_logging::std_dyn_err;
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_util::{
     bytes::BytesMut,
@@ -275,5 +274,12 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn error_logs_all_anyhow_sources_on_display() {
+        let err = Error::Other(anyhow::anyhow!("foo").context("bar").context("baz"));
+
+        assert_eq!(err.to_string(), "baz: bar: foo");
     }
 }
