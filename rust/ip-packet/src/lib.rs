@@ -324,6 +324,8 @@ pub fn ipv6_translated(ip: Ipv6Addr) -> Option<Ipv4Addr> {
 
 impl IpPacket {
     pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
+        anyhow::ensure!(len <= PACKET_SIZE, "Packet too large (len: {len})");
+
         Ok(match buf.inner[NAT46_OVERHEAD] >> 4 {
             4 => IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf, len)?),
             6 => IpPacket::Ipv6(ConvertibleIpv6Packet::new(buf, len)?),
