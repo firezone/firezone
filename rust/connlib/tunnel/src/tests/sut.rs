@@ -491,7 +491,7 @@ impl TunnelTest {
             });
 
             if let Some(transmit) = buffered_transmits.pop(now) {
-                self.dispatch_transmit(transmit);
+                self.dispatch_transmit(transmit, now);
                 continue;
             }
 
@@ -509,6 +509,10 @@ impl TunnelTest {
             }
 
             self.flux_capacitor.large_tick(); // Large tick to more quickly advance to potential next timeout.
+        }
+
+        for (transmit, at) in buffered_transmits.drain() {
+            self.dispatch_transmit(transmit, at);
         }
     }
 
@@ -618,12 +622,11 @@ impl TunnelTest {
     /// It takes a [`Transmit`] and checks, which host accepts it, i.e. has configured the correct IP address.
     ///
     /// Currently, the network topology of our tests are a single subnet without NAT.
-    fn dispatch_transmit(&mut self, transmit: Transmit<'static>) {
+    fn dispatch_transmit(&mut self, transmit: Transmit<'static>, at: Instant) {
         let src = transmit
             .src
             .expect("`src` should always be set in these tests");
         let dst = transmit.dst;
-        let now = self.flux_capacitor.now();
 
         let Some(host) = self.network.host_by_ip(dst.ip()) else {
             tracing::error!("Unhandled packet: {src} -> {dst}");
@@ -640,7 +643,7 @@ impl TunnelTest {
                     return;
                 }
 
-                self.client.receive(transmit, now);
+                self.client.receive(transmit, at);
             }
             HostId::Gateway(id) => {
                 if self.drop_direct_client_traffic && self.client.is_sender(src.ip()) {
@@ -652,13 +655,13 @@ impl TunnelTest {
                 self.gateways
                     .get_mut(&id)
                     .expect("unknown gateway")
-                    .receive(transmit, now);
+                    .receive(transmit, at);
             }
             HostId::Relay(id) => {
                 self.relays
                     .get_mut(&id)
                     .expect("unknown relay")
-                    .receive(transmit, now);
+                    .receive(transmit, at);
             }
             HostId::Stale => {
                 tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
