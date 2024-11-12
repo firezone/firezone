@@ -47,10 +47,10 @@ impl Device {
             )));
         }
 
-        let packet = IpPacket::new(ip_packet, n).ok_or_else(|| {
+        let packet = IpPacket::new(ip_packet, n).map_err(|e| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "received bytes are not an IP packet",
+                format!("Failed to parse IP packet: {e:#}"),
             )
         })?;
 
