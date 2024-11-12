@@ -204,11 +204,6 @@ pub(crate) fn run(
                         tracing::warn!(
                             "Will crash / error / panic on purpose in {delay} seconds to test error handling."
                         );
-                        telemetry::add_breadcrumb(telemetry::Breadcrumb {
-                            ty: "fail_on_purpose".into(),
-                            message: Some("Will crash / error / panic on purpose to test error handling.".into()),
-                            ..Default::default()
-                        });
                         tokio::time::sleep(Duration::from_secs(delay)).await;
                         tracing::warn!("Crashing / erroring / panicking on purpose");
                         ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
