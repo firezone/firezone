@@ -174,9 +174,19 @@ impl ClientOnGateway {
         resolved_ips: Vec<IpAddr>,
         now: Instant,
     ) -> Result<()> {
-        let Some(ResourceOnGateway::Dns { domains, .. }) = self.resources.get_mut(&resource_id)
-        else {
-            bail!("Cannot refresh translation for unknown or non-DNS resource")
+        let resource_on_gateway = self
+            .resources
+            .get_mut(&resource_id)
+            .context("Unknown resource")?;
+
+        let domains = match resource_on_gateway {
+            ResourceOnGateway::Dns { domains, .. } => domains,
+            ResourceOnGateway::Cidr { .. } => {
+                bail!("Cannot refresh translation for CIDR resource")
+            }
+            ResourceOnGateway::Internet { .. } => {
+                bail!("Cannot refresh translation for Internet resource")
+            }
         };
 
         let old_ips: HashSet<&IpAddr> =
