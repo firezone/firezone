@@ -439,19 +439,6 @@ where
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
-        let packet_len = packet.packet().len();
-        let max_len = if self.mode.is_client() {
-            ip_packet::PACKET_SIZE
-        } else {
-            ip_packet::PACKET_SIZE + ip_packet::NAT46_OVERHEAD
-        };
-
-        // TODO: This is a it of a hack, we should compile-time enforce this.
-        if packet_len > max_len {
-            tracing::warn!("Packet is too large; max={max_len}, actual={packet_len}");
-            return Ok(None);
-        }
-
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
             .encapsulate(packet.packet(), &mut buffer.inner[4..], now)?
