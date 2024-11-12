@@ -1,10 +1,6 @@
 use std::time::Duration;
 
-pub use sentry::{
-    end_session, end_session_with_status,
-    types::protocol::v7::{Context, SessionStatus},
-    Breadcrumb, Level,
-};
+use sentry::protocol::SessionStatus;
 pub use sentry_anyhow::capture_anyhow;
 
 pub struct Dsn(&'static str);
@@ -89,11 +85,19 @@ impl Telemetry {
 
     /// Flushes events to sentry.io and drops the guard
     pub async fn stop(&mut self) {
+        self.end_session(SessionStatus::Exited).await;
+    }
+
+    pub async fn stop_on_crash(&mut self) {
+        self.end_session(SessionStatus::Crashed).await;
+    }
+
+    async fn end_session(&mut self, status: SessionStatus) {
         let Some(inner) = self.inner.take() else {
             return;
         };
         tracing::info!("Stopping telemetry");
-        sentry::end_session();
+        sentry::end_session_with_status(status);
 
         // Sentry uses blocking IO for flushing ..
         let _ = tokio::task::spawn_blocking(move || {
