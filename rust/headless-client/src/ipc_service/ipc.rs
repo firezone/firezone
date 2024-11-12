@@ -1,6 +1,5 @@
 use crate::{IpcClientMsg, IpcServerMsg};
 use anyhow::{Context as _, Result};
-use firezone_logging::std_dyn_err;
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_util::{
     bytes::BytesMut,
@@ -33,7 +32,7 @@ pub enum Error {
     #[error("Permission denied")]
     PermissionDenied,
 
-    #[error(transparent)]
+    #[error("{0:#}")] // Use alternate display here to log entire chain of errors.
     Other(anyhow::Error),
 }
 
@@ -145,11 +144,9 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
                 return Ok((rx, tx));
             }
             Err(error) => {
-                tracing::warn!(
-                    error = std_dyn_err(&error),
-                    "Couldn't connect to IPC service, will sleep and try again"
-                );
+                tracing::debug!("Couldn't connect to IPC service: {error}");
                 last_err = Some(error);
+
                 // This won't come up much for humans but it helps the automated
                 // tests pass
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -277,5 +274,12 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn error_logs_all_anyhow_sources_on_display() {
+        let err = Error::Other(anyhow::anyhow!("foo").context("bar").context("baz"));
+
+        assert_eq!(err.to_string(), "baz: bar: foo");
     }
 }
