@@ -1,7 +1,7 @@
 elixir/_build
 elixir/deps
 elixir/apps/web/assets
-rust
+rust/target
 kotlin/android/build
 website/node_modules
 **/*.sh
