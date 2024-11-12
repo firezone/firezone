@@ -145,7 +145,7 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
                 return Ok((rx, tx));
             }
             Err(error) => {
-                tracing::warn!(
+                tracing::debug!(
                     error = std_dyn_err(&error),
                     "Couldn't connect to IPC service, will sleep and try again"
                 );
