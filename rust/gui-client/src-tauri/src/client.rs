@@ -151,15 +151,6 @@ fn start_logging(directives: &str) -> Result<common::logging::Handles> {
         ?system_uptime_seconds,
         "`gui-client` started logging"
     );
-    telemetry::add_breadcrumb(telemetry::Breadcrumb {
-        ty: "logging_start".into(),
-        category: None,
-        data: BTreeMap::from([
-            ("directives".into(), directives.into()),
-            ("system_uptime_seconds".into(), system_uptime_seconds.into()),
-        ]),
-        ..Default::default()
-    });
 
     Ok(logging_handles)
 }
