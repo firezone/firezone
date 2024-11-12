@@ -3,6 +3,7 @@ pub mod file;
 mod format;
 #[macro_use]
 mod unwrap_or;
+mod err_with_sources;
 
 use sentry_tracing::EventFilter;
 use tracing::{subscriber::DefaultGuard, Subscriber};

@@ -2131,6 +2131,7 @@ dependencies = [
  "nu-ansi-term 0.50.1",
  "rand 0.8.5",
  "sentry-tracing",
+ "thiserror",
  "time",
  "tracing",
  "tracing-appender",
