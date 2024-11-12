@@ -145,11 +145,9 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
                 return Ok((rx, tx));
             }
             Err(error) => {
-                tracing::debug!(
-                    error = std_dyn_err(&error),
-                    "Couldn't connect to IPC service, will sleep and try again"
-                );
+                tracing::debug!("Couldn't connect to IPC service: {error}");
                 last_err = Some(error);
+
                 // This won't come up much for humans but it helps the automated
                 // tests pass
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
