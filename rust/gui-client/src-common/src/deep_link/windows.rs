@@ -70,7 +70,7 @@ async fn bind_to_pipe(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, su
         match create_pipe_server(pipe_path) {
             Ok(server) => return Ok(server),
             Err(e) => {
-                tracing::warn!(
+                tracing::debug!(
                     error = std_dyn_err(&e),
                     "`create_pipe_server` failed, sleeping... (attempt {i}/{NUM_ITERS})"
                 );
