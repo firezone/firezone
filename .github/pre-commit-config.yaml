@@ -7,6 +7,11 @@ repos:
         entry: codespell
         language: system
         pass_filenames: false
+      - id: prettier-git-files
+        name: Prettier (only git-tracked files)
+        entry: bash -c 'git ls-files -z | xargs -0 prettier --check --ignore-unknown'
+        language: system
+        pass_filenames: false
 
   # Standard pre-commit hooks
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -44,23 +49,6 @@ repos:
         args:
           - -i
           - "4"
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: "v4.0.0-alpha.8"
-    hooks:
-      - id: prettier
-        # Exclude non-website files for now
-        # TODO: Lint these files in all directories
-        exclude: "^(?!website/)"
-        types_or:
-          - javascript
-          - jsx
-          - css
-          - scss
-          - json
-          - mdx
-          - markdown
-          - html
-          - xml
   - repo: https://github.com/DevinR528/cargo-sort
     rev: v1.0.9
     hooks:

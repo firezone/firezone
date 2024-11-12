@@ -65,8 +65,6 @@ To do so, login to [the Azure portal](https://portal.azure.com) using your `@fir
 Try to access it via the following [deep-link](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials/appId/51da0daa-39dd-4890-9018-e02609efc9c8).
 If that doesn't work:
 
-
-
 - Go to the `Microsoft Entra ID` service
 - Click on `App Registrations`
 - Make sure the tab `All applications` is selected

@@ -222,7 +222,7 @@ runcmd:
   - sudo apt update -y
   - sudo apt install -y apt-transport-https ca-certificates curl software-properties-common iperf3
   - sudo install -m 0755 -d /etc/apt/keyrings
-  - 'sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc'
+  - "sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc"
   - sudo chmod a+r /etc/apt/keyrings/docker.asc
   - 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null'
   - sudo apt-get update
@@ -235,6 +235,6 @@ runcmd:
   - 'sudo apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" install google-cloud-ops-agent'
   - sudo docker pull ${client_container_image}
   - sudo docker create --name fz-client ${client_container_image}
-  - 'sudo docker cp fz-client:/bin/firezone-headless-client /usr/local/bin/firezone-headless-client'
+  - "sudo docker cp fz-client:/bin/firezone-headless-client /usr/local/bin/firezone-headless-client"
   - sudo docker rm -v fz-client
   - sudo systemctl enable --now firezone.service

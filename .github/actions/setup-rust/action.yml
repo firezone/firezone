@@ -10,7 +10,7 @@ inputs:
   cache_backend:
     description: "Choose between sccache or github"
     required: false
-    default: 'sccache'
+    default: "sccache"
   targets:
     description: "Additional targets to install"
     required: false

@@ -90,8 +90,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images:
-            ${{ steps.login.outputs.registry }}/firezone/${{matrix.image_name }}
+          images: ${{ steps.login.outputs.registry }}/firezone/${{matrix.image_name }}
           tags: |
             type=raw,value=${{ inputs.sha }}
       - name: Sanitize github.ref_name
@@ -135,19 +134,19 @@ jobs:
         # Syntax is weird because https://github.com/actions/runner/issues/1512
         exclude:
           # Exclude debug builds for non-amd64 targets since they won't be used.
-          - {stage: debug, arch: {platform: linux/arm/v7}}
-          - {stage: debug, arch: {platform: linux/arm64}}
+          - { stage: debug, arch: { platform: linux/arm/v7 } }
+          - { stage: debug, arch: { platform: linux/arm64 } }
           # Exclude http-test-server from perf image builds
-          - {image_prefix: perf, name: {package: http-test-server}}
+          - { image_prefix: perf, name: { package: http-test-server } }
 
         arch:
           - target: x86_64-unknown-linux-musl
             shortname: x86_64
             platform: linux/amd64
-          - target: aarch64-unknown-linux-musl  # E.g. AWS Graviton
+          - target: aarch64-unknown-linux-musl # E.g. AWS Graviton
             shortname: aarch64
             platform: linux/arm64
-          - target: armv7-unknown-linux-musleabihf  # E.g. Raspberry Pi
+          - target: armv7-unknown-linux-musleabihf # E.g. Raspberry Pi
             platform: linux/arm/v7
             shortname: armv7
         name:
@@ -278,8 +277,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images:
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}
+          images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}
           # We only version client and gateway
           tags: |
             type=raw,value=latest
@@ -309,8 +307,7 @@ jobs:
           cache-to: |
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }},mode=max
           target: ${{ matrix.stage }}
-          outputs:
-            type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.image_name }}
@@ -342,7 +339,7 @@ jobs:
 
         # Exclude http-test-server from perf image builds
         exclude:
-          - {image_prefix: perf, image: {name: http-test-server}}
+          - { image_prefix: perf, image: { name: http-test-server } }
 
         image:
           - name: relay
@@ -390,8 +387,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images:
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}
+          images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}
           tags: |
             type=raw,value=latest
             type=raw,value=${{ inputs.sha }}
