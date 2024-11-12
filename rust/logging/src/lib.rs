@@ -3,6 +3,7 @@ pub mod file;
 mod format;
 #[macro_use]
 mod unwrap_or;
+mod err_with_sources;
 
 use sentry_tracing::EventFilter;
 use tracing::{subscriber::DefaultGuard, Subscriber};
@@ -13,6 +14,7 @@ use tracing_subscriber::{
 };
 
 pub use dyn_err::{anyhow_dyn_err, std_dyn_err};
+pub use err_with_sources::{err_with_sources, ErrorWithSources};
 pub use format::Format;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`

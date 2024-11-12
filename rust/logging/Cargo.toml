@@ -18,5 +18,8 @@ tracing-log = "0.2"
 tracing-stackdriver = { version = "0.11.0" }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
+[dev-dependencies]
+thiserror = "1"
+
 [lints]
 workspace = true

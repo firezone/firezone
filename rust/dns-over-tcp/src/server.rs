@@ -10,7 +10,6 @@ use crate::{
 };
 use anyhow::{Context as _, Result};
 use domain::{base::Message, dep::octseq::OctetsInto as _};
-use firezone_logging::anyhow_dyn_err;
 use ip_packet::IpPacket;
 use smoltcp::{
     iface::{Interface, PollResult, SocketSet},
@@ -188,7 +187,7 @@ impl Server {
                         });
                     }
                     Err(e) => {
-                        tracing::debug!(error = anyhow_dyn_err(&e), "Error on receiving DNS query");
+                        tracing::debug!("Error on receiving DNS query: {e:#}");
                         socket.abort();
                         break;
                     }

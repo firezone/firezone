@@ -4,7 +4,9 @@ use connlib_model::DomainName;
 use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_event, telemetry_span};
+use firezone_logging::{
+    anyhow_dyn_err, err_with_sources, std_dyn_err, telemetry_event, telemetry_span,
+};
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
@@ -78,7 +80,7 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::debug!(error = std_dyn_err(&e), "Tunnel error");
+                    tracing::debug!("Tunnel error: {}", err_with_sources(&e));
                     telemetry_event!(error = std_dyn_err(&e), "Tunnel error");
                     continue;
                 }
@@ -353,7 +355,7 @@ impl Eventloop {
         req: RequestConnection,
     ) {
         let addresses = result
-            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request"))
+            .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {}", err_with_sources(e)))
             .unwrap_or_default();
 
         let answer = match self.tunnel.state_mut().accept(
@@ -392,7 +394,7 @@ impl Eventloop {
             let client = req.client.id;
 
             self.tunnel.state_mut().cleanup_connection(&client);
-            tracing::debug!(error = anyhow_dyn_err(&e), %client, "Connection request failed");
+            tracing::debug!(%client, "Connection request failed: {e:#}");
             return;
         }
 
@@ -409,7 +411,7 @@ impl Eventloop {
 
     pub fn allow_access(&mut self, result: Result<Vec<IpAddr>, Timeout>, req: AllowAccess) {
         let addresses = result
-            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request"))
+            .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {}", err_with_sources(e)))
             .unwrap_or_default();
 
         if let Err(e) = self.tunnel.state_mut().allow_access(
@@ -433,7 +435,7 @@ impl Eventloop {
         name: DomainName,
     ) {
         let addresses = result
-            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %conn_id, "DNS resolution timed out as part of allow access request"))
+            .inspect_err(|e| tracing::debug!(%conn_id, "DNS resolution timed out as part of allow access request: {}", err_with_sources(e)))
             .unwrap_or_default();
 
         self.tunnel.state_mut().refresh_translation(
