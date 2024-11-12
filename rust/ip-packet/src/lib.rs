@@ -168,7 +168,7 @@ impl ConvertibleIpv4Packet {
             start: NAT46_OVERHEAD,
             len,
         };
-        Ipv4HeaderSlice::from_slice(this.packet()).context("Invalid IPv4 header")?;
+        Ipv4Slice::from_slice(this.packet()).context("Invalid IPv4 packet")?;
 
         Ok(this)
     }
@@ -249,7 +249,7 @@ impl ConvertibleIpv6Packet {
             len,
         };
 
-        Ipv6HeaderSlice::from_slice(this.packet()).context("Invalid IPv6 header")?;
+        Ipv6Slice::from_slice(this.packet()).context("Invalid IPv6 packet")?;
 
         Ok(this)
     }
