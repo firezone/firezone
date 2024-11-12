@@ -15,7 +15,7 @@ use connlib_model::PublicKey;
 use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
 use connlib_model::{Site, SiteId};
 use firezone_logging::{
-    anyhow_dyn_err, std_dyn_err, telemetry_event, unwrap_or_debug, unwrap_or_warn,
+    anyhow_dyn_err, err_with_sources, std_dyn_err, telemetry_event, unwrap_or_debug, unwrap_or_warn,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -327,7 +327,7 @@ impl ClientState {
             packet.as_ref(),
             now,
         )
-        .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet"))
+        .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {}", err_with_sources(e)))
         .ok()??;
 
         if self.tcp_dns_client.accepts(&packet) {
@@ -382,7 +382,7 @@ impl ClientState {
                     })
                     .unwrap_or_else(|e| {
                         let error = std_dyn_err(&e);
-                        tracing::debug!(error, "Recursive UDP DNS query failed");
+                        tracing::debug!("Recursive UDP DNS query failed: {}", err_with_sources(&e));
                         telemetry_event!(error, "Recursive UDP DNS query failed");
 
                         dns::servfail(response.query.for_slice_ref())
@@ -400,7 +400,7 @@ impl ClientState {
                     })
                     .unwrap_or_else(|e| {
                         let error = std_dyn_err(&e);
-                        tracing::debug!(error, "Recursive TCP DNS query failed");
+                        tracing::debug!("Recursive TCP DNS query failed: {}", err_with_sources(&e));
                         telemetry_event!(error, "Recursive TCP DNS query failed");
 
                         dns::servfail(response.query.for_slice_ref())
@@ -453,7 +453,9 @@ impl ClientState {
         let transmit = self
             .node
             .encapsulate(gid, packet, now, buffer)
-            .inspect_err(|e| tracing::debug!(error = std_dyn_err(e), %gid, "Failed to encapsulate"))
+            .inspect_err(
+                |e| tracing::debug!(%gid, "Failed to encapsulate: {}", err_with_sources(e)),
+            )
             .ok()??;
 
         Some(transmit)
@@ -984,7 +986,7 @@ impl ClientState {
             dns::ResolveStrategy::LocalResponse(response) => {
                 unwrap_or_debug!(
                     self.try_queue_udp_dns_response(upstream, source, &response),
-                    "Failed to queue UDP DNS response"
+                    "Failed to queue UDP DNS response: {}"
                 );
             }
             dns::ResolveStrategy::Recurse => {
@@ -1026,7 +1028,7 @@ impl ClientState {
             dns::ResolveStrategy::LocalResponse(response) => {
                 unwrap_or_debug!(
                     self.tcp_dns_server.send_message(query.socket, response),
-                    "Failed to send TCP DNS response"
+                    "Failed to send TCP DNS response: {}"
                 );
             }
             dns::ResolveStrategy::Recurse => {
@@ -1046,7 +1048,7 @@ impl ClientState {
                                     query.socket,
                                     dns::servfail(message.for_slice_ref())
                                 ),
-                                "Failed to send TCP DNS response"
+                                "Failed to send TCP DNS response: {}"
                             );
                             return;
                         }
