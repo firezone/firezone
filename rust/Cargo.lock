@@ -621,7 +621,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.6.0"
-source = "git+https://github.com/cloudflare/boringtun?branch=master#64a2fc7c63e5f5a9aa5b8e1fbcefd504778ad118"
+source = "git+https://github.com/firezone/boringtun?branch=master#b07142b38d51095ab7d7830db42d5f7e91c2bacf"
 dependencies = [
  "aead",
  "base64 0.13.1",
@@ -632,7 +632,7 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "libc",
- "nix 0.25.1",
+ "nix 0.29.0",
  "parking_lot",
  "rand_core 0.6.4",
  "ring",
@@ -3805,18 +3805,6 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
-
-[[package]]
-name = "nix"
-version = "0.25.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f346ff70e7dbfd675fe90590b92d59ef2de15a8779ae305ebcbfd3f0caf59be4"
-dependencies = [
- "autocfg",
- "bitflags 1.3.2",
- "cfg-if",
- "libc",
-]
 
 [[package]]
 name = "nix"
