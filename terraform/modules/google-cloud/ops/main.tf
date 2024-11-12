@@ -434,7 +434,7 @@ resource "google_monitoring_alert_policy" "load_balancer_latency_policy" {
       # Filter out HTTP 101 responses (switching protocols) to prevent WebSocket connections from triggering the alert
       filter          = "metric.labels.response_code != \"101\" AND resource.type = \"https_lb_rule\" AND metric.type = \"loadbalancing.googleapis.com/https/backend_latencies\""
       comparison      = "COMPARISON_GT"
-      threshold_value = 1000
+      threshold_value = 3000
       duration        = "0s"
 
       trigger {
