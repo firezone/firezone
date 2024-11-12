@@ -5,7 +5,6 @@ use firezone_gui_client_common::{
 };
 use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_telemetry as telemetry;
-use std::collections::BTreeMap;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
