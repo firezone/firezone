@@ -36,6 +36,17 @@ pub struct Telemetry {
     firezone_id: Option<String>,
 }
 
+impl Drop for Telemetry {
+    fn drop(&mut self) {
+        if self.inner.is_none() {
+            return;
+        }
+
+        // Conclude telemetry session as "abnormal" if we get dropped without closing it properly first.
+        sentry::end_session_with_status(SessionStatus::Abnormal);
+    }
+}
+
 impl Telemetry {
     pub fn start(&mut self, api_url: &str, release: &str, dsn: Dsn) {
         // Since it's `arc_swap` and not `Option`, there is a TOCTOU here,
