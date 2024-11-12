@@ -423,7 +423,7 @@ resource "google_monitoring_alert_policy" "load_balancer_latency_policy" {
   notification_channels = local.notification_channels
 
   documentation {
-    content   = "This alert is triggered when the load balancer latency is higher than 1000ms."
+    content   = "This alert is triggered when the load balancer latency is higher than 3000ms."
     mime_type = "text/markdown"
   }
 
@@ -432,7 +432,7 @@ resource "google_monitoring_alert_policy" "load_balancer_latency_policy" {
 
     condition_threshold {
       # Filter out HTTP 101 responses (switching protocols) to prevent WebSocket connections from triggering the alert
-      filter          = "metric.labels.response_code != \"101\" AND resource.type = \"https_lb_rule\" AND metric.type = \"loadbalancing.googleapis.com/https/backend_latencies\""
+      filter          = "metric.labels.response_code != \"101\" AND resource.type = \"https_lb_rule\" AND metric.type = \"loadbalancing.googleapis.com/https/total_latencies\""
       comparison      = "COMPARISON_GT"
       threshold_value = 3000
       duration        = "0s"
