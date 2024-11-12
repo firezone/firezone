@@ -165,12 +165,16 @@ impl ClientTunnel {
                     let now = Instant::now();
 
                     for received in packets {
-                        let Some(packet) = self.role_state.handle_network_input(
-                            received.local,
-                            received.from,
-                            received.packet,
-                            now,
-                        ) else {
+                        let Some(packet) = self
+                            .role_state
+                            .handle_network_input(
+                                received.local,
+                                received.from,
+                                received.packet,
+                                now,
+                            )
+                            .map_err(std::io::Error::other)?
+                        else {
                             self.role_state.handle_timeout(now);
                             continue;
                         };

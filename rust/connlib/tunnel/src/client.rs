@@ -320,30 +320,26 @@ impl ClientState {
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Option<IpPacket> {
-        let (gid, packet) = self.node.decapsulate(
-            local,
-            from,
-            packet.as_ref(),
-            now,
-        )
-        .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {}", err_with_sources(e)))
-        .ok()??;
+    ) -> anyhow::Result<Option<IpPacket>> {
+        let Some((gid, packet)) = self
+            .node
+            .decapsulate(local, from, packet.as_ref(), now)
+            .context("Failed to decapsulate incoming packet")?
+        else {
+            return Ok(None);
+        };
 
         if self.tcp_dns_client.accepts(&packet) {
             self.tcp_dns_client.handle_inbound(packet);
-            return None;
+            return Ok(None);
         }
 
-        let Some(peer) = self.peers.get_mut(&gid) else {
-            tracing::error!(%gid, "Couldn't find connection by ID");
+        let peer = self
+            .peers
+            .get_mut(&gid)
+            .context("Failed to find connection by ID")?;
 
-            return None;
-        };
-
-        peer.ensure_allowed_src(&packet)
-            .inspect_err(|e| tracing::debug!(%gid, %local, %from, "{e}"))
-            .ok()?;
+        peer.ensure_allowed_src(&packet)?;
 
         let packet = maybe_mangle_dns_response_from_cidr_resource(
             packet,
@@ -352,7 +348,7 @@ impl ClientState {
             now,
         );
 
-        Some(packet)
+        Ok(Some(packet))
     }
 
     pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse) {

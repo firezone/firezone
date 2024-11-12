@@ -236,12 +236,13 @@ impl SimClient {
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
-        let Some(packet) = self.sut.handle_network_input(
-            transmit.dst,
-            transmit.src.unwrap(),
-            &transmit.payload,
-            now,
-        ) else {
+        let Some(packet) = self
+            .sut
+            .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
+            .inspect_err(|e| tracing::warn!("{e:#}"))
+            .ok()
+            .flatten()
+        else {
             self.sut.handle_timeout(now);
             return;
         };
