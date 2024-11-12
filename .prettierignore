@@ -9,3 +9,4 @@ website/node_modules
 **/*.rs
 **/*.wxs
 **/pnpm-lock.yaml
+swift/apple/**/Contents.json
