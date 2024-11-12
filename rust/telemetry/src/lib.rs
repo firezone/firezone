@@ -3,7 +3,7 @@ use std::time::Duration;
 pub use sentry::{
     add_breadcrumb, capture_error, capture_message, end_session, end_session_with_status,
     types::protocol::v7::{Context, SessionStatus},
-    Breadcrumb, Hub, Level,
+    Breadcrumb, Level,
 };
 pub use sentry_anyhow::capture_anyhow;
 
