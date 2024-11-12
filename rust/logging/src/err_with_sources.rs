@@ -1,10 +1,9 @@
 use core::fmt;
 use std::error::Error;
 
-pub fn err_with_sources(e: &(impl Error + 'static)) -> ErrorWithSources<'_> {
-    ErrorWithSources {
-        e: e as &(dyn Error + 'static),
-    }
+/// Returns a [`fmt::Display`] adapter that prints the error and all its sources.
+pub fn err_with_sources<'a>(e: &'a (dyn Error + 'static)) -> ErrorWithSources<'a> {
+    ErrorWithSources { e }
 }
 
 pub struct ErrorWithSources<'a> {

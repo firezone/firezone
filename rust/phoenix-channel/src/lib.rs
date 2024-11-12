@@ -13,7 +13,7 @@ use std::{io, mem};
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use base64::Engine;
-use firezone_logging::{std_dyn_err, telemetry_span};
+use firezone_logging::{err_with_sources, std_dyn_err, telemetry_span};
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use heartbeat::{Heartbeat, MissedLastHeartbeat};
@@ -415,7 +415,7 @@ where
                         let socket_factory = self.socket_factory.clone();
                         let socket_addresses = self.socket_addresses();
 
-                        tracing::debug!(error = std_dyn_err(&e), ?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error");
+                        tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {}", err_with_sources(&e));
 
                         self.state = State::Connecting(Box::pin(async move {
                             tokio::time::sleep(backoff).await;
