@@ -21,7 +21,7 @@ pub use fz_p2p_control_slice::FzP2pControlSlice;
 #[cfg(all(test, feature = "proptest"))]
 mod proptests;
 
-use anyhow::{Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use icmpv4_header_slice_mut::Icmpv4HeaderSliceMut;
 use icmpv6_header_slice_mut::Icmpv6EchoHeaderSliceMut;
 use ipv4_header_slice_mut::Ipv4HeaderSliceMut;
@@ -162,15 +162,15 @@ pub struct ConvertibleIpv4Packet {
 }
 
 impl ConvertibleIpv4Packet {
-    pub fn new(ip: IpPacketBuf, len: usize) -> Option<ConvertibleIpv4Packet> {
+    pub fn new(ip: IpPacketBuf, len: usize) -> Result<ConvertibleIpv4Packet> {
         let this = Self {
             buf: ip.inner,
             start: NAT46_OVERHEAD,
             len,
         };
-        Ipv4HeaderSlice::from_slice(this.packet()).ok()?;
+        Ipv4HeaderSlice::from_slice(this.packet()).context("Invalid IPv4 header")?;
 
-        Some(this)
+        Ok(this)
     }
 
     fn ip_header(&self) -> Ipv4HeaderSlice {
@@ -242,16 +242,16 @@ pub struct ConvertibleIpv6Packet {
 }
 
 impl ConvertibleIpv6Packet {
-    pub fn new(ip: IpPacketBuf, len: usize) -> Option<ConvertibleIpv6Packet> {
+    pub fn new(ip: IpPacketBuf, len: usize) -> Result<ConvertibleIpv6Packet> {
         let this = Self {
             buf: ip.inner,
             start: NAT46_OVERHEAD,
             len,
         };
 
-        Ipv6HeaderSlice::from_slice(this.packet()).ok()?;
+        Ipv6HeaderSlice::from_slice(this.packet()).context("Invalid IPv6 header")?;
 
-        Some(this)
+        Ok(this)
     }
 
     fn header(&self) -> Ipv6HeaderSlice {
@@ -323,12 +323,12 @@ pub fn ipv6_translated(ip: Ipv6Addr) -> Option<Ipv4Addr> {
 }
 
 impl IpPacket {
-    pub fn new(buf: IpPacketBuf, len: usize) -> Option<Self> {
-        match buf.inner[NAT46_OVERHEAD] >> 4 {
-            4 => Some(IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf, len)?)),
-            6 => Some(IpPacket::Ipv6(ConvertibleIpv6Packet::new(buf, len)?)),
-            _ => None,
-        }
+    pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
+        Ok(match buf.inner[NAT46_OVERHEAD] >> 4 {
+            4 => IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf, len)?),
+            6 => IpPacket::Ipv6(ConvertibleIpv6Packet::new(buf, len)?),
+            v => bail!("Invalid IP version: {v}"),
+        })
     }
 
     pub(crate) fn consume_to_ipv4(self, src: Ipv4Addr, dst: Ipv4Addr) -> Result<IpPacket> {

@@ -1,5 +1,6 @@
 use std::collections::VecDeque;
 
+use firezone_logging::anyhow_dyn_err;
 use ip_packet::{IpPacket, IpPacketBuf};
 
 /// A in-memory device for [`smoltcp`] that is entirely backed by buffers.
@@ -73,10 +74,14 @@ impl<'a> smoltcp::phy::TxToken for SmolTxToken<'a> {
         let mut ip_packet_buf = IpPacketBuf::new();
         let result = f(ip_packet_buf.buf());
 
-        let Some(mut ip_packet) = IpPacket::new(ip_packet_buf, len) else {
-            tracing::warn!("Received invalid IP packet");
-            return result;
+        let mut ip_packet = match IpPacket::new(ip_packet_buf, len) {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::warn!(error = anyhow_dyn_err(&e), "Received invalid IP packet");
+                return result;
+            }
         };
+
         ip_packet.update_checksum();
         self.outbound_packets.push_back(ip_packet);
 
