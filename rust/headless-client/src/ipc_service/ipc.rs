@@ -33,7 +33,7 @@ pub enum Error {
     #[error("Permission denied")]
     PermissionDenied,
 
-    #[error(transparent)]
+    #[error("{0:#}")] // Use alternate display here to log entire chain of errors.
     Other(anyhow::Error),
 }
 
