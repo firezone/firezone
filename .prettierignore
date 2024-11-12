@@ -8,3 +8,4 @@ website/node_modules
 **/*.ex
 **/*.rs
 **/*.wxs
+**/pnpm-lock.yaml
