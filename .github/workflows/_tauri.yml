@@ -71,6 +71,10 @@ jobs:
       - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
         timeout-minutes: 10
+      - uses: matbour/setup-sentry-cli@v2
+        with:
+          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          organization: firezone-inc
       - name: Install pnpm deps
         run: pnpm install
       - name: Install AzureSignTool
@@ -109,6 +113,10 @@ jobs:
           name: ${{ env.ARTIFACT_DST }}-syms
           path: ${{ env.ARTIFACT_SRC }}.${{ matrix.syms-extension }}
           if-no-files-found: error
+      - name: Upload debug symbols to Sentry
+        run: |
+          sentry-cli debug-files upload --log-level info --project gui-client-gui --include-sources ../target
+          sentry-cli debug-files upload --log-level info --project gui-client-ipc-service --include-sources ../target
       - name: Upload package
         uses: actions/upload-artifact@v4
         with:
