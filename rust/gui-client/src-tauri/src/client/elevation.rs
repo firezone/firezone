@@ -1,10 +1,9 @@
-use firezone_headless_client::FIREZONE_GROUP;
 pub(crate) use platform::gui_check;
 
 #[cfg(target_os = "linux")]
 mod platform {
-    use super::*;
     use anyhow::{Context as _, Result};
+    use firezone_headless_client::FIREZONE_GROUP;
 
     /// Returns true if all permissions are correct for the GUI to run
     ///
@@ -53,7 +52,6 @@ mod platform {
 
 #[cfg(target_os = "windows")]
 mod platform {
-    use super::*;
     use anyhow::Result;
 
     // Returns true on Windows
@@ -65,14 +63,8 @@ mod platform {
         Ok(true)
     }
 
-    #[derive(Debug, thiserror::Error)]
+    #[derive(Debug, Clone, Copy, thiserror::Error)]
     pub(crate) enum Error {}
-
-    impl Error {
-        pub(crate) fn user_friendly_msg(&self) -> String {
-            match self {}
-        }
-    }
 }
 
 #[cfg(test)]
