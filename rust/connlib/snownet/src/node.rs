@@ -1402,7 +1402,7 @@ fn remove_local_candidate<TId>(
     TId: fmt::Display,
 {
     if candidate.kind() == CandidateKind::ServerReflexive {
-        pending_events.push_back(Event::NewIceCandidate {
+        pending_events.push_back(Event::InvalidateIceCandidate {
             connection: id,
             candidate: candidate.to_sdp_string(),
         });
