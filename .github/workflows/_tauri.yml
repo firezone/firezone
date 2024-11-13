@@ -33,17 +33,14 @@ jobs:
             arch: x86_64
             os: linux
             pkg-extension: deb
-            syms-extension: dwp
           - runs-on: ubuntu-22.04-arm
             arch: aarch64
             os: linux
             pkg-extension: deb
-            syms-extension: dwp
           - runs-on: windows-2019
             arch: x86_64
             os: windows
             pkg-extension: msi
-            syms-extension: pdb
     env:
       # mark:next-gui-version
       ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.3.13_${{ matrix.arch }}
@@ -107,12 +104,6 @@ jobs:
       - name: Rename artifacts and compute SHA256
         shell: bash
         run: ${{ env.RENAME_SCRIPT }}
-      - name: Upload debug symbols
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.ARTIFACT_DST }}-syms
-          path: ${{ env.ARTIFACT_SRC }}.${{ matrix.syms-extension }}
-          if-no-files-found: error
       - name: Upload debug symbols to Sentry
         run: |
           sentry-cli debug-files upload --log-level info --project gui-client-gui --include-sources ../target
