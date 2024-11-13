@@ -442,7 +442,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                     Status::Quitting => tracing::error!("Can't cancel sign-in while already quitting"),
                     Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
                     Status::WaitingForTunnel { .. } => {
-                        tracing::warn!(
+                        tracing::debug!(
                             "Connlib is already raising the tunnel, calling `sign_out` anyway"
                         );
                         self.sign_out().await?;
