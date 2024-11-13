@@ -438,7 +438,7 @@ fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {
         return false;
     }
 
-    let expected = ring::test::from_hex(dll_bytes.expected_sha256).unwrap();
+    let expected = dll_bytes.expected_sha256;
     let actual = digest::digest(&digest::SHA256, &buf);
     expected == actual.as_ref()
 }
@@ -457,14 +457,16 @@ struct DllBytes {
     /// Bytes embedded in the client with `include_bytes`
     pub bytes: &'static [u8],
     /// Expected SHA256 hash
-    pub expected_sha256: &'static str,
+    pub expected_sha256: [u8; 32],
 }
 
 #[cfg(target_arch = "x86_64")]
 fn wintun_bytes() -> DllBytes {
     DllBytes {
         bytes: include_bytes!("../wintun/bin/amd64/wintun.dll"),
-        expected_sha256: "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
+        expected_sha256: hex_literal::hex!(
+            "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce"
+        ),
     }
 }
 
@@ -472,6 +474,8 @@ fn wintun_bytes() -> DllBytes {
 fn wintun_bytes() -> DllBytes {
     DllBytes {
         bytes: include_bytes!("../wintun/bin/arm64/wintun.dll"),
-        expected_sha256: "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80",
+        expected_sha256: hex_literal::hex!(
+            "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80"
+        ),
     }
 }
