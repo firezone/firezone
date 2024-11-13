@@ -39,20 +39,14 @@ impl Error {
             Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-client>.".to_string(),
             Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
             Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),
-            Error::Ipc(ipc::Error::NotFound(path)) => {
-                tracing::error!(?path, "Couldn't find Firezone IPC service");
-                "Couldn't find Firezone IPC service. Is the service running?".to_string()
-            }
+            Error::Ipc(ipc::Error::NotFound(_)) => "Couldn't find Firezone IPC service. Is the service running?".to_string(),
             Error::Ipc(ipc::Error::PermissionDenied) => "Permission denied for Firezone IPC service. This should only happen on dev systems.".to_string(),
             Error::Ipc(ipc::Error::Other(error)) => error.to_string(),
             Error::IpcClosed => "IPC connection closed".to_string(),
             Error::IpcRead => "IPC read failure".to_string(),
             Error::IpcServiceTerminating => "The Firezone IPC service is terminating. Please restart the GUI Client.".to_string(),
             Error::Logging(_) => "Logging error".to_string(),
-            Error::PortalConnection(error) => {
-                tracing::error!(%error, "Couldn't connect to the Portal");
-                "Couldn't connect to the Firezone Portal. Are you connected to the Internet?".to_string()
-            }
+            Error::PortalConnection(_) => "Couldn't connect to the Firezone Portal. Are you connected to the Internet?".to_string(),
             Error::Other(error) => error.to_string(),
         }
     }
