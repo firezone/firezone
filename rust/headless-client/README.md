@@ -3,6 +3,7 @@
 This crate acts as the CLI / headless Client, and the privileged tunnel service for the GUI Client, for both Linux and Windows.
 
 It is built as:
+
 - `headless-client` to act as the Linux / Windows headless Client
 - `firezone-headless-client` to act as the Linux tunnel service, Windows headless Client, or Windows tunnel service
 
@@ -37,7 +38,6 @@ capability to open `/dev/net/tun`. You can add this to the client binary with:
 ```
 sudo setcap 'cap_net_admin+eip' /path/to/firezone-headless-client
 ```
-
 
 ## Building
 

@@ -56,8 +56,7 @@ jobs:
           TF_VAR_image_tag: '"${{ github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
-          configuration_version:
-            ${{ steps.plan-upload.outputs.configuration_version_id }}
+          configuration_version: ${{ steps.plan-upload.outputs.configuration_version_id }}
           plan_only: true
       - if: steps.changes.outputs.terraform == 'true'
         name: Get Plan Output

@@ -114,16 +114,18 @@ Hooks.ConfirmDialog = {
 Hooks.Popover = {
   mounted() {
     const $triggerEl = this.el;
-    const $targetEl = document.getElementById($triggerEl.getAttribute('data-popover-target-id'));
+    const $targetEl = document.getElementById(
+      $triggerEl.getAttribute("data-popover-target-id")
+    );
 
     const options = {
-      placement: 'top',
-      triggerType: 'hover',
+      placement: "top",
+      triggerType: "hover",
       offset: 5,
     };
 
     new Popover($targetEl, $triggerEl, options);
-  }
-}
+  },
+};
 
 export default Hooks;

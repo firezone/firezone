@@ -136,20 +136,17 @@ jobs:
         uses: hashicorp/tfc-workflows-github/actions/create-run@v1.3.1
         id: apply-run
         env:
-          TF_VAR_image_tag:
-            '"${{ inputs.tag }}"'
+          TF_VAR_image_tag: '"${{ inputs.tag }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
-          configuration_version:
-            ${{ steps.apply-upload.outputs.configuration_version_id }}
+          configuration_version: ${{ steps.apply-upload.outputs.configuration_version_id }}
       - name: Apply
         uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.3.1
         if: fromJSON(steps.apply-run.outputs.payload).data.attributes.actions.IsConfirmable
         id: apply
         with:
           run: ${{ steps.apply-run.outputs.run_id }}
-          comment:
-            "Apply Run from GitHub Actions CI ${{ inputs.tag }}"
+          comment: "Apply Run from GitHub Actions CI ${{ inputs.tag }}"
 
   # Some intrepid users are self-hosting these, so support them as best we can by making our
   # infrastructure images available to them.

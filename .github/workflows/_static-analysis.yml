@@ -55,10 +55,14 @@ jobs:
       - name: Install Python Dependencies
         run: |
           pip install -r .github/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y shfmt
+          npm install -g prettier
       - name: Run pre-commit
         run: |
           pre-commit install --config .github/pre-commit-config.yaml

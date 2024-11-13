@@ -6,7 +6,7 @@ on:
       domain_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/domain'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/domain"
       domain_tag:
         required: false
         type: string
@@ -14,7 +14,7 @@ on:
       api_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/api'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/api"
       api_tag:
         required: false
         type: string
@@ -22,7 +22,7 @@ on:
       web_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/web'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/web"
       web_tag:
         required: false
         type: string
@@ -30,7 +30,7 @@ on:
       elixir_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/elixir'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/elixir"
       elixir_tag:
         required: false
         type: string
@@ -38,7 +38,7 @@ on:
       relay_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay"
       relay_tag:
         required: false
         type: string
@@ -46,7 +46,7 @@ on:
       gateway_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/gateway'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/debug/gateway"
       gateway_tag:
         required: false
         type: string
@@ -54,7 +54,7 @@ on:
       client_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client"
       client_tag:
         required: false
         type: string
@@ -62,7 +62,7 @@ on:
       http_test_server_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/http-test-server'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/debug/http-test-server"
       http_test_server_tag:
         required: false
         type: string

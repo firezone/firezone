@@ -14,16 +14,16 @@ jobs:
           - sdk: macosx
             runs-on: macos-14
             platform: macOS
-            xcode: '15.2'
+            xcode: "15.2"
             destination: platform=macOS
           - sdk: iphoneos
             runs-on: macos-14
             platform: iOS
-            xcode: '15.2'
+            xcode: "15.2"
             destination: generic/platform=iOS
     permissions:
       contents: read
-      id-token: 'write'
+      id-token: "write"
     defaults:
       run:
         working-directory: ./swift/apple

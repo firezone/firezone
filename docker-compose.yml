@@ -419,7 +419,11 @@ services:
   iperf3:
     image: mlabbe/iperf3
     healthcheck:
-      test: ["CMD-SHELL", "(cat /proc/net/tcp | grep 5201) && (cat /proc/net/udp | grep 5201)"]
+      test:
+        [
+          "CMD-SHELL",
+          "(cat /proc/net/tcp | grep 5201) && (cat /proc/net/udp | grep 5201)",
+        ]
     command: -s -V
     networks:
       resources:
@@ -458,12 +462,12 @@ services:
       api:
         condition: "service_healthy"
     # ports:
-      # NOTE: Only 111 ports are used for local dev / testing because Docker Desktop
-      # allocates a userland proxy process for each forwarded port X_X.
-      #
-      # Large ranges here will bring your machine to its knees.
-      # - "55555-55666:55555-55666/udp"
-      # - 3478:3478/udp
+    # NOTE: Only 111 ports are used for local dev / testing because Docker Desktop
+    # allocates a userland proxy process for each forwarded port X_X.
+    #
+    # Large ranges here will bring your machine to its knees.
+    # - "55555-55666:55555-55666/udp"
+    # - 3478:3478/udp
     networks:
       app:
         ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-172.28.0.101}

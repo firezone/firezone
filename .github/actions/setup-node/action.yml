@@ -4,7 +4,7 @@ inputs:
   node-version:
     description: "Version of nodejs to install"
     required: false
-    default: '20'
+    default: "20"
 runs:
   using: "composite"
   steps:

@@ -82,8 +82,7 @@ jobs:
           TF_VAR_image_tag: '"${{ github.sha }}"'
         with:
           workspace: ${{ env.TF_WORKSPACE }}
-          configuration_version:
-            ${{ steps.apply-upload.outputs.configuration_version_id }}
+          configuration_version: ${{ steps.apply-upload.outputs.configuration_version_id }}
       - name: Apply
         uses: hashicorp/tfc-workflows-github/actions/apply-run@v1.3.1
         if: fromJSON(steps.apply-run.outputs.payload).data.attributes.actions.IsConfirmable
