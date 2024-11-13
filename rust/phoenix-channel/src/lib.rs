@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 mod get_user_agent;
 mod heartbeat;
 mod login_url;
@@ -88,14 +90,14 @@ async fn create_and_connect_websocket(
     user_agent: String,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
-    tracing::debug!(host = %url.host().unwrap(), %user_agent, "Connecting to portal");
+    tracing::debug!(host = url.host().map(tracing::field::display), %user_agent, "Connecting to portal");
 
     let duration = Duration::from_secs(5);
     let socket = tokio::time::timeout(duration, connect(addresses, &*socket_factory))
         .await
         .map_err(|_| InternalError::Timeout { duration })??;
 
-    let (stream, _) = client_async_tls(make_request(url, user_agent), socket)
+    let (stream, _) = client_async_tls(make_request(url, user_agent)?, socket)
         .await
         .map_err(InternalError::WebSocket)?;
 
@@ -158,6 +160,7 @@ enum InternalError {
     CloseMessage,
     StreamClosed,
     InvalidUrl,
+    FailedToBuildRequest(tokio_tungstenite::tungstenite::http::Error),
     SocketConnection(std::io::Error),
     Timeout { duration: Duration },
 }
@@ -185,6 +188,9 @@ impl fmt::Display for InternalError {
             InternalError::Timeout { duration, .. } => {
                 write!(f, "operation timed out after {duration:?}")
             }
+            InternalError::FailedToBuildRequest(_) => {
+                write!(f, "failed to build request")
+            }
         }
     }
 }
@@ -196,6 +202,7 @@ impl std::error::Error for InternalError {
             InternalError::WebSocket(e) => Some(e),
             InternalError::Serde(e) => Some(e),
             InternalError::SocketConnection(e) => Some(e),
+            InternalError::FailedToBuildRequest(e) => Some(e),
             InternalError::MissedHeartbeat => None,
             InternalError::CloseMessage => None,
             InternalError::StreamClosed => None,
@@ -788,14 +795,17 @@ impl<T, R> PhoenixMessage<T, R> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(url: Url, user_agent: String) -> Request {
+fn make_request(url: Url, user_agent: String) -> Result<Request, InternalError> {
     let mut r = [0u8; 16];
     OsRng.fill_bytes(&mut r);
     let key = base64::engine::general_purpose::STANDARD.encode(r);
 
-    Request::builder()
+    let request = Request::builder()
         .method("GET")
-        .header("Host", url.host().unwrap().to_string())
+        .header(
+            "Host",
+            url.host().ok_or(InternalError::InvalidUrl)?.to_string(),
+        )
         .header("Connection", "Upgrade")
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
@@ -803,7 +813,9 @@ fn make_request(url: Url, user_agent: String) -> Request {
         .header("User-Agent", user_agent)
         .uri(url.to_string())
         .body(())
-        .expect("building static request always works")
+        .map_err(InternalError::FailedToBuildRequest)?;
+
+    Ok(request)
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

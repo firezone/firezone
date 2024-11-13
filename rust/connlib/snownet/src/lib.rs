@@ -1,6 +1,7 @@
 //! A SANS-IO connectivity library for wireguard connections formed by ICE.
 
 #![cfg_attr(test, allow(clippy::unwrap_in_result))]
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod allocation;
 mod backoff;

@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 pub mod make;
 
 mod fz_p2p_control;
@@ -9,6 +11,7 @@ mod ipv6_header_slice_mut;
 mod nat46;
 mod nat64;
 #[cfg(feature = "proptest")]
+#[allow(clippy::unwrap_used)]
 pub mod proptest;
 mod slice_utils;
 mod tcp_header_slice_mut;

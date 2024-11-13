@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use anyhow::{anyhow, bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
@@ -574,7 +576,10 @@ where
             }
             Event::HeartbeatSent => {
                 tracing::debug!(target: "relay", "Heartbeat sent to portal");
-                *self.last_heartbeat_sent.lock().unwrap() = Some(Instant::now());
+                *self
+                    .last_heartbeat_sent
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
             }
             Event::InboundMessage {
                 msg: IngressMessage::Init(Init {}),
@@ -609,7 +614,9 @@ fn make_is_healthy(
 }
 
 fn is_healthy(last_heartbeat_sent: Arc<Mutex<Option<Instant>>>) -> bool {
-    let guard = last_heartbeat_sent.lock().unwrap();
+    let guard = last_heartbeat_sent
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
 
     let Some(last_hearbeat_sent) = *guard else {
         return true; // If we are not connected to the portal, we are always healthy.

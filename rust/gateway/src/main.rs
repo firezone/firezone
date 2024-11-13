@@ -60,7 +60,7 @@ async fn main() {
 }
 
 async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
-    firezone_logging::setup_global_subscriber(layer::Identity::default());
+    firezone_logging::setup_global_subscriber(layer::Identity::default())?;
 
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
@@ -109,7 +109,7 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     }
 
     let id_path = Path::new(ID_PATH);
-    tokio::fs::create_dir_all(id_path.parent().unwrap()).await?;
+    tokio::fs::create_dir_all(id_path.parent().context("Missing parent")?).await?;
     let mut id_file = tokio::fs::File::create(id_path).await?;
     let id = Uuid::new_v4().to_string();
     id_file.write_all(id.as_bytes()).await?;

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use firezone_bin_shared::{new_dns_notifier, new_network_notifier, platform::DnsControlMethod};
 use futures::future::FutureExt as _;
 use std::time::Duration;

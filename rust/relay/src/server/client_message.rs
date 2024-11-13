@@ -2,6 +2,7 @@ use crate::auth::{generate_password, split_username, systemtime_from_unix, FIREZ
 use crate::server::channel_data::ChannelData;
 use crate::server::UDP_TRANSPORT;
 use crate::Attribute;
+use anyhow::{Context, Result};
 use bytecodec::DecodeExt;
 use secrecy::SecretString;
 use std::io;
@@ -162,7 +163,7 @@ impl Allocate {
         username: Username,
         relay_secret: &SecretString,
         nonce: Uuid,
-    ) -> Self {
+    ) -> Result<Self> {
         let (requested_transport, nonce, message_integrity) = Self::make_attributes(
             transaction_id,
             &lifetime,
@@ -170,9 +171,9 @@ impl Allocate {
             relay_secret,
             nonce,
             None,
-        );
+        )?;
 
-        Self {
+        Ok(Self {
             transaction_id,
             message_integrity: Some(message_integrity),
             requested_transport,
@@ -182,7 +183,7 @@ impl Allocate {
             requested_address_family: None, // IPv4 is the default.
             additional_address_family: None,
             software: None,
-        }
+        })
     }
 
     pub fn new_authenticated_udp_ip6(
@@ -191,7 +192,7 @@ impl Allocate {
         username: Username,
         relay_secret: &SecretString,
         nonce: Uuid,
-    ) -> Self {
+    ) -> Result<Self> {
         let requested_address_family = RequestedAddressFamily::new(AddressFamily::V6);
 
         let (requested_transport, nonce, message_integrity) = Self::make_attributes(
@@ -201,9 +202,9 @@ impl Allocate {
             relay_secret,
             nonce,
             Some(requested_address_family.clone()),
-        );
+        )?;
 
-        Self {
+        Ok(Self {
             transaction_id,
             message_integrity: Some(message_integrity),
             requested_transport,
@@ -213,7 +214,7 @@ impl Allocate {
             requested_address_family: Some(requested_address_family),
             additional_address_family: None,
             software: None,
-        }
+        })
     }
 
     pub fn new_unauthenticated_udp(
@@ -250,9 +251,9 @@ impl Allocate {
         relay_secret: &SecretString,
         nonce: Uuid,
         requested_address_family: Option<RequestedAddressFamily>,
-    ) -> (RequestedTransport, Nonce, MessageIntegrity) {
+    ) -> Result<(RequestedTransport, Nonce, MessageIntegrity)> {
         let requested_transport = RequestedTransport::new(UDP_TRANSPORT);
-        let nonce = Nonce::new(nonce.as_hyphenated().to_string()).expect("len(uuid) < 128");
+        let nonce = Nonce::new(nonce.as_hyphenated().to_string()).context("Invalid nonce")?;
 
         let mut message =
             Message::<Attribute>::new(MessageClass::Request, ALLOCATE, transaction_id);
@@ -268,15 +269,15 @@ impl Allocate {
             message.add_attribute(lifetime.clone());
         }
 
-        let (expiry, salt) = split_username(username.name()).expect("a valid username");
+        let (expiry, salt) = split_username(username.name())?;
         let expiry_systemtime = systemtime_from_unix(expiry);
 
         let password = generate_password(relay_secret, expiry_systemtime, salt);
 
         let message_integrity =
-            MessageIntegrity::new_long_term_credential(&message, username, &FIREZONE, &password)
-                .unwrap();
-        (requested_transport, nonce, message_integrity)
+            MessageIntegrity::new_long_term_credential(&message, username, &FIREZONE, &password)?;
+
+        Ok((requested_transport, nonce, message_integrity))
     }
 
     pub fn parse(message: &Message<Attribute>) -> Result<Self, Message<Attribute>> {
@@ -359,8 +360,8 @@ impl Refresh {
         username: Username,
         relay_secret: &SecretString,
         nonce: Uuid,
-    ) -> Self {
-        let nonce = Nonce::new(nonce.as_hyphenated().to_string()).expect("len(uuid) < 128");
+    ) -> Result<Self> {
+        let nonce = Nonce::new(nonce.as_hyphenated().to_string()).context("Invalid nonce")?;
 
         let mut message = Message::<Attribute>::new(MessageClass::Request, REFRESH, transaction_id);
         message.add_attribute(username.clone());
@@ -370,23 +371,22 @@ impl Refresh {
             message.add_attribute(lifetime.clone());
         }
 
-        let (expiry, salt) = split_username(username.name()).expect("a valid username");
+        let (expiry, salt) = split_username(username.name())?;
         let expiry_systemtime = systemtime_from_unix(expiry);
 
         let password = generate_password(relay_secret, expiry_systemtime, salt);
 
         let message_integrity =
-            MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)
-                .unwrap();
+            MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)?;
 
-        Self {
+        Ok(Self {
             transaction_id,
             message_integrity: Some(message_integrity),
             lifetime,
             username: Some(username),
             nonce: Some(nonce),
             software: None,
-        }
+        })
     }
 
     pub fn parse(message: &Message<Attribute>) -> Self {
@@ -450,8 +450,8 @@ impl ChannelBind {
         username: Username,
         relay_secret: &SecretString,
         nonce: Uuid,
-    ) -> Self {
-        let nonce = Nonce::new(nonce.as_hyphenated().to_string()).expect("len(uuid) < 128");
+    ) -> Result<Self> {
+        let nonce = Nonce::new(nonce.as_hyphenated().to_string()).context("Invalid nonce")?;
 
         let mut message =
             Message::<Attribute>::new(MessageClass::Request, CHANNEL_BIND, transaction_id);
@@ -460,16 +460,15 @@ impl ChannelBind {
         message.add_attribute(xor_peer_address.clone());
         message.add_attribute(nonce.clone());
 
-        let (expiry, salt) = split_username(username.name()).expect("a valid username");
+        let (expiry, salt) = split_username(username.name())?;
         let expiry_systemtime = systemtime_from_unix(expiry);
 
         let password = generate_password(relay_secret, expiry_systemtime, salt);
 
         let message_integrity =
-            MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)
-                .unwrap();
+            MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)?;
 
-        Self {
+        Ok(Self {
             transaction_id,
             channel_number,
             message_integrity: Some(message_integrity),
@@ -477,7 +476,7 @@ impl ChannelBind {
             username: Some(username),
             nonce: Some(nonce),
             software: None,
-        }
+        })
     }
 
     pub fn parse(message: &Message<Attribute>) -> Result<Self, Message<Attribute>> {
@@ -584,12 +583,14 @@ impl CreatePermission {
 /// Computes the effective lifetime of an allocation.
 fn compute_effective_lifetime(requested_lifetime: Option<&Lifetime>) -> Lifetime {
     let Some(requested) = requested_lifetime else {
-        return Lifetime::new(DEFAULT_ALLOCATION_LIFETIME).unwrap();
+        return Lifetime::new(DEFAULT_ALLOCATION_LIFETIME)
+            .expect("Default lifetime is less than 0xFFFF_FFFF");
     };
 
     let effective_lifetime = requested.lifetime().min(MAX_ALLOCATION_LIFETIME);
 
-    Lifetime::new(effective_lifetime).unwrap()
+    Lifetime::new(effective_lifetime)
+        .expect("lifetime is at most MAX_ALLOCATION_LIFETIME which is less than 0xFFFF_FFFF")
 }
 
 fn bad_request(message: &Message<Attribute>) -> Message<Attribute> {

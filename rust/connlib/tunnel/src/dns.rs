@@ -34,8 +34,10 @@ pub(crate) const DNS_PORT: u16 = 53;
 /// For Chrome and other Chrome-based browsers, this is not required as
 /// Chrome will automatically disable DoH if your server(s) don't support
 /// it. See <https://www.chromium.org/developers/dns-over-https/#faq>.
-static DOH_CANARY_DOMAIN: LazyLock<DomainName> =
-    LazyLock::new(|| DomainName::vec_from_str("use-application-dns.net").unwrap());
+static DOH_CANARY_DOMAIN: LazyLock<DomainName> = LazyLock::new(|| {
+    DomainName::vec_from_str("use-application-dns.net")
+        .expect("static domain name should always parse")
+});
 
 pub struct StubResolver {
     fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
@@ -797,6 +799,7 @@ mod tests {
 }
 
 #[cfg(feature = "divan")]
+#[allow(clippy::unwrap_used)]
 mod benches {
     use super::*;
     use rand::{distributions::DistString, seq::IteratorRandom, Rng};

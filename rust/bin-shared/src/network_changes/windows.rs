@@ -64,6 +64,7 @@
 
 use crate::platform::DnsControlMethod;
 use anyhow::{anyhow, Context as _, Result};
+use firezone_logging::anyhow_dyn_err;
 use std::thread;
 use tokio::sync::{
     mpsc::{self, error::TrySendError},
@@ -257,7 +258,12 @@ impl<'a> Drop for Listener<'a> {
     // we crash the GUI process before we can get back to the main thread
     // and drop the DNS listeners
     fn drop(&mut self) {
-        self.close_dont_drop().unwrap();
+        if let Err(e) = self.close_dont_drop() {
+            tracing::error!(
+                error = anyhow_dyn_err(&e),
+                "Failed to close `Listener` gracefully"
+            );
+        }
     }
 }
 

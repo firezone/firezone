@@ -3,6 +3,8 @@
 //! This includes types provided by external crates, i.e. [boringtun] to make sure that
 //! we are using the same version across our own crates.
 
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 mod view;
 
 pub use boringtun::x25519::PublicKey;

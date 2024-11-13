@@ -8,6 +8,8 @@
 //! Tauri deb bundler to pick it up easily.
 //! Otherwise we would just make it a normal binary crate.
 
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use anyhow::{Context as _, Result};
 use connlib_client_shared::Callbacks;
 use connlib_model::ResourceView;

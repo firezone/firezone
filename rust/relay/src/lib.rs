@@ -1,9 +1,12 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 mod net_ext;
 mod server;
 mod sleep;
 
 pub mod auth;
 #[cfg(feature = "proptest")]
+#[allow(clippy::unwrap_used)]
 pub mod proptest;
 pub mod sockets;
 

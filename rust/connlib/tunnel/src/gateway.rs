@@ -338,7 +338,7 @@ impl GatewayState {
                 dns_resource_nat::NatStatus::Inactive
             });
 
-        let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status);
+        let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
 
         let mut buffer = EncryptBuffer::new();
         let Some(transmit) = encrypt_packet(packet, req.client, &mut self.node, &mut buffer, now)?
@@ -476,7 +476,14 @@ fn handle_p2p_control_packet(
                     req.resource,
                     req.domain,
                     dns_resource_nat::NatStatus::Inactive,
-                );
+                )
+                .inspect_err(|e| {
+                    tracing::warn!(
+                        error = anyhow_dyn_err(e),
+                        "Failed to create `DomainStatus` packet"
+                    )
+                })
+                .ok()?;
 
                 return Some(packet);
             }
