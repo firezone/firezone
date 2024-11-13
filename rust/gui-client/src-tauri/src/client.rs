@@ -5,7 +5,6 @@ use firezone_gui_client_common::{
 };
 use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_telemetry as telemetry;
-use std::collections::BTreeMap;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
@@ -101,22 +100,8 @@ fn run_gui(cli: Cli) -> Result<()> {
     );
     // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
     // Technically this means we can fail to get the device ID on a newly-installed system, since the IPC service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
-    match firezone_headless_client::device_id::get() {
-        Ok(id) => {
-            // We should still be in the main thread, but explicitly get the main thread hub anyway.
-            telemetry::Hub::main().configure_scope(|scope| {
-                scope.set_context(
-                    "firezone",
-                    firezone_telemetry::Context::Other(BTreeMap::from([(
-                        "id".to_string(),
-                        id.id.into(),
-                    )])),
-                )
-            });
-        }
-        Err(error) => {
-            telemetry::capture_anyhow(&error.context("Failed to read device ID"));
-        }
+    if let Ok(id) = firezone_headless_client::device_id::get() {
+        telemetry.set_firezone_id(id.id);
     }
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {
@@ -165,15 +150,6 @@ fn start_logging(directives: &str) -> Result<common::logging::Handles> {
         ?system_uptime_seconds,
         "`gui-client` started logging"
     );
-    telemetry::add_breadcrumb(telemetry::Breadcrumb {
-        ty: "logging_start".into(),
-        category: None,
-        data: BTreeMap::from([
-            ("directives".into(), directives.into()),
-            ("system_uptime_seconds".into(), system_uptime_seconds.into()),
-        ]),
-        ..Default::default()
-    });
 
     Ok(logging_handles)
 }
