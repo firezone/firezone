@@ -1025,7 +1025,11 @@ where
 
             self.add_nonce(new_nonce);
 
-            message.add_attribute(Nonce::new(new_nonce.to_string()).unwrap());
+            message.add_attribute(
+                Nonce::new(new_nonce.to_string()).expect(
+                    "UUIDs are valid nonces because they are less than 128 characters long",
+                ),
+            );
             message.add_attribute((*FIREZONE).clone());
         }
 

@@ -32,6 +32,7 @@ smallvec = "1.13.2"
 socket-factory = { workspace = true }
 socket2 = { workspace = true }
 stun_codec = "0.3.4"
+thiserror = "1.0.68"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "net", "time", "signal"] }
 tracing = { workspace = true, features = ["log"] }
 tracing-core = "0.1.31"

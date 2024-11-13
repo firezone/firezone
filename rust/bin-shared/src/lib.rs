@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 pub mod http_health_check;
 
 mod network_changes;

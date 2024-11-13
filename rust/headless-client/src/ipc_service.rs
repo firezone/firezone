@@ -381,10 +381,8 @@ impl<'a> Handler<'a> {
                     tracing::info!(
                         "Caught SIGINT / SIGTERM / Ctrl+C while an IPC client is connected"
                     );
-                    self.ipc_tx
-                        .send(&ServerMsg::TerminatingGracefully)
-                        .await
-                        .unwrap();
+                    // Ignore the result here because we're terminating anyway.
+                    let _ = self.ipc_tx.send(&ServerMsg::TerminatingGracefully).await;
                     break HandlerOk::ServiceTerminating;
                 }
             }

@@ -55,14 +55,22 @@ fn show_export_dialog(app: &tauri::AppHandle, ctlr_tx: CtlrTx) -> Result<()> {
     tauri_plugin_dialog::FileDialogBuilder::new(app.dialog().clone())
         .add_filter("Zip", &["zip"])
         .set_file_name(filename)
-        .save_file(move |file_path| match file_path {
-            None => {}
-            Some(path) => {
-                let path = path.into_path().unwrap();
-                // blocking_send here because we're in a sync callback within Tauri somewhere
-                ctlr_tx
-                    .blocking_send(ControllerRequest::ExportLogs { path, stem })
-                    .unwrap()
+        .save_file(move |file_path| {
+            let Some(file_path) = file_path else {
+                return;
+            };
+
+            let path = match file_path.clone().into_path() {
+                Ok(path) => path,
+                Err(e) => {
+                    tracing::warn!(error = std_dyn_err(&e), %file_path, "Invalid file path");
+                    return;
+                }
+            };
+
+            // blocking_send here because we're in a sync callback within Tauri somewhere
+            if let Err(e) = ctlr_tx.blocking_send(ControllerRequest::ExportLogs { path, stem }) {
+                tracing::warn!("Failed to send `ExportLogs` command: {e}");
             }
         });
     Ok(())

@@ -11,6 +11,7 @@ axum = { version = "0.7.7", default-features = false, features = ["http1", "toki
 clap = { version = "4.5.19", features = ["derive", "env"] }
 firezone-logging = { workspace = true }
 futures = "0.3"
+hex-literal = "0.4.1"
 ip_network = { version = "0.4", default-features = false, features = ["serde"] }
 socket-factory = { workspace = true }
 thiserror = "1.0.68"
@@ -19,7 +20,6 @@ tracing = { workspace = true }
 tun = { workspace = true }
 
 [dev-dependencies]
-hex-literal = "0.4.1"
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]

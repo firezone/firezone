@@ -19,7 +19,7 @@ pub const DOMAIN_STATUS_EVENT: FzP2pEventType = FzP2pEventType::new(1);
 #[cfg_attr(not(test), expect(dead_code, reason = "Will be used soon."))]
 pub mod dns_resource_nat {
     use super::*;
-    use anyhow::{Context, Result};
+    use anyhow::{Context as _, Result};
     use connlib_model::{DomainName, ResourceId};
     use ip_packet::{FzP2pControlSlice, IpPacket};
     use std::net::IpAddr;
@@ -29,37 +29,45 @@ pub mod dns_resource_nat {
         resource: ResourceId,
         domain: DomainName,
         proxy_ips: Vec<IpAddr>,
-    ) -> IpPacket {
-        debug_assert_eq!(proxy_ips.len(), 8);
+    ) -> Result<IpPacket> {
+        anyhow::ensure!(proxy_ips.len() == 8, "Expected 8 proxy IPs");
 
         let payload = serde_json::to_vec(&AssignedIps {
             resource,
             domain,
             proxy_ips,
         })
-        .unwrap();
+        .context("Failed to serialize `AssignedIps` event")?;
 
-        ip_packet::make::fz_p2p_control(
+        let ip_packet = ip_packet::make::fz_p2p_control(
             [ASSIGNED_IPS_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
             &payload,
         )
-        .expect("with only 8 proxy IPs, payload should be less than max packet size")
+        .context("Failed to create p2p control protocol packet")?;
+
+        Ok(ip_packet)
     }
 
     /// Construct a new [`DomainStatus`] event.
-    pub fn domain_status(resource: ResourceId, domain: DomainName, status: NatStatus) -> IpPacket {
+    pub fn domain_status(
+        resource: ResourceId,
+        domain: DomainName,
+        status: NatStatus,
+    ) -> Result<IpPacket> {
         let payload = serde_json::to_vec(&DomainStatus {
             status,
             resource,
             domain,
         })
-        .unwrap();
+        .context("Failed to serialize `DomainStatus` event")?;
 
-        ip_packet::make::fz_p2p_control(
+        let ip_packet = ip_packet::make::fz_p2p_control(
             [DOMAIN_STATUS_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
             &payload,
         )
-        .expect("payload is less than max packet size")
+        .context("Failed to create p2p control protocol packet")?;
+
+        Ok(ip_packet)
     }
 
     pub fn decode_assigned_ips(packet: FzP2pControlSlice) -> Result<AssignedIps> {
@@ -132,7 +140,8 @@ pub mod dns_resource_nat {
                 ResourceId::from_u128(101),
                 domain("example.com"),
                 eight_proxy_ips(),
-            );
+            )
+            .unwrap();
 
             let slice = packet.as_fz_p2p_control().unwrap();
             let assigned_ips = decode_assigned_ips(slice).unwrap();
@@ -148,7 +157,8 @@ pub mod dns_resource_nat {
                 ResourceId::from_u128(101),
                 domain("example.com"),
                 NatStatus::Active,
-            );
+            )
+            .unwrap();
 
             let slice = packet.as_fz_p2p_control().unwrap();
             let domain_status = decode_domain_status(slice).unwrap();

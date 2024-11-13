@@ -83,10 +83,12 @@ impl Telemetry {
             scope.set_tag("api_url", api_url);
             let ctx = sentry::integrations::contexts::utils::device_context();
             scope.set_context("device", ctx);
-            let ctx = sentry::integrations::contexts::utils::os_context().unwrap();
-            scope.set_context("os", ctx);
             let ctx = sentry::integrations::contexts::utils::rust_context();
             scope.set_context("rust", ctx);
+
+            if let Some(ctx) = sentry::integrations::contexts::utils::os_context() {
+                scope.set_context("os", ctx);
+            }
         });
         self.inner.replace(inner);
         sentry::start_session();

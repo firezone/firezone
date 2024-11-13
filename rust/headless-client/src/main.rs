@@ -1,5 +1,7 @@
 //! The headless Client, AKA standalone Client
 
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 use anyhow::{anyhow, Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
@@ -152,7 +154,7 @@ fn main() -> Result<()> {
         .as_deref()
         .map(firezone_logging::file::layer)
         .unzip();
-    firezone_logging::setup_global_subscriber(layer);
+    firezone_logging::setup_global_subscriber(layer).context("Failed to set up logging")?;
 
     tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
 

@@ -150,7 +150,9 @@ pub(crate) fn run(
                 // Per https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
                 // Closing the window fully seems to deallocate it or something.
 
-                window.hide().unwrap();
+                if let Err(e) = window.hide() {
+                    tracing::warn!(error = std_dyn_err(&e), "Failed to hide window")
+                };
                 api.prevent_close();
             }
         })
@@ -260,10 +262,10 @@ pub(crate) fn run(
                         }
                         Ok(Err(error)) => {
                             tracing::error!(error = std_dyn_err(&error), "run_controller returned an error");
-                            errors::show_error_dialog(&error).unwrap();
-
+                            if let Err(e) = errors::show_error_dialog(&error) {
+                                tracing::error!(error = anyhow_dyn_err(&e), "Failed to show error dialog");
+                            }
                             telemetry.stop_on_crash().await;
-
                             1
                         }
                         Ok(Ok(_)) => {

@@ -10,6 +10,7 @@ use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
 use firezone_logging::anyhow_dyn_err;
+use firezone_logging::std_dyn_err;
 use firezone_telemetry::Telemetry;
 use firezone_telemetry::APPLE_DSN;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -24,7 +25,7 @@ use std::{
     time::Duration,
 };
 use tokio::runtime::Runtime;
-use tracing_subscriber::{prelude::*, util::TryInitError};
+use tracing_subscriber::prelude::*;
 use tun::Tun;
 
 /// The Apple client implements reconnect logic in the upper layer using OS provided
@@ -125,26 +126,45 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
     ) {
+        let dns_addresses = match serde_json::to_string(&dns_addresses) {
+            Ok(dns_addresses) => dns_addresses,
+            Err(e) => {
+                tracing::error!(error = std_dyn_err(&e), "Failed to serialize DNS addresses");
+                return;
+            }
+        };
+
         self.inner.on_set_interface_config(
             tunnel_address_v4.to_string(),
             tunnel_address_v6.to_string(),
-            serde_json::to_string(&dns_addresses)
-                .expect("developer error: a list of ips should always be serializable"),
+            dns_addresses,
         );
     }
 
     fn on_update_routes(&self, route_list_4: Vec<Ipv4Network>, route_list_6: Vec<Ipv6Network>) {
-        self.inner.on_update_routes(
-            serde_json::to_string(&V4RouteList::new(route_list_4)).unwrap(),
-            serde_json::to_string(&V6RouteList::new(route_list_6)).unwrap(),
-        );
+        match (
+            serde_json::to_string(&V4RouteList::new(route_list_4)),
+            serde_json::to_string(&V6RouteList::new(route_list_6)),
+        ) {
+            (Ok(route_list_4), Ok(route_list_6)) => {
+                self.inner.on_update_routes(route_list_4, route_list_6);
+            }
+            (Err(e), _) | (_, Err(e)) => {
+                tracing::error!(error = std_dyn_err(&e), "Failed to serialize route list");
+            }
+        }
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceView>) {
-        self.inner.on_update_resources(
-            serde_json::to_string(&resource_list)
-                .expect("developer error: failed to serialize resource list"),
-        );
+        let resource_list = match serde_json::to_string(&resource_list) {
+            Ok(resource_list) => resource_list,
+            Err(e) => {
+                tracing::error!(error = std_dyn_err(&e), "Failed to serialize resource list");
+                return;
+            }
+        };
+
+        self.inner.on_update_resources(resource_list);
     }
 
     fn on_disconnect(&self, error: &DisconnectError) {
@@ -152,10 +172,7 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(
-    log_dir: PathBuf,
-    log_filter: String,
-) -> Result<firezone_logging::file::Handle, TryInitError> {
+fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging::file::Handle> {
     let (file_layer, handle) = firezone_logging::file::layer(&log_dir);
 
     tracing_subscriber::registry()
@@ -173,7 +190,7 @@ fn init_logging(
                 )),
         )
         .with(file_layer)
-        .with(firezone_logging::filter(&log_filter))
+        .with(firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?)
         .try_init()?;
 
     Ok(handle)

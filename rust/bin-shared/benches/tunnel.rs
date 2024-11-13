@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use anyhow::Result;
 
 fn main() -> Result<()> {
