@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use itertools::Itertools;
-use str0m::{Candidate, CandidateKind};
+use str0m::Candidate;
 
 /// Custom "set" implementation for [`Candidate`]s based on a [`HashSet`] with an enforced ordering when iterating.
 #[derive(Debug, Default)]
@@ -21,22 +21,20 @@ impl CandidateSet {
             return false;
         }
 
-        if new.kind() == CandidateKind::ServerReflexive {
-            self.inner.retain(|current| {
-                if current.kind() != CandidateKind::ServerReflexive {
-                    return true; // Non-server-reflexive candidates are always kept (i.e. host candidates)
-                }
+        self.inner.retain(|current| {
+            if current.kind() != new.kind() {
+                return true; // Don't evict candidates of different kinds.
+            }
 
-                // Candidates of different IP version are also kept.
-                let is_ip_version_different = current.addr().is_ipv4() != new.addr().is_ipv4();
+            let is_ip_version_different = current.addr().is_ipv4() != new.addr().is_ipv4();
 
-                if !is_ip_version_different {
-                    tracing::debug!(%current, %new, "Replacing server-reflexive candidate");
-                }
+            if !is_ip_version_different {
+                tracing::debug!(%current, %new, "Replacing server-reflexive candidate");
+            }
 
-                is_ip_version_different
-            });
-        }
+            // Candidates of different IP version are also kept.
+            is_ip_version_different
+        });
 
         self.inner.insert(new)
     }
