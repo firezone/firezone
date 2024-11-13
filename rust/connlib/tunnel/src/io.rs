@@ -1,6 +1,6 @@
 use crate::{device_channel::Device, dns, sockets::Sockets};
 use domain::base::Message;
-use firezone_logging::{err_with_sources, std_dyn_err, telemetry_span};
+use firezone_logging::{err_with_sources, std_dyn_err, telemetry_event, telemetry_span};
 use futures::{
     future::{self, Either},
     stream, Stream, StreamExt,
@@ -412,6 +412,7 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     let len = d.packet.len();
     if len > MAX_DATAGRAM_PAYLOAD {
         tracing::debug!(from = %d.from, %len, "Dropping too large datagram (max allowed: {MAX_DATAGRAM_PAYLOAD} bytes)");
+        telemetry_event!(from = %d.from, %len, "Dropping too large datagram (max allowed: {MAX_DATAGRAM_PAYLOAD} bytes)");
 
         return false;
     }
