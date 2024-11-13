@@ -126,8 +126,15 @@ impl Tray {
 }
 
 fn update(handle: tauri::tray::TrayIcon, app: &AppHandle, menu: &Menu) -> Result<()> {
-    handle.set_tooltip(Some(TOOLTIP))?;
-    handle.set_menu(Some(build_app_state(app, menu)?))?;
+    let menu = build_app_state(app, menu).context("Failed to build tray menu")?;
+
+    handle
+        .set_tooltip(Some(TOOLTIP))
+        .context("Failed to set tooltip")?;
+    handle
+        .set_menu(Some(menu))
+        .context("Failed to set tray menu")?;
+
     Ok(())
 }
 
