@@ -73,7 +73,7 @@ resource "google_compute_security_policy" "default" {
 
     match {
       expr {
-        expression = "request.path.matches('/sign_up') && !origin.region_code.matches('^RU|BY|KP|IR|SY|CU|VE|XC|XD$')"
+        expression = "request.path.matches('/sign_up') && origin.region_code.matches('^RU|BY|KP|IR|SY|CU|VE|XC|XD$')"
       }
     }
   }
