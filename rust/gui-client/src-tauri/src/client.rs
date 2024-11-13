@@ -42,7 +42,7 @@ pub(crate) fn run() -> Result<()> {
                 Ok(true) => run_gui(cli),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 Err(error) => {
-                    common::errors::show_error_dialog(&error)?;
+                    common::errors::show_error_dialog(error.user_friendly_msg())?;
                     Err(error.into())
                 }
             }
@@ -113,7 +113,7 @@ fn run_gui(cli: Cli) -> Result<()> {
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
         tracing::error!(error = std_dyn_err(error), error_msg = %error);
-        common::errors::show_error_dialog(error)?;
+        common::errors::show_error_dialog(error.user_friendly_msg())?;
     }
 
     Ok(result?)
