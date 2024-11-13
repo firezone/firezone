@@ -105,6 +105,7 @@ jobs:
         shell: bash
         run: ${{ env.RENAME_SCRIPT }}
       - name: Upload debug symbols to Sentry
+        if: ${{ github.ref_name == 'main' }}
         run: |
           sentry-cli debug-files upload --log-level info --project gui-client-gui --include-sources ../target
           sentry-cli debug-files upload --log-level info --project gui-client-ipc-service --include-sources ../target
