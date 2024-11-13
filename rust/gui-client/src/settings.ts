@@ -85,7 +85,7 @@ async function applyAdvancedSettings() {
         log_filter: logFilterInput.value,
       },
     });
-  } catch(e) {
+  } catch (e) {
     console.error(e);
   } finally {
     unlockAdvancedSettingsForm();
@@ -97,11 +97,11 @@ async function resetAdvancedSettings() {
   lockAdvancedSettingsForm();
 
   try {
-    let settings = await invoke("reset_advanced_settings") as Settings;
+    let settings = (await invoke("reset_advanced_settings")) as Settings;
     authBaseUrlInput.value = settings.auth_base_url;
     apiUrlInput.value = settings.api_url;
     logFilterInput.value = settings.log_filter;
-  } catch(e) {
+  } catch (e) {
     console.error(e);
   } finally {
     unlockAdvancedSettingsForm();
@@ -113,11 +113,11 @@ async function getAdvancedSettings() {
   lockAdvancedSettingsForm();
 
   try {
-    let settings = await invoke("get_advanced_settings") as Settings;
+    let settings = (await invoke("get_advanced_settings")) as Settings;
     authBaseUrlInput.value = settings.auth_base_url;
     apiUrlInput.value = settings.api_url;
     logFilterInput.value = settings.log_filter;
-  } catch(e) {
+  } catch (e) {
     console.error(e);
   } finally {
     unlockAdvancedSettingsForm();
@@ -130,8 +130,8 @@ async function exportLogs() {
 
   try {
     await invoke("export_logs");
-  } catch(e) {
-      console.error(e);
+  } catch (e) {
+    console.error(e);
   } finally {
     unlockLogsForm();
   }
@@ -143,25 +143,25 @@ async function clearLogs() {
 
   try {
     await invoke("clear_logs");
-  } catch(e) {
+  } catch (e) {
     console.error(e);
   } finally {
     countLogs();
     unlockLogsForm();
-  };
+  }
 }
 
 async function countLogs() {
   try {
-    let fileCount = await invoke("count_logs") as FileCount;
+    let fileCount = (await invoke("count_logs")) as FileCount;
     console.log(fileCount);
     const megabytes = Math.round(fileCount.bytes / 100000) / 10;
     logCountOutput.innerText = `${fileCount.files} files, ${megabytes} MB`;
-  } catch(e) {
+  } catch (e) {
     let error = e as Error;
     console.error(e);
     logCountOutput.innerText = `Error counting logs: ${error.message}`;
-  };
+  }
 }
 
 // Setup event listeners

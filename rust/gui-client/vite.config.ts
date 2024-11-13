@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import { resolve } from 'path';
+import { resolve } from "path";
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
@@ -12,8 +12,8 @@ export default defineConfig(async () => ({
         about: resolve(__dirname, "src/about.html"),
         settings: resolve(__dirname, "src/settings.html"),
         welcome: resolve(__dirname, "src/welcome.html"),
-      }
-    }
+      },
+    },
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

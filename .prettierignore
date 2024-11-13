@@ -1,0 +1,12 @@
+elixir/_build
+elixir/deps
+elixir/apps/web/assets
+rust/target
+kotlin/android/build
+website/node_modules
+**/*.sh
+**/*.ex
+**/*.rs
+**/*.wxs
+**/pnpm-lock.yaml
+swift/apple/**/Contents.json

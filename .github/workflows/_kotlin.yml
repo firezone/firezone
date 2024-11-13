@@ -8,8 +8,8 @@ defaults:
     working-directory: ./kotlin/android
 
 permissions:
-  contents: 'read'
-  id-token: 'write'
+  contents: "read"
+  id-token: "write"
 
 jobs:
   static-analysis:

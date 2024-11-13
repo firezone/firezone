@@ -89,9 +89,9 @@ jobs:
     secrets: inherit
     with:
       sha: ${{ github.sha }}
-      image_prefix: 'perf'
-      profile: 'release'
-      stage: 'debug' # Only the debug images have perf tooling
+      image_prefix: "perf"
+      profile: "release"
+      stage: "debug" # Only the debug images have perf tooling
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
@@ -140,17 +140,17 @@ jobs:
       id-token: write
       pull-requests: write
     env:
-      API_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/api'
+      API_IMAGE: "us-east1-docker.pkg.dev/firezone-staging/firezone/api"
       API_TAG: ${{ github.sha }}
-      WEB_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/web'
+      WEB_IMAGE: "us-east1-docker.pkg.dev/firezone-staging/firezone/web"
       WEB_TAG: ${{ github.sha }}
-      ELIXIR_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/elixir'
+      ELIXIR_IMAGE: "us-east1-docker.pkg.dev/firezone-staging/firezone/elixir"
       ELIXIR_TAG: ${{ github.sha }}
-      GATEWAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/perf/gateway'
+      GATEWAY_IMAGE: "us-east1-docker.pkg.dev/firezone-staging/firezone/perf/gateway"
       GATEWAY_TAG: ${{ github.sha }}
-      CLIENT_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/perf/client'
+      CLIENT_IMAGE: "us-east1-docker.pkg.dev/firezone-staging/firezone/perf/client"
       CLIENT_TAG: ${{ github.sha }}
-      RELAY_IMAGE: 'us-east1-docker.pkg.dev/firezone-staging/firezone/perf/relay'
+      RELAY_IMAGE: "us-east1-docker.pkg.dev/firezone-staging/firezone/perf/relay"
       RELAY_TAG: ${{ github.sha }}
     strategy:
       fail-fast: false
@@ -171,8 +171,7 @@ jobs:
         with:
           project: firezone-staging
       - name: Seed database
-        run:
-          docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
+        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
           # We need to increase the log level to make sure that they don't hold off storm of packets
@@ -186,14 +185,14 @@ jobs:
           docker compose up -d relay-1 relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
-      - name: 'Performance test: ${{ matrix.test_name }}'
+      - name: "Performance test: ${{ matrix.test_name }}"
         timeout-minutes: 5
         env:
           TEST_NAME: ${{ matrix.test_name }}
         run: |
           ./scripts/tests/perf/${{ matrix.test_name }}.sh
           jq '{ "${{ matrix.test_name }}": { "throughput": { "value": .end.sum_received.bits_per_second } } }' ./${{ matrix.test_name }}.json > ./${{ matrix.test_name }}.bmf.json
-      - name: 'Save performance test results: ${{ matrix.test_name }}'
+      - name: "Save performance test results: ${{ matrix.test_name }}"
         uses: actions/upload-artifact@v4
         with:
           overwrite: true
@@ -239,7 +238,7 @@ jobs:
       - name: Download performance test results
         uses: actions/download-artifact@v4
         with:
-          pattern: '*-${{ github.sha }}-iperf3results'
+          pattern: "*-${{ github.sha }}-iperf3results"
           merge-multiple: true
           path: ./${{ github.sha }}
       - name: Merge benchmarks results into one report
