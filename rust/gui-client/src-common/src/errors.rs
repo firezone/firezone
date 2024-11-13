@@ -1,6 +1,6 @@
 use crate::{self as common, deep_link};
 use anyhow::Result;
-use firezone_headless_client::{ipc, FIREZONE_GROUP};
+use firezone_headless_client::ipc;
 
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
 #[derive(Debug, thiserror::Error)]
@@ -23,8 +23,6 @@ pub enum Error {
     IpcServiceTerminating,
     #[error("Failed to connect to portal")]
     PortalConnection(String),
-    #[error("UserNotInFirezoneGroup")]
-    UserNotInFirezoneGroup,
     #[error("WebViewNotInstalled")]
     WebViewNotInstalled,
     #[error(transparent)]
@@ -55,7 +53,6 @@ impl Error {
                 tracing::error!(%error, "Couldn't connect to the Portal");
                 "Couldn't connect to the Firezone Portal. Are you connected to the Internet?".to_string()
             }
-            Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"),
             Error::Other(error) => error.to_string(),
         }
     }
