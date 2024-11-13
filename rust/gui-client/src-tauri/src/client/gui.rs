@@ -204,11 +204,6 @@ pub(crate) fn run(
                         tracing::warn!(
                             "Will crash / error / panic on purpose in {delay} seconds to test error handling."
                         );
-                        telemetry::add_breadcrumb(telemetry::Breadcrumb {
-                            ty: "fail_on_purpose".into(),
-                            message: Some("Will crash / error / panic on purpose to test error handling.".into()),
-                            ..Default::default()
-                        });
                         tokio::time::sleep(Duration::from_secs(delay)).await;
                         tracing::warn!("Crashing / erroring / panicking on purpose");
                         ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
@@ -259,25 +254,27 @@ pub(crate) fn run(
                     let exit_code = match result {
                         Err(_panic) => {
                             // The panic will have been recorded already by Sentry's panic hook.
-                            telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
+                            telemetry.stop_on_crash().await;
+
                             1
                         }
                         Ok(Err(error)) => {
                             tracing::error!(error = std_dyn_err(&error), "run_controller returned an error");
                             errors::show_error_dialog(&error).unwrap();
-                            telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
+
+                            telemetry.stop_on_crash().await;
+
                             1
                         }
                         Ok(Ok(_)) => {
-                            telemetry::end_session();
+                            telemetry.stop().await;
+
                             0
                         }
                     };
 
-                    // In a normal Rust application, Sentry's guard would flush on drop: https://docs.sentry.io/platforms/rust/configuration/draining/
                     // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
                     // TODO: This limit may not exist in Tauri v2
-                    telemetry.stop().await;
 
                     tracing::info!(?exit_code);
                     app_handle.exit(exit_code);
