@@ -1,7 +1,7 @@
 use crate::windows::{CREATE_NO_WINDOW, TUNNEL_UUID};
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
-use firezone_logging::std_dyn_err;
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ring::digest;
 use std::{
@@ -426,7 +426,19 @@ fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {
         Ok(x) => x,
     };
 
-    let actual_len = usize::try_from(f.metadata().unwrap().len()).unwrap();
+    let actual_len = match file_length(&f) {
+        Err(e) => {
+            tracing::warn!(
+                error = anyhow_dyn_err(&e),
+                path = %path.display(),
+                "Failed to get file length"
+            );
+
+            return false;
+        }
+        Ok(l) => l,
+    };
+
     let expected_len = dll_bytes.bytes.len();
     // If the dll is 100 MB instead of 0.5 MB, this allows us to skip a 100 MB read
     if actual_len != expected_len {
@@ -441,6 +453,13 @@ fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {
     let expected = dll_bytes.expected_sha256;
     let actual = digest::digest(&digest::SHA256, &buf);
     expected == actual.as_ref()
+}
+
+fn file_length(f: &std::fs::File) -> Result<usize> {
+    let len = f.metadata().context("Failed to read metadata")?.len();
+    let len = usize::try_from(len).context("File length doesn't fit into usize")?;
+
+    Ok(len)
 }
 
 /// Returns the absolute path for installing and loading `wintun.dll`
