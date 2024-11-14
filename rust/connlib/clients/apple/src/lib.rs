@@ -178,9 +178,9 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging
     tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
+                .with_ansi(false)
                 .event_format(
                     firezone_logging::Format::new()
-                        .without_ansi()
                         .without_timestamp()
                         .without_level(),
                 )
