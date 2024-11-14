@@ -536,6 +536,15 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                     return Ok(ControlFlow::Break(()));
                 }
             }
+            IpcServerMsg::TerminatingGracefully => {
+                tracing::info!("Caught TerminatingGracefully");
+                self.integration
+                    .set_tray_icon(system_tray::icon_terminating())
+                    .ok();
+
+                // When the IPC service terminates gracefully, we shut down the GUI client too.
+                return Ok(ControlFlow::Break(()));
+            }
             IpcServerMsg::OnDisconnect {
                 error_msg,
                 is_authentication_error,
@@ -568,13 +577,6 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 }
 
                 self.update_disabled_resources().await?;
-            }
-            IpcServerMsg::TerminatingGracefully => {
-                tracing::info!("Caught TerminatingGracefully");
-                self.integration
-                    .set_tray_icon(system_tray::icon_terminating())
-                    .ok();
-                Err(Error::IpcServiceTerminating)?
             }
             IpcServerMsg::TunnelReady => {
                 if self.auth.session().is_none() {
