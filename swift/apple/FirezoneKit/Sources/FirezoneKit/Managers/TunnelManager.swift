@@ -93,18 +93,12 @@ public class TunnelManager {
   // Encoder used to send messages to the tunnel
   private let encoder = PropertyListEncoder()
 
-  // Use separate bundle IDs for release and debug.
-  // Helps with testing releases and dev builds on the same Mac.
-  #if DEBUG
-    private let bundleIdentifier = Bundle.main.bundleIdentifier.map {
-      "\($0).debug.network-extension"
-    }
+#if os(macOS)
+  private let systemExtensionManager = SystemExtensionManager()
+#endif
 
-    private let bundleDescription = "Firezone (Debug)"
-  #else
-    private let bundleIdentifier = Bundle.main.bundleIdentifier.map { "\($0).network-extension" }
-    private let bundleDescription = "Firezone"
-  #endif
+  private let bundleIdentifier = "\(Bundle.main.bundleIdentifier!).network-extension"
+  private let bundleDescription = "Firezone"
 
   init() {
     manager = nil
@@ -236,6 +230,29 @@ public class TunnelManager {
       options = ["token": token as NSObject]
     }
 
+#if os(macOS)
+    // On macOS we use System Extensions, and we need to wait for them to be activated
+    // before we can continue starting the tunnel. Otherwise, the tunnel will come up,
+    // but then be killed immediately after since the system will reap its process as
+    // the system extension is moved in place. This is more of an issue in development
+    // where the system will replace the extension on each call to this API, ignoring the
+    // version check that typically prevents extensions from being reactivated if they have the
+    // same marketing version.
+    systemExtensionManager.installSystemExtension(identifier: bundleIdentifier) { error in
+      if let error = error {
+        Log.app.error("\(#function): Installing system extension failed! \(error.localizedDescription)")
+
+        return
+      }
+
+      self.startTunnel(options: options)
+    }
+#else
+    startTunnel(options: options)
+#endif
+  }
+
+  func startTunnel(options: [String: NSObject]?) {
     do {
       try session().startTunnel(options: options)
     } catch {
