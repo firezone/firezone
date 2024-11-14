@@ -41,8 +41,9 @@ pub(crate) fn run() -> Result<()> {
                 // Our elevation is correct (not elevated), just run the GUI
                 Ok(true) => run_gui(cli),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
+                #[cfg(not(target_os = "windows"))] // Windows elevation check never fails.
                 Err(error) => {
-                    common::errors::show_error_dialog(&error)?;
+                    common::errors::show_error_dialog(error.user_friendly_msg())?;
                     Err(error.into())
                 }
             }
@@ -113,7 +114,7 @@ fn run_gui(cli: Cli) -> Result<()> {
     // Make sure errors get logged, at least to stderr
     if let Err(error) = &result {
         tracing::error!(error = std_dyn_err(error), error_msg = %error);
-        common::errors::show_error_dialog(error)?;
+        common::errors::show_error_dialog(error.user_friendly_msg())?;
     }
 
     Ok(result?)

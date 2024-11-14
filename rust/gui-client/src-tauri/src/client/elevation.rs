@@ -3,7 +3,6 @@ pub(crate) use platform::gui_check;
 #[cfg(target_os = "linux")]
 mod platform {
     use anyhow::{Context as _, Result};
-    use firezone_gui_client_common::errors::Error;
     use firezone_headless_client::FIREZONE_GROUP;
 
     /// Returns true if all permissions are correct for the GUI to run
@@ -12,13 +11,13 @@ mod platform {
     /// so for security and practicality reasons the GUIs must be non-root.
     /// (In Linux by default a root GUI app barely works at all)
     pub(crate) fn gui_check() -> Result<bool, Error> {
-        let user = std::env::var("USER").context("USER env var should be set")?;
+        let user = std::env::var("USER").context("Unable to determine current user")?;
         if user == "root" {
             return Ok(false);
         }
 
         let fz_gid = firezone_group()?.gid;
-        let groups = nix::unistd::getgroups().context("`nix::unistd::getgroups`")?;
+        let groups = nix::unistd::getgroups().context("Unable to read groups of current user")?;
         if !groups.contains(&fz_gid) {
             return Err(Error::UserNotInFirezoneGroup);
         }
@@ -32,12 +31,28 @@ mod platform {
             .with_context(|| format!("`{FIREZONE_GROUP}` group must exist on the system"))?;
         Ok(group)
     }
+
+    #[derive(Debug, thiserror::Error)]
+    pub(crate) enum Error {
+        #[error("User is not part of {FIREZONE_GROUP} group")]
+        UserNotInFirezoneGroup,
+        #[error(transparent)]
+        Other(#[from] anyhow::Error),
+    }
+
+    impl Error {
+        pub(crate) fn user_friendly_msg(&self) -> String {
+            match self {
+                Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"),
+                Error::Other(e) => format!("Failed to determine group ownership: {e:#}"),
+            }
+        }
+    }
 }
 
 #[cfg(target_os = "windows")]
 mod platform {
     use anyhow::Result;
-    use firezone_gui_client_common::errors::Error;
 
     // Returns true on Windows
     ///
@@ -47,6 +62,9 @@ mod platform {
     pub(crate) fn gui_check() -> Result<bool, Error> {
         Ok(true)
     }
+
+    #[derive(Debug, Clone, Copy, thiserror::Error)]
+    pub(crate) enum Error {}
 }
 
 #[cfg(test)]

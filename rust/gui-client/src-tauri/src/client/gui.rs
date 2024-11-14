@@ -262,7 +262,7 @@ pub(crate) fn run(
                         }
                         Ok(Err(error)) => {
                             tracing::error!(error = std_dyn_err(&error), "run_controller returned an error");
-                            if let Err(e) = errors::show_error_dialog(&error) {
+                            if let Err(e) = errors::show_error_dialog(error.user_friendly_msg()) {
                                 tracing::error!(error = anyhow_dyn_err(&e), "Failed to show error dialog");
                             }
                             telemetry.stop_on_crash().await;
