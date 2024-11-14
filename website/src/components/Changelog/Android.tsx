@@ -11,7 +11,12 @@ export default function Android() {
       title="Android"
     >
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="7334">
+          Fixes an issue where symmetric NATs would generate unnecessary
+          candidate for hole-punching.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.7" date={new Date("2024-11-08")}>
         <ChangeItem pull="7263">
           Mitigates a crash in case the maximum packet size is not respected.
