@@ -236,6 +236,24 @@ impl UdpSocket {
                     continue;
                 };
 
+                match meta.stride.cmp(&meta.len) {
+                    std::cmp::Ordering::Equal => {}
+                    std::cmp::Ordering::Less => {
+                        let num_packets = meta.len / meta.stride;
+
+                        tracing::trace!(%num_packets, size = %meta.stride, "Read packets using GRO");
+                    }
+                    std::cmp::Ordering::Greater => {
+                        return Poll::Ready(Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!(
+                                "stride ({}) is larger than buffer len ({})",
+                                meta.stride, meta.len
+                            ),
+                        )))
+                    }
+                }
+
                 let local = SocketAddr::new(local_ip, *port);
 
                 let iter = buffer[..meta.len]
