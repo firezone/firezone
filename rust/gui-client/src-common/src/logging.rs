@@ -12,7 +12,7 @@ use std::{
 use tokio::task::spawn_blocking;
 use tracing::subscriber::set_global_default;
 use tracing_log::LogTracer;
-use tracing_subscriber::{fmt, layer::SubscriberExt, reload, Layer, Registry};
+use tracing_subscriber::{layer::SubscriberExt, reload, Layer, Registry};
 
 /// If you don't store `Handles` in a variable, the file logger handle will drop immediately,
 /// resulting in empty log files.
@@ -55,7 +55,6 @@ pub fn setup(directives: &str) -> Result<Handles> {
 
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
     let (layer, logger) = firezone_logging::file::layer(&log_path);
-    let layer = layer.and_then(fmt::layer());
     let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(directives)?);
     let subscriber = Registry::default()
         .with(layer.with_filter(filter))
