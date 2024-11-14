@@ -143,9 +143,9 @@ fn init_logging(log_dir: &Path, log_filter: EnvFilter) -> firezone_logging::file
         .with(file_layer)
         .with(
             tracing_subscriber::fmt::layer()
+                .with_ansi(false)
                 .event_format(
                     firezone_logging::Format::new()
-                        .without_ansi()
                         .without_timestamp()
                         .without_level(),
                 )

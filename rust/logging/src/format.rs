@@ -28,7 +28,6 @@ use tracing_subscriber::{
 ///
 /// Most importantly, the actual span-name is not logged.
 pub struct Format {
-    ansi: bool,
     time: bool,
     level: bool,
 }
@@ -36,16 +35,8 @@ pub struct Format {
 impl Format {
     pub fn new() -> Self {
         Self {
-            ansi: true,
             time: true,
             level: true,
-        }
-    }
-
-    pub fn without_ansi(self) -> Self {
-        Self {
-            ansi: false,
-            ..self
         }
     }
 
@@ -94,7 +85,7 @@ where
         let meta = normalized_meta.as_ref().unwrap_or_else(|| event.metadata());
 
         if self.time {
-            if self.ansi {
+            if writer.has_ansi_escapes() {
                 let style = Style::new().dimmed();
                 write!(writer, "{}", style.prefix())?;
 
@@ -119,12 +110,12 @@ where
         }
 
         if self.level {
-            let fmt_level = FmtLevel::new(meta.level(), self.ansi);
+            let fmt_level = FmtLevel::new(meta.level(), writer.has_ansi_escapes());
 
             write!(writer, "{} ", fmt_level)?;
         }
 
-        let dimmed = if self.ansi {
+        let dimmed = if writer.has_ansi_escapes() {
             Style::new().dimmed()
         } else {
             Style::new()
