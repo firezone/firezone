@@ -59,7 +59,6 @@ pub fn setup(directives: &str) -> Result<Handles> {
     let subscriber = Registry::default()
         .with(layer.with_filter(filter))
         .with(firezone_logging::sentry_layer());
-
     set_global_default(subscriber)?;
     if let Err(error) = output_vt100::try_init() {
         tracing::debug!(
