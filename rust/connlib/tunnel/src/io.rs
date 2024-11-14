@@ -11,6 +11,7 @@ use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
 use snownet::{EncryptBuffer, EncryptedPacket};
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
 use std::{
+    collections::VecDeque,
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     pin::Pin,
@@ -22,6 +23,7 @@ use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     sync::mpsc,
 };
+use tokio_util::sync::PollSender;
 use tracing::Instrument;
 use tun::Tun;
 
@@ -37,8 +39,10 @@ pub struct Io {
     dns_queries: FuturesTupleSet<io::Result<Message<Vec<u8>>>, DnsQueryMetaData>,
 
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
+
     tun_tx: mpsc::Sender<Box<dyn Tun>>,
-    outbound_packet_tx: mpsc::Sender<IpPacket>,
+    outbound_packet_buffer: VecDeque<IpPacket>,
+    outbound_packet_tx: PollSender<IpPacket>,
     inbound_packet_rx: mpsc::Receiver<IpPacket>,
 }
 
@@ -88,7 +92,8 @@ impl Io {
 
         Self {
             tun_tx,
-            outbound_packet_tx,
+            outbound_packet_buffer: VecDeque::with_capacity(10), // It is unlikely that we process more than 10 packets after 1 GRO call.
+            outbound_packet_tx: PollSender::new(outbound_packet_tx),
             inbound_packet_rx,
             timeout: None,
             sockets,
@@ -162,11 +167,27 @@ impl Io {
         ready!(self.sockets.poll_send_ready(cx))?;
 
         // If the `unwritten_packet` is set, `EncryptBuffer` is still holding a packet that we need so send.
-        let Some(unwritten_packet) = self.unwritten_packet.take() else {
-            return Poll::Ready(Ok(()));
+        if let Some(unwritten_packet) = self.unwritten_packet.take() {
+            self.send_encrypted_packet(unwritten_packet, buf)?;
         };
 
-        self.send_encrypted_packet(unwritten_packet, buf)?;
+        loop {
+            // First, acquire a slot in the channel.
+            ready!(self
+                .outbound_packet_tx
+                .poll_reserve(cx)
+                .map_err(|_| io::ErrorKind::BrokenPipe)?);
+
+            // Second, check if we have any buffer packets.
+            let Some(packet) = self.outbound_packet_buffer.pop_front() else {
+                break; // No more packets? All done.
+            };
+
+            // Third, send the packet.
+            self.outbound_packet_tx
+                .send_item(packet)
+                .map_err(|_| io::ErrorKind::BrokenPipe)?;
+        }
 
         Poll::Ready(Ok(()))
     }
@@ -179,20 +200,8 @@ impl Io {
             .expect("Channel to set new TUN device should always have capacity");
     }
 
-    pub fn send_tun(&mut self, packet: IpPacket) -> io::Result<()> {
-        let Err(e) = self.outbound_packet_tx.try_send(packet) else {
-            return Ok(());
-        };
-
-        match e {
-            mpsc::error::TrySendError::Full(_) => {
-                Err(io::Error::other("Outbound packet channel is at capacity"))
-            }
-            mpsc::error::TrySendError::Closed(_) => Err(io::Error::new(
-                io::ErrorKind::NotConnected,
-                "Outbound packet channel is disconnected",
-            )),
-        }
+    pub fn send_tun(&mut self, packet: IpPacket) {
+        self.outbound_packet_buffer.push_back(packet);
     }
 
     pub fn rebind_sockets(&mut self) {
