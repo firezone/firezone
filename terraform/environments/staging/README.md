@@ -14,3 +14,23 @@ This directory houses the Firezone staging environment.
      $(aws ec2 describe-instances --filters "Name=tag:Name,Values=gateway - staging" --query "Reservations[*].Instances[*].InstanceId" --output text) \
      --os-user ubuntu --connection-type eice
    ```
+
+## Set NAT type on AWS NAT gateway VM
+
+Note: The NAT gateway VM will default to using a non-symmetric NAT when deployed or restarted.
+
+### Enable Symmetric NAT
+
+1. SSH in to the NAT gateway VM using the instructions above by replacing `gateway` with `nat`
+1. Run the following:
+   ```
+   sudo iptables -t nat -F && sudo iptables -t nat -A POSTROUTING -o ens5 -j MASQUERADE --random
+   ```
+
+### Enable Non-Symmetric NAT
+
+1. SSH in to the NAT gateway VM using the instructions above by replacing `gateway` with `nat`
+1. Run the following:
+   ```
+   sudo iptables -t nat -F && sudo iptables -t nat -A POSTROUTING -o ens5 -j MASQUERADE
+   ```
