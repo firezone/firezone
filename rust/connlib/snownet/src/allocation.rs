@@ -22,7 +22,7 @@ use stun_codec::{
         attributes::{
             ErrorCode, MessageIntegrity, Nonce, Realm, Software, Username, XorMappedAddress,
         },
-        errors::{StaleNonce, Unauthorized},
+        errors::{StaleNonce, Unauthorized, UnknownAttribute},
         methods::BINDING,
     },
     rfc5766::{
@@ -89,6 +89,8 @@ pub struct Allocation {
     last_now: Instant,
 
     credentials: Option<Credentials>,
+
+    explicit_failure: Option<FreeReason>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -194,6 +196,8 @@ pub enum FreeReason {
     AuthenticationError,
     #[error("no response received. Is STUN blocked?")]
     NoResponseReceived,
+    #[error("TURN protocol failure")]
+    ProtocolFailure,
 }
 
 impl Allocation {
@@ -227,6 +231,7 @@ impl Allocation {
             buffered_channel_bindings: RingBuffer::new(100),
             software: Software::new(format!("snownet; session={session_id}"))
                 .expect("description has less then 128 chars"),
+            explicit_failure: Default::default(),
         };
 
         allocation.send_binding_requests();
@@ -396,6 +401,18 @@ impl Allocation {
                 return true;
             }
 
+            if error.code() == UnknownAttribute::CODEPOINT {
+                let attributes = message.unknown_attributes().collect::<Vec<_>>();
+
+                tracing::warn!(
+                    ?attributes,
+                    "Server did not understand one or more attributes in our request"
+                );
+                self.explicit_failure = Some(FreeReason::ProtocolFailure);
+
+                return true;
+            }
+
             // Catch-all error handling if none of the above apply.
             match message.method() {
                 ALLOCATE => {
@@ -420,13 +437,13 @@ impl Allocation {
                     self.channel_bindings.handle_failed_binding(channel);
 
                     // Duplicate log here because we want to attach "channel number" and "peer".
-                    tracing::warn!(error = %error.reason_phrase(), %channel, %peer);
+                    tracing::warn!(error = %error.reason_phrase(), %channel, %peer, "Channel bind failed");
                     return true;
                 }
                 _ => {}
             }
 
-            tracing::warn!(error = %error.reason_phrase());
+            tracing::warn!(error = %error.reason_phrase(), "TURN request failed");
 
             return true;
         }
@@ -763,7 +780,11 @@ impl Allocation {
     /// Whether this [`Allocation`] can be freed.
     ///
     /// This is tied to having our credentials cleared (i.e due to an authentication error) and having emitted all events or not having received a single response.
-    pub fn can_be_freed(&self) -> Option<FreeReason> {
+    pub fn can_be_freed(&mut self) -> Option<FreeReason> {
+        if let Some(reason) = self.explicit_failure.take() {
+            return Some(reason);
+        }
+
         let pending_work = !self.events.is_empty()
             || !self.buffered_transmits.is_empty()
             || !self.sent_requests.is_empty();
@@ -2375,7 +2396,7 @@ mod tests {
 
     #[test]
     fn allocation_is_not_freed_on_startup() {
-        let allocation = Allocation::for_test_ip4(Instant::now());
+        let mut allocation = Allocation::for_test_ip4(Instant::now());
 
         assert_eq!(allocation.can_be_freed(), None);
     }
