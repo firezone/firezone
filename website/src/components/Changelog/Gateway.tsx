@@ -14,6 +14,10 @@ export default function Gateway() {
         <ChangeItem pull="7263">
           Mitigates a crash in case the maximum packet size is not respected.
         </ChangeItem>
+        <ChangeItem pull="7334">
+          Fixes an issue where symmetric NATs would generate unnecessary
+          candidate for hole-punching.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.0" date={new Date("2024-11-04")}>
         <ChangeItem pull="6960">
