@@ -237,12 +237,7 @@ impl UdpSocket {
                 };
 
                 match meta.stride.cmp(&meta.len) {
-                    std::cmp::Ordering::Equal => {}
-                    std::cmp::Ordering::Less => {
-                        let num_packets = meta.len / meta.stride;
-
-                        tracing::trace!(%num_packets, size = %meta.stride, "Read packets using GRO");
-                    }
+                    std::cmp::Ordering::Equal | std::cmp::Ordering::Less => {}
                     std::cmp::Ordering::Greater => {
                         return Poll::Ready(Err(io::Error::new(
                             io::ErrorKind::InvalidData,
