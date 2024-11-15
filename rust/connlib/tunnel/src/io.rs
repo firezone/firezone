@@ -141,9 +141,7 @@ impl Io {
             Input<impl Iterator<Item = IpPacket> + use<'b>, impl Iterator<Item = DatagramIn<'b>>>,
         >,
     > {
-        if self.gso_queue.should_force_flush() {
-            ready!(self.flush_send_queue(cx)?);
-        }
+        ready!(self.flush_send_queue(cx)?);
 
         if let Poll::Ready(network) =
             self.sockets
@@ -195,9 +193,6 @@ impl Io {
                 return Poll::Ready(Ok(Input::Timeout(deadline)));
             }
         }
-
-        // If we don't have anything else to do, flush all packets.
-        ready!(self.flush_send_queue(cx)?);
 
         Poll::Pending
     }

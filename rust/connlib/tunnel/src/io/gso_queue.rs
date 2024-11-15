@@ -8,8 +8,6 @@ use std::{
 use bytes::BytesMut;
 use socket_factory::DatagramOut;
 
-const ONE_MB: usize = 1024 * 1024;
-
 /// Holds UDP datagrams that we need to send, indexed by src, dst and segment size.
 ///
 /// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
@@ -25,15 +23,6 @@ impl GsoQueue {
             max_segments,
             inner: Default::default(),
         }
-    }
-
-    /// Checks if the [`GsoQueue`] needs to be force-flushed.
-    ///
-    /// If our send queue grows beyond 1MB, force flushing before accepting any more work by reading new packets.
-    /// If not, we allow the event-loop to do other stuff.
-    /// This allows us to handle bursts of packets at once and batching them up into a single syscall.
-    pub fn should_force_flush(&self) -> bool {
-        self.inner.values().any(|b| b.inner.len() >= ONE_MB)
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
