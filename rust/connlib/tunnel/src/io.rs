@@ -154,9 +154,7 @@ impl Io {
             self.inbound_packet_rx
                 .poll_recv_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
         {
-            if num_packets > 0 {
-                return Poll::Ready(Ok(Input::Device(buffers.ip.drain(..num_packets))));
-            }
+            return Poll::Ready(Ok(Input::Device(buffers.ip.drain(..num_packets))));
         }
 
         match self.dns_queries.poll_unpin(cx) {
