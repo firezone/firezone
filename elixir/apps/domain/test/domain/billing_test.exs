@@ -699,7 +699,7 @@ defmodule Domain.BillingTest do
              }
     end
 
-    test "disables the account on when subscription is deleted", %{
+    test "disables the account when subscription is deleted", %{
       account: account,
       customer_id: customer_id
     } do
@@ -873,6 +873,123 @@ defmodule Domain.BillingTest do
       assert account = Repo.get(Domain.Accounts.Account, account.id)
 
       assert is_nil(account.metadata.stripe.trial_ends_at)
+    end
+
+    test "does nothing on customer.subscription.pending_update_* event", %{
+      account: account,
+      customer_id: customer_id
+    } do
+      account =
+        Fixtures.Accounts.update_account(account, %{
+          limits: %{
+            service_accounts_count: 10101
+          },
+          features: %{
+            flow_activities: true,
+            traffic_filters: true
+          }
+        })
+
+      Bypass.open()
+      |> Stripe.mock_fetch_customer_endpoint(account)
+      |> Stripe.mock_fetch_product_endpoint("prod_Na6dGcTsmU0I4R", %{
+        metadata: %{
+          "name" => "Enterprise",
+          "multi_site_resources" => "false",
+          "self_hosted_relays" => "false",
+          "monthly_active_users_count" => "1000",
+          "service_accounts_count" => "unlimited",
+          "users_count" => 14,
+          "support_type" => "email"
+        }
+      })
+
+      subscription_metadata = %{
+        "idp_sync" => "true",
+        "multi_site_resources" => "true",
+        "traffic_filters" => "true",
+        "gateway_groups_count" => 100
+      }
+
+      quantity = 12
+
+      trial_ends_at =
+        DateTime.utc_now()
+        |> DateTime.add(2, :day)
+
+      event_type = "customer.subscription.updated"
+
+      event =
+        Stripe.build_event(
+          event_type,
+          Stripe.subscription_object(customer_id, subscription_metadata, %{}, quantity)
+          |> Map.put("trial_end", DateTime.to_unix(trial_ends_at))
+          |> Map.put("status", "trialing")
+        )
+
+      assert handle_events([event]) == :ok
+      assert account = Repo.get(Domain.Accounts.Account, account.id)
+
+      assert account.metadata.stripe.customer_id == customer_id
+      assert account.metadata.stripe.subscription_id
+      assert account.metadata.stripe.product_name == "Enterprise"
+      assert account.metadata.stripe.support_type == "email"
+
+      assert DateTime.truncate(account.metadata.stripe.trial_ends_at, :second) ==
+               DateTime.truncate(trial_ends_at, :second)
+
+      assert account.limits == %Domain.Accounts.Limits{
+               monthly_active_users_count: 1000,
+               gateway_groups_count: 100,
+               service_accounts_count: nil,
+               users_count: 14
+             }
+
+      assert account.features == %Domain.Accounts.Features{
+               flow_activities: nil,
+               idp_sync: true,
+               multi_site_resources: true,
+               self_hosted_relays: false,
+               traffic_filters: true
+             }
+
+      subscription_metadata = %{
+        "idp_sync" => "false",
+        "multi_site_resources" => "false",
+        "traffic_filters" => "false",
+        "gateway_groups_count" => 1
+      }
+
+      quantity = 12
+      event_type = "customer.subscription.pending_update_expired"
+
+      event =
+        Stripe.build_event(
+          event_type,
+          Stripe.subscription_object(customer_id, subscription_metadata, %{}, quantity)
+          |> Map.put("trial_end", DateTime.to_unix(trial_ends_at))
+          |> Map.put("status", "trialing")
+        )
+
+      assert handle_events([event]) == :ok
+
+      assert account_after_expired_event = Repo.get(Domain.Accounts.Account, account.id)
+      assert account_after_expired_event == account
+
+      event_type = "customer.subscription.pending_update_applied"
+
+      event =
+        Stripe.build_event(
+          event_type,
+          Stripe.subscription_object(customer_id, subscription_metadata, %{}, quantity)
+          |> Map.put("trial_end", DateTime.to_unix(trial_ends_at))
+          |> Map.put("status", "trialing")
+        )
+
+      assert handle_events([event]) == :ok
+
+      assert account_after_expired_event = Repo.get(Domain.Accounts.Account, account.id)
+      assert account_after_expired_event == account
     end
   end
 end
