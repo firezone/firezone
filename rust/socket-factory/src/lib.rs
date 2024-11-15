@@ -256,15 +256,17 @@ impl UdpSocket {
 
                 let local = SocketAddr::new(local_ip, *port);
 
+                let segment_size = meta.stride;
+                let num_packets = meta.len / segment_size;
+
+                tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, %num_packets, %segment_size);
+
                 let iter = buffer[..meta.len]
                     .chunks(meta.stride)
                     .map(move |packet| DatagramIn {
                         local,
                         from: meta.addr,
                         packet,
-                    })
-                    .inspect(|r| {
-                        tracing::trace!(target: "wire::net::recv", src = %r.from, dst = %r.local, num_bytes = %r.packet.len());
                     });
 
                 return Poll::Ready(Ok(iter));
