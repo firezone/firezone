@@ -11,12 +11,13 @@ export default function Headless() {
   return (
     <Entries href={href} arches={arches} title="Linux headless">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.3.7" date={new Date("2024-11-15")}>
         <ChangeItem pull="7334">
           Fixes an issue where symmetric NATs would generate unnecessary
           candidate for hole-punching.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.3.6" date={new Date("2024-11-08")}>
         <ChangeItem pull="7263">
           Mitigates a crash in case the maximum packet size is not respected.
