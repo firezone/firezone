@@ -237,12 +237,7 @@ impl UdpSocket {
                 };
 
                 match meta.stride.cmp(&meta.len) {
-                    std::cmp::Ordering::Equal => {}
-                    std::cmp::Ordering::Less => {
-                        let num_packets = meta.len / meta.stride;
-
-                        tracing::trace!(%num_packets, size = %meta.stride, "Read packets using GRO");
-                    }
+                    std::cmp::Ordering::Equal | std::cmp::Ordering::Less => {}
                     std::cmp::Ordering::Greater => {
                         return Poll::Ready(Err(io::Error::new(
                             io::ErrorKind::InvalidData,
@@ -256,15 +251,18 @@ impl UdpSocket {
 
                 let local = SocketAddr::new(local_ip, *port);
 
+                let segment_size = meta.stride;
+                let num_packets = meta.len / segment_size;
+                let trailing_bytes = meta.len % segment_size;
+
+                tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, %num_packets, %segment_size, %trailing_bytes);
+
                 let iter = buffer[..meta.len]
                     .chunks(meta.stride)
                     .map(move |packet| DatagramIn {
                         local,
                         from: meta.addr,
                         packet,
-                    })
-                    .inspect(|r| {
-                        tracing::trace!(target: "wire::net::recv", src = %r.from, dst = %r.local, num_bytes = %r.packet.len());
                     });
 
                 return Poll::Ready(Ok(iter));
