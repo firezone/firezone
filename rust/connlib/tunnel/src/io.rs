@@ -103,13 +103,16 @@ impl Io {
         let (outbound_packet_tx, outbound_packet_rx) = mpsc::channel(IP_CHANNEL_SIZE);
         let (tun_tx, tun_rx) = mpsc::channel(10);
 
-        std::thread::spawn(|| {
-            futures::executor::block_on(tun_send_recv(
-                tun_rx,
-                outbound_packet_rx,
-                inbound_packet_tx,
-            ))
-        });
+        std::thread::Builder::new()
+            .name("connlib-tun-send-recv".to_string())
+            .spawn(|| {
+                futures::executor::block_on(tun_send_recv(
+                    tun_rx,
+                    outbound_packet_rx,
+                    inbound_packet_tx,
+                ))
+            })
+            .expect("Failed to spawn tun_send_recv thread");
 
         Self {
             tun_tx,
