@@ -29,6 +29,12 @@ use tokio_util::sync::PollSender;
 use tracing::Instrument;
 use tun::Tun;
 
+/// How many IP packets we will at most read from the MPSC-channel connected to our TUN device thread.
+///
+/// Reading IP packets from the channel in batches allows us to process (i.e. encrypt) them as a batch.
+/// UDP datagrams of the same size and destination can then be sent in a single syscall using GSO.
+const MAX_INBOUND_PACKET_BATCH: usize = 50;
+
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
@@ -55,13 +61,17 @@ struct DnsQueryMetaData {
     transport: dns::Transport,
 }
 
-#[expect(
-    clippy::large_enum_variant,
-    reason = "We purposely don't want to allocate each IP packet."
-)]
-pub enum Input<I> {
+pub(crate) struct IpPacketBuffer(Vec<IpPacket>);
+
+impl Default for IpPacketBuffer {
+    fn default() -> Self {
+        Self(Vec::with_capacity(MAX_INBOUND_PACKET_BATCH))
+    }
+}
+
+pub enum Input<D, I> {
     Timeout(Instant),
-    Device(IpPacket),
+    Device(D),
     Network(I),
     DnsResponse(dns::RecursiveResponse),
 }
@@ -110,12 +120,17 @@ impl Io {
         self.sockets.poll_has_sockets(cx)
     }
 
-    pub fn poll<'b>(
+    pub fn poll<'b, 'p>(
         &mut self,
         cx: &mut Context<'_>,
+        ip_packet_buffer: &'p mut IpPacketBuffer,
         ip4_buffer: &'b mut [u8],
         ip6_bffer: &'b mut [u8],
-    ) -> Poll<io::Result<Input<impl Iterator<Item = DatagramIn<'b>>>>> {
+    ) -> Poll<
+        io::Result<
+            Input<impl Iterator<Item = IpPacket> + use<'p>, impl Iterator<Item = DatagramIn<'b>>>,
+        >,
+    > {
         if self.gso_queue.should_force_flush() {
             ready!(self.flush_send_queue(cx)?);
         }
@@ -124,8 +139,14 @@ impl Io {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
         }
 
-        if let Poll::Ready(Some(packet)) = self.inbound_packet_rx.poll_recv(cx) {
-            return Poll::Ready(Ok(Input::Device(packet)));
+        if let Poll::Ready(num_packets) = self.inbound_packet_rx.poll_recv_many(
+            cx,
+            &mut ip_packet_buffer.0,
+            MAX_INBOUND_PACKET_BATCH,
+        ) {
+            if num_packets > 0 {
+                return Poll::Ready(Ok(Input::Device(ip_packet_buffer.0.drain(..num_packets))));
+            }
         }
 
         match self.dns_queries.poll_unpin(cx) {
@@ -413,10 +434,8 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::future::poll_fn;
-
-    use domain::base::scan::ScannerError;
     use futures::task::noop_waker_ref;
+    use std::{future::poll_fn, ptr::addr_of_mut};
 
     use super::*;
 
@@ -433,13 +452,23 @@ mod tests {
         let now = Instant::now();
 
         let mut io = Io::new(
-            Arc::new(|_| Err(io::Error::custom("not implemented"))),
-            Arc::new(|_| Err(io::Error::custom("not implemented"))),
+            Arc::new(|_| Err(io::Error::other("not implemented"))),
+            Arc::new(|_| Err(io::Error::other("not implemented"))),
         );
 
         io.reset_timeout(now + Duration::from_secs(1));
 
-        let poll_fn = poll_fn(|cx| io.poll(cx, &mut [], &mut [])).await.unwrap();
+        let poll_fn = poll_fn(|cx| {
+            io.poll(
+                cx,
+                // SAFETY: This is a test and we never receive IP packets here.
+                unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
+                &mut [],
+                &mut [],
+            )
+        })
+        .await
+        .unwrap();
 
         let Input::Timeout(timeout) = poll_fn else {
             panic!("Unexpected result");
@@ -447,9 +476,17 @@ mod tests {
 
         assert_eq!(timeout, now + Duration::from_secs(1));
 
-        let poll = io.poll(&mut Context::from_waker(noop_waker_ref()), &mut [], &mut []);
+        let poll = io.poll(
+            &mut Context::from_waker(noop_waker_ref()),
+            // SAFETY: This is a test and we never receive IP packets here.
+            unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
+            &mut [],
+            &mut [],
+        );
 
         assert!(poll.is_pending());
         assert!(io.timeout.is_none());
     }
+
+    static mut DUMMY_BUF: IpPacketBuffer = IpPacketBuffer(Vec::new());
 }

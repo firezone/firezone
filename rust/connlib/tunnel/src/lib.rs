@@ -9,7 +9,7 @@ use crate::messages::{Offer, ResolveRequest, SecretKey};
 use bimap::BiMap;
 use chrono::Utc;
 use connlib_model::{ClientId, DomainName, GatewayId, PublicKey, ResourceId, ResourceView};
-use io::Io;
+use io::{Io, IpPacketBuffer};
 use ip_network::{Ipv4Network, Ipv6Network};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -72,6 +72,7 @@ pub struct Tunnel<TRoleState> {
 
     ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
     ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
+    ip_packet_buffer: IpPacketBuffer,
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
@@ -94,6 +95,7 @@ impl ClientTunnel {
             role_state: ClientState::new(BTreeMap::default(), rand::random(), Instant::now()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            ip_packet_buffer: IpPacketBuffer::default(),
         }
     }
 
@@ -133,23 +135,28 @@ impl ClientTunnel {
                 self.io.reset_timeout(timeout);
             }
 
-            match self
-                .io
-                .poll(cx, self.ip4_read_buf.as_mut(), self.ip6_read_buf.as_mut())?
-            {
+            match self.io.poll(
+                cx,
+                &mut self.ip_packet_buffer,
+                self.ip4_read_buf.as_mut(),
+                self.ip6_read_buf.as_mut(),
+            )? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
                     continue;
                 }
-                Poll::Ready(io::Input::Device(packet)) => {
+                Poll::Ready(io::Input::Device(packets)) => {
                     let now = Instant::now();
-                    let Some(packet) = self.role_state.handle_tun_input(packet, now) else {
-                        self.role_state.handle_timeout(now);
-                        continue;
-                    };
 
-                    self.io
-                        .send_network(packet.src(), packet.dst(), packet.payload());
+                    for packet in packets {
+                        let Some(packet) = self.role_state.handle_tun_input(packet, now) else {
+                            self.role_state.handle_timeout(now);
+                            continue;
+                        };
+
+                        self.io
+                            .send_network(packet.src(), packet.dst(), packet.payload());
+                    }
 
                     continue;
                 }
@@ -199,6 +206,7 @@ impl GatewayTunnel {
             role_state: GatewayState::new(rand::random()),
             ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
             ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
+            ip_packet_buffer: IpPacketBuffer::default(),
         }
     }
 
@@ -223,10 +231,12 @@ impl GatewayTunnel {
                 self.io.reset_timeout(timeout);
             }
 
-            match self
-                .io
-                .poll(cx, self.ip4_read_buf.as_mut(), self.ip6_read_buf.as_mut())?
-            {
+            match self.io.poll(
+                cx,
+                &mut self.ip_packet_buffer,
+                self.ip4_read_buf.as_mut(),
+                self.ip6_read_buf.as_mut(),
+            )? {
                 Poll::Ready(io::Input::DnsResponse(_)) => {
                     unreachable!("Gateway doesn't use user-space DNS resolution")
                 }
@@ -234,19 +244,22 @@ impl GatewayTunnel {
                     self.role_state.handle_timeout(timeout, Utc::now());
                     continue;
                 }
-                Poll::Ready(io::Input::Device(packet)) => {
+                Poll::Ready(io::Input::Device(packets)) => {
                     let now = Instant::now();
-                    let Some(packet) = self
-                        .role_state
-                        .handle_tun_input(packet, now)
-                        .map_err(std::io::Error::other)?
-                    else {
-                        self.role_state.handle_timeout(now, Utc::now());
-                        continue;
-                    };
 
-                    self.io
-                        .send_network(packet.src(), packet.dst(), packet.payload());
+                    for packet in packets {
+                        let Some(packet) = self
+                            .role_state
+                            .handle_tun_input(packet, now)
+                            .map_err(std::io::Error::other)?
+                        else {
+                            self.role_state.handle_timeout(now, Utc::now());
+                            continue;
+                        };
+
+                        self.io
+                            .send_network(packet.src(), packet.dst(), packet.payload());
+                    }
 
                     continue;
                 }
