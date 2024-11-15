@@ -34,6 +34,7 @@ use tun::Tun;
 /// Reading IP packets from the channel in batches allows us to process (i.e. encrypt) them as a batch.
 /// UDP datagrams of the same size and destination can then be sent in a single syscall using GSO.
 const MAX_INBOUND_PACKET_BATCH: usize = 50;
+const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
@@ -61,11 +62,19 @@ struct DnsQueryMetaData {
     transport: dns::Transport,
 }
 
-pub(crate) struct IpPacketBuffer(Vec<IpPacket>);
+pub(crate) struct Buffers {
+    ip: Vec<IpPacket>,
+    udp4: Vec<u8>,
+    udp6: Vec<u8>,
+}
 
-impl Default for IpPacketBuffer {
+impl Default for Buffers {
     fn default() -> Self {
-        Self(Vec::with_capacity(MAX_INBOUND_PACKET_BATCH))
+        Self {
+            ip: Vec::with_capacity(MAX_INBOUND_PACKET_BATCH),
+            udp4: Vec::from([0; MAX_UDP_SIZE]),
+            udp6: Vec::from([0; MAX_UDP_SIZE]),
+        }
     }
 }
 
@@ -120,32 +129,32 @@ impl Io {
         self.sockets.poll_has_sockets(cx)
     }
 
-    pub fn poll<'b, 'p>(
+    pub fn poll<'b>(
         &mut self,
         cx: &mut Context<'_>,
-        ip_packet_buffer: &'p mut IpPacketBuffer,
-        ip4_buffer: &'b mut [u8],
-        ip6_bffer: &'b mut [u8],
+        buffers: &'b mut Buffers,
     ) -> Poll<
         io::Result<
-            Input<impl Iterator<Item = IpPacket> + use<'p>, impl Iterator<Item = DatagramIn<'b>>>,
+            Input<impl Iterator<Item = IpPacket> + use<'b>, impl Iterator<Item = DatagramIn<'b>>>,
         >,
     > {
         if self.gso_queue.should_force_flush() {
             ready!(self.flush_send_queue(cx)?);
         }
 
-        if let Poll::Ready(network) = self.sockets.poll_recv_from(ip4_buffer, ip6_bffer, cx)? {
+        if let Poll::Ready(network) =
+            self.sockets
+                .poll_recv_from(&mut buffers.udp4, &mut buffers.udp6, cx)?
+        {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
         }
 
-        if let Poll::Ready(num_packets) = self.inbound_packet_rx.poll_recv_many(
-            cx,
-            &mut ip_packet_buffer.0,
-            MAX_INBOUND_PACKET_BATCH,
-        ) {
+        if let Poll::Ready(num_packets) =
+            self.inbound_packet_rx
+                .poll_recv_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
+        {
             if num_packets > 0 {
-                return Poll::Ready(Ok(Input::Device(ip_packet_buffer.0.drain(..num_packets))));
+                return Poll::Ready(Ok(Input::Device(buffers.ip.drain(..num_packets))));
             }
         }
 
@@ -461,10 +470,8 @@ mod tests {
         let poll_fn = poll_fn(|cx| {
             io.poll(
                 cx,
-                // SAFETY: This is a test and we never receive IP packets here.
+                // SAFETY: This is a test and we never receive packets here.
                 unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
-                &mut [],
-                &mut [],
             )
         })
         .await
@@ -478,15 +485,17 @@ mod tests {
 
         let poll = io.poll(
             &mut Context::from_waker(noop_waker_ref()),
-            // SAFETY: This is a test and we never receive IP packets here.
+            // SAFETY: This is a test and we never receive packets here.
             unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
-            &mut [],
-            &mut [],
         );
 
         assert!(poll.is_pending());
         assert!(io.timeout.is_none());
     }
 
-    static mut DUMMY_BUF: IpPacketBuffer = IpPacketBuffer(Vec::new());
+    static mut DUMMY_BUF: Buffers = Buffers {
+        ip: Vec::new(),
+        udp4: Vec::new(),
+        udp6: Vec::new(),
+    };
 }

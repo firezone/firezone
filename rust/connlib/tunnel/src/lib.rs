@@ -9,7 +9,7 @@ use crate::messages::{Offer, ResolveRequest, SecretKey};
 use bimap::BiMap;
 use chrono::Utc;
 use connlib_model::{ClientId, DomainName, GatewayId, PublicKey, ResourceId, ResourceView};
-use io::{Io, IpPacketBuffer};
+use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -39,7 +39,6 @@ mod sockets;
 mod tests;
 mod utils;
 
-const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const REALM: &str = "firezone";
 
 /// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
@@ -69,10 +68,7 @@ pub struct Tunnel<TRoleState> {
     ///
     /// Handles all side-effects.
     io: Io,
-
-    ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
-    ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
-    ip_packet_buffer: IpPacketBuffer,
+    buffers: Buffers,
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
@@ -93,9 +89,7 @@ impl ClientTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: ClientState::new(BTreeMap::default(), rand::random(), Instant::now()),
-            ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            ip_packet_buffer: IpPacketBuffer::default(),
+            buffers: Buffers::default(),
         }
     }
 
@@ -135,12 +129,7 @@ impl ClientTunnel {
                 self.io.reset_timeout(timeout);
             }
 
-            match self.io.poll(
-                cx,
-                &mut self.ip_packet_buffer,
-                self.ip4_read_buf.as_mut(),
-                self.ip6_read_buf.as_mut(),
-            )? {
+            match self.io.poll(cx, &mut self.buffers)? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
                     continue;
@@ -204,9 +193,7 @@ impl GatewayTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: GatewayState::new(rand::random()),
-            ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            ip_packet_buffer: IpPacketBuffer::default(),
+            buffers: Buffers::default(),
         }
     }
 
@@ -231,12 +218,7 @@ impl GatewayTunnel {
                 self.io.reset_timeout(timeout);
             }
 
-            match self.io.poll(
-                cx,
-                &mut self.ip_packet_buffer,
-                self.ip4_read_buf.as_mut(),
-                self.ip6_read_buf.as_mut(),
-            )? {
+            match self.io.poll(cx, &mut self.buffers)? {
                 Poll::Ready(io::Input::DnsResponse(_)) => {
                     unreachable!("Gateway doesn't use user-space DNS resolution")
                 }
