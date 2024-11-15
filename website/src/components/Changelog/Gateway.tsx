@@ -10,7 +10,8 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.1" date={new Date("2024-11-15")}>
         <ChangeItem pull="7263">
           Mitigates a crash in case the maximum packet size is not respected.
         </ChangeItem>
@@ -18,7 +19,16 @@ export default function Gateway() {
           Fixes an issue where symmetric NATs would generate unnecessary
           candidate for hole-punching.
         </ChangeItem>
-      </Unreleased>
+        <ChangeItem pull="7120">
+          Silences several unnecessary warnings from the WireGuard library.
+        </ChangeItem>
+        <ChangeItem pull="7341">
+          Disconnects from non-compliant TURN servers.
+        </ChangeItem>
+        <ChangeItem pull="7342">
+          Fixes a packet drop issue under high-load.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.4.0" date={new Date("2024-11-04")}>
         <ChangeItem pull="6960">
           Separates traffic restrictions between DNS Resources CIDR Resources,
