@@ -36,21 +36,21 @@ module.exports = [
     source: "/dl/firezone-client-headless-linux/latest/x86_64",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.6/firezone-client-headless-linux_1.3.6_x86_64",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.7/firezone-client-headless-linux_1.3.7_x86_64",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/aarch64",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.6/firezone-client-headless-linux_1.3.6_aarch64",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.7/firezone-client-headless-linux_1.3.7_aarch64",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/armv7",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.6/firezone-client-headless-linux_1.3.6_armv7",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.7/firezone-client-headless-linux_1.3.7_armv7",
     permanent: false,
   },
   /*
