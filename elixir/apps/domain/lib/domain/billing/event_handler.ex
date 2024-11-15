@@ -170,8 +170,13 @@ defmodule Domain.Billing.EventHandler do
             }
           }
         },
-        "type" => "customer.subscription." <> _
-      }) do
+        "type" => "customer.subscription." <> event_type
+      })
+      when event_type in [
+             "created",
+             "resumed",
+             "updated"
+           ] do
     {:ok,
      %{
        "name" => product_name,
