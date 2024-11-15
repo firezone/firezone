@@ -379,10 +379,9 @@ async fn tun_send_recv(
             }
             Either::Right((Err(e), _)) => {
                 tracing::debug!(
-                    error = std_dyn_err(&e),
-                    "Failed to read packet from TUN device"
+                    "Failed to read packet from TUN device: {}",
+                    err_with_sources(&e)
                 );
-                return;
             }
         };
     }
