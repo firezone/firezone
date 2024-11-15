@@ -258,8 +258,9 @@ impl UdpSocket {
 
                 let segment_size = meta.stride;
                 let num_packets = meta.len / segment_size;
+                let trailing_bytes = meta.len % segment_size;
 
-                tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, %num_packets, %segment_size);
+                tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, %num_packets, %segment_size, %trailing_bytes);
 
                 let iter = buffer[..meta.len]
                     .chunks(meta.stride)
