@@ -1,6 +1,6 @@
 use crate::{device_channel::Device, dns, sockets::Sockets};
 use domain::base::Message;
-use firezone_logging::{err_with_sources, std_dyn_err, telemetry_event, telemetry_span};
+use firezone_logging::{err_with_sources, telemetry_event, telemetry_span};
 use futures::{
     future::{self, Either},
     stream, Stream, StreamExt,
