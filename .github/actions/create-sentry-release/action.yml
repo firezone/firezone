@@ -5,14 +5,16 @@ inputs:
   component:
     description: "The component to create a release for"
     required: true
+    # e.g. "gateway", "gui-client", "headless-client", ...
   projects:
     description: "The Sentry projects to create a release for"
     required: true
+    # Must be space-separated.
 
 runs:
   using: "composite"
   steps:
-    - name: Extract version from release
+    - name: Extract semantic version from release name
       id: version
       run: |
         version=${{ github.event.release.name }}
