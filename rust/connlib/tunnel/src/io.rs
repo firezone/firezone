@@ -1,6 +1,6 @@
 use crate::{device_channel::Device, dns, sockets::Sockets};
 use domain::base::Message;
-use firezone_logging::{err_with_sources, std_dyn_err, telemetry_event, telemetry_span};
+use firezone_logging::{err_with_sources, telemetry_event, telemetry_span};
 use futures::{
     future::{self, Either},
     stream, Stream, StreamExt,
@@ -379,10 +379,9 @@ async fn tun_send_recv(
             }
             Either::Right((Err(e), _)) => {
                 tracing::debug!(
-                    error = std_dyn_err(&e),
-                    "Failed to read packet from TUN device"
+                    "Failed to read packet from TUN device: {}",
+                    err_with_sources(&e)
                 );
-                return;
             }
         };
     }
