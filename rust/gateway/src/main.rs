@@ -55,8 +55,12 @@ async fn main() {
     // That looks like a "crash" but we "just" exit with a fatal error.
     if let Err(e) = try_main(cli, &mut telemetry).await {
         tracing::error!(error = anyhow_dyn_err(&e));
+        telemetry.stop_on_crash().await;
+
         std::process::exit(1);
     }
+
+    telemetry.stop().await
 }
 
 async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
