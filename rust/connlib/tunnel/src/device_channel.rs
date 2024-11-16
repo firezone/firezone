@@ -41,6 +41,8 @@ impl Device {
         let n = std::task::ready!(tun.poll_read(ip_packet.buf(), cx))?;
 
         if n == 0 {
+            self.tun = None;
+
             return Poll::Ready(Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
                 "device is closed",
