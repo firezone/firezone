@@ -212,7 +212,11 @@ impl WrappedSession {
         device_info: String,
     ) -> Result<Self> {
         let mut telemetry = Telemetry::default();
-        telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), APPLE_DSN);
+        telemetry.start(
+            &api_url,
+            concat!("apple-client-", env!("CARGO_PKG_VERSION")),
+            APPLE_DSN,
+        );
         telemetry.set_firezone_id(device_id.clone());
 
         let logger = init_logging(log_dir.into(), log_filter)?;

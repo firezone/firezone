@@ -43,7 +43,7 @@ async fn main() {
     if cli.is_telemetry_allowed() {
         telemetry.start(
             cli.api_url.as_str(),
-            env!("CARGO_PKG_VERSION"),
+            concat!("gateway-", env!("CARGO_PKG_VERSION")),
             firezone_telemetry::GATEWAY_DSN,
         );
     }

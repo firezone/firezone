@@ -114,7 +114,7 @@ enum Cmd {
     Standalone,
 }
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+const VERSION: &str = concat!("headless-client-", env!("CARGO_PKG_VERSION"));
 
 fn main() -> Result<()> {
     rustls::crypto::ring::default_provider()

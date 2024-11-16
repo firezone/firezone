@@ -332,7 +332,11 @@ fn connect(
         serde_json::from_str(&device_info).context("Failed to deserialize `DeviceInfo`")?;
 
     let mut telemetry = Telemetry::default();
-    telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), ANDROID_DSN);
+    telemetry.start(
+        &api_url,
+        concat!("android-client-", env!("CARGO_PKG_VERSION")),
+        ANDROID_DSN,
+    );
     telemetry.set_firezone_id(device_id.clone());
 
     let handle = init_logging(&PathBuf::from(log_dir), log_filter);

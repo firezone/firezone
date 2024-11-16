@@ -209,7 +209,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
 
         // Start telemetry
         {
-            const VERSION: &str = env!("CARGO_PKG_VERSION");
+            const VERSION: &str = concat!("gui-client-", env!("CARGO_PKG_VERSION"));
 
             let environment = self.advanced_settings.api_url.to_string();
             self.telemetry
