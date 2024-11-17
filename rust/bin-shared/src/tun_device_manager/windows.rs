@@ -219,9 +219,10 @@ impl Drop for Tun {
 impl Tun {
     #[tracing::instrument(level = "debug")]
     pub fn new(mtu: u32) -> Result<Self> {
-        let path = ensure_dll()?;
+        let path = ensure_dll().context("Failed to ensure `wintun.dll` is in place")?;
         // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it. There's no perfect way to prove it's safe.
-        let wintun = unsafe { wintun::load_from_path(path) }?;
+        let wintun = unsafe { wintun::load_from_path(path.clone()) }
+            .with_context(|| format!("Failed to load `wintun.dll` from {}", path.display()))?;
 
         // Create wintun adapter
         let adapter = Adapter::create(
@@ -230,15 +231,22 @@ impl Tun {
             TUNNEL_NAME,
             Some(TUNNEL_UUID.as_u128()),
         )?;
-        let iface_idx = adapter.get_adapter_index()?;
+        let iface_idx = adapter
+            .get_adapter_index()
+            .context("Failed to get adapter index")?;
 
-        set_iface_config(adapter.get_luid(), mtu)?;
+        set_iface_config(adapter.get_luid(), mtu).context("Failed to set interface config")?;
 
-        let session = Arc::new(adapter.start_session(RING_BUFFER_SIZE)?);
+        let session = Arc::new(
+            adapter
+                .start_session(RING_BUFFER_SIZE)
+                .context("Failed to start session")?,
+        );
         // 4 is a nice power of two. Wintun already queues packets for us, so we don't
         // need much capacity here.
         let (packet_tx, packet_rx) = mpsc::channel(4);
-        let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))?;
+        let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))
+            .context("Failed to start recv thread")?;
 
         Ok(Self {
             iface_idx,
