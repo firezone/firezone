@@ -217,7 +217,6 @@ impl Drop for Tun {
 }
 
 impl Tun {
-    #[tracing::instrument(level = "debug")]
     fn new(mtu: u32) -> Result<Self> {
         let path = ensure_dll().context("Failed to ensure `wintun.dll` is in place")?;
         // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it. There's no perfect way to prove it's safe.
