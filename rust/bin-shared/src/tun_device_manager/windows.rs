@@ -224,18 +224,12 @@ impl Tun {
         let wintun = unsafe { wintun::load_from_path(path) }?;
 
         // Create wintun adapter
-        let adapter = match Adapter::create(
+        let adapter = Adapter::create(
             &wintun,
             TUNNEL_NAME,
             TUNNEL_NAME,
             Some(TUNNEL_UUID.as_u128()),
-        ) {
-            Ok(x) => x,
-            Err(error) => {
-                tracing::error!(error = std_dyn_err(&error), "Failed in `Adapter::create`");
-                return Err(error)?;
-            }
-        };
+        )?;
         let iface_idx = adapter.get_adapter_index()?;
 
         set_iface_config(adapter.get_luid(), mtu)?;
