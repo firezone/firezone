@@ -80,9 +80,7 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    let e = err_with_sources(&e);
-
-                    telemetry_event!("Tunnel error: {e}");
+                    telemetry_event!("Tunnel error: {}", err_with_sources(&e));
                     continue;
                 }
                 Poll::Pending => {}
