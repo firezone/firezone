@@ -282,7 +282,41 @@ impl UdpSocket {
 
         tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_packets, %segment_size);
 
-        self.try_send(datagram)?;
+        let Some(transmit) = self.prepare_transmit(
+            datagram.dst,
+            datagram.src.map(|s| s.ip()),
+            &datagram.packet,
+            datagram.segment_size,
+        )?
+        else {
+            return Ok(());
+        };
+
+        match transmit.segment_size {
+            Some(segment_size) => {
+                for transmit in
+                    transmit
+                        .contents
+                        .chunks(segment_size * num_segments)
+                        .map(|contents| Transmit {
+                            destination: transmit.destination,
+                            ecn: transmit.ecn,
+                            contents,
+                            segment_size: Some(segment_size),
+                            src_ip: transmit.src_ip,
+                        })
+                {
+                    self.inner.try_io(Interest::WRITABLE, || {
+                        self.state.try_send((&self.inner).into(), &transmit)
+                    })?;
+                }
+            }
+            None => {
+                self.inner.try_io(Interest::WRITABLE, || {
+                    self.state.try_send((&self.inner).into(), &transmit)
+                })?;
+            }
+        }
 
         Ok(())
     }
@@ -326,47 +360,6 @@ impl UdpSocket {
         buffer.truncate(num_received);
 
         Ok(buffer)
-    }
-
-    fn try_send(&mut self, datagram: DatagramOut) -> io::Result<()> {
-        let Some(transmit) = self.prepare_transmit(
-            datagram.dst,
-            datagram.src.map(|s| s.ip()),
-            &datagram.packet,
-            datagram.segment_size,
-        )?
-        else {
-            return Ok(());
-        };
-
-        match transmit.segment_size {
-            Some(segment_size) => {
-                let max_num_gso_segments = self.state.max_gso_segments();
-
-                for transmit in transmit
-                    .contents
-                    .chunks(segment_size * max_num_gso_segments)
-                    .map(|contents| Transmit {
-                        destination: transmit.destination,
-                        ecn: transmit.ecn,
-                        contents,
-                        segment_size: Some(segment_size),
-                        src_ip: transmit.src_ip,
-                    })
-                {
-                    self.inner.try_io(Interest::WRITABLE, || {
-                        self.state.try_send((&self.inner).into(), &transmit)
-                    })?;
-                }
-            }
-            None => {
-                self.inner.try_io(Interest::WRITABLE, || {
-                    self.state.try_send((&self.inner).into(), &transmit)
-                })?;
-            }
-        }
-
-        Ok(())
     }
 
     fn prepare_transmit<'a>(
