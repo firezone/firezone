@@ -24,7 +24,7 @@ use std::{
 };
 use tokio::{sync::mpsc, task::spawn_blocking, time::Instant};
 use tracing::subscriber::set_global_default;
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
+use tracing_subscriber::{layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
 use url::Url;
 
 pub mod ipc;
@@ -635,18 +635,22 @@ fn setup_logging(
     )?;
     std::fs::create_dir_all(&log_dir)
         .context("We should have permissions to create our log dir")?;
+
     let (layer, handle) = firezone_logging::file::layer(&log_dir);
+
     let directives = get_log_filter().context("Couldn't read log filter")?;
-    let (filter, reloader) =
-        tracing_subscriber::reload::Layer::new(firezone_logging::try_filter(&directives)?);
+    let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(&directives)?);
+
     let subscriber = Registry::default().with(layer.with_filter(filter));
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
+
     tracing::info!(
         arch = std::env::consts::ARCH,
         // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
         ?directives
     );
+
     Ok((handle, reloader))
 }
 
