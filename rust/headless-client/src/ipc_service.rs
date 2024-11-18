@@ -23,7 +23,6 @@ use std::{
     collections::BTreeSet, io, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration,
 };
 use tokio::{sync::mpsc, task::spawn_blocking, time::Instant};
-use tracing::subscriber::set_global_default;
 use tracing_subscriber::{layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
 use url::Url;
 
@@ -644,7 +643,7 @@ fn setup_logging(
     let subscriber = Registry::default()
         .with(layer.with_filter(filter))
         .with(sentry_layer());
-    set_global_default(subscriber).context("`set_global_default` should always work)")?;
+    firezone_logging::init(subscriber)?;
 
     tracing::info!(
         arch = std::env::consts::ARCH,
