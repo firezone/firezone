@@ -20,7 +20,6 @@ use std::{
     path::PathBuf,
 };
 use tokio::sync::mpsc;
-use tracing::subscriber::set_global_default;
 use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer as _, Registry};
 
 mod clear_logs;
@@ -142,7 +141,8 @@ pub fn setup_stdout_logging() -> Result<LogFilterReloader> {
         .event_format(firezone_logging::Format::new())
         .with_filter(filter);
     let subscriber = Registry::default().with(layer);
-    set_global_default(subscriber)?;
+    firezone_logging::init(subscriber)?;
+
     Ok(reloader)
 }
 
