@@ -650,7 +650,7 @@ fn setup_logging(
         arch = std::env::consts::ARCH,
         // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
-        ?directives
+        %directives
     );
 
     Ok((handle, reloader))
