@@ -1,4 +1,5 @@
 use firezone_logging::std_dyn_err;
+use quinn_udp::Transmit;
 use std::collections::HashMap;
 use std::fmt;
 use std::{
@@ -339,9 +340,34 @@ impl UdpSocket {
             return Ok(());
         };
 
-        self.inner.try_io(Interest::WRITABLE, || {
-            self.state.try_send((&self.inner).into(), &transmit)
-        })
+        match transmit.segment_size {
+            Some(segment_size) => {
+                let max_num_gso_segments = self.state.max_gso_segments();
+
+                for transmit in transmit
+                    .contents
+                    .chunks(segment_size * max_num_gso_segments)
+                    .map(|contents| Transmit {
+                        destination: transmit.destination,
+                        ecn: transmit.ecn,
+                        contents,
+                        segment_size: Some(segment_size),
+                        src_ip: transmit.src_ip,
+                    })
+                {
+                    self.inner.try_io(Interest::WRITABLE, || {
+                        self.state.try_send((&self.inner).into(), &transmit)
+                    })?;
+                }
+            }
+            None => {
+                self.inner.try_io(Interest::WRITABLE, || {
+                    self.state.try_send((&self.inner).into(), &transmit)
+                })?;
+            }
+        }
+
+        Ok(())
     }
 
     fn prepare_transmit<'a>(
