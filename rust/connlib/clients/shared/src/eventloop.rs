@@ -94,7 +94,6 @@ where
                 Poll::Ready(Err(e)) => {
                     let e = err_with_sources(&e);
 
-                    tracing::debug!("Tunnel error: {e}");
                     telemetry_event!("Tunnel error: {e}");
                     continue;
                 }

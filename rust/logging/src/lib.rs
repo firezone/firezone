@@ -152,12 +152,15 @@ macro_rules! telemetry_span {
 /// Creates a `telemetry` event.
 ///
 /// In order to save CPU power, `telemetry` events are sampled at a rate of 1% at creation time.
+/// In addition, all telemetry events are logged at the `DEBUG` level.
 #[macro_export]
 macro_rules! telemetry_event {
     ($($arg:tt)*) => {
         if $crate::__export::rand::random::<f32>() < $crate::TELEMETRY_SAMPLE_RATE {
             $crate::__export::tracing::trace!(target: $crate::TELEMETRY_TARGET, $($arg)*);
         }
+
+        $crate::__export::tracing::debug!($($arg)*);
     };
 }
 

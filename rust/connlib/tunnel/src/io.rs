@@ -419,7 +419,6 @@ fn outgoing_packet_stream(
 fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     let len = d.packet.len();
     if len > MAX_DATAGRAM_PAYLOAD {
-        tracing::debug!(from = %d.from, %len, "Dropping too large datagram (max allowed: {MAX_DATAGRAM_PAYLOAD} bytes)");
         telemetry_event!(from = %d.from, %len, "Dropping too large datagram (max allowed: {MAX_DATAGRAM_PAYLOAD} bytes)");
 
         return false;

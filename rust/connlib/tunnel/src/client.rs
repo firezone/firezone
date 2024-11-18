@@ -383,7 +383,6 @@ impl ClientState {
                     .unwrap_or_else(|e| {
                         let e = err_with_sources(&e);
 
-                        tracing::debug!("Recursive UDP DNS query failed: {e}");
                         telemetry_event!("Recursive UDP DNS query failed: {e}");
 
                         dns::servfail(response.query.for_slice_ref())
@@ -402,7 +401,6 @@ impl ClientState {
                     .unwrap_or_else(|e| {
                         let e = err_with_sources(&e);
 
-                        tracing::debug!("Recursive TCP DNS query failed: {e}");
                         telemetry_event!("Recursive TCP DNS query failed: {e}");
 
                         dns::servfail(response.query.for_slice_ref())
