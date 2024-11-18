@@ -2,7 +2,7 @@ use core::fmt;
 use std::error::Error;
 
 /// Returns a [`fmt::Display`] adapter that prints the error and all its sources.
-pub fn err_with_sources<'a>(e: &'a (dyn Error + 'static)) -> ErrorWithSources<'a> {
+pub fn err_with_src<'a>(e: &'a (dyn Error + 'static)) -> ErrorWithSources<'a> {
     ErrorWithSources { e }
 }
 
@@ -30,7 +30,7 @@ mod tests {
     fn prints_errors_with_sources() {
         let error = Error3(Error2(Error1));
 
-        let display = err_with_sources(&error);
+        let display = err_with_src(&error);
 
         assert_eq!(display.to_string(), "Argh: Failed to do the thing: oh no!");
     }
