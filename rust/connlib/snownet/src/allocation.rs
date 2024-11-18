@@ -443,7 +443,7 @@ impl Allocation {
                 _ => {}
             }
 
-            tracing::warn!(error = %error.reason_phrase(), "TURN request failed");
+            tracing::warn!(error = %error.reason_phrase(), code = %error.code(), "TURN request failed");
 
             return true;
         }
