@@ -80,8 +80,10 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    tracing::debug!("Tunnel error: {}", err_with_sources(&e));
-                    telemetry_event!(error = std_dyn_err(&e), "Tunnel error");
+                    let e = err_with_sources(&e);
+
+                    tracing::debug!("Tunnel error: {e}");
+                    telemetry_event!("Tunnel error: {e}");
                     continue;
                 }
                 Poll::Pending => {}
