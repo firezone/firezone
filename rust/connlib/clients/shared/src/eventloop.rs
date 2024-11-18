@@ -1,7 +1,7 @@
 use crate::{callbacks::Callbacks, PHOENIX_TOPIC};
 use anyhow::Result;
 use connlib_model::ResourceId;
-use firezone_logging::{anyhow_dyn_err, err_with_sources, telemetry_event};
+use firezone_logging::{anyhow_dyn_err, err_with_src, telemetry_event};
 use firezone_tunnel::messages::{client::*, *};
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
@@ -92,7 +92,7 @@ where
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    telemetry_event!("Tunnel error: {}", err_with_sources(&e));
+                    telemetry_event!("Tunnel error: {}", err_with_src(&e));
                     continue;
                 }
                 Poll::Pending => {}

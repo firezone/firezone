@@ -7,7 +7,7 @@ use crate::{
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
-use firezone_logging::{err_with_sources, std_dyn_err};
+use firezone_logging::{err_with_src, std_dyn_err};
 use hex_display::HexDisplayExt as _;
 use rand::random;
 use std::{
@@ -1248,9 +1248,7 @@ impl ChannelBindings {
 
     fn try_decode<'p>(&mut self, packet: &'p [u8], now: Instant) -> Option<(SocketAddr, &'p [u8])> {
         let (channel_number, payload) = crate::channel_data::decode(packet)
-            .inspect_err(|e| {
-                tracing::debug!("Malformed channel data message: {}", err_with_sources(e))
-            })
+            .inspect_err(|e| tracing::debug!("Malformed channel data message: {}", err_with_src(e)))
             .ok()?;
         let Some(channel) = self.inner.get_mut(&channel_number) else {
             tracing::debug!(%channel_number, "Unknown channel");

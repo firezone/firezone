@@ -15,7 +15,7 @@ use connlib_model::PublicKey;
 use connlib_model::{GatewayId, RelayId, ResourceId, ResourceStatus, ResourceView};
 use connlib_model::{Site, SiteId};
 use firezone_logging::{
-    anyhow_dyn_err, err_with_sources, telemetry_event, unwrap_or_debug, unwrap_or_warn,
+    anyhow_dyn_err, err_with_src, telemetry_event, unwrap_or_debug, unwrap_or_warn,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -327,7 +327,7 @@ impl ClientState {
             packet.as_ref(),
             now,
         )
-        .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {}", err_with_sources(e)))
+        .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {}", err_with_src(e)))
         .ok()??;
 
         if self.tcp_dns_client.accepts(&packet) {
@@ -381,10 +381,7 @@ impl ClientState {
                         }
                     })
                     .unwrap_or_else(|e| {
-                        telemetry_event!(
-                            "Recursive UDP DNS query failed: {}",
-                            err_with_sources(&e)
-                        );
+                        telemetry_event!("Recursive UDP DNS query failed: {}", err_with_src(&e));
 
                         dns::servfail(response.query.for_slice_ref())
                     });
@@ -400,10 +397,7 @@ impl ClientState {
                         tracing::trace!("Received recursive TCP DNS response");
                     })
                     .unwrap_or_else(|e| {
-                        telemetry_event!(
-                            "Recursive TCP DNS query failed: {}",
-                            err_with_sources(&e)
-                        );
+                        telemetry_event!("Recursive TCP DNS query failed: {}", err_with_src(&e));
 
                         dns::servfail(response.query.for_slice_ref())
                     });
@@ -455,9 +449,7 @@ impl ClientState {
         let transmit = self
             .node
             .encapsulate(gid, packet, now, buffer)
-            .inspect_err(
-                |e| tracing::debug!(%gid, "Failed to encapsulate: {}", err_with_sources(e)),
-            )
+            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {}", err_with_src(e)))
             .ok()??;
 
         Some(transmit)

@@ -17,7 +17,7 @@ use tracing_subscriber::{
 };
 
 pub use dyn_err::{anyhow_dyn_err, std_dyn_err};
-pub use err_with_sources::{err_with_sources, ErrorWithSources};
+pub use err_with_sources::{err_with_src, ErrorWithSources};
 pub use format::Format;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`
