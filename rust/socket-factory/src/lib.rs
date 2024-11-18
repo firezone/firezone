@@ -277,11 +277,6 @@ impl UdpSocket {
     }
 
     pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
-        let segment_size = datagram.segment_size.unwrap_or(datagram.packet.len());
-        let num_packets = datagram.packet.len() / segment_size;
-
-        tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_packets, %segment_size);
-
         let Some(transmit) = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
@@ -294,24 +289,31 @@ impl UdpSocket {
 
         match transmit.segment_size {
             Some(segment_size) => {
-                for transmit in
-                    transmit
-                        .contents
-                        .chunks(segment_size * num_segments)
-                        .map(|contents| Transmit {
-                            destination: transmit.destination,
-                            ecn: transmit.ecn,
-                            contents,
-                            segment_size: Some(segment_size),
-                            src_ip: transmit.src_ip,
-                        })
+                for transmit in transmit
+                    .contents
+                    .chunks(segment_size * self.state.max_gso_segments())
+                    .map(|contents| Transmit {
+                        destination: transmit.destination,
+                        ecn: transmit.ecn,
+                        contents,
+                        segment_size: Some(segment_size),
+                        src_ip: transmit.src_ip,
+                    })
                 {
+                    let num_packets = transmit.contents.len() / segment_size;
+
+                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_packets, %segment_size);
+
                     self.inner.try_io(Interest::WRITABLE, || {
                         self.state.try_send((&self.inner).into(), &transmit)
                     })?;
                 }
             }
             None => {
+                let num_bytes = transmit.contents.len();
+
+                tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_bytes);
+
                 self.inner.try_io(Interest::WRITABLE, || {
                     self.state.try_send((&self.inner).into(), &transmit)
                 })?;
