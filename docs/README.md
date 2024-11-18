@@ -30,7 +30,7 @@
     <img src="https://img.shields.io/twitter/follow/firezonehq?style=social&logo=twitter" alt="follow on Twitter">
   </a>
   <a href="https://gurubase.io/g/firezone">
-    <img src="hhttps://img.shields.io/badge/Gurubase-Ask%20Firezone%20Guru-006BFF" alt="Ask Firezone Guru on Gurubase.io">
+    <img src="https://img.shields.io/badge/Gurubase-Ask%20Firezone%20Guru-006BFF" alt="Ask Firezone Guru on Gurubase.io">
   </a>
 </p>
 
