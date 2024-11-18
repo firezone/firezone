@@ -9,7 +9,7 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
-use firezone_logging::{anyhow_dyn_err, telemetry_span};
+use firezone_logging::{anyhow_dyn_err, sentry_layer, telemetry_span};
 use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
@@ -641,7 +641,9 @@ fn setup_logging(
     let directives = get_log_filter().context("Couldn't read log filter")?;
     let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(&directives)?);
 
-    let subscriber = Registry::default().with(layer.with_filter(filter));
+    let subscriber = Registry::default()
+        .with(layer.with_filter(filter))
+        .with(sentry_layer());
     set_global_default(subscriber).context("`set_global_default` should always work)")?;
 
     tracing::info!(
