@@ -9,7 +9,7 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
-use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
+use firezone_logging::{anyhow_dyn_err, telemetry_span};
 use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
@@ -480,12 +480,7 @@ impl<'a> Handler<'a> {
                 // Warning: Connection errors don't bubble to callers of `handle_ipc_msg`.
                 let token = secrecy::SecretString::from(token);
                 let result = self.connect_to_firezone(&api_url, token);
-                if let Err(error) = &result {
-                    tracing::error!(
-                        error = std_dyn_err(error),
-                        "Failed to connect connlib session"
-                    );
-                }
+
                 self.ipc_tx
                     .send(&ServerMsg::ConnectResult(result))
                     .await
