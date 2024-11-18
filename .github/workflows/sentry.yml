@@ -1,0 +1,47 @@
+name: Create Sentry releases
+run-name: Triggered by ${{ github.actor }}
+on:
+  release:
+    types:
+      - published
+
+concurrency:
+  group: "publish-production-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  create_gateway_sentry_release:
+    if: ${{ startsWith(github.event.release.name, 'gateway') }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/create-sentry-release
+        with:
+          component: gateway
+          projects: gateway
+
+  create_gui-client_sentry_release:
+    if: ${{ startsWith(github.event.release.name, 'gui-client') }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/create-sentry-release
+        with:
+          component: gui-client
+          projects: gui-client-gui gui-client-ipc-service
+
+  create_headless-client_sentry_release:
+    if: ${{ startsWith(github.event.release.name, 'headless-client') }}
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/create-sentry-release
+        with:
+          component: headless-client
+          projects: headless-client
