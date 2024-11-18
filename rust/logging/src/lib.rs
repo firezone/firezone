@@ -38,6 +38,16 @@ where
                 .event_format(Format::new())
                 .with_filter(try_filter(&directives).context("Failed to parse directives")?),
         );
+    init(subscriber)?;
+
+    Ok(())
+}
+
+#[expect(
+    clippy::disallowed_methods,
+    reason = "This is the alternative function."
+)]
+pub fn init(subscriber: impl Subscriber + Send + Sync + 'static) -> Result<()> {
     tracing::subscriber::set_global_default(subscriber).context("Could not set global default")?;
     LogTracer::init().context("Failed to init LogTracer")?;
 
@@ -72,7 +82,7 @@ pub fn test(directives: &str) -> DefaultGuard {
 }
 
 pub fn test_global(directives: &str) {
-    tracing::subscriber::set_global_default(
+    init(
         tracing_subscriber::fmt()
             .with_test_writer()
             .with_env_filter(directives)
