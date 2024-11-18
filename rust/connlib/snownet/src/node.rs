@@ -9,7 +9,7 @@ use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
-use firezone_logging::err_with_sources;
+use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt;
 use ip_packet::{
     ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf, MAX_DATAGRAM_PAYLOAD,
@@ -336,7 +336,7 @@ where
         let candidate = match Candidate::from_sdp_string(&candidate) {
             Ok(c) => c,
             Err(e) => {
-                tracing::debug!("Failed to parse candidate: {}", err_with_sources(&e));
+                tracing::debug!("Failed to parse candidate: {}", err_with_src(&e));
                 return;
             }
         };
@@ -372,7 +372,7 @@ where
         let candidate = match Candidate::from_sdp_string(&candidate) {
             Ok(c) => c,
             Err(e) => {
-                tracing::debug!("Failed to parse candidate: {}", err_with_sources(&e));
+                tracing::debug!("Failed to parse candidate: {}", err_with_src(&e));
                 return;
             }
         };

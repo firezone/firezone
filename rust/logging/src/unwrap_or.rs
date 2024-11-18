@@ -26,7 +26,7 @@ macro_rules! unwrap_or_debug {
             Err(e) => {
                 let error: &dyn ::std::error::Error = e.as_ref();
 
-                ::tracing::debug!($($arg)*, $crate::err_with_sources(error))
+                ::tracing::debug!($($arg)*, $crate::err_with_src(error))
             }
         }
     };
@@ -43,7 +43,7 @@ macro_rules! unwrap_or_trace {
             Err(e) => {
                 let error: &dyn ::std::error::Error = e.as_ref();
 
-                ::tracing::debug!($($arg)*, $crate::err_with_sources(error))
+                ::tracing::debug!($($arg)*, $crate::err_with_src(error))
             }
         }
     };
