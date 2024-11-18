@@ -461,7 +461,7 @@ async fn resolve(domain: Option<DomainName>) -> Vec<IpAddr> {
     {
         Ok(Ok(addresses)) => addresses,
         Ok(Err(e)) => {
-            tracing::warn!(error = std_dyn_err(&e), %domain, "DNS resolution failed");
+            tracing::info!(%domain, "DNS resolution failed: {}", err_with_sources(&e));
 
             vec![]
         }
