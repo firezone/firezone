@@ -1,12 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { get } from "@vercel/edge-config";
 
-// Cache responses
-export const dynamic = "force-static";
-
-// Revalidate cache at most every hour
-export const revalidate = 3600;
-
 export async function GET(_req: NextRequest) {
   const versions = {
     portal: await get("deployed_sha"),
@@ -22,5 +16,15 @@ export async function GET(_req: NextRequest) {
     gateway: "1.4.1",
   };
 
-  return NextResponse.json(versions);
+  return NextResponse.json(versions, {
+    status: 200,
+    // Vercel's Edge Cache to have a TTL of 3600 seconds
+    // Downstream CDNs to have a TTL of 60 seconds
+    // Clients to have a TTL of 10 seconds
+    headers: {
+      "Cache-Control": "max-age=10",
+      "CDN-Cache-Control": "max-age=60",
+      "Vercel-CDN-Cache-Control": "max-age=3600",
+    },
+  });
 }
