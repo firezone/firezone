@@ -1,0 +1,32 @@
+---
+name: "Create Sentry release"
+description: "Creates a Sentry release for projects from a particular Git tag"
+inputs:
+  component:
+    description: "The component to create a release for"
+    required: true
+    # e.g. "gateway", "gui-client", "headless-client", ...
+  projects:
+    description: "The Sentry projects to create a release for"
+    required: true
+    # Must be space-separated.
+
+runs:
+  using: "composite"
+  steps:
+    - name: Extract semantic version from release name
+      id: version
+      run: |
+        version=${{ github.event.release.name }}
+        version=${version#${{ inputs.component }}-}
+        echo "version=$version" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - uses: getsentry/action-release@v1
+      env:
+        SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        SENTRY_ORG: firezone-inc
+      with:
+        version: ${{ steps.version.outputs.version }}
+        projects: ${{ inputs.projects }}
+        set_commits: auto
