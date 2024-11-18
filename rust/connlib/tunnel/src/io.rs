@@ -124,7 +124,7 @@ impl Io {
             tcp_socket_factory,
             udp_socket_factory,
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
-            gso_queue: GsoQueue::new(socket_factory::MAX_GSO_SEGMENTS),
+            gso_queue: GsoQueue::new(),
         }
     }
 

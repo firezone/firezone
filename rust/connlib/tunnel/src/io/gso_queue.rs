@@ -13,14 +13,12 @@ use socket_factory::DatagramOut;
 /// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
 /// The buffer is then flushed using GSO in a single syscall.
 pub struct GsoQueue {
-    max_segments: usize,
     inner: BTreeMap<Key, DatagramBuffer>,
 }
 
 impl GsoQueue {
-    pub fn new(max_segments: usize) -> Self {
+    pub fn new() -> Self {
         Self {
-            max_segments,
             inner: Default::default(),
         }
     }
@@ -42,13 +40,15 @@ impl GsoQueue {
         payload: &[u8],
         now: Instant,
     ) {
+        let segment_size = payload.len();
+
         self.inner
             .entry(Key {
                 src,
                 dst,
-                segment_size: payload.len(),
+                segment_size,
             })
-            .or_insert_with(|| DatagramBuffer::new(now))
+            .or_insert_with(|| DatagramBuffer::new(now, segment_size * 10)) // Reserve space for a few packets to avoid at least a few re-allocations.
             .extend(payload, now);
     }
 
@@ -56,28 +56,11 @@ impl GsoQueue {
         self.inner
             .iter_mut()
             .filter(|(_, b)| !b.is_empty())
-            .flat_map(|(key, buffer)| {
-                let max_length = self.max_segments * key.segment_size;
-                let buffer = &mut buffer.inner;
-
-                std::iter::from_fn(move || {
-                    if buffer.is_empty() {
-                        return None;
-                    }
-
-                    let packet = if buffer.len() > max_length {
-                        buffer.split_to(max_length)
-                    } else {
-                        buffer.split()
-                    };
-
-                    Some(DatagramOut {
-                        src: key.src,
-                        dst: key.dst,
-                        packet: Cow::Owned(packet.freeze().into()),
-                        segment_size: Some(key.segment_size),
-                    })
-                })
+            .map(|(key, buffer)| DatagramOut {
+                src: key.src,
+                dst: key.dst,
+                packet: Cow::Owned(buffer.inner.split().freeze().into()),
+                segment_size: Some(key.segment_size),
             })
     }
 
@@ -99,9 +82,9 @@ struct DatagramBuffer {
 }
 
 impl DatagramBuffer {
-    pub fn new(now: Instant) -> Self {
+    pub fn new(now: Instant, capacity: usize) -> Self {
         Self {
-            inner: Default::default(),
+            inner: BytesMut::with_capacity(capacity),
             last_access: now,
         }
     }
@@ -125,7 +108,7 @@ mod tests {
     #[test]
     fn send_queue_gcs_after_1_minute() {
         let now = Instant::now();
-        let mut send_queue = GsoQueue::new(100);
+        let mut send_queue = GsoQueue::new();
 
         send_queue.enqueue(None, DST, b"foobar", now);
         for _entry in send_queue.datagrams() {}
@@ -138,32 +121,13 @@ mod tests {
     #[test]
     fn does_not_gc_unsent_items() {
         let now = Instant::now();
-        let mut send_queue = GsoQueue::new(100);
+        let mut send_queue = GsoQueue::new();
 
         send_queue.enqueue(None, DST, b"foobar", now);
 
         send_queue.handle_timeout(now + Duration::from_secs(60));
 
         assert_eq!(send_queue.inner.len(), 1);
-    }
-
-    #[test]
-    fn returns_at_most_max_segments_per_iteration() {
-        let now = Instant::now();
-        let mut send_queue = GsoQueue::new(2);
-
-        send_queue.enqueue(None, DST, b"test1", now);
-        send_queue.enqueue(None, DST, b"test2", now);
-        send_queue.enqueue(None, DST, b"test3", now);
-
-        let datagram = send_queue.datagrams().next().unwrap();
-        assert_eq!(datagram.packet.as_ref(), b"test1test2");
-
-        let datagram = send_queue.datagrams().next().unwrap();
-        assert_eq!(datagram.packet.as_ref(), b"test3");
-
-        let datagram = send_queue.datagrams().next();
-        assert!(datagram.is_none());
     }
 
     const DST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1234));
