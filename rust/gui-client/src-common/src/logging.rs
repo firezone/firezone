@@ -66,7 +66,7 @@ pub fn setup(directives: &str) -> Result<Handles> {
         );
     }
 
-    tracing::debug!(?log_path, "Log path");
+    tracing::debug!(log_path = %log_path.display(), "Log path");
 
     Ok(Handles { logger, reloader })
 }
