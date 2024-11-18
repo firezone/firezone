@@ -279,9 +279,8 @@ impl UdpSocket {
     pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
         let segment_size = datagram.segment_size.unwrap_or(datagram.packet.len());
         let num_packets = datagram.packet.len() / segment_size;
-        let trailing_bytes = datagram.packet.len() % segment_size;
 
-        tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_packets, %segment_size, %trailing_bytes);
+        tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_packets, %segment_size);
 
         self.try_send(datagram)?;
 
