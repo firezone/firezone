@@ -45,7 +45,7 @@ defmodule Web.Actors.Components do
   def actor_name_and_role(assigns) do
     ~H"""
     <.link
-      navigate={~p"/#{@account}/actors/#{@actor}"}
+      navigate={actor_show_url(@account, @actor)}
       class={["text-accent-500 hover:underline", @class]}
     >
       <%= @actor.name %>
@@ -55,6 +55,9 @@ defmodule Web.Actors.Components do
     </span>
     <span :if={@actor.type == :service_account} class={["text-xs", @class]}>
       (service account)
+    </span>
+    <span :if={@actor.type == :api_client} class={["text-xs", @class]}>
+      (api client)
     </span>
     """
   end
@@ -189,5 +192,13 @@ defmodule Web.Actors.Components do
 
   def next_step_path(_other, account) do
     ~p"/#{account}/actors/users/new"
+  end
+
+  def actor_show_url(account, %Domain.Actors.Actor{type: :api_client} = actor) do
+    ~p"/#{account}/settings/api_clients/#{actor}"
+  end
+
+  def actor_show_url(account, actor) do
+    ~p"/#{account}/actors/#{actor}"
   end
 end

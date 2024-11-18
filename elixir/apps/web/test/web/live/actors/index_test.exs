@@ -144,4 +144,25 @@ defmodule Web.Live.Actors.IndexTest do
       assert String.contains?(row["last signed in"], "1 hour ago")
     end)
   end
+
+  test "renders proper URL for API client 'show' page", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    api_client = Fixtures.Actors.create_actor(type: :api_client, account: account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors")
+
+    items =
+      lv
+      |> element("#actors")
+      |> render()
+      |> Floki.find("a[href*=\"api_clients/#{api_client.id}\"]")
+
+    assert length(items) == 1
+  end
 end
