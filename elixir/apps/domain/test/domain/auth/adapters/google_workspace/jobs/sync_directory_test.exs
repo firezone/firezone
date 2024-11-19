@@ -132,6 +132,17 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
           "orgUnitPath" => "/Engineering",
           "parentOrgUnitId" => "OU_ID0",
           "parentOrgUnitPath" => "/"
+        },
+        %{
+          "kind" => "admin#directory#orgUnit",
+          "name" => "Developers",
+          "description" => "Developers team",
+          "etag" => "\"DEVT\"",
+          "blockInheritance" => false,
+          "orgUnitId" => "OU_ID2",
+          "orgUnitPath" => "/Engineering/Developers",
+          "parentOrgUnitId" => "OU_ID1",
+          "parentOrgUnitPath" => "/Engineering"
         }
       ]
 
@@ -164,7 +175,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
             "givenName" => "Brian"
           },
           "nonEditableAliases" => ["b@ext.firez.xxx"],
-          "orgUnitPath" => "/Engineering",
+          "orgUnitPath" => "/Engineering/Developers",
           "organizations" => [
             %{
               "customType" => "",
@@ -250,11 +261,11 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       assert execute(%{task_supervisor: pid}) == :ok
 
       groups = Actors.Group |> Repo.all()
-      assert length(groups) == 2
+      assert length(groups) == 3
 
       for group <- groups do
-        assert group.provider_identifier in ["G:GROUP_ID1", "OU:OU_ID1"]
-        assert group.name in ["OrgUnit:Engineering", "Group:Infrastructure"]
+        assert group.provider_identifier in ["G:GROUP_ID1", "OU:OU_ID1", "OU:OU_ID2"]
+        assert group.name in ["OrgUnit:Engineering", "OrgUnit:Developers", "Group:Infrastructure"]
 
         assert group.inserted_at
         assert group.updated_at
@@ -282,7 +293,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       end
 
       memberships = Actors.Membership |> Repo.all()
-      assert length(memberships) == 2
+      assert length(memberships) == 3
 
       updated_provider = Repo.get!(Domain.Auth.Provider, provider.id)
       assert updated_provider.last_synced_at != provider.last_synced_at
