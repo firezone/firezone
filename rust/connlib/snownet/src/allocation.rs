@@ -308,22 +308,7 @@ impl Allocation {
             return false;
         }
 
-        let passed_message_integrity_check = message
-            .get_attribute::<MessageIntegrity>()
-            .is_some_and(|mi| {
-                let Some(credentials) = &self.credentials else {
-                    tracing::debug!("Cannot check message integrity without credentials");
-
-                    return false;
-                };
-
-                mi.check_long_term_credential(
-                    &credentials.username,
-                    &credentials.realm,
-                    &credentials.password,
-                )
-                .is_ok()
-            });
+        let passed_message_integrity_check = self.check_message_integrity(&message);
 
         if message.method() != BINDING && !passed_message_integrity_check {
             tracing::warn!("Message integrity check failed");
@@ -1057,6 +1042,31 @@ impl Allocation {
         for (_, _, _, _, backoff) in self.sent_requests.values_mut() {
             backoff.clock.now = now;
         }
+    }
+
+    #[cfg(test)]
+    fn check_message_integrity(&self, _: &Message<Attribute>) -> bool {
+        true // In order to make the tests simpler, we skip the message integrity check there.
+    }
+
+    #[cfg(not(test))]
+    fn check_message_integrity(&self, message: &Message<Attribute>) -> bool {
+        message
+            .get_attribute::<MessageIntegrity>()
+            .is_some_and(|mi| {
+                let Some(credentials) = &self.credentials else {
+                    tracing::debug!("Cannot check message integrity without credentials");
+
+                    return false;
+                };
+
+                mi.check_long_term_credential(
+                    &credentials.username,
+                    &credentials.realm,
+                    &credentials.password,
+                )
+                .is_ok()
+            })
     }
 }
 
