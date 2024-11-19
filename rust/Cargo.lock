@@ -5505,9 +5505,9 @@ dependencies = [
  "httpdate",
  "reqwest",
  "rustls 0.22.4",
- "sentry-backtrace",
+ "sentry-backtrace 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sentry-contexts",
- "sentry-core",
+ "sentry-core 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sentry-debug-images",
  "sentry-panic",
  "sentry-tracing",
@@ -5519,12 +5519,11 @@ dependencies = [
 [[package]]
 name = "sentry-anyhow"
 version = "0.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d672bfd1ed4e90978435f3c0704edb71a7a9d86403657839d518cd6aa278aff5"
+source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#5570b24018347683e0523cd50dce226861fe99cb"
 dependencies = [
  "anyhow",
- "sentry-backtrace",
- "sentry-core",
+ "sentry-backtrace 0.34.0 (git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release)",
+ "sentry-core 0.34.0 (git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release)",
 ]
 
 [[package]]
@@ -5536,7 +5535,18 @@ dependencies = [
  "backtrace",
  "once_cell",
  "regex",
- "sentry-core",
+ "sentry-core 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "sentry-backtrace"
+version = "0.34.0"
+source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#5570b24018347683e0523cd50dce226861fe99cb"
+dependencies = [
+ "backtrace",
+ "once_cell",
+ "regex",
+ "sentry-core 0.34.0 (git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release)",
 ]
 
 [[package]]
@@ -5549,7 +5559,7 @@ dependencies = [
  "libc",
  "os_info",
  "rustc_version",
- "sentry-core",
+ "sentry-core 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "uname",
 ]
 
@@ -5561,7 +5571,19 @@ checksum = "161283cfe8e99c8f6f236a402b9ccf726b201f365988b5bb637ebca0abbd4a30"
 dependencies = [
  "once_cell",
  "rand 0.8.5",
- "sentry-types",
+ "sentry-types 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "sentry-core"
+version = "0.34.0"
+source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#5570b24018347683e0523cd50dce226861fe99cb"
+dependencies = [
+ "once_cell",
+ "rand 0.8.5",
+ "sentry-types 0.34.0 (git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release)",
  "serde",
  "serde_json",
 ]
@@ -5574,7 +5596,7 @@ checksum = "8fc6b25e945fcaa5e97c43faee0267eebda9f18d4b09a251775d8fef1086238a"
 dependencies = [
  "findshlibs",
  "once_cell",
- "sentry-core",
+ "sentry-core 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -5583,18 +5605,17 @@ version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc74f229c7186dd971a9491ffcbe7883544aa064d1589bd30b83fb856cd22d63"
 dependencies = [
- "sentry-backtrace",
- "sentry-core",
+ "sentry-backtrace 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sentry-core 0.34.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
 name = "sentry-tracing"
 version = "0.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd3c5faf2103cd01eeda779ea439b68c4ee15adcdb16600836e97feafab362ec"
+source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#5570b24018347683e0523cd50dce226861fe99cb"
 dependencies = [
- "sentry-backtrace",
- "sentry-core",
+ "sentry-backtrace 0.34.0 (git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release)",
+ "sentry-core 0.34.0 (git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release)",
  "tracing-core",
  "tracing-subscriber",
 ]
@@ -5604,6 +5625,22 @@ name = "sentry-types"
 version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d68cdf6bc41b8ff3ae2a9c4671e97426dcdd154cc1d4b6b72813f285d6b163f"
+dependencies = [
+ "debugid",
+ "hex",
+ "rand 0.8.5",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "time",
+ "url",
+ "uuid",
+]
+
+[[package]]
+name = "sentry-types"
+version = "0.34.0"
+source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#5570b24018347683e0523cd50dce226861fe99cb"
 dependencies = [
  "debugid",
  "hex",
