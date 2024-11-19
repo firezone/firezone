@@ -9,7 +9,7 @@ backoff = "0.4"
 base64 = "0.22.1"
 bytecodec = "0.4.15"
 bytes = "1.7.1"
-clap = { version = "4.5.19", features = ["derive", "env"] }
+clap = { version = "4.5.21", features = ["derive", "env"] }
 derive_more = { version = "1.0.0", features = ["from"] }
 firezone-bin-shared = { workspace = true }
 firezone-logging = { workspace = true }
