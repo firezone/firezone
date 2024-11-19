@@ -6,7 +6,7 @@ pub use crate::server::client_message::{
     Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
 };
 
-use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
+use crate::auth::{self, AuthenticatedMessage, MessageIntegrityExt, Nonces, FIREZONE};
 use crate::net_ext::IpAddrExt;
 use crate::{ClientSocket, IpStack, PeerSocket};
 use anyhow::Result;
@@ -27,7 +27,7 @@ use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Software, Username, XorMappedAddress,
 };
-use stun_codec::rfc5389::errors::{BadRequest, StaleNonce, Unauthorized};
+use stun_codec::rfc5389::errors::{BadRequest, ServerError, StaleNonce, Unauthorized};
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
@@ -38,7 +38,7 @@ use stun_codec::rfc8656::attributes::{
     AdditionalAddressFamily, AddressFamily, RequestedAddressFamily,
 };
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
-use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
+use stun_codec::{Message, MessageClass, Method, TransactionId};
 use tracing::{field, Span};
 use tracing_core::field::display;
 use uuid::Uuid;
@@ -53,7 +53,7 @@ use uuid::Uuid;
 #[derive(Debug)]
 pub struct Server<R> {
     decoder: client_message::Decoder,
-    encoder: MessageEncoder<Attribute>,
+    encoder: auth::MessageEncoder,
 
     public_address: IpStack,
 
@@ -266,7 +266,10 @@ where
             Ok(Err(error_response)) => {
                 tracing::warn!(target: "relay", %sender, method = %error_response.method(), "Failed to decode message");
 
-                self.send_message(error_response, sender);
+                // This is fine, the original message failed to parse to we cannot respond with an authenticated reply.
+                let message = AuthenticatedMessage::new_dangerous_unauthenticated(error_response);
+
+                self.send_message(message, sender);
             }
             // Parsing the bytes failed.
             Err(client_message::Error::BadChannelData(ref error)) => {
@@ -292,6 +295,8 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Option<(AllocationPort, PeerSocket)> {
+        let username = message.username().cloned();
+
         let result = match message {
             ClientMessage::Allocate(request) => self.handle_allocate_request(request, sender, now),
             ClientMessage::Refresh(request) => self.handle_refresh_request(request, sender, now),
@@ -314,7 +319,21 @@ where
             return None;
         };
 
-        self.send_message(error_response, sender);
+        let message = match username {
+            Some(username) => {
+                match AuthenticatedMessage::new(&self.auth_secret, username.name(), error_response)
+                {
+                    Ok(message) => message,
+                    Err(e) => {
+                        tracing::warn!(target: "relay", error = std_dyn_err(&e), "Failed to create error response");
+                        return None;
+                    }
+                }
+            }
+            None => AuthenticatedMessage::new_dangerous_unauthenticated(error_response), // We don't have a username so we can't authenticate the response.
+        };
+
+        self.send_message(message, sender);
 
         None
     }
@@ -428,7 +447,10 @@ where
 
         tracing::info!("Handled BINDING request");
 
-        self.send_message(message, sender);
+        self.send_message(
+            AuthenticatedMessage::new_dangerous_unauthenticated(message),
+            sender,
+        );
     }
 
     /// Handle a TURN allocate request.
@@ -441,7 +463,7 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request)?;
+        let username = self.verify_auth(&request)?;
 
         if let Some(allocation) = self.allocations.get(&sender) {
             Span::current().record("allocation", display(&allocation.port));
@@ -522,7 +544,7 @@ where
                 family: second_relay_addr.family(),
             });
         }
-        self.send_message(message, sender);
+        self.authenticate_and_send(username.name(), &request, message, sender);
 
         Span::current().record("allocation", display(&allocation.port));
 
@@ -560,7 +582,7 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request)?;
+        let username = self.verify_auth(&request)?;
 
         // TODO: Verify that this is the correct error code.
         let Some(allocation) = self.allocations.get_mut(&sender) else {
@@ -579,7 +601,9 @@ where
             let port = allocation.port;
 
             self.delete_allocation(port);
-            self.send_message(
+            self.authenticate_and_send(
+                username.name(),
+                &request,
                 refresh_success_response(effective_lifetime, request.transaction_id()),
                 sender,
             );
@@ -591,7 +615,9 @@ where
 
         tracing::info!(target: "relay", "Refreshed allocation");
 
-        self.send_message(
+        self.authenticate_and_send(
+            username.name(),
+            &request,
             refresh_success_response(effective_lifetime, request.transaction_id()),
             sender,
         );
@@ -609,7 +635,7 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request)?;
+        let username = self.verify_auth(&request)?;
 
         let Some(allocation) = self.allocations.get_mut(&sender) else {
             return Err(self.make_error_response(
@@ -681,7 +707,9 @@ where
 
             tracing::info!(target: "relay", "Refreshed channel binding");
 
-            self.send_message(
+            self.authenticate_and_send(
+                username.name(),
+                &request,
                 channel_bind_success_response(request.transaction_id()),
                 sender,
             );
@@ -696,7 +724,9 @@ where
 
         let port = allocation.port;
         self.create_channel_binding(sender, requested_channel, peer_address, port, now);
-        self.send_message(
+        self.authenticate_and_send(
+            username.name(),
+            &request,
             channel_bind_success_response(request.transaction_id()),
             sender,
         );
@@ -718,9 +748,11 @@ where
         request: CreatePermission,
         sender: ClientSocket,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request)?;
+        let username = self.verify_auth(&request)?;
 
-        self.send_message(
+        self.authenticate_and_send(
+            username.name(),
+            &request,
             create_permission_success_response(request.transaction_id()),
             sender,
         );
@@ -768,7 +800,7 @@ where
     fn verify_auth(
         &mut self,
         request: &(impl StunRequest + ProtectedRequest),
-    ) -> Result<(), Message<Attribute>> {
+    ) -> Result<Username, Message<Attribute>> {
         let message_integrity = request.message_integrity().ok_or_else(|| {
             self.make_error_response(Unauthorized, request, ResponseErrorLevel::Warn)
         })?;
@@ -798,7 +830,7 @@ where
                 self.make_error_response(Unauthorized, request, ResponseErrorLevel::Warn)
             })?;
 
-        Ok(())
+        Ok(username.clone())
     }
 
     fn create_new_allocation(
@@ -867,7 +899,32 @@ where
         debug_assert!(existing.is_none());
     }
 
-    fn send_message(&mut self, message: Message<Attribute>, recipient: ClientSocket) {
+    fn authenticate_and_send(
+        &mut self,
+        username: &str,
+        request: &impl StunRequest,
+        message: Message<Attribute>,
+        recipient: ClientSocket,
+    ) {
+        let authenticated_message = match AuthenticatedMessage::new(
+            &self.auth_secret,
+            username,
+            message,
+        ) {
+            Ok(message) => message,
+            Err(e) => {
+                tracing::warn!(target: "relay", error = std_dyn_err(&e), "Failed to authenticate message");
+                let error_response =
+                    self.make_error_response(ServerError, request, ResponseErrorLevel::Warn);
+
+                AuthenticatedMessage::new_dangerous_unauthenticated(error_response)
+            }
+        };
+
+        self.send_message(authenticated_message, recipient);
+    }
+
+    fn send_message(&mut self, message: AuthenticatedMessage, recipient: ClientSocket) {
         let method = message.method();
         let class = message.class();
         let error_code = message.get_attribute::<ErrorCode>().map(|e| e.code());
