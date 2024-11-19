@@ -109,6 +109,16 @@ impl ClientMessage<'_> {
             ClientMessage::ChannelData(_) => None,
         }
     }
+
+    pub fn username(&self) -> Option<&Username> {
+        match self {
+            ClientMessage::ChannelData(_) | ClientMessage::Binding(_) => None,
+            ClientMessage::Allocate(request) => request.username(),
+            ClientMessage::Refresh(request) => request.username(),
+            ClientMessage::ChannelBind(request) => request.username(),
+            ClientMessage::CreatePermission(request) => request.username(),
+        }
+    }
 }
 
 #[derive(Debug)]

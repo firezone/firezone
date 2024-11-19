@@ -1,5 +1,6 @@
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use base64::Engine;
+use bytecodec::Encode;
 use once_cell::sync::Lazy;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::digest::FixedOutput;
@@ -8,7 +9,10 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
+use stun_codec::Message;
 use uuid::Uuid;
+
+use crate::Attribute;
 
 // TODO: Upstream a const constructor to `stun-codec`.
 pub static FIREZONE: Lazy<Realm> =
@@ -48,6 +52,72 @@ impl MessageIntegrityExt for MessageIntegrity {
         .map_err(|_| Error::InvalidPassword)?;
 
         Ok(())
+    }
+}
+
+pub(crate) struct AuthenticatedMessage(Message<Attribute>);
+
+impl AuthenticatedMessage {
+    /// Creates a new [`AuthenticatedMessage`] that isn't actually authenticated.
+    ///
+    /// This should only be used in circumstances where we cannot authenticate the message because e.g. the original request wasn't authenticated either.
+    pub(crate) fn new_dangerous_unauthenticated(message: Message<Attribute>) -> Self {
+        Self(message)
+    }
+
+    pub(crate) fn new(
+        relay_secret: &SecretString,
+        username: &str,
+        mut message: Message<Attribute>,
+    ) -> Result<Self, Error> {
+        let (expiry_unix_timestamp, salt) = split_username(username)?;
+        let expired = systemtime_from_unix(expiry_unix_timestamp);
+
+        let username = Username::new(format!("{}:{}", expiry_unix_timestamp, salt))
+            .map_err(|_| Error::InvalidUsername)?;
+        let password = generate_password(relay_secret, expired, salt);
+
+        let message_integrity =
+            MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)?;
+
+        message.add_attribute(message_integrity);
+
+        Ok(Self(message))
+    }
+
+    pub fn class(&self) -> stun_codec::MessageClass {
+        self.0.class()
+    }
+
+    pub fn method(&self) -> stun_codec::Method {
+        self.0.method()
+    }
+
+    pub fn get_attribute<T>(&self) -> Option<&T>
+    where
+        T: stun_codec::Attribute,
+        Attribute: stun_codec::convert::TryAsRef<T>,
+    {
+        self.0.get_attribute()
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct MessageEncoder(stun_codec::MessageEncoder<Attribute>);
+
+impl Encode for MessageEncoder {
+    type Item = AuthenticatedMessage;
+
+    fn encode(&mut self, buf: &mut [u8], eos: bytecodec::Eos) -> bytecodec::Result<usize> {
+        self.0.encode(buf, eos)
+    }
+
+    fn start_encoding(&mut self, item: Self::Item) -> bytecodec::Result<()> {
+        self.0.start_encoding(item.0)
+    }
+
+    fn requiring_bytes(&self) -> bytecodec::ByteCount {
+        self.0.requiring_bytes()
     }
 }
 
@@ -92,7 +162,7 @@ impl Nonces {
     }
 }
 
-#[derive(Debug, PartialEq, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     #[error("expired")]
     Expired,
@@ -102,6 +172,8 @@ pub(crate) enum Error {
     InvalidUsername,
     #[error("invalid nonce")]
     InvalidNonce,
+    #[error("cannot authenticate message")]
+    CannotAuthenticate(#[from] bytecodec::Error),
 }
 
 pub(crate) fn split_username(username: &str) -> Result<(u64, &str), Error> {
@@ -207,7 +279,7 @@ mod tests {
             systemtime_from_unix(1685200000),
         );
 
-        assert_eq!(result.unwrap_err(), Error::Expired)
+        assert!(matches!(result.unwrap_err(), Error::Expired))
     }
 
     #[test]
@@ -224,7 +296,7 @@ mod tests {
             systemtime_from_unix(168520000 + 1000),
         );
 
-        assert_eq!(result.unwrap_err(), Error::InvalidPassword)
+        assert!(matches!(result.unwrap_err(), Error::InvalidPassword))
     }
 
     #[test]
@@ -241,7 +313,7 @@ mod tests {
             systemtime_from_unix(168520000 + 1000),
         );
 
-        assert_eq!(result.unwrap_err(), Error::InvalidUsername)
+        assert!(matches!(result.unwrap_err(), Error::InvalidUsername))
     }
 
     #[test]
@@ -255,10 +327,10 @@ mod tests {
             nonces.handle_nonce_used(nonce).unwrap();
         }
 
-        assert_eq!(
+        assert!(matches!(
             nonces.handle_nonce_used(nonce).unwrap_err(),
             Error::InvalidNonce
-        );
+        ));
     }
 
     #[test]
@@ -266,10 +338,10 @@ mod tests {
         let mut nonces = Nonces::default();
         let nonce = Uuid::new_v4();
 
-        assert_eq!(
+        assert!(matches!(
             nonces.handle_nonce_used(nonce).unwrap_err(),
             Error::InvalidNonce
-        );
+        ));
     }
 
     fn message_integrity(

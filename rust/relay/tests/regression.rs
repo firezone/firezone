@@ -10,7 +10,9 @@ use secrecy::SecretString;
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::time::{Duration, Instant, SystemTime};
-use stun_codec::rfc5389::attributes::{ErrorCode, Nonce, Realm, Username, XorMappedAddress};
+use stun_codec::rfc5389::attributes::{
+    ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
+};
 use stun_codec::rfc5389::errors::Unauthorized;
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, XorPeerAddress, XorRelayAddress};
@@ -763,16 +765,23 @@ impl TestServer {
 
             match (expected_output, actual_output) {
                 (
-                    Output::SendMessage((to, message)),
+                    Output::SendMessage((to, mut message)),
                     Command::SendMessage { payload, recipient },
                 ) => {
+                    let sent_message = parse_message(&payload);
+
+                    // In order to avoid simulating authentication, we copy the MessageIntegrity attribute.
+                    if let Some(mi) = sent_message.get_attribute::<MessageIntegrity>() {
+                        message.add_attribute(mi.clone());
+                    }
+
                     let expected_bytes = MessageEncoder::new()
                         .encode_into_bytes(message.clone())
                         .unwrap();
 
                     if expected_bytes != payload {
                         let expected_message = format!("{:?}", message);
-                        let actual_message = format!("{:?}", parse_message(&payload));
+                        let actual_message = format!("{:?}", sent_message);
 
                         difference::assert_diff!(&expected_message, &actual_message, "\n", 0);
                     }
