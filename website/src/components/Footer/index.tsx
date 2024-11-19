@@ -216,16 +216,6 @@ export default function Footer() {
             <p>WireGuard is a registered trademark of Jason A. Donenfeld.</p>
             <p>Firezone is a registered trademark of Firezone, Inc.</p>
           </div>
-          <div className="mt-4 sm:mt-0">
-            <ActionLink
-              href="https://probe.sh"
-              size="sm"
-              color="white"
-              transitionColor="primary-450"
-            >
-              Test your WireGuard connection
-            </ActionLink>
-          </div>
         </div>
         <hr className="my-2 border-neutral-500 sm:mx-auto md:my-4" />
         <div className="flex grid sm:grid-cols-3">
