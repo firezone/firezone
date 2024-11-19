@@ -15,7 +15,7 @@ tauri-build = { version = "2.0.1", features = [] }
 anyhow = { version = "1.0.89" }
 atomicwrites = { workspace = true }
 chrono = { workspace = true }
-clap = { version = "4.5.20", features = ["derive", "env"] }
+clap = { version = "4.5.21", features = ["derive", "env"] }
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
 firezone-bin-shared = { workspace = true }

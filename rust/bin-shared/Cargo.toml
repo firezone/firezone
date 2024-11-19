@@ -8,7 +8,7 @@ description = "Firezone-specific modules shared between binaries."
 [dependencies]
 anyhow = "1.0.82"
 axum = { version = "0.7.7", default-features = false, features = ["http1", "tokio"] }
-clap = { version = "4.5.19", features = ["derive", "env"] }
+clap = { version = "4.5.21", features = ["derive", "env"] }
 firezone-logging = { workspace = true }
 futures = "0.3"
 hex-literal = "0.4.1"
