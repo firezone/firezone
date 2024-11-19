@@ -312,6 +312,16 @@ impl Allocation {
         let rtt = now.duration_since(sent_at);
         Span::current().record("rtt", field::debug(rtt));
 
+        if tracing::enabled!(tracing::Level::DEBUG) {
+            let request = original_request
+                .attributes()
+                .map(display_attr)
+                .collect::<Vec<_>>();
+            let response = message.attributes().map(display_attr).collect::<Vec<_>>();
+
+            tracing::debug!(?request, ?response);
+        }
+
         if let Some(error) = message.get_attribute::<ErrorCode>() {
             // If we sent a nonce but receive 401 instead of 438 then our credentials are invalid.
             if error.code() == Unauthorized::CODEPOINT
@@ -443,7 +453,7 @@ impl Allocation {
                 _ => {}
             }
 
-            tracing::warn!(error = %error.reason_phrase(), code = %error.code(), "TURN request failed");
+            tracing::warn!(error = %error.reason_phrase(), code = %error.code(), "TURN request failed with unhandled error code");
 
             return true;
         }
@@ -1434,6 +1444,28 @@ impl Channel {
     /// We will keep all channels alive that we have received data on since we created them.
     fn record_received(&mut self, now: Instant) {
         self.last_received = now;
+    }
+}
+
+fn display_attr(attr: &Attribute) -> String {
+    match attr {
+        Attribute::RequestedTransport(inner) => format!("{inner:?}"),
+        Attribute::AdditionalAddressFamily(inner) => format!("{inner:?}"),
+        Attribute::ErrorCode(inner) => {
+            format!("ErrorCode({}, {})", inner.code(), inner.reason_phrase())
+        }
+        Attribute::Nonce(inner) => format!("Nonce({})", inner.value()),
+        Attribute::Realm(inner) => format!("Realm({})", inner.text()),
+        Attribute::Username(inner) => format!("Username({})", inner.name()),
+        Attribute::MessageIntegrity(inner) => {
+            format!("MessageIntegrity({})", hex::encode_upper(inner.hmac_sha1()))
+        }
+        Attribute::XorMappedAddress(inner) => format!("{inner:?}"),
+        Attribute::XorRelayAddress(inner) => format!("{inner:?}"),
+        Attribute::XorPeerAddress(inner) => format!("{inner:?}"),
+        Attribute::ChannelNumber(inner) => format!("{inner:?}"),
+        Attribute::Lifetime(inner) => format!("{inner:?}"),
+        Attribute::Software(inner) => format!("Software({})", inner.description()),
     }
 }
 
