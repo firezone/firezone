@@ -303,6 +303,33 @@ impl Allocation {
         Span::current().record("method", field::display(message.method()));
         Span::current().record("class", field::display(message.class()));
 
+        // Early return to avoid cryptographic work in case it isn't our message.
+        if !self.sent_requests.contains_key(&transaction_id) {
+            return false;
+        }
+
+        let passed_message_integrity_check = message
+            .get_attribute::<MessageIntegrity>()
+            .is_some_and(|mi| {
+                let Some(credentials) = &self.credentials else {
+                    tracing::debug!("Cannot check message integrity without credentials");
+
+                    return false;
+                };
+
+                mi.check_long_term_credential(
+                    &credentials.username,
+                    &credentials.realm,
+                    &credentials.password,
+                )
+                .is_ok()
+            });
+
+        if message.method() != BINDING && !passed_message_integrity_check {
+            tracing::warn!("Message integrity check failed");
+            return true; // The message still indicated that it was for this `Allocation`.
+        }
+
         let Some((original_dst, original_request, sent_at, _, _)) =
             self.sent_requests.remove(&transaction_id)
         else {
