@@ -35,7 +35,7 @@ tracing = { version = "0.1.40" }
 tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "v0.1.x" } # Contains `dbg!` but for `tracing`.
 tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
 secrecy = "0.8"
-str0m = { version = "0.6.2", default-features = false }
+str0m = { version = "0.6.3", default-features = false, features = ["sha1"] }
 futures-bounded = "0.2.1"
 domain = { version = "0.10", features = ["serde"] }
 dns-lookup = "2.0"

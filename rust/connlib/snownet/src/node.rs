@@ -2186,7 +2186,6 @@ where
 
 fn new_agent() -> IceAgent {
     let mut agent = IceAgent::new();
-    agent.set_max_candidate_pairs(300);
     agent.set_timing_advance(Duration::ZERO);
     apply_default_stun_timings(&mut agent);
 
