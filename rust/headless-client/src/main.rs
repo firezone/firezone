@@ -123,13 +123,31 @@ fn main() -> Result<()> {
 
     let mut cli = Cli::try_parse()?;
 
+    // Docs indicate that `remove_var` should actually be marked unsafe
+    // SAFETY: We haven't spawned any other threads, this code should be the first
+    // thing to run after entering `main` and parsing CLI args.
+    // So nobody else is reading the environment.
+    unsafe {
+        // This removes the token from the environment per <https://security.stackexchange.com/a/271285>. We run as root so it may not do anything besides defense-in-depth.
+        std::env::remove_var(TOKEN_ENV_KEY);
+    }
+    assert!(std::env::var(TOKEN_ENV_KEY).is_err());
+
     // Modifying the environment of a running process is unsafe. If any other
     // thread is reading or writing the environment, something bad can happen.
     // So `run` must take over as early as possible during startup, and
     // take the token env var before any other threads spawn.
-
     let token_env_var = cli.token.take().map(SecretString::from);
-    let cli = cli;
+
+    // TODO: This might have the same issue with fatal errors not getting logged
+    // as addressed for the IPC service in PR #5216
+    let (layer, _handle) = cli
+        .common
+        .log_dir
+        .as_deref()
+        .map(firezone_logging::file::layer)
+        .unzip();
+    firezone_logging::setup_global_subscriber(layer).context("Failed to set up logging")?;
 
     // Deactivate DNS control before starting telemetry or connecting to the portal,
     // in case a previous run of Firezone left DNS control on and messed anything up.
@@ -147,26 +165,6 @@ fn main() -> Result<()> {
             firezone_telemetry::HEADLESS_DSN,
         );
     }
-
-    // Docs indicate that `remove_var` should actually be marked unsafe
-    // SAFETY: We haven't spawned any other threads, this code should be the first
-    // thing to run after entering `main` and parsing CLI args.
-    // So nobody else is reading the environment.
-    unsafe {
-        // This removes the token from the environment per <https://security.stackexchange.com/a/271285>. We run as root so it may not do anything besides defense-in-depth.
-        std::env::remove_var(TOKEN_ENV_KEY);
-    }
-    assert!(std::env::var(TOKEN_ENV_KEY).is_err());
-
-    // TODO: This might have the same issue with fatal errors not getting logged
-    // as addressed for the IPC service in PR #5216
-    let (layer, _handle) = cli
-        .common
-        .log_dir
-        .as_deref()
-        .map(firezone_logging::file::layer)
-        .unzip();
-    firezone_logging::setup_global_subscriber(layer).context("Failed to set up logging")?;
 
     tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
 
