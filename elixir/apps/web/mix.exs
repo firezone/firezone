@@ -75,12 +75,7 @@ defmodule Web.MixProject do
       {:nimble_csv, "~> 1.2"},
 
       # Test deps
-      # TODO: use Hex after a new version of Floki is released
-      {:floki,
-       only: :test,
-       override: true,
-       github: "philss/floki",
-       ref: "3d5adab58a41b020a775baca82fe15c0c364daab"},
+      {:floki, "~> 0.36.3", only: :test},
       {:bypass, "~> 2.1", only: :test},
       {:bureaucrat, "~> 0.2.9", only: :test},
       {:wallaby, "~> 0.30.0", only: :test},

@@ -50,9 +50,7 @@ defmodule Firezone.MixProject do
       {:phoenix, "~> 1.7.0"},
       {:phoenix_live_view, "~> 1.0.0-rc.0"},
 
-      # TODO: remove it after new version of Floki is released
-      {:floki,
-       override: true, github: "philss/floki", ref: "3d5adab58a41b020a775baca82fe15c0c364daab"}
+      {:floki, "~> 0.36.3"}
     ]
   end
 
