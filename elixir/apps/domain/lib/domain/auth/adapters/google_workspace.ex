@@ -38,6 +38,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
   @impl true
   def identity_changeset(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
     changeset
+    |> Domain.Repo.Changeset.trim_change(:email)
     |> Domain.Repo.Changeset.trim_change(:provider_identifier)
     |> Domain.Repo.Changeset.copy_change(:provider_virtual_state, :provider_state)
     |> Ecto.Changeset.put_change(:provider_virtual_state, %{})

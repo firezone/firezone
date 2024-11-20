@@ -13,14 +13,16 @@ defmodule API.Schemas.Identity do
         id: %Schema{type: :string, description: "Identity ID"},
         actor_id: %Schema{type: :string, description: "Actor ID"},
         provider_id: %Schema{type: :string, description: "Identity Provider ID"},
-        provider_identifier: %Schema{type: :string, description: "Identifier from Provider"}
+        provider_identifier: %Schema{type: :string, description: "Identifier from Provider"},
+        email: %Schema{type: :string, description: "Email"}
       },
-      required: [:id, :actor_id, :provider_id, :provider_identifier],
+      required: [:id, :actor_id, :provider_id, :provider_identifier, :email],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "actor_id" => "cdfa97e6-cca1-41db-8fc7-864daedb46df",
         "provider_id" => "989f9e96-e348-47ec-ba85-869fcd7adb19",
-        "provider_identifier" => "foo@bar.com"
+        "provider_identifier" => "2551705710219359",
+        "email" => "foo@bar.com"
       }
     })
   end
@@ -40,7 +42,8 @@ defmodule API.Schemas.Identity do
       required: [:identity],
       example: %{
         "identity" => %{
-          "provider_identifier" => "foo@bar.com"
+          "provider_identifier" => "2551705710219359",
+          "email" => "foo@bar.com"
         }
       }
     })
