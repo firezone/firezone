@@ -64,7 +64,11 @@ jobs:
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
         name: "cargo clippy"
         shell: bash
-
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          log-level: warn
+          manifest-path: ./rust/Cargo.toml
+          command: check --hide-inclusion-graph
   test:
     name: test-${{ matrix.runs-on }}
     strategy:
