@@ -391,6 +391,7 @@ jobs:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}
           tags: |
             type=raw,value=latest
+            type=raw,value={{branch}}
             type=raw,value=${{ inputs.sha }}
             ${{ matrix.image.version && format('type=raw,value={0}', matrix.image.version) }}
             ${{ matrix.image.version && format('type=raw,value={0}-{1}', matrix.image.version, inputs.sha) }}
