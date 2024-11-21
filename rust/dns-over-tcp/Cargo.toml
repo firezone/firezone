@@ -3,6 +3,7 @@ name = "dns-over-tcp"
 version = "0.1.0"
 edition = "2021"
 description = "User-space implementation of DNS over TCP."
+license = { workspace = true }
 
 [dependencies]
 anyhow = "1.0"

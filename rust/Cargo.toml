@@ -25,6 +25,9 @@ members = [
 
 resolver = "2"
 
+[workspace.package]
+license = "Apache-2.0"
+
 [workspace.dependencies]
 atomicwrites = "0.4.4"
 boringtun = { version = "0.6", default-features = false }

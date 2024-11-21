@@ -6,6 +6,7 @@ description = "Firezone"
 edition = "2021"
 default-run = "firezone-gui-client"
 authors = ["Firezone, Inc."]
+license = { workspace = true }
 
 [build-dependencies]
 anyhow = { version = "1.0.89" }

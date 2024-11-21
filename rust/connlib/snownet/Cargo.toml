@@ -2,6 +2,7 @@
 name = "snownet"
 version = "0.1.0"
 edition = "2021"
+license = { workspace = true }
 
 [dependencies]
 backoff = "0.4.0"
