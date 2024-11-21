@@ -9,7 +9,7 @@
 //!
 //! On startup, the server generates a 32-byte secret (referred to as `relay_secret`) that is only ever stored in-memory.
 //! This secret is shared with the Firezone portal upon connecting with the WebSocket.
-//! The portal uses this secret this generate credentials for each TURN client.
+//! The portal uses this secret to generate credentials for each TURN client.
 //! The credentials take the form of:
 //!
 //! - username: `{unix_expiry_timestamp}:{salt}`
