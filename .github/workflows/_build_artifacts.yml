@@ -281,6 +281,7 @@ jobs:
           # We only version client and gateway
           tags: |
             type=raw,value=latest
+            type=raw,value={{branch}}
             type=raw,value=${{ inputs.sha }}
             ${{ matrix.name.version && format('type=raw,value={0}', matrix.name.version) }}
             ${{ matrix.name.version && format('type=raw,value={0}-{1}', matrix.name.version, inputs.sha) }}
