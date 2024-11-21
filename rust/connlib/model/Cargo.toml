@@ -7,12 +7,12 @@ license = { workspace = true }
 [dependencies]
 boringtun = { workspace = true }
 domain = { workspace = true }
-ip_network = { version = "0.4", default-features = false, features = ["serde"] }
-serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
-uuid = { version = "1.10", default-features = false, features = ["std", "v4", "serde"] }
+ip_network = { workspace = true, features = ["serde"] }
+serde = { workspace = true, default-features = false, features = ["derive", "std"] }
+uuid = { workspace = true, default-features = false, features = ["std", "v4", "serde"] }
 
 [dev-dependencies]
-itertools = "0.13"
+itertools = { workspace = true }
 
 [lints]
 workspace = true

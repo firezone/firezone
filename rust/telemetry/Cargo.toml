@@ -5,13 +5,13 @@ edition = "2021"
 license = { workspace = true }
 
 [dependencies]
-sentry = { version = "0.34.0", default-features = false, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls", "tracing"] }
-sentry-anyhow = "0.34.0"
+sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls", "tracing"] }
+sentry-anyhow = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-thiserror = "1.0.68"
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]

@@ -6,7 +6,7 @@ license = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [target.'cfg(target_family = "unix")'.dependencies]
-libc = "0.2"
+libc = { workspace = true }
 tokio = { workspace = true }
 
 [lints]

@@ -6,25 +6,25 @@ license = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-backoff = "0.4.0"
-base64 = "0.22.1"
+backoff = { workspace = true }
+base64 = { workspace = true }
 firezone-logging = { workspace = true }
-futures = "0.3.29"
-hex = "0.4"
-libc = "0.2"
-os_info = { version = "3", default-features = false }
-rand_core = "0.6.4"
+futures = { workspace = true }
+hex = { workspace = true }
+libc = { workspace = true }
+os_info = { workspace = true }
+rand_core = { workspace = true }
 secrecy = { workspace = true }
-serde = { version = "1.0.210", features = ["derive"] }
-serde_json = "1.0.132"
-sha2 = "0.10.8"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
 socket-factory = { workspace = true }
-thiserror = "1.0.68"
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net", "time"] }
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
-url = "2.5.2"
-uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
+url = { workspace = true }
+uuid = { workspace = true, default-features = false, features = ["std", "v4"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 hostname = "0.4.0"

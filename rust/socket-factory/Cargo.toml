@@ -6,7 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 firezone-logging = { workspace = true }
-quinn-udp = "0.5.2"
+quinn-udp = { workspace = true }
 socket2 = { workspace = true }
-tokio = { version = "1.41", features = ["net"] }
-tracing = "0.1"
+tokio = { workspace = true, features = ["net"] }
+tracing = { workspace = true }

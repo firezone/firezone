@@ -6,29 +6,29 @@ edition = "2021"
 license = { workspace = true }
 
 [build-dependencies]
-swift-bridge-build = "0.1.57"
+swift-bridge-build = { workspace = true }
 
 [dependencies]
-anyhow = "1.0.86"
-backoff = "0.4.0"
+anyhow = { workspace = true }
+backoff = { workspace = true }
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
-ip_network = "0.4"
-libc = "0.2"
+ip_network = { workspace = true }
+libc = { workspace = true }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
-serde_json = "1"
+serde_json = { workspace = true }
 socket-factory = { workspace = true }
 swift-bridge = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 tracing = { workspace = true }
-tracing-appender = "0.2"
-tracing-subscriber = "0.3"
+tracing-appender = { workspace = true }
+tracing-subscriber = { workspace = true }
 tun = { workspace = true }
-url = "2.5.2"
+url = { workspace = true }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 oslog = { version = "0.2.0", default-features = false }

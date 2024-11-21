@@ -11,14 +11,14 @@ license = { workspace = true }
 proptest = ["dep:proptest"]
 
 [dependencies]
-anyhow = "1.0.86"
-etherparse = "0.16"
-proptest = { version = "1", optional = true }
-thiserror = "1"
-tracing = "0.1"
+anyhow = { workspace= true}
+etherparse = { workspace = true }
+proptest = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
-test-strategy = "0.4.0"
+test-strategy = { workspace = true }
 
 [lints]
 workspace = true
