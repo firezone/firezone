@@ -85,8 +85,6 @@ ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" }
 proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "main" }
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.26" } # Waiting for release.
-sentry-tracing = { git = "https://github.com/thomaseizinger/sentry-rust", branch = "bundled-changes-waiting-for-release" }
-sentry-anyhow = { git = "https://github.com/thomaseizinger/sentry-rust", branch = "bundled-changes-waiting-for-release" }
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
