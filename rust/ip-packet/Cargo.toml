@@ -11,7 +11,7 @@ license = { workspace = true }
 proptest = ["dep:proptest"]
 
 [dependencies]
-anyhow = { workspace= true}
+anyhow = { workspace = true }
 etherparse = { workspace = true }
 proptest = { workspace = true, optional = true }
 thiserror = { workspace = true }

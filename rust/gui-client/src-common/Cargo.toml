@@ -16,6 +16,7 @@ firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
+keyring = { workspace = true, features = ["crypto-rust", "sync-secret-service", "windows-native"] }
 native-dialog = { workspace = true }
 output_vt100 = { workspace = true }
 png = { workspace = true } # `png` is mostly free since we already need it for Tauri
@@ -36,7 +37,6 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zip = { workspace = true, features = ["deflate", "time"] }
-keyring = { workspace = true, features = ["crypto-rust", "sync-secret-service", "windows-native"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = { workspace = true }

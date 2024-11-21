@@ -7,7 +7,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-axum = { workspace = true, features = ["http1", "tokio"] }
+axum = { workspace = true, features = ["http1", "tokio", "query"] }
 futures = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["net"] }
