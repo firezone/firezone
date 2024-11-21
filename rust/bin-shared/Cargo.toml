@@ -25,8 +25,8 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = { workspace = true }
-netlink-packet-core = { version = "0.7", default-features = false }
-netlink-packet-route = { version = "0.19", default-features = false }
+netlink-packet-core = { version = "0.7" }
+netlink-packet-route = { version = "0.19" }
 nix = { workspace = true, features = ["socket"] }
 rtnetlink = { workspace = true }
 zbus = "4.4" # Can't use `zbus`'s `tokio` feature here, or it will break toast popups all the way over in `gui-client`.

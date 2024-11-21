@@ -14,7 +14,7 @@ firezone-tunnel = { workspace = true }
 ip_network = { workspace = true }
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
-serde = { workspace = true, default-features = false, features = ["std", "derive"] }
+serde = { workspace = true, features = ["std", "derive"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }

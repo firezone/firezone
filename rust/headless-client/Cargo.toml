@@ -36,8 +36,8 @@ tokio-stream = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-url = { workspace = true, default-features = false }
-uuid = { workspace = true, default-features = false, features = ["std", "v4", "serde"] }
+url = { workspace = true }
+uuid = { workspace = true, features = ["std", "v4", "serde"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

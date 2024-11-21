@@ -25,13 +25,13 @@ hex = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 ip_network_table = { workspace = true }
-itertools = { workspace = true, default-features = false, features = ["use_std"] }
+itertools = { workspace = true, features = ["use_std"] }
 lru = { workspace = true }
 proptest = { workspace = true, optional = true }
 rand = { workspace = true }
 rangemap = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
-serde = { workspace = true, default-features = false, features = ["derive", "std"] }
+serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
@@ -41,7 +41,7 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
-uuid = { workspace = true, default-features = false, features = ["std", "v4"] }
+uuid = { workspace = true, features = ["std", "v4"] }
 
 [dev-dependencies]
 derivative = { workspace = true }

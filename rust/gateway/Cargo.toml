@@ -25,22 +25,22 @@ futures = { workspace = true }
 futures-bounded = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
-libc = { workspace = true, default-features = false, features = ["std", "const-extern-fn", "extra_traits"] }
+libc = { workspace = true, features = ["std", "const-extern-fn", "extra_traits"] }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
-serde = { workspace = true, default-features = false, features = ["std", "derive"] }
+serde = { workspace = true, features = ["std", "derive"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 static_assertions = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread", "fs", "signal"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
-url = { workspace = true, default-features = false }
+url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-serde_json = { workspace = true, default-features = false, features = ["std"] }
+serde_json = { workspace = true, features = ["std"] }
 
 [lints]
 workspace = true
