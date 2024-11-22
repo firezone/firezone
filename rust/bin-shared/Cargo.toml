@@ -3,18 +3,19 @@ name = "firezone-bin-shared"
 version = "0.1.0"
 edition = "2021"
 description = "Firezone-specific modules shared between binaries."
+license = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.82"
-axum = { version = "0.7.7", default-features = false, features = ["http1", "tokio"] }
-clap = { version = "4.5.21", features = ["derive", "env"] }
+anyhow = { workspace = true }
+axum = { workspace = true, features = ["http1", "tokio"] }
+clap = { workspace = true, features = ["derive", "env"] }
 firezone-logging = { workspace = true }
-futures = "0.3"
-hex-literal = "0.4.1"
-ip_network = { version = "0.4", default-features = false, features = ["serde"] }
+futures = { workspace = true, features = ["std", "async-await"] }
+hex-literal = { workspace = true }
+ip_network = { workspace = true, features = ["serde"] }
 socket-factory = { workspace = true }
-thiserror = "1.0.68"
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "net", "rt", "sync"] }
 tracing = { workspace = true }
 tun = { workspace = true }
@@ -23,24 +24,24 @@ tun = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-libc = "0.2"
-netlink-packet-core = { version = "0.7", default-features = false }
-netlink-packet-route = { version = "0.19", default-features = false }
-nix = { version = "0.29.0", features = ["socket"] }
+libc = { workspace = true }
+netlink-packet-core = { version = "0.7" }
+netlink-packet-route = { version = "0.19" }
+nix = { workspace = true, features = ["socket"] }
 rtnetlink = { workspace = true }
 zbus = "4.4" # Can't use `zbus`'s `tokio` feature here, or it will break toast popups all the way over in `gui-client`.
 
 [target.'cfg(windows)'.dependencies]
-known-folders = "1.2.0"
+known-folders = { workspace = true }
 ring = "0.17"
-uuid = { version = "1.10.0", features = ["v4"] }
+uuid = { workspace = true, features = ["v4"] }
 windows-core = "0.58.0"
 windows-implement = "0.58.0"
 wintun = "0.5.0"
-winreg = "0.52.0"
+winreg = { workspace = true }
 
 [target.'cfg(windows)'.dependencies.windows]
-version = "0.58.0"
+workspace = true
 features = [
   # For implementing COM interfaces
   "implement",
