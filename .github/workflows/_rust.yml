@@ -50,9 +50,11 @@ jobs:
         id: setup-rust
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 5
-      - uses: taiki-e/install-action@cargo-udeps
+      - uses: taiki-e/install-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: cargo-udeps,cargo-deny
       - run: |
           rustup install --no-self-update nightly-2024-09-01 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
           cargo +nightly-2024-09-01 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
@@ -64,11 +66,8 @@ jobs:
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
         name: "cargo clippy"
         shell: bash
-      - uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          log-level: warn
-          manifest-path: ./rust/Cargo.toml
-          command: check --hide-inclusion-graph
+      - run: cargo deny check --hide-inclusion-graph
+        shell: bash
   test:
     name: test-${{ matrix.runs-on }}
     strategy:
