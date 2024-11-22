@@ -4,22 +4,23 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Firezone, Inc."]
 publish = false
+license = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1"
-nu-ansi-term = { version = "0.50" }
-rand = "0.8"
-sentry-tracing = "0.34.0"
-time = { version = "0.3.36", features = ["formatting"] }
+anyhow = { workspace = true }
+nu-ansi-term = { workspace = true }
+rand = { workspace = true }
+sentry-tracing = { workspace = true }
+time = { workspace = true, features = ["formatting"] }
 tracing = { workspace = true }
-tracing-appender = { version = "0.2.2" }
-tracing-log = "0.2"
-tracing-stackdriver = { version = "0.11.0" }
+tracing-appender = { workspace = true }
+tracing-log = { workspace = true }
+tracing-stackdriver = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [dev-dependencies]
-thiserror = "1"
+thiserror = { workspace = true }
 
 [lints]
 workspace = true
