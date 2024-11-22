@@ -1061,22 +1061,24 @@ impl Allocation {
 
     #[cfg(not(test))]
     fn check_message_integrity(&self, message: &Message<Attribute>) -> bool {
-        message
-            .get_attribute::<MessageIntegrity>()
-            .is_some_and(|mi| {
-                let Some(credentials) = &self.credentials else {
-                    tracing::debug!("Cannot check message integrity without credentials");
+        let Some(mi) = message.get_attribute::<MessageIntegrity>() else {
+            tracing::debug!("Message does not have a `MessageIntegrity` attribute");
 
-                    return false;
-                };
+            return false;
+        };
 
-                mi.check_long_term_credential(
-                    &credentials.username,
-                    &credentials.realm,
-                    &credentials.password,
-                )
-                .is_ok()
-            })
+        let Some(credentials) = &self.credentials else {
+            tracing::debug!("Cannot check message integrity without credentials");
+
+            return false;
+        };
+
+        mi.check_long_term_credential(
+            &credentials.username,
+            &credentials.realm,
+            &credentials.password,
+        )
+        .is_ok()
     }
 }
 
