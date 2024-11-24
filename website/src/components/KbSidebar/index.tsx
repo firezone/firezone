@@ -158,6 +158,9 @@ export default function KbSidebar() {
             <SidebarItem href="/kb/reference/rest-api">REST API</SidebarItem>
             <SidebarItem href="/kb/reference/faq">FAQ</SidebarItem>
             <SidebarItem href="/kb/reference/glossary">Glossary</SidebarItem>
+            <SidebarItem href="/kb/reference/restricted-regions">
+              Restricted regions
+            </SidebarItem>
           </SidebarCollapse>
         </SidebarItemGroup>
       </SidebarItems>
