@@ -7,6 +7,7 @@ use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
+use super::unreachable_hosts::UnreachableHosts;
 use crate::client::Resource;
 use crate::dns::{self, is_subdomain};
 use crate::gateway::DnsResourceNatEntry;
@@ -388,7 +389,11 @@ impl TunnelTest {
 
         'outer: while self.flux_capacitor.now::<Instant>() < cut_off {
             // `handle_timeout` needs to be called at the very top to advance state after we have made other modifications.
-            self.handle_timeout(&ref_state.global_dns_records, buffered_transmits);
+            self.handle_timeout(
+                &ref_state.global_dns_records,
+                &ref_state.unreachable_hosts,
+                buffered_transmits,
+            );
             let now = self.flux_capacitor.now();
 
             for (id, gateway) in self.gateways.iter_mut() {
@@ -519,6 +524,7 @@ impl TunnelTest {
     fn handle_timeout(
         &mut self,
         global_dns_records: &DnsRecords,
+        unreachable_hosts: &UnreachableHosts,
         buffered_transmits: &mut BufferedTransmits,
     ) {
         let now = self.flux_capacitor.now();
@@ -566,9 +572,9 @@ impl TunnelTest {
             }
 
             while let Some(transmit) = gateway.poll_transmit(now) {
-                let Some(reply) =
-                    gateway.exec_mut(|g| g.receive(transmit, now, self.flux_capacitor.now()))
-                else {
+                let Some(reply) = gateway.exec_mut(|g| {
+                    g.receive(transmit, unreachable_hosts, now, self.flux_capacitor.now())
+                }) else {
                     continue;
                 };
 

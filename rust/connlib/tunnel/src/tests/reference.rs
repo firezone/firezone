@@ -1,4 +1,5 @@
 use super::dns_records::DnsRecords;
+use super::unreachable_hosts::{unreachable_hosts, UnreachableHosts};
 use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
@@ -35,6 +36,9 @@ pub(crate) struct ReferenceState {
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: DnsRecords,
 
+    /// A subset of all DNS resource records that have been selected to produce an ICMP error.
+    pub(crate) unreachable_hosts: UnreachableHosts,
+
     pub(crate) network: RoutingTable,
 }
 
@@ -64,6 +68,28 @@ impl ReferenceState {
                     drop_direct_client_traffic,
                 )
             })
+            .prop_flat_map(
+                |(
+                    client,
+                    gateways,
+                    portal,
+                    records,
+                    relays,
+                    global_dns,
+                    drop_direct_client_traffic,
+                )| {
+                    (
+                        Just(client),
+                        Just(gateways),
+                        Just(portal),
+                        Just(records.clone()),
+                        unreachable_hosts(records),
+                        Just(relays),
+                        Just(global_dns),
+                        Just(drop_direct_client_traffic),
+                    )
+                },
+            )
             .prop_filter_map(
                 "network IPs must be unique",
                 |(
@@ -71,6 +97,7 @@ impl ReferenceState {
                     gateways,
                     portal,
                     records,
+                    unreachable_hosts,
                     relays,
                     mut global_dns,
                     drop_direct_client_traffic,
@@ -101,6 +128,7 @@ impl ReferenceState {
                         relays,
                         portal,
                         global_dns,
+                        unreachable_hosts,
                         drop_direct_client_traffic,
                         routing_table,
                     ))
@@ -108,7 +136,7 @@ impl ReferenceState {
             )
             .prop_filter(
                 "private keys must be unique",
-                |(c, gateways, _, _, _, _, _)| {
+                |(c, gateways, _, _, _, _, _, _)| {
                     let different_keys = gateways
                         .iter()
                         .map(|(_, g)| g.inner().key)
@@ -125,6 +153,7 @@ impl ReferenceState {
                     relays,
                     portal,
                     global_dns_records,
+                    unreachable_hosts,
                     drop_direct_client_traffic,
                     network,
                 )| {
@@ -134,6 +163,7 @@ impl ReferenceState {
                         relays,
                         portal,
                         global_dns_records,
+                        unreachable_hosts,
                         network,
                         drop_direct_client_traffic,
                     }

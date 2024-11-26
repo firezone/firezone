@@ -5,8 +5,10 @@ use super::{
     sim_net::{any_port, dual_ip_stack, host, Host},
     sim_relay::{map_explode, SimRelay},
     strategies::latency,
+    unreachable_hosts::{IcmpError, UnreachableHosts},
 };
 use crate::GatewayState;
+use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId};
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
@@ -14,7 +16,7 @@ use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, HashMap},
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     time::Instant,
 };
 
@@ -52,6 +54,7 @@ impl SimGateway {
     pub(crate) fn receive(
         &mut self,
         transmit: Transmit,
+        unreachable_hosts: &UnreachableHosts,
         now: Instant,
         utc_now: DateTime<Utc>,
     ) -> Option<Transmit<'static>> {
@@ -66,7 +69,7 @@ impl SimGateway {
             return None;
         };
 
-        self.on_received_packet(packet, now)
+        self.on_received_packet(packet, unreachable_hosts, now)
     }
 
     pub(crate) fn advance_resources(
@@ -115,8 +118,23 @@ impl SimGateway {
     }
 
     /// Process an IP packet received on the gateway.
-    fn on_received_packet(&mut self, packet: IpPacket, now: Instant) -> Option<Transmit<'static>> {
+    fn on_received_packet(
+        &mut self,
+        packet: IpPacket,
+        unreachable_hosts: &UnreachableHosts,
+        now: Instant,
+    ) -> Option<Transmit<'static>> {
         // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
+
+        let dst_ip = packet.destination();
+
+        // Check if the destination host is unreachable.
+        // If so, generate the error reply.
+        // We still want to do all the book-keeping in terms of tracking which requests we received.
+        // Therefore, pass the generated `icmp_error` to resulting `handle_` functions instead of sending it right away.
+        let icmp_error = unreachable_hosts
+            .icmp_error_for_ip(dst_ip)
+            .map(|icmp_error| icmp_error_reply(&packet, icmp_error).unwrap());
 
         if let Some(icmp) = packet.as_icmpv4() {
             if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
@@ -124,7 +142,7 @@ impl SimGateway {
                 tracing::debug!(%packet_id, "Received ICMP request");
                 self.received_icmp_requests
                     .insert(packet_id, packet.clone());
-                return self.handle_icmp_request(&packet, echo, icmp.payload(), now);
+                return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
             }
         }
 
@@ -134,12 +152,12 @@ impl SimGateway {
                 tracing::debug!(%packet_id, "Received ICMP request");
                 self.received_icmp_requests
                     .insert(packet_id, packet.clone());
-                return self.handle_icmp_request(&packet, echo, icmp.payload(), now);
+                return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
             }
         }
 
         if let Some(udp) = packet.as_udp() {
-            let socket = SocketAddr::new(packet.destination(), udp.destination_port());
+            let socket = SocketAddr::new(dst_ip, udp.destination_port());
 
             // NOTE: we can make this assumption because port 53 is excluded from non-dns query packets
             if let Some(server) = self.udp_dns_server_resources.get_mut(&socket) {
@@ -149,7 +167,7 @@ impl SimGateway {
         }
 
         if let Some(tcp) = packet.as_tcp() {
-            let socket = SocketAddr::new(packet.destination(), tcp.destination_port());
+            let socket = SocketAddr::new(dst_ip, tcp.destination_port());
 
             // NOTE: we can make this assumption because port 53 is excluded from non-dns query packets
             if let Some(server) = self.tcp_dns_server_resources.get_mut(&socket) {
@@ -158,7 +176,7 @@ impl SimGateway {
             }
         }
 
-        if let Some(reply) = echo_reply(packet.clone()) {
+        if let Some(reply) = icmp_error.or_else(|| echo_reply(packet.clone())) {
             self.request_received(&packet);
             let transmit = self
                 .sut
@@ -206,19 +224,23 @@ impl SimGateway {
         packet: &IpPacket,
         echo: IcmpEchoHeader,
         payload: &[u8],
+        icmp_error: Option<IpPacket>,
         now: Instant,
     ) -> Option<Transmit<'static>> {
-        let echo_response = ip_packet::make::icmp_reply_packet(
-            packet.destination(),
-            packet.source(),
-            echo.seq,
-            echo.id,
-            payload,
-        )
-        .expect("src and dst are taken from incoming packet");
+        let reply = icmp_error.unwrap_or_else(|| {
+            ip_packet::make::icmp_reply_packet(
+                packet.destination(),
+                packet.source(),
+                echo.seq,
+                echo.id,
+                payload,
+            )
+            .expect("src and dst are taken from incoming packet")
+        });
+
         let transmit = self
             .sut
-            .handle_tun_input(echo_response, now)
+            .handle_tun_input(reply, now)
             .unwrap()?
             .to_transmit()
             .into_owned();
@@ -253,6 +275,43 @@ pub(crate) fn ref_gateway_host() -> impl Strategy<Value = Host<RefGateway>> {
 
 fn ref_gateway() -> impl Strategy<Value = RefGateway> {
     private_key().prop_map(move |key| RefGateway { key })
+}
+
+fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {
+    use ip_packet::{icmpv4, icmpv6};
+
+    // We are sending a reply, so flip `src` and `dst`.
+    let src = packet.destination();
+    let dst = packet.source();
+    let payload = packet.packet(); // The original packet goes in the ICMP error payload.
+
+    match (src, dst) {
+        (IpAddr::V4(src), IpAddr::V4(dst)) => {
+            let icmpv4 = ip_packet::PacketBuilder::ipv4(src.octets(), dst.octets(), 20).icmpv4(
+                Icmpv4Type::DestinationUnreachable(match error {
+                    IcmpError::Network => icmpv4::DestUnreachableHeader::Network,
+                    IcmpError::Host => icmpv4::DestUnreachableHeader::Host,
+                    IcmpError::Port => icmpv4::DestUnreachableHeader::Port,
+                }),
+            );
+
+            ip_packet::build!(icmpv4, payload)
+        }
+        (IpAddr::V6(src), IpAddr::V6(dst)) => {
+            let icmpv6 = ip_packet::PacketBuilder::ipv6(src.octets(), dst.octets(), 20).icmpv6(
+                Icmpv6Type::DestinationUnreachable(match error {
+                    IcmpError::Network => icmpv6::DestUnreachableCode::NoRoute,
+                    IcmpError::Host => icmpv6::DestUnreachableCode::NoRoute,
+                    IcmpError::Port => icmpv6::DestUnreachableCode::Port,
+                }),
+            );
+
+            ip_packet::build!(icmpv6, payload)
+        }
+        (IpAddr::V6(_), IpAddr::V4(_)) | (IpAddr::V4(_), IpAddr::V6(_)) => {
+            bail!("Invalid IP combination")
+        }
+    }
 }
 
 fn echo_reply(mut req: IpPacket) -> Option<IpPacket> {
