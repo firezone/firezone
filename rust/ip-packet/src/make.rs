@@ -104,36 +104,6 @@ pub fn icmp_reply_packet(
     }
 }
 
-pub fn echo_reply(mut req: IpPacket) -> Option<IpPacket> {
-    if !req.is_udp() && !req.is_tcp() {
-        return None;
-    }
-
-    if let Some(mut packet) = req.as_tcp_mut() {
-        let original_src = packet.get_source_port();
-        let original_dst = packet.get_destination_port();
-
-        packet.set_source_port(original_dst);
-        packet.set_destination_port(original_src);
-    }
-
-    if let Some(mut packet) = req.as_udp_mut() {
-        let original_src = packet.get_source_port();
-        let original_dst = packet.get_destination_port();
-
-        packet.set_source_port(original_dst);
-        packet.set_destination_port(original_src);
-    }
-
-    let original_src = req.source();
-    let original_dst = req.destination();
-
-    req.set_dst(original_src);
-    req.set_src(original_dst);
-
-    Some(req)
-}
-
 pub fn tcp_packet<IP>(
     saddr: IP,
     daddr: IP,

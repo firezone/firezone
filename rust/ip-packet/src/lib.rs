@@ -755,7 +755,7 @@ impl IpPacket {
         self.next_header() == IpNumber::UDP
     }
 
-    fn is_tcp(&self) -> bool {
+    pub fn is_tcp(&self) -> bool {
         self.next_header() == IpNumber::TCP
     }
 

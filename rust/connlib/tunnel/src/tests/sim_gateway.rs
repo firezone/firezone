@@ -158,7 +158,7 @@ impl SimGateway {
             }
         }
 
-        if let Some(reply) = ip_packet::make::echo_reply(packet.clone()) {
+        if let Some(reply) = echo_reply(packet.clone()) {
             self.request_received(&packet);
             let transmit = self
                 .sut
@@ -253,4 +253,34 @@ pub(crate) fn ref_gateway_host() -> impl Strategy<Value = Host<RefGateway>> {
 
 fn ref_gateway() -> impl Strategy<Value = RefGateway> {
     private_key().prop_map(move |key| RefGateway { key })
+}
+
+fn echo_reply(mut req: IpPacket) -> Option<IpPacket> {
+    if !req.is_udp() && !req.is_tcp() {
+        return None;
+    }
+
+    if let Some(mut packet) = req.as_tcp_mut() {
+        let original_src = packet.get_source_port();
+        let original_dst = packet.get_destination_port();
+
+        packet.set_source_port(original_dst);
+        packet.set_destination_port(original_src);
+    }
+
+    if let Some(mut packet) = req.as_udp_mut() {
+        let original_src = packet.get_source_port();
+        let original_dst = packet.get_destination_port();
+
+        packet.set_source_port(original_dst);
+        packet.set_destination_port(original_src);
+    }
+
+    let original_src = req.source();
+    let original_dst = req.destination();
+
+    req.set_dst(original_src);
+    req.set_src(original_dst);
+
+    Some(req)
 }
