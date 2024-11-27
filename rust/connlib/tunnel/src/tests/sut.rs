@@ -942,7 +942,9 @@ fn on_gateway_event(
                 c.sut.remove_ice_candidate(src, candidate, now)
             }
         }),
-        GatewayEvent::RefreshDns { .. } => todo!(),
+        event @ GatewayEvent::RefreshDns { .. } => {
+            tracing::warn!("Handling `{event:?}` is not yet implemented")
+        }
         GatewayEvent::ResolveDns(r) => {
             let resolved_ips = global_dns_records.domain_ips_iter(r.domain()).collect();
 
