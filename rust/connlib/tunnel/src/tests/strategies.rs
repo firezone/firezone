@@ -157,29 +157,42 @@ pub(crate) fn non_reserved_ip() -> impl Strategy<Value = IpAddr> {
 }
 
 fn non_reserved_ipv4() -> impl Strategy<Value = Ipv4Addr> {
-    any::<Ipv4Addr>()
-        .prop_filter("must not be in sentinel IP range", |ip| {
-            !DNS_SENTINELS_V4.contains(*ip)
-        })
-        .prop_filter("must not be in IPv4 resources range", |ip| {
-            !IPV4_RESOURCES.contains(*ip)
-        })
-        .prop_filter("must be addressable IP", |ip| {
-            !ip.is_unspecified() && !ip.is_multicast() && !ip.is_broadcast()
-        })
+    let undesired_ranges = [
+        Ipv4Network::new(Ipv4Addr::BROADCAST, 32).unwrap(),
+        Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 32).unwrap(),
+        Ipv4Network::new(Ipv4Addr::new(224, 0, 0, 0), 4).unwrap(), // Multicast
+        DNS_SENTINELS_V4,
+        IPV4_RESOURCES,
+    ];
+
+    any::<Ipv4Addr>().prop_map(move |mut ip| {
+        while let Some(range) = undesired_ranges.iter().find(|range| range.contains(ip)) {
+            ip = Ipv4Addr::from(u32::from(range.broadcast_address()).wrapping_add(1));
+        }
+
+        debug_assert!(undesired_ranges.iter().all(|range| !range.contains(ip)));
+
+        ip
+    })
 }
 
 fn non_reserved_ipv6() -> impl Strategy<Value = Ipv6Addr> {
-    any::<Ipv6Addr>()
-        .prop_filter("must not be in sentinel IP range", |ip| {
-            !DNS_SENTINELS_V6.contains(*ip)
-        })
-        .prop_filter("must not be in IPv6 resources range", |ip| {
-            !IPV6_RESOURCES.contains(*ip)
-        })
-        .prop_filter("must be addressable IP", |ip| {
-            !ip.is_unspecified() && !ip.is_multicast()
-        })
+    let undesired_ranges = [
+        Ipv6Network::new(Ipv6Addr::UNSPECIFIED, 32).unwrap(),
+        DNS_SENTINELS_V6,
+        IPV6_RESOURCES,
+        Ipv6Network::new(Ipv6Addr::new(0xff00, 0, 0, 0, 0, 0, 0, 0), 8).unwrap(), // Multicast
+    ];
+
+    any::<Ipv6Addr>().prop_map(move |mut ip| {
+        while let Some(range) = undesired_ranges.iter().find(|range| range.contains(ip)) {
+            ip = Ipv6Addr::from(u128::from(range.last_address()).wrapping_add(1));
+        }
+
+        debug_assert!(undesired_ranges.iter().all(|range| !range.contains(ip)));
+
+        ip
+    })
 }
 
 fn any_site(sites: BTreeSet<Site>) -> impl Strategy<Value = Site> {
