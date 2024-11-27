@@ -135,19 +135,11 @@ pub(crate) fn relays(
 /// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
 pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
     let ip4_dns_servers = collection::btree_set(
-        non_reserved_ipv4()
-            .prop_filter("must be addressable IP", |ip| {
-                !ip.is_unspecified() && !ip.is_multicast() && !ip.is_broadcast()
-            })
-            .prop_map(|ip| SocketAddr::from((ip, 53))),
+        non_reserved_ipv4().prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
     let ip6_dns_servers = collection::btree_set(
-        non_reserved_ipv6()
-            .prop_filter("must be addressable IP", |ip| {
-                !ip.is_unspecified() && !ip.is_multicast()
-            })
-            .prop_map(|ip| SocketAddr::from((ip, 53))),
+        non_reserved_ipv6().prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
 
@@ -172,6 +164,9 @@ fn non_reserved_ipv4() -> impl Strategy<Value = Ipv4Addr> {
         .prop_filter("must not be in IPv4 resources range", |ip| {
             !IPV4_RESOURCES.contains(*ip)
         })
+        .prop_filter("must be addressable IP", |ip| {
+            !ip.is_unspecified() && !ip.is_multicast() && !ip.is_broadcast()
+        })
 }
 
 fn non_reserved_ipv6() -> impl Strategy<Value = Ipv6Addr> {
@@ -181,6 +176,9 @@ fn non_reserved_ipv6() -> impl Strategy<Value = Ipv6Addr> {
         })
         .prop_filter("must not be in IPv6 resources range", |ip| {
             !IPV6_RESOURCES.contains(*ip)
+        })
+        .prop_filter("must be addressable IP", |ip| {
+            !ip.is_unspecified() && !ip.is_multicast()
         })
 }
 
