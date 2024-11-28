@@ -135,8 +135,8 @@ pub enum Error {
     Client(StatusCode),
     #[error("token expired")]
     TokenExpired,
-    #[error("max retries reached")]
-    MaxRetriesReached,
+    #[error("reconnect backoff expired")]
+    ReconnectBackoffExpired,
     #[error("login failed: {0}")]
     LoginFailed(ErrorReply),
 }
@@ -146,7 +146,7 @@ impl Error {
         match self {
             Error::Client(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
             Error::TokenExpired => true,
-            Error::MaxRetriesReached => false,
+            Error::ReconnectBackoffExpired => false,
             Error::LoginFailed(_) => false,
         }
     }
@@ -409,8 +409,7 @@ where
                     }
                     Poll::Ready(Err(e)) => {
                         let Some(backoff) = self.reconnect_backoff.next_backoff() else {
-                            tracing::warn!("Reconnect backoff expired");
-                            return Poll::Ready(Err(Error::MaxRetriesReached));
+                            return Poll::Ready(Err(Error::ReconnectBackoffExpired));
                         };
 
                         let secret_url = self
