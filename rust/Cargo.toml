@@ -204,9 +204,7 @@ strip = false # Frame pointers are necessary for profiling; `strip=true` appears
 [profile.dev.package.firezone-gui-client]
 debug = "full"
 split-debuginfo = "packed"
-strip = "none"
 
 [profile.release.package.firezone-gui-client]
 debug = "full"
 split-debuginfo = "packed"
-strip = "none"
