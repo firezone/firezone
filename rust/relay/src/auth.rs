@@ -180,7 +180,7 @@ impl Nonces {
     /// Record the usage of a nonce in a request.
     pub(crate) fn handle_nonce_used(&mut self, nonce: Uuid) -> Result<(), Error> {
         let mut entry = match self.inner.entry(nonce) {
-            Entry::Vacant(_) => return Err(Error::InvalidNonce),
+            Entry::Vacant(_) => return Err(Error::UnknownNonce),
             Entry::Occupied(entry) => entry,
         };
 
@@ -189,7 +189,7 @@ impl Nonces {
         if *remaining_requests == 0 {
             entry.remove();
 
-            return Err(Error::InvalidNonce);
+            return Err(Error::NonceUsedUp);
         }
 
         *remaining_requests -= 1;
@@ -206,8 +206,10 @@ pub(crate) enum Error {
     InvalidPassword,
     #[error("invalid username")]
     InvalidUsername,
-    #[error("invalid nonce")]
-    InvalidNonce,
+    #[error("nonce has been used up")]
+    NonceUsedUp,
+    #[error("unknown nonce")]
+    UnknownNonce,
     #[error("cannot authenticate message")]
     CannotAuthenticate(#[from] bytecodec::Error),
 }
@@ -365,7 +367,7 @@ mod tests {
 
         assert!(matches!(
             nonces.handle_nonce_used(nonce).unwrap_err(),
-            Error::InvalidNonce
+            Error::NonceUsedUp
         ));
     }
 
@@ -376,7 +378,7 @@ mod tests {
 
         assert!(matches!(
             nonces.handle_nonce_used(nonce).unwrap_err(),
-            Error::InvalidNonce
+            Error::UnknownNonce
         ));
     }
 

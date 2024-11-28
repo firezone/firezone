@@ -866,8 +866,8 @@ fn unauthorized_allocate_response(
     let mut message =
         Message::<Attribute>::new(MessageClass::ErrorResponse, ALLOCATE, transaction_id);
     message.add_attribute(ErrorCode::from(Unauthorized));
-    message.add_attribute(Nonce::new(nonce.as_hyphenated().to_string()).unwrap());
     message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
+    message.add_attribute(Nonce::new(nonce.as_hyphenated().to_string()).unwrap());
 
     message
 }
