@@ -38,7 +38,6 @@ fn main() {
         .expect("Calling `install_default` only once per process should always succeed");
 
     let cli = Cli::parse();
-
     let mut telemetry = Telemetry::default();
     if cli.is_telemetry_allowed() {
         telemetry.start(
