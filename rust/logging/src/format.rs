@@ -191,7 +191,7 @@ const INFO_STR: &str = " INFO";
 const WARN_STR: &str = " WARN";
 const ERROR_STR: &str = "ERROR";
 
-impl<'a> fmt::Display for FmtLevel<'a> {
+impl fmt::Display for FmtLevel<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.ansi {
             match *self.level {

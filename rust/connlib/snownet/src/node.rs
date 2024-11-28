@@ -1534,7 +1534,7 @@ pub struct Transmit<'a> {
     pub payload: Cow<'a, [u8]>,
 }
 
-impl<'a> fmt::Debug for Transmit<'a> {
+impl fmt::Debug for Transmit<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Transmit")
             .field("src", &self.src)
@@ -1544,7 +1544,7 @@ impl<'a> fmt::Debug for Transmit<'a> {
     }
 }
 
-impl<'a> Transmit<'a> {
+impl Transmit<'_> {
     pub fn into_owned(self) -> Transmit<'static> {
         Transmit {
             src: self.src,

@@ -253,7 +253,7 @@ struct Callback {
     tx: NotifySender,
 }
 
-impl<'a> Drop for Listener<'a> {
+impl Drop for Listener<'_> {
     // Might never be called. Due to the way the scopes ended up,
     // we crash the GUI process before we can get back to the main thread
     // and drop the DNS listeners
