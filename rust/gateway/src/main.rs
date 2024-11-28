@@ -129,9 +129,11 @@ async fn run(login: LoginUrl<PublicKeyParam>) -> Result<Infallible> {
         get_user_agent(None, env!("CARGO_PKG_VERSION")),
         PHOENIX_TOPIC,
         (),
-        ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(None)
-            .build(),
+        || {
+            ExponentialBackoffBuilder::default()
+                .with_max_elapsed_time(None)
+                .build()
+        },
         Arc::new(tcp_socket_factory),
     )?;
 

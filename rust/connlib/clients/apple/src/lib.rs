@@ -242,9 +242,11 @@ impl WrappedSession {
             get_user_agent(os_version_override, env!("CARGO_PKG_VERSION")),
             "client",
             (),
-            ExponentialBackoffBuilder::default()
-                .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
-                .build(),
+            || {
+                ExponentialBackoffBuilder::default()
+                    .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
+                    .build()
+            },
             Arc::new(socket_factory::tcp),
         )?;
         let session = Session::connect(

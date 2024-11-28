@@ -585,9 +585,11 @@ impl<'a> Handler<'a> {
             get_user_agent(None, "1.3.14"),
             "client",
             (),
-            ExponentialBackoffBuilder::default()
-                .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
-                .build(),
+            || {
+                ExponentialBackoffBuilder::default()
+                    .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
+                    .build()
+            },
             Arc::new(tcp_socket_factory),
         )?; // Turn this `io::Error` directly into an `Error` so we can distinguish it from others in the GUI client.
 
