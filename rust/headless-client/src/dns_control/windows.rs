@@ -188,8 +188,6 @@ fn refresh_group_policy() -> Result<()> {
     Ok(())
 }
 
-/// Returns
-
 /// Given the path of a registry key, sets the parameters of an NRPT rule on it.
 fn set_nrpt_rule(key: &winreg::RegKey, dns_config_string: &str) -> Result<()> {
     key.set_value("Comment", &FZ_MAGIC)?;

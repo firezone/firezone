@@ -77,7 +77,6 @@ struct Cli {
     firezone_name: Option<String>,
 
     /// Identifier used by the portal to identify and display the device.
-
     // AKA `device_id` in the Windows and Linux GUI clients
     // Generated automatically if not provided
     #[arg(short = 'i', long, env = "FIREZONE_ID")]
@@ -94,7 +93,6 @@ struct Cli {
     token: Option<String>,
 
     /// A filesystem path where the token can be found
-
     // Apparently passing secrets through stdin is the most secure method, but
     // until anyone asks for it, env vars are okay and files on disk are slightly better.
     // (Since we run as root and the env var on a headless system is probably stored
