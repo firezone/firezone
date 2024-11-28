@@ -14,6 +14,7 @@ clap = { workspace = true, features = ["derive", "env"] }
 derive_more = { workspace = true, features = ["from"] }
 firezone-bin-shared = { workspace = true }
 firezone-logging = { workspace = true }
+firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 hex-display = { workspace = true }
