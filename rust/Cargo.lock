@@ -2151,6 +2151,7 @@ dependencies = [
  "env_logger",
  "firezone-bin-shared",
  "firezone-logging",
+ "firezone-telemetry",
  "futures",
  "hex",
  "hex-display",
