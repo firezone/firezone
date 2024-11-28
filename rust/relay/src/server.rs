@@ -315,9 +315,22 @@ where
             }
         };
 
-        let Err(error_response) = result else {
+        let Err(mut error_response) = result else {
             return None;
         };
+
+        let is_auth_error = error_response
+            .get_attribute::<ErrorCode>()
+            .is_some_and(|error_code| {
+                error_code == &ErrorCode::from(Unauthorized)
+                    || error_code == &ErrorCode::from(StaleNonce)
+            });
+
+        // In case of a 401 or 438 response, attach a realm and nonce.
+        if is_auth_error {
+            error_response.add_attribute((*FIREZONE).clone());
+            error_response.add_attribute(self.new_nonce_attribute());
+        }
 
         let message = match username {
             Some(username) => {
@@ -1070,27 +1083,18 @@ where
             request.method(),
             request.transaction_id(),
         );
-
-        let is_auth_error = error_code == ErrorCode::from(Unauthorized)
-            || error_code == ErrorCode::from(StaleNonce);
-
         message.add_attribute(Attribute::from(error_code));
 
-        // In case of a 401 or 438 response, attach a realm and nonce.
-        if is_auth_error {
-            let new_nonce = Uuid::from_u128(self.rng.gen());
-
-            self.add_nonce(new_nonce);
-
-            message.add_attribute(
-                Nonce::new(new_nonce.to_string()).expect(
-                    "UUIDs are valid nonces because they are less than 128 characters long",
-                ),
-            );
-            message.add_attribute((*FIREZONE).clone());
-        }
-
         message
+    }
+
+    fn new_nonce_attribute(&mut self) -> Nonce {
+        let new_nonce = Uuid::from_u128(self.rng.gen());
+
+        self.add_nonce(new_nonce);
+
+        Nonce::new(new_nonce.to_string())
+            .expect("UUIDs are valid nonces because they are less than 128 characters long")
     }
 }
 
