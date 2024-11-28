@@ -136,8 +136,8 @@ pub enum Error {
     Client(StatusCode),
     #[error("token expired")]
     TokenExpired,
-    #[error("max retries reached")]
-    MaxRetriesReached,
+    #[error("max retries reached: {final_error}")]
+    MaxRetriesReached { final_error: String },
     #[error("login failed: {0}")]
     LoginFailed(ErrorReply),
 }
@@ -147,7 +147,7 @@ impl Error {
         match self {
             Error::Client(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
             Error::TokenExpired => true,
-            Error::MaxRetriesReached => false,
+            Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
         }
     }
@@ -412,14 +412,16 @@ where
                     Poll::Ready(Err(e)) => {
                         let socket_addresses = self.socket_addresses();
 
+                        // If we don't have a backoff yet, this is the first error so create one.
                         let reconnect_backoff = self
                             .reconnect_backoff
                             .get_or_insert_with(|| (self.make_reconnect_backoff)());
 
-                        let Some(backoff) = reconnect_backoff.next_backoff() else {
-                            tracing::warn!("Reconnect backoff expired");
-                            return Poll::Ready(Err(Error::MaxRetriesReached));
-                        };
+                        let backoff = reconnect_backoff.next_backoff().ok_or_else(|| {
+                            Error::MaxRetriesReached {
+                                final_error: err_with_src(&e).to_string(),
+                            }
+                        })?;
 
                         let secret_url = self
                             .last_url
