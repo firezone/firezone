@@ -1,0 +1,2 @@
+[build.env]
+passthrough = ["GITHUB_SHA"] # Allows binaries to embed the current SHA on CI.
