@@ -561,9 +561,9 @@ where
             match self.sigterm.poll_recv(cx) {
                 Poll::Ready(Some(())) => {
                     if self.shutting_down {
-                        // Received a repeated SIGTERM whilst shutting down
+                        tracing::info!("Forcing shutdown on repeated SIGTERM");
 
-                        return Poll::Ready(Err(anyhow!("Forcing shutdown on repeated SIGTERM")));
+                        return Poll::Ready(Ok(()));
                     }
 
                     tracing::info!(active_allocations = %self.server.num_allocations(), "Received SIGTERM, initiating graceful shutdown");
