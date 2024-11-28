@@ -2021,7 +2021,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tauri-runtime",
  "tauri-utils",
- "tauri-winrt-notification 0.6.0",
+ "tauri-winrt-notification 0.7.0",
  "thiserror",
  "tokio",
  "tokio-util",
@@ -6591,9 +6591,9 @@ dependencies = [
 
 [[package]]
 name = "tauri-winrt-notification"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3ecbfeedbd4e41fd66dc3c01951f49af81a824c4f493c02d91b837cf01caf69"
+checksum = "fd39a00900402730d6586cd9f6be1615215eb2a56afb611570f35b3d0c2788fe"
 dependencies = [
  "quick-xml 0.31.0",
  "thiserror",
