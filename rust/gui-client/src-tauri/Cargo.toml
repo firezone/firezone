@@ -54,7 +54,7 @@ nix = { workspace = true, features = ["user"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 
 [target.'cfg(target_os = "windows")'.dependencies]
-tauri-winrt-notification = "0.6.0"
+tauri-winrt-notification = "0.7.0"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 workspace = true
