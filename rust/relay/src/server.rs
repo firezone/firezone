@@ -1233,7 +1233,7 @@ fn derive_relay_addresses(
             // For now, we will just partially satisfy the request.
             // We expect clients to gracefully handle this by only extracting the relay addresses they receive.
 
-            tracing::warn!(target: "relay", "Partially fulfilling allocation using only an IPv4 address");
+            tracing::debug!(target: "relay", "Partially fulfilling allocation using only an IPv4 address");
 
             Ok((ip4.into(), None))
         }
@@ -1242,7 +1242,7 @@ fn derive_relay_addresses(
             // For now, we will just partially satisfy the request.
             // We expect clients to gracefully handle this by only extracting the relay addresses they receive.
 
-            tracing::warn!(target: "relay", "Partially fulfilling allocation using only an IPv6 address");
+            tracing::debug!(target: "relay", "Partially fulfilling allocation using only an IPv6 address");
 
             Ok((ip6.into(), None))
         }
