@@ -70,10 +70,10 @@ feature-depth = 1
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-  "RUSTSEC-2020-0095",
-  "RUSTSEC-2024-0384",
-  "RUSTSEC-2024-0370",
-  "RUSTSEC-2024-0388",
+  "RUSTSEC-2020-0095", # `difference` is unmaintained
+  "RUSTSEC-2024-0384", # `instant` is unmaintained
+  "RUSTSEC-2024-0370", # `proc-macro-error` is unmaintained
+  "RUSTSEC-2024-0388", # `derivative` is unmaintained
   #"RUSTSEC-0000-0000",
   #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
   #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
