@@ -189,8 +189,6 @@ tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdr
 tracing = "0.1.40"
 
 [profile.release]
-strip = true
-
 # Full link-time optimization. Reduces binaries by up to 3x on some platforms.
 lto = "fat"
 
