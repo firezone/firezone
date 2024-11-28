@@ -196,9 +196,6 @@ lto = "fat"
 # at the expense of compilation time
 codegen-units = 1
 
-[profile.bench]
-strip = false # Frame pointers are necessary for profiling; `strip=true` appears to remove them.
-
 # Override build settings just for the GUI client, so we get a pdb/dwp
 # Cargo ignores profile settings if they're not in the workspace's Cargo.toml
 [profile.dev.package.firezone-gui-client]
