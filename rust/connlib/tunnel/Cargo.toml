@@ -12,7 +12,7 @@ boringtun = { workspace = true }
 bytes = { workspace = true, features = ["std"] }
 chrono = { workspace = true }
 connlib-model = { workspace = true }
-derive_more = { workspace = true }
+derive_more = { workspace = true, features = ["debug"] }
 divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
 domain = { workspace = true }
@@ -44,7 +44,6 @@ tun = { workspace = true }
 uuid = { workspace = true, features = ["std", "v4"] }
 
 [dev-dependencies]
-derive_more = { workspace = true, features = ["debug"] }
 firezone-relay = { workspace = true, features = ["proptest"] }
 ip-packet = { workspace = true, features = ["proptest"] }
 proptest-state-machine = { workspace = true }
