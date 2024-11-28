@@ -32,8 +32,7 @@ mod eventloop;
 
 const ID_PATH: &str = "/var/lib/firezone/gateway_id";
 
-#[tokio::main]
-async fn main() {
+fn main() {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
@@ -48,19 +47,22 @@ async fn main() {
         );
     }
 
-    // Enforce errors only being printed on a single line using the technique recommended in the anyhow docs:
-    // https://docs.rs/anyhow/latest/anyhow/struct.Error.html#display-representations
-    //
-    // By default, `anyhow` prints a stacktrace when it exits.
-    // That looks like a "crash" but we "just" exit with a fatal error.
-    if let Err(e) = try_main(cli, &mut telemetry).await {
-        tracing::error!(error = anyhow_dyn_err(&e));
-        telemetry.stop_on_crash().await;
+    let runtime = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
 
-        std::process::exit(1);
+    match runtime.block_on(try_main(cli, &mut telemetry)) {
+        Ok(()) => runtime.block_on(telemetry.stop()),
+        Err(e) => {
+            // Enforce errors only being printed on a single line using the technique recommended in the anyhow docs:
+            // https://docs.rs/anyhow/latest/anyhow/struct.Error.html#display-representations
+            //
+            // By default, `anyhow` prints a stacktrace when it exits.
+            // That looks like a "crash" but we "just" exit with a fatal error.
+            tracing::error!(error = anyhow_dyn_err(&e));
+            runtime.block_on(telemetry.stop_on_crash());
+
+            std::process::exit(1);
+        }
     }
-
-    telemetry.stop().await
 }
 
 async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
