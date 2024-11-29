@@ -329,11 +329,6 @@ pub enum GatewayEvent {
         conn_id: ClientId,
         candidates: BTreeSet<String>,
     },
-    RefreshDns {
-        name: DomainName,
-        conn_id: ClientId,
-        resource_id: ResourceId,
-    },
     ResolveDns(ResolveDnsRequest),
 }
 

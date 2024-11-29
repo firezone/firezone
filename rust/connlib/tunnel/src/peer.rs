@@ -1,7 +1,7 @@
 use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::messages::gateway::ResourceDescription;
@@ -160,56 +160,6 @@ impl ClientOnGateway {
         [IpAddr::from(self.ipv4), IpAddr::from(self.ipv6)]
     }
 
-    pub(crate) fn refresh_translation(
-        &mut self,
-        name: DomainName,
-        resource_id: ResourceId,
-        resolved_ips: BTreeSet<IpAddr>,
-        now: Instant,
-    ) -> Result<()> {
-        let resource_on_gateway = self
-            .resources
-            .get_mut(&resource_id)
-            .context("Unknown resource")?;
-
-        let domains = match resource_on_gateway {
-            ResourceOnGateway::Dns { domains, .. } => domains,
-            ResourceOnGateway::Cidr { .. } => {
-                bail!("Cannot refresh translation for CIDR resource")
-            }
-            ResourceOnGateway::Internet { .. } => {
-                bail!("Cannot refresh translation for Internet resource")
-            }
-        };
-
-        let old_ips = BTreeSet::from_iter(
-            self.permanent_translations
-                .values()
-                .filter_map(|state| {
-                    (state.name == name && state.resource_id == resource_id)
-                        .then_some(&state.resolved_ip)
-                })
-                .copied(),
-        );
-        if old_ips == resolved_ips {
-            return Ok(());
-        }
-
-        domains.insert(name.clone(), resolved_ips.clone());
-
-        let proxy_ips = self
-            .permanent_translations
-            .iter()
-            .filter_map(|(k, state)| {
-                (state.name == name && state.resource_id == resource_id).then_some(*k)
-            })
-            .collect();
-
-        self.setup_nat(name, resource_id, resolved_ips, proxy_ips, now)?;
-
-        Ok(())
-    }
-
     /// Setup the NAT for a particular domain within a wildcard DNS resource.
     #[tracing::instrument(level = "debug", skip_all, fields(cid = %self.id))]
     pub(crate) fn setup_nat(
@@ -218,7 +168,6 @@ impl ClientOnGateway {
         resource_id: ResourceId,
         resolved_ips: BTreeSet<IpAddr>,
         proxy_ips: BTreeSet<IpAddr>,
-        now: Instant,
     ) -> Result<()> {
         let resource = self
             .resources
@@ -252,10 +201,8 @@ impl ClientOnGateway {
         for (proxy_ip, real_ip) in ip_maps {
             tracing::debug!(%name, %proxy_ip, %real_ip);
 
-            self.permanent_translations.insert(
-                *proxy_ip,
-                TranslationState::new(resource_id, name.clone(), real_ip, now),
-            );
+            self.permanent_translations
+                .insert(*proxy_ip, TranslationState::new(resource_id, real_ip));
         }
 
         tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Set up DNS resource NAT");
@@ -295,39 +242,6 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        let expired_translations = self
-            .permanent_translations
-            .iter()
-            .filter(|(_, state)| state.is_expired(now));
-
-        let mut for_refresh = HashSet::new();
-
-        for (proxy_ip, expired_state) in expired_translations {
-            let domain = &expired_state.name;
-            let resource_id = expired_state.resource_id;
-            let resolved_ip = expired_state.resolved_ip;
-
-            // Only refresh DNS for a domain if all of the resolved IPs stop responding in order to not kill existing connections.
-            if self
-                .permanent_translations
-                .values()
-                .filter(|state| state.resource_id == resource_id && state.name == domain)
-                .all(|state| state.no_incoming_in_120s(now))
-            {
-                tracing::debug!(%domain, conn_id = %self.id, %resource_id, %resolved_ip, %proxy_ip, "Refreshing DNS");
-
-                for_refresh.insert((expired_state.name.clone(), expired_state.resource_id));
-            }
-        }
-
-        for (name, resource_id) in for_refresh {
-            self.buffered_events.push_back(GatewayEvent::RefreshDns {
-                name,
-                conn_id: self.id,
-                resource_id,
-            });
-        }
-
         self.nat_table.handle_timeout(now);
     }
 
@@ -426,8 +340,6 @@ impl ClientOnGateway {
             .context("Failed to translate packet")?;
         packet.update_checksum();
 
-        state.on_outgoing_traffic(now);
-
         Ok(packet)
     }
 
@@ -464,12 +376,6 @@ impl ClientOnGateway {
         };
 
         let mut packet = packet.translate_source(self.ipv4, self.ipv6, proto, ip)?;
-
-        self.permanent_translations
-            .get_mut(&ip)
-            .context("No translation state for outgoing packet")?
-            .on_incoming_traffic(now);
-
         packet.update_checksum();
 
         Ok(packet)
@@ -652,88 +558,16 @@ impl ResourceOnGateway {
 struct TranslationState {
     /// Which (DNS) resource we belong to.
     resource_id: ResourceId,
-    /// The concrete domain we have resolved (could be a sub-domain of a `*` or `?` resource).
-    name: DomainName,
     /// The IP we have resolved for the domain.
     resolved_ip: IpAddr,
-
-    /// When we've last received a packet from the resolved IP.
-    last_incoming: Option<Instant>,
-    /// When we've sent the first packet to the resolved IP.
-    first_outgoing: Option<Instant>,
-    /// When we've last sent a packet to the resolved IP.
-    last_outgoing: Option<Instant>,
-    /// When was this translation created
-    created_at: Instant,
-    /// When we first detected that we aren't getting any responses from this IP.
-    ///
-    /// This is set upon outgoing traffic if we haven't received inbound traffic for a while.
-    /// We don't want to immediately trigger a refresh in that case because protocols like TCP and ICMP have responses.
-    /// Thus, a DNS refresh is triggered after a grace-period of 1s after the packet that detected the missing responses.
-    ack_grace_period_started_at: Option<Instant>,
 }
 
 impl TranslationState {
-    const USED_WINDOW: Duration = Duration::from_secs(10);
-
-    fn new(resource_id: ResourceId, name: DomainName, resolved_ip: IpAddr, now: Instant) -> Self {
+    fn new(resource_id: ResourceId, resolved_ip: IpAddr) -> Self {
         Self {
             resource_id,
-            name,
             resolved_ip,
-            created_at: now,
-            last_incoming: None,
-            first_outgoing: None,
-            last_outgoing: None,
-            ack_grace_period_started_at: None,
         }
-    }
-
-    fn is_expired(&self, now: Instant) -> bool {
-        // Note: we don't need to check that it's used here because the ack grace period already implies it
-        self.ack_grace_period_expired(now) && self.no_incoming_in_120s(now)
-    }
-
-    fn ack_grace_period_expired(&self, now: Instant) -> bool {
-        self.ack_grace_period_started_at
-            .is_some_and(|missing_responses_detected_at| {
-                now.duration_since(missing_responses_detected_at) >= Duration::from_secs(1)
-            })
-    }
-
-    fn no_incoming_in_120s(&self, now: Instant) -> bool {
-        const CONNTRACK_UDP_STREAM_TIMEOUT: Duration = Duration::from_secs(120);
-
-        if let Some(last_incoming) = self.last_incoming {
-            now.duration_since(last_incoming) >= CONNTRACK_UDP_STREAM_TIMEOUT
-        } else {
-            now.duration_since(self.created_at) >= CONNTRACK_UDP_STREAM_TIMEOUT
-        }
-    }
-
-    fn on_incoming_traffic(&mut self, now: Instant) {
-        self.last_incoming = Some(now);
-        self.ack_grace_period_started_at = None;
-    }
-
-    fn on_outgoing_traffic(&mut self, now: Instant) {
-        // We need this because it means that if a packet arrives at some point less than 120s but more than 110s
-        // we still start the grace period so that the connection expires at some point after 120s
-        let with_this_packet_the_connection_will_be_considered_used_when_it_expires =
-            self.no_incoming_in_120s(now + Self::USED_WINDOW);
-        if self.ack_grace_period_started_at.is_none()
-            && with_this_packet_the_connection_will_be_considered_used_when_it_expires
-        {
-            self.ack_grace_period_started_at = Some(now);
-        }
-
-        self.last_outgoing = Some(now);
-
-        if self.first_outgoing.is_some() {
-            return;
-        }
-
-        self.first_outgoing = Some(now);
     }
 }
 
@@ -780,7 +614,7 @@ fn insert_filters<'a>(
 mod tests {
     use std::{
         collections::BTreeSet,
-        net::{IpAddr, Ipv4Addr, Ipv6Addr},
+        net::{Ipv4Addr, Ipv6Addr},
         time::{Duration, Instant},
     };
 
@@ -791,7 +625,7 @@ mod tests {
     use connlib_model::{ClientId, ResourceId};
     use ip_network::{IpNetwork, Ipv4Network};
 
-    use super::{ClientOnGateway, TranslationState};
+    use super::ClientOnGateway;
 
     #[test]
     fn gateway_filters_expire_individually() {
@@ -859,273 +693,6 @@ mod tests {
     }
 
     #[test]
-    fn initial_translation_state_is_not_expired() {
-        let now = Instant::now();
-        let state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        assert!(!state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_state_is_not_used_but_expired_after_120s() {
-        let mut now = Instant::now();
-        let state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(121);
-
-        assert!(!state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_state_is_used_and_expired_after_120s_with_outgoing_packets() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-
-        now += Duration::from_secs(1);
-
-        assert!(state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_state_is_used_and_expired_after_121s_with_outgoing_packets() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(121);
-        state.on_outgoing_traffic(now);
-
-        now += Duration::from_secs(1);
-
-        assert!(state.is_expired(now));
-    }
-    #[test]
-    fn translation_state_is_not_expired_with_incoming_packets() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_incoming_traffic(now);
-
-        now += Duration::from_secs(1);
-
-        assert!(!state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_state_doesnt_expire_with_incoming_and_outgoing_packets() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_millis(200);
-        state.on_incoming_traffic(now);
-
-        now += Duration::from_secs(1);
-
-        assert!(!state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_state_still_has_grace_period_after_incoming_traffic() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_millis(200);
-        state.on_incoming_traffic(now);
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-
-        assert!(!state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_state_still_expires_after_grace_period_after_incoming_traffic_resetted_it() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_millis(200);
-        state.on_incoming_traffic(now);
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_secs(1);
-
-        assert!(state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_state_doesnt_expire_with_first_packet_after_silence() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-
-        assert!(!state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_state_expires_after_silence_even_with_multiple_packets() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_secs(5);
-        state.on_outgoing_traffic(now);
-
-        assert!(state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_doesnt_expire_before_expected_period() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(110);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_secs(5);
-
-        assert!(!state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_expire_after_expected_period() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(110);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_secs(5);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_secs(5);
-
-        assert!(state.is_expired(now));
-    }
-
-    #[test]
-    fn incoming_traffic_prevents_expiration() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_millis(500);
-        state.on_incoming_traffic(now);
-        now += Duration::from_secs(5);
-
-        assert!(!state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_state_doesnt_expire_with_packet_that_didnt_had_time_to_be_responded() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_millis(119990);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_millis(20);
-
-        assert!(!state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_state_expires_with_packet_that_had_time_to_be_responded() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_millis(119990);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_secs(1);
-
-        assert!(state.is_expired(now));
-    }
-
-    #[test]
     fn dns_and_cidr_filters_dot_mix() {
         let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
         peer.add_resource(foo_dns_resource(), None);
@@ -1135,7 +702,6 @@ mod tests {
             resource_id(),
             BTreeSet::from([foo_real_ip().into()]),
             BTreeSet::from([foo_proxy_ip().into()]),
-            Instant::now(),
         )
         .unwrap();
 
@@ -1196,7 +762,6 @@ mod tests {
             resource_id(),
             BTreeSet::from([foo_real_ip().into()]),
             BTreeSet::from([foo_proxy_ip().into()]),
-            Instant::now(),
         )
         .unwrap();
 

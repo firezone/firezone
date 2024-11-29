@@ -1,7 +1,6 @@
 use anyhow::Result;
 use boringtun::x25519::PublicKey;
 use connlib_model::DomainName;
-use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use firezone_logging::{
@@ -37,9 +36,8 @@ static_assertions::const_assert!(
 
 #[derive(Debug)]
 enum ResolveTrigger {
-    RequestConnection(RequestConnection),      // Deprecated
-    AllowAccess(AllowAccess),                  // Deprecated
-    Refresh(DomainName, ClientId, ResourceId), // TODO: Can we delete this perhaps?
+    RequestConnection(RequestConnection), // Deprecated
+    AllowAccess(AllowAccess),             // Deprecated
     SetupNat(ResolveDnsRequest),
 }
 
@@ -93,10 +91,6 @@ impl Eventloop {
                 }
                 Poll::Ready((result, ResolveTrigger::AllowAccess(req))) => {
                     self.allow_access(result, req);
-                    continue;
-                }
-                Poll::Ready((result, ResolveTrigger::Refresh(name, conn_id, resource_id))) => {
-                    self.refresh_translation(result, conn_id, resource_id, name);
                     continue;
                 }
                 Poll::Ready((result, ResolveTrigger::SetupNat(request))) => {
@@ -162,22 +156,6 @@ impl Eventloop {
                         candidates,
                     }),
                 );
-            }
-            firezone_tunnel::GatewayEvent::RefreshDns {
-                name,
-                conn_id,
-                resource_id,
-            } => {
-                if self
-                    .resolve_tasks
-                    .try_push(
-                        resolve(Some(name.clone())),
-                        ResolveTrigger::Refresh(name, conn_id, resource_id),
-                    )
-                    .is_err()
-                {
-                    tracing::warn!("Too many dns resolution requests, dropping existing one");
-                };
             }
             firezone_tunnel::GatewayEvent::ResolveDns(setup_nat) => {
                 if self
@@ -388,7 +366,6 @@ impl Eventloop {
                 .payload
                 .domain
                 .map(|r| DnsResourceNatEntry::new(r, addresses)),
-            Instant::now(),
         ) {
             let client = req.client.id;
 
@@ -420,30 +397,9 @@ impl Eventloop {
             req.expires_at,
             req.resource,
             req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),
-            Instant::now(),
         ) {
             tracing::warn!(error = anyhow_dyn_err(&e), client = %req.client_id, "Allow access request failed");
         };
-    }
-
-    pub fn refresh_translation(
-        &mut self,
-        result: Result<Vec<IpAddr>, Timeout>,
-        conn_id: ClientId,
-        resource_id: ResourceId,
-        name: DomainName,
-    ) {
-        let addresses = result
-            .inspect_err(|e| tracing::debug!(%conn_id, "DNS resolution timed out as part of allow access request: {}", err_with_src(e)))
-            .unwrap_or_default();
-
-        self.tunnel.state_mut().refresh_translation(
-            conn_id,
-            resource_id,
-            name,
-            addresses,
-            Instant::now(),
-        );
     }
 }
 

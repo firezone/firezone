@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, DomainName, RelayId, ResourceId};
-use firezone_logging::{anyhow_dyn_err, telemetry_span};
+use firezone_logging::anyhow_dyn_err;
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::{ExposeSecret as _, Secret};
@@ -245,7 +245,7 @@ impl GatewayState {
             now,
         )?;
 
-        let result = self.allow_access(client_id, ipv4, ipv6, expires_at, resource, None, now);
+        let result = self.allow_access(client_id, ipv4, ipv6, expires_at, resource, None);
         debug_assert!(
             result.is_ok(),
             "`allow_access` should never fail without a `DnsResourceEntry`"
@@ -254,31 +254,6 @@ impl GatewayState {
         Ok(())
     }
 
-    pub fn refresh_translation(
-        &mut self,
-        client: ClientId,
-        resource_id: ResourceId,
-        name: DomainName,
-        resolved_ips: Vec<IpAddr>,
-        now: Instant,
-    ) {
-        let _span = telemetry_span!("refresh_translation").entered();
-
-        let Some(peer) = self.peers.get_mut(&client) else {
-            return;
-        };
-
-        if let Err(e) = peer.refresh_translation(
-            name.clone(),
-            resource_id,
-            BTreeSet::from_iter(resolved_ips),
-            now,
-        ) {
-            tracing::warn!(error = anyhow_dyn_err(&e), rid = %resource_id, %name, "Failed to refresh DNS resource IP translations");
-        };
-    }
-
-    #[expect(clippy::too_many_arguments)]
     pub fn allow_access(
         &mut self,
         client: ClientId,
@@ -287,7 +262,6 @@ impl GatewayState {
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
         dns_resource_nat: Option<DnsResourceNatEntry>,
-        now: Instant,
     ) -> anyhow::Result<()> {
         let peer = self
             .peers
@@ -302,7 +276,6 @@ impl GatewayState {
                 resource.id(),
                 BTreeSet::from_iter(entry.resolved_ips),
                 BTreeSet::from_iter(entry.proxy_ips),
-                now,
             )?;
         }
 
@@ -329,7 +302,6 @@ impl GatewayState {
                 req.resource,
                 BTreeSet::from_iter(addresses),
                 BTreeSet::from_iter(req.proxy_ips),
-                now,
             )
             .map(|()| dns_resource_nat::NatStatus::Active)
             .unwrap_or_else(|e| {
