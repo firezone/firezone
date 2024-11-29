@@ -17,6 +17,8 @@ use firezone_headless_client::{
 use firezone_logging::{anyhow_dyn_err, telemetry_span};
 use firezone_telemetry::Telemetry;
 use futures::StreamExt as _;
+use opentelemetry_otlp::WithExportConfig as _;
+use opentelemetry_sdk::runtime::Tokio;
 use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
@@ -24,9 +26,11 @@ use secrecy::{Secret, SecretString};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 use tokio::{sync::mpsc, time::Instant};
 use tokio_stream::wrappers::ReceiverStream;
+use tonic::{metadata::MetadataMap, transport::ClientTlsConfig};
 
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
@@ -189,7 +193,7 @@ fn main() -> Result<()> {
     let url = LoginUrl::client(
         cli.api_url,
         &token,
-        firezone_id,
+        firezone_id.clone(),
         cli.firezone_name,
         device_id::device_info(),
     )?;
@@ -206,6 +210,34 @@ fn main() -> Result<()> {
     let mut last_connlib_start_instant = Some(Instant::now());
 
     rt.block_on(async {
+        let mut metadata = MetadataMap::with_capacity(1);
+        metadata.insert(
+            "uptrace-dsn",
+            "https://15Lj3pPVzaP1VtfSX9U-EQ@api.uptrace.dev?grpc=4317".parse()?,
+        );
+
+        opentelemetry::global::set_error_handler(|error| {
+            tracing::error!("OpenTelemetry error occurred: {:#}", anyhow::anyhow!(error));
+        })
+        .context("to be able to set error handler")?;
+
+        opentelemetry::global::set_meter_provider(
+            opentelemetry_otlp::new_pipeline()
+                .metrics(Tokio)
+                .with_resource(make_otel_metadata(VERSION.to_string(), firezone_id))
+                .with_exporter(
+                    opentelemetry_otlp::new_exporter()
+                        .tonic()
+                        .with_tls_config(ClientTlsConfig::new().with_webpki_roots())
+                        .with_endpoint("https://otlp.uptrace.dev:4317")
+                        .with_protocol(opentelemetry_otlp::Protocol::Grpc)
+                        .with_metadata(metadata),
+                )
+                .with_period(Duration::from_secs(5))
+                .build()
+                .context("Failed to create OTLP metrics pipeline")?,
+        );
+
         let connect_span = telemetry_span!("connect_to_firezone").entered();
 
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
@@ -327,6 +359,48 @@ fn main() -> Result<()> {
 
         result
     })
+}
+
+fn make_otel_metadata(version: String, user_id: String) -> opentelemetry_sdk::Resource {
+    use opentelemetry::{Key, KeyValue};
+    use opentelemetry_sdk::resource::TelemetryResourceDetector;
+    use opentelemetry_sdk::Resource;
+
+    const SERVICE_NAME: Key = Key::from_static_str("service.name");
+    const SERVICE_NAMESPACE: Key = Key::from_static_str("service.namespace");
+    const SERVICE_VERSION: Key = Key::from_static_str("service.version");
+    const HOST_ARCH: Key = Key::from_static_str("host.arch");
+    const USER_ID: Key = Key::from_static_str("user.id");
+    const OS_TYPE: Key = Key::from_static_str("os.type");
+
+    // TODO: Add environment (production / staging / etc)
+    let default_metadata = Resource::new([
+        KeyValue::new(SERVICE_NAMESPACE, "firezone"),
+        KeyValue::new(SERVICE_NAME, "headless-client"),
+        KeyValue::new(SERVICE_VERSION, version),
+        KeyValue::new(
+            HOST_ARCH,
+            match std::env::consts::ARCH {
+                "x86" => "x86",
+                "x86_64" => "amd64",
+                "arm" => "arm32",
+                "aarch64" => "arm64",
+                other => other,
+            },
+        ),
+        KeyValue::new(
+            OS_TYPE,
+            match std::env::consts::OS {
+                "apple" | "ios" | "macos" => "darwin",
+                other => other,
+            },
+        ),
+        KeyValue::new(USER_ID, user_id),
+    ]);
+    let detected_metadata =
+        Resource::from_detectors(Duration::ZERO, vec![Box::new(TelemetryResourceDetector)]);
+
+    default_metadata.merge(&detected_metadata)
 }
 
 /// Read the token from disk if it was not in the environment

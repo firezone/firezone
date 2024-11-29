@@ -1,4 +1,5 @@
 use firezone_logging::std_dyn_err;
+use opentelemetry::KeyValue;
 use std::collections::HashMap;
 use std::fmt;
 use std::{
@@ -146,11 +147,16 @@ pub struct UdpSocket {
     src_by_dst_cache: HashMap<IpAddr, IpAddr>,
 
     port: u16,
+
+    hw_network_io_counter: opentelemetry::metrics::Counter<u64>,
+    hw_errors_counter: opentelemetry::metrics::Counter<u64>,
+    network_type_value: opentelemetry::Value,
 }
 
 impl UdpSocket {
     fn new(inner: tokio::net::UdpSocket) -> io::Result<Self> {
-        let port = inner.local_addr()?.port();
+        let socket_addr = inner.local_addr()?;
+        let port = socket_addr.port();
 
         Ok(UdpSocket {
             state: quinn_udp::UdpSocketState::new(quinn_udp::UdpSockRef::from(&inner))?,
@@ -158,6 +164,20 @@ impl UdpSocket {
             inner,
             source_ip_resolver: Box::new(|_| Ok(None)),
             src_by_dst_cache: Default::default(),
+            hw_network_io_counter: opentelemetry::global::meter("connlib")
+                .u64_counter("hw.network.io")
+                .with_description("Received and transmitted network traffic in bytes")
+                .with_unit("By")
+                .init(),
+            hw_errors_counter: opentelemetry::global::meter("connlib")
+                .u64_counter("hw.errors")
+                .with_description("Number of errors encountered by the network adapter")
+                // .with_unit("By")
+                .init(),
+            network_type_value: match socket_addr {
+                SocketAddr::V4(_) => opentelemetry::Value::from("ipv4"),
+                SocketAddr::V6(_) => opentelemetry::Value::from("ipv6"),
+            },
         })
     }
 
@@ -255,6 +275,16 @@ impl UdpSocket {
                 let num_packets = meta.len / segment_size;
                 let trailing_bytes = meta.len % segment_size;
 
+                self.hw_network_io_counter.add(
+                    meta.len as u64,
+                    &[
+                        KeyValue::new("network.io.direction", "receive"),
+                        KeyValue::new("network.transport", "udp"),
+                        KeyValue::new("network.type", self.network_type_value.clone()),
+                        KeyValue::new("network.gro.segments", num_packets as i64),
+                    ],
+                );
+
                 tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, %num_packets, %segment_size, %trailing_bytes);
 
                 let iter = buffer[..meta.len]
@@ -330,9 +360,33 @@ impl UdpSocket {
             return Ok(());
         };
 
-        self.inner.try_io(Interest::WRITABLE, || {
+        self.hw_network_io_counter.add(
+            transmit.contents.len() as u64,
+            &[
+                KeyValue::new("network.io.direction", "transmit"),
+                KeyValue::new("network.transport", "udp"),
+                KeyValue::new("network.type", self.network_type_value.clone()),
+            ],
+        );
+
+        let result = self.inner.try_io(Interest::WRITABLE, || {
             self.state.try_send((&self.inner).into(), &transmit)
-        })
+        });
+
+        if let Err(e) = result.as_ref() {
+            self.hw_errors_counter.add(
+                1,
+                &[
+                    KeyValue::new("network.io.direction", "transmit"),
+                    KeyValue::new("network.transport", "udp"),
+                    KeyValue::new("hw.type", "network"),
+                    KeyValue::new("hw.error.type", e.kind().to_string()),
+                    KeyValue::new("network.type", self.network_type_value.clone()),
+                ],
+            );
+        }
+
+        result
     }
 
     fn prepare_transmit<'a>(

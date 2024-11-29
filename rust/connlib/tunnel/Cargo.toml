@@ -27,6 +27,7 @@ ip_network = { workspace = true }
 ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
 lru = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }
 proptest = { workspace = true, optional = true }
 rand = { workspace = true }
 rangemap = { workspace = true }

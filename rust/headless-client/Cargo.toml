@@ -21,7 +21,11 @@ futures = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }
+opentelemetry-otlp = { workspace = true, features = ["metrics", "tls-webpki-roots"] }
+opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
 phoenix-channel = { workspace = true }
+tonic = "0.12"
 rustls = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

@@ -2085,6 +2085,9 @@ dependencies = [
  "libc",
  "mutants",
  "nix 0.29.0",
+ "opentelemetry",
+ "opentelemetry-otlp",
+ "opentelemetry_sdk",
  "phoenix-channel",
  "resolv-conf",
  "rtnetlink",
@@ -2100,6 +2103,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "tokio-util",
+ "tonic",
  "tracing",
  "tracing-subscriber",
  "url",
@@ -2212,6 +2216,7 @@ dependencies = [
  "ip_network_table",
  "itertools 0.13.0",
  "lru",
+ "opentelemetry",
  "proptest",
  "proptest-state-machine",
  "rand 0.8.5",
@@ -5920,6 +5925,7 @@ name = "socket-factory"
 version = "0.1.0"
 dependencies = [
  "firezone-logging",
+ "opentelemetry",
  "quinn-udp",
  "socket2",
  "tokio",
@@ -6923,13 +6929,16 @@ dependencies = [
  "percent-encoding",
  "pin-project",
  "prost",
+ "rustls-pemfile",
  "socket2",
  "tokio",
+ "tokio-rustls",
  "tokio-stream",
  "tower 0.4.13",
  "tower-layer",
  "tower-service",
  "tracing",
+ "webpki-roots",
 ]
 
 [[package]]

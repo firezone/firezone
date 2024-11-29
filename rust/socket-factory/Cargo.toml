@@ -10,3 +10,4 @@ quinn-udp = { workspace = true }
 socket2 = { workspace = true }
 tokio = { workspace = true, features = ["net"] }
 tracing = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }

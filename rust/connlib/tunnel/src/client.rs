@@ -1,5 +1,6 @@
 mod resource;
 
+use opentelemetry::KeyValue;
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
@@ -142,6 +143,8 @@ pub struct ClientState {
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit<'static>>,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
+
+    hw_network_packets_counter: opentelemetry::metrics::Counter<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -181,6 +184,11 @@ impl ClientState {
             tcp_dns_client: dns_over_tcp::Client::new(now, seed),
             tcp_dns_server: dns_over_tcp::Server::new(now),
             tcp_dns_sockets_by_upstream_and_query_id: Default::default(),
+            hw_network_packets_counter: opentelemetry::global::meter("connlib")
+                .u64_counter("hw.network.packets")
+                .with_description("Received and transmitted network traffic in packets (or frames)")
+                // .with_unit("{packet}")
+                .init(),
         }
     }
 
@@ -474,6 +482,22 @@ impl ClientState {
             truncate_dns_response(message),
         )?;
 
+        self.hw_network_packets_counter.add(
+            1,
+            &[
+                KeyValue::new("network.io.direction", "transmit"),
+                KeyValue::new("network.transport", "udp"),
+                KeyValue::new("network.protocol.name", "dns"),
+                KeyValue::new(
+                    "network.type",
+                    match from.ip() {
+                        IpAddr::V4(_) => "ipv4",
+                        IpAddr::V6(_) => "ipv6",
+                    },
+                ),
+            ],
+        );
+
         self.buffered_packets.push_back(ip_packet);
 
         Ok(())
@@ -631,6 +655,22 @@ impl ClientState {
         };
 
         if self.tcp_dns_server.accepts(&packet) {
+            self.hw_network_packets_counter.add(
+                1,
+                &[
+                    KeyValue::new("network.io.direction", "receive"),
+                    KeyValue::new("network.transport", "tcp"),
+                    KeyValue::new("network.protocol.name", "dns"),
+                    KeyValue::new(
+                        "network.type",
+                        match packet.source() {
+                            IpAddr::V4(_) => "ipv4",
+                            IpAddr::V6(_) => "ipv6",
+                        },
+                    ),
+                ],
+            );
+
             self.tcp_dns_server.handle_inbound(packet);
             return ControlFlow::Break(());
         }
@@ -917,6 +957,22 @@ impl ClientState {
 
             // Check if the client wants to emit any packets.
             if let Some(packet) = self.tcp_dns_client.poll_outbound() {
+                self.hw_network_packets_counter.add(
+                    1,
+                    &[
+                        KeyValue::new("network.io.direction", "transmit"),
+                        KeyValue::new("network.transport", "tcp"),
+                        KeyValue::new("network.protocol.name", "dns"),
+                        KeyValue::new(
+                            "network.type",
+                            match packet.source() {
+                                IpAddr::V4(_) => "ipv4",
+                                IpAddr::V6(_) => "ipv6",
+                            },
+                        ),
+                    ],
+                );
+
                 let mut buffer = snownet::EncryptBuffer::new();
 
                 // All packets from the TCP DNS client _should_ go through the tunnel.
@@ -973,6 +1029,22 @@ impl ClientState {
                 return ControlFlow::Break(());
             }
         };
+
+        self.hw_network_packets_counter.add(
+            1,
+            &[
+                KeyValue::new("network.io.direction", "receive"),
+                KeyValue::new("network.transport", "udp"),
+                KeyValue::new("network.protocol.name", "dns"),
+                KeyValue::new(
+                    "network.type",
+                    match packet.source() {
+                        IpAddr::V4(_) => "ipv4",
+                        IpAddr::V6(_) => "ipv6",
+                    },
+                ),
+            ],
+        );
 
         let source = SocketAddr::new(packet.source(), datagram.source_port());
 

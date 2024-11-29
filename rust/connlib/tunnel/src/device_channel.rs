@@ -3,7 +3,9 @@ use domain::base::{Message, ParsedName, Rtype};
 use domain::rdata::AllRecordData;
 use ip_packet::{IpPacket, IpPacketBuf};
 use itertools::Itertools;
+use opentelemetry::KeyValue;
 use std::io;
+use std::net::IpAddr;
 use std::task::{Context, Poll, Waker};
 use tracing::Level;
 use tun::Tun;
@@ -11,6 +13,7 @@ use tun::Tun;
 pub struct Device {
     tun: Option<Box<dyn Tun>>,
     waker: Option<Waker>,
+    io_counter: opentelemetry::metrics::Counter<u64>,
 }
 
 impl Device {
@@ -18,6 +21,11 @@ impl Device {
         Self {
             tun: None,
             waker: None,
+            io_counter: opentelemetry::global::meter("connlib")
+                .u64_counter("hw.network.io")
+                .with_description("Received and transmitted network traffic in bytes")
+                .with_unit("By")
+                .init(),
         }
     }
 
@@ -56,6 +64,21 @@ impl Device {
             )
         })?;
 
+        self.io_counter.add(
+            n as u64,
+            &[
+                KeyValue::new("network.io.direction", "receive"),
+                KeyValue::new("network.transport", "tun"),
+                KeyValue::new(
+                    "network.type",
+                    match packet.source() {
+                        IpAddr::V4(_) => "ipv4",
+                        IpAddr::V6(_) => "ipv6",
+                    },
+                ),
+            ],
+        );
+
         if tracing::event_enabled!(target: "wire::dns::qry", Level::TRACE) {
             if let Some((qtype, qname, qid)) = parse_dns_query(&packet) {
                 tracing::trace!(target: "wire::dns::qry", %qid, "{:5} {qname}", qtype.to_string());
@@ -83,6 +106,21 @@ impl Device {
         debug_assert!(
             !packet.is_fz_p2p_control(),
             "FZ p2p control protocol packets should never leave `connlib`"
+        );
+
+        self.io_counter.add(
+            packet.packet().len() as u64,
+            &[
+                KeyValue::new("network.io.direction", "transmit"),
+                KeyValue::new("network.transport", "tun"),
+                KeyValue::new(
+                    "network.type",
+                    match packet.source() {
+                        IpAddr::V4(_) => "ipv4",
+                        IpAddr::V6(_) => "ipv6",
+                    },
+                ),
+            ],
         );
 
         match packet {
