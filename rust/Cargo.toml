@@ -91,8 +91,8 @@ rustls = { version = "0.23.10", default-features = false, features = ["ring"] }
 sadness-generator = "0.6.0"
 secrecy = "0.8"
 semver = "1.0.22"
-sentry = { version = "0.34.0", default-features = false }
-sentry-tracing = "0.34.0"
+sentry = { version = "0.35.0", default-features = false }
+sentry-tracing = "0.35.0"
 serde = "1.0.210"
 serde_json = "1.0.133"
 serde_variant = "0.1.3"
@@ -181,6 +181,8 @@ ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch
 proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" }
 proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "main" }
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.26" } # Waiting for release.
+sentry = { git = "https://github.com/thomaseizinger/sentry-rust", branch = "bundled-changes-waiting-for-release" }
+sentry-tracing = { git = "https://github.com/thomaseizinger/sentry-rust", branch = "bundled-changes-waiting-for-release" }
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
