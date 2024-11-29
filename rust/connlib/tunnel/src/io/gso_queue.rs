@@ -8,6 +8,8 @@ use std::{
 use bytes::BytesMut;
 use socket_factory::DatagramOut;
 
+use super::MAX_INBOUND_PACKET_BATCH;
+
 /// Holds UDP datagrams that we need to send, indexed by src, dst and segment size.
 ///
 /// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
@@ -42,13 +44,19 @@ impl GsoQueue {
     ) {
         let segment_size = payload.len();
 
+        // At most, a single batch translates to packets all going to the same destination and length.
+        // Thus, to avoid a lot of re-allocations during sending, allocate enough space to store a quarter of the packets in a batch.
+        // Re-allocations happen by doubling the capacity, so this means we have at most 2 re-allocation.
+        // This number has been chosen empirically by observing how big the GSO batches typically are.
+        let capacity = segment_size * MAX_INBOUND_PACKET_BATCH / 4;
+
         self.inner
             .entry(Key {
                 src,
                 dst,
                 segment_size,
             })
-            .or_insert_with(|| DatagramBuffer::new(now, segment_size * 10)) // Reserve space for a few packets to avoid at least a few re-allocations.
+            .or_insert_with(|| DatagramBuffer::new(now, capacity))
             .extend(payload, now);
     }
 
