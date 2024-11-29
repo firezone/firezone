@@ -288,22 +288,25 @@ impl GatewayState {
     pub fn handle_domain_resolved(
         &mut self,
         req: ResolveDnsRequest,
-        addresses: Vec<IpAddr>,
+        resolve_result: Result<Vec<IpAddr>>,
         now: Instant,
     ) -> anyhow::Result<()> {
         use p2p_control::dns_resource_nat;
 
-        let nat_status = self
-            .peers
-            .get_mut(&req.client)
-            .context("Unknown peer")?
-            .setup_nat(
-                req.domain.clone(),
-                req.resource,
-                BTreeSet::from_iter(addresses),
-                BTreeSet::from_iter(req.proxy_ips),
-            )
-            .map(|()| dns_resource_nat::NatStatus::Active)
+        let nat_status = resolve_result
+            .and_then(|addresses| {
+                self.peers
+                    .get_mut(&req.client)
+                    .context("Unknown peer")?
+                    .setup_nat(
+                        req.domain.clone(),
+                        req.resource,
+                        BTreeSet::from_iter(addresses),
+                        BTreeSet::from_iter(req.proxy_ips),
+                    )?;
+
+                Ok(dns_resource_nat::NatStatus::Active)
+            })
             .unwrap_or_else(|e| {
                 tracing::warn!(
                     error = anyhow_dyn_err(&e),

@@ -909,7 +909,11 @@ fn on_gateway_event(
         GatewayEvent::ResolveDns(r) => {
             let resolved_ips = global_dns_records.domain_ips_iter(r.domain()).collect();
 
-            gateway.exec_mut(|g| g.sut.handle_domain_resolved(r, resolved_ips, now).unwrap())
+            gateway.exec_mut(|g| {
+                g.sut
+                    .handle_domain_resolved(r, Ok(resolved_ips), now)
+                    .unwrap()
+            })
         }
     }
 }
