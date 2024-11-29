@@ -37,8 +37,6 @@
             gnome.zenity
             desktop-file-utils
             android-tools
-            erlang_27
-            elixir
 
             # For Tauri
             at-spi2-atk

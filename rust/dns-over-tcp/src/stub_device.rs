@@ -57,7 +57,7 @@ pub(crate) struct SmolTxToken<'a> {
     outbound_packets: &'a mut VecDeque<IpPacket>,
 }
 
-impl<'a> smoltcp::phy::TxToken for SmolTxToken<'a> {
+impl smoltcp::phy::TxToken for SmolTxToken<'_> {
     fn consume<R, F>(self, len: usize, f: F) -> R
     where
         F: FnOnce(&mut [u8]) -> R,

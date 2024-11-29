@@ -17,8 +17,7 @@ use std::{
 };
 use tracing::Span;
 
-#[derive(Clone, derivative::Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, derive_more::Debug)]
 pub(crate) struct Host<T> {
     inner: T,
 
@@ -27,23 +26,23 @@ pub(crate) struct Host<T> {
 
     // In production, we always rebind to a new port.
     // To mimic this, we track the used ports here to not sample an existing one.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) old_ports: HashSet<u16>,
 
     default_port: u16,
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     allocated_ports: HashSet<(u16, AddressFamily)>,
 
     // The latency of incoming and outgoing packets.
     latency: Duration,
 
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     span: Span,
 
     /// Messages that have "arrived" and are waiting to be dispatched.
     ///
     /// We buffer them here because we need also apply our latency on inbound packets.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     inbox: BufferedTransmits,
 }
 

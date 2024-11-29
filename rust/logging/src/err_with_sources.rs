@@ -10,7 +10,7 @@ pub struct ErrorWithSources<'a> {
     e: &'a (dyn Error + 'static),
 }
 
-impl<'a> fmt::Display for ErrorWithSources<'a> {
+impl fmt::Display for ErrorWithSources<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.e)?;
 

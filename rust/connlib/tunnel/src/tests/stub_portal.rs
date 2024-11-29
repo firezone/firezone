@@ -22,12 +22,11 @@ use std::{
 };
 
 /// Stub implementation of the portal.
-#[derive(Clone, derivative::Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, derive_more::Debug)]
 pub(crate) struct StubPortal {
     gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>>,
 
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     sites_by_resource: BTreeMap<ResourceId, SiteId>,
 
     // TODO: Maybe these should use the `messages` types to cover the conversions and to model that that is what we receive from the portal?
@@ -35,7 +34,7 @@ pub(crate) struct StubPortal {
     dns_resources: BTreeMap<ResourceId, client::DnsResource>,
     internet_resource: client::InternetResource,
 
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     gateway_selector: Selector,
 }
 

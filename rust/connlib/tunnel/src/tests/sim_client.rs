@@ -369,8 +369,7 @@ impl SimClient {
 ///
 /// The reference state machine is designed to be as abstract as possible over connlib's functionality.
 /// For example, we try to model connectivity to _resources_ and don't really care, which gateway is being used to route us there.
-#[derive(Clone, derivative::Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, derive_more::Debug)]
 pub struct RefClient {
     pub(crate) id: ClientId,
     pub(crate) key: PrivateKey,
@@ -379,10 +378,10 @@ pub struct RefClient {
     pub(crate) tunnel_ip6: Ipv6Addr,
 
     /// The DNS resolvers configured on the client outside of connlib.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     system_dns_resolvers: Vec<IpAddr>,
     /// The upstream DNS resolvers configured in the portal.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     upstream_dns_resolvers: Vec<DnsServer>,
 
     ipv4_routes: BTreeMap<ResourceId, Ipv4Network>,
@@ -391,62 +390,62 @@ pub struct RefClient {
     /// Tracks all resources in the order they have been added in.
     ///
     /// When reconnecting to the portal, we simulate them being re-added in the same order.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     resources: Vec<Resource>,
 
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     internet_resource: Option<ResourceId>,
 
     /// The CIDR resources the client is aware of.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     cidr_resources: IpNetworkTable<ResourceId>,
 
     /// The client's DNS records.
     ///
     /// The IPs assigned to a domain by connlib are an implementation detail that we don't want to model in these tests.
     /// Instead, we just remember what _kind_ of records we resolved to be able to sample a matching src IP.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) dns_records: BTreeMap<DomainName, BTreeSet<Rtype>>,
 
     /// Whether we are connected to the gateway serving the Internet resource.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) connected_internet_resource: bool,
 
     /// The CIDR resources the client is connected to.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) connected_cidr_resources: HashSet<ResourceId>,
 
     /// The DNS resources the client is connected to.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) connected_dns_resources: HashSet<(ResourceId, DomainName)>,
 
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) connected_gateways: BTreeSet<GatewayId>,
 
     /// Actively disabled resources by the UI
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) disabled_resources: BTreeSet<ResourceId>,
 
     /// The expected ICMP handshakes.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) expected_icmp_handshakes:
         BTreeMap<GatewayId, BTreeMap<u64, (Destination, Seq, Identifier)>>,
 
     /// The expected UDP handshakes.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) expected_udp_handshakes:
         BTreeMap<GatewayId, BTreeMap<u64, (Destination, SPort, DPort)>>,
 
     /// The expected TCP exchanges.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) expected_tcp_exchanges:
         BTreeMap<GatewayId, BTreeMap<u64, (Destination, SPort, DPort)>>,
 
     /// The expected UDP DNS handshakes.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) expected_udp_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
     /// The expected TCP DNS handshakes.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) expected_tcp_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
 }
 

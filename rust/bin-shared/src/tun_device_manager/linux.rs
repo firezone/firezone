@@ -33,8 +33,7 @@ const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
 
-// Safety: We know that this is a valid C string.
-const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/tun\0") };
+const TUN_FILE: &CStr = c"/dev/net/tun";
 
 const FIREZONE_TABLE: u32 = 0x2021_fd00;
 

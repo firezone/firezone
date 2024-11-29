@@ -28,7 +28,6 @@ pub struct Image {
 /// # Returns
 ///
 /// An `Image` with the same dimensions as the first layer.
-
 pub fn compose<'a, I: IntoIterator<Item = &'a [u8]>>(layers: I) -> Result<Image> {
     let mut dst = None;
 
