@@ -153,9 +153,6 @@ name = "anyhow"
 version = "1.0.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c95c10ba0b00a02636238b814946408b1322d5ac4760326e6fb8ec956d85775"
-dependencies = [
- "backtrace",
-]
 
 [[package]]
 name = "arbitrary"
@@ -2179,7 +2176,6 @@ name = "firezone-telemetry"
 version = "0.1.0"
 dependencies = [
  "sentry",
- "sentry-anyhow",
  "thiserror",
  "tokio",
  "tracing",
@@ -5501,17 +5497,6 @@ dependencies = [
  "tokio",
  "ureq",
  "webpki-roots",
-]
-
-[[package]]
-name = "sentry-anyhow"
-version = "0.34.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d672bfd1ed4e90978435f3c0704edb71a7a9d86403657839d518cd6aa278aff5"
-dependencies = [
- "anyhow",
- "sentry-backtrace",
- "sentry-core",
 ]
 
 [[package]]

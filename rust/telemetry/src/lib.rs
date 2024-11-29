@@ -1,7 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
 use sentry::protocol::SessionStatus;
-pub use sentry_anyhow::capture_anyhow;
 
 pub struct Dsn(&'static str);
 
