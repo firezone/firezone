@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use sentry::protocol::SessionStatus;
 pub use sentry_anyhow::capture_anyhow;
@@ -72,9 +72,15 @@ impl Telemetry {
                 environment: Some(environment.into()),
                 // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
                 release: Some(release.to_owned().into()),
-                // We submit all spans but only send the ones with `target: telemetry`.
-                // Those spans are created further down and are throttled at creation time to save CPU.
-                traces_sample_rate: 1.0,
+                traces_sampler: Some(Arc::new(|tx| {
+                    // Only submit `telemetry` spans to Sentry.
+                    // Those get sampled at creation time (to save CPU power) so we want to submit all of them.
+                    if tx.name() == "telemetry" {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                })),
                 max_breadcrumbs: 500,
                 ..Default::default()
             },
