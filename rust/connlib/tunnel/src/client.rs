@@ -361,6 +361,26 @@ impl ClientState {
         }
     }
 
+    /// Clears the DNS resource NAT state for a given domain.
+    ///
+    /// Once cleared, this will trigger the client to submit another `AssignedIp`s event to the Gateway.
+    /// On the Gateway, such an event causes a new DNS resolution.
+    ///
+    /// We call this function every time a client issues a DNS query for a certain domain.
+    /// Coupling this behaviour together allows a client to refresh the DNS resolution of a DNS resource on the Gateway
+    /// through local DNS resolutions.
+    fn clear_dns_resource_nat_for_domain(&mut self, message: Message<&[u8]>) {
+        let Ok(question) = message.sole_question() else {
+            return;
+        };
+        let domain = question.into_qname();
+
+        tracing::debug!(%domain, "Clearing DNS resource NAT");
+
+        self.dns_resource_nat_by_gateway
+            .retain(|(_, candidate), _| candidate != &domain);
+    }
+
     fn is_cidr_resource_connected(&self, resource: &ResourceId) -> bool {
         let Some(gateway_id) = self.resources_gateways.get(resource) else {
             return false;
@@ -1011,11 +1031,13 @@ impl ClientState {
 
         match self.stub_resolver.handle(message) {
             dns::ResolveStrategy::LocalResponse(response) => {
+                self.clear_dns_resource_nat_for_domain(response.for_slice_ref());
+                self.update_dns_resource_nat(now);
+
                 unwrap_or_debug!(
                     self.try_queue_udp_dns_response(upstream, source, &response),
                     "Failed to queue UDP DNS response: {}"
                 );
-                self.update_dns_resource_nat(now);
             }
             dns::ResolveStrategy::Recurse => {
                 let query_id = message.header().id();
@@ -1054,11 +1076,13 @@ impl ClientState {
 
         match self.stub_resolver.handle(message.for_slice_ref()) {
             dns::ResolveStrategy::LocalResponse(response) => {
+                self.clear_dns_resource_nat_for_domain(response.for_slice_ref());
+                self.update_dns_resource_nat(now);
+
                 unwrap_or_debug!(
                     self.tcp_dns_server.send_message(query.socket, response),
                     "Failed to send TCP DNS response: {}"
                 );
-                self.update_dns_resource_nat(now);
             }
             dns::ResolveStrategy::Recurse => {
                 let query_id = message.header().id();
