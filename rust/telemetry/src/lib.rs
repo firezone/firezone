@@ -120,9 +120,7 @@ impl Telemetry {
 
         // Sentry uses blocking IO for flushing ..
         let _ = tokio::task::spawn_blocking(move || {
-            // `flush`'s return value is flipped from the docs
-            // <https://github.com/getsentry/sentry-rust/issues/677>
-            if inner.flush(Some(Duration::from_secs(5))) {
+            if !inner.flush(Some(Duration::from_secs(5))) {
                 tracing::error!("Failed to flush telemetry events to sentry.io");
                 return;
             };
