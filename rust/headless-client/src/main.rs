@@ -193,7 +193,7 @@ fn main() -> Result<()> {
     let url = LoginUrl::client(
         cli.api_url,
         &token,
-        firezone_id.clone(),
+        firezone_id,
         cli.firezone_name,
         device_id::device_info(),
     )?;
@@ -224,7 +224,7 @@ fn main() -> Result<()> {
         opentelemetry::global::set_meter_provider(
             opentelemetry_otlp::new_pipeline()
                 .metrics(Tokio)
-                .with_resource(make_otel_metadata(VERSION.to_string(), firezone_id))
+                .with_resource(make_otel_metadata(VERSION.to_string()))
                 .with_exporter(
                     opentelemetry_otlp::new_exporter()
                         .tonic()
@@ -361,7 +361,7 @@ fn main() -> Result<()> {
     })
 }
 
-fn make_otel_metadata(version: String, user_id: String) -> opentelemetry_sdk::Resource {
+fn make_otel_metadata(version: String) -> opentelemetry_sdk::Resource {
     use opentelemetry::{Key, KeyValue};
     use opentelemetry_sdk::resource::TelemetryResourceDetector;
     use opentelemetry_sdk::Resource;
@@ -370,7 +370,6 @@ fn make_otel_metadata(version: String, user_id: String) -> opentelemetry_sdk::Re
     const SERVICE_NAMESPACE: Key = Key::from_static_str("service.namespace");
     const SERVICE_VERSION: Key = Key::from_static_str("service.version");
     const HOST_ARCH: Key = Key::from_static_str("host.arch");
-    const USER_ID: Key = Key::from_static_str("user.id");
     const OS_TYPE: Key = Key::from_static_str("os.type");
 
     // TODO: Add environment (production / staging / etc)
@@ -395,7 +394,6 @@ fn make_otel_metadata(version: String, user_id: String) -> opentelemetry_sdk::Re
                 other => other,
             },
         ),
-        KeyValue::new(USER_ID, user_id),
     ]);
     let detected_metadata =
         Resource::from_detectors(Duration::ZERO, vec![Box::new(TelemetryResourceDetector)]);
