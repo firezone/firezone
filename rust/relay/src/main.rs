@@ -185,9 +185,11 @@ async fn try_main(args: Args) -> Result<()> {
             JoinMessage {
                 stamp_secret: server.auth_secret().expose_secret().to_string(),
             },
-            ExponentialBackoffBuilder::default()
-                .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
-                .build(),
+            || {
+                ExponentialBackoffBuilder::default()
+                    .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
+                    .build()
+            },
             Arc::new(socket_factory::tcp),
         )?;
         channel.connect(NoParams);

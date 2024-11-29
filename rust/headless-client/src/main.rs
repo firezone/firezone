@@ -218,9 +218,11 @@ fn main() -> Result<()> {
             get_user_agent(None, env!("CARGO_PKG_VERSION")),
             "client",
             (),
-            ExponentialBackoffBuilder::default()
-                .with_max_elapsed_time(max_partition_time)
-                .build(),
+            move || {
+                ExponentialBackoffBuilder::default()
+                    .with_max_elapsed_time(max_partition_time)
+                    .build()
+            },
             Arc::new(tcp_socket_factory),
         )?;
         let session = Session::connect(

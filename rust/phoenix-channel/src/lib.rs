@@ -54,7 +54,8 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes, TFinish> {
     url_prototype: Secret<LoginUrl<TFinish>>,
     last_url: Option<Url>,
     user_agent: String,
-    reconnect_backoff: ExponentialBackoff,
+    make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
+    reconnect_backoff: Option<ExponentialBackoff>,
 
     resolved_addresses: Vec<IpAddr>,
 
@@ -135,8 +136,8 @@ pub enum Error {
     Client(StatusCode),
     #[error("token expired")]
     TokenExpired,
-    #[error("max retries reached")]
-    MaxRetriesReached,
+    #[error("max retries reached: {final_error}")]
+    MaxRetriesReached { final_error: String },
     #[error("login failed: {0}")]
     LoginFailed(ErrorReply),
 }
@@ -146,7 +147,7 @@ impl Error {
         match self {
             Error::Client(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
             Error::TokenExpired => true,
-            Error::MaxRetriesReached => false,
+            Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
         }
     }
@@ -259,7 +260,7 @@ where
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,
-        reconnect_backoff: ExponentialBackoff,
+        make_reconnect_backoff: impl Fn() -> ExponentialBackoff + Send + 'static,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> io::Result<Self> {
         let next_request_id = Arc::new(AtomicU64::new(0));
@@ -276,7 +277,8 @@ where
             .collect();
 
         Ok(Self {
-            reconnect_backoff,
+            make_reconnect_backoff: Box::new(make_reconnect_backoff),
+            reconnect_backoff: None,
             url_prototype: url,
             user_agent,
             state: State::Closed,
@@ -332,7 +334,7 @@ where
         }
 
         // 1. Reset the backoff.
-        self.reconnect_backoff.reset();
+        self.reconnect_backoff = None;
 
         // 2. Set state to `Connecting` without a timer.
         let user_agent = self.user_agent.clone();
@@ -391,7 +393,7 @@ where
                 State::Connected(stream) => stream,
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
-                        self.reconnect_backoff.reset();
+                        self.reconnect_backoff = None;
                         self.heartbeat.reset();
                         self.state = State::Connected(stream);
 
@@ -408,10 +410,18 @@ where
                         return Poll::Ready(Err(Error::Client(r.status())));
                     }
                     Poll::Ready(Err(e)) => {
-                        let Some(backoff) = self.reconnect_backoff.next_backoff() else {
-                            tracing::warn!("Reconnect backoff expired");
-                            return Poll::Ready(Err(Error::MaxRetriesReached));
-                        };
+                        let socket_addresses = self.socket_addresses();
+
+                        // If we don't have a backoff yet, this is the first error so create one.
+                        let reconnect_backoff = self
+                            .reconnect_backoff
+                            .get_or_insert_with(|| (self.make_reconnect_backoff)());
+
+                        let backoff = reconnect_backoff.next_backoff().ok_or_else(|| {
+                            Error::MaxRetriesReached {
+                                final_error: err_with_src(&e).to_string(),
+                            }
+                        })?;
 
                         let secret_url = self
                             .last_url
@@ -420,9 +430,8 @@ where
                             .clone();
                         let user_agent = self.user_agent.clone();
                         let socket_factory = self.socket_factory.clone();
-                        let socket_addresses = self.socket_addresses();
 
-                        tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {}", err_with_src(&e));
+                        tracing::debug!(?backoff, max_elapsed_time = ?reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {}", err_with_src(&e));
 
                         self.state = State::Connecting(Box::pin(async move {
                             tokio::time::sleep(backoff).await;

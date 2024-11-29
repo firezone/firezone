@@ -366,9 +366,11 @@ fn connect(
         get_user_agent(Some(os_version), env!("CARGO_PKG_VERSION")),
         "client",
         (),
-        ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
-            .build(),
+        || {
+            ExponentialBackoffBuilder::default()
+                .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
+                .build()
+        },
         tcp_socket_factory,
     )?;
     let session = Session::connect(
