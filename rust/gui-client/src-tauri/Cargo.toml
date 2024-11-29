@@ -6,57 +6,58 @@ description = "Firezone"
 edition = "2021"
 default-run = "firezone-gui-client"
 authors = ["Firezone, Inc."]
+license = { workspace = true }
 
 [build-dependencies]
-anyhow = { version = "1.0.89" }
-tauri-build = { version = "2.0.1", features = [] }
+anyhow = { workspace = true }
+tauri-build = { workspace = true, features = [] }
 
 [dependencies]
-anyhow = { version = "1.0.89" }
+anyhow = { workspace = true }
 atomicwrites = { workspace = true }
 chrono = { workspace = true }
-clap = { version = "4.5.21", features = ["derive", "env"] }
+clap = { workspace = true, features = ["derive", "env"] }
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
 firezone-bin-shared = { workspace = true }
-firezone-gui-client-common = { path = "../src-common" }
-firezone-headless-client = { path = "../../headless-client" }
+firezone-gui-client-common = { workspace = true }
+firezone-headless-client = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
-futures = "0.3.31"
-native-dialog = "0.7.0"
-rand = "0.8.5"
+futures = { workspace = true }
+native-dialog = { workspace = true }
+rand = { workspace = true }
 rustls = { workspace = true }
-sadness-generator = "0.6.0"
+sadness-generator = { workspace = true }
 secrecy = { workspace = true }
-serde = { version = "1.0.210", features = ["derive"] }
-serde_json = "1.0.132"
-subtle = "2.5.0"
-tauri = { version = "2.0.3", features = ["tray-icon", "image-png"] }
-tauri-plugin-dialog = "2.0.1"
-tauri-plugin-notification = "2.0.1"
-tauri-plugin-shell = "2.0.2"
-tauri-runtime = "2.1.0"
-tauri-utils = "2.0.1"
-thiserror = "1.0.68"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+subtle = { workspace = true }
+tauri = { workspace = true, features = ["tray-icon", "image-png"] }
+tauri-plugin-dialog = { workspace = true }
+tauri-plugin-notification = { workspace = true }
+tauri-plugin-shell = { workspace = true }
+tauri-runtime = { workspace = true }
+tauri-utils = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
-tokio-util = { version = "0.7.11", features = ["codec"] }
+tokio-util = { workspace = true, features = ["codec"] }
 tracing = { workspace = true }
-tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
-url = { version = "2.5.2", features = ["serde"] }
-uuid = { version = "1.10.0", features = ["v4"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+url = { workspace = true, features = ["serde"] }
+uuid = { workspace = true, features = ["v4"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-dirs = "5.0.1"
-nix = { version = "0.29.0", features = ["user"] }
+dirs = { workspace = true }
+nix = { workspace = true, features = ["user"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 
 [target.'cfg(target_os = "windows")'.dependencies]
-tauri-winrt-notification = "0.6.0"
+tauri-winrt-notification = "0.7.0"
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
-version = "0.58.0"
+workspace = true
 features = [
   "Win32_Foundation",
   "Win32_System_Threading",

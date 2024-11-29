@@ -761,7 +761,7 @@ fn select_host_v6(hosts: &[Ipv6Network]) -> impl Strategy<Value = Ipv6Addr> {
 }
 
 pub(crate) fn private_key() -> impl Strategy<Value = PrivateKey> {
-    any::<[u8; 32]>().prop_map(PrivateKey)
+    any::<[u8; 32]>().prop_map(PrivateKey).no_shrink()
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]

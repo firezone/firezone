@@ -1,3 +1,39 @@
+//! The authentication scheme for the TURN server.
+//!
+//! TURN specifies two ways of authentication: long-term credentials & short-term credentials.
+//! For details on those, please consult the RFC: <https://www.rfc-editor.org/rfc/rfc8489.html#section-9>.
+//!
+//! This implementation only supports long-term credentials.
+//!
+//! ## Client authentication
+//!
+//! On startup, the server generates a 32-byte secret (referred to as `relay_secret`) that is only ever stored in-memory.
+//! This secret is shared with the Firezone portal upon connecting with the WebSocket.
+//! The portal uses this secret to generate credentials for each TURN client.
+//! The credentials take the form of:
+//!
+//! - username: `{unix_expiry_timestamp}:{salt}`
+//! - password: `sha256({unix_expiry_timestamp}:{relay_secret}:{salt})`
+//!
+//! As such, a TURN client can never create a set of credentials themselves because they are missing the `relay_secret`.
+//! In addition, a relay can validate such a username and password combination without having to store any state other than the `relay_secret`.
+//!
+//! All STUN messages other than `BINDING` requests MUST be authenticated by the client.
+//!
+//! ## Server authentication
+//!
+//! In addition to authenticating all messages from the client with the server, a server will authenticate its messages to the client.
+//! This also uses the long-term credentials mechanism using the same username and password.
+//! In other words, the server will authenticate the messages sent to the client with the client's username and password.
+//!
+//! ## Security considerations
+//!
+//! The password is a shared secret and thus ensures message integrity and authenticity to the client.
+//! An observer on the network path does not have knowledge of the `relay_secret` and thus cannot fake a relay's identity.
+//!
+//! Each client will receive a different pair of username and password.
+//! Thus, even with valid credentials, an attacker cannot reuse those credentials to fake responses for a different client.
+
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use base64::Engine;
 use bytecodec::Encode;
@@ -144,7 +180,7 @@ impl Nonces {
     /// Record the usage of a nonce in a request.
     pub(crate) fn handle_nonce_used(&mut self, nonce: Uuid) -> Result<(), Error> {
         let mut entry = match self.inner.entry(nonce) {
-            Entry::Vacant(_) => return Err(Error::InvalidNonce),
+            Entry::Vacant(_) => return Err(Error::UnknownNonce),
             Entry::Occupied(entry) => entry,
         };
 
@@ -153,7 +189,7 @@ impl Nonces {
         if *remaining_requests == 0 {
             entry.remove();
 
-            return Err(Error::InvalidNonce);
+            return Err(Error::NonceUsedUp);
         }
 
         *remaining_requests -= 1;
@@ -170,8 +206,10 @@ pub(crate) enum Error {
     InvalidPassword,
     #[error("invalid username")]
     InvalidUsername,
-    #[error("invalid nonce")]
-    InvalidNonce,
+    #[error("nonce has been used up")]
+    NonceUsedUp,
+    #[error("unknown nonce")]
+    UnknownNonce,
     #[error("cannot authenticate message")]
     CannotAuthenticate(#[from] bytecodec::Error),
 }
@@ -329,7 +367,7 @@ mod tests {
 
         assert!(matches!(
             nonces.handle_nonce_used(nonce).unwrap_err(),
-            Error::InvalidNonce
+            Error::NonceUsedUp
         ));
     }
 
@@ -340,7 +378,7 @@ mod tests {
 
         assert!(matches!(
             nonces.handle_nonce_used(nonce).unwrap_err(),
-            Error::InvalidNonce
+            Error::UnknownNonce
         ));
     }
 

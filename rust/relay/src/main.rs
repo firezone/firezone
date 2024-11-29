@@ -4,12 +4,13 @@ use anyhow::{anyhow, bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::http_health_check;
-use firezone_logging::std_dyn_err;
+use firezone_logging::{anyhow_dyn_err, sentry_layer, std_dyn_err};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     sockets, AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack,
     PeerSocket, Server, Sleep,
 };
+use firezone_telemetry::{Telemetry, RELAY_DSN};
 use futures::{future, FutureExt};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel};
 use rand::rngs::StdRng;
@@ -88,6 +89,16 @@ struct Args {
 
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
+
+    /// Disable sentry.io crash-reporting agent.
+    #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
+    no_telemetry: bool,
+}
+
+impl Args {
+    fn is_telemetry_allowed(&self) -> bool {
+        !self.no_telemetry
+    }
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -97,14 +108,39 @@ enum LogFormat {
     GoogleCloud,
 }
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<()> {
+fn main() {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
     let args = Args::parse();
 
+    let mut telemetry = Telemetry::default();
+    if args.is_telemetry_allowed() {
+        telemetry.start(
+            args.api_url.as_str(),
+            option_env!("GITHUB_SHA").unwrap_or("unknown"),
+            RELAY_DSN,
+        );
+    }
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to build tokio runtime");
+
+    match runtime.block_on(try_main(args)) {
+        Ok(()) => runtime.block_on(telemetry.stop()),
+        Err(e) => {
+            tracing::error!(error = anyhow_dyn_err(&e));
+            runtime.block_on(telemetry.stop_on_crash());
+
+            std::process::exit(1);
+        }
+    }
+}
+
+async fn try_main(args: Args) -> Result<()> {
     setup_tracing(&args)?;
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
@@ -198,6 +234,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
         None => tracing_subscriber::registry()
             .with(log_layer(args))
             .with(env_filter())
+            .with(sentry_layer())
             .into(),
         Some(endpoint) => {
             let metadata = make_otel_metadata();
@@ -237,6 +274,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
                 .with(log_layer(args))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("relay")))
                 .with(env_filter())
+                .with(sentry_layer())
                 .into()
         }
     };
@@ -523,9 +561,9 @@ where
             match self.sigterm.poll_recv(cx) {
                 Poll::Ready(Some(())) => {
                     if self.shutting_down {
-                        // Received a repeated SIGTERM whilst shutting down
+                        tracing::info!("Forcing shutdown on repeated SIGTERM");
 
-                        return Poll::Ready(Err(anyhow!("Forcing shutdown on repeated SIGTERM")));
+                        return Poll::Ready(Ok(()));
                     }
 
                     tracing::info!(active_allocations = %self.server.num_allocations(), "Received SIGTERM, initiating graceful shutdown");
