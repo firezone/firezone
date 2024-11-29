@@ -339,8 +339,7 @@ pub enum ClientEvent {
     TunInterfaceUpdated(TunConfig),
 }
 
-#[derive(Clone, derivative::Derivative, PartialEq, Eq)]
-#[derivative(Debug)]
+#[derive(Clone, derive_more::Debug, PartialEq, Eq)]
 pub struct TunConfig {
     pub ip4: Ipv4Addr,
     pub ip6: Ipv6Addr,
@@ -352,9 +351,9 @@ pub struct TunConfig {
     ///   Otherwise, we will use the DNS servers configured on the system.
     pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
 
-    #[derivative(Debug(format_with = "fmt_routes"))]
+    #[debug("{}", DisplaySet(ipv4_routes))]
     pub ipv4_routes: BTreeSet<Ipv4Network>,
-    #[derivative(Debug(format_with = "fmt_routes"))]
+    #[debug("{}", DisplaySet(ipv6_routes))]
     pub ipv6_routes: BTreeSet<Ipv6Network>,
 }
 
@@ -376,15 +375,21 @@ pub enum GatewayEvent {
     ResolveDns(ResolveDnsRequest),
 }
 
-fn fmt_routes<T>(routes: &BTreeSet<T>, f: &mut fmt::Formatter) -> fmt::Result
+/// Adapter-struct to [`fmt::Display`] a [`BTreeSet`].
+#[expect(dead_code, reason = "It is used in the `Debug` impl of `TunConfig`")]
+struct DisplaySet<'a, T>(&'a BTreeSet<T>);
+
+impl<T> fmt::Display for DisplaySet<'_, T>
 where
     T: fmt::Display,
 {
-    let mut list = f.debug_list();
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut list = f.debug_list();
 
-    for route in routes {
-        list.entry(&format_args!("{route}"));
+        for entry in self.0 {
+            list.entry(&format_args!("{entry}"));
+        }
+
+        list.finish()
     }
-
-    list.finish()
 }

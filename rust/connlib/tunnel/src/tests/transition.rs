@@ -114,12 +114,11 @@ pub(crate) struct SPort(pub u16);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct DPort(pub u16);
 
-#[derive(Clone, derivative::Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, derive_more::Debug)]
 #[expect(clippy::large_enum_variant)]
 pub(crate) enum Destination {
     DomainName {
-        #[derivative(Debug = "ignore")]
+        #[debug(skip)]
         resolved_ip: sample::Selector,
         name: DomainName,
     },

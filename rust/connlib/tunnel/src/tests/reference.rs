@@ -20,8 +20,7 @@ use std::{
 /// The reference state machine of the tunnel.
 ///
 /// This is the "expected" part of our test.
-#[derive(Clone, derivative::Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct ReferenceState {
     pub(crate) client: Host<RefClient>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
