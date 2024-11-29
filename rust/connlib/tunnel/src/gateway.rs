@@ -268,7 +268,12 @@ impl GatewayState {
             return;
         };
 
-        if let Err(e) = peer.refresh_translation(name.clone(), resource_id, resolved_ips, now) {
+        if let Err(e) = peer.refresh_translation(
+            name.clone(),
+            resource_id,
+            BTreeSet::from_iter(resolved_ips),
+            now,
+        ) {
             tracing::warn!(error = anyhow_dyn_err(&e), rid = %resource_id, %name, "Failed to refresh DNS resource IP translations");
         };
     }
@@ -295,8 +300,8 @@ impl GatewayState {
             peer.setup_nat(
                 entry.domain,
                 resource.id(),
-                &entry.resolved_ips,
-                entry.proxy_ips,
+                BTreeSet::from_iter(entry.resolved_ips),
+                BTreeSet::from_iter(entry.proxy_ips),
                 now,
             )?;
         }
@@ -322,8 +327,8 @@ impl GatewayState {
             .setup_nat(
                 req.domain.clone(),
                 req.resource,
-                &addresses,
-                req.proxy_ips,
+                BTreeSet::from_iter(addresses),
+                BTreeSet::from_iter(req.proxy_ips),
                 now,
             )
             .map(|()| dns_resource_nat::NatStatus::Active)

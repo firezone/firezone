@@ -1,4 +1,4 @@
-use std::collections::{hash_map, BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
@@ -11,7 +11,6 @@ use connlib_model::{ClientId, DomainName, GatewayId, ResourceId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
-use itertools::Itertools;
 use rangemap::RangeInclusiveSet;
 
 use crate::utils::network_contains_network;
@@ -165,7 +164,7 @@ impl ClientOnGateway {
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
-        resolved_ips: Vec<IpAddr>,
+        resolved_ips: BTreeSet<IpAddr>,
         now: Instant,
     ) -> Result<()> {
         let resource_on_gateway = self
@@ -183,20 +182,20 @@ impl ClientOnGateway {
             }
         };
 
-        let old_ips: HashSet<&IpAddr> =
-            HashSet::from_iter(self.permanent_translations.values().filter_map(|state| {
-                (state.name == name && state.resource_id == resource_id)
-                    .then_some(&state.resolved_ip)
-            }));
-        let new_ips: HashSet<&IpAddr> = HashSet::from_iter(resolved_ips.iter());
-        if old_ips == new_ips {
+        let old_ips = BTreeSet::from_iter(
+            self.permanent_translations
+                .values()
+                .filter_map(|state| {
+                    (state.name == name && state.resource_id == resource_id)
+                        .then_some(&state.resolved_ip)
+                })
+                .copied(),
+        );
+        if old_ips == resolved_ips {
             return Ok(());
         }
 
-        domains.insert(
-            name.clone(),
-            resolved_ips.iter().copied().map_into().collect_vec(),
-        );
+        domains.insert(name.clone(), resolved_ips.clone());
 
         let proxy_ips = self
             .permanent_translations
@@ -204,9 +203,9 @@ impl ClientOnGateway {
             .filter_map(|(k, state)| {
                 (state.name == name && state.resource_id == resource_id).then_some(*k)
             })
-            .collect_vec();
+            .collect();
 
-        self.setup_nat(name, resource_id, &resolved_ips, proxy_ips, now)?;
+        self.setup_nat(name, resource_id, resolved_ips, proxy_ips, now)?;
 
         Ok(())
     }
@@ -217,8 +216,8 @@ impl ClientOnGateway {
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
-        resolved_ips: &[IpAddr],
-        proxy_ips: Vec<IpAddr>,
+        resolved_ips: BTreeSet<IpAddr>,
+        proxy_ips: BTreeSet<IpAddr>,
         now: Instant,
     ) -> Result<()> {
         let resource = self
@@ -235,18 +234,18 @@ impl ClientOnGateway {
 
         anyhow::ensure!(crate::dns::is_subdomain(&name, address));
 
-        let mapped_ipv4 = mapped_ipv4(resolved_ips);
-        let mapped_ipv6 = mapped_ipv6(resolved_ips);
+        let mapped_ipv4 = mapped_ipv4(&resolved_ips);
+        let mapped_ipv6 = mapped_ipv6(&resolved_ips);
 
         let ipv4_maps = proxy_ips
             .iter()
             .filter(|ip| ip.is_ipv4())
-            .zip(mapped_ipv4.into_iter().cycle());
+            .zip(mapped_ipv4.iter().cycle().copied());
 
         let ipv6_maps = proxy_ips
             .iter()
             .filter(|ip| ip.is_ipv6())
-            .zip(mapped_ipv6.into_iter().cycle());
+            .zip(mapped_ipv6.iter().cycle().copied());
 
         let ip_maps = ipv4_maps.chain(ipv6_maps);
 
@@ -261,7 +260,7 @@ impl ClientOnGateway {
 
         tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Set up DNS resource NAT");
 
-        domains.insert(name, resolved_ips.to_vec());
+        domains.insert(name, resolved_ips);
         self.recalculate_filters();
 
         Ok(())
@@ -548,7 +547,7 @@ enum ResourceOnGateway {
     },
     Dns {
         address: String,
-        domains: HashMap<DomainName, Vec<IpAddr>>,
+        domains: HashMap<DomainName, BTreeSet<IpAddr>>,
         filters: Filters,
         expires_at: Option<DateTime<Utc>>,
     },
@@ -738,15 +737,15 @@ impl TranslationState {
     }
 }
 
-fn ipv4_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect_vec()
+fn ipv4_addresses(ip: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
+    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect()
 }
 
-fn ipv6_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect_vec()
+fn ipv6_addresses(ip: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
+    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect()
 }
 
-fn mapped_ipv4(ips: &[IpAddr]) -> Vec<IpAddr> {
+fn mapped_ipv4(ips: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
     if !ipv4_addresses(ips).is_empty() {
         ipv4_addresses(ips)
     } else {
@@ -754,7 +753,7 @@ fn mapped_ipv4(ips: &[IpAddr]) -> Vec<IpAddr> {
     }
 }
 
-fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
+fn mapped_ipv6(ips: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
     if !ipv6_addresses(ips).is_empty() {
         ipv6_addresses(ips)
     } else {
@@ -780,6 +779,7 @@ fn insert_filters<'a>(
 #[cfg(test)]
 mod tests {
     use std::{
+        collections::BTreeSet,
         net::{IpAddr, Ipv4Addr, Ipv6Addr},
         time::{Duration, Instant},
     };
@@ -1133,8 +1133,8 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             resource_id(),
-            &[foo_real_ip().into()],
-            vec![foo_proxy_ip().into()],
+            BTreeSet::from([foo_real_ip().into()]),
+            BTreeSet::from([foo_proxy_ip().into()]),
             Instant::now(),
         )
         .unwrap();
@@ -1194,8 +1194,8 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             resource_id(),
-            &[foo_real_ip().into()],
-            vec![foo_proxy_ip().into()],
+            BTreeSet::from([foo_real_ip().into()]),
+            BTreeSet::from([foo_proxy_ip().into()]),
             Instant::now(),
         )
         .unwrap();
@@ -1329,6 +1329,7 @@ mod proptests {
     use crate::messages::gateway::{PortRange, ResourceDescription, ResourceDescriptionCidr};
     use crate::proptest::*;
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
+    use itertools::Itertools as _;
     use proptest::{
         arbitrary::any,
         collection, prop_oneof,
