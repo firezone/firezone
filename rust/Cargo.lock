@@ -5468,7 +5468,7 @@ dependencies = [
 [[package]]
 name = "sentry"
 version = "0.35.0"
-source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#ea87597eba6b54243c44734726b1c3d2b65d7412"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
 dependencies = [
  "httpdate",
  "reqwest",
@@ -5487,7 +5487,7 @@ dependencies = [
 [[package]]
 name = "sentry-backtrace"
 version = "0.35.0"
-source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#ea87597eba6b54243c44734726b1c3d2b65d7412"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
 dependencies = [
  "backtrace",
  "once_cell",
@@ -5498,7 +5498,7 @@ dependencies = [
 [[package]]
 name = "sentry-contexts"
 version = "0.35.0"
-source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#ea87597eba6b54243c44734726b1c3d2b65d7412"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
 dependencies = [
  "hostname",
  "libc",
@@ -5511,7 +5511,7 @@ dependencies = [
 [[package]]
 name = "sentry-core"
 version = "0.35.0"
-source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#ea87597eba6b54243c44734726b1c3d2b65d7412"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
 dependencies = [
  "once_cell",
  "rand 0.8.5",
@@ -5523,7 +5523,7 @@ dependencies = [
 [[package]]
 name = "sentry-debug-images"
 version = "0.35.0"
-source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#ea87597eba6b54243c44734726b1c3d2b65d7412"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
 dependencies = [
  "findshlibs",
  "once_cell",
@@ -5533,7 +5533,7 @@ dependencies = [
 [[package]]
 name = "sentry-panic"
 version = "0.35.0"
-source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#ea87597eba6b54243c44734726b1c3d2b65d7412"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -5542,7 +5542,7 @@ dependencies = [
 [[package]]
 name = "sentry-tracing"
 version = "0.35.0"
-source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#ea87597eba6b54243c44734726b1c3d2b65d7412"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -5553,7 +5553,7 @@ dependencies = [
 [[package]]
 name = "sentry-types"
 version = "0.35.0"
-source = "git+https://github.com/thomaseizinger/sentry-rust?branch=bundled-changes-waiting-for-release#ea87597eba6b54243c44734726b1c3d2b65d7412"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
 dependencies = [
  "debugid",
  "hex",
