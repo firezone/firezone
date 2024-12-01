@@ -14,7 +14,6 @@ use anyhow::{Context as _, Result};
 use connlib_client_shared::Callbacks;
 use connlib_model::ResourceView;
 use firezone_bin_shared::platform::DnsControlMethod;
-use firezone_logging::std_dyn_err;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::PathBuf,
@@ -98,12 +97,6 @@ pub struct CallbackHandler {
 
 impl Callbacks for CallbackHandler {
     fn on_disconnect(&self, error: &connlib_client_shared::DisconnectError) {
-        if error.is_authentication_error() {
-            tracing::warn!(error = std_dyn_err(error));
-        } else {
-            tracing::error!(error = std_dyn_err(error))
-        }
-
         self.cb_tx
             .try_send(ConnlibMsg::OnDisconnect {
                 error_msg: error.to_string(),
