@@ -215,7 +215,7 @@ dependencies {
     androidTestImplementation("androidx.fragment:fragment-testing:1.8.4")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:33.4.0"))
+    implementation(platform("com.google.firebase:firebase-bom:33.6.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
