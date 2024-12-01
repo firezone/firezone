@@ -277,9 +277,9 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
 
                     #[expect(clippy::wildcard_enum_match_arm)]
                     match req {
-                        // SAFETY: Crashing is unsafe
                         Req::Fail(Failure::Crash) => {
                             tracing::error!("Crashing on purpose");
+                            // SAFETY: Crashing is unsafe
                             unsafe { sadness_generator::raise_segfault() }
                         },
                         Req::Fail(Failure::Error) => Err(anyhow!("Test error"))?,
