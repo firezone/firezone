@@ -275,24 +275,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                         break;
                     };
 
-                    #[expect(clippy::wildcard_enum_match_arm)]
-                    match req {
-                        Req::Fail(Failure::Crash) => {
-                            tracing::error!("Crashing on purpose");
-                            // SAFETY: Crashing is unsafe
-                            unsafe { sadness_generator::raise_segfault() }
-                        },
-                        Req::Fail(Failure::Error) => Err(anyhow!("Test error"))?,
-                        Req::Fail(Failure::Panic) => panic!("Test panic"),
-                        Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
-                            tracing::info!("User clicked Quit in the menu");
-                            self.status = Status::Quitting;
-                            self.ipc_client.send_msg(&IpcClientMsg::Disconnect).await?;
-                            self.refresh_system_tray_menu()?;
-                        }
-                        // TODO: Should we really skip cleanup if a request fails?
-                        req => self.handle_request(req).await?,
-                    }
+                    self.handle_request(req).await?
                 }
                 notification = self.updates_rx.recv() => self.handle_update_notification(notification.context("Update checker task stopped")?)?,
             }
@@ -389,9 +372,13 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
                 .await
                 .context("Failed to export logs to zip")?,
-            Req::Fail(_) => Err(anyhow!(
-                "Impossible error: `Fail` should be handled before this"
-            ))?,
+            Req::Fail(Failure::Crash) => {
+                tracing::error!("Crashing on purpose");
+                // SAFETY: Crashing is unsafe
+                unsafe { sadness_generator::raise_segfault() }
+            },
+            Req::Fail(Failure::Error) => Err(anyhow!("Test error"))?,
+            Req::Fail(Failure::Panic) => panic!("Test panic"),
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
@@ -474,9 +461,12 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 self.integration.open_url(&url)
                     .context("Couldn't open URL from system tray")?
             }
-            Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
-                "Impossible error: `Quit` should be handled before this"
-            ))?,
+            Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
+                tracing::info!("User clicked Quit in the menu");
+                self.status = Status::Quitting;
+                self.ipc_client.send_msg(&IpcClientMsg::Disconnect).await?;
+                self.refresh_system_tray_menu()?;
+            }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
                 self.integration.open_url(&download_url)
