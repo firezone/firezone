@@ -71,8 +71,7 @@ updates:
           - androidx.lifecycle:lifecycle-livedata-ktx
       navigation:
         patterns:
-          - androidx.navigation:navigation-fragment-ktx
-          - androidx.navigation:navigation-ui-ktx
+          - androidx.navigation:navigation-*
       hilt:
         patterns:
           - androidx.hilt:hilt-compiler
