@@ -88,7 +88,9 @@ impl GatewayState {
     ) -> Result<Option<snownet::EncryptedPacket>> {
         let dst = packet.destination();
 
-        anyhow::ensure!(is_client(dst), "Packet not destined for a client");
+        if !is_client(dst) {
+            return Ok(None);
+        }
 
         let peer = self
             .peers
