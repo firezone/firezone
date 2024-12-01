@@ -494,16 +494,18 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 Err(Error::ConnectToFirezoneFailed(error)) => {
                     tracing::error!("Failed to connect to Firezone: {error}");
                     self.sign_out().await?;
+
                     Ok(ControlFlow::Continue(()))
                 }
-                Err(error) => Err(error)?,
+                Err(error) => Err(error),
             },
             ipc::Event::ReadFailed(error) => {
                 // IPC errors are always fatal
                 tracing::error!(error = anyhow_dyn_err(&error), "IPC read failure");
-                Err(Error::IpcRead)?
+
+                Err(Error::IpcRead)
             }
-            ipc::Event::Closed => Err(Error::IpcClosed)?,
+            ipc::Event::Closed => Err(Error::IpcClosed),
         }
     }
 
