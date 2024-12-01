@@ -46,50 +46,6 @@ pub struct Controller<'a, I: GuiIntegration> {
     uptime: crate::uptime::Tracker,
 }
 
-pub struct Builder<'a, I: GuiIntegration> {
-    pub advanced_settings: AdvancedSettings,
-    pub ctlr_tx: CtlrTx,
-    pub integration: I,
-    pub log_filter_reloader: LogFilterReloader,
-    pub rx: mpsc::Receiver<ControllerRequest>,
-    pub telemetry: &'a mut Telemetry,
-    pub updates_rx: mpsc::Receiver<Option<updates::Notification>>,
-}
-
-impl<'a, I: GuiIntegration> Builder<'a, I> {
-    pub async fn build(self) -> Result<Controller<'a, I>> {
-        let Builder {
-            advanced_settings,
-            ctlr_tx,
-            integration,
-            log_filter_reloader,
-            rx,
-            telemetry,
-            updates_rx,
-        } = self;
-
-        let (ipc_tx, ipc_rx) = mpsc::channel(1);
-        let ipc_client = ipc::Client::new(ipc_tx).await?;
-
-        Ok(Controller {
-            advanced_settings,
-            auth: auth::Auth::new()?,
-            clear_logs_callback: None,
-            ctlr_tx,
-            ipc_client,
-            ipc_rx,
-            integration,
-            log_filter_reloader,
-            release: None,
-            rx,
-            status: Default::default(),
-            telemetry,
-            updates_rx,
-            uptime: Default::default(),
-        })
-    }
-}
-
 pub trait GuiIntegration {
     fn set_welcome_window_visible(&self, visible: bool) -> Result<()>;
 
@@ -204,6 +160,42 @@ impl Status {
 }
 
 impl<'a, I: GuiIntegration> Controller<'a, I> {
+    pub async fn start(
+        ctlr_tx: CtlrTx,
+        integration: I,
+        rx: mpsc::Receiver<ControllerRequest>,
+        advanced_settings: AdvancedSettings,
+        log_filter_reloader: LogFilterReloader,
+        telemetry: &mut Telemetry,
+        updates_rx: mpsc::Receiver<Option<updates::Notification>>,
+    ) -> Result<(), Error> {
+        tracing::debug!("Starting new instance of `Controller`");
+
+        let (ipc_tx, ipc_rx) = mpsc::channel(1);
+        let ipc_client = ipc::Client::new(ipc_tx).await?;
+
+        let controller = Controller {
+            advanced_settings,
+            auth: auth::Auth::new()?,
+            clear_logs_callback: None,
+            ctlr_tx,
+            ipc_client,
+            ipc_rx,
+            integration,
+            log_filter_reloader,
+            release: None,
+            rx,
+            status: Default::default(),
+            telemetry,
+            updates_rx,
+            uptime: Default::default(),
+        };
+
+        controller.main_loop().await?;
+
+        Ok(())
+    }
+
     pub async fn main_loop(mut self) -> Result<(), Error> {
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 

@@ -11,7 +11,7 @@ use anyhow::{bail, Context, Result};
 use common::system_tray::Event as TrayMenuEvent;
 use firezone_gui_client_common::{
     self as common,
-    controller::{ControllerRequest, CtlrTx, GuiIntegration},
+    controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
     deep_link,
     errors::{self, Error},
     settings::AdvancedSettings,
@@ -236,7 +236,7 @@ pub(crate) fn run(
 
                 let app_handle = app.handle().clone();
                 let _ctlr_task = tokio::spawn(async move {
-                    let result = AssertUnwindSafe(run_controller(
+                    let result = AssertUnwindSafe(Controller::start(
                         ctlr_tx,
                         integration,
                         ctlr_rx,
@@ -465,36 +465,5 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
         .context("can't get Managed struct from Tauri")?
         .ctlr_tx
         .blocking_send(ControllerRequest::SystemTrayMenu(event))?;
-    Ok(())
-}
-
-// TODO: Move this into `impl Controller`
-async fn run_controller(
-    ctlr_tx: CtlrTx,
-    integration: TauriIntegration,
-    rx: mpsc::Receiver<ControllerRequest>,
-    advanced_settings: AdvancedSettings,
-    log_filter_reloader: LogFilterReloader,
-    telemetry: &mut telemetry::Telemetry,
-    updates_rx: mpsc::Receiver<Option<updates::Notification>>,
-) -> Result<(), Error> {
-    tracing::debug!("Entered `run_controller`");
-
-    let controller = firezone_gui_client_common::controller::Builder {
-        advanced_settings,
-        ctlr_tx,
-        integration,
-        log_filter_reloader,
-        rx,
-        telemetry,
-        updates_rx,
-    }
-    .build()
-    .await?;
-
-    controller.main_loop().await?;
-
-    // Last chance to do any drops / cleanup before the process crashes.
-
     Ok(())
 }
