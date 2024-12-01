@@ -962,8 +962,14 @@ impl ClientState {
         mut packet: IpPacket,
         now: Instant,
     ) -> ControlFlow<(), IpPacket> {
-        let (datagram, message) = match parse_udp_dns_message(&packet) {
-            Ok((datagram, message)) => (datagram, message),
+        let Some(datagram) = packet.as_udp() else {
+            tracing::debug!(?packet, "Not a UDP packet");
+
+            return ControlFlow::Break(());
+        };
+
+        let message = match parse_udp_dns_message(&datagram) {
+            Ok(message) => message,
             Err(e) => {
                 tracing::warn!(
                     error = anyhow_dyn_err(&e),
@@ -1452,8 +1458,7 @@ impl ClientState {
     }
 }
 
-fn parse_udp_dns_message(packet: &IpPacket) -> anyhow::Result<(UdpSlice, Message<&[u8]>)> {
-    let datagram = packet.as_udp().context("Not a UDP packet")?;
+fn parse_udp_dns_message<'b>(datagram: &UdpSlice<'b>) -> anyhow::Result<Message<&'b [u8]>> {
     let port = datagram.destination_port();
 
     anyhow::ensure!(
@@ -1464,7 +1469,7 @@ fn parse_udp_dns_message(packet: &IpPacket) -> anyhow::Result<(UdpSlice, Message
     let message = Message::from_octets(datagram.payload())
         .context("Failed to parse payload as DNS message")?;
 
-    Ok((datagram, message))
+    Ok(message)
 }
 
 fn peer_by_resource_mut<'p>(
