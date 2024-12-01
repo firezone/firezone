@@ -212,7 +212,7 @@ dependencies {
     // JUnit
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.fragment:fragment-testing:1.8.4")
+    androidTestImplementation("androidx.fragment:fragment-testing:1.8.5")
 
     // Import the BoM for the Firebase platform
     implementation(platform("com.google.firebase:firebase-bom:33.4.0"))
