@@ -12,6 +12,7 @@ cmd=${1:-""}
 # into our highly evolved Rust-based build system.
 for var in $(env | awk -F= '{print $1}'); do
     if [[ "$var" != "HOME" ]] &&
+        [[ "$var" != "MACOSX_DEPLOYMENT_TARGET" ]] &&
         [[ "$var" != "USER" ]] &&
         [[ "$var" != "LOGNAME" ]] &&
         [[ "$var" != "TERM" ]] &&
