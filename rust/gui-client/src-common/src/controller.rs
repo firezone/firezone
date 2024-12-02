@@ -371,7 +371,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
     async fn handle_request(&mut self, req: ControllerRequest) -> Result<(), Error> {
         match req {
             Req::ApplySettings(settings) => {
-                let filter = firezone_logging::try_filter(&self.advanced_settings.log_filter)
+                let filter = firezone_logging::try_filter(&settings.log_filter)
                         .context("Couldn't parse new log filter directives")?;
                 self.advanced_settings = *settings;
                 self.log_filter_reloader
