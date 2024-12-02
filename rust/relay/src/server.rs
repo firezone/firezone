@@ -482,7 +482,7 @@ where
             Span::current().record("allocation", display(&allocation.port));
             let (error_response, msg) = make_error_response(AllocationMismatch, &request);
 
-            tracing::warn!(target: "relay", "{msg}: Client already has an allocation");
+            tracing::debug!(target: "relay", "{msg}: Client already has an allocation");
 
             return Err(error_response);
         }
