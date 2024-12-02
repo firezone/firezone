@@ -117,8 +117,9 @@ pub struct Worker {
 
 impl Drop for Worker {
     fn drop(&mut self) {
-        self.close()
-            .expect("should be able to close WorkerInner cleanly");
+        if let Err(e) = self.close() {
+            tracing::error!(error = anyhow_dyn_err(&e), "Failed to close worker thread")
+        }
     }
 }
 
