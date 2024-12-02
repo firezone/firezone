@@ -116,14 +116,21 @@ pub fn sentry_layer<S>() -> impl Layer<S> + Send + Sync
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
+    use tracing::Level;
+
     sentry_tracing::layer()
         .event_filter(move |md| match *md.level() {
-            tracing::Level::ERROR | tracing::Level::WARN => EventFilter::Exception,
-            tracing::Level::INFO | tracing::Level::DEBUG => EventFilter::Breadcrumb,
-            tracing::Level::TRACE if md.target() == TELEMETRY_TARGET => EventFilter::Event,
+            Level::ERROR | Level::WARN => EventFilter::Exception,
+            Level::INFO | Level::DEBUG => EventFilter::Breadcrumb,
+            Level::TRACE if md.target() == TELEMETRY_TARGET => EventFilter::Event,
             _ => EventFilter::Ignore,
         })
-        .span_filter(|md| *md.level() == tracing::Level::TRACE && md.target() == TELEMETRY_TARGET)
+        .span_filter(|md| {
+            matches!(
+                *md.level(),
+                Level::ERROR | Level::WARN | Level::INFO | Level::DEBUG
+            )
+        })
         .enable_span_attributes()
         .with_filter(try_filter("trace").expect("static filter always parses")) // Filter out noisy crates but pass all events otherwise.
 }
