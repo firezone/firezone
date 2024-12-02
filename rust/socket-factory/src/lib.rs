@@ -1,4 +1,5 @@
 use firezone_logging::std_dyn_err;
+use quinn_udp::Transmit;
 use std::collections::HashMap;
 use std::fmt;
 use std::{
@@ -204,6 +205,7 @@ pub struct DatagramOut<'a> {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
     pub packet: Cow<'a, [u8]>,
+    pub segment_size: Option<usize>,
 }
 
 impl UdpSocket {
@@ -275,9 +277,48 @@ impl UdpSocket {
     }
 
     pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
-        tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, num_bytes = %datagram.packet.len());
+        let Some(transmit) = self.prepare_transmit(
+            datagram.dst,
+            datagram.src.map(|s| s.ip()),
+            &datagram.packet,
+            datagram.segment_size,
+        )?
+        else {
+            return Ok(());
+        };
 
-        self.try_send(datagram)?;
+        match transmit.segment_size {
+            Some(segment_size) => {
+                for transmit in transmit
+                    .contents
+                    .chunks(segment_size * self.state.max_gso_segments())
+                    .map(|contents| Transmit {
+                        destination: transmit.destination,
+                        ecn: transmit.ecn,
+                        contents,
+                        segment_size: Some(segment_size),
+                        src_ip: transmit.src_ip,
+                    })
+                {
+                    let num_packets = transmit.contents.len() / segment_size;
+
+                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_packets, %segment_size);
+
+                    self.inner.try_io(Interest::WRITABLE, || {
+                        self.state.try_send((&self.inner).into(), &transmit)
+                    })?;
+                }
+            }
+            None => {
+                let num_bytes = transmit.contents.len();
+
+                tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_bytes);
+
+                self.inner.try_io(Interest::WRITABLE, || {
+                    self.state.try_send((&self.inner).into(), &transmit)
+                })?;
+            }
+        }
 
         Ok(())
     }
@@ -299,7 +340,7 @@ impl UdpSocket {
         payload: &[u8],
     ) -> io::Result<Vec<u8>> {
         let transmit = self
-            .prepare_transmit(dst, None, payload)?
+            .prepare_transmit(dst, None, payload, None)?
             .ok_or_else(|| io::Error::other("Failed to prepare `Transmit`"))?;
 
         self.inner
@@ -323,23 +364,12 @@ impl UdpSocket {
         Ok(buffer)
     }
 
-    fn try_send(&mut self, datagram: DatagramOut) -> io::Result<()> {
-        let Some(transmit) =
-            self.prepare_transmit(datagram.dst, datagram.src.map(|s| s.ip()), &datagram.packet)?
-        else {
-            return Ok(());
-        };
-
-        self.inner.try_io(Interest::WRITABLE, || {
-            self.state.try_send((&self.inner).into(), &transmit)
-        })
-    }
-
     fn prepare_transmit<'a>(
         &mut self,
         dst: SocketAddr,
         src_ip: Option<IpAddr>,
         packet: &'a [u8],
+        segment_size: Option<usize>,
     ) -> io::Result<Option<quinn_udp::Transmit<'a>>> {
         let src_ip = match src_ip {
             Some(src_ip) => Some(src_ip),
@@ -360,7 +390,7 @@ impl UdpSocket {
             destination: dst,
             ecn: None,
             contents: packet,
-            segment_size: None,
+            segment_size,
             src_ip,
         };
 
