@@ -3,13 +3,14 @@ use crate::{
     ConnlibMsg, LogFilterReloader,
 };
 use anyhow::{bail, Context as _, Result};
+use atomicwrites::{AtomicFile, OverwriteBehavior};
 use clap::Parser;
 use connlib_model::ResourceView;
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
-use firezone_logging::{anyhow_dyn_err, sentry_layer, telemetry_span};
+use firezone_logging::{anyhow_dyn_err, sentry_layer, std_dyn_err, telemetry_span};
 use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
@@ -20,7 +21,13 @@ use phoenix_channel::LoginUrl;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeSet, io, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration,
+    collections::BTreeSet,
+    io::{self, Write},
+    net::IpAddr,
+    path::PathBuf,
+    pin::pin,
+    sync::Arc,
+    time::Duration,
 };
 use tokio::{sync::mpsc, time::Instant};
 use tracing_subscriber::{layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
@@ -501,7 +508,15 @@ impl<'a> Handler<'a> {
                     .context("Failed to send `DisconnectedGracefully`")?;
             }
             ClientMsg::ApplyLogFilter { directives } => {
-                self.log_filter_reloader.reload(directives)?;
+                self.log_filter_reloader.reload(directives.clone())?;
+
+                let path = known_dirs::ipc_log_filter()?;
+
+                if let Err(e) = AtomicFile::new(&path, OverwriteBehavior::AllowOverwrite)
+                    .write(|f| f.write_all(directives.as_bytes()))
+                {
+                    tracing::warn!(path = %path.display(), %directives, error = std_dyn_err(&e), "Failed to write new log directives");
+                }
             }
             ClientMsg::Reset => {
                 if self.last_connlib_start_instant.is_some() {
@@ -640,7 +655,7 @@ fn setup_logging(
 
     let (layer, handle) = firezone_logging::file::layer(&log_dir);
 
-    let directives = get_log_filter();
+    let directives = get_log_filter().context("Couldn't read log filter")?;
     let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(&directives)?);
 
     let subscriber = Registry::default()
@@ -664,16 +679,23 @@ fn setup_logging(
 ///
 /// Reads from:
 /// 1. `RUST_LOG` env var
-/// 2. Hard-coded default `SERVICE_RUST_LOG`
+/// 2. `known_dirs::ipc_log_filter()` file
+/// 3. Hard-coded default `SERVICE_RUST_LOG`
 ///
 /// Errors if something is badly wrong, e.g. the directory for the config file
 /// can't be computed
-pub(crate) fn get_log_filter() -> String {
+pub(crate) fn get_log_filter() -> Result<String> {
     if let Ok(filter) = std::env::var(EnvFilter::DEFAULT_ENV) {
-        return filter;
+        return Ok(filter);
     }
 
-    SERVICE_RUST_LOG.to_string()
+    if let Ok(filter) =
+        std::fs::read_to_string(known_dirs::ipc_log_filter()?).map(|s| s.trim().to_string())
+    {
+        return Ok(filter);
+    }
+
+    Ok(SERVICE_RUST_LOG.to_string())
 }
 
 #[cfg(test)]
