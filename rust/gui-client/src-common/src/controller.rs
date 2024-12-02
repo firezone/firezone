@@ -170,7 +170,7 @@ impl Status {
 enum EventloopTick {
     NetworkChanged(Result<()>),
     DnsChanged(Result<()>),
-    IpcEvent(Option<ipc::Event>),
+    IpcEvent(ipc::Event),
     ControllerRequest(Option<ControllerRequest>),
     UpdateNotification(Option<Option<updates::Notification>>),
 }
@@ -280,8 +280,6 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                     return Err(Error::Other(e))
                 }
                 EventloopTick::IpcEvent(event) => {
-                    let event = event.context("IPC task stopped")?;
-
                     if let ControlFlow::Break(()) = self.handle_ipc_event(event).await? {
                         break;
                     }
@@ -322,7 +320,9 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             }
 
             if let Poll::Ready(maybe_ipc) = self.ipc_rx.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::IpcEvent(maybe_ipc)));
+                return Poll::Ready(Some(EventloopTick::IpcEvent(
+                    maybe_ipc.unwrap_or(ipc::Event::Closed),
+                )));
             }
 
             if let Poll::Ready(maybe_req) = self.rx.poll_next_unpin(cx) {
