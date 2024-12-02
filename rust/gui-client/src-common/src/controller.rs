@@ -8,15 +8,19 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Result};
 use connlib_model::ResourceView;
-use firezone_bin_shared::{linux::DnsControlMethod, NetworkChangeWorker};
+use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
 use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_telemetry::Telemetry;
+use futures::{
+    stream::{self, FusedStream},
+    StreamExt,
+};
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, time::Instant};
+use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, pin::pin, time::Instant};
 use tokio::sync::{mpsc, oneshot};
 use url::Url;
 
@@ -234,14 +238,14 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             self.integration.set_welcome_window_visible(true)?;
         }
 
-        let mut dns_notifier = new_dns_notifier().await?;
-        let mut network_notifier = new_network_notifier().await?;
+        let mut dns_notifier = pin!(new_dns_notifier().await?);
+        let mut network_notifier = pin!(new_network_notifier().await?);
 
         loop {
             // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
             // `tokio::select!` with a `poll_*` function
             tokio::select! {
-                result = network_notifier.notified() => {
+                result = network_notifier.select_next_some() => {
                     result?;
                     if self.status.needs_network_changes() {
                         tracing::debug!("Internet up/down changed, calling `Session::reset`");
@@ -249,7 +253,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                     }
                     self.try_retry_connection().await?
                 }
-                result = dns_notifier.notified() => {
+                result = dns_notifier.select_next_some() => {
                     result?;
                     if self.status.needs_network_changes() {
                         let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui()?;
@@ -751,18 +755,30 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
     }
 }
 
-async fn new_dns_notifier() -> Result<NetworkChangeWorker> {
-    firezone_bin_shared::new_dns_notifier(
+async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
+    let worker = firezone_bin_shared::new_dns_notifier(
         tokio::runtime::Handle::current(),
         DnsControlMethod::default(),
     )
-    .await
+    .await?;
+
+    Ok(stream::try_unfold(worker, |mut worker| async move {
+        let () = worker.notified().await?;
+
+        Ok(Some(((), worker)))
+    }))
 }
 
-async fn new_network_notifier() -> Result<NetworkChangeWorker> {
-    firezone_bin_shared::new_network_notifier(
+async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
+    let worker = firezone_bin_shared::new_network_notifier(
         tokio::runtime::Handle::current(),
         DnsControlMethod::default(),
     )
-    .await
+    .await?;
+
+    Ok(stream::try_unfold(worker, |mut worker| async move {
+        let () = worker.notified().await?;
+
+        Ok(Some(((), worker)))
+    }))
 }
