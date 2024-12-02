@@ -6,7 +6,6 @@ license = { workspace = true }
 
 [dependencies]
 sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls", "tracing"] }
-sentry-anyhow = { workspace = true }
 tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 
