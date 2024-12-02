@@ -19,7 +19,7 @@
     "flowbite": "^2.5.2"
   },
   "devDependencies": {
-    "@tauri-apps/cli": ">=2.0.4",
+    "@tauri-apps/cli": ">=2.1.0",
     "@types/node": "22",
     "http-server": "^14.1.1",
     "run-script-os": "^1.1.6",
