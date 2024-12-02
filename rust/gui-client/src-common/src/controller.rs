@@ -284,13 +284,6 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
 
         tracing::debug!("Closing...");
 
-        if let Err(error) = dns_notifier.close() {
-            tracing::error!(error = anyhow_dyn_err(&error), "dns_notifier");
-        }
-        if let Err(error) = network_notifier.close() {
-            tracing::error!(error = anyhow_dyn_err(&error), "network_notifier");
-        }
-
         if let Err(error) = self.ipc_client.disconnect_from_ipc().await {
             tracing::error!(error = anyhow_dyn_err(&error), "ipc_client");
         }
