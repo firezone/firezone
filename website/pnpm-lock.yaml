@@ -121,8 +121,8 @@ importers:
         version: 3.4.15
     devDependencies:
       flowbite-typography:
-        specifier: ^1.0.4
-        version: 1.0.4(tailwindcss@3.4.15)
+        specifier: ^1.0.5
+        version: 1.0.5
       hastscript:
         specifier: ^9.0.0
         version: 9.0.0
@@ -892,10 +892,8 @@ packages:
       react-dom: '>=18'
       tailwindcss: ^3
 
-  flowbite-typography@1.0.4:
-    resolution: {integrity: sha512-OcohxQQVku3I9OHYu0h6dDJhdmkMMcMetPWpax97HAp7HPNUlWwn8R49I67t6xgoiMJvIvTnszyRddxPvqJU2g==}
-    peerDependencies:
-      tailwindcss: '>=3.0.0 || insiders'
+  flowbite-typography@1.0.5:
+    resolution: {integrity: sha512-IqTwOYgGZkXTK/5ngx3A9oQwgOqnRyUKUfIiB+w6xDmiD8z3cKDIgYfFpHIMKbLVfg+QmJIPqEEPrGZbAwVT6g==}
 
   flowbite@2.5.1:
     resolution: {integrity: sha512-7jP1jy9c3QP7y+KU9lc8ueMkTyUdMDvRP+lteSWgY5TigSZjf9K1kqZxmqjhbx2gBnFQxMl1GAjVThCa8cEpKA==}
@@ -2756,12 +2754,11 @@ snapshots:
     transitivePeerDependencies:
       - rollup
 
-  flowbite-typography@1.0.4(tailwindcss@3.4.15):
+  flowbite-typography@1.0.5:
     dependencies:
       lodash.castarray: 4.4.0
       lodash.isplainobject: 4.0.6
       lodash.merge: 4.6.2
-      tailwindcss: 3.4.15
 
   flowbite@2.5.1:
     dependencies:

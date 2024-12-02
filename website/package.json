@@ -51,7 +51,7 @@
     "tailwindcss": "3.4.15"
   },
   "devDependencies": {
-    "flowbite-typography": "^1.0.4",
+    "flowbite-typography": "^1.0.5",
     "hastscript": "^9.0.0",
     "typescript": "5.7.2"
   }
