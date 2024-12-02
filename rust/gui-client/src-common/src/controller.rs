@@ -22,6 +22,7 @@ use futures::{
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, pin::pin, time::Instant};
 use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 
 use ControllerRequest as Req;
@@ -38,15 +39,15 @@ pub struct Controller<'a, I: GuiIntegration> {
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
-    ipc_rx: mpsc::Receiver<ipc::Event>,
+    ipc_rx: ReceiverStream<ipc::Event>,
     integration: I,
     log_filter_reloader: LogFilterReloader,
     /// A release that's ready to download
     release: Option<updates::Release>,
-    rx: mpsc::Receiver<ControllerRequest>,
+    rx: ReceiverStream<ControllerRequest>,
     status: Status,
     telemetry: &'a mut Telemetry,
-    updates_rx: mpsc::Receiver<Option<updates::Notification>>,
+    updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: crate::uptime::Tracker,
 }
 
@@ -184,14 +185,14 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             clear_logs_callback: None,
             ctlr_tx,
             ipc_client,
-            ipc_rx,
+            ipc_rx: ReceiverStream::new(ipc_rx),
             integration,
             log_filter_reloader,
             release: None,
-            rx,
+            rx: ReceiverStream::new(rx),
             status: Default::default(),
             telemetry,
-            updates_rx,
+            updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
         };
 
@@ -262,13 +263,13 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                     }
                     self.try_retry_connection().await?
                 }
-                event = self.ipc_rx.recv() => {
+                event = self.ipc_rx.next() => {
                     let event = event.context("IPC task stopped")?;
                     if let ControlFlow::Break(()) = self.handle_ipc_event(event).await? {
                         break;
                     }
                 }
-                req = self.rx.recv() => {
+                req = self.rx.next() => {
                     let Some(req) = req else {
                         tracing::warn!("Controller channel closed, breaking main loop.");
                         break;
@@ -276,7 +277,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
 
                     self.handle_request(req).await?
                 }
-                notification = self.updates_rx.recv() => self.handle_update_notification(notification.context("Update checker task stopped")?)?,
+                notification = self.updates_rx.next() => self.handle_update_notification(notification.context("Update checker task stopped")?)?,
             }
             // Code down here may not run because the `select` sometimes `continue`s.
         }
