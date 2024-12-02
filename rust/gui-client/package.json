@@ -15,7 +15,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@tauri-apps/api": ">=2.0.3",
+    "@tauri-apps/api": ">=2.1.1",
     "flowbite": "^2.5.2"
   },
   "devDependencies": {
