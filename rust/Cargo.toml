@@ -186,7 +186,7 @@ tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdr
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
-tracing = "0.1.40"
+tracing = "0.1.41"
 
 [profile.release]
 # Full link-time optimization. Reduces binaries by up to 3x on some platforms.
