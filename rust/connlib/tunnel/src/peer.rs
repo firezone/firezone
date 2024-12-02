@@ -18,7 +18,7 @@ use crate::utils::network_contains_network;
 use crate::GatewayEvent;
 
 use anyhow::{bail, Context, Result};
-use nat_table::NatTable;
+use nat_table::{NatTable, TranslateIncomingResult};
 
 mod nat_table;
 
@@ -456,8 +456,18 @@ impl ClientOnGateway {
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<IpPacket> {
-        let Some((proto, ip)) = self.nat_table.translate_incoming(&packet, now)? else {
-            return Ok(packet);
+        let (proto, ip) = match self.nat_table.translate_incoming(&packet, now)? {
+            TranslateIncomingResult::Ok { proto, src } => (proto, src),
+            TranslateIncomingResult::DestinationUnreachable(prototype) => {
+                tracing::debug!(dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), error = ?prototype.error(), "Destination is unreachable");
+
+                let icmp_error = prototype
+                    .into_packet(self.ipv4, self.ipv6)
+                    .context("Failed to create `DestinationUnreachable` ICMP error")?;
+
+                return Ok(icmp_error);
+            }
+            TranslateIncomingResult::NoNatSession => return Ok(packet),
         };
 
         let mut packet = packet.translate_source(self.ipv4, self.ipv6, proto, ip)?;

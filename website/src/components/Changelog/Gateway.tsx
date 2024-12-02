@@ -15,6 +15,10 @@ export default function Gateway() {
           Adds support for GSO (Generic Segmentation Offload), delivering
           throughput improvements of up to 60%.
         </ChangeItem>
+        <ChangeItem pull="7398">
+          Fixes cases where client applications such as ssh would fail to
+          automatically determine the correct IP protocol version to use (4/6).
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.1" date={new Date("2024-11-15")}>
         <ChangeItem pull="7263">
