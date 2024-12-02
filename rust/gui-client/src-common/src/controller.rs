@@ -16,11 +16,11 @@ use firezone_headless_client::{
 use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_telemetry::Telemetry;
 use futures::{
-    stream::{self, FusedStream},
-    StreamExt,
+    stream::{self, BoxStream},
+    Stream, StreamExt,
 };
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, pin::pin, time::Instant};
+use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, task::Poll, time::Instant};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
@@ -49,6 +49,9 @@ pub struct Controller<'a, I: GuiIntegration> {
     telemetry: &'a mut Telemetry,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: crate::uptime::Tracker,
+
+    dns_notifier: BoxStream<'static, Result<()>>,
+    network_notifier: BoxStream<'static, Result<()>>,
 }
 
 pub trait GuiIntegration {
@@ -164,6 +167,14 @@ impl Status {
     }
 }
 
+enum EventloopTick {
+    NetworkChanged(Result<()>),
+    DnsChanged(Result<()>),
+    IpcEvent(Option<ipc::Event>),
+    ControllerRequest(Option<ControllerRequest>),
+    UpdateNotification(Option<Option<updates::Notification>>),
+}
+
 impl<'a, I: GuiIntegration> Controller<'a, I> {
     pub async fn start(
         ctlr_tx: CtlrTx,
@@ -178,6 +189,9 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
 
         let (ipc_tx, ipc_rx) = mpsc::channel(1);
         let ipc_client = ipc::Client::new(ipc_tx).await?;
+
+        let dns_notifier = new_dns_notifier().await?.boxed();
+        let network_notifier = new_network_notifier().await?.boxed();
 
         let controller = Controller {
             advanced_settings,
@@ -194,6 +208,8 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             telemetry,
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
+            dns_notifier,
+            network_notifier,
         };
 
         controller.main_loop().await?;
@@ -239,14 +255,9 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             self.integration.set_welcome_window_visible(true)?;
         }
 
-        let mut dns_notifier = pin!(new_dns_notifier().await?);
-        let mut network_notifier = pin!(new_network_notifier().await?);
-
-        loop {
-            // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
-            // `tokio::select!` with a `poll_*` function
-            tokio::select! {
-                result = network_notifier.select_next_some() => {
+        while let Some(tick) = self.tick().await {
+            match tick {
+                EventloopTick::NetworkChanged(result) => {
                     result?;
                     if self.status.needs_network_changes() {
                         tracing::debug!("Internet up/down changed, calling `Session::reset`");
@@ -254,32 +265,38 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                     }
                     self.try_retry_connection().await?
                 }
-                result = dns_notifier.select_next_some() => {
+                EventloopTick::DnsChanged(result) => {
                     result?;
                     if self.status.needs_network_changes() {
-                        let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui()?;
-                        tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
+                        let resolvers =
+                            firezone_headless_client::dns_control::system_resolvers_for_gui()?;
+                        tracing::debug!(
+                            ?resolvers,
+                            "New DNS resolvers, calling `Session::set_dns`"
+                        );
                         self.ipc_client.set_dns(resolvers).await?;
                     }
                     self.try_retry_connection().await?
                 }
-                event = self.ipc_rx.next() => {
+                EventloopTick::IpcEvent(event) => {
                     let event = event.context("IPC task stopped")?;
+
                     if let ControlFlow::Break(()) = self.handle_ipc_event(event).await? {
                         break;
                     }
                 }
-                req = self.rx.next() => {
-                    let Some(req) = req else {
-                        tracing::warn!("Controller channel closed, breaking main loop.");
-                        break;
-                    };
-
-                    self.handle_request(req).await?
+                EventloopTick::ControllerRequest(Some(req)) => self.handle_request(req).await?,
+                EventloopTick::ControllerRequest(None) => {
+                    tracing::warn!("Controller channel closed, breaking main loop");
+                    break;
                 }
-                notification = self.updates_rx.next() => self.handle_update_notification(notification.context("Update checker task stopped")?)?,
+                EventloopTick::UpdateNotification(Some(notification)) => {
+                    self.handle_update_notification(notification)?
+                }
+                EventloopTick::UpdateNotification(None) => {
+                    return Err(Error::Other(anyhow!("Update checker task stopped")))
+                }
             }
-            // Code down here may not run because the `select` sometimes `continue`s.
         }
 
         tracing::debug!("Closing...");
@@ -291,6 +308,33 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
         // Don't close telemetry here, `run` will close it.
 
         Ok(())
+    }
+
+    async fn tick(&mut self) -> Option<EventloopTick> {
+        std::future::poll_fn(|cx| {
+            if let Poll::Ready(Some(res)) = self.dns_notifier.poll_next_unpin(cx) {
+                return Poll::Ready(Some(EventloopTick::DnsChanged(res)));
+            }
+
+            if let Poll::Ready(Some(res)) = self.network_notifier.poll_next_unpin(cx) {
+                return Poll::Ready(Some(EventloopTick::NetworkChanged(res)));
+            }
+
+            if let Poll::Ready(maybe_ipc) = self.ipc_rx.poll_next_unpin(cx) {
+                return Poll::Ready(Some(EventloopTick::IpcEvent(maybe_ipc)));
+            }
+
+            if let Poll::Ready(maybe_req) = self.rx.poll_next_unpin(cx) {
+                return Poll::Ready(Some(EventloopTick::ControllerRequest(maybe_req)));
+            }
+
+            if let Poll::Ready(notification) = self.updates_rx.poll_next_unpin(cx) {
+                return Poll::Ready(Some(EventloopTick::UpdateNotification(notification)));
+            }
+
+            Poll::Pending
+        })
+        .await
     }
 
     async fn start_session(&mut self, token: SecretString) -> Result<(), Error> {
