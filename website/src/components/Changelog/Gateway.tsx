@@ -16,11 +16,8 @@ export default function Gateway() {
           throughput improvements of up to 60%.
         </ChangeItem>
         <ChangeItem pull="7398">
-          Fixes an issue where ICMP errors would not be routed back to the
-          client, causing happy-eyeballs algorithms for IPv6 connectivity to
-          fail. For example, this would manifest as `ssh` clients not being able
-          to connect to domains that resolve to unroutable IPv6 addresses as is
-          often the case within AWS VPCs.
+          Fixes cases where client applications such as ssh would fail to
+          automatically determine the correct IP protocol version to use (4/6).
         </ChangeItem>
       </Unreleased>
       <Entry version="1.4.1" date={new Date("2024-11-15")}>
