@@ -257,16 +257,14 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
 
         while let Some(tick) = self.tick().await {
             match tick {
-                EventloopTick::NetworkChanged(result) => {
-                    result?;
+                EventloopTick::NetworkChanged(Ok(())) => {
                     if self.status.needs_network_changes() {
                         tracing::debug!("Internet up/down changed, calling `Session::reset`");
                         self.ipc_client.reset().await?
                     }
                     self.try_retry_connection().await?
                 }
-                EventloopTick::DnsChanged(result) => {
-                    result?;
+                EventloopTick::DnsChanged(Ok(())) => {
                     if self.status.needs_network_changes() {
                         let resolvers =
                             firezone_headless_client::dns_control::system_resolvers_for_gui()?;
@@ -277,6 +275,9 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                         self.ipc_client.set_dns(resolvers).await?;
                     }
                     self.try_retry_connection().await?
+                }
+                EventloopTick::NetworkChanged(Err(e)) | EventloopTick::DnsChanged(Err(e)) => {
+                    return Err(Error::Other(e))
                 }
                 EventloopTick::IpcEvent(event) => {
                     let event = event.context("IPC task stopped")?;
