@@ -205,12 +205,6 @@ impl Status {
 
 impl<'a, I: GuiIntegration> Controller<'a, I> {
     pub async fn main_loop(mut self) -> Result<(), Error> {
-        self.ipc_client
-            .send_msg(&IpcClientMsg::ApplyLogFilter {
-                directives: self.advanced_settings.log_filter.clone(),
-            })
-            .await?;
-
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 
         // Start telemetry
