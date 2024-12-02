@@ -10,7 +10,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use connlib_client_shared::Callbacks;
 use connlib_model::ResourceView;
 use firezone_bin_shared::platform::DnsControlMethod;
@@ -127,7 +127,7 @@ impl Callbacks for CallbackHandler {
 
 /// Sets up logging for stdout only, with INFO level by default
 pub fn setup_stdout_logging() -> Result<LogFilterReloader> {
-    let directives = ipc_service::get_log_filter().context("Can't read log filter")?;
+    let directives = ipc_service::get_log_filter();
     let (filter, reloader) =
         tracing_subscriber::reload::Layer::new(firezone_logging::try_filter(&directives)?);
     let layer = fmt::layer()

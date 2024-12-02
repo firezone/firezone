@@ -22,7 +22,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeSet, io, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration,
 };
-use tokio::{sync::mpsc, task::spawn_blocking, time::Instant};
+use tokio::{sync::mpsc, time::Instant};
 use tracing_subscriber::{layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
 use url::Url;
 
@@ -83,7 +83,9 @@ pub enum ClientMsg {
         token: String,
     },
     Disconnect,
-    ReloadLogFilter,
+    ApplyLogFilter {
+        directives: String,
+    },
     Reset,
     SetDns(Vec<IpAddr>),
     SetDisabledResources(BTreeSet<ResourceId>),
@@ -498,9 +500,8 @@ impl<'a> Handler<'a> {
                     .await
                     .context("Failed to send `DisconnectedGracefully`")?;
             }
-            ClientMsg::ReloadLogFilter => {
-                let filter = spawn_blocking(get_log_filter).await??;
-                self.log_filter_reloader.reload(filter)?;
+            ClientMsg::ApplyLogFilter { directives } => {
+                self.log_filter_reloader.reload(directives)?;
             }
             ClientMsg::Reset => {
                 if self.last_connlib_start_instant.is_some() {
@@ -639,7 +640,7 @@ fn setup_logging(
 
     let (layer, handle) = firezone_logging::file::layer(&log_dir);
 
-    let directives = get_log_filter().context("Couldn't read log filter")?;
+    let directives = get_log_filter();
     let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(&directives)?);
 
     let subscriber = Registry::default()
@@ -663,26 +664,16 @@ fn setup_logging(
 ///
 /// Reads from:
 /// 1. `RUST_LOG` env var
-/// 2. `known_dirs::ipc_log_filter()` file
-/// 3. Hard-coded default `SERVICE_RUST_LOG`
+/// 2. Hard-coded default `SERVICE_RUST_LOG`
 ///
 /// Errors if something is badly wrong, e.g. the directory for the config file
 /// can't be computed
-pub(crate) fn get_log_filter() -> Result<String> {
+pub(crate) fn get_log_filter() -> String {
     if let Ok(filter) = std::env::var(EnvFilter::DEFAULT_ENV) {
-        return Ok(filter);
+        return filter;
     }
 
-    if let Ok(filter) = std::fs::read_to_string(
-        known_dirs::ipc_log_filter()
-            .context("Failed to compute directory for log filter config file")?,
-    )
-    .map(|s| s.trim().to_string())
-    {
-        return Ok(filter);
-    }
-
-    Ok(SERVICE_RUST_LOG.to_string())
+    SERVICE_RUST_LOG.to_string()
 }
 
 #[cfg(test)]

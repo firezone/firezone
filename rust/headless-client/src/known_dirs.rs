@@ -8,7 +8,6 @@
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
 pub use platform::{ipc_service_config, ipc_service_logs, logs, runtime, session, settings};
-use std::path::PathBuf;
 
 #[cfg(target_os = "linux")]
 #[path = "known_dirs/linux.rs"]
@@ -21,10 +20,6 @@ pub mod platform;
 #[cfg(target_os = "windows")]
 #[path = "known_dirs/windows.rs"]
 pub mod platform;
-
-pub fn ipc_log_filter() -> Option<PathBuf> {
-    Some(ipc_service_config()?.join("log-filter"))
-}
 
 #[cfg(test)]
 mod tests {
