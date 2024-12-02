@@ -21,7 +21,7 @@ use domain::{
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket};
+use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools as _;
 use prop::collection;
 use proptest::prelude::*;
@@ -248,6 +248,25 @@ impl SimClient {
 
     /// Process an IP packet received on the client.
     pub(crate) fn on_received_packet(&mut self, packet: IpPacket) {
+        if let Some((failed_packet, _)) = packet.icmp_unreachable_destination().unwrap() {
+            match failed_packet.layer4_protocol() {
+                Layer4Protocol::Udp { src, dst } => {
+                    self.received_udp_replies
+                        .insert((SPort(dst), DPort(src)), packet.clone());
+                }
+                Layer4Protocol::Tcp { src, dst } => {
+                    self.received_tcp_replies
+                        .insert((SPort(dst), DPort(src)), packet.clone());
+                }
+                Layer4Protocol::Icmp { seq, id } => {
+                    self.received_icmp_replies
+                        .insert((Seq(seq), Identifier(id)), packet.clone());
+                }
+            }
+
+            return;
+        }
+
         if let Some(udp) = packet.as_udp() {
             if udp.source_port() == 53 {
                 let message = Message::from_slice(udp.payload())

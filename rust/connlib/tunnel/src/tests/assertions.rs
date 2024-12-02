@@ -126,7 +126,7 @@ fn assert_packets_properties<T, U>(
     );
 
     if !unexpected_replies.is_empty() {
-        tracing::error!(target: "assertions", ?unexpected_replies, "❌ Unexpected {packet_protocol} replies on client");
+        tracing::error!(target: "assertions", ?unexpected_replies, ?expected_handshakes, ?received_replies, "❌ Unexpected {packet_protocol} replies on client");
     }
 
     for (gid, expected_handshakes) in expected_handshakes.iter() {

@@ -191,7 +191,7 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv4Addr, dst: Ipv4Addr) -> Resul
 fn translate_icmpv6_header(
     icmpv6_header: etherparse::Icmpv6Header,
 ) -> Option<etherparse::Icmpv4Header> {
-    use etherparse::{icmpv4, icmpv6, Icmpv4Header, Icmpv4Type, Icmpv6Type};
+    use etherparse::{icmpv4, Icmpv4Header, Icmpv4Type, Icmpv6Type};
 
     // Note: we only really need to support reply/request because we need
     // the identification to do nat anyways as source port.
@@ -215,40 +215,7 @@ fn translate_icmpv6_header(
         //
         // Translate the Code as follows:
         Icmpv6Type::DestinationUnreachable(i) => {
-            use icmpv4::DestUnreachableHeader::*;
-            use icmpv6::DestUnreachableCode::*;
-
-            let dest_unreachable_header = match i {
-                // Code 0 (No route to destination):  Set the Code to 1 (Host
-                //     unreachable).
-                NoRoute => Host,
-
-                // Code 1 (Communication with destination administratively
-                //     prohibited):  Set the Code to 10 (Communication with
-                //     destination host administratively prohibited).
-                Prohibited => HostProhibited,
-
-                // Code 2 (Beyond scope of source address):  Set the Code to 1
-                //      (Host unreachable).  Note that this error is very unlikely
-                //      since an IPv4-translatable source address is typically
-                //      considered to have global scope.
-                BeyondScope => Host,
-
-                // Code 3 (Address unreachable):  Set the Code to 1 (Host
-                //      unreachable).
-                Address => Host,
-
-                // Code 4 (Port unreachable):  Set the Code to 3 (Port
-                //      unreachable).
-                icmpv6::DestUnreachableCode::Port => icmpv4::DestUnreachableHeader::Port,
-
-                // Other Code values:  Silently drop.
-                SourceAddressFailedPolicy | RejectRoute => {
-                    return None;
-                }
-            };
-
-            Icmpv4Type::DestinationUnreachable(dest_unreachable_header)
+            Icmpv4Type::DestinationUnreachable(translate_dest_unreachable(i)?)
         }
         // Packet Too Big (Type 2):  Translate to an ICMPv4 Destination
         //      Unreachable (Type 3) with Code 4, and adjust the ICMPv4
@@ -317,4 +284,41 @@ fn translate_icmpv6_header(
     };
 
     Some(Icmpv4Header::new(icmpv4_type))
+}
+
+pub fn translate_dest_unreachable(
+    code: etherparse::icmpv6::DestUnreachableCode,
+) -> Option<etherparse::icmpv4::DestUnreachableHeader> {
+    use etherparse::icmpv4::{self, DestUnreachableHeader::*};
+    use etherparse::icmpv6::{self, DestUnreachableCode::*};
+
+    Some(match code {
+        // Code 0 (No route to destination):  Set the Code to 1 (Host
+        //     unreachable).
+        NoRoute => Host,
+
+        // Code 1 (Communication with destination administratively
+        //     prohibited):  Set the Code to 10 (Communication with
+        //     destination host administratively prohibited).
+        Prohibited => HostProhibited,
+
+        // Code 2 (Beyond scope of source address):  Set the Code to 1
+        //      (Host unreachable).  Note that this error is very unlikely
+        //      since an IPv4-translatable source address is typically
+        //      considered to have global scope.
+        BeyondScope => Host,
+
+        // Code 3 (Address unreachable):  Set the Code to 1 (Host
+        //      unreachable).
+        Address => Host,
+
+        // Code 4 (Port unreachable):  Set the Code to 3 (Port
+        //      unreachable).
+        icmpv6::DestUnreachableCode::Port => icmpv4::DestUnreachableHeader::Port,
+
+        // Other Code values:  Silently drop.
+        SourceAddressFailedPolicy | RejectRoute => {
+            return None;
+        }
+    })
 }

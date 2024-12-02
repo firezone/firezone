@@ -28,6 +28,7 @@ mod strategies;
 mod stub_portal;
 mod sut;
 mod transition;
+mod unreachable_hosts;
 
 type QueryId = u16;
 

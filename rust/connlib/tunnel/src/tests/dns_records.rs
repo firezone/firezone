@@ -22,6 +22,15 @@ impl DnsRecords {
         })
     }
 
+    pub(crate) fn ips_iter(&self) -> impl Iterator<Item = IpAddr> + '_ {
+        #[expect(clippy::wildcard_enum_match_arm)]
+        self.inner.values().flatten().filter_map(|r| match r {
+            DomainRecord::A(a) => Some(a.addr().into()),
+            DomainRecord::Aaaa(aaaa) => Some(aaaa.addr().into()),
+            _ => None,
+        })
+    }
+
     pub(crate) fn domain_records_iter(
         &self,
         name: &DomainName,

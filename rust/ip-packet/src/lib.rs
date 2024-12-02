@@ -4,6 +4,7 @@ pub mod make;
 
 mod fz_p2p_control;
 mod fz_p2p_control_slice;
+mod icmp_dest_unreachable;
 mod icmpv4_header_slice_mut;
 mod icmpv6_header_slice_mut;
 mod ipv4_header_slice_mut;
@@ -20,6 +21,7 @@ mod udp_header_slice_mut;
 pub use etherparse::*;
 pub use fz_p2p_control::EventType as FzP2pEventType;
 pub use fz_p2p_control_slice::FzP2pControlSlice;
+pub use icmp_dest_unreachable::{DestUnreachable, FailedPacket};
 
 #[cfg(all(test, feature = "proptest"))]
 mod proptests;
@@ -89,6 +91,13 @@ impl Protocol {
             Protocol::Icmp(_) => Protocol::Icmp(value),
         }
     }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Layer4Protocol {
+    Udp { src: u16, dst: u16 },
+    Tcp { src: u16, dst: u16 },
+    Icmp { seq: u16, id: u16 },
 }
 
 /// A buffer for reading a new [`IpPacket`] from the network.
@@ -604,6 +613,84 @@ impl IpPacket {
         Icmpv4HeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
+    /// In case the packet is an ICMP unreachable error, parses the unroutable packet from the ICMP payload.
+    pub fn icmp_unreachable_destination(&self) -> Result<Option<(FailedPacket, DestUnreachable)>> {
+        if let Some(icmpv4) = self.as_icmpv4() {
+            let icmp_type = icmpv4.icmp_type();
+
+            // Handle success case early to avoid erroring below.
+            if matches!(
+                icmp_type,
+                Icmpv4Type::EchoReply(_) | Icmpv4Type::EchoRequest(_)
+            ) {
+                return Ok(None);
+            }
+
+            let Icmpv4Type::DestinationUnreachable(error) = icmp_type else {
+                bail!("ICMP message is not `DestinationUnreachable` but {icmp_type:?}");
+            };
+
+            let (ipv4, _) = LaxIpv4Slice::from_slice(icmpv4.payload())
+                .context("Failed to parse payload of ICMPv4 error message as IPv4 packet")?;
+            let header = ipv4.header();
+
+            let src = IpAddr::V4(header.source_addr());
+            let failed_dst = IpAddr::V4(header.destination_addr());
+            let l4_proto = extract_l4_proto(ipv4.payload().payload, header.protocol())
+                .context("Failed to extract protocol")?;
+
+            return Ok(Some((
+                FailedPacket {
+                    src,
+                    failed_dst,
+                    l4_proto,
+                    raw: icmpv4.payload().to_vec(),
+                },
+                DestUnreachable::V4 {
+                    header: error,
+                    total_length: header.total_len(),
+                },
+            )));
+        }
+
+        if let Some(icmpv6) = self.as_icmpv6() {
+            let icmp_type = icmpv6.icmp_type();
+
+            // Handle success case early to avoid erroring below.
+            if matches!(
+                icmp_type,
+                Icmpv6Type::EchoReply(_) | Icmpv6Type::EchoRequest(_)
+            ) {
+                return Ok(None);
+            }
+
+            let Icmpv6Type::DestinationUnreachable(error) = icmp_type else {
+                bail!("ICMP message is not `DestinationUnreachable` but {icmp_type:?}");
+            };
+
+            let (ipv6, _) = LaxIpv6Slice::from_slice(icmpv6.payload())
+                .context("Failed to parse payload of ICMPv6 error message as IPv6 packet")?;
+            let header = ipv6.header();
+
+            let src = IpAddr::V6(header.source_addr());
+            let failed_dst = IpAddr::V6(header.destination_addr());
+            let l4_proto = extract_l4_proto(ipv6.payload().payload, header.next_header())
+                .context("Failed to extract protocol")?;
+
+            return Ok(Some((
+                FailedPacket {
+                    src,
+                    failed_dst,
+                    l4_proto,
+                    raw: icmpv6.payload().to_vec(),
+                },
+                DestUnreachable::V6(error),
+            )));
+        }
+
+        Ok(None)
+    }
+
     pub fn as_icmpv6(&self) -> Option<Icmpv6Slice> {
         if !self.is_icmpv6() {
             return None;
@@ -755,7 +842,7 @@ impl IpPacket {
         self.next_header() == IpNumber::UDP
     }
 
-    fn is_tcp(&self) -> bool {
+    pub fn is_tcp(&self) -> bool {
         self.next_header() == IpNumber::TCP
     }
 
@@ -815,6 +902,63 @@ impl IpPacket {
 
         &mut self.packet_mut()[start..(start + payload_length)]
     }
+}
+
+fn extract_l4_proto(payload: &[u8], protocol: IpNumber) -> Result<Layer4Protocol> {
+    let proto = match protocol {
+        IpNumber::UDP => {
+            let udp =
+                UdpHeaderSlice::from_slice(payload).context("Failed to parse payload as UDP")?;
+
+            Layer4Protocol::Udp {
+                src: udp.source_port(),
+                dst: udp.destination_port(),
+            }
+        }
+        IpNumber::TCP => {
+            let tcp =
+                TcpHeaderSlice::from_slice(payload).context("Failed to parse payload as TCP")?;
+
+            Layer4Protocol::Tcp {
+                src: tcp.source_port(),
+                dst: tcp.destination_port(),
+            }
+        }
+        IpNumber::ICMP => {
+            let icmp_type = Icmpv4Slice::from_slice(payload)
+                .context("Failed to parse payload as ICMPv4")?
+                .header()
+                .icmp_type;
+
+            let Icmpv4Type::EchoRequest(echo_header) = icmp_type else {
+                bail!("Original packet was not any ICMP echo request but {icmp_type:?}")
+            };
+
+            Layer4Protocol::Icmp {
+                seq: echo_header.seq,
+                id: echo_header.id,
+            }
+        }
+        IpNumber::IPV6_ICMP => {
+            let icmp_type = Icmpv6Slice::from_slice(payload)
+                .context("Failed to parse payload as ICMPv6")?
+                .header()
+                .icmp_type;
+
+            let Icmpv6Type::EchoRequest(echo_header) = icmp_type else {
+                bail!("Original packet was not any ICMP echo request but {icmp_type:?}")
+            };
+
+            Layer4Protocol::Icmp {
+                seq: echo_header.seq,
+                id: echo_header.id,
+            }
+        }
+        other => {
+            bail!("Unsupported protocol: {:?}", other.keyword_str())
+        }
+    };
+    Ok(proto)
 }
 
 impl From<ConvertibleIpv4Packet> for IpPacket {
