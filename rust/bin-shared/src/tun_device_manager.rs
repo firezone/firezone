@@ -104,6 +104,7 @@ mod tests {
                 packet: Cow::Borrowed(&hex_literal::hex!(
                     "000100002112A4420123456789abcdef01234567"
                 )),
+                segment_size: None,
             })
             .unwrap();
 

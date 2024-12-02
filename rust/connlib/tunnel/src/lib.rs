@@ -9,9 +9,8 @@ use crate::messages::{Offer, ResolveRequest, SecretKey};
 use bimap::BiMap;
 use chrono::Utc;
 use connlib_model::{ClientId, DomainName, GatewayId, PublicKey, ResourceId, ResourceView};
-use io::Io;
+use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
-use snownet::EncryptBuffer;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -40,7 +39,6 @@ mod sockets;
 mod tests;
 mod utils;
 
-const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 const REALM: &str = "firezone";
 
 /// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
@@ -70,12 +68,7 @@ pub struct Tunnel<TRoleState> {
     ///
     /// Handles all side-effects.
     io: Io,
-
-    ip4_read_buf: Box<[u8; MAX_UDP_SIZE]>,
-    ip6_read_buf: Box<[u8; MAX_UDP_SIZE]>,
-
-    /// Buffer for encrypting a single packet.
-    encrypt_buf: EncryptBuffer,
+    buffers: Buffers,
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
@@ -96,9 +89,7 @@ impl ClientTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: ClientState::new(BTreeMap::default(), rand::random(), Instant::now()),
-            ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            encrypt_buf: Default::default(),
+            buffers: Buffers::default(),
         }
     }
 
@@ -124,8 +115,8 @@ impl ClientTunnel {
                 continue;
             }
 
-            if let Some(transmit) = self.role_state.poll_transmit() {
-                self.io.send_network(transmit)?;
+            if let Some(trans) = self.role_state.poll_transmit() {
+                self.io.send_network(trans.src, trans.dst, &trans.payload);
                 continue;
             }
 
@@ -138,28 +129,23 @@ impl ClientTunnel {
                 self.io.reset_timeout(timeout);
             }
 
-            match self.io.poll(
-                cx,
-                self.ip4_read_buf.as_mut(),
-                self.ip6_read_buf.as_mut(),
-                &self.encrypt_buf,
-            )? {
+            match self.io.poll(cx, &mut self.buffers)? {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
                     continue;
                 }
-                Poll::Ready(io::Input::Device(packet)) => {
+                Poll::Ready(io::Input::Device(packets)) => {
                     let now = Instant::now();
-                    let Some(enc_packet) =
-                        self.role_state
-                            .handle_tun_input(packet, now, &mut self.encrypt_buf)
-                    else {
-                        self.role_state.handle_timeout(now);
-                        continue;
-                    };
 
-                    self.io
-                        .send_encrypted_packet(enc_packet, &self.encrypt_buf)?;
+                    for packet in packets {
+                        let Some(packet) = self.role_state.handle_tun_input(packet, now) else {
+                            self.role_state.handle_timeout(now);
+                            continue;
+                        };
+
+                        self.io
+                            .send_network(packet.src(), packet.dst(), packet.payload());
+                    }
 
                     continue;
                 }
@@ -207,9 +193,7 @@ impl GatewayTunnel {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: GatewayState::new(rand::random()),
-            ip4_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            ip6_read_buf: Box::new([0u8; MAX_UDP_SIZE]),
-            encrypt_buf: Default::default(),
+            buffers: Buffers::default(),
         }
     }
 
@@ -225,8 +209,8 @@ impl GatewayTunnel {
                 return Poll::Ready(Ok(other));
             }
 
-            if let Some(transmit) = self.role_state.poll_transmit() {
-                self.io.send_network(transmit)?;
+            if let Some(trans) = self.role_state.poll_transmit() {
+                self.io.send_network(trans.src, trans.dst, &trans.payload);
                 continue;
             }
 
@@ -234,12 +218,7 @@ impl GatewayTunnel {
                 self.io.reset_timeout(timeout);
             }
 
-            match self.io.poll(
-                cx,
-                self.ip4_read_buf.as_mut(),
-                self.ip6_read_buf.as_mut(),
-                &self.encrypt_buf,
-            )? {
+            match self.io.poll(cx, &mut self.buffers)? {
                 Poll::Ready(io::Input::DnsResponse(_)) => {
                     unreachable!("Gateway doesn't use user-space DNS resolution")
                 }
@@ -247,19 +226,22 @@ impl GatewayTunnel {
                     self.role_state.handle_timeout(timeout, Utc::now());
                     continue;
                 }
-                Poll::Ready(io::Input::Device(packet)) => {
+                Poll::Ready(io::Input::Device(packets)) => {
                     let now = Instant::now();
-                    let Some(enc_packet) = self
-                        .role_state
-                        .handle_tun_input(packet, now, &mut self.encrypt_buf)
-                        .map_err(std::io::Error::other)?
-                    else {
-                        self.role_state.handle_timeout(now, Utc::now());
-                        continue;
-                    };
 
-                    self.io
-                        .send_encrypted_packet(enc_packet, &self.encrypt_buf)?;
+                    for packet in packets {
+                        let Some(packet) = self
+                            .role_state
+                            .handle_tun_input(packet, now)
+                            .map_err(std::io::Error::other)?
+                        else {
+                            self.role_state.handle_timeout(now, Utc::now());
+                            continue;
+                        };
+
+                        self.io
+                            .send_network(packet.src(), packet.dst(), packet.payload());
+                    }
 
                     continue;
                 }

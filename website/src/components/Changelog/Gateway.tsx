@@ -10,7 +10,12 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="7210">
+          Adds support for GSO (Generic Segmentation Offload), delivering
+          throughput improvements of up to 60%.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.1" date={new Date("2024-11-15")}>
         <ChangeItem pull="7263">
           Mitigates a crash in case the maximum packet size is not respected.

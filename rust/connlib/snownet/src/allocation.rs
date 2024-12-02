@@ -9,6 +9,7 @@ use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use firezone_logging::{err_with_src, std_dyn_err};
 use hex_display::HexDisplayExt as _;
+use ip_packet::MAX_DATAGRAM_PAYLOAD;
 use rand::random;
 use std::{
     borrow::Cow,
@@ -766,10 +767,10 @@ impl Allocation {
     pub fn encode_to_encrypted_packet(
         &self,
         peer: SocketAddr,
-        buffer: &mut [u8],
+        mut buffer: [u8; MAX_DATAGRAM_PAYLOAD],
+        buffer_len: usize,
         now: Instant,
     ) -> Option<EncryptedPacket> {
-        let buffer_len = buffer.len();
         let packet_len = buffer_len - 4;
 
         let channel_number = self.channel_bindings.connected_channel_to_peer(peer, now)?;
@@ -780,6 +781,7 @@ impl Allocation {
             dst: self.active_socket?,
             packet_start: 0,
             packet_len: buffer_len,
+            buffer,
         })
     }
 
