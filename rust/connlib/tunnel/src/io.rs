@@ -33,7 +33,7 @@ use tun::Tun;
 ///
 /// Reading IP packets from the channel in batches allows us to process (i.e. encrypt) them as a batch.
 /// UDP datagrams of the same size and destination can then be sent in a single syscall using GSO.
-const MAX_INBOUND_PACKET_BATCH: usize = 50;
+const MAX_INBOUND_PACKET_BATCH: usize = 100;
 const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Bundles together all side-effects that connlib needs to have access to.
