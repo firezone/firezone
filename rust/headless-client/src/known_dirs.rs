@@ -7,8 +7,10 @@
 //!
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
-pub use platform::{ipc_service_config, ipc_service_logs, logs, runtime, session, settings};
+use anyhow::{Context as _, Result};
 use std::path::PathBuf;
+
+pub use platform::{ipc_service_config, ipc_service_logs, logs, runtime, session, settings};
 
 #[cfg(target_os = "linux")]
 #[path = "known_dirs/linux.rs"]
@@ -22,8 +24,10 @@ pub mod platform;
 #[path = "known_dirs/windows.rs"]
 pub mod platform;
 
-pub fn ipc_log_filter() -> Option<PathBuf> {
-    Some(ipc_service_config()?.join("log-filter"))
+pub fn ipc_log_filter() -> Result<PathBuf> {
+    Ok(ipc_service_config()
+        .context("Failed to compute `ipc_service_config` directory")?
+        .join("log-filter"))
 }
 
 #[cfg(test)]

@@ -3,13 +3,14 @@ use crate::{
     ConnlibMsg, LogFilterReloader,
 };
 use anyhow::{bail, Context as _, Result};
+use atomicwrites::{AtomicFile, OverwriteBehavior};
 use clap::Parser;
 use connlib_model::ResourceView;
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
-use firezone_logging::{anyhow_dyn_err, sentry_layer, telemetry_span};
+use firezone_logging::{anyhow_dyn_err, sentry_layer, std_dyn_err, telemetry_span};
 use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
@@ -20,9 +21,15 @@ use phoenix_channel::LoginUrl;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::BTreeSet, io, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration,
+    collections::BTreeSet,
+    io::{self, Write},
+    net::IpAddr,
+    path::PathBuf,
+    pin::pin,
+    sync::Arc,
+    time::Duration,
 };
-use tokio::{sync::mpsc, task::spawn_blocking, time::Instant};
+use tokio::{sync::mpsc, time::Instant};
 use tracing_subscriber::{layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
 use url::Url;
 
@@ -83,7 +90,9 @@ pub enum ClientMsg {
         token: String,
     },
     Disconnect,
-    ReloadLogFilter,
+    ApplyLogFilter {
+        directives: String,
+    },
     Reset,
     SetDns(Vec<IpAddr>),
     SetDisabledResources(BTreeSet<ResourceId>),
@@ -498,9 +507,16 @@ impl<'a> Handler<'a> {
                     .await
                     .context("Failed to send `DisconnectedGracefully`")?;
             }
-            ClientMsg::ReloadLogFilter => {
-                let filter = spawn_blocking(get_log_filter).await??;
-                self.log_filter_reloader.reload(filter)?;
+            ClientMsg::ApplyLogFilter { directives } => {
+                self.log_filter_reloader.reload(directives.clone())?;
+
+                let path = known_dirs::ipc_log_filter()?;
+
+                if let Err(e) = AtomicFile::new(&path, OverwriteBehavior::AllowOverwrite)
+                    .write(|f| f.write_all(directives.as_bytes()))
+                {
+                    tracing::warn!(path = %path.display(), %directives, error = std_dyn_err(&e), "Failed to write new log directives");
+                }
             }
             ClientMsg::Reset => {
                 if self.last_connlib_start_instant.is_some() {
@@ -673,11 +689,8 @@ pub(crate) fn get_log_filter() -> Result<String> {
         return Ok(filter);
     }
 
-    if let Ok(filter) = std::fs::read_to_string(
-        known_dirs::ipc_log_filter()
-            .context("Failed to compute directory for log filter config file")?,
-    )
-    .map(|s| s.trim().to_string())
+    if let Ok(filter) =
+        std::fs::read_to_string(known_dirs::ipc_log_filter()?).map(|s| s.trim().to_string())
     {
         return Ok(filter);
     }
