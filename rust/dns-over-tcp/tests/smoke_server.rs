@@ -10,7 +10,6 @@ use anyhow::{Context as _, Result};
 use domain::base::{iana::Rcode, MessageBuilder};
 use firezone_bin_shared::TunDeviceManager;
 use ip_network::Ipv4Network;
-use ip_packet::{IpPacket, IpPacketBuf};
 use tokio::task::JoinSet;
 use tun::Tun;
 
@@ -100,11 +99,10 @@ impl Eventloop {
 
     fn poll(&mut self, cx: &mut Context) -> Poll<()> {
         loop {
+            ready!(self.tun.poll_send_ready(cx)).unwrap();
+
             if let Some(packet) = self.dns_server.poll_outbound() {
-                match packet {
-                    IpPacket::Ipv4(v4) => self.tun.write4(v4.packet()).unwrap(),
-                    IpPacket::Ipv6(v6) => self.tun.write6(v6.packet()).unwrap(),
-                };
+                self.tun.send(packet).unwrap();
                 continue;
             }
 
@@ -120,12 +118,12 @@ impl Eventloop {
                 continue;
             }
 
-            let mut packet_buf = IpPacketBuf::default();
-            let num_read = ready!(self.tun.poll_read(packet_buf.buf(), cx)).unwrap();
-            let packet = IpPacket::new(packet_buf, num_read).unwrap();
+            let mut buf = Vec::with_capacity(1);
+            ready!(self.tun.poll_recv_many(cx, &mut buf, 1));
+            let ip_packet = buf.remove(0);
 
-            if self.dns_server.accepts(&packet) {
-                self.dns_server.handle_inbound(packet);
+            if self.dns_server.accepts(&ip_packet) {
+                self.dns_server.handle_inbound(ip_packet);
                 self.dns_server.handle_timeout(Instant::now());
             }
         }

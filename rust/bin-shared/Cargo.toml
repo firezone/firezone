@@ -13,6 +13,7 @@ clap = { workspace = true, features = ["derive", "env"] }
 firezone-logging = { workspace = true }
 futures = { workspace = true, features = ["std", "async-await"] }
 hex-literal = { workspace = true }
+ip-packet = { workspace = true }
 ip_network = { workspace = true, features = ["serde"] }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }

@@ -330,16 +330,21 @@ impl Drop for Tun {
 }
 
 impl tun::Tun for Tun {
-    fn write4(&self, buf: &[u8]) -> io::Result<usize> {
-        write(self.fd.as_raw_fd(), buf)
+    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
+        todo!()
     }
 
-    fn write6(&self, buf: &[u8]) -> io::Result<usize> {
-        write(self.fd.as_raw_fd(), buf)
+    fn send(&mut self, packet: ip_packet::IpPacket) -> io::Result<()> {
+        todo!()
     }
 
-    fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        tun::unix::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
+    fn poll_recv_many(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut Vec<ip_packet::IpPacket>,
+        max: usize,
+    ) -> Poll<usize> {
+        todo!()
     }
 
     fn name(&self) -> &str {

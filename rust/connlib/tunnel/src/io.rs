@@ -2,11 +2,7 @@ mod gso_queue;
 
 use crate::{device_channel::Device, dns, sockets::Sockets};
 use domain::base::Message;
-use firezone_logging::{err_with_src, telemetry_event, telemetry_span};
-use futures::{
-    future::{self, Either},
-    stream, Stream, StreamExt,
-};
+use firezone_logging::{telemetry_event, telemetry_span};
 use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
 use gso_queue::GsoQueue;
@@ -21,11 +17,7 @@ use std::{
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::mpsc,
-};
-use tokio_util::sync::PollSender;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::Instrument;
 use tun::Tun;
 
@@ -49,10 +41,8 @@ pub struct Io {
 
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
 
-    tun_tx: mpsc::Sender<Box<dyn Tun>>,
+    tun: Device,
     outbound_packet_buffer: VecDeque<IpPacket>,
-    outbound_packet_tx: PollSender<IpPacket>,
-    inbound_packet_rx: mpsc::Receiver<IpPacket>,
 }
 
 #[derive(Debug)]
@@ -86,7 +76,6 @@ pub enum Input<D, I> {
 }
 
 const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
-const IP_CHANNEL_SIZE: usize = 1000;
 
 impl Io {
     /// Creates a new I/O abstraction
@@ -99,32 +88,15 @@ impl Io {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
 
-        let (inbound_packet_tx, inbound_packet_rx) = mpsc::channel(IP_CHANNEL_SIZE);
-        let (outbound_packet_tx, outbound_packet_rx) = mpsc::channel(IP_CHANNEL_SIZE);
-        let (tun_tx, tun_rx) = mpsc::channel(10);
-
-        std::thread::Builder::new()
-            .name("connlib-tun-send-recv".to_string())
-            .spawn(|| {
-                futures::executor::block_on(tun_send_recv(
-                    tun_rx,
-                    outbound_packet_rx,
-                    inbound_packet_tx,
-                ))
-            })
-            .expect("Failed to spawn tun_send_recv thread");
-
         Self {
-            tun_tx,
             outbound_packet_buffer: VecDeque::with_capacity(10), // It is unlikely that we process more than 10 packets after 1 GRO call.
-            outbound_packet_tx: PollSender::new(outbound_packet_tx),
-            inbound_packet_rx,
             timeout: None,
             sockets,
             tcp_socket_factory,
             udp_socket_factory,
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
             gso_queue: GsoQueue::new(),
+            tun: Device::new(),
         }
     }
 
@@ -151,8 +123,8 @@ impl Io {
         }
 
         if let Poll::Ready(num_packets) =
-            self.inbound_packet_rx
-                .poll_recv_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
+            self.tun
+                .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
         {
             return Poll::Ready(Ok(Input::Device(buffers.ip.drain(..num_packets))));
         }
@@ -209,11 +181,8 @@ impl Io {
         }
 
         loop {
-            // First, acquire a slot in the channel.
-            ready!(self
-                .outbound_packet_tx
-                .poll_reserve(cx)
-                .map_err(|_| io::ErrorKind::BrokenPipe)?);
+            // First, check if we can send more packets.
+            ready!(self.tun.poll_send_ready(cx))?;
 
             // Second, check if we have any buffer packets.
             let Some(packet) = self.outbound_packet_buffer.pop_front() else {
@@ -221,20 +190,14 @@ impl Io {
             };
 
             // Third, send the packet.
-            self.outbound_packet_tx
-                .send_item(packet)
-                .map_err(|_| io::ErrorKind::BrokenPipe)?;
+            self.tun.send(packet)?;
         }
 
         Poll::Ready(Ok(()))
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        // If we can't set a new TUN device, shut down connlib.
-
-        self.tun_tx
-            .try_send(tun)
-            .expect("Channel to set new TUN device should always have capacity");
+        self.tun.set_tun(tun);
     }
 
     pub fn send_tun(&mut self, packet: IpPacket) {
@@ -350,82 +313,6 @@ impl Io {
     }
 }
 
-async fn tun_send_recv(
-    mut tun_rx: mpsc::Receiver<Box<dyn Tun>>,
-    mut outbound_packet_rx: mpsc::Receiver<IpPacket>,
-    inbound_packet_tx: mpsc::Sender<IpPacket>,
-) {
-    let mut device = Device::new();
-
-    let mut command_stream = stream::select_all([
-        new_tun_stream(&mut tun_rx),
-        outgoing_packet_stream(&mut outbound_packet_rx),
-    ]);
-
-    loop {
-        match future::select(
-            command_stream.next(),
-            future::poll_fn(|cx| device.poll_read(cx)),
-        )
-        .await
-        {
-            Either::Left((Some(Command::SendPacket(p)), _)) => {
-                if let Err(e) = device.write(p) {
-                    tracing::debug!("Failed to write TUN packet: {}", err_with_src(&e));
-                };
-            }
-            Either::Left((Some(Command::UpdateTun(tun)), _)) => {
-                device.set_tun(tun);
-            }
-            Either::Left((None, _)) => {
-                tracing::debug!("Command stream closed");
-                return;
-            }
-            Either::Right((Ok(p), _)) => {
-                if inbound_packet_tx.send(p).await.is_err() {
-                    tracing::debug!("Inbound packet channel closed");
-                    return;
-                };
-            }
-            Either::Right((Err(e), _)) => {
-                tracing::debug!(
-                    "Failed to read packet from TUN device: {}",
-                    err_with_src(&e)
-                );
-            }
-        };
-    }
-}
-
-#[expect(
-    clippy::large_enum_variant,
-    reason = "We purposely don't want to allocate each IP packet."
-)]
-enum Command {
-    UpdateTun(Box<dyn Tun>),
-    SendPacket(IpPacket),
-}
-
-fn new_tun_stream(
-    tun_rx: &mut mpsc::Receiver<Box<dyn Tun>>,
-) -> Pin<Box<dyn Stream<Item = Command> + '_>> {
-    Box::pin(stream::poll_fn(|cx| {
-        tun_rx
-            .poll_recv(cx)
-            .map(|maybe_t| maybe_t.map(Command::UpdateTun))
-    }))
-}
-
-fn outgoing_packet_stream(
-    outbound_packet_rx: &mut mpsc::Receiver<IpPacket>,
-) -> Pin<Box<dyn Stream<Item = Command> + '_>> {
-    Box::pin(stream::poll_fn(|cx| {
-        outbound_packet_rx
-            .poll_recv(cx)
-            .map(|maybe_p| maybe_p.map(Command::SendPacket))
-    }))
-}
-
 fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     let len = d.packet.len();
     if len > MAX_DATAGRAM_PAYLOAD {
@@ -444,14 +331,6 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn max_ip_channel_size_is_reasonable() {
-        let one_ip_packet = std::mem::size_of::<IpPacket>();
-        let max_channel_size = IP_CHANNEL_SIZE * one_ip_packet;
-
-        assert_eq!(max_channel_size, 1_360_000); // 1.36MB is fine, we only have 2 of these channels, meaning less than 3MB additional buffer in total.
-    }
-
     #[tokio::test]
     async fn timer_is_reset_after_it_fires() {
         let now = Instant::now();
@@ -460,6 +339,7 @@ mod tests {
             Arc::new(|_| Err(io::Error::other("not implemented"))),
             Arc::new(|_| Err(io::Error::other("not implemented"))),
         );
+        io.set_tun(Box::new(DummyTun));
 
         io.reset_timeout(now + Duration::from_secs(1));
 
@@ -494,4 +374,29 @@ mod tests {
         udp4: Vec::new(),
         udp6: Vec::new(),
     };
+
+    struct DummyTun;
+
+    impl Tun for DummyTun {
+        fn poll_send_ready(&mut self, _: &mut Context) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn send(&mut self, _: IpPacket) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn poll_recv_many(
+            &mut self,
+            _: &mut Context,
+            _: &mut Vec<IpPacket>,
+            _: usize,
+        ) -> Poll<usize> {
+            Poll::Pending
+        }
+
+        fn name(&self) -> &str {
+            "dummy"
+        }
+    }
 }

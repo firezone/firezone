@@ -17,6 +17,7 @@ connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
+ip-packet = { workspace = true }
 ip_network = { workspace = true }
 jni = { workspace = true, features = ["invocation"] }
 libc = { workspace = true }

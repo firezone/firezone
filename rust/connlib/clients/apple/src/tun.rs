@@ -1,3 +1,4 @@
+use ip_packet::IpPacket;
 use libc::{fcntl, iovec, msghdr, recvmsg, AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK};
 use std::task::{Context, Poll};
 use std::{
@@ -56,20 +57,25 @@ impl Tun {
 }
 
 impl tun::Tun for Tun {
-    fn write4(&self, src: &[u8]) -> io::Result<usize> {
-        self.write(src, AF_INET as u8)
-    }
-
-    fn write6(&self, src: &[u8]) -> io::Result<usize> {
-        self.write(src, AF_INET6 as u8)
-    }
-
-    fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        tun::unix::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
-    }
-
     fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
+        todo!()
+    }
+
+    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
+        todo!()
+    }
+
+    fn poll_recv_many(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut Vec<IpPacket>,
+        max: usize,
+    ) -> Poll<usize> {
+        todo!()
     }
 }
 
