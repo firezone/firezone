@@ -11,7 +11,7 @@ use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId};
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use proptest::prelude::*;
-use snownet::{EncryptBuffer, Transmit};
+use snownet::Transmit;
 use std::{
     collections::{BTreeMap, HashMap},
     net::SocketAddr,
@@ -22,7 +22,6 @@ use std::{
 pub(crate) struct SimGateway {
     id: GatewayId,
     pub(crate) sut: GatewayState,
-    enc_buffer: EncryptBuffer,
 
     /// The received ICMP packets, indexed by our custom ICMP payload.
     pub(crate) received_icmp_requests: BTreeMap<u64, IpPacket>,
@@ -43,7 +42,6 @@ impl SimGateway {
             id,
             sut,
             received_icmp_requests: Default::default(),
-            enc_buffer: Default::default(),
             udp_dns_server_resources: Default::default(),
             tcp_dns_server_resources: Default::default(),
             received_udp_requests: Default::default(),
@@ -92,9 +90,9 @@ impl SimGateway {
             .filter_map(|packet| {
                 Some(
                     self.sut
-                        .handle_tun_input(packet, now, &mut self.enc_buffer)
+                        .handle_tun_input(packet, now)
                         .unwrap()?
-                        .to_transmit(&self.enc_buffer)
+                        .to_transmit()
                         .into_owned(),
                 )
             })
@@ -164,9 +162,9 @@ impl SimGateway {
             self.request_received(&packet);
             let transmit = self
                 .sut
-                .handle_tun_input(reply, now, &mut self.enc_buffer)
+                .handle_tun_input(reply, now)
                 .unwrap()?
-                .to_transmit(&self.enc_buffer)
+                .to_transmit()
                 .into_owned();
 
             return Some(transmit);
@@ -220,9 +218,9 @@ impl SimGateway {
         .expect("src and dst are taken from incoming packet");
         let transmit = self
             .sut
-            .handle_tun_input(echo_response, now, &mut self.enc_buffer)
+            .handle_tun_input(echo_response, now)
             .unwrap()?
-            .to_transmit(&self.enc_buffer)
+            .to_transmit()
             .into_owned();
 
         Some(transmit)

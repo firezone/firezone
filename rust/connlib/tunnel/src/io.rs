@@ -1,3 +1,5 @@
+mod gso_queue;
+
 use crate::{device_channel::Device, dns, sockets::Sockets};
 use domain::base::Message;
 use firezone_logging::{err_with_src, telemetry_event, telemetry_span};
@@ -7,9 +9,9 @@ use futures::{
 };
 use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
+use gso_queue::GsoQueue;
 use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
-use snownet::{EncryptBuffer, EncryptedPacket};
-use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
+use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::VecDeque,
     io,
@@ -27,11 +29,18 @@ use tokio_util::sync::PollSender;
 use tracing::Instrument;
 use tun::Tun;
 
+/// How many IP packets we will at most read from the MPSC-channel connected to our TUN device thread.
+///
+/// Reading IP packets from the channel in batches allows us to process (i.e. encrypt) them as a batch.
+/// UDP datagrams of the same size and destination can then be sent in a single syscall using GSO.
+const MAX_INBOUND_PACKET_BATCH: usize = 50;
+const MAX_UDP_SIZE: usize = (1 << 16) - 1;
+
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
-    unwritten_packet: Option<EncryptedPacket>,
+    gso_queue: GsoQueue,
 
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -53,13 +62,25 @@ struct DnsQueryMetaData {
     transport: dns::Transport,
 }
 
-#[expect(
-    clippy::large_enum_variant,
-    reason = "We purposely don't want to allocate each IP packet."
-)]
-pub enum Input<I> {
+pub(crate) struct Buffers {
+    ip: Vec<IpPacket>,
+    udp4: Vec<u8>,
+    udp6: Vec<u8>,
+}
+
+impl Default for Buffers {
+    fn default() -> Self {
+        Self {
+            ip: Vec::with_capacity(MAX_INBOUND_PACKET_BATCH),
+            udp4: Vec::from([0; MAX_UDP_SIZE]),
+            udp6: Vec::from([0; MAX_UDP_SIZE]),
+        }
+    }
+}
+
+pub enum Input<D, I> {
     Timeout(Instant),
-    Device(IpPacket),
+    Device(D),
     Network(I),
     DnsResponse(dns::RecursiveResponse),
 }
@@ -82,13 +103,16 @@ impl Io {
         let (outbound_packet_tx, outbound_packet_rx) = mpsc::channel(IP_CHANNEL_SIZE);
         let (tun_tx, tun_rx) = mpsc::channel(10);
 
-        std::thread::spawn(|| {
-            futures::executor::block_on(tun_send_recv(
-                tun_rx,
-                outbound_packet_rx,
-                inbound_packet_tx,
-            ))
-        });
+        std::thread::Builder::new()
+            .name("connlib-tun-send-recv".to_string())
+            .spawn(|| {
+                futures::executor::block_on(tun_send_recv(
+                    tun_rx,
+                    outbound_packet_rx,
+                    inbound_packet_tx,
+                ))
+            })
+            .expect("Failed to spawn tun_send_recv thread");
 
         Self {
             tun_tx,
@@ -99,8 +123,8 @@ impl Io {
             sockets,
             tcp_socket_factory,
             udp_socket_factory,
-            unwritten_packet: None,
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
+            gso_queue: GsoQueue::new(),
         }
     }
 
@@ -111,18 +135,26 @@ impl Io {
     pub fn poll<'b>(
         &mut self,
         cx: &mut Context<'_>,
-        ip4_buffer: &'b mut [u8],
-        ip6_bffer: &'b mut [u8],
-        encrypt_buffer: &EncryptBuffer,
-    ) -> Poll<io::Result<Input<impl Iterator<Item = DatagramIn<'b>>>>> {
-        ready!(self.poll_send_unwritten(cx, encrypt_buffer)?);
+        buffers: &'b mut Buffers,
+    ) -> Poll<
+        io::Result<
+            Input<impl Iterator<Item = IpPacket> + use<'b>, impl Iterator<Item = DatagramIn<'b>>>,
+        >,
+    > {
+        ready!(self.flush_send_queue(cx)?);
 
-        if let Poll::Ready(network) = self.sockets.poll_recv_from(ip4_buffer, ip6_bffer, cx)? {
+        if let Poll::Ready(network) =
+            self.sockets
+                .poll_recv_from(&mut buffers.udp4, &mut buffers.udp6, cx)?
+        {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
         }
 
-        if let Poll::Ready(Some(packet)) = self.inbound_packet_rx.poll_recv(cx) {
-            return Poll::Ready(Ok(Input::Device(packet)));
+        if let Poll::Ready(num_packets) =
+            self.inbound_packet_rx
+                .poll_recv_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
+        {
+            return Poll::Ready(Ok(Input::Device(buffers.ip.drain(..num_packets))));
         }
 
         match self.dns_queries.poll_unpin(cx) {
@@ -152,6 +184,10 @@ impl Io {
                 let deadline = timeout.deadline().into();
                 self.timeout = None; // Clear the timeout.
 
+                // Piggy back onto the timeout we already have.
+                // It is not important when we call this, just needs to be called occasionally.
+                self.gso_queue.handle_timeout(deadline);
+
                 return Poll::Ready(Ok(Input::Timeout(deadline)));
             }
         }
@@ -159,17 +195,18 @@ impl Io {
         Poll::Pending
     }
 
-    fn poll_send_unwritten(
-        &mut self,
-        cx: &mut Context<'_>,
-        buf: &EncryptBuffer,
-    ) -> Poll<io::Result<()>> {
-        ready!(self.sockets.poll_send_ready(cx))?;
+    fn flush_send_queue(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let mut datagrams = self.gso_queue.datagrams();
 
-        // If the `unwritten_packet` is set, `EncryptBuffer` is still holding a packet that we need so send.
-        if let Some(unwritten_packet) = self.unwritten_packet.take() {
-            self.send_encrypted_packet(unwritten_packet, buf)?;
-        };
+        loop {
+            ready!(self.sockets.poll_send_ready(cx))?;
+
+            let Some(datagram) = datagrams.next() else {
+                break;
+            };
+
+            self.sockets.send(datagram)?;
+        }
 
         loop {
             // First, acquire a slot in the channel.
@@ -206,6 +243,7 @@ impl Io {
 
     pub fn rebind_sockets(&mut self) {
         self.sockets.rebind(self.udp_socket_factory.as_ref());
+        self.gso_queue.clear();
     }
 
     pub fn reset_timeout(&mut self, timeout: Instant) {
@@ -220,14 +258,8 @@ impl Io {
         }
     }
 
-    pub fn send_network(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
-        self.sockets.send(DatagramOut {
-            src: transmit.src,
-            dst: transmit.dst,
-            packet: transmit.payload,
-        })?;
-
-        Ok(())
+    pub fn send_network(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8]) {
+        self.gso_queue.enqueue(src, dst, payload, Instant::now())
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
@@ -315,28 +347,6 @@ impl Io {
                 }
             }
         }
-    }
-
-    pub fn send_encrypted_packet(
-        &mut self,
-        packet: EncryptedPacket,
-        buf: &EncryptBuffer,
-    ) -> io::Result<()> {
-        let transmit = packet.to_transmit(buf);
-        let res = self.send_network(transmit);
-
-        if res
-            .as_ref()
-            .err()
-            .is_some_and(|e| e.kind() == io::ErrorKind::WouldBlock)
-        {
-            tracing::debug!(dst = %packet.dst(), "Socket busy");
-            self.unwritten_packet = Some(packet);
-        }
-
-        res?;
-
-        Ok(())
     }
 }
 
@@ -429,10 +439,8 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use std::future::poll_fn;
-
-    use domain::base::scan::ScannerError;
     use futures::task::noop_waker_ref;
+    use std::{future::poll_fn, ptr::addr_of_mut};
 
     use super::*;
 
@@ -449,15 +457,21 @@ mod tests {
         let now = Instant::now();
 
         let mut io = Io::new(
-            Arc::new(|_| Err(io::Error::custom("not implemented"))),
-            Arc::new(|_| Err(io::Error::custom("not implemented"))),
+            Arc::new(|_| Err(io::Error::other("not implemented"))),
+            Arc::new(|_| Err(io::Error::other("not implemented"))),
         );
 
         io.reset_timeout(now + Duration::from_secs(1));
 
-        let poll_fn = poll_fn(|cx| io.poll(cx, &mut [], &mut [], &EncryptBuffer::new()))
-            .await
-            .unwrap();
+        let poll_fn = poll_fn(|cx| {
+            io.poll(
+                cx,
+                // SAFETY: This is a test and we never receive packets here.
+                unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
+            )
+        })
+        .await
+        .unwrap();
 
         let Input::Timeout(timeout) = poll_fn else {
             panic!("Unexpected result");
@@ -467,12 +481,17 @@ mod tests {
 
         let poll = io.poll(
             &mut Context::from_waker(noop_waker_ref()),
-            &mut [],
-            &mut [],
-            &EncryptBuffer::new(),
+            // SAFETY: This is a test and we never receive packets here.
+            unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
         );
 
         assert!(poll.is_pending());
         assert!(io.timeout.is_none());
     }
+
+    static mut DUMMY_BUF: Buffers = Buffers {
+        ip: Vec::new(),
+        udp4: Vec::new(),
+        udp6: Vec::new(),
+    };
 }

@@ -25,7 +25,7 @@ use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket};
 use itertools::Itertools as _;
 use prop::collection;
 use proptest::prelude::*;
-use snownet::{EncryptBuffer, Transmit};
+use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     mem,
@@ -66,8 +66,6 @@ pub(crate) struct SimClient {
     pub(crate) received_udp_replies: BTreeMap<(SPort, DPort), IpPacket>,
 
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
-
-    enc_buffer: EncryptBuffer,
 }
 
 impl SimClient {
@@ -90,7 +88,6 @@ impl SimClient {
             received_tcp_replies: Default::default(),
             sent_udp_requests: Default::default(),
             received_udp_replies: Default::default(),
-            enc_buffer: Default::default(),
             ipv4_routes: Default::default(),
             ipv6_routes: Default::default(),
             tcp_dns_client,
@@ -190,12 +187,12 @@ impl SimClient {
     ) -> Option<snownet::Transmit<'static>> {
         self.update_sent_requests(&packet);
 
-        let Some(enc_packet) = self.sut.handle_tun_input(packet, now, &mut self.enc_buffer) else {
+        let Some(enc_packet) = self.sut.handle_tun_input(packet, now) else {
             self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
             return None;
         };
 
-        Some(enc_packet.to_transmit(&self.enc_buffer).into_owned())
+        Some(enc_packet.to_transmit().into_owned())
     }
 
     fn update_sent_requests(&mut self, packet: &IpPacket) {

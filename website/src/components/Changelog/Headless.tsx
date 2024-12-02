@@ -15,6 +15,10 @@ export default function Headless() {
         <ChangeItem pull="7350">
           Allows disabling telemetry by setting `FIREZONE_NO_TELEMETRY=true`.
         </ChangeItem>
+        <ChangeItem pull="7210">
+          Adds support for GSO (Generic Segmentation Offload), delivering
+          throughput improvements of up to 60%.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.7" date={new Date("2024-11-15")}>
         <ChangeItem pull="7334">

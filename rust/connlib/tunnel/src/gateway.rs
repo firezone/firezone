@@ -12,7 +12,7 @@ use firezone_logging::{anyhow_dyn_err, telemetry_span};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{Credentials, EncryptBuffer, NoTurnServers, RelaySocket, ServerNode, Transmit};
+use snownet::{Credentials, NoTurnServers, RelaySocket, ServerNode, Transmit};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::{Duration, Instant};
@@ -84,7 +84,6 @@ impl GatewayState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-        buffer: &mut EncryptBuffer,
     ) -> Result<Option<snownet::EncryptedPacket>> {
         let dst = packet.destination();
 
@@ -104,7 +103,7 @@ impl GatewayState {
 
         let Some(encrypted_packet) = self
             .node
-            .encapsulate(cid, packet, now, buffer)
+            .encapsulate(cid, packet, now)
             .context("Failed to encapsulate")?
         else {
             return Ok(None);
@@ -146,14 +145,12 @@ impl GatewayState {
                 return Ok(None);
             };
 
-            let mut buffer = EncryptBuffer::new();
-            let Some(transmit) =
-                encrypt_packet(immediate_response, cid, &mut self.node, &mut buffer, now)?
+            let Some(transmit) = encrypt_packet(immediate_response, cid, &mut self.node, now)?
             else {
                 return Ok(None);
             };
 
-            self.buffered_transmits.push_back(transmit.into_owned());
+            self.buffered_transmits.push_back(transmit);
 
             return Ok(None);
         }
@@ -342,13 +339,11 @@ impl GatewayState {
 
         let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
 
-        let mut buffer = EncryptBuffer::new();
-        let Some(transmit) = encrypt_packet(packet, req.client, &mut self.node, &mut buffer, now)?
-        else {
+        let Some(transmit) = encrypt_packet(packet, req.client, &mut self.node, now)? else {
             return Ok(());
         };
 
-        self.buffered_transmits.push_back(transmit.into_owned());
+        self.buffered_transmits.push_back(transmit);
 
         Ok(())
     }
@@ -507,21 +502,20 @@ fn handle_p2p_control_packet(
     None
 }
 
-fn encrypt_packet<'a>(
+fn encrypt_packet(
     packet: IpPacket,
     cid: ClientId,
     node: &mut ServerNode<ClientId, RelayId>,
-    buffer: &'a mut EncryptBuffer,
     now: Instant,
-) -> Result<Option<Transmit<'a>>> {
+) -> Result<Option<Transmit<'static>>> {
     let Some(encrypted_packet) = node
-        .encapsulate(cid, packet, now, buffer)
+        .encapsulate(cid, packet, now)
         .context("Failed to encapsulate packet")?
     else {
         return Ok(None);
     };
 
-    Ok(Some(encrypted_packet.to_transmit(buffer)))
+    Ok(Some(encrypted_packet.to_transmit().into_owned()))
 }
 
 /// Opaque request struct for when a domain name needs to be resolved.

@@ -16,6 +16,10 @@ export default function Android() {
           Fixes an issue where symmetric NATs would generate unnecessary
           candidate for hole-punching.
         </ChangeItem>
+        <ChangeItem pull="7210">
+          Adds support for GSO (Generic Segmentation Offload), delivering
+          throughput improvements of up to 60%.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.7" date={new Date("2024-11-08")}>
         <ChangeItem pull="7263">

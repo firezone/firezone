@@ -14,7 +14,12 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="7210">
+          Adds support for GSO (Generic Segmentation Offload), delivering
+          throughput improvements of up to 60%.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.3.13" date={new Date("2024-11-15")}>
         <ChangeItem pull="7334">
           Fixes an issue where symmetric NATs would generate unnecessary
