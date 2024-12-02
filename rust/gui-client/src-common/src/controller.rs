@@ -262,6 +262,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                         tracing::debug!("Internet up/down changed, calling `Session::reset`");
                         self.ipc_client.reset().await?
                     }
+
                     self.try_retry_connection().await?
                 }
                 EventloopTick::DnsChanged(Ok(())) => {
@@ -274,6 +275,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                         );
                         self.ipc_client.set_dns(resolvers).await?;
                     }
+
                     self.try_retry_connection().await?
                 }
                 EventloopTick::NetworkChanged(Err(e)) | EventloopTick::DnsChanged(Err(e)) => {
