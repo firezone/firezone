@@ -7,9 +7,9 @@
 //!
 //! I wanted the ProgramData folder on Windows, which `dirs` alone doesn't provide.
 
+use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
-use anyhow::{Context as _, Result};
 pub use platform::{ipc_service_config, ipc_service_logs, logs, runtime, session, settings};
 
 #[cfg(target_os = "linux")]
