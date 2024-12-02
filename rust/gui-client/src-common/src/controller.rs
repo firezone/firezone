@@ -8,7 +8,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Result};
 use connlib_model::ResourceView;
-use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
+use firezone_bin_shared::{linux::DnsControlMethod, new_dns_notifier, new_network_notifier};
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
@@ -234,13 +234,16 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             self.integration.set_welcome_window_visible(true)?;
         }
 
-        let tokio_handle = tokio::runtime::Handle::current();
-        let dns_control_method = Default::default();
-
-        let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
-        let mut network_notifier =
-            new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
-        drop(tokio_handle);
+        let mut dns_notifier = new_dns_notifier(
+            tokio::runtime::Handle::current(),
+            DnsControlMethod::default(),
+        )
+        .await?;
+        let mut network_notifier = new_network_notifier(
+            tokio::runtime::Handle::current(),
+            DnsControlMethod::default(),
+        )
+        .await?;
 
         loop {
             // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
