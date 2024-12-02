@@ -41,7 +41,7 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 pub const FIREZONE_MARK: u32 = 0xfd002021;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
-pub use network_changes::{new_dns_notifier, new_network_notifier};
+pub use network_changes::{new_dns_notifier, new_network_notifier, Worker as NetworkChangeWorker};
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use tun_device_manager::TunDeviceManager;

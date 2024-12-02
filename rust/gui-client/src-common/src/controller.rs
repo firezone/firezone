@@ -8,7 +8,7 @@ use crate::{
 };
 use anyhow::{anyhow, Context, Result};
 use connlib_model::ResourceView;
-use firezone_bin_shared::{linux::DnsControlMethod, new_dns_notifier, new_network_notifier};
+use firezone_bin_shared::{linux::DnsControlMethod, NetworkChangeWorker};
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
@@ -234,16 +234,8 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             self.integration.set_welcome_window_visible(true)?;
         }
 
-        let mut dns_notifier = new_dns_notifier(
-            tokio::runtime::Handle::current(),
-            DnsControlMethod::default(),
-        )
-        .await?;
-        let mut network_notifier = new_network_notifier(
-            tokio::runtime::Handle::current(),
-            DnsControlMethod::default(),
-        )
-        .await?;
+        let mut dns_notifier = new_dns_notifier().await?;
+        let mut network_notifier = new_network_notifier().await?;
 
         loop {
             // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
@@ -757,4 +749,20 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
         self.refresh_system_tray_menu()?;
         Ok(())
     }
+}
+
+async fn new_dns_notifier() -> Result<NetworkChangeWorker> {
+    firezone_bin_shared::new_dns_notifier(
+        tokio::runtime::Handle::current(),
+        DnsControlMethod::default(),
+    )
+    .await
+}
+
+async fn new_network_notifier() -> Result<NetworkChangeWorker> {
+    firezone_bin_shared::new_network_notifier(
+        tokio::runtime::Handle::current(),
+        DnsControlMethod::default(),
+    )
+    .await
 }
