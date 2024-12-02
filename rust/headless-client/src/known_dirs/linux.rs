@@ -1,11 +1,9 @@
 use firezone_bin_shared::BUNDLE_ID;
 use std::path::PathBuf;
 
-/// Path for IPC service config that either the IPC service or GUI can write
+/// Path for IPC service config that the IPC service can write
 ///
-/// e.g. the device ID should only be written by the IPC service, and
-/// the log filter should only be written by the GUI. No file should be written
-/// by both programs. All writes should use `atomicwrites`.
+/// All writes should use `atomicwrites`.
 ///
 /// On Linux, `/var/lib/$BUNDLE_ID/config/firezone-id`
 ///

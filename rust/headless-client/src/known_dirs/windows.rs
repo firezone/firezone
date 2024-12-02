@@ -2,11 +2,9 @@ use firezone_bin_shared::{platform::app_local_data_dir, BUNDLE_ID};
 use known_folders::{get_known_folder_path, KnownFolder};
 use std::path::PathBuf;
 
-/// Path for IPC service config that either the IPC service or GUI can write
+/// Path for IPC service config that the IPC service can write
 ///
-/// e.g. the device ID should only be written by the IPC service, and
-/// the log filter should only be written by the GUI. No file should be written
-/// by both programs. All writes should use `atomicwrites`.
+/// All writes should use `atomicwrites`.
 ///
 /// On Windows, `C:/ProgramData/$BUNDLE_ID/config`
 pub fn ipc_service_config() -> Option<PathBuf> {
