@@ -2,7 +2,7 @@
 name = "firezone-gui-client-common"
 # mark:next-gui-version
 version = "1.3.14"
-edition = "2021"
+edition = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
