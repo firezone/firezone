@@ -1,58 +1,63 @@
-use ip_packet::IpPacket;
+use futures::task::AtomicWaker;
+use ip_packet::{IpPacket, IpPacketBuf};
 use libc::{fcntl, iovec, msghdr, recvmsg, AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{
     io,
     os::fd::{AsRawFd as _, RawFd},
 };
 use tokio::io::unix::AsyncFd;
+use tokio::sync::mpsc;
 
 #[derive(Debug)]
 pub struct Tun {
     name: String,
-    fd: AsyncFd<RawFd>,
+    outbound_capacity_waker: Arc<AtomicWaker>,
+    outbound_tx: flume::Sender<IpPacket>,
+    inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
 impl Tun {
     pub fn new() -> io::Result<Self> {
         let fd = search_for_tun_fd()?;
         set_non_blocking(fd)?;
-
         let name = name(fd)?;
 
-        Ok(Self {
+        let fd = AsyncFd::new(fd)?;
+
+        let (inbound_tx, inbound_rx) = mpsc::channel(1000);
+        let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
+        let outbound_capacity_waker = Arc::new(AtomicWaker::new());
+
+        std::thread::Builder::new()
+            .name("TUN send/recv".to_owned())
+            .spawn({
+                let outbound_capacity_waker = outbound_capacity_waker.clone();
+                || {
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()?
+                        .block_on(tun::unix::send_recv_tun(
+                            fd,
+                            inbound_tx,
+                            outbound_rx.into_stream(),
+                            outbound_capacity_waker,
+                            read,
+                            write,
+                        ));
+
+                    io::Result::Ok(())
+                }
+            })
+            .map_err(io::Error::other)?;
+
+        Ok(Tun {
             name,
-            fd: AsyncFd::new(fd)?,
+            outbound_tx,
+            inbound_rx,
+            outbound_capacity_waker,
         })
-    }
-
-    fn write(&self, src: &[u8], af: u8) -> io::Result<usize> {
-        let mut hdr = [0, 0, 0, af];
-        let mut iov = [
-            iovec {
-                iov_base: hdr.as_mut_ptr() as _,
-                iov_len: hdr.len(),
-            },
-            iovec {
-                iov_base: src.as_ptr() as _,
-                iov_len: src.len(),
-            },
-        ];
-
-        let msg_hdr = msghdr {
-            msg_name: std::ptr::null_mut(),
-            msg_namelen: 0,
-            msg_iov: &mut iov[0],
-            msg_iovlen: iov.len() as _,
-            msg_control: std::ptr::null_mut(),
-            msg_controllen: 0,
-            msg_flags: 0,
-        };
-
-        match unsafe { libc::sendmsg(self.fd.as_raw_fd(), &msg_hdr, 0) } {
-            -1 => Err(io::Error::last_os_error()),
-            n => Ok(n as usize),
-        }
     }
 }
 
@@ -62,11 +67,20 @@ impl tun::Tun for Tun {
     }
 
     fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        todo!()
+        if self.outbound_tx.is_full() {
+            self.outbound_capacity_waker.register(cx.waker());
+            return Poll::Pending;
+        }
+
+        Poll::Ready(Ok(()))
     }
 
     fn send(&mut self, packet: IpPacket) -> io::Result<()> {
-        todo!()
+        self.outbound_tx
+            .try_send(packet)
+            .map_err(io::Error::other)?;
+
+        Ok(())
     }
 
     fn poll_recv_many(
@@ -75,7 +89,7 @@ impl tun::Tun for Tun {
         buf: &mut Vec<IpPacket>,
         max: usize,
     ) -> Poll<usize> {
-        todo!()
+        self.inbound_rx.poll_recv_many(cx, buf, max)
     }
 }
 
@@ -93,7 +107,9 @@ fn set_non_blocking(fd: RawFd) -> io::Result<()> {
     }
 }
 
-fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
+fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
+    let dst = dst.buf();
+
     let mut hdr = [0u8; 4];
 
     let mut iov = [
@@ -122,6 +138,41 @@ fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
         -1 => Err(io::Error::last_os_error()),
         0..=4 => Ok(0),
         n => Ok((n - 4) as usize),
+    }
+}
+
+fn write(fd: RawFd, src: &IpPacket) -> io::Result<usize> {
+    let af = match src {
+        IpPacket::Ipv4(_) => AF_INET,
+        IpPacket::Ipv6(_) => AF_INET6,
+    };
+    let src = src.packet();
+
+    let mut hdr = [0, 0, 0, af];
+    let mut iov = [
+        iovec {
+            iov_base: hdr.as_mut_ptr() as _,
+            iov_len: hdr.len(),
+        },
+        iovec {
+            iov_base: src.as_ptr() as _,
+            iov_len: src.len(),
+        },
+    ];
+
+    let msg_hdr = msghdr {
+        msg_name: std::ptr::null_mut(),
+        msg_namelen: 0,
+        msg_iov: &mut iov[0],
+        msg_iovlen: iov.len() as _,
+        msg_control: std::ptr::null_mut(),
+        msg_controllen: 0,
+        msg_flags: 0,
+    };
+
+    match unsafe { libc::sendmsg(fd.as_raw_fd(), &msg_hdr, 0) } {
+        -1 => Err(io::Error::last_os_error()),
+        n => Ok(n as usize),
     }
 }
 

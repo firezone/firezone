@@ -15,6 +15,8 @@ connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
+flume = { workspace = true }
+futures = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 libc = { workspace = true }
@@ -24,7 +26,7 @@ secrecy = { workspace = true }
 serde_json = { workspace = true }
 socket-factory = { workspace = true }
 swift-bridge = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }

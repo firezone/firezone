@@ -1073,6 +1073,8 @@ dependencies = [
  "connlib-model",
  "firezone-logging",
  "firezone-telemetry",
+ "flume",
+ "futures",
  "ip-packet",
  "ip_network",
  "libc",
