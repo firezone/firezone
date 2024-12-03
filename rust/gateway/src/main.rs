@@ -47,7 +47,10 @@ fn main() {
         );
     }
 
-    let runtime = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .expect("Failed to create tokio runtime");
 
     match runtime.block_on(try_main(cli, &mut telemetry)) {
         Ok(()) => runtime.block_on(telemetry.stop()),

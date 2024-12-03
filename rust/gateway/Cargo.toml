@@ -33,7 +33,7 @@ serde = { workspace = true, features = ["std", "derive"] }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 static_assertions = { workspace = true }
-tokio = { workspace = true, features = ["sync", "macros", "rt-multi-thread", "fs", "signal"] }
+tokio = { workspace = true, features = ["sync", "macros", "fs", "signal", "rt"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }

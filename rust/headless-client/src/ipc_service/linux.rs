@@ -10,7 +10,9 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     if !elevation_check()? {
         bail!("IPC service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
