@@ -13,6 +13,7 @@ cmd=${1:-""}
 for var in $(env | awk -F= '{print $1}'); do
     if [[ "$var" != "HOME" ]] &&
         [[ "$var" != "MACOSX_DEPLOYMENT_TARGET" ]] &&
+        [[ "$var" != "IPHONEOS_DEPLOYMENT_TARGET" ]] &&
         [[ "$var" != "USER" ]] &&
         [[ "$var" != "LOGNAME" ]] &&
         [[ "$var" != "TERM" ]] &&
