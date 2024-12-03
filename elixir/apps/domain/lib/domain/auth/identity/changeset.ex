@@ -66,6 +66,9 @@ defmodule Domain.Auth.Identity.Changeset do
     |> unique_constraint(:provider_identifier,
       name: :auth_identities_account_id_provider_id_provider_identifier_idx
     )
+    |> unique_constraint(:email,
+      name: :auth_identities_provider_id_email_idx
+    )
   end
 
   def update_identity_provider_state(identity_or_changeset, %{} = state, virtual_state \\ %{}) do
