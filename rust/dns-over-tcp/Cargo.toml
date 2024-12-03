@@ -1,7 +1,7 @@
 [package]
 name = "dns-over-tcp"
 version = "0.1.0"
-edition = "2021"
+edition = { workspace = true }
 description = "User-space implementation of DNS over TCP."
 license = { workspace = true }
 
