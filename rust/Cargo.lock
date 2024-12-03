@@ -2231,7 +2231,6 @@ dependencies = [
  "test-strategy",
  "thiserror",
  "tokio",
- "tokio-util",
  "tracing",
  "tracing-subscriber",
  "tun",
