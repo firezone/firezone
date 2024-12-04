@@ -23,6 +23,10 @@ export default function Headless() {
           Makes use of the new control protocol, delivering faster and more
           robust connection establishment.
         </ChangeItem>
+        <ChangeItem pull="7449">
+          Uses multiple threads to read & write to the TUN device, greatly
+          improving performance.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.7" date={new Date("2024-11-15")}>
         <ChangeItem pull="7334">
