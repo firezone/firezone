@@ -1914,6 +1914,7 @@ dependencies = [
  "axum",
  "clap",
  "firezone-logging",
+ "flume",
  "futures",
  "hex-literal",
  "ip-packet",

@@ -47,7 +47,7 @@ pub struct TunDeviceManager {
 
 impl TunDeviceManager {
     #[expect(clippy::unnecessary_wraps, reason = "Fallible on Linux")]
-    pub fn new(mtu: usize) -> Result<Self> {
+    pub fn new(mtu: usize, _num_threads: usize) -> Result<Self> {
         Ok(Self {
             iface_idx: None,
             routes: HashSet::default(),

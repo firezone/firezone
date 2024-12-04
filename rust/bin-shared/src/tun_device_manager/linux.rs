@@ -3,16 +3,18 @@
 use crate::FIREZONE_MARK;
 use anyhow::{anyhow, Context as _, Result};
 use firezone_logging::std_dyn_err;
+use futures::task::AtomicWaker;
 use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_packet::{IpPacket, IpPacketBuf};
 use libc::{
-    close, fcntl, makedev, mknod, open, EEXIST, ENOENT, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR,
-    S_IFCHR,
+    fcntl, makedev, mknod, open, EEXIST, ENOENT, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR, S_IFCHR,
 };
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle, RouteAddRequest, RuleAddRequest};
 use std::path::Path;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{
     collections::HashSet,
@@ -21,13 +23,12 @@ use std::{
 use std::{
     ffi::CStr,
     fs, io,
-    os::{
-        fd::{AsRawFd, RawFd},
-        unix::fs::PermissionsExt,
-    },
+    os::{fd::RawFd, unix::fs::PermissionsExt},
 };
 use tokio::io::unix::AsyncFd;
+use tokio::sync::mpsc;
 use tun::ioctl;
+use tun::unix::TunFd;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_DEV_MAJOR: u32 = 10;
@@ -40,6 +41,7 @@ const FIREZONE_TABLE: u32 = 0x2021_fd00;
 /// For lack of a better name
 pub struct TunDeviceManager {
     mtu: u32,
+    num_threads: usize,
     connection: Connection,
     routes: HashSet<IpNetwork>,
 }
@@ -61,7 +63,7 @@ impl TunDeviceManager {
     /// Creates a new managed tunnel device.
     ///
     /// Panics if called without a Tokio runtime.
-    pub fn new(mtu: usize) -> Result<Self> {
+    pub fn new(mtu: usize, num_threads: usize) -> Result<Self> {
         let (cxn, handle, _) = new_connection()?;
         let task = tokio::spawn(cxn);
         let connection = Connection { handle, task };
@@ -70,11 +72,12 @@ impl TunDeviceManager {
             connection,
             routes: Default::default(),
             mtu: mtu as u32,
+            num_threads,
         })
     }
 
     pub fn make_tun(&mut self) -> Result<Tun> {
-        Ok(Tun::new()?)
+        Ok(Tun::new(self.num_threads)?)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -284,67 +287,100 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
 
 #[derive(Debug)]
 pub struct Tun {
-    fd: AsyncFd<RawFd>,
+    outbound_tx: flume::Sender<IpPacket>,
+    outbound_capacity_waker: Arc<AtomicWaker>,
+    inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
 impl Tun {
-    pub fn new() -> io::Result<Self> {
+    pub fn new(num_threads: usize) -> io::Result<Self> {
         create_tun_device()?;
 
-        let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
-            -1 => return Err(get_last_error()),
-            fd => fd,
-        };
+        let (inbound_tx, inbound_rx) = mpsc::channel(1000);
+        let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
+        let outbound_capacity_waker = Arc::new(AtomicWaker::new());
 
-        // Safety: We just opened the file descriptor.
-        unsafe {
-            ioctl::exec(
-                fd,
-                TUNSETIFF,
-                &mut ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME),
-            )?;
+        for n in 0..num_threads {
+            let fd = AsyncFd::new(open_tun()?)?;
+            let outbound_rx = outbound_rx.clone().into_stream();
+            let inbound_tx = inbound_tx.clone();
+            let outbound_capacity_waker = outbound_capacity_waker.clone();
+
+            std::thread::Builder::new()
+                .name(format!("TUN send/recv {n}/{num_threads}"))
+                .spawn(move || {
+                    tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()?
+                        .block_on(tun::unix::send_recv_tun(
+                            fd,
+                            inbound_tx,
+                            outbound_rx,
+                            outbound_capacity_waker,
+                            read,
+                            write,
+                        ));
+
+                    io::Result::Ok(())
+                })
+                .map_err(io::Error::other)?;
         }
 
-        set_non_blocking(fd)?;
-
-        // Safety: We just opened the fd.
-        unsafe { Self::from_fd(fd) }
-    }
-
-    /// Create a new [`Tun`] from a raw file descriptor.
-    ///
-    /// # Safety
-    ///
-    /// The file descriptor must be open.
-    unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
-        Ok(Tun {
-            fd: AsyncFd::new(fd)?,
+        Ok(Self {
+            outbound_tx,
+            outbound_capacity_waker,
+            inbound_rx,
         })
     }
 }
 
-impl Drop for Tun {
-    fn drop(&mut self) {
-        unsafe { close(self.fd.as_raw_fd()) };
+fn open_tun() -> Result<TunFd, io::Error> {
+    let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
+        -1 => return Err(get_last_error()),
+        fd => fd,
+    };
+
+    unsafe {
+        ioctl::exec(
+            fd,
+            TUNSETIFF,
+            &mut ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME),
+        )?;
     }
+
+    set_non_blocking(fd)?;
+
+    // Safety: We are not closing the FD.
+    let fd = unsafe { TunFd::new(fd) };
+
+    Ok(fd)
 }
 
 impl tun::Tun for Tun {
     fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        todo!()
+        if self.outbound_tx.is_full() {
+            self.outbound_capacity_waker.register(cx.waker());
+            return Poll::Pending;
+        }
+
+        Poll::Ready(Ok(()))
     }
 
-    fn send(&mut self, packet: ip_packet::IpPacket) -> io::Result<()> {
-        todo!()
+    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
+        self.outbound_tx
+            .try_send(packet)
+            .map_err(io::Error::other)?;
+
+        Ok(())
     }
 
     fn poll_recv_many(
         &mut self,
         cx: &mut Context,
-        buf: &mut Vec<ip_packet::IpPacket>,
+        buf: &mut Vec<IpPacket>,
         max: usize,
     ) -> Poll<usize> {
-        todo!()
+        self.inbound_rx.poll_recv_many(cx, buf, max)
     }
 
     fn name(&self) -> &str {
@@ -394,7 +430,9 @@ fn create_tun_device() -> io::Result<()> {
 }
 
 /// Read from the given file descriptor in the buffer.
-fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
+fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
+    let dst = dst.buf();
+
     // Safety: Within this module, the file descriptor is always valid.
     match unsafe { libc::read(fd, dst.as_mut_ptr() as _, dst.len()) } {
         -1 => Err(io::Error::last_os_error()),
@@ -402,8 +440,10 @@ fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
     }
 }
 
-/// Write the buffer to the given file descriptor.
-fn write(fd: RawFd, buf: &[u8]) -> io::Result<usize> {
+/// Write the packet to the given file descriptor.
+fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
+    let buf = packet.packet();
+
     // Safety: Within this module, the file descriptor is always valid.
     match unsafe { libc::write(fd, buf.as_ptr() as _, buf.len() as _) } {
         -1 => Err(io::Error::last_os_error()),

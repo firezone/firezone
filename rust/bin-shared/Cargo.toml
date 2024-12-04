@@ -25,6 +25,7 @@ tun = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+flume = { workspace = true }
 libc = { workspace = true }
 netlink-packet-core = { version = "0.7" }
 netlink-packet-route = { version = "0.19" }
