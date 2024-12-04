@@ -40,7 +40,7 @@ base64 = { version = "0.22.1", default-features = false }
 bimap = "0.6"
 boringtun = { version = "0.6", default-features = false }
 bytecodec = "0.4.15"
-bytes = { version = "1.7.1", default-features = false }
+bytes = { version = "1.9.0", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 clap = "4.5.21"
 derive_more = "1.0.0"
