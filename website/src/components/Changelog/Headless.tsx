@@ -19,6 +19,10 @@ export default function Headless() {
           Adds support for GSO (Generic Segmentation Offload), delivering
           throughput improvements of up to 60%.
         </ChangeItem>
+        <ChangeItem>
+          Makes use of the new control protocol, delivering faster and more
+          robust connection establishment.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.7" date={new Date("2024-11-15")}>
         <ChangeItem pull="7334">

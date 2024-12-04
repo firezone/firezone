@@ -40,7 +40,7 @@ static DOH_CANARY_DOMAIN: LazyLock<DomainName> = LazyLock::new(|| {
 });
 
 pub struct StubResolver {
-    fqdn_to_ips: HashMap<DomainName, Vec<IpAddr>>,
+    fqdn_to_ips: BTreeMap<(DomainName, ResourceId), Vec<IpAddr>>,
     ips_to_fqdn: HashMap<IpAddr, (DomainName, ResourceId)>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by the glob pattern they match against.
@@ -166,22 +166,16 @@ impl StubResolver {
     ///
     /// Semantically, this is like a PTR query, i.e. we check whether we handed out this IP as part of answering a DNS query for one of our resources.
     /// This is in the hot-path of packet routing and must be fast!
-    pub(crate) fn resolve_resource_by_ip(&self, ip: &IpAddr) -> Option<ResourceId> {
-        let (_, resource_id) = self.ips_to_fqdn.get(ip)?;
-
-        Some(*resource_id)
+    pub(crate) fn resolve_resource_by_ip(&self, ip: &IpAddr) -> Option<&(DomainName, ResourceId)> {
+        self.ips_to_fqdn.get(ip)
     }
 
-    pub(crate) fn get_fqdn(&self, ip: &IpAddr) -> Option<(&DomainName, &Vec<IpAddr>)> {
-        let (fqdn, _) = self.ips_to_fqdn.get(ip)?;
-        let ips = self.fqdn_to_ips.get(fqdn);
-
-        debug_assert!(
-            ips.is_some(),
-            "fqdn_to_ips and ips_to_fqdn are inconsistent"
-        );
-
-        Some((fqdn, ips?))
+    pub(crate) fn resolved_resources(
+        &self,
+    ) -> impl Iterator<Item = (&DomainName, &ResourceId, &Vec<IpAddr>)> + '_ {
+        self.fqdn_to_ips
+            .iter()
+            .map(|((domain, resource), ips)| (domain, resource, ips))
     }
 
     pub(crate) fn add_resource(&mut self, id: ResourceId, pattern: String) -> bool {
@@ -221,7 +215,7 @@ impl StubResolver {
     fn get_or_assign_ips(&mut self, fqdn: DomainName, resource_id: ResourceId) -> Vec<IpAddr> {
         let ips = self
             .fqdn_to_ips
-            .entry(fqdn.clone())
+            .entry((fqdn.clone(), resource_id))
             .or_insert_with(|| {
                 let mut ips = self.ip_provider.get_n_ipv4(4);
                 ips.extend_from_slice(&self.ip_provider.get_n_ipv6(4));
