@@ -7,10 +7,10 @@
   <key>provisioningProfiles</key>
   <dict>
     <key>dev.firezone.firezone</key>
-    <string>9aafa0f8-4b68-49c8-b023-0d4576142e1f</string>
+    <string>07102026-065f-4cc0-800b-5f8595c50ce8</string>
 
     <key>dev.firezone.firezone.network-extension</key>
-    <string>49b53dcc-efaf-4171-9f3b-ca8c46e41069</string>
+    <string>c6feb05e-063a-4429-8563-57c1d2755067</string>
   </dict>
 </dict>
 </plist>

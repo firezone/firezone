@@ -6,23 +6,35 @@ Firezone clients for macOS and iOS.
 
 1. Rust: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 1. Request your Firezone email added to our Apple Developer Account
-1. Open Xcode, go to Settings -> Account and log in. Click "Download manual
-   profiles" button.
-1. Install signing keys from 1password "Engineering" vault.
+1. Open Xcode, go to Settings -> Account and log in.
 
-Automatic signing has been disabled because it doesn't easily work with our
-CI/CD pipeline.
+If you're working on the macOS client, you'll need to disable SIP and enable
+system extension development mode:
+
+1. Follow [these instructions](https://developer.apple.com/documentation/security/disabling-and-enabling-system-integrity-protection) to disable SIP.
+1. After that's complete, turn on system extension development mode:
+
+```bash
+systemextensionsctl developer on
+```
+
+This will prevent macOS from blocking the Network Extension from loading due to notarization or filepath restrictions.
+
+**Be sure to re-enable SIP to test the app in a production-like environment.**
+
+You may consider using a macOS VM (such as Parallels Desktop) to develop the macOS client, as it's easier to
+disable SIP, take snapshots, and muck around with your system configuration without risking your main machine.
 
 ## Building
 
-1. Set up Rust to cross-compile for iOS:
+1. Add required Rust targets:
 
    Ensure you've activated the correct toolchain version for your local
    environment with `rustup default <toolchain>` (find this from
    `/rust/rust-toolchain.toml` file), then run:
 
    ```
-   rustup target add aarch64-apple-ios
+   rustup target add aarch64-apple-ios aarch64-apple-darwin x86_64-apple-darwin
    ```
 
 1. Clone this repo:
@@ -37,12 +49,14 @@ CI/CD pipeline.
    cd swift/apple
    ```
 
-1. Copy an appropriate xcconfig and edit as necessary:
+1. Copy an appropriate xcconfig:
 
-   ```bash
-   cp Firezone/xcconfig/debug.xcconfig Firezone/xcconfig/config.xcconfig
-   vim Firezone/xcconfig/config.xcconfig
-   ```
+If building for Development, the debug.xcconfig should work out-of-the-box.
+
+```bash
+cp Firezone/xcconfig/debug.xcconfig Firezone/xcconfig/config.xcconfig
+vim Firezone/xcconfig/config.xcconfig
+```
 
 1. Open project in Xcode:
 
@@ -50,20 +64,22 @@ CI/CD pipeline.
 open Firezone.xcodeproj
 ```
 
-1. Build the Firezone target
+1. Build and run the `Firezone` target.
 
 ## Debugging
 
 [This Network Extension debugging guide](https://developer.apple.com/forums/thread/725805)
 is a great resource to use as a starting point.
 
-### Debugging on ios simulator
+### Debugging on iOS simulator
 
 Network Extensions
 [can't be debugged](https://developer.apple.com/forums/thread/101663) in the iOS
-simulator, so you'll need a physical iOS device or Mac to debug.
+simulator, so you'll need a physical iOS device to develop the iOS build on.
 
 ### NetworkExtension not loading (macOS)
+
+If the tunnel fails to come up after signing in, it can be for a large number of reasons. Here are some of the more common ones:
 
 Try clearing your LaunchAgent db:
 
@@ -118,7 +134,7 @@ cd swift/apple
 ### Wiping connlib log directory
 
 ```
-rm -rf $HOME/Library/Group\ Containers/47R2M6779T.group.dev.firezone.firezone/Library/Caches/logs/connlib
+rm -rf $HOME/Library/Group\ Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/connlib
 ```
 
 ### Clearing the Keychain item

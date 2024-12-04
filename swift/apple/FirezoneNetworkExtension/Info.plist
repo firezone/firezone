@@ -11,5 +11,17 @@
 	</dict>
 	<key>AppGroupIdentifier</key>
 	<string>$(APP_GROUP_ID)</string>
+  <key>NetworkExtension</key>
+  <dict>
+    <key>NEMachServiceName</key>
+    <string>$(APP_GROUP_ID)</string>
+    <key>NEProviderClasses</key>
+    <dict>
+      <key>com.apple.networkextension.packet-tunnel</key>
+      <string>$(PRODUCT_MODULE_NAME).PacketTunnelProvider</string>
+    </dict>
+  </dict>
+  <key>NSSystemExtensionUsageDescription</key>
+  <string>The Firezone System Extension is required for Firezone to function properly.</string>
 </dict>
 </plist>
