@@ -737,9 +737,7 @@ enum OkReply<T> {
 pub enum ErrorReply {
     #[serde(rename = "unmatched topic")]
     UnmatchedTopic,
-    NotFound,
     InvalidVersion,
-    Offline,
     Disabled,
     #[serde(other)]
     Other,
@@ -749,9 +747,7 @@ impl fmt::Display for ErrorReply {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ErrorReply::UnmatchedTopic => write!(f, "unmatched topic"),
-            ErrorReply::NotFound => write!(f, "not found"),
             ErrorReply::InvalidVersion => write!(f, "invalid version"),
-            ErrorReply::Offline => write!(f, "offline"),
             ErrorReply::Disabled => write!(f, "disabled"),
             ErrorReply::Other => write!(f, "other"),
         }
@@ -932,28 +928,6 @@ mod tests {
         let expected_reply = Payload::<(), ()>::Disconnect {
             reason: DisconnectReason::TokenExpired,
         };
-        assert_eq!(actual_reply, expected_reply);
-    }
-
-    #[test]
-    fn not_found() {
-        let actual_reply = r#"
-        {
-            "event": "phx_reply",
-            "ref": null,
-            "topic": "client",
-            "payload": {
-                "status": "error",
-                "response": {
-                    "reason": "not_found"
-                }
-            }
-        }
-        "#;
-        let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::Reply(Reply::Error {
-            reason: ErrorReply::NotFound,
-        });
         assert_eq!(actual_reply, expected_reply);
     }
 

@@ -1001,11 +1001,6 @@ where
         Ok(params)
     }
 
-    /// Whether we have sent an [`Offer`] for this connection and are currently expecting an [`Answer`].
-    pub fn is_expecting_answer(&self, id: TId) -> bool {
-        self.connections.initial.contains_key(&id)
-    }
-
     /// Accept an [`Answer`] from the remote for a connection previously created via [`Node::new_connection`].
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     #[deprecated]

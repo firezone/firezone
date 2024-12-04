@@ -1,7 +1,6 @@
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use boringtun::x25519::PublicKey;
 use connlib_model::DomainName;
-use connlib_model::{ClientId, ResourceId};
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use firezone_logging::{
@@ -14,7 +13,6 @@ use firezone_tunnel::messages::gateway::{
 use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
 use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel, ResolveDnsRequest};
 use futures::channel::mpsc;
-use futures_bounded::Timeout;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
 use std::convert::Infallible;
@@ -37,9 +35,8 @@ static_assertions::const_assert!(
 
 #[derive(Debug)]
 enum ResolveTrigger {
-    RequestConnection(RequestConnection),      // Deprecated
-    AllowAccess(AllowAccess),                  // Deprecated
-    Refresh(DomainName, ClientId, ResourceId), // TODO: Can we delete this perhaps?
+    RequestConnection(RequestConnection), // Deprecated
+    AllowAccess(AllowAccess),             // Deprecated
     SetupNat(ResolveDnsRequest),
 }
 
@@ -48,7 +45,7 @@ pub struct Eventloop {
     portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     tun_device_channel: mpsc::Sender<Interface>,
 
-    resolve_tasks: futures_bounded::FuturesTupleSet<Vec<IpAddr>, ResolveTrigger>,
+    resolve_tasks: futures_bounded::FuturesTupleSet<Result<Vec<IpAddr>>, ResolveTrigger>,
 }
 
 impl Eventloop {
@@ -86,7 +83,14 @@ impl Eventloop {
                 Poll::Pending => {}
             }
 
-            match self.resolve_tasks.poll_unpin(cx) {
+            match self.resolve_tasks.poll_unpin(cx).map(|(r, trigger)| {
+                (
+                    r.unwrap_or_else(|e| {
+                        Err(anyhow::Error::new(e).context("DNS resolution timed out"))
+                    }),
+                    trigger,
+                )
+            }) {
                 Poll::Ready((result, ResolveTrigger::RequestConnection(req))) => {
                     self.accept_connection(result, req);
                     continue;
@@ -95,23 +99,10 @@ impl Eventloop {
                     self.allow_access(result, req);
                     continue;
                 }
-                Poll::Ready((result, ResolveTrigger::Refresh(name, conn_id, resource_id))) => {
-                    self.refresh_translation(result, conn_id, resource_id, name);
-                    continue;
-                }
                 Poll::Ready((result, ResolveTrigger::SetupNat(request))) => {
-                    let addresses = result
-                        .inspect_err(|e| {
-                            tracing::debug!(
-                                error = std_dyn_err(e),
-                                "DNS resolution timed out as part of setup NAT request"
-                            )
-                        })
-                        .unwrap_or_default();
-
                     if let Err(e) = self.tunnel.state_mut().handle_domain_resolved(
                         request,
-                        addresses,
+                        result,
                         Instant::now(),
                     ) {
                         tracing::warn!(
@@ -162,22 +153,6 @@ impl Eventloop {
                         candidates,
                     }),
                 );
-            }
-            firezone_tunnel::GatewayEvent::RefreshDns {
-                name,
-                conn_id,
-                resource_id,
-            } => {
-                if self
-                    .resolve_tasks
-                    .try_push(
-                        resolve(Some(name.clone())),
-                        ResolveTrigger::Refresh(name, conn_id, resource_id),
-                    )
-                    .is_err()
-                {
-                    tracing::warn!("Too many dns resolution requests, dropping existing one");
-                };
             }
             firezone_tunnel::GatewayEvent::ResolveDns(setup_nat) => {
                 if self
@@ -348,14 +323,15 @@ impl Eventloop {
         }
     }
 
-    pub fn accept_connection(
-        &mut self,
-        result: Result<Vec<IpAddr>, Timeout>,
-        req: RequestConnection,
-    ) {
-        let addresses = result
-            .inspect_err(|e| tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution timed out as part of connection request: {}", err_with_src(e)))
-            .unwrap_or_default();
+    pub fn accept_connection(&mut self, result: Result<Vec<IpAddr>>, req: RequestConnection) {
+        let addresses = match result {
+            Ok(addresses) => addresses,
+            Err(e) => {
+                tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution failed as part of connection request: {e:#}");
+
+                return; // Fail the connection so the client runs into a timeout.
+            }
+        };
 
         let answer = match self.tunnel.state_mut().accept(
             req.client.id,
@@ -388,7 +364,6 @@ impl Eventloop {
                 .payload
                 .domain
                 .map(|r| DnsResourceNatEntry::new(r, addresses)),
-            Instant::now(),
         ) {
             let client = req.client.id;
 
@@ -408,10 +383,17 @@ impl Eventloop {
         );
     }
 
-    pub fn allow_access(&mut self, result: Result<Vec<IpAddr>, Timeout>, req: AllowAccess) {
-        let addresses = result
-            .inspect_err(|e| tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution timed out as part of allow access request: {}", err_with_src(e)))
-            .unwrap_or_default();
+    pub fn allow_access(&mut self, result: Result<Vec<IpAddr>>, req: AllowAccess) {
+        // "allow access" doesn't have a response so we can't tell the client that things failed.
+        // It is legacy code so don't bother ...
+        let addresses = match result {
+            Ok(addresses) => addresses,
+            Err(e) => {
+                tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution failed as part of allow access request: {e:#}");
+
+                vec![]
+            }
+        };
 
         if let Err(e) = self.tunnel.state_mut().allow_access(
             req.client_id,
@@ -420,56 +402,26 @@ impl Eventloop {
             req.expires_at,
             req.resource,
             req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),
-            Instant::now(),
         ) {
             tracing::warn!(error = anyhow_dyn_err(&e), client = %req.client_id, "Allow access request failed");
         };
     }
-
-    pub fn refresh_translation(
-        &mut self,
-        result: Result<Vec<IpAddr>, Timeout>,
-        conn_id: ClientId,
-        resource_id: ResourceId,
-        name: DomainName,
-    ) {
-        let addresses = result
-            .inspect_err(|e| tracing::debug!(%conn_id, "DNS resolution timed out as part of allow access request: {}", err_with_src(e)))
-            .unwrap_or_default();
-
-        self.tunnel.state_mut().refresh_translation(
-            conn_id,
-            resource_id,
-            name,
-            addresses,
-            Instant::now(),
-        );
-    }
 }
 
-async fn resolve(domain: Option<DomainName>) -> Vec<IpAddr> {
+async fn resolve(domain: Option<DomainName>) -> Result<Vec<IpAddr>> {
     let Some(domain) = domain.clone() else {
-        return vec![];
+        return Ok(vec![]);
     };
 
     let dname = domain.to_string();
 
-    match tokio::task::spawn_blocking(move || resolve_addresses(&dname))
+    let addresses = tokio::task::spawn_blocking(move || resolve_addresses(&dname))
         .instrument(telemetry_span!("resolve_dns_resource"))
         .await
-    {
-        Ok(Ok(addresses)) => addresses,
-        Ok(Err(e)) => {
-            tracing::warn!(error = std_dyn_err(&e), %domain, "DNS resolution failed");
+        .context("DNS resolution task failed")?
+        .context("DNS resolution failed")?;
 
-            vec![]
-        }
-        Err(e) => {
-            tracing::warn!(error = std_dyn_err(&e), %domain, "DNS resolution task failed");
-
-            vec![]
-        }
-    }
+    Ok(addresses)
 }
 
 #[cfg(target_os = "windows")]
