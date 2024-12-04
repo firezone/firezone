@@ -12,6 +12,8 @@
 	<array>
 		<string>$(APP_GROUP_ID)</string>
 	</array>
+	<key>com.apple.developer.system-extension.install</key>
+	<true/>
 	<key>com.apple.security.files.user-selected.read-write</key>
 	<true/>
 	<key>com.apple.security.network.client</key>
