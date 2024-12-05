@@ -155,7 +155,9 @@ fn fallible_service_run(
         bail!("IPC service failed its elevation check, try running as admin / root");
     }
 
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
     let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {

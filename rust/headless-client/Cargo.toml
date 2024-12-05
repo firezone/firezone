@@ -31,7 +31,7 @@ smbios-lib = { workspace = true }
 thiserror = { workspace = true }
 # This actually relies on many other features in Tokio, so this will probably
 # fail to build outside the workspace. <https://github.com/firezone/firezone/pull/4328#discussion_r1540342142>
-tokio = { workspace = true, features = ["macros", "signal", "process", "time", "rt-multi-thread", "fs"] }
+tokio = { workspace = true, features = ["macros", "signal", "process", "time", "fs", "rt"] }
 tokio-stream = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 tracing = { workspace = true }

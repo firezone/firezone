@@ -1042,6 +1042,9 @@ dependencies = [
  "connlib-model",
  "firezone-logging",
  "firezone-telemetry",
+ "flume",
+ "futures",
+ "ip-packet",
  "ip_network",
  "jni",
  "libc",
@@ -1070,6 +1073,9 @@ dependencies = [
  "connlib-model",
  "firezone-logging",
  "firezone-telemetry",
+ "flume",
+ "futures",
+ "ip-packet",
  "ip_network",
  "libc",
  "oslog",
@@ -1912,6 +1918,7 @@ dependencies = [
  "axum",
  "clap",
  "firezone-logging",
+ "flume",
  "futures",
  "hex-literal",
  "ip-packet",
@@ -2224,7 +2231,6 @@ dependencies = [
  "test-strategy",
  "thiserror",
  "tokio",
- "tokio-util",
  "tracing",
  "tracing-subscriber",
  "tun",
@@ -2248,6 +2254,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "17c704e9dbe1ddd863da1e6ff3567795087b1eb201ce80d8fa81162e1516500d"
 dependencies = [
  "bitflags 1.3.2",
+]
+
+[[package]]
+name = "flume"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da0e4dd2a88388a1f4ccc7c9ce104604dab68d9f408dc34cd45823d5a9069095"
+dependencies = [
+ "futures-core",
+ "futures-sink",
+ "nanorand",
+ "spin",
 ]
 
 [[package]]
@@ -2581,8 +2599,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c4567c8db10ae91089c99af84c68c38da3ec2f087c3f82960bcdbf3656b6f4d7"
 dependencies = [
  "cfg-if",
+ "js-sys",
  "libc",
  "wasi 0.11.0+wasi-snapshot-preview1",
+ "wasm-bindgen",
 ]
 
 [[package]]
@@ -3669,6 +3689,15 @@ name = "mutants"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc0287524726960e07b119cebd01678f852f147742ae0d925e6a520dca956126"
+
+[[package]]
+name = "nanorand"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a51313c5820b0b02bd422f4b44776fbf47961755c74ce64afc73bfad10226c3"
+dependencies = [
+ "getrandom 0.2.15",
+]
 
 [[package]]
 name = "native-dialog"
@@ -5953,6 +5982,9 @@ name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+dependencies = [
+ "lock_api",
+]
 
 [[package]]
 name = "stable_deref_trait"
@@ -7125,8 +7157,12 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 name = "tun"
 version = "0.1.0"
 dependencies = [
+ "flume",
+ "futures",
+ "ip-packet",
  "libc",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

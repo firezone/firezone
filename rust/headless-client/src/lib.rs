@@ -46,6 +46,9 @@ pub type LogFilterReloader = tracing_subscriber::reload::Handle<EnvFilter, Regis
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
 
+/// Empirically tested to have the best performance.
+pub const NUM_TUN_THREADS: usize = 2;
+
 /// CLI args common to both the IPC service and the headless Client
 #[derive(clap::Parser)]
 pub struct CliCommon {

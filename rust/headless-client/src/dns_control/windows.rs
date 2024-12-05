@@ -213,7 +213,7 @@ mod tests {
 
         let rt = tokio::runtime::Runtime::new().unwrap();
 
-        let mut tun_dev_manager = firezone_bin_shared::TunDeviceManager::new(1280).unwrap();
+        let mut tun_dev_manager = firezone_bin_shared::TunDeviceManager::new(1280, 1).unwrap(); // Note: num_threads (`1`) is unused on windows.
         let _tun = tun_dev_manager.make_tun().unwrap();
 
         rt.block_on(async {

@@ -1,25 +1,107 @@
+use futures::future::Either;
+use futures::task::AtomicWaker;
+use futures::StreamExt as _;
+use ip_packet::{IpPacket, IpPacketBuf};
 use std::io;
 use std::os::fd::{AsRawFd, RawFd};
-use std::task::{Context, Poll};
-use tokio::io::Ready;
+use std::pin::pin;
+use std::sync::Arc;
+use tokio::io::unix::AsyncFd;
+use tokio::sync::mpsc;
 
-pub fn poll_raw_fd(
-    fd: &tokio::io::unix::AsyncFd<RawFd>,
-    mut read: impl FnMut(RawFd) -> io::Result<usize>,
-    cx: &mut Context<'_>,
-) -> Poll<io::Result<usize>> {
+pub struct TunFd {
+    inner: RawFd,
+}
+
+impl TunFd {
+    /// # Safety
+    ///
+    /// You must not close this FD yourself.
+    /// [`TunFd`] will close it for you.
+    pub unsafe fn new(fd: RawFd) -> Self {
+        Self { inner: fd }
+    }
+}
+
+impl AsRawFd for TunFd {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner
+    }
+}
+
+impl Drop for TunFd {
+    fn drop(&mut self) {
+        // Safety: We are the only ones closing the FD.
+        unsafe { libc::close(self.inner) };
+    }
+}
+
+/// Concurrently reads and writes packets to the given TUN file-descriptor using the provided function pointers for the actual syscall.
+///
+/// - Every packet received on `outbound_rx` channel will be written to the file descriptor using the `write` syscall.
+/// - Every packet read using the `read` syscall will be sent into the `inbound_tx` channel.
+/// - Every time we read a packet from `outbound_rx`, we notify `outbound_capacity_waker` about the newly gained capacity.
+/// - In case any of the channels close, we exit the task.
+/// - IO errors are not fallible.
+pub async fn send_recv_tun<T>(
+    fd: AsyncFd<T>,
+    inbound_tx: mpsc::Sender<IpPacket>,
+    mut outbound_rx: flume::r#async::RecvStream<'static, IpPacket>,
+    outbound_capacity_waker: Arc<AtomicWaker>,
+    read: impl Fn(RawFd, &mut IpPacketBuf) -> io::Result<usize>,
+    write: impl Fn(RawFd, &IpPacket) -> io::Result<usize>,
+) where
+    T: AsRawFd,
+{
     loop {
-        let mut guard = std::task::ready!(fd.poll_read_ready(cx))?;
+        let next_inbound_packet = pin!(fd.async_io(tokio::io::Interest::READABLE, |fd| {
+            let mut ip_packet_buf = IpPacketBuf::new();
 
-        match read(guard.get_inner().as_raw_fd()) {
-            Ok(n) => return Poll::Ready(Ok(n)),
-            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-                // a read has blocked, but a write might still succeed.
-                // clear only the read readiness.
-                guard.clear_ready_matching(Ready::READABLE);
+            let len = read(fd.as_raw_fd(), &mut ip_packet_buf)?;
+
+            if len == 0 {
+                return Ok(None);
+            }
+
+            let packet = IpPacket::new(ip_packet_buf, len)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+
+            Ok(Some(packet))
+        }));
+        let next_outbound_packet = pin!(outbound_rx.next());
+
+        match futures::future::select(next_inbound_packet, next_outbound_packet).await {
+            Either::Left((Ok(None), _)) => {
+                tracing::error!("TUN FD is closed");
+                return;
+            }
+            Either::Left((Ok(Some(packet)), _)) => {
+                if inbound_tx.send(packet).await.is_err() {
+                    tracing::debug!("Inbound packet receiver gone, shutting down task");
+
+                    return;
+                };
+            }
+            Either::Left((Err(e), _)) => {
+                tracing::warn!("Failed to read from TUN FD: {e}");
                 continue;
             }
-            Err(e) => return Poll::Ready(Err(e)),
+            Either::Right((Some(packet), _)) => {
+                if let Err(e) = fd
+                    .async_io(tokio::io::Interest::WRITABLE, |fd| {
+                        write(fd.as_raw_fd(), &packet)
+                    })
+                    .await
+                {
+                    tracing::warn!("Failed to write to TUN FD: {e}");
+                };
+
+                outbound_capacity_waker.wake(); // We wrote a packet, notify about the new capacity.
+            }
+            Either::Right((None, _)) => {
+                tracing::debug!("Outbound packet sender gone, shutting down task");
+                return;
+            }
         }
     }
 }
