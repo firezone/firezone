@@ -103,6 +103,12 @@ public final class Store: ObservableObject {
     }
   }
 
+  func installSystemExtension() {
+#if os(macOS)
+    SystemExtensionManager.shared.installSystemExtension(identifier: TunnelManager.bundleIdentifier)
+#endif
+  }
+
   func authURL() -> URL? {
     return URL(string: settings.authBaseURL)
   }

@@ -7,20 +7,21 @@
 #if os(macOS)
 import SystemExtensions
 
-enum SystemExtensionError: Error {
-  case UnexpectedResult(result: OSSystemExtensionRequest.Result)
-  case NeedsUserApproval
+// Maintain a static handle to the extension manager for tracking the state of the extension activation.
+public final class SystemExtensionManager {
+  public static let shared = SystemExtensionManagerDelegate()
 }
 
-public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate {
-  private var completionHandler: ((Error?) -> Void)?
+public class SystemExtensionManagerDelegate: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
+  @Published public var status: ExtensionStatus = .unknown
 
-  public func installSystemExtension(
-    identifier: String?,
-    completionHandler: @escaping (Error?) -> Void
-  ) {
-    guard let identifier = identifier else { return }
-    self.completionHandler = completionHandler
+  public enum ExtensionStatus {
+    case awaitingUserApproval
+    case installed
+    case unknown
+  }
+
+  public func installSystemExtension(identifier: String) {
 
     let request = OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier: identifier, queue: .main)
     request.delegate = self
@@ -33,23 +34,21 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate 
 
   public func request(_ request: OSSystemExtensionRequest, didFinishWithResult result: OSSystemExtensionRequest.Result) {
     guard result == .completed else {
-      completionHandler?(SystemExtensionError.UnexpectedResult(result: result))
+      status = .awaitingUserApproval
 
       return
     }
 
     // Success
-    completionHandler?(nil)
+    status = .installed
   }
 
   public func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
-    completionHandler?(error)
+    status = .awaitingUserApproval
   }
 
   public func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
-    completionHandler?(SystemExtensionError.NeedsUserApproval)
-
-    // TODO: Inform the user to approve the system extension in System Preferences > Security & Privacy.
+    status = .awaitingUserApproval
   }
 
   public func request(_ request: OSSystemExtensionRequest, actionForReplacingExtension existing: OSSystemExtensionProperties, withExtension ext: OSSystemExtensionProperties) -> OSSystemExtensionRequest.ReplacementAction {
