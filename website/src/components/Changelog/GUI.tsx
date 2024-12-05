@@ -23,6 +23,12 @@ export default function GUI({ title }: { title: string }) {
           Makes use of the new control protocol, delivering faster and more
           robust connection establishment.
         </ChangeItem>
+        {title == "Linux GUI" && (
+          <ChangeItem pull="7449">
+            Uses multiple threads to read & write to the TUN device, greatly
+            improving performance.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.3.13" date={new Date("2024-11-15")}>
         <ChangeItem pull="7334">

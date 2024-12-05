@@ -19,6 +19,11 @@ export default function Gateway() {
           Fixes cases where client applications such as ssh would fail to
           automatically determine the correct IP protocol version to use (4/6).
         </ChangeItem>
+        <ChangeItem pull="7449">
+          Uses multiple threads to read & write to the TUN device, greatly
+          improving performance. The number of threads can be controlled with
+          `FIREZONE_NUM_TUN_THREADS` and defaults to 2.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.1" date={new Date("2024-11-15")}>
         <ChangeItem pull="7263">

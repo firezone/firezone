@@ -38,7 +38,6 @@ socket-factory = { workspace = true }
 socket2 = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
 uuid = { workspace = true, features = ["std", "v4"] }

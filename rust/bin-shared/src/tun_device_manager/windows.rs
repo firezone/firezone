@@ -3,6 +3,7 @@ use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
 use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
 use std::{
     collections::HashSet,
@@ -12,7 +13,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::Arc,
-    task::{ready, Context, Poll},
+    task::{Context, Poll},
 };
 use tokio::sync::mpsc;
 use windows::Win32::{
@@ -47,7 +48,7 @@ pub struct TunDeviceManager {
 
 impl TunDeviceManager {
     #[expect(clippy::unnecessary_wraps, reason = "Fallible on Linux")]
-    pub fn new(mtu: usize) -> Result<Self> {
+    pub fn new(mtu: usize, _num_threads: usize) -> Result<Self> {
         Ok(Self {
             iface_idx: None,
             routes: HashSet::default(),
@@ -190,7 +191,7 @@ pub struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
-    packet_rx: mpsc::Receiver<wintun::Packet>,
+    inbound_rx: mpsc::Receiver<IpPacket>,
     recv_thread: Option<std::thread::JoinHandle<()>>,
     session: Arc<wintun::Session>,
 }
@@ -198,10 +199,10 @@ pub struct Tun {
 impl Drop for Tun {
     fn drop(&mut self) {
         tracing::debug!(
-            channel_capacity = self.packet_rx.capacity(),
+            channel_capacity = self.inbound_rx.capacity(),
             "Shutting down packet channel..."
         );
-        self.packet_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
+        self.inbound_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
         if let Err(error) = self.session.shutdown() {
             tracing::error!(error = std_dyn_err(&error), "wintun::Session::shutdown");
         }
@@ -241,16 +242,14 @@ impl Tun {
                 .start_session(RING_BUFFER_SIZE)
                 .context("Failed to start session")?,
         );
-        // 4 is a nice power of two. Wintun already queues packets for us, so we don't
-        // need much capacity here.
-        let (packet_tx, packet_rx) = mpsc::channel(4);
-        let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))
+        let (inbound_tx, inbound_rx) = mpsc::channel(1000); // We want to be able to batch-receive from this.
+        let recv_thread = start_recv_thread(inbound_tx, Arc::clone(&session))
             .context("Failed to start recv thread")?;
 
         Ok(Self {
             iface_idx,
             recv_thread: Some(recv_thread),
-            packet_rx,
+            inbound_rx,
             session: Arc::clone(&session),
         })
     }
@@ -258,72 +257,60 @@ impl Tun {
     pub fn iface_idx(&self) -> u32 {
         self.iface_idx
     }
-
-    // Moves packets from the Internet towards the user
-    fn write(&self, bytes: &[u8]) -> io::Result<usize> {
-        let len = bytes
-            .len()
-            .try_into()
-            .map_err(|_| io::Error::other("Packet too large; length does not fit into u16"))?;
-
-        let Ok(mut pkt) = self.session.allocate_send_packet(len) else {
-            // Ring buffer is full, just drop the packet since we're at the IP layer
-            return Ok(0);
-        };
-
-        pkt.bytes_mut().copy_from_slice(bytes);
-        // `send_packet` cannot fail to enqueue the packet, since we already allocated
-        // space in the ring buffer.
-        self.session.send_packet(pkt);
-        Ok(bytes.len())
-    }
 }
 
 impl tun::Tun for Tun {
-    // Moves packets from the user towards the Internet
-    fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        let pkt = ready!(self.packet_rx.poll_recv(cx));
-
-        match pkt {
-            Some(pkt) => {
-                let bytes = pkt.bytes();
-                let len = bytes.len();
-                if len > buf.len() {
-                    // This shouldn't happen now that we set IPv4 and IPv6 MTU
-                    // If it does, something is wrong.
-                    tracing::warn!("Packet is too long to read ({len} bytes)");
-                    return Poll::Ready(Ok(0));
-                }
-                buf[0..len].copy_from_slice(bytes);
-                Poll::Ready(Ok(len))
-            }
-            None => {
-                tracing::error!("error receiving packet from mpsc channel");
-                Poll::Ready(Err(std::io::ErrorKind::Other.into()))
-            }
-        }
+    /// Receive a batch of packets up to `max`.
+    fn poll_recv_many(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut Vec<IpPacket>,
+        max: usize,
+    ) -> Poll<usize> {
+        self.inbound_rx.poll_recv_many(cx, buf, max)
     }
 
     fn name(&self) -> &str {
         TUNNEL_NAME
     }
 
-    fn write4(&self, bytes: &[u8]) -> io::Result<usize> {
-        self.write(bytes)
+    /// Check if more packets can be sent.
+    fn poll_send_ready(&mut self, _: &mut Context) -> Poll<io::Result<()>> {
+        // TODO: Figure out how we can do readiness checks on `wintun`.
+
+        Poll::Ready(Ok(()))
     }
 
-    fn write6(&self, bytes: &[u8]) -> io::Result<usize> {
-        self.write(bytes)
+    /// Send a packet.
+    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
+        let bytes = packet.packet();
+
+        let len = bytes
+            .len()
+            .try_into()
+            .map_err(|_| io::Error::other("Packet too large; length does not fit into u16"))?;
+
+        let mut pkt = self
+            .session
+            .allocate_send_packet(len)
+            .map_err(io::Error::other)?;
+
+        pkt.bytes_mut().copy_from_slice(bytes);
+        // `send_packet` cannot fail to enqueue the packet, since we already allocated
+        // space in the ring buffer.
+        self.session.send_packet(pkt);
+
+        Ok(())
     }
 }
 
 // Moves packets from the user towards the Internet
 fn start_recv_thread(
-    packet_tx: mpsc::Sender<wintun::Packet>,
+    packet_tx: mpsc::Sender<IpPacket>,
     session: Arc<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
-        .name("Firezone wintun worker".into())
+        .name("TUN recv".into())
         .spawn(move || loop {
             let pkt = match session.receive_blocking() {
                 Ok(pkt) => pkt,
@@ -336,6 +323,26 @@ fn start_recv_thread(
                 Err(e) => {
                     tracing::error!("wintun::Session::receive_blocking: {e:#?}");
                     break;
+                }
+            };
+
+            let mut ip_packet_buf = IpPacketBuf::new();
+
+            let src = pkt.bytes();
+            let dst = ip_packet_buf.buf();
+
+            if src.len() > dst.len() {
+                tracing::warn!(len = %src.len(), "Received too large packet");
+                continue;
+            }
+
+            dst[..src.len()].copy_from_slice(src);
+
+            let pkt = match IpPacket::new(ip_packet_buf, src.len()) {
+                Ok(pkt) => pkt,
+                Err(e) => {
+                    tracing::debug!("Failed to parse IP packet: {e:#}");
+                    continue;
                 }
             };
 
@@ -352,7 +359,7 @@ fn start_recv_thread(
                     );
                     break;
                 }
-            }
+            };
         })
 }
 

@@ -177,7 +177,9 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     if !platform::elevation_check()? {
         bail!("IPC service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
 
@@ -202,7 +204,9 @@ fn run_smoke_test() -> Result<()> {
     if !platform::elevation_check()? {
         bail!("IPC service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
     let _guard = rt.enter();
     let mut dns_controller = DnsController {
         dns_control_method: Default::default(),
@@ -325,7 +329,7 @@ impl<'a> Handler<'a> {
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        let tun_device = TunDeviceManager::new(ip_packet::PACKET_SIZE)?;
+        let tun_device = TunDeviceManager::new(ip_packet::PACKET_SIZE, crate::NUM_TUN_THREADS)?;
 
         Ok(Self {
             dns_controller,

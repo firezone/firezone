@@ -13,6 +13,7 @@ clap = { workspace = true, features = ["derive", "env"] }
 firezone-logging = { workspace = true }
 futures = { workspace = true, features = ["std", "async-await"] }
 hex-literal = { workspace = true }
+ip-packet = { workspace = true }
 ip_network = { workspace = true, features = ["serde"] }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
@@ -24,6 +25,7 @@ tun = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+flume = { workspace = true }
 libc = { workspace = true }
 netlink-packet-core = { version = "0.7" }
 netlink-packet-route = { version = "0.19" }
