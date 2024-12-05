@@ -2,18 +2,12 @@ import Entry from "./Entry";
 import Link from "next/link";
 
 export default function ChangeItem({
-  enable = true,
   pull,
   children,
 }: {
-  enable?: boolean;
   pull?: string;
   children: React.ReactNode;
 }) {
-  if (!enable) {
-    return null;
-  }
-
   return (
     <li className="pl-2">
       {pull ? (
