@@ -18,6 +18,7 @@ use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
+use std::sync::OnceLock;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::PathBuf,
@@ -26,6 +27,8 @@ use std::{
 };
 use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::Registry;
 use tun::Tun;
 
 /// The Apple client implements reconnect logic in the upper layer using OS provided
@@ -97,12 +100,6 @@ pub struct WrappedSession {
     inner: Session,
     runtime: Runtime,
 
-    #[expect(
-        dead_code,
-        reason = "Logger handle must be kept alive until Session is dropped"
-    )]
-    logger: firezone_logging::file::Handle,
-
     telemetry: Telemetry,
 }
 
@@ -172,10 +169,35 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging::file::Handle> {
+/// Initialises a global logger with the specified log filter.
+///
+/// A global logger can only be set once, hence this function uses `static` state to check whether a logger has already been set.
+/// If so, the new `log_filter` will be applied to the existing logger but a different `log_dir` won't have any effect.
+///
+/// From within the FFI module, we have no control over our memory lifecycle and we may get initialised multiple times within the same process.
+fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<()> {
+    static LOGGER_STATE: OnceLock<(
+        firezone_logging::file::Handle,
+        tracing_subscriber::reload::Handle<EnvFilter, Registry>,
+    )> = OnceLock::new();
+
+    let env_filter =
+        firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?;
+
+    if let Some((_, reload_handle)) = LOGGER_STATE.get() {
+        reload_handle
+            .reload(env_filter)
+            .context("Failed to apply new log-filter")?;
+
+        return Ok(());
+    }
+
+    let (env_filter, reload_handle) = tracing_subscriber::reload::Layer::new(env_filter);
+
     let (file_layer, handle) = firezone_logging::file::layer(&log_dir);
 
-    tracing_subscriber::registry()
+    let subscriber = tracing_subscriber::registry()
+        .with(env_filter)
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
@@ -189,11 +211,15 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging
                     "connlib",
                 )),
         )
-        .with(file_layer)
-        .with(firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?)
-        .try_init()?;
+        .with(file_layer);
 
-    Ok(handle)
+    firezone_logging::init(subscriber)?;
+
+    LOGGER_STATE
+        .set((handle, reload_handle))
+        .expect("logger state should only ever be initialised once");
+
+    Ok(())
 }
 
 impl WrappedSession {
@@ -215,7 +241,7 @@ impl WrappedSession {
         telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), APPLE_DSN);
         telemetry.set_firezone_id(device_id.clone());
 
-        let logger = init_logging(log_dir.into(), log_filter)?;
+        init_logging(log_dir.into(), log_filter)?;
         install_rustls_crypto_provider();
 
         let secret = SecretString::from(token);
@@ -263,7 +289,6 @@ impl WrappedSession {
         Ok(Self {
             inner: session,
             runtime,
-            logger,
             telemetry,
         })
     }
