@@ -74,7 +74,7 @@ resource "google_compute_security_policy" "default" {
     match {
       expr {
         # Required by US law due to sanctions.
-        expression = "request.path.matches('/sign_up') && origin.region_code.matches('^RU|BY|KP|IR|SY|CU|VE|XC|XD|SD|MM$')"
+        expression = "origin.region_code.matches('^RU|BY|KP|IR|SY|CU|VE|XC|XD|SD|MM$')"
       }
     }
   }
