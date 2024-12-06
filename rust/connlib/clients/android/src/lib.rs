@@ -31,7 +31,7 @@ use std::{
 use std::{sync::OnceLock, time::Duration};
 use thiserror::Error;
 use tokio::runtime::Runtime;
-use tracing_subscriber::prelude::*;
+use tracing_subscriber::{prelude::*, reload, EnvFilter, Registry};
 
 mod make_writer;
 mod tun;
@@ -121,22 +121,22 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
     let log_filter =
         firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?;
 
-    // On Android, logging state is persisted indefinitely after the System.loadLibrary
-    // call, which means that a disconnect and tunnel process restart will not
-    // reinitialize the guard. This is a problem because the guard remains tied to
-    // the original process, which means that log events will not be rewritten to the log
-    // file after a disconnect and reconnect.
-    //
-    // So we use a static variable to track whether the guard has been initialized and avoid
-    // re-initialized it if so.
-    static LOGGING_HANDLE: OnceLock<firezone_logging::file::Handle> = OnceLock::new();
-    if LOGGING_HANDLE.get().is_some() {
+    static LOGGER_STATE: OnceLock<(
+        firezone_logging::file::Handle,
+        reload::Handle<EnvFilter, Registry>,
+    )> = OnceLock::new();
+    if let Some((_, reload_handle)) = LOGGER_STATE.get() {
+        reload_handle
+            .reload(log_filter)
+            .context("Failed to apply new log-filter")?;
         return Ok(());
     }
 
+    let (log_filter, reload_handle) = reload::Layer::new(log_filter);
     let (file_layer, handle) = firezone_logging::file::layer(log_dir);
 
     let subscriber = tracing_subscriber::registry()
+        .with(log_filter)
         .with(file_layer)
         .with(
             tracing_subscriber::fmt::layer()
@@ -147,13 +147,12 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
                         .without_level(),
                 )
                 .with_writer(make_writer::MakeWriter::new("connlib")),
-        )
-        .with(log_filter);
+        );
 
     firezone_logging::init(subscriber)?;
 
-    LOGGING_HANDLE
-        .set(handle)
+    LOGGER_STATE
+        .set((handle, reload_handle))
         .expect("Logging guard should never be initialized twice");
 
     Ok(())
