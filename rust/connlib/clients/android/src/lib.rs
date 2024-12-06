@@ -31,7 +31,7 @@ use std::{
 use std::{sync::OnceLock, time::Duration};
 use thiserror::Error;
 use tokio::runtime::Runtime;
-use tracing_subscriber::{prelude::*, EnvFilter};
+use tracing_subscriber::{prelude::*, reload, EnvFilter, Registry};
 
 mod make_writer;
 mod tun;
@@ -44,7 +44,6 @@ const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
-    handle: firezone_logging::file::Handle,
 }
 
 impl Clone for CallbackHandler {
@@ -57,7 +56,6 @@ impl Clone for CallbackHandler {
         Self {
             vm: unsafe { std::ptr::read(&self.vm) },
             callback_handler: self.callback_handler.clone(),
-            handle: self.handle.clone(),
         }
     }
 }
@@ -119,27 +117,26 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: &Path, log_filter: EnvFilter) -> firezone_logging::file::Handle {
-    // On Android, logging state is persisted indefinitely after the System.loadLibrary
-    // call, which means that a disconnect and tunnel process restart will not
-    // reinitialize the guard. This is a problem because the guard remains tied to
-    // the original process, which means that log events will not be rewritten to the log
-    // file after a disconnect and reconnect.
-    //
-    // So we use a static variable to track whether the guard has been initialized and avoid
-    // re-initialized it if so.
-    static LOGGING_HANDLE: OnceLock<firezone_logging::file::Handle> = OnceLock::new();
-    if let Some(handle) = LOGGING_HANDLE.get() {
-        return handle.clone();
+fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
+    let log_filter =
+        firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?;
+
+    static LOGGER_STATE: OnceLock<(
+        firezone_logging::file::Handle,
+        reload::Handle<EnvFilter, Registry>,
+    )> = OnceLock::new();
+    if let Some((_, reload_handle)) = LOGGER_STATE.get() {
+        reload_handle
+            .reload(log_filter)
+            .context("Failed to apply new log-filter")?;
+        return Ok(());
     }
 
+    let (log_filter, reload_handle) = reload::Layer::new(log_filter);
     let (file_layer, handle) = firezone_logging::file::layer(log_dir);
 
-    LOGGING_HANDLE
-        .set(handle.clone())
-        .expect("Logging guard should never be initialized twice");
-
-    let _ = tracing_subscriber::registry()
+    let subscriber = tracing_subscriber::registry()
+        .with(log_filter)
         .with(file_layer)
         .with(
             tracing_subscriber::fmt::layer()
@@ -150,11 +147,15 @@ fn init_logging(log_dir: &Path, log_filter: EnvFilter) -> firezone_logging::file
                         .without_level(),
                 )
                 .with_writer(make_writer::MakeWriter::new("connlib")),
-        )
-        .with(log_filter)
-        .try_init();
+        );
 
-    handle
+    firezone_logging::init(subscriber)?;
+
+    LOGGER_STATE
+        .set((handle, reload_handle))
+        .expect("Logging guard should never be initialized twice");
+
+    Ok(())
 }
 
 impl Callbacks for CallbackHandler {
@@ -324,8 +325,6 @@ fn connect(
     let os_version = string_from_jstring!(env, os_version);
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);
-    let log_filter =
-        firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?;
 
     let device_info = string_from_jstring!(env, device_info);
     let device_info =
@@ -335,13 +334,12 @@ fn connect(
     telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), ANDROID_DSN);
     telemetry.set_firezone_id(device_id.clone());
 
-    let handle = init_logging(&PathBuf::from(log_dir), log_filter);
+    init_logging(&PathBuf::from(log_dir), log_filter)?;
     install_rustls_crypto_provider();
 
     let callbacks = CallbackHandler {
         vm: env.get_java_vm()?,
         callback_handler,
-        handle,
     };
 
     let url = LoginUrl::client(
