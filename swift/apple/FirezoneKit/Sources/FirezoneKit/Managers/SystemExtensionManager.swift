@@ -7,12 +7,10 @@
 #if os(macOS)
 import SystemExtensions
 
-// Maintain a static handle to the extension manager for tracking the state of the extension activation.
-public final class SystemExtensionManager {
-  public static let shared = SystemExtensionManagerDelegate()
-}
+public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
+  // Maintain a static handle to the extension manager for tracking the state of the extension activation.
+  public static let shared = SystemExtensionManager()
 
-public class SystemExtensionManagerDelegate: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
   @Published public var status: ExtensionStatus = .unknown
 
   public enum ExtensionStatus {

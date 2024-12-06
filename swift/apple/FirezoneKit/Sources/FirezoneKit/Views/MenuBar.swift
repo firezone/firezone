@@ -27,7 +27,7 @@ public final class MenuBar: NSObject, ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
 
   private var vpnStatus: NEVPNStatus = .disconnected
-  private var extensionStatus: SystemExtensionManagerDelegate.ExtensionStatus = .unknown
+  private var extensionStatus: SystemExtensionManager.ExtensionStatus = .unknown
 
   private var updateChecker: UpdateChecker = UpdateChecker()
   private var updateMenuDisplayed: Bool = false
@@ -284,7 +284,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
   @objc private func installSystemExtensionButtonTapped() {
     Task {
-      model.store.installSystemExtension()
+      SystemExtensionManager.shared.installSystemExtension(identifier: TunnelManager.bundleIdentifier)
     }
   }
 
