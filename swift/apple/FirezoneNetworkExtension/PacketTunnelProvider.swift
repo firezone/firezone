@@ -133,6 +133,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     adapter?.stop()
 
     cancelTunnelWithError(nil)
+    super.stopTunnel(with: reason, completionHandler: completionHandler)
+    completionHandler()
   }
 
   override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {

@@ -93,11 +93,7 @@ public class TunnelManager {
   // Encoder used to send messages to the tunnel
   private let encoder = PropertyListEncoder()
 
-#if os(macOS)
-  private let systemExtensionManager = SystemExtensionManager()
-#endif
-
-  private let bundleIdentifier = "\(Bundle.main.bundleIdentifier!).network-extension"
+  public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
   private let bundleDescription = "Firezone"
 
   init() {
@@ -111,7 +107,7 @@ public class TunnelManager {
     let settings = Settings.defaultValue
 
     protocolConfiguration.providerConfiguration = settings.toProviderConfiguration()
-    protocolConfiguration.providerBundleIdentifier = bundleIdentifier
+    protocolConfiguration.providerBundleIdentifier = TunnelManager.bundleIdentifier
     protocolConfiguration.serverAddress = settings.apiURL
     manager.localizedDescription = bundleDescription
     manager.protocolConfiguration = protocolConfiguration
@@ -142,7 +138,7 @@ public class TunnelManager {
       Log.app.log("\(#function): \(managers.count) tunnel managers found")
       for manager in managers {
         if let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-           protocolConfiguration.providerBundleIdentifier == bundleIdentifier,
+           protocolConfiguration.providerBundleIdentifier == TunnelManager.bundleIdentifier,
            let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
         {
           // Found it
@@ -230,29 +226,6 @@ public class TunnelManager {
       options = ["token": token as NSObject]
     }
 
-#if os(macOS)
-    // On macOS we use System Extensions, and we need to wait for them to be activated
-    // before we can continue starting the tunnel. Otherwise, the tunnel will come up,
-    // but then be killed immediately after since the system will reap its process as
-    // the system extension is moved in place. This is more of an issue in development
-    // where the system will replace the extension on each call to this API, ignoring the
-    // version check that typically prevents extensions from being reactivated if they have the
-    // same marketing version.
-    systemExtensionManager.installSystemExtension(identifier: bundleIdentifier) { error in
-      if let error = error {
-        Log.app.error("\(#function): Installing system extension failed! \(error.localizedDescription)")
-
-        return
-      }
-
-      self.startTunnel(options: options)
-    }
-#else
-    startTunnel(options: options)
-#endif
-  }
-
-  func startTunnel(options: [String: NSObject]?) {
     do {
       try session().startTunnel(options: options)
     } catch {
