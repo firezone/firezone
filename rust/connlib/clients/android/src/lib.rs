@@ -119,7 +119,10 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: &Path, log_filter: EnvFilter) -> firezone_logging::file::Handle {
+fn init_logging(log_dir: &Path, log_filter: String) -> Result<firezone_logging::file::Handle> {
+    let log_filter =
+        firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?;
+
     // On Android, logging state is persisted indefinitely after the System.loadLibrary
     // call, which means that a disconnect and tunnel process restart will not
     // reinitialize the guard. This is a problem because the guard remains tied to
@@ -130,7 +133,7 @@ fn init_logging(log_dir: &Path, log_filter: EnvFilter) -> firezone_logging::file
     // re-initialized it if so.
     static LOGGING_HANDLE: OnceLock<firezone_logging::file::Handle> = OnceLock::new();
     if let Some(handle) = LOGGING_HANDLE.get() {
-        return handle.clone();
+        return Ok(handle.clone());
     }
 
     let (file_layer, handle) = firezone_logging::file::layer(log_dir);
@@ -154,7 +157,7 @@ fn init_logging(log_dir: &Path, log_filter: EnvFilter) -> firezone_logging::file
         .with(log_filter)
         .try_init();
 
-    handle
+    Ok(handle)
 }
 
 impl Callbacks for CallbackHandler {
@@ -324,8 +327,6 @@ fn connect(
     let os_version = string_from_jstring!(env, os_version);
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);
-    let log_filter =
-        firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?;
 
     let device_info = string_from_jstring!(env, device_info);
     let device_info =
@@ -335,7 +336,7 @@ fn connect(
     telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), ANDROID_DSN);
     telemetry.set_firezone_id(device_id.clone());
 
-    let handle = init_logging(&PathBuf::from(log_dir), log_filter);
+    let handle = init_logging(&PathBuf::from(log_dir), log_filter)?;
     install_rustls_crypto_provider();
 
     let callbacks = CallbackHandler {
