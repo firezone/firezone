@@ -178,7 +178,7 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging
 
     let (file_layer, handle) = firezone_logging::file::layer(&log_dir);
 
-    tracing_subscriber::registry()
+    let subscriber = tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
@@ -193,8 +193,9 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging
                 )),
         )
         .with(file_layer)
-        .with(env_filter)
-        .try_init()?;
+        .with(env_filter);
+
+    firezone_logging::init(subscriber)?;
 
     Ok(handle)
 }
