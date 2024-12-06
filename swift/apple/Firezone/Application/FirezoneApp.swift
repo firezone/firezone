@@ -73,6 +73,10 @@ struct FirezoneApp: App {
         menuBar = MenuBar(model: SessionViewModel(favorites: favorites, store: store))
       }
 
+      // Apple recommends installing the system extension as early as possible after app launch.
+      // See https://developer.apple.com/documentation/systemextensions/installing-system-extensions-and-drivers
+      SystemExtensionManager.shared.installSystemExtension(identifier: TunnelManager.bundleIdentifier)
+
       // SwiftUI will show the first window group, so close it on launch
       _ = AppViewModel.WindowDefinition.allCases.map { $0.window()?.close() }
     }
