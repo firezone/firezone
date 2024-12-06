@@ -391,13 +391,13 @@ public final class MenuBar: NSObject, ObservableObject {
     // Update "Sign In" / "Sign Out" menu items
     switch (extensionStatus, status) {
     case (.awaitingUserApproval, _):
-      signInMenuItem.title = "Requires system extension…"
+      signInMenuItem.title = "Enable the system extension to sign in…"
       signInMenuItem.target = self
       signInMenuItem.action = #selector(installSystemExtensionButtonTapped)
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = nil
     case (_, .invalid):
-      signInMenuItem.title = "Requires VPN permission…"
+      signInMenuItem.title = "Allow the VPN permission to sign in…"
       signInMenuItem.target = self
       signInMenuItem.action = #selector(grantVPNPermissionButtonTapped)
       signOutMenuItem.isHidden = true
