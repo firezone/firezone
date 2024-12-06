@@ -173,6 +173,9 @@ impl Callbacks for CallbackHandler {
 }
 
 fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging::file::Handle> {
+    let env_filter =
+        firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?;
+
     let (file_layer, handle) = firezone_logging::file::layer(&log_dir);
 
     tracing_subscriber::registry()
@@ -190,7 +193,7 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging
                 )),
         )
         .with(file_layer)
-        .with(firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?)
+        .with(env_filter)
         .try_init()?;
 
     Ok(handle)
