@@ -136,11 +136,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
 
     let (file_layer, handle) = firezone_logging::file::layer(log_dir);
 
-    LOGGING_HANDLE
-        .set(handle)
-        .expect("Logging guard should never be initialized twice");
-
-    let _ = tracing_subscriber::registry()
+    let subscriber = tracing_subscriber::registry()
         .with(file_layer)
         .with(
             tracing_subscriber::fmt::layer()
@@ -152,8 +148,13 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
                 )
                 .with_writer(make_writer::MakeWriter::new("connlib")),
         )
-        .with(log_filter)
-        .try_init();
+        .with(log_filter);
+
+    firezone_logging::init(subscriber)?;
+
+    LOGGING_HANDLE
+        .set(handle)
+        .expect("Logging guard should never be initialized twice");
 
     Ok(())
 }
