@@ -169,6 +169,12 @@ impl Callbacks for CallbackHandler {
     }
 }
 
+/// Initialises a global logger with the specified log filter.
+///
+/// A global logger can only be set once, hence this function uses `static` state to check whether a logger has already been set.
+/// If so, the new `log_filter` will be applied to the existing logger but a different `log_dir` won't have any effect.
+///
+/// From within the FFI module, we have no control over our memory lifecycle and we may get initialised multiple times within the same process.
 fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<()> {
     static LOGGER_STATE: OnceLock<(
         firezone_logging::file::Handle,
