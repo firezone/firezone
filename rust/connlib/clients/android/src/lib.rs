@@ -31,7 +31,7 @@ use std::{
 use std::{sync::OnceLock, time::Duration};
 use thiserror::Error;
 use tokio::runtime::Runtime;
-use tracing_subscriber::{prelude::*, EnvFilter};
+use tracing_subscriber::prelude::*;
 
 mod make_writer;
 mod tun;
@@ -44,7 +44,6 @@ const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
-    handle: firezone_logging::file::Handle,
 }
 
 impl Clone for CallbackHandler {
@@ -57,7 +56,6 @@ impl Clone for CallbackHandler {
         Self {
             vm: unsafe { std::ptr::read(&self.vm) },
             callback_handler: self.callback_handler.clone(),
-            handle: self.handle.clone(),
         }
     }
 }
@@ -119,7 +117,7 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: &Path, log_filter: String) -> Result<firezone_logging::file::Handle> {
+fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
     let log_filter =
         firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?;
 
@@ -132,14 +130,14 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<firezone_logging::
     // So we use a static variable to track whether the guard has been initialized and avoid
     // re-initialized it if so.
     static LOGGING_HANDLE: OnceLock<firezone_logging::file::Handle> = OnceLock::new();
-    if let Some(handle) = LOGGING_HANDLE.get() {
-        return Ok(handle.clone());
+    if LOGGING_HANDLE.get().is_some() {
+        return Ok(());
     }
 
     let (file_layer, handle) = firezone_logging::file::layer(log_dir);
 
     LOGGING_HANDLE
-        .set(handle.clone())
+        .set(handle)
         .expect("Logging guard should never be initialized twice");
 
     let _ = tracing_subscriber::registry()
@@ -157,7 +155,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<firezone_logging::
         .with(log_filter)
         .try_init();
 
-    Ok(handle)
+    Ok(())
 }
 
 impl Callbacks for CallbackHandler {
@@ -336,13 +334,12 @@ fn connect(
     telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), ANDROID_DSN);
     telemetry.set_firezone_id(device_id.clone());
 
-    let handle = init_logging(&PathBuf::from(log_dir), log_filter)?;
+    init_logging(&PathBuf::from(log_dir), log_filter)?;
     install_rustls_crypto_provider();
 
     let callbacks = CallbackHandler {
         vm: env.get_java_vm()?,
         callback_handler,
-        handle,
     };
 
     let url = LoginUrl::client(
