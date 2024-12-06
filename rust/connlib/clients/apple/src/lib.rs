@@ -18,6 +18,7 @@ use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
+use std::sync::OnceLock;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::PathBuf,
@@ -97,12 +98,6 @@ pub struct WrappedSession {
     inner: Session,
     runtime: Runtime,
 
-    #[expect(
-        dead_code,
-        reason = "Logger handle must be kept alive until Session is dropped"
-    )]
-    logger: firezone_logging::file::Handle,
-
     telemetry: Telemetry,
 }
 
@@ -172,7 +167,13 @@ impl Callbacks for CallbackHandler {
     }
 }
 
-fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging::file::Handle> {
+fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<()> {
+    static LOGGER_STATE: OnceLock<firezone_logging::file::Handle> = OnceLock::new();
+
+    if LOGGER_STATE.get().is_some() {
+        return Ok(());
+    }
+
     let env_filter =
         firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?;
 
@@ -197,7 +198,11 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<firezone_logging
 
     firezone_logging::init(subscriber)?;
 
-    Ok(handle)
+    LOGGER_STATE
+        .set(handle)
+        .expect("logger state should only ever be initialised once");
+
+    Ok(())
 }
 
 impl WrappedSession {
@@ -219,7 +224,7 @@ impl WrappedSession {
         telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), APPLE_DSN);
         telemetry.set_firezone_id(device_id.clone());
 
-        let logger = init_logging(log_dir.into(), log_filter)?;
+        init_logging(log_dir.into(), log_filter)?;
         install_rustls_crypto_provider();
 
         let secret = SecretString::from(token);
@@ -267,7 +272,6 @@ impl WrappedSession {
         Ok(Self {
             inner: session,
             runtime,
-            logger,
             telemetry,
         })
     }
