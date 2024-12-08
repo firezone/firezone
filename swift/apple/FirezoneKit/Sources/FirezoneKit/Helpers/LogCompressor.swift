@@ -21,15 +21,13 @@ struct LogCompressor {
     self.destinationURL = destinationURL
   }
 
-  public func compressFolder(destinationURL: URL? = nil) async throws {
-    try await compressFolderReturningURL(destinationURL: destinationURL)
+  public func compressFiles(_ urls: [URL], destinationURL: URL? = nil) async throws {
+    try await compressFilesReturningURL(urls, destinationURL: destinationURL)
   }
 
   @discardableResult
-  public func compressFolderReturningURL(destinationURL: URL? = nil) async throws -> URL? {
-    guard let logFilesFolderURL = SharedAccess.logFolderURL,
-      let logFilesFolderPath = FilePath(logFilesFolderURL)
-    else {
+  public func compressFilesReturningURL(_ urls: [URL], destinationURL: URL? = nil) async throws -> URL? {
+    guard !urls.isEmpty else {
       throw SettingsViewError.logFolderIsUnavailable
     }
 
@@ -86,11 +84,19 @@ struct LogCompressor {
     }
 
     do {
-      try encodeStream.writeDirectoryContents(
-        archiveFrom: logFilesFolderPath,
-        keySet: keySet)
+      for url in urls {
+        guard let filePath = FilePath(url) else {
+          Log.app.error("\(#function): Invalid file path: \(url)")
+          continue
+        }
+
+        try encodeStream.writeDirectoryContents(
+          archiveFrom: filePath,
+          keySet: keySet
+        )
+      }
     } catch {
-      Log.app.error("Write directory contents failed.")
+      Log.app.error("Write file entry failed: \(error)")
       return nil
     }
 

@@ -139,6 +139,42 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         resourceListJSON in
         completionHandler?(resourceListJSON?.data(using: .utf8))
       }
+    case .getLogFolderURL:
+      guard let url = SharedAccess.logFolderURL,
+            let data = url.absoluteString.data(using: .utf8)
+      else {
+        completionHandler?(nil)
+
+        return
+      }
+
+      completionHandler?(data)
+    case .clearLogs:
+      do {
+        try Log.clear(in: SharedAccess.tunnelLogFolderURL)
+        try Log.clear(in: SharedAccess.connlibLogFolderURL)
+      } catch {
+        Log.tunnel.error("Error clearing logs: \(error)")
+      }
+
+      completionHandler?(nil)
+    case .getLogFolderSize:
+      guard let tunnelLogFolderURL = SharedAccess.tunnelLogFolderURL,
+            let connlibLogFolderURL = SharedAccess.connlibLogFolderURL
+      else {
+        completionHandler?(nil)
+
+        return
+      }
+
+      Task {
+        let size = await (
+          Log.size(of: tunnelLogFolderURL) + Log.size(of: connlibLogFolderURL)
+        )
+        let data = withUnsafeBytes(of: size) { Data($0) }
+
+        completionHandler?(data)
+      }
     }
   }
 }
