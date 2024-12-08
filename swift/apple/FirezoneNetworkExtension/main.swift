@@ -11,6 +11,7 @@ import NetworkExtension
 //  Entrypoint for the macOS app
 autoreleasepool {
   NEProvider.startSystemExtensionMode()
+  IPCConnection.shared.startListener()
 }
 
 dispatchMain()
