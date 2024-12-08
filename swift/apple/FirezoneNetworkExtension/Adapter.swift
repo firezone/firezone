@@ -78,13 +78,13 @@ class Adapter {
 
   /// Starting parameters
   private var apiURL: String
-  private var token: String
+  private var token: Token
   private let logFilter: String
   private let connlibLogFolderPath: String
 
   init(
     apiURL: String,
-    token: String,
+    token: Token,
     logFilter: String,
     internetResourceEnabled: Bool,
     packetTunnelProvider: PacketTunnelProvider
@@ -115,7 +115,7 @@ class Adapter {
   }
 
   /// Start the tunnel.
-  public func start() throws {
+  public func start() async throws {
     Log.tunnel.log("Adapter.start")
     guard case .tunnelStopped = self.state else {
       throw AdapterError.invalidState
@@ -131,12 +131,15 @@ class Adapter {
     do {
       let jsonEncoder = JSONEncoder()
       jsonEncoder.keyEncodingStrategy = .convertToSnakeCase
+
+      let firezoneId = try await FirezoneId.load()
+
       // Grab a session pointer
       let session =
         try WrappedSession.connect(
           apiURL,
-          token,
-          DeviceMetadata.getOrCreateFirezoneId(),
+          "\(token)",
+          "\(firezoneId!)",
           DeviceMetadata.getDeviceName(),
           DeviceMetadata.getOSVersion(),
           connlibLogFolderPath,

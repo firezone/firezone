@@ -69,6 +69,15 @@ struct FirezoneApp: App {
     public var store: Store?
 
     func applicationDidFinishLaunching(_: Notification) {
+      // In 1.4.0 and higher, the macOS client uses a system extension as its
+      // Network Extension packaging type. It runs as root and can't read the
+      // existing firezone-id file. So read it here from the app process instead
+      // and save it to the Keychain, where we should store shared persistent
+      // data going forward.
+      //
+      // Can be removed once all clients >= 1.4.0
+      Task { try await FirezoneId.createIfMissing() }
+
       if let store = store {
         menuBar = MenuBar(model: SessionViewModel(favorites: favorites, store: store))
       }
