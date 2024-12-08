@@ -478,8 +478,9 @@ public struct SettingsView: View {
                 action: {
                   self.isExportingLogs = true
                   Task {
-                    let compressor = LogCompressor()
-                    self.logTempZipFileURL = try await compressor.compressFolderReturningURL()
+                    let archiveURL = LogExporter.tempFile()
+                    try await LogExporter.export(to: archiveURL)
+                    self.logTempZipFileURL = archiveURL
                     self.isPresentingExportLogShareSheet = true
                   }
                 }
@@ -560,13 +561,14 @@ public struct SettingsView: View {
 
   #if os(macOS)
     func exportLogsWithSavePanelOnMac() {
-      let compressor = LogCompressor()
       self.isExportingLogs = true
 
       let savePanel = NSSavePanel()
       savePanel.prompt = "Save"
-      savePanel.nameFieldLabel = "Save log zip bundle to:"
-      savePanel.nameFieldStringValue = compressor.fileName
+      savePanel.nameFieldLabel = "Save log archive to:"
+      let fileName = "firezone_logs_\(LogExporter.now()).aar"
+
+      savePanel.nameFieldStringValue = fileName
 
       guard
         let window = NSApp.windows.first(where: {
@@ -590,17 +592,23 @@ public struct SettingsView: View {
 
         Task {
           do {
-            try await compressor.compressFolder(destinationURL: destinationURL)
-            self.isExportingLogs = false
+            try await LogExporter.export(to: destinationURL)
+
             await MainActor.run {
               window.contentViewController?.presentingViewController?.dismiss(self)
             }
           } catch {
-            self.isExportingLogs = false
+            Log.app.error("\(#function): \(error)")
+
+            let alert = NSAlert()
+            alert.messageText = "Error exporting logs: \(error.localizedDescription)"
+            alert.alertStyle = .critical
             await MainActor.run {
-              // Show alert
+              let _ = alert.runModal()
             }
           }
+
+          self.isExportingLogs = false
         }
       }
     }

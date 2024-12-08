@@ -9,91 +9,116 @@ import AppleArchive
 import Foundation
 import System
 
-struct LogCompressor {
-  private let destinationURL: URL?
-  let fileName: String
-
-  init(destinationURL: URL? = nil) {
-    let dateFormatter = ISO8601DateFormatter()
-    dateFormatter.formatOptions = [.withFullDate, .withTime, .withTimeZone]
-    let timeStampString = dateFormatter.string(from: Date())
-    self.fileName = "firezone_logs_\(timeStampString).aar"
-    self.destinationURL = destinationURL
+/// This module handles the business work of interacting with the AppleArchive framework to do the actual
+/// compression. It's used from both the app and tunnel process in nearly the same way, save for how the
+/// writeStream is opened.
+///
+/// In the tunnel process, the writeStream is a custom stream derived from our TunnelArchiveByteStream,
+/// which keeps state around the writing of compressed bytes in order to handle sending chunks back to the
+/// app process.
+///
+/// In the app process, the writeStream is derived from a passed file path where the Apple Archive
+/// framework handles writing for us -- no custom byte stream instance is needed.
+///
+/// Once the writeStream is opened, the remaining operations are the same for both.
+public struct LogCompressor {
+  enum CompressionError: Error {
+    case unableToReadSourceDirectory
+    case unableToOpenWriteStream
+    case unableToOpenCompressionStream
+    case unableToOpenEncodeStream
+    case unableToDefineHeaderKeys
   }
 
-  public func compressFolder(destinationURL: URL? = nil) async throws {
-    try await compressFolderReturningURL(destinationURL: destinationURL)
+  public init() {}
+
+  public func start(
+    source directory: URL,
+    to file: URL
+  ) throws {
+    guard let path = FilePath(file),
+          let stream = ArchiveByteStream.fileStream(
+            path: path,
+            mode: .writeOnly,
+            options: [.create],
+            permissions: FilePermissions(rawValue: 0o644)
+          )
+    else {
+      throw CompressionError.unableToOpenWriteStream
+    }
+
+    try compress(source: directory, writeStream: stream)
   }
 
-  @discardableResult
-  public func compressFolderReturningURL(destinationURL: URL? = nil) async throws -> URL? {
-    guard let logFilesFolderURL = SharedAccess.logFolderURL,
-      let logFilesFolderPath = FilePath(logFilesFolderURL)
+  public func start(
+    source directory: URL,
+    to byteStream: TunnelArchiveByteStream
+  ) throws {
+    guard let stream = ArchiveByteStream.customStream(
+      instance: byteStream
+    )
     else {
-      throw SettingsViewError.logFolderIsUnavailable
+      throw CompressionError.unableToOpenWriteStream
     }
 
-    let fileManager = FileManager.default
-    let fileURL =
-      destinationURL
-      ?? fileManager.temporaryDirectory.appendingPathComponent(fileName)
+    try compress(source: directory, writeStream: stream)
+  }
 
-    // Remove logfile if it happens to exist
-    try? fileManager.removeItem(at: fileURL)
+  // Compress to a given writeStream which was opened either from a FilePath or
+  // TunnelArchiveByteStream
+  private func compress(
+    source directory: URL,
+    writeStream: ArchiveByteStream
+  ) throws {
+    let compressionStream = try openCompressionStream(writeStream)
+    let encodeStream = try openEncodeStream(compressionStream)
+    let keySet = try defineHeaderKeys()
 
-    // Create the file stream to write the compressed file
-    guard let filePath = FilePath(fileURL),
-      let writeFileStream = ArchiveByteStream.fileStream(
-        path: filePath,
-        mode: .writeOnly,
-        options: [.create],
-        permissions: FilePermissions(rawValue: 0o644))
+    guard let sourcePath = FilePath(directory)
     else {
-      Log.app.error("\(#function): Couldn't create the file stream")
-      return nil
-    }
-    defer {
-      try? writeFileStream.close()
+      throw CompressionError.unableToReadSourceDirectory
     }
 
-    // Create the compression stream
-    guard
-      let compressStream = ArchiveByteStream.compressionStream(
-        using: .lzfse,
-        writingTo: writeFileStream)
+    try encodeStream.writeDirectoryContents(
+      archiveFrom: sourcePath,
+      keySet: keySet
+    )
+
+    try? encodeStream.close()
+    try? compressionStream.close()
+    try? writeStream.close()
+  }
+
+  private func openCompressionStream(_ writeStream: ArchiveByteStream) throws -> ArchiveByteStream {
+    guard let stream = ArchiveByteStream.compressionStream(
+      using: .lzfse,
+      writingTo: writeStream
+    )
     else {
-      Log.app.error("\(#function): Couldn't create the compression stream")
-      return nil
-    }
-    defer {
-      try? compressStream.close()
+      throw CompressionError.unableToOpenCompressionStream
     }
 
-    // Create the encoding stream
-    guard let encodeStream = ArchiveStream.encodeStream(writingTo: compressStream) else {
-      Log.app.error("\(#function): Couldn't create encoding stream")
-      return nil
-    }
-    defer {
-      try? encodeStream.close()
-    }
+    return stream
+  }
 
-    // Define header keys
-    guard let keySet = ArchiveHeader.FieldKeySet("TYP,PAT,LNK,DEV,DAT,UID,GID,MOD,FLG,MTM,BTM,CTM")
+  private func openEncodeStream(
+    _ compressionStream: ArchiveByteStream
+  ) throws -> ArchiveStream {
+    guard let stream = ArchiveStream.encodeStream(writingTo: compressionStream)
     else {
-      Log.app.error("\(#function): Couldn't define header keys")
-      return nil
+      throw CompressionError.unableToOpenEncodeStream
     }
 
-    do {
-      try encodeStream.writeDirectoryContents(
-        archiveFrom: logFilesFolderPath,
-        keySet: keySet)
-    } catch {
-      Log.app.error("Write directory contents failed.")
-      return nil
+    return stream
+  }
+
+  private func defineHeaderKeys() throws -> ArchiveHeader.FieldKeySet {
+    let keys = "TYP,PAT,LNK,DEV,DAT,UID,GID,MOD,FLG,MTM,BTM,CTM"
+    guard let keySet = ArchiveHeader.FieldKeySet(keys)
+    else {
+      throw CompressionError.unableToDefineHeaderKeys
     }
 
-    return fileURL
+    return keySet
   }
 }
