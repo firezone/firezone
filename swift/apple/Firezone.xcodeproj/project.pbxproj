@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -29,6 +29,7 @@
 		8D5048002CE6AA60009802E9 /* SystemConfigurationResolvers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D6939312BA2521A00AF4396 /* SystemConfigurationResolvers.swift */; };
 		8D5048012CE6AA60009802E9 /* NetworkSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FE93AFA2A738D7E002D278A /* NetworkSettings.swift */; };
 		8D5048042CE6B0AE009802E9 /* SwiftBridgeCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FE4550B2A5D111D006549B1 /* SwiftBridgeCore.swift */; };
+		8D688EAA2D064DA7008A342A /* LogIPCService.xpc in Embed XPC Services */ = {isa = PBXBuildFile; fileRef = 8D688E9E2D064DA7008A342A /* LogIPCService.xpc */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8D69392C2BA24FE600AF4396 /* BindResolvers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D69392B2BA24FE600AF4396 /* BindResolvers.swift */; };
 		8DA12C332BB7DA04007D91EB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */; };
 		8DC08BCB2B296C4500675F46 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC08BCA2B296C4500675F46 /* libresolv.9.tbd */; };
@@ -58,6 +59,13 @@
 			remoteGlobalIDString = 6FE454BC2A5BC5F3006549B1;
 			remoteInfo = "Build Connlib";
 		};
+		8D688EA82D064DA7008A342A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8D688E9D2D064DA7008A342A;
+			remoteInfo = LogIPCService;
+		};
 		8DC1699E2CFF77D1006801B5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
@@ -75,6 +83,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		8D688EAB2D064DA7008A342A /* Embed XPC Services */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/XPCServices";
+			dstSubfolderSpec = 16;
+			files = (
+				8D688EAA2D064DA7008A342A /* LogIPCService.xpc in Embed XPC Services */,
+			);
+			name = "Embed XPC Services";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8DC169A32CFF77D1006801B5 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -119,6 +138,7 @@
 		8D5047F32CE6AA1E009802E9 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.1.sdk/usr/lib/libresolv.9.tbd; sourceTree = DEVELOPER_DIR; };
 		8D5047F42CE6AA1E009802E9 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.1.sdk/usr/lib/libresolv.tbd; sourceTree = DEVELOPER_DIR; };
 		8D5047F92CE6AA2E009802E9 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.1.sdk/System/Library/Frameworks/SystemConfiguration.framework; sourceTree = DEVELOPER_DIR; };
+		8D688E9E2D064DA7008A342A /* LogIPCService.xpc */ = {isa = PBXFileReference; explicitFileType = "wrapper.xpc-service"; includeInIndex = 0; path = LogIPCService.xpc; sourceTree = BUILT_PRODUCTS_DIR; };
 		8D69392B2BA24FE600AF4396 /* BindResolvers.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BindResolvers.swift; sourceTree = "<group>"; };
 		8D6939312BA2521A00AF4396 /* SystemConfigurationResolvers.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SystemConfigurationResolvers.swift; sourceTree = "<group>"; };
 		8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -133,6 +153,20 @@
 		8DD2C4C3297B37BA00F984BF /* FirezoneKit */ = {isa = PBXFileReference; lastKnownFileType = wrapper; path = FirezoneKit; sourceTree = "<group>"; };
 		8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = config.xcconfig; path = xcconfig/config.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		8D688EAE2D064DA7008A342A /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 8D688E9D2D064DA7008A342A /* LogIPCService */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		8D688E9F2D064DA7008A342A /* LogIPCService */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (8D688EAE2D064DA7008A342A /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = LogIPCService; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		05CF1CED290B1CEE00CF4755 /* Frameworks */ = {
@@ -155,6 +189,13 @@
 				8D5047F82CE6AA22009802E9 /* FirezoneKit in Frameworks */,
 				8DC9FB852CF5A738001BCE6A /* NetworkExtension.framework in Frameworks */,
 				8D5047FA2CE6AA2E009802E9 /* SystemConfiguration.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8D688E9B2D064DA7008A342A /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -220,6 +261,7 @@
 				8DD2C4C2297B37BA00F984BF /* Packages */,
 				8DCC021B28D512AC007E12D2 /* Firezone */,
 				05833DF928F73B070008FAB0 /* FirezoneNetworkExtension */,
+				8D688E9F2D064DA7008A342A /* LogIPCService */,
 				8DCC021A28D512AC007E12D2 /* Products */,
 				8D3F90C328D64FAD00980124 /* Frameworks */,
 			);
@@ -231,6 +273,7 @@
 				8DCC021928D512AC007E12D2 /* Firezone.app */,
 				05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */,
 				8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */,
+				8D688E9E2D064DA7008A342A /* LogIPCService.xpc */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -328,6 +371,28 @@
 			productReference = 8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */;
 			productType = "com.apple.product-type.system-extension";
 		};
+		8D688E9D2D064DA7008A342A /* LogIPCService */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8D688EAF2D064DA7008A342A /* Build configuration list for PBXNativeTarget "LogIPCService" */;
+			buildPhases = (
+				8D688E9A2D064DA7008A342A /* Sources */,
+				8D688E9B2D064DA7008A342A /* Frameworks */,
+				8D688E9C2D064DA7008A342A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				8D688E9F2D064DA7008A342A /* LogIPCService */,
+			);
+			name = LogIPCService;
+			packageProductDependencies = (
+			);
+			productName = LogIPCService;
+			productReference = 8D688E9E2D064DA7008A342A /* LogIPCService.xpc */;
+			productType = "com.apple.product-type.xpc-service";
+		};
 		8DCC021828D512AC007E12D2 /* Firezone */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8DCC024328D512AE007E12D2 /* Build configuration list for PBXNativeTarget "Firezone" */;
@@ -338,12 +403,14 @@
 				8DCC021728D512AC007E12D2 /* Resources */,
 				8DC169A32CFF77D1006801B5 /* Embed Foundation Extensions */,
 				8DC169A42CFF77D1006801B5 /* Embed System Extensions */,
+				8D688EAB2D064DA7008A342A /* Embed XPC Services */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 				8DC1699F2CFF77D1006801B5 /* PBXTargetDependency */,
 				8DC169A22CFF77D1006801B5 /* PBXTargetDependency */,
+				8D688EA92D064DA7008A342A /* PBXTargetDependency */,
 			);
 			name = Firezone;
 			packageProductDependencies = (
@@ -373,6 +440,9 @@
 					8D5047E22CE6A8F4009802E9 = {
 						CreatedOnToolsVersion = 16.1;
 					};
+					8D688E9D2D064DA7008A342A = {
+						CreatedOnToolsVersion = 16.1;
+					};
 					8DCC021828D512AC007E12D2 = {
 						CreatedOnToolsVersion = 14.0;
 						LastSwiftMigration = 1400;
@@ -398,6 +468,7 @@
 				05CF1CEF290B1CEE00CF4755 /* FirezoneNetworkExtensioniOS */,
 				8D5047E22CE6A8F4009802E9 /* FirezoneNetworkExtensionmacOS */,
 				6FE454BC2A5BC5F3006549B1 /* Build Connlib */,
+				8D688E9D2D064DA7008A342A /* LogIPCService */,
 			);
 		};
 /* End PBXProject section */
@@ -412,6 +483,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		8D5047E12CE6A8F4009802E9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8D688E9C2D064DA7008A342A /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -523,6 +601,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		8D688E9A2D064DA7008A342A /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8DCC021528D512AC007E12D2 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -543,6 +628,11 @@
 			isa = PBXTargetDependency;
 			target = 6FE454BC2A5BC5F3006549B1 /* Build Connlib */;
 			targetProxy = 8D5048022CE6AA75009802E9 /* PBXContainerItemProxy */;
+		};
+		8D688EA92D064DA7008A342A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8D688E9D2D064DA7008A342A /* LogIPCService */;
+			targetProxy = 8D688EA82D064DA7008A342A /* PBXContainerItemProxy */;
 		};
 		8DC1699F2CFF77D1006801B5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -744,6 +834,65 @@
 				SUPPORTED_PLATFORMS = macosx;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "FirezoneNetworkExtension/FirezoneNetworkExtension-Bridging-Header.h";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		8D688EAC2D064DA7008A342A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = LogIPCService/LogIPCService.entitlements;
+				CODE_SIGN_IDENTITY = "$(inherited)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(inherited)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LogIPCService/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = LogIPCService;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.firezone.LogIPCService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		8D688EAD2D064DA7008A342A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = LogIPCService/LogIPCService.entitlements;
+				CODE_SIGN_IDENTITY = "$(inherited)";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "$(inherited)";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = LogIPCService/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = LogIPCService;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.1;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.firezone.LogIPCService;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -996,6 +1145,15 @@
 			buildConfigurations = (
 				8D5047F12CE6A8F4009802E9 /* Debug */,
 				8D5047F22CE6A8F4009802E9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8D688EAF2D064DA7008A342A /* Build configuration list for PBXNativeTarget "LogIPCService" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8D688EAC2D064DA7008A342A /* Debug */,
+				8D688EAD2D064DA7008A342A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

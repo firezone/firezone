@@ -27,6 +27,8 @@ public final class SettingsViewModel: ObservableObject {
       fatalError("Failed to get the contents of \(extensionsDirectoryURL.absoluteString): \(error.localizedDescription)")
     }
 
+    Log.app.log("Found \(extensionURLs.count) extension bundles")
+
     guard let extensionURL = extensionURLs.first else {
       fatalError("Failed to find any system extensions")
     }
@@ -51,7 +53,10 @@ public final class SettingsViewModel: ObservableObject {
 
     IPCConnection.shared.register(withExtension: extensionBundle, delegate: self) { success in
       if !success {
-        Log.app.error("IPCConnection failed")
+        Log.app
+          .error(
+            "IPCConnection failed to register with service at \(self.extensionBundle.bundleIdentifier)"
+          )
 
         return
       }

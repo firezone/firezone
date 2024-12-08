@@ -28,6 +28,8 @@ public class IPCConnection: NSObject {
       fatalError("Mach service name is missing from the Info.plist")
     }
 
+    Log.app.log("Using \(machServiceName) as mach service name")
+
     return machServiceName
   }
 
@@ -52,6 +54,7 @@ public class IPCConnection: NSObject {
     }
 
     let machServiceName = extensionMachServiceName(from: bundle)
+    Log.app.log("Registering with provider for mach service \(machServiceName)")
     let newConnection = NSXPCConnection(machServiceName: machServiceName, options: [])
 
     // The exported object is the delegate.
