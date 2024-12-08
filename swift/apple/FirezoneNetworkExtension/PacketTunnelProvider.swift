@@ -25,31 +25,26 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     Task {
       do {
-        // The tunnel can come up without the app, so initialize the id here
-        // as well.
+        // Can be removed after all clients >= 1.4.0
+        try await FirezoneId.migrate()
+        
+        // The tunnel can come up without the app having been launched first, so
+        // initialize the id here too.
         try await FirezoneId.createIfMissing()
 
-        var token: Token?
+        var passedToken = options?["token"] as? String
+        var keychainToken = try await Token.load()
 
-        if let tokenString = options?["token"] as? String,
-           let tokenData = tokenString.data(using: .utf8) {
-
-          // If we're passed a token, save it to keychain
-          token = Token(tokenData)
-          try await token?.save()
-
-        } else {
-
-          // Otherwise, try loading an existing token from the Keychain
-          token = try await Token.load()
-        }
-
-        guard let token = token
+        // Use the provided token or try loading one from the Keychain
+        guard let token = Token(passedToken) ?? keychainToken
         else {
           completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
 
           return
         }
+
+        // Save the token back to the Keychain
+        try await token.save()
 
         // Now we should have a token, so continue connecting
         guard let apiURL = protocolConfiguration.serverAddress

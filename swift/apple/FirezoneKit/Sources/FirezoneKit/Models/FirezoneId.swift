@@ -22,13 +22,13 @@ public struct FirezoneId {
   }
 
   // Upsert the firezone-id to the Keychain
-  public func save() async throws {
-    guard await Keychain.shared.search(query: FirezoneId.query) == nil
+  public func save(_ keychain: Keychain = Keychain.shared) async throws {
+    guard await keychain.search(query: FirezoneId.query) == nil
     else {
       let query = FirezoneId.query.merging([
         kSecClass: kSecClassGenericPassword
       ]) { (_, new) in new }
-      return try await Keychain.shared.update(
+      return try await keychain.update(
         query: query,
         attributesToUpdate: [kSecValueData: uuid.toData()]
       )
@@ -39,15 +39,15 @@ public struct FirezoneId {
       kSecValueData: uuid.toData()
     ]) { (_, new) in new }
 
-    try await Keychain.shared.add(query: query)
+    try await keychain.add(query: query)
   }
 
   // Attempt to load the firezone-id from the Keychain
-  public static func load() async throws -> FirezoneId? {
-    guard let idRef = await Keychain.shared.search(query: query)
+  public static func load(_ keychain: Keychain = Keychain.shared) async throws -> FirezoneId? {
+    guard let idRef = await keychain.search(query: query)
     else { return nil }
 
-    guard let data = await Keychain.shared.load(persistentRef: idRef)
+    guard let data = await keychain.load(persistentRef: idRef)
     else { return nil }
 
     guard data.count == UUID.sizeInBytes
@@ -62,10 +62,11 @@ public struct FirezoneId {
   // Prior to 1.4.0, our firezone-id was saved in a file. Starting with 1.4.0,
   // the macOS client uses a system extension, which makes sharing folders with
   // the app cumbersome, so we moved to using the keychain for this due to its
-  // better ergonomics.
+  // better ergonomics. If the old firezone-id doesn't exist, this function
+  // is a no-op.
   //
   // Can be refactored to remove the file check once all clients >= 1.4.0
-  public static func createIfMissing() async throws {
+  public static func migrate() async throws {
     guard try await load() == nil
     else { return } // New firezone-id already saved in Keychain
 
@@ -77,30 +78,28 @@ public struct FirezoneId {
 
     let idFileURL = containerURL.appendingPathComponent("firezone-id")
 
-    var uuid: UUID?
+    // If the file isn't there or can't be read, bail
+    guard FileManager.default.fileExists(atPath: idFileURL.path),
+          let uuidString = try? String(contentsOf: idFileURL)
+    else { return }
 
-    if FileManager.default.fileExists(atPath: idFileURL.path),
-       let uuidString = try? String(contentsOf: idFileURL)
-    {
+    let firezoneId = FirezoneId(UUID(uuidString: uuidString))
+    try await firezoneId.save()
+  }
 
-      // Read legacy file-based id if it exists
-      uuid = UUID(uuidString: uuidString)
-    } else {
+  public static func createIfMissing() async throws {
+    guard try await load() == nil
+    else { return } // New firezone-id already saved in Keychain
 
-      // Otherwise generate a new one
-      uuid = UUID()
-    }
-
-    let firezoneId = FirezoneId(uuid)
+    let firezoneId = FirezoneId(UUID())
     try await firezoneId.save()
   }
 }
 
 // Convenience extension to convert to/from Data for storing in Keychain
 extension UUID {
-
-  // For UUIDv4 this will be 16, but we want to be flexible in case the UUID API
-  // is updated in the future to use a newer version with different byte size.
+  // We need the size of a UUID to (1) know how big to make the Data buffer,
+  // and (2) to make sure the UUID we read from the keychain is a valid length.
   public static let sizeInBytes = MemoryLayout.size(ofValue: UUID())
 
   init(fromData: Data) {

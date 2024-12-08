@@ -19,26 +19,38 @@ public struct Token: CustomStringConvertible {
 
   public var description: String { String(data: data, encoding: .utf8)! }
 
+  public init?(_ tokenString: String?) {
+    guard let tokenString = tokenString,
+          let data = tokenString.data(using: .utf8)
+    else { return nil }
+
+    self.data = data
+  }
+
   public init(_ data: Data) {
     self.data = data
   }
 
-  public static func delete() async throws {
-    guard let tokenRef = await Keychain.shared.search(query: query)
+  public static func delete(
+    _ keychain: Keychain = Keychain.shared
+  ) async throws {
+
+    guard let tokenRef = await keychain.search(query: query)
     else { return }
 
-    try await Keychain.shared.delete(persistentRef: tokenRef)
+    try await keychain.delete(persistentRef: tokenRef)
   }
 
   // Upsert token to Keychain
-  public func save() async throws {
-    guard await Keychain.shared.search(query: Token.query) == nil
+  public func save(_ keychain: Keychain = Keychain.shared) async throws {
+
+    guard await keychain.search(query: Token.query) == nil
     else {
       let query = Token.query.merging([
         kSecClass: kSecClassGenericPassword
       ]) { (_, new) in new }
-      
-      return try await Keychain.shared.update(
+
+      return try await keychain.update(
         query: query,
         attributesToUpdate: [kSecValueData: data]
       )
@@ -49,15 +61,18 @@ public struct Token: CustomStringConvertible {
       kSecValueData: data
     ]) { (_, new) in new }
 
-    try await Keychain.shared.add(query: query)
+    try await keychain.add(query: query)
   }
 
   // Attempt to load token from Keychain
-  public static func load() async throws -> Token? {
-    guard let tokenRef = await Keychain.shared.search(query: query)
+  public static func load(
+    _ keychain: Keychain = Keychain.shared
+  ) async throws -> Token? {
+
+    guard let tokenRef = await keychain.search(query: query)
     else { return nil }
 
-    guard let data = await Keychain.shared.load(persistentRef: tokenRef)
+    guard let data = await keychain.load(persistentRef: tokenRef)
     else { return nil }
 
     return Token(data)
