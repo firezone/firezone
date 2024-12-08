@@ -52,7 +52,18 @@ public final class SettingsViewModel: ObservableObject {
     }
   }
 
-  func calculateLogDirSize() -> String? {
+  // Calculates the total size of our logs by summing the size of the
+  // app, tunnel, and connlib log directories.
+  //
+  // On iOS, SharedAccess.logFolderURL is a single folder that contains all
+  // three directories, but on macOS, the app log directory lives in a different
+  // Group Container than tunnel and connlib directories, so we use IPC to make
+  // a call to sum both the tunnel and connlib directories.
+  //
+  // Unfortunately the IPC method doesn't work on iOS because the tunnel process
+  // is not started on demand, so the IPC calls hang. Thus, we use separate code
+  // paths for iOS and macOS.
+  func calculateLogDirSize() async -> String? {
     Log.app.log("\(#function)")
 
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
@@ -60,25 +71,22 @@ public final class SettingsViewModel: ObservableObject {
       return nil
     }
 
-    let fileManager = FileManager.default
+    let logFolderSize = await Log.size(of: logFilesFolderURL)
 
-    var totalSize = 0
-    fileManager.forEachFileUnder(
-      logFilesFolderURL,
-      including: [
-        .totalFileAllocatedSizeKey,
-        .totalFileSizeKey,
-        .isRegularFileKey,
-      ]
-    ) { url, resourceValues in
-      if resourceValues.isRegularFile ?? false {
-        totalSize += (resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
-      }
-    }
+#if os(macOS)
+    let providerLogFolderSize = await store.tunnelManager.getLogFolderSize()
 
-    if Task.isCancelled {
+    guard let providerLogFolderSize
+    else {
+      Log.app.error("Couldn't fetch provider log folder size")
+
       return nil
     }
+
+    let totalSize = logFolderSize + providerLogFolderSize
+#else
+    let totalSize = logFolderSize
+#endif
 
     let byteCountFormatter = ByteCountFormatter()
     byteCountFormatter.countStyle = .file
@@ -87,35 +95,18 @@ public final class SettingsViewModel: ObservableObject {
     return byteCountFormatter.string(fromByteCount: Int64(totalSize))
   }
 
-  func clearAllLogs() throws {
+
+  // On iOS, all the logs are stored in one directory.
+  // On macOS, we need to clear logs from the app process, then call over IPC
+  // to clear the provider's log directory.
+  func clearAllLogs() async throws {
     Log.app.log("\(#function)")
 
-    guard let logFilesFolderURL = SharedAccess.logFolderURL else {
-      Log.app.error("\(#function): Log folder is unavailable")
-      return
-    }
+    try Log.clear(in: SharedAccess.logFolderURL)
 
-    let fileManager = FileManager.default
-    var unremovedFilesCount = 0
-    fileManager.forEachFileUnder(
-      logFilesFolderURL,
-      including: [
-        .isRegularFileKey
-      ]
-    ) { url, resourceValues in
-      if resourceValues.isRegularFile ?? false {
-        do {
-          try fileManager.removeItem(at: url)
-        } catch {
-          unremovedFilesCount += 1
-          Log.app.error("Unable to remove '\(url)': \(error)")
-        }
-      }
-    }
-
-    if unremovedFilesCount > 0 {
-      Log.app.log("\(#function): Unable to remove \(unremovedFilesCount) files")
-    }
+#if os(macOS)
+    await store.tunnelManager.clearLogs()
+#endif
   }
 }
 
