@@ -41,6 +41,12 @@ use tun::Tun;
 /// Hopefully we aren't down for more than 24 hours.
 const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24);
 
+/// The Sentry release.
+///
+/// This module is only responsible for the connlib part of the MacOS/iOS app.
+/// Bugs within the MacOS/iOS app itself may use the same DSN but a different component as part of the version string.
+const RELEASE: &str = concat!("connlib-apple@", env!("CARGO_PKG_VERSION"));
+
 #[swift_bridge::bridge]
 mod ffi {
     extern "Rust" {
@@ -238,7 +244,7 @@ impl WrappedSession {
         device_info: String,
     ) -> Result<Self> {
         let mut telemetry = Telemetry::default();
-        telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), APPLE_DSN);
+        telemetry.start(&api_url, RELEASE, APPLE_DSN);
         telemetry.set_firezone_id(device_id.clone());
 
         init_logging(log_dir.into(), log_filter)?;

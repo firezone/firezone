@@ -27,6 +27,6 @@ runs:
         SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         SENTRY_ORG: firezone-inc
       with:
-        version: ${{ steps.version.outputs.version }}
+        version: ${{ inputs.component }}@${{ steps.version.outputs.version }}
         projects: ${{ inputs.projects }}
         set_commits: auto

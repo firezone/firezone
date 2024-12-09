@@ -159,7 +159,7 @@ fn main() -> Result<()> {
     if cli.is_telemetry_allowed() {
         telemetry.start(
             cli.api_url.as_ref(),
-            VERSION,
+            &format!("headless-client@{VERSION}"),
             firezone_telemetry::HEADLESS_DSN,
         );
     }
