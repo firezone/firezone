@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 70;
+	objectVersion = 56;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -154,20 +154,6 @@
 		8DDD0E8B2ADC6657001FA7E9 /* config.xcconfig */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.xcconfig; name = config.xcconfig; path = xcconfig/config.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		8D688EAE2D064DA7008A342A /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 8D688E9D2D064DA7008A342A /* LogIPCService */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
-/* Begin PBXFileSystemSynchronizedRootGroup section */
-		8D688E9F2D064DA7008A342A /* LogIPCService */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (8D688EAE2D064DA7008A342A /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = LogIPCService; sourceTree = "<group>"; };
-/* End PBXFileSystemSynchronizedRootGroup section */
-
 /* Begin PBXFrameworksBuildPhase section */
 		05CF1CED290B1CEE00CF4755 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
@@ -261,7 +247,6 @@
 				8DD2C4C2297B37BA00F984BF /* Packages */,
 				8DCC021B28D512AC007E12D2 /* Firezone */,
 				05833DF928F73B070008FAB0 /* FirezoneNetworkExtension */,
-				8D688E9F2D064DA7008A342A /* LogIPCService */,
 				8DCC021A28D512AC007E12D2 /* Products */,
 				8D3F90C328D64FAD00980124 /* Frameworks */,
 			);
@@ -382,9 +367,6 @@
 			buildRules = (
 			);
 			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				8D688E9F2D064DA7008A342A /* LogIPCService */,
 			);
 			name = LogIPCService;
 			packageProductDependencies = (
@@ -1023,7 +1005,6 @@
 		8DCC024428D512AE007E12D2 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
@@ -1072,7 +1053,6 @@
 		8DCC024528D512AE007E12D2 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CLANG_ENABLE_MODULES = YES;
