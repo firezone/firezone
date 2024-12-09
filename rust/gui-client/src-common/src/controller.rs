@@ -220,13 +220,11 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
     pub async fn main_loop(mut self) -> Result<(), Error> {
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 
-        // Start telemetry
+        // Tell IPC service to start telemetry.
         {
             const VERSION: &str = env!("CARGO_PKG_VERSION");
 
             let environment = self.advanced_settings.api_url.to_string();
-            self.telemetry
-                .start(&environment, VERSION, firezone_telemetry::GUI_DSN);
             if let Some(account_slug) = account_slug.clone() {
                 self.telemetry.set_account_slug(account_slug);
             }
