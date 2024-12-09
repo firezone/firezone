@@ -175,18 +175,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     try fileManager.removeItem(at: tunnelLogFolderURL)
   }
-
-  private func clearToken() async {
-    do {
-      let keychain = Keychain()
-      guard let ref = await keychain.search() else {
-        throw TokenError.TokenNotFound
-      }
-      try await keychain.delete(persistentRef: ref)
-    } catch {
-      Log.tunnel.error("\(#function): Error: \(error)")
-    }
-  }
 }
 
 extension NEProviderStopReason: CustomStringConvertible {

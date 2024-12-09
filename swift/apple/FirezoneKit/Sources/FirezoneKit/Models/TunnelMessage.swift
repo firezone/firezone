@@ -23,7 +23,7 @@ public enum TunnelMessage: Codable {
     case getResourceList
     case signOut
     case internetResourceEnabled
-    case getLogDirHandle
+    case getLogFolderURL
     case clearLogs
   }
 
@@ -39,7 +39,7 @@ public enum TunnelMessage: Codable {
       self = .getResourceList(value)
     case .signOut:
       self = .signOut
-    case .getLogDirHandle:
+    case .getLogFolderURL:
       self = .getLogFolderURL
     case .clearLogs:
       self = .clearLogs
