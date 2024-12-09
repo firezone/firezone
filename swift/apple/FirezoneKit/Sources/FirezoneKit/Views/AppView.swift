@@ -41,10 +41,17 @@ public class AppViewModel: ObservableObject {
         self.status = status
 
 #if os(macOS)
-        if status == .invalid || DeviceMetadata.firstTime() {
-          AppViewModel.WindowDefinition.main.openWindow()
-        } else {
-          AppViewModel.WindowDefinition.main.window()?.close()
+        Task {
+          let firezoneId = try await FirezoneId.load()
+
+          if status == .invalid || firezoneId == nil {
+
+            // Show the Wecome view if VPN permission needs to be granted
+            // or it's the first time starting
+            AppViewModel.WindowDefinition.main.openWindow()
+          } else {
+            AppViewModel.WindowDefinition.main.window()?.close()
+          }
         }
 #endif
       })
