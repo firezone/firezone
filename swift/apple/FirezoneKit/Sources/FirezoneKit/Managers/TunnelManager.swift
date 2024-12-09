@@ -23,6 +23,51 @@ public enum TunnelManagerKeys {
   public static let internetResourceEnabled = "internetResourceEnabled"
 }
 
+public enum TunnelMessage: Codable {
+  case getResourceList(Data)
+  case signOut
+  case internetResourceEnabled(Bool)
+
+  enum CodingKeys: String, CodingKey {
+    case type
+    case value
+  }
+
+  enum MessageType: String, Codable {
+    case getResourceList
+    case signOut
+    case internetResourceEnabled
+  }
+
+  public init(from decoder: Decoder) throws {
+      let container = try decoder.container(keyedBy: CodingKeys.self)
+      let type = try container.decode(MessageType.self, forKey: .type)
+      switch type {
+      case .internetResourceEnabled:
+          let value = try container.decode(Bool.self, forKey: .value)
+          self = .internetResourceEnabled(value)
+      case .getResourceList:
+          let value = try container.decode(Data.self, forKey: .value)
+          self = .getResourceList(value)
+      case .signOut:
+          self = .signOut
+      }
+  }
+  public func encode(to encoder: Encoder) throws {
+      var container = encoder.container(keyedBy: CodingKeys.self)
+      switch self {
+      case .internetResourceEnabled(let value):
+        try container.encode(MessageType.internetResourceEnabled, forKey: .type)
+        try container.encode(value, forKey: .value)
+      case .getResourceList(let value):
+          try container.encode(MessageType.getResourceList, forKey: .type)
+          try container.encode(value, forKey: .value)
+      case .signOut:
+        try container.encode(MessageType.signOut, forKey: .type)
+      }
+  }
+}
+
 public class TunnelManager {
   // Expose closures that someone else can use to respond to events
   // for this manager.

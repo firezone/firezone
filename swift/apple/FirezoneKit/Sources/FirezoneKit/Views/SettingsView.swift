@@ -116,7 +116,6 @@ public final class SettingsViewModel: ObservableObject {
     if unremovedFilesCount > 0 {
       Log.app.log("\(#function): Unable to remove \(unremovedFilesCount) files")
     }
-
   }
 }
 
