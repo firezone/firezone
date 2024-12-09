@@ -2,6 +2,8 @@ name: Swift
 on:
   workflow_call:
   workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
 
 jobs:
   build:
@@ -154,7 +156,7 @@ jobs:
             exit 1
           fi
       - name: Upload build to App Store Connect
-        if: ${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
         env:
           ISSUER_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}
           API_KEY_ID: ${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}
