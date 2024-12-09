@@ -222,8 +222,6 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
 
         // Tell IPC service to start telemetry.
         {
-            const VERSION: &str = env!("CARGO_PKG_VERSION");
-
             let environment = self.advanced_settings.api_url.to_string();
             if let Some(account_slug) = account_slug.clone() {
                 self.telemetry.set_account_slug(account_slug);
@@ -232,7 +230,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             self.ipc_client
                 .send_msg(&IpcClientMsg::StartTelemetry {
                     environment,
-                    version: VERSION.to_owned(),
+                    release: crate::RELEASE.to_string(),
                     account_slug,
                 })
                 .await?;

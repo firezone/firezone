@@ -41,6 +41,12 @@ mod tun;
 /// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days.
 const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
+/// The Sentry release.
+///
+/// This module is only responsible for the connlib part of the Android app.
+/// Bugs within the Android app itself may use the same DSN but a different component as part of the version string.
+const RELEASE: &str = concat!("connlib-android@", env!("CARGO_PKG_VERSION"));
+
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
@@ -331,7 +337,7 @@ fn connect(
         serde_json::from_str(&device_info).context("Failed to deserialize `DeviceInfo`")?;
 
     let mut telemetry = Telemetry::default();
-    telemetry.start(&api_url, env!("CARGO_PKG_VERSION"), ANDROID_DSN);
+    telemetry.start(&api_url, RELEASE, ANDROID_DSN);
     telemetry.set_firezone_id(device_id.clone());
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
