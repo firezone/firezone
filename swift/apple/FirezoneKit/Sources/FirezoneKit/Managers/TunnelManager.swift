@@ -15,6 +15,14 @@ enum TunnelManagerError: Error {
   case cannotSaveIfMissing
 }
 
+public enum TunnelManagerKeys {
+  static let actorName = "actorName"
+  static let authBaseURL = "authBaseURL"
+  static let apiURL = "apiURL"
+  public static let logFilter = "logFilter"
+  public static let internetResourceEnabled = "internetResourceEnabled"
+}
+
 public enum TunnelMessage: Codable {
   case getResourceList(Data)
   case signOut
