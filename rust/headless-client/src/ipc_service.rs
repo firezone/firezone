@@ -98,7 +98,7 @@ pub enum ClientMsg {
     SetDisabledResources(BTreeSet<ResourceId>),
     StartTelemetry {
         environment: String,
-        version: String,
+        release: String,
         account_slug: Option<String>,
     },
     StopTelemetry,
@@ -554,11 +554,11 @@ impl<'a> Handler<'a> {
             }
             ClientMsg::StartTelemetry {
                 environment,
-                version,
+                release,
                 account_slug,
             } => {
                 self.telemetry
-                    .start(&environment, &version, firezone_telemetry::IPC_SERVICE_DSN);
+                    .start(&environment, &release, firezone_telemetry::IPC_SERVICE_DSN);
 
                 if let Some(account_slug) = account_slug {
                     self.telemetry.set_account_slug(account_slug);
