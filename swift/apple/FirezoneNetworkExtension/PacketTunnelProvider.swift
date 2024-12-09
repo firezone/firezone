@@ -25,35 +25,28 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     Task {
       do {
-        var token = options?["token"] as? String
-        let keychain = Keychain()
-        let tokenRef = await keychain.search()
+        // Can be removed after all clients >= 1.4.0
+        try await FirezoneId.migrate()
 
-        if let token = token {
-          // 1. If we're passed a token, save it to keychain
+        // The tunnel can come up without the app having been launched first, so
+        // initialize the id here too.
+        try await FirezoneId.createIfMissing()
 
-          // Apple recommends updating Keychain items in place if possible
-          // In reality this won't happen unless there's some kind of race condition
-          // because we would have deleted the item upon sign out.
-          if tokenRef != nil {
-            try await keychain.update(token: token)
-          } else {
-            try await keychain.add(token: token)
-          }
+        var passedToken = options?["token"] as? String
+        var keychainToken = try await Token.load()
 
-        } else {
+        // Use the provided token or try loading one from the Keychain
+        guard let token = Token(passedToken) ?? keychainToken
+        else {
+          completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
 
-          // 2. Otherwise, load it from the keychain
-          guard let tokenRef = tokenRef
-          else {
-            completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
-            return
-          }
-
-          token = await keychain.load(persistentRef: tokenRef)
+          return
         }
 
-        // 3. Now we should have a token, so connect
+        // Save the token back to the Keychain
+        try await token.save()
+
+        // Now we should have a token, so continue connecting
         guard let apiURL = protocolConfiguration.serverAddress
         else {
           completionHandler(
@@ -72,12 +65,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           return
         }
 
-        guard let token = token
-        else {
-          completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
-          return
-        }
-
         let internetResourceEnabled: Bool = if let internetResourceEnabledJSON = providerConfiguration[TunnelManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
           (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabledJSON )) ?? false
         } else {
@@ -89,7 +76,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         self.adapter = adapter
 
 
-        try adapter.start()
+        try await adapter.start()
 
         // Tell the system the tunnel is up, moving the tunnelManager status to
         // `connected`.
@@ -112,7 +99,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     if case .authenticationCanceled = reason {
       do {
         // This was triggered from onDisconnect, so clear our token
-        Task { await clearToken() }
+        Task { try await Token.delete() }
 
         // There's no good way to send data like this from the
         // Network Extension to the GUI, so save it to a file for the GUI to read upon
@@ -145,29 +132,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       adapter?.setInternetResourceEnabled(value)
     case .signOut:
       Task {
-          await clearToken()
+        try await Token.delete()
       }
     case .getResourceList(let value):
       adapter?.getResourcesIfVersionDifferentFrom(hash: value) {
         resourceListJSON in
         completionHandler?(resourceListJSON?.data(using: .utf8))
       }
-    }
-  }
-
-  enum TokenError: Error {
-    case TokenNotFound
-  }
-
-  private func clearToken() async {
-    do {
-      let keychain = Keychain()
-      guard let ref = await keychain.search() else {
-        throw TokenError.TokenNotFound
-      }
-      try await keychain.delete(persistentRef: ref)
-    } catch {
-      Log.tunnel.error("\(#function): Error: \(error)")
     }
   }
 }

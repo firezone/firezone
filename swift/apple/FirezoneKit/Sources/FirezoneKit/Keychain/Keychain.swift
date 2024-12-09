@@ -18,17 +18,9 @@ public enum KeychainError: Error {
 }
 
 public actor Keychain {
-  private let label = "Firezone token"
-  private let description = "Firezone access token used to authenticate the client."
-  private let service = Bundle.main.bundleIdentifier!
-
-  // Bump this for backwards-incompatible Keychain changes; this is effectively the
-  // upsert key.
-  private let account = "1"
-
+  public static let shared = Keychain()
   private let workQueue = DispatchQueue(label: "FirezoneKeychainWorkQueue")
 
-  public typealias Token = String
   public typealias PersistentRef = Data
 
   public enum SecStatus: Equatable {
@@ -50,23 +42,9 @@ public actor Keychain {
 
   public init() {}
 
-  public func add(token: Token) async throws {
+  public func add(query: [CFString: Any]) async throws {
     return try await withCheckedThrowingContinuation { [weak self] continuation in
-      self?.workQueue.async { [weak self] in
-        guard let self = self else {
-          continuation.resume(throwing: KeychainError.securityError(.unexpectedError))
-          return
-        }
-
-        let query: [CFString: Any] = [
-          kSecClass: kSecClassGenericPassword,
-          kSecAttrLabel: self.label,
-          kSecAttrAccount: self.account,
-          kSecAttrDescription: self.description,
-          kSecAttrService: self.service,
-          kSecValueData: token.data(using: .utf8) as Any,
-        ]
-
+      self?.workQueue.async {
         var ref: CFTypeRef?
         let ret = SecStatus(SecItemAdd(query as CFDictionary, &ref))
         guard ret.isSuccess else {
@@ -81,24 +59,12 @@ public actor Keychain {
     }
   }
 
-  public func update(token: Token) async throws {
+  public func update(
+    query: [CFString: Any],
+    attributesToUpdate: [CFString: Any]
+  ) async throws {
     return try await withCheckedThrowingContinuation { [weak self] continuation in
-      self?.workQueue.async { [weak self] in
-        guard let self = self else {
-          continuation.resume(throwing: KeychainError.securityError(.unexpectedError))
-          return
-        }
-
-        let query: [CFString: Any] = [
-          kSecClass: kSecClassGenericPassword,
-          kSecAttrLabel: self.label,
-          kSecAttrAccount: self.account,
-          kSecAttrDescription: self.description,
-          kSecAttrService: self.service,
-        ]
-        let attributesToUpdate = [
-          kSecValueData: token.data(using: .utf8) as Any
-        ]
+      self?.workQueue.async {
         let ret = SecStatus(
           SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary))
         guard ret.isSuccess else {
@@ -111,8 +77,7 @@ public actor Keychain {
     }
   }
 
-  // This function is public because the tunnel needs to call it to get the token
-  public func load(persistentRef: PersistentRef) async -> Token? {
+  public func load(persistentRef: PersistentRef) async -> Data? {
     return await withCheckedContinuation { [weak self] continuation in
       self?.workQueue.async {
         let query =
@@ -124,10 +89,9 @@ public actor Keychain {
         var result: CFTypeRef?
         let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))
         if ret.isSuccess,
-          let resultData = result as? Data,
-          let resultString = String(data: resultData, encoding: .utf8)
+          let resultData = result as? Data
         {
-          continuation.resume(returning: resultString)
+          continuation.resume(returning: resultData)
         } else {
           continuation.resume(returning: nil)
         }
@@ -135,23 +99,20 @@ public actor Keychain {
     }
   }
 
-  public func search() async -> PersistentRef? {
+  public func search(query: [CFString: Any]) async -> PersistentRef? {
     return await withCheckedContinuation { [weak self] continuation in
       guard let self = self else { return }
       self.workQueue.async {
-        let query =
-          [
-            kSecClass: kSecClassGenericPassword,
-            kSecAttrLabel: self.label,
-            kSecAttrAccount: self.account,
-            kSecAttrDescription: self.description,
-            kSecAttrService: self.service,
-            kSecReturnPersistentRef: true,
-          ] as [CFString: Any]
+        let query = query.merging([
+          kSecClass: kSecClassGenericPassword,
+          kSecReturnPersistentRef: true,
+        ]) { (current, new) in new }
+
         var result: CFTypeRef?
         let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))
-        if ret.isSuccess, let tokenRef = result as? Data {
-          continuation.resume(returning: tokenRef)
+
+        if ret.isSuccess, let persistentRef = result as? Data {
+          continuation.resume(returning: persistentRef)
         } else {
           continuation.resume(returning: nil)
         }
