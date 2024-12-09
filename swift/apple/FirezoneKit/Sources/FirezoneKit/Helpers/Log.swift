@@ -52,6 +52,38 @@ public final class Log {
     self.logger.error("\(message, privacy: .public)")
     logWriter?.write(severity: .error, message: message)
   }
+
+  public static func size(of directory: URL) -> Int64 {
+    let fileManager = FileManager.default
+    var totalSize: Int64 = 0
+
+    func sizeOfFile(at url: URL, with resourceValues: URLResourceValues) -> Int64 {
+      guard resourceValues.isRegularFile == true else { return 0 }
+      return Int64(resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
+    }
+
+    fileManager.forEachFileUnder(
+      directory,
+      including: [
+        .totalFileAllocatedSizeKey,
+        .totalFileSizeKey,
+        .isRegularFileKey,
+      ]
+    ) { url, resourceValues in
+      totalSize += sizeOfFile(at: url, with: resourceValues)
+    }
+
+    // Could take a while; bail out if we were cancelled
+    guard !Task.isCancelled else {
+      return 0
+    }
+
+    return totalSize
+  }
+
+  public static func clear(in directory: URL) {
+    // TODO
+  }
 }
 
 private final class LogWriter {

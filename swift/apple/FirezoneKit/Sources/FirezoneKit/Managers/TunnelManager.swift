@@ -27,6 +27,8 @@ public enum TunnelMessage: Codable {
   case getResourceList(Data)
   case signOut
   case internetResourceEnabled(Bool)
+  case getLogFolderURL
+  case clearLogs
 
   enum CodingKeys: String, CodingKey {
     case type
@@ -37,34 +39,44 @@ public enum TunnelMessage: Codable {
     case getResourceList
     case signOut
     case internetResourceEnabled
+    case getLogFolderURL
+    case clearLogs
   }
 
   public init(from decoder: Decoder) throws {
-      let container = try decoder.container(keyedBy: CodingKeys.self)
-      let type = try container.decode(MessageType.self, forKey: .type)
-      switch type {
-      case .internetResourceEnabled:
-          let value = try container.decode(Bool.self, forKey: .value)
-          self = .internetResourceEnabled(value)
-      case .getResourceList:
-          let value = try container.decode(Data.self, forKey: .value)
-          self = .getResourceList(value)
-      case .signOut:
-          self = .signOut
-      }
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let type = try container.decode(MessageType.self, forKey: .type)
+    switch type {
+    case .internetResourceEnabled:
+      let value = try container.decode(Bool.self, forKey: .value)
+      self = .internetResourceEnabled(value)
+    case .getResourceList:
+      let value = try container.decode(Data.self, forKey: .value)
+      self = .getResourceList(value)
+    case .signOut:
+      self = .signOut
+    case .getLogFolderURL:
+      self = .getLogFolderURL
+    case .clearLogs:
+      self = .clearLogs
+    }
   }
   public func encode(to encoder: Encoder) throws {
-      var container = encoder.container(keyedBy: CodingKeys.self)
-      switch self {
-      case .internetResourceEnabled(let value):
-        try container.encode(MessageType.internetResourceEnabled, forKey: .type)
-        try container.encode(value, forKey: .value)
-      case .getResourceList(let value):
-          try container.encode(MessageType.getResourceList, forKey: .type)
-          try container.encode(value, forKey: .value)
-      case .signOut:
-        try container.encode(MessageType.signOut, forKey: .type)
-      }
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    switch self {
+    case .internetResourceEnabled(let value):
+      try container.encode(MessageType.internetResourceEnabled, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .getResourceList(let value):
+      try container.encode(MessageType.getResourceList, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .signOut:
+      try container.encode(MessageType.signOut, forKey: .type)
+    case .getLogFolderURL:
+      try container.encode(MessageType.getLogFolderURL, forKey: .type)
+    case .clearLogs:
+      try container.encode(MessageType.clearLogs, forKey: .type)
+    }
   }
 }
 
@@ -272,6 +284,40 @@ public class TunnelManager {
 
         callback(self.resourcesListCache)
       }
+    } catch {
+      Log.app.error("Error: sendProviderMessage: \(error)")
+    }
+  }
+
+  // Retrieve the log directory URL from the network extension since only it
+  // knows where its Group Container is.
+  func getLogFolderURL(callback: @escaping (URL?) -> Void) {
+    do {
+      try session().sendProviderMessage(
+        encoder.encode(TunnelMessage.getLogFolderURL)
+      ) { data in
+
+        guard let data = data,
+              let absoluteString = String(data: data, encoding: .utf8),
+              let url = URL(string: absoluteString)
+        else {
+          callback(nil)
+
+          return
+        }
+
+        callback(url)
+      }
+    } catch {
+      Log.app.error("Error: sendProviderMessage: \(error)")
+    }
+  }
+
+  func clearLogs() {
+    do {
+      try session().sendProviderMessage(
+        encoder.encode(TunnelMessage.clearLogs)
+      )
     } catch {
       Log.app.error("Error: sendProviderMessage: \(error)")
     }
