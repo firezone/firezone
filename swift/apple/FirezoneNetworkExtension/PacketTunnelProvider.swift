@@ -139,6 +139,52 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         resourceListJSON in
         completionHandler?(resourceListJSON?.data(using: .utf8))
       }
+    case .getLogFolderURL:
+      guard let url = SharedAccess.logFolderURL,
+            let data = url.absoluteString.data(using: .utf8)
+      else {
+        completionHandler?(nil)
+
+        return
+      }
+
+      completionHandler?(data)
+    case .clearLogs:
+      do {
+        try clearLogs()
+      } catch {
+        Log.tunnel.error("Error clearing logs: \(error)")
+      }
+
+      completionHandler?(nil)
+    }
+  }
+
+  private func clearLogs() throws {
+    let fileManager = FileManager.default
+
+    guard let connlibLogFolderURL = SharedAccess.connlibLogFolderURL,
+          fileManager.fileExists(atPath: connlibLogFolderURL.path)
+    else { return }
+
+    try fileManager.removeItem(at: connlibLogFolderURL)
+
+    guard let tunnelLogFolderURL = SharedAccess.tunnelLogFolderURL,
+          fileManager.fileExists(atPath: tunnelLogFolderURL.path)
+    else { return }
+
+    try fileManager.removeItem(at: tunnelLogFolderURL)
+  }
+
+  private func clearToken() async {
+    do {
+      let keychain = Keychain()
+      guard let ref = await keychain.search() else {
+        throw TokenError.TokenNotFound
+      }
+      try await keychain.delete(persistentRef: ref)
+    } catch {
+      Log.tunnel.error("\(#function): Error: \(error)")
     }
   }
 }

@@ -52,6 +52,38 @@ public final class Log {
     self.logger.error("\(message, privacy: .public)")
     logWriter?.write(severity: .error, message: message)
   }
+
+  public static func size(of directory: URL) -> Int64 {
+    let fileManager = FileManager.default
+    var totalSize: Int64 = 0
+
+    func sizeOfFile(at url: URL, with resourceValues: URLResourceValues) -> Int64 {
+      guard resourceValues.isRegularFile == true else { return 0 }
+      return Int64(resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
+    }
+
+    fileManager.forEachFileUnder(
+      directory,
+      including: [
+        .totalFileAllocatedSizeKey,
+        .totalFileSizeKey,
+        .isRegularFileKey,
+      ]
+    ) { url, resourceValues in
+      totalSize += sizeOfFile(at: url, with: resourceValues)
+    }
+
+    // Could take a while; bail out if we were cancelled
+    guard !Task.isCancelled else {
+      return 0
+    }
+
+    return totalSize
+  }
+
+  public static func clear(in directory: URL) {
+    // TODO
+  }
 }
 
 private final class LogWriter {
@@ -140,5 +172,36 @@ private final class LogWriter {
     jsonData.append(newLineData)
 
     workQueue.async { self.handle.write(jsonData) }
+  }
+}
+
+extension FileManager {
+  func forEachFileUnder(
+    _ dirURL: URL,
+    including resourceKeys: Set<URLResourceKey>,
+    handler: (URL, URLResourceValues) -> Void
+  ) {
+    // Deep-traverses the directory at dirURL
+    guard
+      let enumerator = self.enumerator(
+        at: dirURL,
+        includingPropertiesForKeys: [URLResourceKey](resourceKeys),
+        options: [],
+        errorHandler: nil
+      )
+    else {
+      return
+    }
+
+    for item in enumerator.enumerated() {
+      if Task.isCancelled { break }
+      guard let url = item.element as? URL else { continue }
+      do {
+        let resourceValues = try url.resourceValues(forKeys: resourceKeys)
+        handler(url, resourceValues)
+      } catch {
+        Log.app.error("Unable to get resource value for '\(url)': \(error)")
+      }
+    }
   }
 }

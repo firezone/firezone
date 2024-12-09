@@ -51,19 +51,6 @@ public final class SettingsViewModel: ObservableObject {
     self.store = store
     self.settings = store.settings
 
-    IPCConnection.shared.register(withExtension: extensionBundle, delegate: self) { success in
-      if !success {
-        Log.app
-          .error(
-            "IPCConnection failed to register with service at \(self.extensionBundle.bundleIdentifier)"
-          )
-
-        return
-      }
-
-      Log.app.log("IPCConnection registered")
-    }
-
     setupObservers()
   }
 
@@ -156,39 +143,12 @@ public final class SettingsViewModel: ObservableObject {
     if unremovedFilesCount > 0 {
       Log.app.log("\(#function): Unable to remove \(unremovedFilesCount) files")
     }
-  }
-}
 
-extension SettingsViewModel: AppCommunication {}
-
-extension FileManager {
-  func forEachFileUnder(
-    _ dirURL: URL,
-    including resourceKeys: Set<URLResourceKey>,
-    handler: (URL, URLResourceValues) -> Void
-  ) {
-    // Deep-traverses the directory at dirURL
-    guard
-      let enumerator = self.enumerator(
-        at: dirURL,
-        includingPropertiesForKeys: [URLResourceKey](resourceKeys),
-        options: [],
-        errorHandler: nil
-      )
-    else {
-      return
-    }
-
-    for item in enumerator.enumerated() {
-      if Task.isCancelled { break }
-      guard let url = item.element as? URL else { continue }
-      do {
-        let resourceValues = try url.resourceValues(forKeys: resourceKeys)
-        handler(url, resourceValues)
-      } catch {
-        Log.app.error("Unable to get resource value for '\(url)': \(error)")
-      }
-    }
+#if os(macOS)
+    // The GUI app process doesn't have access to the Provider's log directory,
+    // so send it an IPC message to clear its logs instead.
+    store.tunnelManager.clearLogs()
+#endif
   }
 }
 
