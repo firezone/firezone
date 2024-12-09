@@ -79,7 +79,7 @@ struct FirezoneApp: App {
         //
         // Can be removed once all clients >= 1.4.0
         try await FirezoneId.migrate()
-        
+
         try await FirezoneId.createIfMissing()
       }
 

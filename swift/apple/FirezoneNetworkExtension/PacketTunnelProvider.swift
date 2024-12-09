@@ -27,7 +27,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       do {
         // Can be removed after all clients >= 1.4.0
         try await FirezoneId.migrate()
-        
+
         // The tunnel can come up without the app having been launched first, so
         // initialize the id here too.
         try await FirezoneId.createIfMissing()
