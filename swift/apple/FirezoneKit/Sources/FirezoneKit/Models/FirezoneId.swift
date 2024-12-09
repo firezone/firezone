@@ -70,7 +70,11 @@ public struct FirezoneId {
     guard try await load() == nil
     else { return } // New firezone-id already saved in Keychain
 
+#if os(macOS)
     let appGroupIdPre_1_4_0 = "47R2M6779T.group.dev.firezone.firezone"
+#elseif os(iOS)
+    let appGroupIdPre_1_4_0 = "group.dev.firezone.firezone"
+#endif
 
     guard let containerURL = FileManager.default.containerURL(
       forSecurityApplicationGroupIdentifier: appGroupIdPre_1_4_0)
