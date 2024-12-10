@@ -88,7 +88,70 @@ defmodule API.IdentityControllerTest do
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
-    test "returns a single resource", %{conn: conn, account: account, actor: actor} do
+    test "returns a single resource with populated email field", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      identity =
+        Fixtures.Auth.create_identity(%{
+          account: account,
+          actor: actor,
+          provider_identifier: "172836495673",
+          email: "foo@bar.com"
+        })
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors/#{actor.id}/identities/#{identity.id}")
+
+      assert json_response(conn, 200) == %{
+               "data" => %{
+                 "id" => identity.id,
+                 "actor_id" => actor.id,
+                 "provider_id" => identity.provider_id,
+                 "provider_identifier" => identity.provider_identifier,
+                 "email" => identity.email
+               }
+             }
+    end
+
+    test "returns a single resource with populated email field from provider_identifier", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
+      identity =
+        Fixtures.Auth.create_identity(%{
+          account: account,
+          actor: actor,
+          provider_identifier: "foo@bar.com"
+        })
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/actors/#{actor.id}/identities/#{identity.id}")
+
+      assert json_response(conn, 200) == %{
+               "data" => %{
+                 "id" => identity.id,
+                 "actor_id" => actor.id,
+                 "provider_id" => identity.provider_id,
+                 "provider_identifier" => identity.provider_identifier,
+                 "email" => identity.provider_identifier
+               }
+             }
+    end
+
+    test "returns a single resource with empty email field", %{
+      conn: conn,
+      account: account,
+      actor: actor
+    } do
       identity = Fixtures.Auth.create_identity(%{account: account, actor: actor})
 
       conn =
@@ -102,7 +165,8 @@ defmodule API.IdentityControllerTest do
                  "id" => identity.id,
                  "actor_id" => actor.id,
                  "provider_id" => identity.provider_id,
-                 "provider_identifier" => identity.provider_identifier
+                 "provider_identifier" => identity.provider_identifier,
+                 "email" => nil
                }
              }
     end
@@ -189,7 +253,7 @@ defmodule API.IdentityControllerTest do
                }
     end
 
-    test "creates a resource with valid attrs", %{
+    test "creates a resource with provider_identifier attr only and is not an email address", %{
       conn: conn,
       account: account,
       actor: api_actor
@@ -199,7 +263,7 @@ defmodule API.IdentityControllerTest do
 
       actor = Fixtures.Actors.create_actor(account: account)
 
-      attrs = %{"provider_identifier" => "foo@local"}
+      attrs = %{"provider_identifier" => "128asdf92qrh9joqwefoiu23"}
 
       conn =
         conn
@@ -210,10 +274,116 @@ defmodule API.IdentityControllerTest do
         )
 
       assert resp = json_response(conn, 201)
-
       assert resp["data"]["provider_identifier"] == attrs["provider_identifier"]
-      assert resp["data"]["provider_id"] == oidc_provider.id
-      assert resp["data"]["actor_id"] == actor.id
+      assert resp["data"]["email"] == nil
+    end
+
+    test "creates a resource with provider_identifier attr only and is an email address", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      {oidc_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      attrs = %{"provider_identifier" => "foo@localhost.local"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
+          identity: attrs
+        )
+
+      assert resp = json_response(conn, 201)
+      assert resp["data"]["provider_identifier"] == attrs["provider_identifier"]
+      assert resp["data"]["email"] == attrs["provider_identifier"]
+    end
+
+    test "creates a resource with email attr only", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      {oidc_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      attrs = %{"email" => "foo@localhost.local"}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
+          identity: attrs
+        )
+
+      assert resp = json_response(conn, 201)
+      assert resp["data"]["provider_identifier"] == attrs["email"]
+      assert resp["data"]["email"] == attrs["email"]
+    end
+
+    test "creates a resource with provider_identifier attr and email attr being the same value",
+         %{
+           conn: conn,
+           account: account,
+           actor: api_actor
+         } do
+      {oidc_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      attrs = %{
+        "provider_identifier" => "foo@localhost.local",
+        "email" => "foo@localhost.local"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
+          identity: attrs
+        )
+
+      assert resp = json_response(conn, 201)
+      assert resp["data"]["provider_identifier"] == attrs["provider_identifier"]
+      assert resp["data"]["email"] == attrs["email"]
+    end
+
+    test "creates a resource with provider_identifier attr and email attr being different values",
+         %{
+           conn: conn,
+           account: account,
+           actor: api_actor
+         } do
+      {oidc_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      attrs = %{
+        "provider_identifier" => "foo@localhost.local",
+        "email" => "bar@localhost.local"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
+          identity: attrs
+        )
+
+      assert resp = json_response(conn, 201)
+      assert resp["data"]["provider_identifier"] == attrs["provider_identifier"]
+      assert resp["data"]["email"] == attrs["email"]
     end
   end
 
@@ -238,7 +408,8 @@ defmodule API.IdentityControllerTest do
                  "id" => identity.id,
                  "actor_id" => actor.id,
                  "provider_id" => identity.provider_id,
-                 "provider_identifier" => identity.provider_identifier
+                 "provider_identifier" => identity.provider_identifier,
+                 "email" => nil
                }
              }
 

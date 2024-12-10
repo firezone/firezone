@@ -56,6 +56,8 @@ defmodule API.IdentityController do
         "provider_identifier_confirmation",
         Map.get(params, "provider_identifier")
       )
+      |> maybe_put_email()
+      |> maybe_put_identifier()
 
     with {:ok, actor} <- Domain.Actors.fetch_actor_by_id(actor_id, subject),
          {:ok, provider} <- Auth.fetch_provider_by_id(provider_id, subject),
@@ -139,5 +141,42 @@ defmodule API.IdentityController do
       |> Enum.member?(:manual)
 
     {:provider_check, valid?}
+  end
+
+  defp maybe_put_email(params) do
+    email = params["email"]
+    identifier = params["provider_identifier"]
+
+    cond do
+      !is_nil(email) && valid_email?(email) ->
+        params
+
+      !is_nil(identifier) && valid_email?(identifier) ->
+        Map.put(params, "email", String.trim(identifier))
+
+      true ->
+        params
+    end
+  end
+
+  defp maybe_put_identifier(params) do
+    email = params["email"]
+    identifier = params["provider_identifier"]
+
+    cond do
+      !is_nil(identifier) && String.trim(identifier) != "" ->
+        params
+
+      !is_nil(email) && valid_email?(email) ->
+        Map.put(params, "provider_identifier", String.trim(email))
+        |> Map.put("provider_identifier_confirmation", String.trim(email))
+
+      true ->
+        params
+    end
+  end
+
+  defp valid_email?(str) do
+    String.trim(str) =~ ~r/^[^\s]+@[^\s]+\.[^\s]+$/
   end
 end
