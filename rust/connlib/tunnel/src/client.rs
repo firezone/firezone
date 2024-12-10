@@ -346,18 +346,13 @@ impl ClientState {
 
             tracing::debug!(%gid, %domain, "Setting up DNS resource NAT");
 
-            let Some(transmit) = self
-                .node
-                .encapsulate(*gid, packet, now)
-                .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
-                .ok()
-                .flatten()
-            else {
-                continue;
-            };
-
-            self.buffered_transmits
-                .push_back(transmit.to_transmit().into_owned());
+            encapsulate_and_buffer(
+                packet,
+                *gid,
+                now,
+                &mut self.node,
+                &mut self.buffered_transmits,
+            );
         }
     }
 
@@ -1510,6 +1505,25 @@ impl ClientState {
         self.node.update_relays(to_remove, &to_add, now);
         self.drain_node_events(); // Ensure all state changes are fully-propagated.
     }
+}
+
+fn encapsulate_and_buffer(
+    packet: IpPacket,
+    gid: GatewayId,
+    now: Instant,
+    node: &mut ClientNode<GatewayId, RelayId>,
+    buffered_transmits: &mut VecDeque<Transmit<'static>>,
+) {
+    let Some(enc_packet) = node
+        .encapsulate(gid, packet, now)
+        .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
+        .ok()
+        .flatten()
+    else {
+        return;
+    };
+
+    buffered_transmits.push_back(enc_packet.to_transmit().into_owned());
 }
 
 fn parse_udp_dns_message<'b>(datagram: &UdpSlice<'b>) -> anyhow::Result<Message<&'b [u8]>> {
