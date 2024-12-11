@@ -9,7 +9,6 @@ mod candidate_set;
 mod channel_data;
 mod index;
 mod node;
-mod ringbuffer;
 mod stats;
 mod utils;
 
