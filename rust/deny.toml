@@ -241,7 +241,6 @@ skip = [
   "raw-window-handle",
   "regex-automata",
   "regex-syntax",
-  "rustls",
   "syn",
   "sync_wrapper",
   "tauri-winrt-notification",
