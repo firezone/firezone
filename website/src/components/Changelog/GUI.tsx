@@ -29,6 +29,9 @@ export default function GUI({ title }: { title: string }) {
             improving performance.
           </ChangeItem>
         )}
+        <ChangeItem pull="7477">
+          Improves connection setup latency by buffering initial packets.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.13" date={new Date("2024-11-15")}>
         <ChangeItem pull="7334">
