@@ -160,7 +160,12 @@ defmodule Domain.Auth.Identity.Sync do
   end
 
   defp add_email_attr(attrs) do
-    email = attrs["provider_state"]["userinfo"]["email"]
-    Map.put(attrs, "email", email)
+    email = attrs["provider_state"]["userinfo"]["email"] || ""
+
+    if Domain.Auth.valid_email?(email) do
+      Map.put(attrs, "email", email)
+    else
+      attrs
+    end
   end
 end

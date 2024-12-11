@@ -144,8 +144,15 @@ defmodule API.IdentityController do
   end
 
   defp maybe_put_email(params) do
-    email = params["email"] || "" |> String.trim()
-    identifier = params["provider_identifier"] || "" |> String.trim()
+    email =
+      params["email"]
+      |> to_string
+      |> String.trim()
+
+    identifier =
+      params["provider_identifier"]
+      |> to_string()
+      |> String.trim()
 
     cond do
       Domain.Auth.valid_email?(email) ->
@@ -160,8 +167,15 @@ defmodule API.IdentityController do
   end
 
   defp maybe_put_identifier(params) do
-    email = params["email"] || "" |> String.trim()
-    identifier = params["provider_identifier"] || "" |> String.trim()
+    email =
+      params["email"]
+      |> to_string()
+      |> String.trim()
+
+    identifier =
+      params["provider_identifier"]
+      |> to_string()
+      |> String.trim()
 
     cond do
       identifier != "" ->

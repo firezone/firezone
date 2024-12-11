@@ -906,7 +906,7 @@ defmodule Domain.Auth do
   end
 
   def valid_email?(email) do
-    email =~ email_regex()
+    to_string(email) =~ email_regex()
   end
 
   def email_regex() do
