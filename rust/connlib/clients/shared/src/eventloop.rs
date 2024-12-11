@@ -288,7 +288,7 @@ where
                 self.tunnel.state_mut().set_resource_offline(resource_id);
             }
             IngressMessages::FlowCreationFailed(FlowCreationFailed { reason, .. }) => {
-                tracing::warn!("Failed to create flow: {reason:?}")
+                tracing::debug!("Failed to create flow: {reason:?}")
             }
         }
     }
