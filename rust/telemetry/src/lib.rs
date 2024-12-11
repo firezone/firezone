@@ -19,17 +19,6 @@ pub const RELAY_DSN: Dsn = Dsn("https://9d5f664d8f8f7f1716d4b63a58bcafd5@o450797
 
 #[derive(Default)]
 pub struct Telemetry {
-    /// The sentry guard itself
-    ///
-    /// `arc_swap` is used here because the borrowing for the GUI process is
-    /// complex. If the user has already consented to using telemetry, we want
-    /// to start Sentry as soon as possible inside `main`, and keep the guard
-    /// alive there. But sentry's `Drop` hook will never get called during
-    /// normal GUI operation because Tauri internally calls `std::process::exit`
-    /// to bail out of its Tao event loop. So we want the GUI controller to
-    /// be able to gracefully close down Sentry, even though it won't have
-    /// a mutable handle to it, and even though `main` is actually what holds
-    /// the handle. Wrapping it all in `ArcSwap` makes it simpler.
     inner: Option<sentry::ClientInitGuard>,
 
     account_slug: Option<String>,
@@ -49,8 +38,6 @@ impl Drop for Telemetry {
 
 impl Telemetry {
     pub fn start(&mut self, api_url: &str, release: &str, dsn: Dsn) {
-        // Since it's `arc_swap` and not `Option`, there is a TOCTOU here,
-        // but in practice it should never trigger
         if self.inner.is_some() {
             return;
         }
