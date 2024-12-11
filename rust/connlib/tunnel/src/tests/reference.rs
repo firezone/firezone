@@ -361,54 +361,8 @@ impl ReferenceState {
                 }
             }),
             Transition::SendDnsQueries(queries) => {
-                let mut new_connections = BTreeSet::new();
-
                 for query in queries {
-                    // Some queries get answered locally.
-                    if state
-                        .client
-                        .inner()
-                        .is_locally_answered_query(&query.domain, query.r_type)
-                    {
-                        tracing::debug!("Expecting locally answered query");
-
-                        state.client.exec_mut(|client| client.on_dns_query(query));
-                        continue;
-                    }
-
-                    // Check if the DNS server is defined as a resource.
-                    let Some(resource) = state.client.inner().dns_query_via_resource(query) else {
-                        // Not a resource, process normally.
-                        state.client.exec_mut(|client| client.on_dns_query(query));
-                        continue;
-                    };
-
-                    let Some(gateway) = state.portal.gateway_for_resource(resource).copied() else {
-                        tracing::error!("Unknown gateway for resource");
-                        continue;
-                    };
-
-                    tracing::debug!(%resource, %gateway, "Expecting DNS query via resource");
-
-                    if !state
-                        .client
-                        .inner()
-                        .is_connected_to_internet_or_cidr(resource)
-                    {
-                        tracing::debug!(%resource, %gateway, "Not connected yet, dropping packet");
-
-                        new_connections.insert((resource, gateway));
-
-                        continue;
-                    }
-
                     state.client.exec_mut(|client| client.on_dns_query(query));
-                }
-
-                for (resource, gateway) in new_connections.into_iter() {
-                    state.client.exec_mut(|client| {
-                        client.connect_to_internet_or_cidr_resource(resource, gateway)
-                    });
                 }
             }
             Transition::SendIcmpPacket {
