@@ -47,8 +47,11 @@ impl Telemetry {
         let environment = match api_url {
             "wss://api.firezone.dev" | "wss://api.firezone.dev/" => "production",
             "wss://api.firez.one" | "wss://api.firez.one/" => "staging",
-            "ws://api:8081" | "ws://api:8081/" => "docker-compose",
-            _ => "self-hosted",
+            _ => {
+                tracing::debug!(%api_url, "Telemetry won't start in unofficial environment");
+
+                return;
+            }
         };
 
         tracing::info!("Starting telemetry");
