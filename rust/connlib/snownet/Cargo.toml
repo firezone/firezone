@@ -13,10 +13,10 @@ firezone-logging = { workspace = true }
 hex = { workspace = true }
 hex-display = { workspace = true }
 ip-packet = { workspace = true }
-ringbuffer = { workspace = true }
 itertools = { workspace = true }
 once_cell = { workspace = true }
 rand = { workspace = true }
+ringbuffer = { workspace = true }
 secrecy = { workspace = true }
 sha2 = { workspace = true }
 str0m = { workspace = true }
