@@ -32,7 +32,7 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv4Addr, dst: Ipv4Addr) -> Resul
         //    addition, if the translator is at an administrative boundary, the
         //    filtering and update considerations of [RFC2475] may be
         //    applicable.
-        dscp: Ipv4Dscp::try_new(ipv6_header.traffic_class)?,
+        dscp: Ipv4Dscp::try_new(ipv6_header.traffic_class).unwrap_or(Ipv4Dscp::ZERO),
 
         // Total Length:  Payload length value from the IPv6 header, plus the
         //    size of the IPv4 header.
