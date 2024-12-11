@@ -73,6 +73,19 @@ ignore = [
   "RUSTSEC-2020-0095", # `difference` is unmaintained
   "RUSTSEC-2024-0384", # `instant` is unmaintained
   "RUSTSEC-2024-0370", # `proc-macro-error` is unmaintained
+
+  # `gtk-rs` crates are unmaintained
+  "RUSTSEC-2024-0411",
+  "RUSTSEC-2024-0412",
+  "RUSTSEC-2024-0413",
+  "RUSTSEC-2024-0414",
+  "RUSTSEC-2024-0415",
+  "RUSTSEC-2024-0416",
+  "RUSTSEC-2024-0417",
+  "RUSTSEC-2024-0418",
+  "RUSTSEC-2024-0419",
+  "RUSTSEC-2024-0420",
+  "RUSTSEC-2024-0421",
   #"RUSTSEC-0000-0000",
   #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
   #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
@@ -241,7 +254,6 @@ skip = [
   "raw-window-handle",
   "regex-automata",
   "regex-syntax",
-  "rustls",
   "syn",
   "sync_wrapper",
   "tauri-winrt-notification",
