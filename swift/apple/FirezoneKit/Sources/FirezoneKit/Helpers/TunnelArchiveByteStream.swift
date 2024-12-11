@@ -6,30 +6,59 @@
 
 import AppleArchive
 import System
+import Foundation
 
 class TunnelArchiveByteStream: ArchiveByteStreamProtocol {
-  func read(into: UnsafeMutableRawBufferPointer) -> Int {
-    Log.app.log("\(#function): \(into.count) bytes")
+  private var fileHandle: FileHandle
+  private let fileManager = FileManager.default
 
-    return 0
+  init (_ fileURL: URL) throws {
+    Log.app.debug("\(#function): \(fileURL.absoluteString)")
+
+    if !fileManager.fileExists(atPath: fileURL.path) {
+      fileManager.createFile(atPath: fileURL.path, contents: nil)
+    }
+
+    self.fileHandle = try FileHandle(forWritingTo: fileURL)
   }
 
-  func read(into: UnsafeMutableRawBufferPointer, atOffset: Int64) -> Int {
-    Log.app.log("\(#function): \(into.count) bytes at offset: \(atOffset)")
+  func read(into buffer: UnsafeMutableRawBufferPointer) -> Int {
+    Log.app.log("\(#function): \(buffer.count) bytes")
 
-    return 0
+    return buffer.count
   }
 
-  func write(from: UnsafeRawBufferPointer) -> Int {
-    Log.app.log("\(#function): \(from) bytes")
+  func read(into buffer: UnsafeMutableRawBufferPointer, atOffset: Int64) -> Int {
+    Log.app.log("\(#function): \(buffer.count) bytes at offset: \(atOffset)")
 
-    return 0
+    return buffer.count
+  }
+
+  func write(from buffer: UnsafeRawBufferPointer) -> Int {
+    Log.app.log("\(#function): \(buffer) bytes")
+
+    do {
+      // Move the file pointer to the end for appending
+      try fileHandle.seekToEnd()
+
+      // Write data to the file
+      let data = Data(buffer)
+      try fileHandle.write(contentsOf: data)
+
+      return buffer.count
+      
+    } catch {
+
+      Log.app.error("Failed to write to file: \(error)")
+
+      return 0
+    }
   }
 
   func write(from: UnsafeRawBufferPointer, atOffset: Int64) -> Int {
     Log.app.log("\(#function): \(from.count) bytes at offset: \(atOffset)")
 
-    return 0
+    return from.count
   }
 
   func seek(toOffset: Int64, relativeTo: FileDescriptor.SeekOrigin) -> Int64 {

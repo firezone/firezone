@@ -551,13 +551,17 @@ public struct SettingsView: View {
 
   #if os(macOS)
     func exportLogsWithSavePanelOnMac() {
-      let compressor = LogCompressor()
       self.isExportingLogs = true
 
       let savePanel = NSSavePanel()
       savePanel.prompt = "Save"
-      savePanel.nameFieldLabel = "Save log zip bundle to:"
-      savePanel.nameFieldStringValue = compressor.fileName
+      savePanel.nameFieldLabel = "Save log archive to:"
+      let dateFormatter = ISO8601DateFormatter()
+      dateFormatter.formatOptions = [.withFullDate, .withTime, .withTimeZone]
+      let timeStampString = dateFormatter.string(from: Date())
+      let fileName = "firezone_logs_\(timeStampString).aar"
+
+      savePanel.nameFieldStringValue = fileName
 
       guard
         let window = NSApp.windows.first(where: {
@@ -581,17 +585,8 @@ public struct SettingsView: View {
 
         Task {
           do {
-            let providerLogFolderURL = await model.store.tunnelManager.getLogFolderURL()
-            let appLogFolderURL = SharedAccess.appLogFolderURL
-
-            let validURLs = [appLogFolderURL, providerLogFolderURL].compactMap {
-              $0
-            }
-
-            try await compressor.compressFiles(
-              validURLs,
-              destinationURL: destinationURL
-            )
+            LogExporter.export(to: destinationURL)
+            
             self.isExportingLogs = false
             await MainActor.run {
               window.contentViewController?.presentingViewController?.dismiss(self)

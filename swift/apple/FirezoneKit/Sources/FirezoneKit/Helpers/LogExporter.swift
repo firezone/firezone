@@ -9,73 +9,31 @@ import Foundation
 import System
 
 struct LogExporter {
-  enum Error: Swift.Error {
-    case archiveURLInvalid
-    case unableToOpenWriteStream
-    case unableToOpenCompressionStream
-  }
 
-  static func export(_ urls: Set<URL>, to archiveURL: URL) async throws -> URL {
+  static func export(to archiveURL: URL) {
     let fileManager = FileManager.default
 
     // 1. Remove existing archive
     try? fileManager.removeItem(at: archiveURL)
 
-    // 2. Get a filePath
-    guard let filePath = FilePath(archiveURL)
-    else {
-      throw Error.archiveURLInvalid
+    do {
+      try LogCompressor.compress(SharedAccess.appLogFolderURL!, to: archiveURL)
+    } catch {
+      Log.app.error("#\(#function)): \(error)")
     }
+  }
 
-    // 3. Create the compression stream
-    guard let compressionStream = ArchiveByteStream.fileStream()(
-      using: .lzfse,
-      path: filePath,
-      mode: .writeOnly,
-      options: [.create],
-      permissions: FilePermissions(rawValue: 0o644))
-    else {
-      throw Error.unableToOpenWriteStream
-    }
-    defer {
-      try? writeFileStream.close()
-    }
+  static func tempFile() -> URL {
+    let dateFormatter = ISO8601DateFormatter()
+    dateFormatter.formatOptions = [.withFullDate, .withTime, .withTimeZone]
+    let timeStampString = dateFormatter.string(from: Date())
+    let fileName = "firezone_logs_\(timeStampString).aar"
+    let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
 
-    // 2. Create the compression stream
-    guard
-      let compressStream = ArchiveByteStream.compressionStream(
-        using: .lzfse,
-        writingTo: writeFileStream)
-    else {
-      throw Error.unableToOpenCompressionStream
-    }
-    defer {
-      try? compressStream.close()
-    }
+    return fileURL
+  }
+}
 
-    // 3. Create the encoding stream
-    guard let encodeStream = ArchiveStream.encodeStream(writingTo: compressStream) else {
-      Log.app.error("\(#function): Couldn't create encoding stream")
-      return nil
-    }
-    defer {
-      try? encodeStream.close()
-    }
-
-    for url in urls {
-      LogCompressor.compress(
-        }
-
-        return archiveURL
-        }
-
-        static func tempFile() -> URL {
-          let dateFormatter = ISO8601DateFormatter()
-          dateFormatter.formatOptions = [.withFullDate, .withTime, .withTimeZone]
-          let timeStampString = dateFormatter.string(from: Date())
-          let fileName = "firezone_logs_\(timeStampString).aar"
-          let fileURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-
-          return fileURL
-        }
-        }
+enum ExportError: Error {
+  case archiveURLInvalid
+}
