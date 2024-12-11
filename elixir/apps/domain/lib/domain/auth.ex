@@ -909,7 +909,7 @@ defmodule Domain.Auth do
     to_string(email) =~ email_regex()
   end
 
-  def email_regex() do
+  def email_regex do
     # Regex to check if string is in the shape of an email
     ~r/^[^\s]+@[^\s]+\.[^\s]+$/
   end
