@@ -49,7 +49,7 @@ defmodule API.IdentityControllerTest do
       assert equal_ids?(data_ids, identity_ids)
     end
 
-    test "lists resources with limit", %{conn: conn, account: account, actor: actor} do
+    test "lists identities with limit", %{conn: conn, account: account, actor: actor} do
       identities =
         for _ <- 1..3, do: Fixtures.Auth.create_identity(%{account: account, actor: actor})
 
@@ -88,7 +88,7 @@ defmodule API.IdentityControllerTest do
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
-    test "returns a single resource with populated email field", %{
+    test "returns a single identity with populated email field", %{
       conn: conn,
       account: account,
       actor: actor
@@ -118,7 +118,7 @@ defmodule API.IdentityControllerTest do
              }
     end
 
-    test "returns a single resource with populated email field from provider_identifier", %{
+    test "returns a single identity with populated email field from provider_identifier", %{
       conn: conn,
       account: account,
       actor: actor
@@ -147,7 +147,7 @@ defmodule API.IdentityControllerTest do
              }
     end
 
-    test "returns a single resource with empty email field", %{
+    test "returns a single identity with empty email field", %{
       conn: conn,
       account: account,
       actor: actor
@@ -253,7 +253,7 @@ defmodule API.IdentityControllerTest do
                }
     end
 
-    test "creates a resource with provider_identifier attr only and is not an email address", %{
+    test "creates a identity with provider_identifier attr only and is not an email address", %{
       conn: conn,
       account: account,
       actor: api_actor
@@ -278,7 +278,7 @@ defmodule API.IdentityControllerTest do
       assert resp["data"]["email"] == nil
     end
 
-    test "creates a resource with provider_identifier attr only and is an email address", %{
+    test "creates a identity with provider_identifier attr only and is an email address", %{
       conn: conn,
       account: account,
       actor: api_actor
@@ -303,7 +303,7 @@ defmodule API.IdentityControllerTest do
       assert resp["data"]["email"] == attrs["provider_identifier"]
     end
 
-    test "creates a resource with email attr only", %{
+    test "creates a identity with email attr only", %{
       conn: conn,
       account: account,
       actor: api_actor
@@ -328,7 +328,7 @@ defmodule API.IdentityControllerTest do
       assert resp["data"]["email"] == attrs["email"]
     end
 
-    test "creates a resource with provider_identifier attr and email attr being the same value",
+    test "creates a identity with provider_identifier attr and email attr being the same value",
          %{
            conn: conn,
            account: account,
@@ -357,7 +357,7 @@ defmodule API.IdentityControllerTest do
       assert resp["data"]["email"] == attrs["email"]
     end
 
-    test "creates a resource with provider_identifier attr and email attr being different values",
+    test "creates a identity with provider_identifier attr and email attr being different values",
          %{
            conn: conn,
            account: account,
@@ -394,7 +394,7 @@ defmodule API.IdentityControllerTest do
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
-    test "deletes a resource", %{conn: conn, account: account, actor: actor} do
+    test "deletes an identity", %{conn: conn, account: account, actor: actor} do
       identity = Fixtures.Auth.create_identity(%{account: account, actor: actor})
 
       conn =

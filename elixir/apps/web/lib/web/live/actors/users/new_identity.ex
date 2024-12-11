@@ -136,8 +136,7 @@ defmodule Web.Actors.Users.NewIdentity do
   defp add_email(attrs) do
     identifier = attrs["provider_identifier"]
 
-    # Check if the identifier is in the general shape of an email address
-    if identifier =~ ~r/^[^\s]+@[^\s]+\.[^\s]+$/ do
+    if Domain.Auth.valid_email?(identifier) do
       Map.put(attrs, "email", identifier)
     else
       Map.put(attrs, "email", nil)

@@ -904,4 +904,13 @@ defmodule Domain.Auth do
     granted_permissions = fetch_type_permissions!(granted_role)
     MapSet.subset?(granted_permissions, subject.permissions)
   end
+
+  def valid_email?(email) do
+    email =~ email_regex()
+  end
+
+  def email_regex() do
+    # Regex to check if string is in the shape of an email
+    ~r/^[^\s]+@[^\s]+\.[^\s]+$/
+  end
 end

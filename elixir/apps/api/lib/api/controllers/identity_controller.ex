@@ -144,15 +144,15 @@ defmodule API.IdentityController do
   end
 
   defp maybe_put_email(params) do
-    email = params["email"]
-    identifier = params["provider_identifier"]
+    email = params["email"] || "" |> String.trim()
+    identifier = params["provider_identifier"] || "" |> String.trim()
 
     cond do
-      !is_nil(email) && valid_email?(email) ->
+      Domain.Auth.valid_email?(email) ->
         params
 
-      !is_nil(identifier) && valid_email?(identifier) ->
-        Map.put(params, "email", String.trim(identifier))
+      Domain.Auth.valid_email?(identifier) ->
+        Map.put(params, "email", identifier)
 
       true ->
         params
@@ -160,23 +160,19 @@ defmodule API.IdentityController do
   end
 
   defp maybe_put_identifier(params) do
-    email = params["email"]
-    identifier = params["provider_identifier"]
+    email = params["email"] || "" |> String.trim()
+    identifier = params["provider_identifier"] || "" |> String.trim()
 
     cond do
-      !is_nil(identifier) && String.trim(identifier) != "" ->
+      identifier != "" ->
         params
 
-      !is_nil(email) && valid_email?(email) ->
-        Map.put(params, "provider_identifier", String.trim(email))
-        |> Map.put("provider_identifier_confirmation", String.trim(email))
+      Domain.Auth.valid_email?(email) ->
+        Map.put(params, "provider_identifier", email)
+        |> Map.put("provider_identifier_confirmation", email)
 
       true ->
         params
     end
-  end
-
-  defp valid_email?(str) do
-    String.trim(str) =~ ~r/^[^\s]+@[^\s]+\.[^\s]+$/
   end
 end

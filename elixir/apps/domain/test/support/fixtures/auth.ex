@@ -448,7 +448,7 @@ defmodule Domain.Fixtures.Auth do
 
     {email, attrs} =
       Map.pop_lazy(attrs, :email, fn ->
-        if provider_identifier =~ ~r/^[^\s]+@[^\s]+\.[^\s]+$/ do
+        if Domain.Auth.valid_email?(provider_identifier) do
           provider_identifier
         else
           nil
