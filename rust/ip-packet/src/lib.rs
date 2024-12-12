@@ -2,6 +2,7 @@
 
 pub mod make;
 
+mod buffer_pool;
 mod fz_p2p_control;
 mod fz_p2p_control_slice;
 mod icmp_dest_unreachable;
@@ -18,6 +19,7 @@ mod slice_utils;
 mod tcp_header_slice_mut;
 mod udp_header_slice_mut;
 
+use buffer_pool::Buffer;
 pub use etherparse::*;
 pub use fz_p2p_control::EventType as FzP2pEventType;
 pub use fz_p2p_control_slice::FzP2pControlSlice;
@@ -101,25 +103,18 @@ pub enum Layer4Protocol {
 }
 
 /// A buffer for reading a new [`IpPacket`] from the network.
+#[derive(Default)]
 pub struct IpPacketBuf {
-    inner: [u8; MAX_DATAGRAM_PAYLOAD],
+    inner: Buffer,
 }
 
 impl IpPacketBuf {
     pub fn new() -> Self {
-        Self {
-            inner: [0u8; MAX_DATAGRAM_PAYLOAD],
-        }
+        Self::default()
     }
 
     pub fn buf(&mut self) -> &mut [u8] {
         &mut self.inner[NAT46_OVERHEAD..] // We read packets at an offset so we can convert without copying.
-    }
-}
-
-impl Default for IpPacketBuf {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -168,7 +163,7 @@ impl std::fmt::Debug for IpPacket {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv4Packet {
-    buf: [u8; MAX_DATAGRAM_PAYLOAD],
+    buf: Buffer,
     start: usize,
     len: usize,
 }
@@ -248,7 +243,7 @@ impl ConvertibleIpv4Packet {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv6Packet {
-    buf: [u8; MAX_DATAGRAM_PAYLOAD],
+    buf: Buffer,
     start: usize,
     len: usize,
 }

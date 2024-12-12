@@ -13,6 +13,7 @@ proptest = ["dep:proptest"]
 [dependencies]
 anyhow = { workspace = true }
 etherparse = { workspace = true }
+lockfree-object-pool = { workspace = true }
 proptest = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }

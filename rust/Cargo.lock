@@ -3180,6 +3180,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "etherparse",
+ "lockfree-object-pool",
  "proptest",
  "test-strategy",
  "thiserror",
