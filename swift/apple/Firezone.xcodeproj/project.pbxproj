@@ -44,20 +44,6 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		6F3E231B2A5DC0DB00737CF1 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 6FE454BC2A5BC5F3006549B1;
-			remoteInfo = "Build Connlib";
-		};
-		8D5048022CE6AA75009802E9 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 6FE454BC2A5BC5F3006549B1;
-			remoteInfo = "Build Connlib";
-		};
 		8DC1699E2CFF77D1006801B5 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 8DCC021128D512AC007E12D2 /* Project object */;
@@ -266,28 +252,12 @@
 		};
 /* End PBXGroup section */
 
-/* Begin PBXLegacyTarget section */
-		6FE454BC2A5BC5F3006549B1 /* Build Connlib */ = {
-			isa = PBXLegacyTarget;
-			buildArgumentsString = "$(ACTION)";
-			buildConfigurationList = 6FE454BD2A5BC5F3006549B1 /* Build configuration list for PBXLegacyTarget "Build Connlib" */;
-			buildPhases = (
-			);
-			buildToolPath = "$(CONNLIB_SOURCE_DIR)/build-rust.sh";
-			buildWorkingDirectory = "$(CONNLIB_SOURCE_DIR)";
-			dependencies = (
-			);
-			name = "Build Connlib";
-			passBuildSettingsInEnvironment = 1;
-			productName = "Build Connlib";
-		};
-/* End PBXLegacyTarget section */
-
 /* Begin PBXNativeTarget section */
 		05CF1CEF290B1CEE00CF4755 /* FirezoneNetworkExtensioniOS */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 05CF1CFA290B1CEE00CF4755 /* Build configuration list for PBXNativeTarget "FirezoneNetworkExtensioniOS" */;
 			buildPhases = (
+				8D8555832D0A7CBB00A1EA09 /* Build Connlib */,
 				6F3E231A2A5D830D00737CF1 /* Copy Connlib Headers and Swift Files */,
 				05CF1CEC290B1CEE00CF4755 /* Sources */,
 				05CF1CED290B1CEE00CF4755 /* Frameworks */,
@@ -296,7 +266,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				6F3E231C2A5DC0DB00737CF1 /* PBXTargetDependency */,
 			);
 			name = FirezoneNetworkExtensioniOS;
 			packageProductDependencies = (
@@ -310,6 +279,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8D5047F02CE6A8F4009802E9 /* Build configuration list for PBXNativeTarget "FirezoneNetworkExtensionmacOS" */;
 			buildPhases = (
+				8D8555822D0A796100A1EA09 /* Build Connlib */,
 				8D5048072CE6B243009802E9 /* Copy Connlib Headers and Swift Files */,
 				8D5047DF2CE6A8F4009802E9 /* Sources */,
 				8D5047E02CE6A8F4009802E9 /* Frameworks */,
@@ -318,7 +288,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				8D5048032CE6AA75009802E9 /* PBXTargetDependency */,
 			);
 			name = FirezoneNetworkExtensionmacOS;
 			packageProductDependencies = (
@@ -367,9 +336,6 @@
 						CreatedOnToolsVersion = 14.0.1;
 						LastSwiftMigration = 1430;
 					};
-					6FE454BC2A5BC5F3006549B1 = {
-						CreatedOnToolsVersion = 14.3;
-					};
 					8D5047E22CE6A8F4009802E9 = {
 						CreatedOnToolsVersion = 16.1;
 					};
@@ -397,7 +363,6 @@
 				8DCC021828D512AC007E12D2 /* Firezone */,
 				05CF1CEF290B1CEE00CF4755 /* FirezoneNetworkExtensioniOS */,
 				8D5047E22CE6A8F4009802E9 /* FirezoneNetworkExtensionmacOS */,
-				6FE454BC2A5BC5F3006549B1 /* Build Connlib */,
 			);
 		};
 /* End PBXProject section */
@@ -470,6 +435,52 @@
 			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n./copy_generated_connlib_files.sh\n";
 			showEnvVarsInLog = 0;
 		};
+		8D8555822D0A796100A1EA09 /* Build Connlib */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../../rust/**/*.rs",
+				"$(SRCROOT)/../../rust/**/*.toml",
+				"$(SRCROOT)/../../rust/Cargo.lock",
+			);
+			name = "Build Connlib";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/../../rust/target/*-apple-*/debug/libconnlib.a",
+				"$(SRCROOT)/../../rust/target/*-apple-*/release/libconnlib.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\ncd ../../rust/connlib/clients/apple\n./build-rust.sh\n";
+		};
+		8D8555832D0A7CBB00A1EA09 /* Build Connlib */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../../rust/**/*.rs",
+				"$(SRCROOT)/../../rust/**/*.toml",
+				"$(SRCROOT)/../../rust/Cargo.lock",
+			);
+			name = "Build Connlib";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(SRCROOT)/../../rust/target/*-apple-*/debug/libconnlib.a",
+				"$(SRCROOT)/../../rust/target/*-apple-*/release/libconnlib.a",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\ncd ../../rust/connlib/clients/apple\n./build-rust.sh\n";
+		};
 		8DE721892ACA295200E395D5 /* swift-format */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -534,16 +545,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		6F3E231C2A5DC0DB00737CF1 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 6FE454BC2A5BC5F3006549B1 /* Build Connlib */;
-			targetProxy = 6F3E231B2A5DC0DB00737CF1 /* PBXContainerItemProxy */;
-		};
-		8D5048032CE6AA75009802E9 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 6FE454BC2A5BC5F3006549B1 /* Build Connlib */;
-			targetProxy = 8D5048022CE6AA75009802E9 /* PBXContainerItemProxy */;
-		};
 		8DC1699F2CFF77D1006801B5 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			platformFilter = ios;
@@ -643,33 +644,6 @@
 				TVOS_DEPLOYMENT_TARGET = "";
 				VALIDATE_PRODUCT = YES;
 				WATCHOS_DEPLOYMENT_TARGET = "";
-			};
-			name = Release;
-		};
-		6FE454BE2A5BC5F3006549B1 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = "$(inherited)";
-				DEBUGGING_SYMBOLS = YES;
-				DEBUG_INFORMATION_FORMAT = dwarf;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
-				GCC_OPTIMIZATION_LEVEL = 0;
-				OTHER_CFLAGS = "";
-				OTHER_LDFLAGS = "";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-			};
-			name = Debug;
-		};
-		6FE454BF2A5BC5F3006549B1 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = "$(inherited)";
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				OTHER_CFLAGS = "";
-				OTHER_LDFLAGS = "";
-				PRODUCT_NAME = "$(PRODUCT_BUNDLE_IDENTIFIER)";
 			};
 			name = Release;
 		};
@@ -978,15 +952,6 @@
 			buildConfigurations = (
 				05CF1CFB290B1CEE00CF4755 /* Debug */,
 				05CF1CFC290B1CEE00CF4755 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		6FE454BD2A5BC5F3006549B1 /* Build configuration list for PBXLegacyTarget "Build Connlib" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				6FE454BE2A5BC5F3006549B1 /* Debug */,
-				6FE454BF2A5BC5F3006549B1 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
