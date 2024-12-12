@@ -83,7 +83,7 @@ output_vt100 = "0.1"
 png = "0.17.13"
 proptest = "1"
 proptest-state-machine = "0.3"
-quinn-udp = { version = "0.5.7", features = ["fast-apple-datapath"] }
+quinn-udp = { version = "0.5.8", features = ["fast-apple-datapath"] }
 rand = "0.8.5"
 rand_core = "0.6.4"
 rangemap = "1.5.1"
@@ -177,7 +177,6 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 
 [patch.crates-io]
 smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp", branch = "main" }
-quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" }
 boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
