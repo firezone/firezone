@@ -92,7 +92,7 @@ defmodule API.ResourceController do
     subject = conn.assigns.subject
     attrs = set_param_defaults(params)
 
-    with {:ok, resource} <- Resources.fetch_resource_by_id_or_persistent_id(id, subject) do
+    with {:ok, resource} <- Resources.fetch_active_resource_by_id_or_persistent_id(id, subject) do
       case Resources.update_or_replace_resource(resource, attrs, subject) do
         {:updated, updated_resource} ->
           render(conn, :show, resource: updated_resource)
