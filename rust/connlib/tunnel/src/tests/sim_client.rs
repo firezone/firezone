@@ -665,6 +665,8 @@ impl RefClient {
             return;
         };
 
+        self.connect_to_resource(resource, dst);
+
         if !self.is_tunnel_ip(src) {
             return;
         }
@@ -673,8 +675,6 @@ impl RefClient {
             .entry(gateway)
             .or_default()
             .insert(payload, packet_id);
-
-        self.connect_to_resource(resource, dst);
     }
 
     fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
