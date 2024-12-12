@@ -9,7 +9,6 @@ use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use firezone_logging::{err_with_src, std_dyn_err};
 use hex_display::HexDisplayExt as _;
-use ip_packet::MAX_DATAGRAM_PAYLOAD;
 use rand::random;
 use std::{
     borrow::Cow,
@@ -767,7 +766,7 @@ impl Allocation {
     pub fn encode_to_encrypted_packet(
         &self,
         peer: SocketAddr,
-        mut buffer: [u8; MAX_DATAGRAM_PAYLOAD],
+        mut buffer: lockfree_object_pool::SpinLockOwnedReusable<Vec<u8>>,
         buffer_len: usize,
         now: Instant,
     ) -> Option<EncryptedPacket> {

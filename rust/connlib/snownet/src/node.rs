@@ -11,9 +11,7 @@ use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
 use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt;
-use ip_packet::{
-    ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf, MAX_DATAGRAM_PAYLOAD,
-};
+use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf};
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, Rng, SeedableRng};
@@ -126,6 +124,9 @@ pub struct Node<T, TId, RId> {
     pending_events: VecDeque<Event<TId>>,
 
     stats: NodeStats,
+    // All access to [`Node`] happens in the same thread, so we should never get contention which makes a spinlock ideal.
+    // This is wrapped in an `Arc` so we can use `pull_owned`.
+    buffer_pool: Arc<lockfree_object_pool::SpinLockObjectPool<Vec<u8>>>,
 
     mode: T,
     rng: StdRng,
@@ -180,6 +181,10 @@ where
             allocations: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
+            buffer_pool: Arc::new(lockfree_object_pool::SpinLockObjectPool::new(
+                || vec![0; ip_packet::MAX_DATAGRAM_PAYLOAD],
+                |v| v.fill(0),
+            )),
         }
     }
 
@@ -438,11 +443,11 @@ where
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
-        let mut buffer = EncryptBuffer::default();
+        let mut buffer = self.buffer_pool.pull_owned();
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
-            .encapsulate(packet.packet(), &mut buffer.inner[4..], now)?
+            .encapsulate(packet.packet(), &mut buffer[4..], now)?
             .map(|p| p.len())
         // Mapping to len() here terminate the mutable borrow of buffer, allowing re-borrowing further down.
         else {
@@ -454,7 +459,7 @@ where
 
         let socket = match &mut conn.state {
             ConnectionState::Connecting { buffered, .. } => {
-                buffered.push(buffer.inner[packet_start..packet_end].to_vec());
+                buffered.push(buffer[packet_start..packet_end].to_vec());
                 let num_buffered = buffered.len();
 
                 let _guard = conn.span.enter();
@@ -477,7 +482,7 @@ where
                 dst: remote,
                 packet_start,
                 packet_len,
-                buffer: buffer.inner,
+                buffer,
             })),
             PeerSocket::Relay { relay, dest: peer } => {
                 let Some(allocation) = self.allocations.get(&relay) else {
@@ -485,7 +490,7 @@ where
                     return Ok(None);
                 };
                 let Some(enc_packet) =
-                    allocation.encode_to_encrypted_packet(peer, buffer.inner, packet_end, now)
+                    allocation.encode_to_encrypted_packet(peer, buffer, packet_end, now)
                 else {
                     tracing::warn!(%peer, "No channel");
                     return Ok(None);
@@ -1473,31 +1478,12 @@ pub enum Event<TId> {
     ConnectionClosed(TId),
 }
 
-struct EncryptBuffer {
-    inner: [u8; MAX_DATAGRAM_PAYLOAD],
-}
-
-impl EncryptBuffer {
-    fn new() -> Self {
-        Self {
-            inner: [0u8; MAX_DATAGRAM_PAYLOAD],
-        }
-    }
-}
-
-impl Default for EncryptBuffer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct EncryptedPacket {
     pub(crate) src: Option<SocketAddr>,
     pub(crate) dst: SocketAddr,
     pub(crate) packet_start: usize,
     pub(crate) packet_len: usize,
-    pub(crate) buffer: [u8; MAX_DATAGRAM_PAYLOAD],
+    pub(crate) buffer: lockfree_object_pool::SpinLockOwnedReusable<Vec<u8>>,
 }
 
 impl EncryptedPacket {
