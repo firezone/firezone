@@ -1,7 +1,6 @@
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::candidate_set::CandidateSet;
 use crate::index::IndexLfsr;
-use crate::ringbuffer::RingBuffer;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::earliest;
 use boringtun::noise::errors::WireGuardError;
@@ -17,6 +16,7 @@ use ip_packet::{
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, Rng, SeedableRng};
+use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
 use std::borrow::Cow;
@@ -731,7 +731,7 @@ where
             remote_pub_key: remote,
             state: ConnectionState::Connecting {
                 relay,
-                buffered: RingBuffer::new(10),
+                buffered: AllocRingBuffer::new(128),
             },
             possible_sockets: BTreeSet::default(),
             span: info_span!(parent: tracing::Span::none(), "connection", %cid),
@@ -1638,7 +1638,7 @@ enum ConnectionState<RId> {
         /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
         ///
         /// It can also happen if we attempt to encapsulate a packet prior to the WireGuard handshake which triggers the creation of a WireGuard handshake initiation packet.
-        buffered: RingBuffer<Vec<u8>>,
+        buffered: AllocRingBuffer<Vec<u8>>,
     },
     /// A socket has been nominated.
     Connected {
