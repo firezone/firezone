@@ -52,70 +52,52 @@ public final class SettingsViewModel: ObservableObject {
     }
   }
 
-  func calculateLogDirSize() -> String? {
+  // Calculates the total size of our logs by summing the size of the
+  // app, tunnel, and connlib log directories.
+  //
+  // On iOS, SharedAccess.logFolderURL is a single folder that contains all
+  // three directories, but on macOS, the app log directory lives in a different
+  // Group Container than tunnel and connlib directories, so we use IPC to make
+  // a call to sum both the tunnel and connlib directories which works for both
+  // iOS and macOS.
+
+  // There's an edge case here:
+  //   If we accidentally called Log.app from the tunnel process, an `app`
+  //   log folder will be created in the tunnel's Group Container, but not
+  //   counted here. See the TODO at the top of Log.swift for more info.
+  func calculateLogDirSize() async -> String? {
     Log.app.log("\(#function)")
 
-    guard let logFilesFolderURL = SharedAccess.logFolderURL else {
+    guard let appLogFolderURL = SharedAccess.appLogFolderURL else {
       Log.app.error("\(#function): Log folder is unavailable")
       return nil
     }
 
-    let fileManager = FileManager.default
+    let appLogFolderSize = await Log.size(of: appLogFolderURL)
+    let providerLogFolderSize = await store.tunnelManager.getLogFolderSize()
 
-    var totalSize = 0
-    fileManager.forEachFileUnder(
-      logFilesFolderURL,
-      including: [
-        .totalFileAllocatedSizeKey,
-        .totalFileSizeKey,
-        .isRegularFileKey,
-      ]
-    ) { url, resourceValues in
-      if resourceValues.isRegularFile ?? false {
-        totalSize += (resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
-      }
-    }
+    guard let providerLogFolderSize
+    else {
+      Log.app.error("Couldn't fetch provider log folder size")
 
-    if Task.isCancelled {
       return nil
     }
+
+    let totalSize = appLogFolderSize + providerLogFolderSize
 
     let byteCountFormatter = ByteCountFormatter()
     byteCountFormatter.countStyle = .file
     byteCountFormatter.allowsNonnumericFormatting = false
     byteCountFormatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB, .usePB]
+
     return byteCountFormatter.string(fromByteCount: Int64(totalSize))
   }
 
-  func clearAllLogs() throws {
+  func clearAllLogs() async throws {
     Log.app.log("\(#function)")
 
-    guard let logFilesFolderURL = SharedAccess.logFolderURL else {
-      Log.app.error("\(#function): Log folder is unavailable")
-      return
-    }
-
-    let fileManager = FileManager.default
-    var unremovedFilesCount = 0
-    fileManager.forEachFileUnder(
-      logFilesFolderURL,
-      including: [
-        .isRegularFileKey
-      ]
-    ) { url, resourceValues in
-      if resourceValues.isRegularFile ?? false {
-        do {
-          try fileManager.removeItem(at: url)
-        } catch {
-          unremovedFilesCount += 1
-          Log.app.error("Unable to remove '\(url)': \(error)")
-        }
-      }
-    }
-
-    if unremovedFilesCount > 0 {
-      Log.app.log("\(#function): Unable to remove \(unremovedFilesCount) files")
-    }
+    try Log.clear(in: SharedAccess.appLogFolderURL)
+    await store.tunnelManager.clearLogs()
   }
 }
 
@@ -569,13 +551,17 @@ public struct SettingsView: View {
 
   #if os(macOS)
     func exportLogsWithSavePanelOnMac() {
-      let compressor = LogCompressor()
       self.isExportingLogs = true
 
       let savePanel = NSSavePanel()
       savePanel.prompt = "Save"
-      savePanel.nameFieldLabel = "Save log zip bundle to:"
-      savePanel.nameFieldStringValue = compressor.fileName
+      savePanel.nameFieldLabel = "Save log archive to:"
+      let dateFormatter = ISO8601DateFormatter()
+      dateFormatter.formatOptions = [.withFullDate, .withTime, .withTimeZone]
+      let timeStampString = dateFormatter.string(from: Date())
+      let fileName = "firezone_logs_\(timeStampString).aar"
+
+      savePanel.nameFieldStringValue = fileName
 
       guard
         let window = NSApp.windows.first(where: {
@@ -599,7 +585,8 @@ public struct SettingsView: View {
 
         Task {
           do {
-            try await compressor.compressFolder(destinationURL: destinationURL)
+            LogExporter.export(to: destinationURL)
+            
             self.isExportingLogs = false
             await MainActor.run {
               window.contentViewController?.presentingViewController?.dismiss(self)
@@ -615,6 +602,8 @@ public struct SettingsView: View {
     }
   #endif
 
+  // TODO: This needs to be refactored to an ObservableObject + SwiftUI
+  // so we aren't manually managing the data binding of the these fields.
   func refreshLogSize() {
     guard !self.isCalculatingLogsSize else {
       return

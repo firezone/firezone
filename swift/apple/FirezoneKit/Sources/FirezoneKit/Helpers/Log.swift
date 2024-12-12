@@ -8,6 +8,15 @@ import Foundation
 import OSLog
 
 public final class Log {
+  // TODO: It might make more sense to combine all logs into a single directory
+  // and separate them with a filename prefix instead. This makes many
+  // log file operations easier, such as calculating log file size, clearing,
+  // and exporting.
+  //
+  // TODO: Also, it would be nice if we automatically determined which prefix
+  // to use (`app` or `tunnel`) depending on which process we're in. This
+  // removes the possiblity we accidentally call Log.app or Log.tunnel from the
+  // wrong process, creating log directories we weren't expecting.
   public static let app = Log(category: .app, folderURL: SharedAccess.appLogFolderURL)
   public static let tunnel = Log(category: .tunnel, folderURL: SharedAccess.tunnelLogFolderURL)
 
@@ -51,6 +60,48 @@ public final class Log {
   public func error(_ message: String) {
     self.logger.error("\(message, privacy: .public)")
     logWriter?.write(severity: .error, message: message)
+  }
+
+  // Returns the size in bytes of the provided directory, calculated by summing
+  // the size of its contents recursively.
+  public static func size(of directory: URL) async -> Int64 {
+    let fileManager = FileManager.default
+    var totalSize: Int64 = 0
+
+    func sizeOfFile(at url: URL, with resourceValues: URLResourceValues) -> Int64 {
+      guard resourceValues.isRegularFile == true else { return 0 }
+      return Int64(resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
+    }
+
+    // Tally size of each log file in parallel
+    await withTaskGroup(of: Int64.self) { taskGroup in
+      fileManager.forEachFileUnder(
+        directory,
+        including: [
+          .totalFileAllocatedSizeKey,
+          .totalFileSizeKey,
+          .isRegularFileKey,
+        ]
+      ) { url, resourceValues in
+        taskGroup.addTask {
+          return sizeOfFile(at: url, with: resourceValues)
+        }
+      }
+
+      for await size in taskGroup {
+        totalSize += size
+      }
+    }
+
+    return totalSize
+  }
+
+  // Clears the contents of the provided directory.
+  public static func clear(in directory: URL?) throws {
+    guard let directory = directory
+    else { return }
+
+    try FileManager.default.removeItem(at: directory)
   }
 }
 

@@ -9,91 +9,91 @@ import AppleArchive
 import Foundation
 import System
 
-struct LogCompressor {
-  private let destinationURL: URL?
-  let fileName: String
+/// Utility for creating an AAR archive given a Set of input URLs.
+///
+/// The URLs are read in parallel, compressed, and chunked back via the provided completionHandler.
+///
+/// The format provided to the completionHandler is:
+///
+public struct LogCompressor {
 
-  init(destinationURL: URL? = nil) {
-    let dateFormatter = ISO8601DateFormatter()
-    dateFormatter.formatOptions = [.withFullDate, .withTime, .withTimeZone]
-    let timeStampString = dateFormatter.string(from: Date())
-    self.fileName = "firezone_logs_\(timeStampString).aar"
-    self.destinationURL = destinationURL
+  public struct Chunk: Codable {
+    var nextChunk: Bool
+    var data: Data
   }
 
-  public func compressFolder(destinationURL: URL? = nil) async throws {
-    try await compressFolderReturningURL(destinationURL: destinationURL)
-  }
-
-  @discardableResult
-  public func compressFolderReturningURL(destinationURL: URL? = nil) async throws -> URL? {
-    guard let logFilesFolderURL = SharedAccess.logFolderURL,
-      let logFilesFolderPath = FilePath(logFilesFolderURL)
-    else {
-      throw SettingsViewError.logFolderIsUnavailable
-    }
-
-    let fileManager = FileManager.default
-    let fileURL =
-      destinationURL
-      ?? fileManager.temporaryDirectory.appendingPathComponent(fileName)
-
-    // Remove logfile if it happens to exist
-    try? fileManager.removeItem(at: fileURL)
-
-    // Create the file stream to write the compressed file
-    guard let filePath = FilePath(fileURL),
-      let writeFileStream = ArchiveByteStream.fileStream(
-        path: filePath,
-        mode: .writeOnly,
-        options: [.create],
-        permissions: FilePermissions(rawValue: 0o644))
-    else {
-      Log.app.error("\(#function): Couldn't create the file stream")
-      return nil
-    }
-    defer {
-      try? writeFileStream.close()
-    }
-
-    // Create the compression stream
-    guard
-      let compressStream = ArchiveByteStream.compressionStream(
-        using: .lzfse,
-        writingTo: writeFileStream)
-    else {
-      Log.app.error("\(#function): Couldn't create the compression stream")
-      return nil
-    }
-    defer {
-      try? compressStream.close()
-    }
-
-    // Create the encoding stream
-    guard let encodeStream = ArchiveStream.encodeStream(writingTo: compressStream) else {
-      Log.app.error("\(#function): Couldn't create encoding stream")
-      return nil
-    }
-    defer {
-      try? encodeStream.close()
-    }
+  public static func compress(_ url: URL, to archiveURL: URL) throws {
 
     // Define header keys
     guard let keySet = ArchiveHeader.FieldKeySet("TYP,PAT,LNK,DEV,DAT,UID,GID,MOD,FLG,MTM,BTM,CTM")
     else {
       Log.app.error("\(#function): Couldn't define header keys")
-      return nil
+
+      return
     }
 
+    var byteStream: TunnelArchiveByteStream?
+
+    // Initialize our custom byte stream
     do {
-      try encodeStream.writeDirectoryContents(
-        archiveFrom: logFilesFolderPath,
-        keySet: keySet)
+      byteStream = try TunnelArchiveByteStream(archiveURL)
     } catch {
-      Log.app.error("Write directory contents failed.")
-      return nil
+      Log.app.error("\(error)")
     }
 
-    return fileURL
+    guard let byteStream = byteStream
+    else {
+      throw CompressionError.unableToOpenByteStream
+    }
+
+    // 3. Create a custom stream to receive compressed chunks
+    guard let writeStream = ArchiveByteStream.customStream(
+      instance: byteStream
+    )
+    else {
+      throw CompressionError.unableToOpenWriteStream
+    }
+    defer {
+      try? writeStream.close()
+    }
+
+    // 2. Create the compression stream
+    guard
+      let compressStream = ArchiveByteStream.compressionStream(
+        using: .lzfse,
+        writingTo: writeStream)
+    else {
+      throw CompressionError.unableToOpenCompressionStream
+    }
+    defer {
+      try? compressStream.close()
+    }
+
+    // 3. Create the encoding stream
+    guard let encodeStream = ArchiveStream.encodeStream(writingTo: compressStream)
+    else {
+      throw CompressionError.unableToOpenEncodingStream
+    }
+    defer {
+      try? encodeStream.close()
+    }
+
+    guard let filePath = FilePath(url)
+    else {
+      throw CompressionError.archiveURLInvalid
+    }
+
+    try encodeStream.writeDirectoryContents(
+        archiveFrom: filePath,
+        keySet: keySet)
   }
+}
+
+enum CompressionError: Error {
+  case archiveURLInvalid
+  case unableToOpenByteStream
+  case unableToOpenWriteStream
+  case unableToOpenCompressionStream
+  case unableToOpenEncodingStream
+  case unableToWriteData
 }
