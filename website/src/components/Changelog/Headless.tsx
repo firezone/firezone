@@ -27,6 +27,9 @@ export default function Headless() {
           Uses multiple threads to read & write to the TUN device, greatly
           improving performance.
         </ChangeItem>
+        <ChangeItem pull="7477">
+          Improves connection setup latency by buffering initial packets.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.7" date={new Date("2024-11-15")}>
         <ChangeItem pull="7334">

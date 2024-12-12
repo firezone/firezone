@@ -1,7 +1,6 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
     node::{SessionId, Transmit},
-    ringbuffer::RingBuffer,
     utils::earliest,
     EncryptedPacket,
 };
@@ -11,6 +10,7 @@ use firezone_logging::{err_with_src, std_dyn_err};
 use hex_display::HexDisplayExt as _;
 use ip_packet::MAX_DATAGRAM_PAYLOAD;
 use rand::random;
+use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use std::{
     borrow::Cow,
     collections::{BTreeMap, VecDeque},
@@ -85,7 +85,7 @@ pub struct Allocation {
     >,
 
     channel_bindings: ChannelBindings,
-    buffered_channel_bindings: RingBuffer<SocketAddr>,
+    buffered_channel_bindings: AllocRingBuffer<SocketAddr>,
 
     last_now: Instant,
 
@@ -229,7 +229,7 @@ impl Allocation {
             allocation_lifetime: Default::default(),
             channel_bindings: Default::default(),
             last_now: now,
-            buffered_channel_bindings: RingBuffer::new(100),
+            buffered_channel_bindings: AllocRingBuffer::new(100),
             software: Software::new(format!("snownet; session={session_id}"))
                 .expect("description has less then 128 chars"),
             explicit_failure: Default::default(),
@@ -549,7 +549,7 @@ impl Allocation {
 
                 self.log_update(now);
 
-                while let Some(peer) = self.buffered_channel_bindings.pop() {
+                while let Some(peer) = self.buffered_channel_bindings.dequeue() {
                     debug_assert!(
                         self.has_allocation(),
                         "We just received a successful allocation response"
