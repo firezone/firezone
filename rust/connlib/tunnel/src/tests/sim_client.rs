@@ -665,17 +665,38 @@ impl RefClient {
             return;
         };
 
-        if self.is_tunnel_ip(src) {
-            map(self)
-                .entry(gateway)
-                .or_default()
-                .insert(payload, packet_id);
+        if !self.is_tunnel_ip(src) {
             return;
+        }
+
+        map(self)
+            .entry(gateway)
+            .or_default()
+            .insert(payload, packet_id);
+
+        self.connect_to_resource(resource, dst);
+    }
+
+    fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
+        match destination {
+            Destination::DomainName { .. } => {}
+            Destination::IpAddr(_) => self.connect_to_internet_or_cidr_resource(resource),
         }
     }
 
     pub(crate) fn is_connected_to_internet_or_cidr(&self, resource: ResourceId) -> bool {
         self.is_connected_to_cidr(resource) || self.is_connected_to_internet(resource)
+    }
+
+    pub(crate) fn connect_to_internet_or_cidr_resource(&mut self, resource: ResourceId) {
+        if self.internet_resource.is_some_and(|r| r == resource) {
+            self.connected_internet_resource = true;
+            return;
+        }
+
+        if self.cidr_resources.iter().any(|(_, r)| *r == resource) {
+            self.connected_cidr_resources.insert(resource);
+        }
     }
 
     pub(crate) fn on_dns_query(&mut self, query: &DnsQuery) {
