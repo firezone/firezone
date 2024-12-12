@@ -95,7 +95,10 @@ defmodule Domain.Auth.Identity.Sync do
     provider_identifiers_to_insert
     |> Enum.uniq()
     |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
-      attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
+      attrs =
+        Map.get(attrs_by_provider_identifier, provider_identifier)
+        |> add_email_attr()
+
       changeset = Identity.Changeset.create_identity_and_actor(provider, attrs)
 
       case Repo.insert(changeset) do
@@ -122,7 +125,7 @@ defmodule Domain.Auth.Identity.Sync do
       |> Enum.reduce(%{}, fn identity, acc ->
         acc_identity = Map.get(acc, identity.provider_identifier)
 
-        # make sure that deleted identities are have the least priority in case of conflicts
+        # make sure that deleted identities have the least priority in case of conflicts
         cond do
           is_nil(acc_identity) ->
             Map.put(acc, identity.provider_identifier, identity)
@@ -139,7 +142,11 @@ defmodule Domain.Auth.Identity.Sync do
     |> Enum.uniq()
     |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
       identity = Map.get(identity_by_provider_identifier, provider_identifier)
-      attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
+
+      attrs =
+        Map.get(attrs_by_provider_identifier, provider_identifier)
+        |> add_email_attr()
+
       changeset = Identity.Changeset.update_identity_and_actor(identity, attrs)
 
       case Repo.update(changeset) do
@@ -150,5 +157,15 @@ defmodule Domain.Auth.Identity.Sync do
           {:halt, {:error, changeset}}
       end
     end)
+  end
+
+  defp add_email_attr(attrs) do
+    email = attrs["provider_state"]["userinfo"]["email"] || ""
+
+    if Domain.Auth.valid_email?(email) do
+      Map.put(attrs, "email", email)
+    else
+      attrs
+    end
   end
 end

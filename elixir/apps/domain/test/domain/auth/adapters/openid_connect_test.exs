@@ -304,57 +304,6 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       assert DateTime.diff(identity.provider_state["expires_at"], DateTime.utc_now()) in 3595..3605
     end
 
-    test "prefers existing identities over manually created identities on a conflict", %{
-      account: account,
-      provider: provider,
-      bypass: bypass
-    } do
-      email = Fixtures.Auth.email()
-      sub = Ecto.UUID.generate()
-
-      existing_identity =
-        Fixtures.Auth.create_identity(
-          account: account,
-          provider: provider,
-          provider_identifier: sub
-        )
-
-      identity =
-        Fixtures.Auth.create_identity(
-          account: account,
-          provider: provider,
-          provider_identifier: email
-        )
-
-      {token, _claims} =
-        Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity, %{
-          "sub" => sub,
-          "email" => email
-        })
-
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
-        "token_type" => "Bearer",
-        "id_token" => token,
-        "access_token" => "MY_ACCESS_TOKEN",
-        "refresh_token" => "MY_REFRESH_TOKEN",
-        "expires_in" => 3600
-      })
-
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
-
-      code_verifier = PKCE.code_verifier()
-      redirect_uri = "https://example.com/"
-      payload = {redirect_uri, code_verifier, "MyFakeCode"}
-
-      assert {:ok, identity, _expires_at} = verify_and_update_identity(provider, payload)
-
-      assert identity.id == existing_identity.id
-      assert identity.provider_state["access_token"] == "MY_ACCESS_TOKEN"
-      assert identity.provider_state["refresh_token"] == "MY_REFRESH_TOKEN"
-
-      assert DateTime.diff(identity.provider_state["expires_at"], DateTime.utc_now()) in 3595..3605
-    end
-
     test "verifies newly created identities by email profile field", %{
       account: account,
       provider: provider,

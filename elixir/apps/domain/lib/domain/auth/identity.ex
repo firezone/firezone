@@ -5,6 +5,7 @@ defmodule Domain.Auth.Identity do
     belongs_to :actor, Domain.Actors.Actor, on_replace: :update
     belongs_to :provider, Domain.Auth.Provider
 
+    field :email, :string
     field :provider_identifier, :string
     field :provider_state, :map, redact: true
     field :provider_virtual_state, :map, virtual: true, redact: true
