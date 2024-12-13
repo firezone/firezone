@@ -11,7 +11,7 @@ export async function GET(_req: NextRequest) {
     // mark:current-gui-version
     gui: "1.4.0",
     // mark:current-headless-version
-    headless: "1.3.7",
+    headless: "1.4.0",
     // mark:current-gateway-version
     gateway: "1.4.2",
   };
