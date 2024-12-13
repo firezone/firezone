@@ -86,9 +86,10 @@ impl Tray {
             tracing::debug!("Skipping redundant menu update");
         } else {
             self.run_on_main_thread(move || {
-                if let Err(error) = update(handle, &app, &menu) {
-                    tracing::debug!("Error while updating tray menu: {error:#}");
-                }
+                firezone_logging::unwrap_or_debug!(
+                    update(handle, &app, &menu),
+                    "Error while updating tray menu: {}"
+                );
             });
         }
         self.set_icon(new_icon);
@@ -109,9 +110,11 @@ impl Tray {
         let handle = self.handle.clone();
         self.last_icon_set = icon.clone();
         self.run_on_main_thread(move || {
-            if let Err(e) = handle.set_icon(Some(icon_to_tauri_icon(&icon))) {
-                tracing::debug!("Failed to set tray icon: {e:#}")
-            }
+            let result = handle
+                .set_icon(Some(icon_to_tauri_icon(&icon)))
+                .context("Failed to set tray icon");
+
+            firezone_logging::unwrap_or_debug!(result, "{}");
         });
     }
 
