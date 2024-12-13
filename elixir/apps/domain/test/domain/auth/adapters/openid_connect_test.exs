@@ -304,7 +304,9 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       assert DateTime.diff(identity.provider_state["expires_at"], DateTime.utc_now()) in 3595..3605
     end
 
-    test "prefers existing identities over manually created identities on a conflict", %{
+    # NOTE: The only time this should happen is if an IdP reuses an email address
+    #       that is already in use in Firezone for a given provider
+    test "return error on identity conflict", %{
       account: account,
       provider: provider,
       bypass: bypass
@@ -312,7 +314,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       email = Fixtures.Auth.email()
       sub = Ecto.UUID.generate()
 
-      existing_identity =
+      _existing_identity =
         Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
@@ -346,13 +348,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:ok, identity, _expires_at} = verify_and_update_identity(provider, payload)
-
-      assert identity.id == existing_identity.id
-      assert identity.provider_state["access_token"] == "MY_ACCESS_TOKEN"
-      assert identity.provider_state["refresh_token"] == "MY_REFRESH_TOKEN"
-
-      assert DateTime.diff(identity.provider_state["expires_at"], DateTime.utc_now()) in 3595..3605
+      assert {:error, %Ecto.Changeset{}} = verify_and_update_identity(provider, payload)
     end
 
     test "verifies newly created identities by email profile field", %{

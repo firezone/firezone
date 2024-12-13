@@ -626,6 +626,7 @@ defmodule Domain.Auth do
       {:error, :not_found} -> {:error, :unauthorized}
       {:error, :invalid} -> {:error, :unauthorized}
       {:error, :expired} -> {:error, :unauthorized}
+      {:error, :internal_error} -> {:error, :internal_error}
       {:error, %Ecto.Changeset{}} -> {:error, :malformed_request}
     end
   end
@@ -903,5 +904,14 @@ defmodule Domain.Auth do
   def can_grant_role?(%Subject{} = subject, granted_role) do
     granted_permissions = fetch_type_permissions!(granted_role)
     MapSet.subset?(granted_permissions, subject.permissions)
+  end
+
+  def valid_email?(email) do
+    to_string(email) =~ email_regex()
+  end
+
+  def email_regex do
+    # Regex to check if string is in the shape of an email
+    ~r/^[^\s]+@[^\s]+\.[^\s]+$/
   end
 end
