@@ -79,11 +79,11 @@ impl GuiIntegration for TauriIntegration {
         Ok(self.app.shell().open(url.as_ref(), None)?)
     }
 
-    fn set_tray_icon(&mut self, icon: common::system_tray::Icon) -> Result<()> {
-        self.tray.set_icon(icon)
+    fn set_tray_icon(&mut self, icon: common::system_tray::Icon) {
+        self.tray.set_icon(icon);
     }
 
-    fn set_tray_menu(&mut self, app_state: common::system_tray::AppState) -> Result<()> {
+    fn set_tray_menu(&mut self, app_state: common::system_tray::AppState) {
         self.tray.update(app_state)
     }
 
