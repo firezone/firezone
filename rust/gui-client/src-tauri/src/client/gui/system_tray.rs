@@ -92,7 +92,7 @@ impl Tray {
                         tracing::debug!("Error while updating tray menu: {error:#}");
                     }
                 })
-                .context("Failed to update tray icon")?;
+                .context("Failed to run closure for updating tray menu on main thread")?;
         }
         self.set_icon(new_icon)?;
         self.last_menu_set = Some(menu_clone);
@@ -113,11 +113,14 @@ impl Tray {
         // on disk.
         let handle = self.handle.clone();
         self.last_icon_set = icon.clone();
-        self.app.run_on_main_thread(move || {
-            if let Err(e) = handle.set_icon(Some(icon_to_tauri_icon(&icon))) {
-                tracing::warn!(error = std_dyn_err(&e), "Failed to set tray icon")
-            }
-        })?;
+        self.app
+            .run_on_main_thread(move || {
+                if let Err(e) = handle.set_icon(Some(icon_to_tauri_icon(&icon))) {
+                    tracing::warn!(error = std_dyn_err(&e), "Failed to set tray icon")
+                }
+            })
+            .context("Failed to run closure for updating tray icon on main thread")?;
+
         Ok(())
     }
 }
