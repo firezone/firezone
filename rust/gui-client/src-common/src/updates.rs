@@ -1,7 +1,6 @@
 //! Module to check the Github repo for new releases
 
 use anyhow::{Context, Result};
-use firezone_logging::anyhow_dyn_err;
 use rand::{thread_rng, Rng as _};
 use semver::Version;
 use serde::{Deserialize, Serialize};
