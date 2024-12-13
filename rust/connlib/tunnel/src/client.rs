@@ -685,7 +685,7 @@ impl ClientState {
         self.drain_node_events();
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%gateway_id))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%resource_id))]
     #[expect(clippy::too_many_arguments)]
     pub fn handle_flow_created(
         &mut self,
@@ -698,18 +698,18 @@ impl ClientState {
         gateway_ice: IceCredentials,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
-        tracing::trace!("Updating resource routing table");
+        tracing::debug!(%gateway_id, "New flow authorized for resource");
 
         let resource = self
             .resources_by_id
             .get(&resource_id)
             .context("Unknown resource")?;
 
-        let buffered_packets = self
-            .pending_flows
-            .remove(&resource_id)
-            .context("No pending flow for resource")?
-            .packets;
+        let Some(pending_flow) = self.pending_flows.remove(&resource_id) else {
+            tracing::debug!("No pending flow");
+
+            return Ok(Ok(()));
+        };
 
         if let Some(old_gateway_id) = self.resources_gateways.insert(resource_id, gateway_id) {
             if self.peers.get(&old_gateway_id).is_some() {
@@ -741,6 +741,8 @@ impl ClientState {
         if self.peers.get(&gateway_id).is_none() {
             self.peers.insert(GatewayOnClient::new(gateway_id), &[]);
         };
+
+        let buffered_packets = pending_flow.packets;
 
         match resource {
             Resource::Cidr(_) | Resource::Internet(_) => {
