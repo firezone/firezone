@@ -292,7 +292,7 @@ impl GatewayState {
         now: Instant,
     ) -> anyhow::Result<()> {
         let Some(peer) = self.peers.get_mut(&req.client) else {
-            tracing::debug!(client = %req.client, "Client disconnected while we were resolving a domain");
+            tracing::debug!(client = %req.client, domain = %req.domain, "Client disconnected whilst we were resolving a domain");
 
             return Ok(());
         };
