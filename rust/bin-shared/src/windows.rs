@@ -198,15 +198,21 @@ impl RoutingTableEntry {
 
 impl Drop for RoutingTableEntry {
     fn drop(&mut self) {
+        const NOT_FOUND: u32 = 0x80070490;
+
         let iface_idx = self.entry.InterfaceIndex;
 
         // Safety: The entry we stored is valid.
-        if let Err(e) = unsafe { DeleteIpForwardEntry2(&self.entry) }.ok() {
-            tracing::warn!(error = std_dyn_err(&e), "Failed to delete routing entry");
+        let Err(e) = unsafe { DeleteIpForwardEntry2(&self.entry) }.ok() else {
+            tracing::debug!(route = %self.route, %iface_idx, "Removed route");
             return;
         };
 
-        tracing::debug!(route = %self.route, %iface_idx, "Removed route");
+        if e.code().0 as u32 == NOT_FOUND {
+            return;
+        }
+
+        tracing::warn!(error = std_dyn_err(&e), "Failed to delete routing entry");
     }
 }
 
