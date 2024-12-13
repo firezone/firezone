@@ -55,10 +55,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: cargo-udeps,cargo-deny
-      - run: |
-          rustup install --no-self-update nightly-2024-09-01 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
-          cargo +nightly-2024-09-01 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
-        name: Check for unused dependencies
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.packages }}
         name: "cargo doc"
@@ -68,6 +64,10 @@ jobs:
         shell: bash
       - run: cargo deny check --hide-inclusion-graph
         shell: bash
+      - name: Check for unused dependencies
+        run: |
+          rustup install --no-self-update nightly-2024-09-01 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
+          cargo +nightly-2024-09-01 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
   test:
     name: test-${{ matrix.runs-on }}
     strategy:
