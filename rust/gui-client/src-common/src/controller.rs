@@ -598,14 +598,17 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 Err(Error::IpcServiceTerminating)?
             }
             IpcServerMsg::TunnelReady => {
-                if let Status::WaitingForTunnel { start_instant } = self.status {
-                    tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
-                    self.status = Status::TunnelReady { resources: vec![] };
-                    self.integration.show_notification(
-                        "Firezone connected",
-                        "You are now signed in and able to access resources.",
-                    )?;
-                }
+                let Status::WaitingForTunnel { start_instant } = self.status else {
+                    // If we are not waiting for a tunnel, continue.
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
+                self.status = Status::TunnelReady { resources: vec![] };
+                self.integration.show_notification(
+                    "Firezone connected",
+                    "You are now signed in and able to access resources.",
+                )?;
                 self.refresh_system_tray_menu();
             }
         }
