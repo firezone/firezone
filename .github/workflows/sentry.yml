@@ -21,6 +21,7 @@ jobs:
         with:
           component: gateway
           projects: gateway
+          sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
   create_gui-client_sentry_release:
     if: ${{ startsWith(github.event.release.name, 'gui-client') }}
@@ -33,6 +34,7 @@ jobs:
         with:
           component: gui-client
           projects: gui-client-gui gui-client-ipc-service
+          sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
   create_headless-client_sentry_release:
     if: ${{ startsWith(github.event.release.name, 'headless-client') }}
@@ -45,3 +47,4 @@ jobs:
         with:
           component: headless-client
           projects: headless-client
+          sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
