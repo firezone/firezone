@@ -655,7 +655,7 @@ where
         let Some(allocation) = self.allocations.get_mut(&sender) else {
             let (error_response, msg) = make_error_response(AllocationMismatch, &request);
 
-            tracing::warn!(target: "relay", "{msg}: Sender doesn't have an allocation");
+            tracing::info!(target: "relay", "{msg}: Sender doesn't have an allocation");
 
             return Err(error_response);
         };
