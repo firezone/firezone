@@ -8,7 +8,8 @@ use futures::TryStreamExt;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use libc::{
-    fcntl, makedev, mknod, open, EEXIST, ENOENT, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR, S_IFCHR,
+    fcntl, makedev, mknod, open, EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR,
+    S_IFCHR,
 };
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
@@ -279,6 +280,12 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
 
     // Our view of the current routes may be stale. Removing a route that no longer exists shouldn't print a warning.
     if matches!(&err, NetlinkError(err) if err.raw_code() == -ENOENT) {
+        return;
+    }
+
+    // "No such process" is another version of "route does not exist".
+    // See <https://askubuntu.com/questions/1330333/what-causes-rtnetlink-answers-no-such-process-when-using-ifdown-command>.
+    if matches!(&err, NetlinkError(err) if err.raw_code() == ESRCH) {
         return;
     }
 
