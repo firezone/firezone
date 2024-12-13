@@ -66,7 +66,10 @@ impl Eventloop {
 }
 
 impl Eventloop {
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
+    pub fn poll(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<Infallible, phoenix_channel::Error>> {
         loop {
             match self.tunnel.poll_next_event(cx) {
                 Poll::Ready(Ok(event)) => {
