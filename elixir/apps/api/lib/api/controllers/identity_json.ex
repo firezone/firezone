@@ -24,7 +24,8 @@ defmodule API.IdentityJSON do
       id: identity.id,
       actor_id: identity.actor_id,
       provider_id: identity.provider_id,
-      provider_identifier: identity.provider_identifier
+      provider_identifier: identity.provider_identifier,
+      email: identity.email
     }
   end
 end

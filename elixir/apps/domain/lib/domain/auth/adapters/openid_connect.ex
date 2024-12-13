@@ -32,6 +32,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   @impl true
   def identity_changeset(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
     changeset
+    |> Domain.Repo.Changeset.trim_change(:email)
     |> Domain.Repo.Changeset.trim_change(:provider_identifier)
     |> Domain.Repo.Changeset.copy_change(:provider_virtual_state, :provider_state)
     |> Ecto.Changeset.put_change(:provider_virtual_state, %{})
@@ -119,7 +120,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       code_verifier: code_verifier
     }
 
-    with {:ok, provider_identifier, identity_state} <-
+    with {:ok, provider_identifier, email, identity_state} <-
            fetch_state(provider, token_params, identifier_claim) do
       Identity.Query.not_disabled()
       |> Identity.Query.by_provider_id(provider.id)
@@ -134,6 +135,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
           # if an email was used in provider identifier and it's replaced by sub claim
           # later, we want to use the ID from sub claim as provider_identifier
           |> Ecto.Changeset.put_change(:provider_identifier, provider_identifier)
+          |> Ecto.Changeset.put_change(:email, email)
+          |> Identity.Changeset.changeset()
         end
       )
       |> case do
@@ -177,9 +180,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       code_verifier: code_verifier
     }
 
-    with {:ok, provider_identifier, identity_state} <-
+    with {:ok, provider_identifier, email, identity_state} <-
            fetch_state(provider, token_params, identifier_claim) do
       Domain.Auth.upsert_identity(actor, provider, %{
+        email: email,
         provider_identifier: provider_identifier,
         provider_virtual_state: identity_state
       })
@@ -195,7 +199,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       refresh_token: provider.adapter_state["refresh_token"]
     }
 
-    with {:ok, _provider_identifier, adapter_state} <-
+    with {:ok, _provider_identifier, _email, adapter_state} <-
            fetch_state(provider, token_params, identifier_claim) do
       Provider.Query.not_deleted()
       |> Provider.Query.by_id(provider.id)
@@ -247,7 +251,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       refresh_token: identity.provider_state["refresh_token"]
     }
 
-    with {:ok, _provider_identifier, identity_state} <-
+    with {:ok, _provider_identifier, _email, identity_state} <-
            fetch_state(identity.provider, token_params, identifier_claim) do
       Identity.Query.not_deleted()
       |> Identity.Query.by_id(identity.id)
@@ -281,7 +285,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
       provider_identifier = claims[identifier_claim]
 
-      {:ok, provider_identifier,
+      {:ok, provider_identifier, claims["email"] || userinfo["email"],
        %{
          "access_token" => tokens["access_token"],
          "refresh_token" => tokens["refresh_token"],

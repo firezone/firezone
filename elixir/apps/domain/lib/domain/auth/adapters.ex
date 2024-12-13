@@ -101,11 +101,23 @@ defmodule Domain.Auth.Adapters do
     adapter = fetch_provider_adapter!(provider)
 
     case adapter.verify_and_update_identity(provider, payload) do
-      {:ok, %Identity{} = identity, expires_at} -> {:ok, identity, expires_at}
-      {:error, :not_found} -> {:error, :not_found}
-      {:error, :invalid} -> {:error, :invalid}
-      {:error, :expired} -> {:error, :expired}
-      {:error, :internal_error} -> {:error, :internal_error}
+      {:ok, %Identity{} = identity, expires_at} ->
+        {:ok, identity, expires_at}
+
+      {:error, :not_found} ->
+        {:error, :not_found}
+
+      {:error, :invalid} ->
+        {:error, :invalid}
+
+      {:error, :expired} ->
+        {:error, :expired}
+
+      {:error, :internal_error} ->
+        {:error, :internal_error}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:error, changeset}
     end
   end
 
