@@ -89,10 +89,7 @@ impl Tray {
             self.app
                 .run_on_main_thread(move || {
                     if let Err(error) = update(handle, &app, &menu) {
-                        tracing::error!(
-                            error = anyhow_dyn_err(&error),
-                            "Error while updating tray icon"
-                        );
+                        tracing::debug!("Error while updating tray menu: {error:#}");
                     }
                 })
                 .context("Failed to update tray icon")?;
