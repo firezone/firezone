@@ -10,6 +10,9 @@ inputs:
     description: "The Sentry projects to create a release for"
     required: true
     # Must be space-separated.
+  sentry_token:
+    description: "The authentication token to use with sentry."
+    required: true
 
 runs:
   using: "composite"
@@ -24,7 +27,7 @@ runs:
 
     - uses: getsentry/action-release@v1
       env:
-        SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+        SENTRY_AUTH_TOKEN: ${{ inputs.sentry_token }}
         SENTRY_ORG: firezone-inc
       with:
         version: ${{ inputs.component }}@${{ steps.version.outputs.version }}
