@@ -60,8 +60,8 @@ pub trait GuiIntegration {
     /// Also opens non-URLs
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
 
-    fn set_tray_icon(&mut self, icon: system_tray::Icon) -> Result<()>;
-    fn set_tray_menu(&mut self, app_state: system_tray::AppState) -> Result<()>;
+    fn set_tray_icon(&mut self, icon: system_tray::Icon);
+    fn set_tray_menu(&mut self, app_state: system_tray::AppState);
     fn show_notification(&self, title: &str, body: &str) -> Result<()>;
     fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()>;
 
@@ -593,8 +593,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             IpcServerMsg::TerminatingGracefully => {
                 tracing::info!("Caught TerminatingGracefully");
                 self.integration
-                    .set_tray_icon(system_tray::icon_terminating())
-                    .ok();
+                    .set_tray_icon(system_tray::icon_terminating());
                 Err(Error::IpcServiceTerminating)?
             }
             IpcServerMsg::TunnelReady => {
@@ -747,12 +746,10 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             system_tray::ConnlibState::SignedOut
         };
 
-        if let Err(e) = self.integration.set_tray_menu(system_tray::AppState {
+        self.integration.set_tray_menu(system_tray::AppState {
             connlib,
             release: self.release.clone(),
-        }) {
-            tracing::debug!("Failed to set new tray menu: {e:#}")
-        };
+        });
     }
 
     /// If we're in the `RetryingConnection` state, use the token to retry the Portal connection
