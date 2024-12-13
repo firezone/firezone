@@ -244,7 +244,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             self.start_session(token).await?;
         } else {
             tracing::info!("No token / actor_name on disk, starting in signed-out state");
-            self.refresh_system_tray_menu()?;
+            self.refresh_system_tray_menu();
         }
 
         if !ran_before::get().await? {
@@ -361,7 +361,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             start_instant,
             token,
         };
-        self.refresh_system_tray_menu()?;
+        self.refresh_system_tray_menu();
         Ok(())
     }
 
@@ -396,7 +396,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 );
 
                 // Refresh the menu in case the favorites were reset.
-                self.refresh_system_tray_menu()?;
+                self.refresh_system_tray_menu();
             }
             Req::ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
@@ -433,7 +433,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                     .context("Couldn't start sign-in flow")?
                 {
                     let url = req.to_url(&self.advanced_settings.auth_base_url);
-                    self.refresh_system_tray_menu()?;
+                    self.refresh_system_tray_menu();
                     self.integration.open_url(url.expose_secret())
                         .context("Couldn't open auth page")?;
                     self.integration.set_welcome_window_visible(false)?;
@@ -504,7 +504,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 tracing::info!("User clicked Quit in the menu");
                 self.status = Status::Quitting;
                 self.ipc_client.send_msg(&IpcClientMsg::Disconnect).await?;
-                self.refresh_system_tray_menu()?;
+                self.refresh_system_tray_menu();
             }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
@@ -586,9 +586,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 }
                 tracing::debug!(len = resources.len(), "Got new Resources");
                 self.status = Status::TunnelReady { resources };
-                if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(error = anyhow_dyn_err(&error), "Failed to refresh menu");
-                }
+                self.refresh_system_tray_menu();
 
                 self.update_disabled_resources().await?;
             }
@@ -615,9 +613,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                         "You are now signed in and able to access resources.",
                     )?;
                 }
-                if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(error = anyhow_dyn_err(&error), "Failed to refresh menu");
-                }
+                self.refresh_system_tray_menu();
             }
         }
         Ok(ControlFlow::Continue(()))
@@ -649,9 +645,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             Ok(()) => {
                 ran_before::set().await?;
                 self.status = Status::WaitingForTunnel { start_instant };
-                if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(error = anyhow_dyn_err(&error), "Failed to refresh menu");
-                }
+                self.refresh_system_tray_menu();
                 Ok(())
             }
             Err(IpcServiceError::Io(error)) => {
@@ -662,9 +656,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                     "Failed to connect to Firezone Portal, will try again when the network changes"
                 );
                 self.status = Status::RetryingConnection { token };
-                if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(error = anyhow_dyn_err(&error), "Failed to refresh menu");
-                }
+                self.refresh_system_tray_menu();
                 Ok(())
             }
             Err(IpcServiceError::Other(error)) => Err(Error::ConnectToFirezoneFailed(error)),
@@ -678,13 +670,13 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
     ) -> Result<()> {
         let Some(notification) = notification else {
             self.release = None;
-            self.refresh_system_tray_menu()?;
+            self.refresh_system_tray_menu();
             return Ok(());
         };
 
         let release = notification.release;
         self.release = Some(release.clone());
-        self.refresh_system_tray_menu()?;
+        self.refresh_system_tray_menu();
 
         if notification.tell_user {
             let title = format!("Firezone {} available for download", release.version);
@@ -717,7 +709,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
         self.ipc_client
             .send_msg(&SetDisabledResources(disabled_resources))
             .await?;
-        self.refresh_system_tray_menu()?;
+        self.refresh_system_tray_menu();
 
         Ok(())
     }
@@ -725,12 +717,12 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
     /// Saves the current settings (including favorites) to disk and refreshes the tray menu
     async fn refresh_favorite_resources(&mut self) -> Result<()> {
         settings::save(&self.advanced_settings).await?;
-        self.refresh_system_tray_menu()?;
+        self.refresh_system_tray_menu();
         Ok(())
     }
 
     /// Builds a new system tray menu and applies it to the app
-    fn refresh_system_tray_menu(&mut self) -> Result<()> {
+    fn refresh_system_tray_menu(&mut self) {
         // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
         // doesn't require such complicated control flow to answer.
         let connlib = if let Some(auth_session) = self.auth.session() {
@@ -758,11 +750,13 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
         } else {
             system_tray::ConnlibState::SignedOut
         };
-        self.integration.set_tray_menu(system_tray::AppState {
+
+        if let Err(e) = self.integration.set_tray_menu(system_tray::AppState {
             connlib,
             release: self.release.clone(),
-        })?;
-        Ok(())
+        }) {
+            tracing::debug!("Failed to set new tray menu: {e:#}")
+        };
     }
 
     /// If we're in the `RetryingConnection` state, use the token to retry the Portal connection
@@ -797,7 +791,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
         // This is redundant if the token is expired, in that case
         // connlib already disconnected itself.
         self.ipc_client.send_msg(&IpcClientMsg::Disconnect).await?;
-        self.refresh_system_tray_menu()?;
+        self.refresh_system_tray_menu();
         Ok(())
     }
 }
