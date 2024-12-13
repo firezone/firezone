@@ -598,13 +598,6 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 Err(Error::IpcServiceTerminating)?
             }
             IpcServerMsg::TunnelReady => {
-                if self.auth.session().is_none() {
-                    // This could maybe happen if the user cancels the sign-in
-                    // before it completes. This is because the state machine
-                    // between the GUI, the IPC service, and connlib isn't  perfectly synced.
-                    tracing::error!("Got `TunnelReady` while signed out");
-                    return Ok(ControlFlow::Continue(()));
-                }
                 if let Status::WaitingForTunnel { start_instant } = self.status {
                     tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
                     self.status = Status::TunnelReady { resources: vec![] };
