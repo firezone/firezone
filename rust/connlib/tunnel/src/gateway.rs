@@ -90,10 +90,10 @@ impl GatewayState {
             return Ok(None);
         }
 
-        let peer = self
-            .peers
-            .peer_by_ip_mut(dst)
-            .context("Couldn't find connection by IP")?;
+        let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
+            tracing::debug!(%dst, "Unknown client, perhaps already disconnected?");
+            return Ok(None);
+        };
         let cid = peer.id();
 
         let packet = peer
