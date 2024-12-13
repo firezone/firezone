@@ -626,6 +626,7 @@ defmodule Domain.Auth do
       {:error, :not_found} -> {:error, :unauthorized}
       {:error, :invalid} -> {:error, :unauthorized}
       {:error, :expired} -> {:error, :unauthorized}
+      {:error, :internal_error} -> {:error, :internal_error}
       {:error, %Ecto.Changeset{}} -> {:error, :malformed_request}
     end
   end

@@ -136,6 +136,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
           # later, we want to use the ID from sub claim as provider_identifier
           |> Ecto.Changeset.put_change(:provider_identifier, provider_identifier)
           |> Ecto.Changeset.put_change(:email, email)
+          |> Identity.Changeset.changeset()
         end
       )
       |> case do
