@@ -116,7 +116,7 @@ impl Tray {
         self.app
             .run_on_main_thread(move || {
                 if let Err(e) = handle.set_icon(Some(icon_to_tauri_icon(&icon))) {
-                    tracing::warn!(error = std_dyn_err(&e), "Failed to set tray icon")
+                    tracing::debug!("Failed to set tray icon: {e:#}")
                 }
             })
             .context("Failed to run closure for updating tray icon on main thread")?;
