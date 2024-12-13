@@ -25,7 +25,6 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use std::task::{Context, Poll, Waker};
 use tokio_tungstenite::client_async_tls;
-use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::{
     tungstenite::{handshake::client::Request, Message},
     MaybeTlsStream, WebSocketStream,
@@ -34,6 +33,7 @@ use url::Url;
 
 pub use get_user_agent::get_user_agent;
 pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
+pub use tokio_tungstenite::tungstenite::http::StatusCode;
 
 const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
 
@@ -132,13 +132,13 @@ async fn connect(
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("client error: {0}")]
+    #[error("Failed to establish WebSocket connection: {0}")]
     Client(StatusCode),
-    #[error("token expired")]
+    #[error("Authentication token expired")]
     TokenExpired,
-    #[error("max retries reached: {final_error}")]
+    #[error("Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}")]
     MaxRetriesReached { final_error: String },
-    #[error("login failed: {0}")]
+    #[error("Failed to login with portal: {0}")]
     LoginFailed(ErrorReply),
 }
 
