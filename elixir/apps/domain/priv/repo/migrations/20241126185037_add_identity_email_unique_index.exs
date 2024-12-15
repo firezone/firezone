@@ -10,7 +10,7 @@ defmodule Domain.Repo.Migrations.AddIdentityEmailUniqueIndex do
     # that do this are Authelia, Auth0, Keycloak and likely others.
     create(
       index(:auth_identities, [:account_id, :provider_id, :email, :provider_identifier],
-        name: :auth_identities_acct_id_provider_id_email_prov_ident_unique_idx,
+        name: :auth_identities_account_id_provider_id_email_idx,
         where: "deleted_at IS NULL",
         unique: true
       )
