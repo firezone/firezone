@@ -12,6 +12,7 @@ defmodule Domain.Repo.Migrations.ChangeIdentityEmailUniqueIndex do
         unique: true
       )
     )
+
     create(
       index(:auth_identities, [:account_id, :provider_id, :email, :provider_identifier],
         name: :auth_identities_acct_id_provider_id_email_prov_ident_unique_idx,
