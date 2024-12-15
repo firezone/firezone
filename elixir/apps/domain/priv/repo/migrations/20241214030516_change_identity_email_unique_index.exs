@@ -1,21 +1,17 @@
 defmodule Domain.Repo.Migrations.ChangeIdentityEmailUniqueIndex do
   use Ecto.Migration
 
+  # We need to rename the index because the "add_identity_email_unique_index" originally
+  # succeeded on staging but failed on production, so we need this migration to resolve
+  # the difference between the two environments.
   def change do
     drop(
-      index(:auth_identities, [:account_id, :provider_id, :email],
+      index(:auth_identities, [:account_id, :provider_id, :email, :provider_identifier],
         name: :auth_identities_account_id_provider_id_email_idx,
         where: "deleted_at IS NULL",
         unique: true
       )
     )
-
-    # We include provider_identifier in the index because it's possible
-    # for two identities in the same provider to share an email address.
-    #
-    # This can happen for example if the IdP allows auth methods on their
-    # end tied to a single OIDC connector with Firezone. Examples of IdPs
-    # that do this are Authelia, Auth0, Keycloak and likely others.
     create(
       index(:auth_identities, [:account_id, :provider_id, :email, :provider_identifier],
         name: :auth_identities_acct_id_provider_id_email_prov_ident_unique_idx,
