@@ -4,7 +4,7 @@ defmodule Domain.Repo.Migrations.MigrateEmailDataAgain do
   def change do
     execute("""
       UPDATE auth_identities AS ai
-      SET email = COALESCE(
+      SET email =
         CASE
           WHEN p.adapter = 'email' OR p.adapter = 'userpass' THEN ai.provider_identifier
           ELSE COALESCE(
@@ -12,7 +12,6 @@ defmodule Domain.Repo.Migrations.MigrateEmailDataAgain do
             provider_state #>> '{userinfo,email}'
           )
         END
-      )
       FROM auth_providers AS p
       WHERE ai.provider_id = p.id
         AND ai.email IS NULL

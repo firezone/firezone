@@ -932,10 +932,10 @@ defmodule Domain.Auth do
       |> String.trim()
 
     cond do
-      Domain.Auth.valid_email?(email) ->
+      valid_email?(email) ->
         params
 
-      Domain.Auth.valid_email?(identifier) ->
+      valid_email?(identifier) ->
         Map.put(params, "email", identifier)
 
       true ->
@@ -958,7 +958,7 @@ defmodule Domain.Auth do
       identifier != "" ->
         params
 
-      Domain.Auth.valid_email?(email) ->
+      valid_email?(email) ->
         Map.put(params, "provider_identifier", email)
         |> Map.put("provider_identifier_confirmation", email)
 
