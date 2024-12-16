@@ -3182,6 +3182,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "etherparse",
+ "lockfree-object-pool",
  "proptest",
  "test-strategy",
  "thiserror",
@@ -5907,6 +5908,7 @@ dependencies = [
  "hex-display",
  "ip-packet",
  "itertools 0.13.0",
+ "lockfree-object-pool",
  "once_cell",
  "rand 0.8.5",
  "ringbuffer",
