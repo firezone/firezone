@@ -2034,6 +2034,7 @@ dependencies = [
  "arboard",
  "atomicwrites",
  "connlib-model",
+ "derive_more 1.0.0",
  "dirs",
  "firezone-bin-shared",
  "firezone-headless-client",
