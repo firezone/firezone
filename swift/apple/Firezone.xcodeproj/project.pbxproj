@@ -257,7 +257,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 05CF1CFA290B1CEE00CF4755 /* Build configuration list for PBXNativeTarget "FirezoneNetworkExtensioniOS" */;
 			buildPhases = (
-				8D8555832D0A7CBB00A1EA09 /* Build Connlib */,
+				8DD1E4042D0A8840000D2844 /* Build Connlib */,
 				6F3E231A2A5D830D00737CF1 /* Copy Connlib Headers and Swift Files */,
 				05CF1CEC290B1CEE00CF4755 /* Sources */,
 				05CF1CED290B1CEE00CF4755 /* Frameworks */,
@@ -279,7 +279,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8D5047F02CE6A8F4009802E9 /* Build configuration list for PBXNativeTarget "FirezoneNetworkExtensionmacOS" */;
 			buildPhases = (
-				8D8555822D0A796100A1EA09 /* Build Connlib */,
+				8DD1E4052D0A8892000D2844 /* Build Connlib */,
 				8D5048072CE6B243009802E9 /* Copy Connlib Headers and Swift Files */,
 				8D5047DF2CE6A8F4009802E9 /* Sources */,
 				8D5047E02CE6A8F4009802E9 /* Frameworks */,
@@ -435,7 +435,7 @@
 			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n./copy_generated_connlib_files.sh\n";
 			showEnvVarsInLog = 0;
 		};
-		8D8555822D0A796100A1EA09 /* Build Connlib */ = {
+		8DD1E4042D0A8840000D2844 /* Build Connlib */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -458,7 +458,7 @@
 			shellPath = /bin/sh;
 			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\ncd ../../rust/connlib/clients/apple\n./build-rust.sh\n";
 		};
-		8D8555832D0A7CBB00A1EA09 /* Build Connlib */ = {
+		8DD1E4052D0A8892000D2844 /* Build Connlib */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -479,7 +479,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\ncd ../../rust/connlib/clients/apple\n./build-rust.sh\n";
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\ncd ../../rust/connlib/clients/apple\n";
 		};
 		8DE721892ACA295200E395D5 /* swift-format */ = {
 			isa = PBXShellScriptBuildPhase;
