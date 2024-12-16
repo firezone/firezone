@@ -399,7 +399,7 @@ defmodule Domain.Auth do
     |> Repo.insert(
       conflict_target:
         {:unsafe_fragment,
-         ~s/(account_id, provider_id, provider_identifier) WHERE deleted_at IS NULL/},
+         ~s/(account_id, provider_id, email, provider_identifier) WHERE deleted_at IS NULL/},
       on_conflict: {:replace, [:provider_state]},
       returning: true
     )
