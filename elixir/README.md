@@ -314,7 +314,7 @@ You can disable headless mode for the browser by adding
 
 to the acceptance test that you are running.
 
-## Connecting to a staging or production instances
+## Connecting to a staging or production instance
 
 We use Google Cloud Platform for all our staging and production infrastructure.
 You'll need access to this env to perform the commands below; to request access
@@ -506,8 +506,6 @@ Now, you can connect to the Cloud SQL instance as the `firezone` user:
 ```bash
 psql "host=localhost port=9000 sslmode=disable dbname=firezone user=firezone"
 ```
-
-## Connecting to a staging or production instances
 
 ## Deploying
 
