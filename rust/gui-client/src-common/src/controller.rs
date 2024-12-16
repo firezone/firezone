@@ -100,17 +100,20 @@ pub enum Failure {
     Panic,
 }
 
+#[derive(derive_more::Debug)]
 pub enum Status {
     /// Firezone is disconnected.
     Disconnected,
     /// At least one connection request has failed, due to failing to reach the Portal, and we are waiting for a network change before we try again
     RetryingConnection {
         /// The token to log in to the Portal, for retrying the connection request.
+        #[debug(skip)]
         token: SecretString,
     },
     Quitting, // The user asked to quit and we're waiting for the tunnel daemon to gracefully disconnect so we can flush telemetry.
     /// Firezone is ready to use.
     TunnelReady {
+        #[debug(skip)]
         resources: Vec<ResourceView>,
     },
     /// Firezone is signing in to the Portal.
@@ -118,6 +121,7 @@ pub enum Status {
         /// The instant when we sent our most recent connect request.
         start_instant: Instant,
         /// The token to log in to the Portal, in case we need to retry the connection request.
+        #[debug(skip)]
         token: SecretString,
     },
     /// Firezone has connected to the Portal and is raising the tunnel.
@@ -618,28 +622,22 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
         &mut self,
         result: Result<(), IpcServiceError>,
     ) -> Result<(), Error> {
-        let (start_instant, token) = match &self.status {
-            Status::Disconnected
-            | Status::RetryingConnection { .. }
-            | Status::TunnelReady { .. }
-            | Status::WaitingForTunnel { .. } => {
-                tracing::error!("Impossible logic error, received `ConnectResult` when we weren't waiting on the Portal connection.");
-                return Ok(());
-            }
-            Status::Quitting => {
-                tracing::debug!("Ignoring `ConnectResult`, we are quitting");
-                return Ok(());
-            }
-            Status::WaitingForPortal {
-                start_instant,
-                token,
-            } => (*start_instant, token.expose_secret().clone().into()),
+        let Status::WaitingForPortal {
+            start_instant,
+            token,
+        } = &self.status
+        else {
+            tracing::debug!(current_state = ?self.status, "Ignoring `ConnectResult`");
+
+            return Ok(());
         };
 
         match result {
             Ok(()) => {
                 ran_before::set().await?;
-                self.status = Status::WaitingForTunnel { start_instant };
+                self.status = Status::WaitingForTunnel {
+                    start_instant: *start_instant,
+                };
                 self.refresh_system_tray_menu();
                 Ok(())
             }
@@ -650,7 +648,9 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                     error,
                     "Failed to connect to Firezone Portal, will try again when the network changes"
                 );
-                self.status = Status::RetryingConnection { token };
+                self.status = Status::RetryingConnection {
+                    token: token.expose_secret().clone().into(),
+                };
                 self.refresh_system_tray_menu();
                 Ok(())
             }
