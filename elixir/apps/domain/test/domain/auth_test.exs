@@ -2358,6 +2358,41 @@ defmodule Domain.AuthTest do
       assert identity.provider_id == provider.id
       assert identity.provider_identifier == provider_identifier
       assert identity.actor_id == actor.id
+      assert identity.email == nil
+
+      assert %Ecto.Changeset{} = identity.provider_virtual_state
+
+      assert %{"password_hash" => _} = identity.provider_state
+      assert %{password_hash: _} = identity.provider_virtual_state.changes
+      assert identity.account_id == provider.account_id
+      assert is_nil(identity.deleted_at)
+    end
+
+    test "creates an identity when provider_identifier is an email address" do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+      provider_identifier = Fixtures.Auth.email()
+
+      actor =
+        Fixtures.Actors.create_actor(
+          type: :account_admin_user,
+          account: account,
+          provider: provider
+        )
+
+      password = "Firezone1234"
+
+      attrs = %{
+        "provider_identifier" => provider_identifier,
+        "provider_virtual_state" => %{"password" => password, "password_confirmation" => password}
+      }
+
+      assert {:ok, identity} = create_identity(actor, provider, attrs)
+
+      assert identity.provider_id == provider.id
+      assert identity.provider_identifier == provider_identifier
+      assert identity.actor_id == actor.id
+      assert identity.email == provider_identifier
 
       assert %Ecto.Changeset{} = identity.provider_virtual_state
 

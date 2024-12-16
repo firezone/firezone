@@ -67,7 +67,7 @@ defmodule Domain.Auth.Identity.Changeset do
       name: :auth_identities_account_id_provider_id_provider_identifier_idx
     )
     |> unique_constraint(:email,
-      name: :auth_identities_account_id_provider_id_email_idx
+      name: :auth_identities_acct_id_provider_id_email_prov_ident_unique_idx
     )
   end
 
