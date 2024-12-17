@@ -38,10 +38,6 @@ impl Drop for Telemetry {
 
 impl Telemetry {
     pub fn start(&mut self, api_url: &str, release: &str, dsn: Dsn) {
-        if self.inner.is_some() {
-            return;
-        }
-
         // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
         // <https://docs.sentry.io/platforms/rust/configuration/environments/>
         let environment = match api_url {
@@ -53,6 +49,10 @@ impl Telemetry {
                 return;
             }
         };
+
+        if self.inner.is_some() {
+            return;
+        }
 
         tracing::info!("Starting telemetry");
         let inner = sentry::init((
