@@ -79,6 +79,13 @@ impl Eventloop {
                 Poll::Ready(Err(e)) if e.kind() == io::ErrorKind::WouldBlock => {
                     continue;
                 }
+                Poll::Ready(Err(e))
+                    if e.kind() == io::ErrorKind::NetworkUnreachable
+                        || e.kind() == io::ErrorKind::HostUnreachable =>
+                {
+                    // Network unreachable most likely means we don't have IPv4 or IPv6 connectivity.
+                    continue;
+                }
                 Poll::Ready(Err(e)) => {
                     telemetry_event!("Tunnel error: {}", err_with_src(&e));
                     continue;
