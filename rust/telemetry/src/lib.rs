@@ -1,4 +1,4 @@
-use std::{sync::Arc, time::Duration};
+use std::{borrow::Cow, sync::Arc, time::Duration};
 
 use sentry::protocol::SessionStatus;
 
@@ -50,7 +50,14 @@ impl Telemetry {
             }
         };
 
-        if self.inner.is_some() {
+        if self
+            .inner
+            .as_ref()
+            .and_then(|i| i.options().environment.as_ref())
+            .is_some_and(|env| env == environment)
+        {
+            tracing::debug!("Telemetry already initialised");
+
             return;
         }
 
