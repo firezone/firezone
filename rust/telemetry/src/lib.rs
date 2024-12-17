@@ -1,4 +1,4 @@
-use std::{borrow::Cow, sync::Arc, time::Duration};
+use std::{sync::Arc, time::Duration};
 
 use sentry::protocol::SessionStatus;
 
@@ -59,6 +59,18 @@ impl Telemetry {
             tracing::debug!("Telemetry already initialised");
 
             return;
+        }
+
+        // Stop any previous telemetry session.
+        if let Some(inner) = self.inner.take() {
+            tracing::debug!("Stopping previous telemetry session");
+
+            sentry::end_session();
+            drop(inner);
+
+            self.account_slug = None;
+            self.firezone_id = None;
+            set_current_user(None);
         }
 
         tracing::info!("Starting telemetry");
@@ -149,6 +161,10 @@ impl Telemetry {
                 .map(|slug| ("account_slug".to_owned(), slug.into())),
         );
 
-        sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));
+        set_current_user(Some(user));
     }
+}
+
+fn set_current_user(user: Option<sentry::User>) {
+    sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
 }
