@@ -3,9 +3,7 @@ use boringtun::x25519::PublicKey;
 use connlib_model::DomainName;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use firezone_logging::{
-    anyhow_dyn_err, err_with_src, std_dyn_err, telemetry_event, telemetry_span,
-};
+use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_event, telemetry_span};
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
@@ -80,7 +78,15 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    telemetry_event!("Tunnel error: {}", err_with_src(&e));
+                    let e = anyhow::Error::from(e);
+
+                    if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
+                        // Some IP packets cannot be translated and should be dropped "silently".
+                        // Do so by ignoring the error here.
+                        continue;
+                    }
+
+                    telemetry_event!("Tunnel error: {e:#}");
                     continue;
                 }
                 Poll::Pending => {}
