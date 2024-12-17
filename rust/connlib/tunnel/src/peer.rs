@@ -337,7 +337,7 @@ impl ClientOnGateway {
 
         let mut packet = packet
             .translate_destination(self.ipv4, self.ipv6, source_protocol, real_ip)
-            .context("Failed to translate packet")?;
+            .context("Failed to translate packet to new destination")?;
         packet.update_checksum();
 
         Ok(packet)
@@ -375,7 +375,9 @@ impl ClientOnGateway {
             TranslateIncomingResult::NoNatSession => return Ok(packet),
         };
 
-        let mut packet = packet.translate_source(self.ipv4, self.ipv6, proto, ip)?;
+        let mut packet = packet
+            .translate_source(self.ipv4, self.ipv6, proto, ip)
+            .context("Failed to translate packet to new source")?;
         packet.update_checksum();
 
         Ok(packet)
