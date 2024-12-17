@@ -38,10 +38,6 @@ impl Drop for Telemetry {
 
 impl Telemetry {
     pub fn start(&mut self, api_url: &str, release: &str, dsn: Dsn) {
-        if self.inner.is_some() {
-            return;
-        }
-
         // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
         // <https://docs.sentry.io/platforms/rust/configuration/environments/>
         let environment = match api_url {
@@ -53,6 +49,29 @@ impl Telemetry {
                 return;
             }
         };
+
+        if self
+            .inner
+            .as_ref()
+            .and_then(|i| i.options().environment.as_ref())
+            .is_some_and(|env| env == environment)
+        {
+            tracing::debug!("Telemetry already initialised");
+
+            return;
+        }
+
+        // Stop any previous telemetry session.
+        if let Some(inner) = self.inner.take() {
+            tracing::debug!("Stopping previous telemetry session");
+
+            sentry::end_session();
+            drop(inner);
+
+            self.account_slug = None;
+            self.firezone_id = None;
+            set_current_user(None);
+        }
 
         tracing::info!("Starting telemetry");
         let inner = sentry::init((
@@ -142,6 +161,10 @@ impl Telemetry {
                 .map(|slug| ("account_slug".to_owned(), slug.into())),
         );
 
-        sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));
+        set_current_user(Some(user));
     }
+}
+
+fn set_current_user(user: Option<sentry::User>) {
+    sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
 }
