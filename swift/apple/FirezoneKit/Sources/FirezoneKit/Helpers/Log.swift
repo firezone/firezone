@@ -52,6 +52,48 @@ public final class Log {
     self.logger.error("\(message, privacy: .public)")
     logWriter?.write(severity: .error, message: message)
   }
+
+  // Returns the size in bytes of the provided directory, calculated by summing
+  // the size of its contents recursively.
+  public static func size(of directory: URL) async -> Int64 {
+    let fileManager = FileManager.default
+    var totalSize: Int64 = 0
+
+    func sizeOfFile(at url: URL, with resourceValues: URLResourceValues) -> Int64 {
+      guard resourceValues.isRegularFile == true else { return 0 }
+      return Int64(resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
+    }
+
+    // Tally size of each log file in parallel
+    await withTaskGroup(of: Int64.self) { taskGroup in
+      fileManager.forEachFileUnder(
+        directory,
+        including: [
+          .totalFileAllocatedSizeKey,
+          .totalFileSizeKey,
+          .isRegularFileKey,
+        ]
+      ) { url, resourceValues in
+        taskGroup.addTask {
+          return sizeOfFile(at: url, with: resourceValues)
+        }
+      }
+
+      for await size in taskGroup {
+        totalSize += size
+      }
+    }
+
+    return totalSize
+  }
+
+  // Clears the contents of the provided directory.
+  public static func clear(in directory: URL?) throws {
+    guard let directory = directory
+    else { return }
+
+    try FileManager.default.removeItem(at: directory)
+  }
 }
 
 private final class LogWriter {

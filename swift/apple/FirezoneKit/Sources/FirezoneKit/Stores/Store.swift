@@ -28,7 +28,7 @@ public final class Store: ObservableObject {
   // we could periodically update it if we need to.
   @Published private(set) var decision: UNAuthorizationStatus
 
-  private let tunnelManager: TunnelManager
+  public let tunnelManager: TunnelManager
   private var sessionNotification: SessionNotification
   private var cancellables: Set<AnyCancellable> = []
   private var resourcesTimer: Timer?

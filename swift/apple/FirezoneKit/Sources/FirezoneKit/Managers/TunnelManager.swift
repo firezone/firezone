@@ -13,6 +13,7 @@ import NetworkExtension
 
 enum TunnelManagerError: Error {
   case cannotSaveIfMissing
+  case decodeIPCDataFailed
 }
 
 public enum TunnelManagerKeys {
@@ -27,6 +28,8 @@ public enum TunnelMessage: Codable {
   case getResourceList(Data)
   case signOut
   case internetResourceEnabled(Bool)
+  case clearLogs
+  case getLogFolderSize
 
   enum CodingKeys: String, CodingKey {
     case type
@@ -37,6 +40,8 @@ public enum TunnelMessage: Codable {
     case getResourceList
     case signOut
     case internetResourceEnabled
+    case clearLogs
+    case getLogFolderSize
   }
 
   public init(from decoder: Decoder) throws {
@@ -51,6 +56,10 @@ public enum TunnelMessage: Codable {
           self = .getResourceList(value)
       case .signOut:
           self = .signOut
+    case .clearLogs:
+      self = .clearLogs
+    case .getLogFolderSize:
+      self = .getLogFolderSize
       }
   }
   public func encode(to encoder: Encoder) throws {
@@ -64,6 +73,10 @@ public enum TunnelMessage: Codable {
           try container.encode(value, forKey: .value)
       case .signOut:
         try container.encode(MessageType.signOut, forKey: .type)
+    case .clearLogs:
+      try container.encode(MessageType.clearLogs, forKey: .type)
+    case .getLogFolderSize:
+      try container.encode(MessageType.getLogFolderSize, forKey: .type)
       }
   }
 }
@@ -274,6 +287,43 @@ public class TunnelManager {
       }
     } catch {
       Log.app.error("Error: sendProviderMessage: \(error)")
+    }
+  }
+
+  func clearLogs() async throws {
+    return try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(
+          encoder.encode(TunnelMessage.clearLogs)
+        ) { _ in continuation.resume() }
+      } catch {
+        continuation.resume(throwing: error)
+      }
+    }
+  }
+
+  func getLogFolderSize() async throws -> Int64 {
+    return try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(
+          encoder.encode(TunnelMessage.getLogFolderSize)
+        ) { data in
+
+          guard let data = data
+          else {
+            continuation
+              .resume(throwing: TunnelManagerError.decodeIPCDataFailed)
+
+            return
+          }
+
+          data.withUnsafeBytes { rawBuffer in
+            continuation.resume(returning: rawBuffer.load(as: Int64.self))
+          }
+        }
+      } catch {
+        continuation.resume(throwing: error)
+      }
     }
   }
 
