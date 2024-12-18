@@ -978,6 +978,10 @@ pub enum UnsupportedProtocol {
     UnsupportedIcmpv6Type(Icmpv6Type),
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("Packet cannot be translated as part of NAT64/46")]
+pub struct ImpossibleTranslation;
+
 #[cfg(test)]
 mod tests {
     use super::*;

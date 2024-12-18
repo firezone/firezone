@@ -1,8 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use etherparse::{
     Icmpv6Header, IpFragOffset, IpNumber, Ipv4Dscp, Ipv4Ecn, Ipv4Header, Ipv4Options, Ipv6Header,
 };
 use std::{io::Cursor, net::Ipv4Addr};
+
+use crate::ImpossibleTranslation;
 
 /// Performs IPv6 -> IPv4 NAT on the packet in `buf` to the given src & dst IP.
 ///
@@ -150,8 +152,7 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv4Addr, dst: Ipv4Addr) -> Resul
         let icmpv6_header_dbg = tracing::event_enabled!(tracing::Level::TRACE)
             .then(|| tracing::field::debug(icmpv6_header.clone()));
 
-        let icmpv4_header =
-            translate_icmpv6_header(icmpv6_header).context("Untranslatable ICMPv6 header")?;
+        let icmpv4_header = translate_icmpv6_header(icmpv6_header).ok_or(ImpossibleTranslation)?;
         let icmpv4_header_length = icmpv4_header.header_len();
 
         tracing::trace!(from = icmpv6_header_dbg, to = ?icmpv4_header, "Performed ICMP-NAT64");
