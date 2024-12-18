@@ -53,7 +53,7 @@ pub const MAX_DATAGRAM_PAYLOAD: usize =
 /// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
 const WG_OVERHEAD: usize = 32;
 /// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
-pub const NAT46_OVERHEAD: usize = 20;
+pub(crate) const NAT46_OVERHEAD: usize = 20;
 /// TURN's data channels have a 4 byte overhead.
 const DATA_CHANNEL_OVERHEAD: usize = 4;
 
