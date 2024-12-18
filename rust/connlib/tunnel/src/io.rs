@@ -6,7 +6,7 @@ use firezone_logging::{telemetry_event, telemetry_span};
 use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
 use gso_queue::GsoQueue;
-use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
+use ip_packet::{IpPacket, MAX_FZ_PAYLOAD};
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::VecDeque,
@@ -315,8 +315,8 @@ impl Io {
 
 fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     let len = d.packet.len();
-    if len > MAX_DATAGRAM_PAYLOAD {
-        telemetry_event!(from = %d.from, %len, "Dropping too large datagram (max allowed: {MAX_DATAGRAM_PAYLOAD} bytes)");
+    if len > MAX_FZ_PAYLOAD {
+        telemetry_event!(from = %d.from, %len, "Dropping too large datagram (max allowed: {MAX_FZ_PAYLOAD} bytes)");
 
         return false;
     }

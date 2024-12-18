@@ -47,8 +47,18 @@ pub const MAX_IP_PAYLOAD: usize = MAX_IP_SIZE - etherparse::Ipv4Header::MAX_LEN;
 /// The maximum payload a UDP packet can have.
 pub const MAX_UPD_PAYLOAD: usize = MAX_IP_PAYLOAD - etherparse::UdpHeader::LEN;
 
-/// The maximum payload of a UDP packet that carries an encrypted IP packet.
-pub const MAX_DATAGRAM_PAYLOAD: usize =
+/// The maximum size of the payload that Firezone will send between nodes.
+///
+/// - The TUN device MTU is constrained to 1280 ([`PACKET_SIZE`]).
+/// - WireGuard adds an overhoad of 32 bytes ([`WG_OVERHEAD`]).
+/// - In case NAT46 comes into effect, the size may increase by 20 ([`NAT46_OVERHEAD`]).
+/// - In case the connection is relayed, a 4 byte overhead is added ([`DATA_CHANNEL_OVERHEAD`]).
+///
+/// There is only a single scenario within which all of these apply at once:
+/// A client receiving a relayed IPv6 packet from a Gateway from an IPv4-only DNS resource where the sender (i.e. the resource) maxed out the MTU (1280).
+/// In that case, the Gateway needs to translate the packet to IPv6, thus increasing the header size by 20 bytes.
+/// WireGuard adds its fixed 32-byte overhead and the relayed connections adds its 4 byte overhead.
+pub const MAX_FZ_PAYLOAD: usize =
     MAX_IP_SIZE + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
 /// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
 const WG_OVERHEAD: usize = 32;
