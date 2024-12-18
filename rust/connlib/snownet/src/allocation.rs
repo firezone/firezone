@@ -1620,8 +1620,8 @@ mod tests {
         let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
         channel_bindings.set_confirmed(channel, start + Duration::from_secs(1));
 
-        let mut packet = [&[0u8; 4] as &[u8], b"foobar"].concat();
-        crate::channel_data::encode_header_to_slice(&mut packet, channel, 0);
+        let mut packet = channel_data_packet_buffer(b"foobar");
+        crate::channel_data::encode_header_to_slice(&mut packet[..4], channel, 6);
         let (peer, payload) = channel_bindings
             .try_decode(&packet, start + Duration::from_secs(2))
             .unwrap();
