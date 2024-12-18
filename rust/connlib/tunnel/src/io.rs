@@ -204,7 +204,7 @@ impl Io {
         self.outbound_packet_buffer.push_back(packet);
     }
 
-    pub fn rebind_sockets(&mut self) {
+    pub fn reset(&mut self) {
         self.sockets.rebind(self.udp_socket_factory.as_ref());
         self.gso_queue.clear();
     }
