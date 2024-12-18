@@ -261,7 +261,17 @@ pub(crate) fn run(
                             1
                         }
                         Ok(Err(error)) => {
-                            tracing::error!(error = std_dyn_err(&error), "run_controller returned an error");
+                            // Not all errors need to be logged on ERROR level.
+                            #[expect(clippy::wildcard_enum_match_arm, reason = "Matching all variants would be too verbose.")]
+                            match &error {
+                                Error::IpcNotFound => {
+                                    tracing::debug!("Failed to connect to IPC service: pipe / unix-socket not found");
+                                },
+                                error => {
+                                    tracing::error!(error = std_dyn_err(error), "Failed to start controller");
+                                }
+                            }
+
                             if let Err(e) = errors::show_error_dialog(error.user_friendly_msg()) {
                                 tracing::error!(error = anyhow_dyn_err(&e), "Failed to show error dialog");
                             }
