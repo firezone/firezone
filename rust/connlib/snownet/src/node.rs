@@ -1327,43 +1327,6 @@ where
     }
 }
 
-/// Wraps the message as a channel data message via the relay, iff:
-///
-/// - `relay` is in fact a relay
-/// - We have an allocation on the relay
-/// - There is a channel bound to the provided peer
-fn encode_as_channel_data<RId>(
-    relay: RId,
-    dest: SocketAddr,
-    contents: &[u8],
-    allocations: &mut BTreeMap<RId, Allocation>,
-    now: Instant,
-) -> Result<Transmit<'static>, EncodeError>
-where
-    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug,
-{
-    let allocation = allocations
-        .get_mut(&relay)
-        .ok_or(EncodeError::NoAllocation)?;
-
-    let mut buffer = channel_data_packet_buffer(contents);
-    let encode_ok = allocation
-        .encode_channel_data_header(dest, &mut buffer, now)
-        .ok_or(EncodeError::NoChannel)?;
-
-    Ok(Transmit {
-        src: None,
-        dst: encode_ok.socket,
-        payload: Cow::Owned(buffer),
-    })
-}
-
-#[derive(Debug)]
-enum EncodeError {
-    NoAllocation,
-    NoChannel,
-}
-
 fn add_local_candidate<TId>(
     id: TId,
     agent: &mut IceAgent,
@@ -2186,7 +2149,16 @@ where
             payload: Cow::Owned(message.into()),
         },
         PeerSocket::Relay { relay, dest: peer } => {
-            encode_as_channel_data(relay, peer, message, allocations, now).ok()?
+            let allocation = allocations.get_mut(&relay)?;
+
+            let mut buffer = channel_data_packet_buffer(message);
+            let encode_ok = allocation.encode_channel_data_header(peer, &mut buffer, now)?;
+
+            Transmit {
+                src: None,
+                dst: encode_ok.socket,
+                payload: Cow::Owned(buffer),
+            }
         }
     };
 
