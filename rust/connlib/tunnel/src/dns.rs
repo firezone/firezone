@@ -268,10 +268,6 @@ impl StubResolver {
         Some(domain.clone())
     }
 
-    fn knows_resource(&self, resource: &ResourceId) -> bool {
-        self.dns_resources.values().contains(resource)
-    }
-
     /// Processes the incoming DNS query.
     ///
     /// Any errors will result in an immediate `SERVFAIL` response.
@@ -323,9 +319,6 @@ impl StubResolver {
         let maybe_resource = self.match_resource_linear(&domain);
 
         let resource_records = match (qtype, maybe_resource) {
-            (_, Some(resource)) if !self.knows_resource(&resource) => {
-                return Ok(ResolveStrategy::Recurse)
-            }
             (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
             (Rtype::AAAA, Some(resource)) => {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)
