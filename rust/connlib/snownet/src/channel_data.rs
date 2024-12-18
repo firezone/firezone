@@ -1,4 +1,4 @@
-use bytes::{BufMut, BytesMut};
+use bytes::BufMut;
 use std::io;
 
 const HEADER_LEN: usize = 4;
@@ -36,14 +36,6 @@ pub fn decode(data: &[u8]) -> Result<(u16, &[u8]), io::Error> {
     Ok((channel_number, &payload[..length]))
 }
 
-pub fn encode(channel: u16, data: &[u8]) -> Vec<u8> {
-    debug_assert!(channel > 0x400);
-    debug_assert!(channel < 0x7FFF);
-    debug_assert!(data.len() <= u16::MAX as usize);
-
-    to_bytes(channel, data.len() as u16, data)
-}
-
 /// Encode the channel data header (number + length) to the given slice.
 ///
 /// Returns the total length of the packet (i.e. the encoded header + data).
@@ -58,14 +50,4 @@ pub fn encode_header_to_slice(mut slice: &mut [u8], channel: u16, payload_length
     slice.put_u16(payload_length as u16);
 
     HEADER_LEN + payload_length
-}
-
-fn to_bytes(channel: u16, len: u16, payload: &[u8]) -> Vec<u8> {
-    let mut message = BytesMut::with_capacity(HEADER_LEN + (len as usize));
-
-    message.put_u16(channel);
-    message.put_u16(len);
-    message.put_slice(payload);
-
-    message.freeze().into()
 }

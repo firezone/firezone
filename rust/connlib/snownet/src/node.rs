@@ -2,7 +2,7 @@ use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::candidate_set::CandidateSet;
 use crate::index::IndexLfsr;
 use crate::stats::{ConnectionStats, NodeStats};
-use crate::utils::earliest;
+use crate::utils::{channel_data_packet_buffer, earliest};
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
@@ -485,18 +485,23 @@ where
                 buffer,
             })),
             PeerSocket::Relay { relay, dest: peer } => {
-                let Some(allocation) = self.allocations.get(&relay) else {
+                let Some(allocation) = self.allocations.get_mut(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let Some(enc_packet) =
-                    allocation.encode_to_encrypted_packet(peer, buffer, packet_end, now)
+                let Some(encode_ok) =
+                    allocation.encode_channel_data_header(peer, &mut buffer[..packet_end], now)
                 else {
-                    tracing::warn!(%peer, "No channel");
                     return Ok(None);
                 };
 
-                Ok(Some(enc_packet))
+                Ok(Some(EncryptedPacket {
+                    src: None,
+                    dst: encode_ok.socket,
+                    packet_start: 0,
+                    packet_len: packet_end,
+                    buffer,
+                }))
             }
         }
     }
@@ -1321,37 +1326,6 @@ where
     }
 }
 
-/// Wraps the message as a channel data message via the relay, iff:
-///
-/// - `relay` is in fact a relay
-/// - We have an allocation on the relay
-/// - There is a channel bound to the provided peer
-fn encode_as_channel_data<RId>(
-    relay: RId,
-    dest: SocketAddr,
-    contents: &[u8],
-    allocations: &mut BTreeMap<RId, Allocation>,
-    now: Instant,
-) -> Result<Transmit<'static>, EncodeError>
-where
-    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug,
-{
-    let allocation = allocations
-        .get_mut(&relay)
-        .ok_or(EncodeError::NoAllocation)?;
-    let transmit = allocation
-        .encode_to_owned_transmit(dest, contents, now)
-        .ok_or(EncodeError::NoChannel)?;
-
-    Ok(transmit)
-}
-
-#[derive(Debug)]
-enum EncodeError {
-    NoAllocation,
-    NoChannel,
-}
-
 fn add_local_candidate<TId>(
     id: TId,
     agent: &mut IceAgent,
@@ -1956,7 +1930,7 @@ where
         while let Some(transmit) = self.agent.poll_transmit() {
             let source = transmit.source;
             let dst = transmit.destination;
-            let packet = transmit.contents;
+            let stun_packet = transmit.contents;
 
             // Check if `str0m` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
             let allocation = allocations
@@ -1964,27 +1938,35 @@ where
                 .find(|(_, allocation)| allocation.has_socket(source));
 
             let Some((relay, allocation)) = allocation else {
-                self.stats.stun_bytes_to_peer_direct += packet.len();
+                self.stats.stun_bytes_to_peer_direct += stun_packet.len();
 
                 // `source` did not match any of our allocated sockets, must be a local one then!
                 transmits.push_back(Transmit {
                     src: Some(source),
                     dst,
-                    payload: Cow::Owned(packet.into()),
+                    payload: Cow::Owned(stun_packet.into()),
                 });
                 continue;
             };
 
+            let mut data_channel_packet = channel_data_packet_buffer(&stun_packet);
+
             // Payload should be sent from a "remote socket", let's wrap it in a channel data message!
-            let Some(channel_data) = allocation.encode_to_owned_transmit(dst, &packet, now) else {
+            let Some(encode_ok) =
+                allocation.encode_channel_data_header(dst, &mut data_channel_packet, now)
+            else {
                 // Unlikely edge-case, drop the packet and continue.
                 tracing::trace!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
                 continue;
             };
 
-            self.stats.stun_bytes_to_peer_relayed += channel_data.payload.len();
+            self.stats.stun_bytes_to_peer_relayed += data_channel_packet.len();
 
-            transmits.push_back(channel_data);
+            transmits.push_back(Transmit {
+                src: None,
+                dst: encode_ok.socket,
+                payload: Cow::Owned(data_channel_packet),
+            });
         }
     }
 
@@ -2166,7 +2148,16 @@ where
             payload: Cow::Owned(message.into()),
         },
         PeerSocket::Relay { relay, dest: peer } => {
-            encode_as_channel_data(relay, peer, message, allocations, now).ok()?
+            let allocation = allocations.get_mut(&relay)?;
+
+            let mut buffer = channel_data_packet_buffer(message);
+            let encode_ok = allocation.encode_channel_data_header(peer, &mut buffer, now)?;
+
+            Transmit {
+                src: None,
+                dst: encode_ok.socket,
+                payload: Cow::Owned(buffer),
+            }
         }
     };
 
