@@ -582,10 +582,14 @@ impl ClientState {
                 }
             })
             .unwrap_or_else(|e| {
-                telemetry_event!(
-                    "Recursive {transport_kind} DNS query failed: {}",
-                    err_with_src(&e)
-                );
+                use io::ErrorKind::*;
+
+                if !matches!(e.kind(), HostUnreachable | NetworkUnreachable) {
+                    telemetry_event!(
+                        "Recursive {transport_kind} DNS query failed: {}",
+                        err_with_src(&e)
+                    );
+                }
 
                 dns::servfail(response.query.for_slice_ref())
             });
