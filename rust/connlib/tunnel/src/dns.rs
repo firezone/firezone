@@ -99,6 +99,15 @@ pub(crate) enum Transport {
     },
 }
 
+impl Transport {
+    pub fn kind_str(&self) -> &str {
+        match self {
+            Transport::Udp { .. } => "UDP",
+            Transport::Tcp { .. } => "TCP",
+        }
+    }
+}
+
 /// Tells the Client how to reply to a single DNS query
 #[derive(Debug)]
 pub(crate) enum ResolveStrategy {
