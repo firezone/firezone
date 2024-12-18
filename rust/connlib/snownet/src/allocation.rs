@@ -1788,7 +1788,7 @@ mod tests {
     }
 
     #[test]
-    fn does_not_relay_to_with_unbound_channel() {
+    fn does_relay_to_with_bound_channel() {
         let mut allocation = Allocation::for_test_ip4(Instant::now())
             .with_binding_response(PEER1)
             .with_allocate_response(&[RELAY_ADDR_IP4]);
@@ -1810,7 +1810,7 @@ mod tests {
     }
 
     #[test]
-    fn does_relay_to_with_bound_channel() {
+    fn does_not_relay_to_with_unbound_channel() {
         let mut allocation = Allocation::for_test_ip4(Instant::now())
             .with_binding_response(PEER1)
             .with_allocate_response(&[RELAY_ADDR_IP4]);
