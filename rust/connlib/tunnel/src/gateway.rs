@@ -98,7 +98,7 @@ impl GatewayState {
 
         let packet = peer
             .translate_inbound(packet, now)
-            .context("Failed to translate packet")?;
+            .context("Failed to translate inbound packet")?;
 
         let Some(encrypted_packet) = self
             .node
@@ -156,7 +156,7 @@ impl GatewayState {
 
         let packet = peer
             .translate_outbound(packet, now)
-            .context("Failed to translate packet")?;
+            .context("Failed to translate outbound packet")?;
 
         Ok(Some(packet))
     }
