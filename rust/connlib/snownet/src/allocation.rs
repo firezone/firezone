@@ -2,7 +2,6 @@ use crate::{
     backoff::{self, ExponentialBackoff},
     node::{SessionId, Transmit},
     utils::earliest,
-    EncryptedPacket,
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
@@ -11,7 +10,6 @@ use hex_display::HexDisplayExt as _;
 use rand::random;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use std::{
-    borrow::Cow,
     collections::{BTreeMap, VecDeque},
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
@@ -763,40 +761,23 @@ impl Allocation {
         );
     }
 
-    pub fn encode_to_encrypted_packet(
+    pub fn encode_channel_data_header(
         &self,
         peer: SocketAddr,
-        mut buffer: lockfree_object_pool::SpinLockOwnedReusable<Vec<u8>>,
-        buffer_len: usize,
+        buffer: &mut [u8],
         now: Instant,
-    ) -> Option<EncryptedPacket> {
-        let packet_len = buffer_len - 4;
+    ) -> Option<EncodeOk> {
+        let payload_length = buffer.len() - 4;
 
         let channel_number = self.channel_bindings.connected_channel_to_peer(peer, now)?;
-        crate::channel_data::encode_header_to_slice(&mut buffer[..4], channel_number, packet_len);
+        crate::channel_data::encode_header_to_slice(
+            &mut buffer[..4],
+            channel_number,
+            payload_length,
+        );
 
-        Some(EncryptedPacket {
-            src: None,
-            dst: self.active_socket?,
-            packet_start: 0,
-            packet_len: buffer_len,
-            buffer,
-        })
-    }
-
-    pub fn encode_to_owned_transmit(
-        &mut self,
-        peer: SocketAddr,
-        packet: &[u8],
-        now: Instant,
-    ) -> Option<Transmit<'static>> {
-        let channel_number = self.channel_bindings.connected_channel_to_peer(peer, now)?;
-        let channel_data = crate::channel_data::encode(channel_number, packet);
-
-        Some(Transmit {
-            src: None,
-            dst: self.active_socket?,
-            payload: Cow::Owned(channel_data),
+        Some(EncodeOk {
+            socket: self.active_socket?,
         })
     }
 
@@ -1081,6 +1062,10 @@ impl Allocation {
         )
         .is_ok()
     }
+}
+
+pub struct EncodeOk {
+    pub socket: SocketAddr,
 }
 
 fn authenticate(message: Message<Attribute>, credentials: &Credentials) -> Message<Attribute> {
@@ -1511,6 +1496,8 @@ fn display_attr(attr: &Attribute) -> String {
 
 #[cfg(test)]
 mod tests {
+    use crate::utils::channel_data_packet_buffer;
+
     use super::*;
     use std::{
         iter,
@@ -1624,7 +1611,8 @@ mod tests {
         let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
         channel_bindings.set_confirmed(channel, start + Duration::from_secs(1));
 
-        let packet = crate::channel_data::encode(channel, b"foobar");
+        let mut packet = [&[0u8; 4] as &[u8], b"foobar"].concat();
+        crate::channel_data::encode_header_to_slice(&mut packet, channel, 0);
         let (peer, payload) = channel_bindings
             .try_decode(&packet, start + Duration::from_secs(2))
             .unwrap();
@@ -1641,7 +1629,8 @@ mod tests {
         let channel = channel_bindings.new_channel_to_peer(PEER1, start).unwrap();
         channel_bindings.set_confirmed(channel, start + Duration::from_secs(1));
 
-        let packet = crate::channel_data::encode(channel, b"foobar");
+        let mut packet = channel_data_packet_buffer(b"foobar");
+        crate::channel_data::encode_header_to_slice(&mut packet[..4], channel, 6);
         channel_bindings
             .try_decode(&packet, start + Duration::from_secs(2))
             .unwrap();
@@ -1800,13 +1789,12 @@ mod tests {
             Instant::now(),
         );
 
-        let transmit = allocation
-            .encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now())
+        let mut buffer = channel_data_packet_buffer(b"foobar");
+        let encode_ok = allocation
+            .encode_channel_data_header(PEER2_IP4, &mut buffer, Instant::now())
             .unwrap();
 
-        assert_eq!(&transmit.payload[4..], b"foobar");
-        assert_eq!(transmit.src, None);
-        assert_eq!(transmit.dst, RELAY_V4.into());
+        assert_eq!(encode_ok.socket, RELAY_V4.into());
     }
 
     #[test]
@@ -1816,9 +1804,11 @@ mod tests {
             .with_allocate_response(&[RELAY_ADDR_IP4]);
         allocation.bind_channel(PEER2_IP4, Instant::now());
 
-        let message = allocation.encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now());
+        let mut buffer = channel_data_packet_buffer(b"foobar");
+        let encode_ok =
+            allocation.encode_channel_data_header(PEER2_IP4, &mut buffer, Instant::now());
 
-        assert!(message.is_none())
+        assert!(encode_ok.is_none())
     }
 
     #[test]
@@ -2105,7 +2095,8 @@ mod tests {
             Instant::now(),
         );
 
-        let msg = allocation.encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now());
+        let mut packet = channel_data_packet_buffer(b"foobar");
+        let msg = allocation.encode_channel_data_header(PEER2_IP4, &mut packet, Instant::now());
         assert!(msg.is_some(), "expect to have a channel to peer");
 
         allocation.refresh_with_same_credentials();
@@ -2113,7 +2104,8 @@ mod tests {
         let refresh = allocation.next_message().unwrap();
         allocation.handle_test_input_ip4(&allocation_mismatch(&refresh), Instant::now());
 
-        let msg = allocation.encode_to_owned_transmit(PEER2_IP4, b"foobar", Instant::now());
+        let mut packet = channel_data_packet_buffer(b"foobar");
+        let msg = allocation.encode_channel_data_header(PEER2_IP4, &mut packet, Instant::now());
         assert!(msg.is_none(), "expect to no longer have a channel to peer");
     }
 
