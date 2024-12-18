@@ -13,6 +13,7 @@ import NetworkExtension
 
 enum TunnelManagerError: Error {
   case cannotSaveIfMissing
+  case decodeIPCDataFailed
 }
 
 public enum TunnelManagerKeys {
@@ -289,25 +290,20 @@ public class TunnelManager {
     }
   }
 
-  func clearLogs() async {
-    return await withCheckedContinuation { continuation in
+  func clearLogs() async throws {
+    return try await withCheckedThrowingContinuation { continuation in
       do {
         try session().sendProviderMessage(
           encoder.encode(TunnelMessage.clearLogs)
-        ) { _ in
-
-          continuation.resume()
-        }
+        ) { _ in continuation.resume() }
       } catch {
-        Log.app.error("Error: \(#function): \(error)")
-
-        continuation.resume()
+        continuation.resume(throwing: error)
       }
     }
   }
 
-  func getLogFolderSize() async -> Int64? {
-    return await withCheckedContinuation { continuation in
+  func getLogFolderSize() async throws -> Int64 {
+    return try await withCheckedThrowingContinuation { continuation in
       do {
         try session().sendProviderMessage(
           encoder.encode(TunnelMessage.getLogFolderSize)
@@ -315,7 +311,8 @@ public class TunnelManager {
 
           guard let data = data
           else {
-            continuation.resume(returning: nil)
+            continuation
+              .resume(throwing: TunnelManagerError.decodeIPCDataFailed)
 
             return
           }
@@ -325,9 +322,7 @@ public class TunnelManager {
           }
         }
       } catch {
-        Log.app.error("Error: \(#function): \(error)")
-
-        continuation.resume(returning: nil)
+        continuation.resume(throwing: error)
       }
     }
   }

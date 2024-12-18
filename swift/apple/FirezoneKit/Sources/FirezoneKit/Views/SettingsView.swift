@@ -63,38 +63,38 @@ public final class SettingsViewModel: ObservableObject {
   // Unfortunately the IPC method doesn't work on iOS because the tunnel process
   // is not started on demand, so the IPC calls hang. Thus, we use separate code
   // paths for iOS and macOS.
-  func calculateLogDirSize() async -> String? {
+  func calculateLogDirSize() async -> String {
     Log.app.log("\(#function)")
 
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
       Log.app.error("\(#function): Log folder is unavailable")
-      return nil
+
+      return "Unknown"
     }
 
     let logFolderSize = await Log.size(of: logFilesFolderURL)
 
+    do {
 #if os(macOS)
-    let providerLogFolderSize = await store.tunnelManager.getLogFolderSize()
-
-    guard let providerLogFolderSize
-    else {
-      Log.app.error("Couldn't fetch provider log folder size")
-
-      return nil
-    }
-
-    let totalSize = logFolderSize + providerLogFolderSize
+      let providerLogFolderSize = try await store.tunnelManager.getLogFolderSize()
+      let totalSize = logFolderSize + providerLogFolderSize
 #else
-    let totalSize = logFolderSize
+      let totalSize = logFolderSize
 #endif
 
-    let byteCountFormatter = ByteCountFormatter()
-    byteCountFormatter.countStyle = .file
-    byteCountFormatter.allowsNonnumericFormatting = false
-    byteCountFormatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB, .usePB]
-    return byteCountFormatter.string(fromByteCount: Int64(totalSize))
-  }
+      let byteCountFormatter = ByteCountFormatter()
+      byteCountFormatter.countStyle = .file
+      byteCountFormatter.allowsNonnumericFormatting = false
+      byteCountFormatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB, .usePB]
 
+      return byteCountFormatter.string(fromByteCount: Int64(totalSize))
+
+    } catch {
+      Log.app.error("\(#function): \(error)")
+
+      return "Unknown"
+    }
+  }
 
   // On iOS, all the logs are stored in one directory.
   // On macOS, we need to clear logs from the app process, then call over IPC
@@ -105,7 +105,7 @@ public final class SettingsViewModel: ObservableObject {
     try Log.clear(in: SharedAccess.logFolderURL)
 
 #if os(macOS)
-    await store.tunnelManager.clearLogs()
+    try await store.tunnelManager.clearLogs()
 #endif
   }
 }
@@ -614,7 +614,7 @@ public struct SettingsView: View {
     self.calculateLogSizeTask = Task.detached(priority: .userInitiated) {
       let calculatedLogsSize = await model.calculateLogDirSize()
       await MainActor.run {
-        self.calculatedLogsSize = calculatedLogsSize ?? "Unknown"
+        self.calculatedLogsSize = calculatedLogsSize
         self.isCalculatingLogsSize = false
         self.calculateLogSizeTask = nil
       }

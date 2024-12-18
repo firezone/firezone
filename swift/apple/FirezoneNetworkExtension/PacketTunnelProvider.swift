@@ -124,6 +124,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler()
   }
 
+  // TODO: It would be helpful to be able to encapsulate Errors here. To do that
+  // we need to update TunnelMessage to encode/decode Result to and from Data.
   override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
     guard let tunnelMessage =  try? PropertyListDecoder().decode(TunnelMessage.self, from: message) else { return }
 
