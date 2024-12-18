@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::http_health_check;
@@ -550,11 +550,10 @@ where
 
             // Priority 5: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
-                Some(Poll::Ready(Err(e))) => {
-                    return Poll::Ready(Err(anyhow!("Portal connection failed: {e}")));
-                }
-                Some(Poll::Ready(Ok(event))) => {
+                Some(Poll::Ready(result)) => {
+                    let event = result.context("Portal connection failed")?;
                     self.handle_portal_event(event);
+
                     continue;
                 }
                 Some(Poll::Pending) | None => {}
