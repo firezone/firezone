@@ -49,7 +49,7 @@ pub const MAX_UPD_PAYLOAD: usize = MAX_IP_PAYLOAD - etherparse::UdpHeader::LEN;
 
 /// The maximum size of the payload that Firezone will send between nodes.
 ///
-/// - The TUN device MTU is constrained to 1280 ([`PACKET_SIZE`]).
+/// - The TUN device MTU is constrained to 1280 ([`MAX_IP_SIZE`]).
 /// - WireGuard adds an overhoad of 32 bytes ([`WG_OVERHEAD`]).
 /// - In case NAT46 comes into effect, the size may increase by 20 ([`NAT46_OVERHEAD`]).
 /// - In case the connection is relayed, a 4 byte overhead is added ([`DATA_CHANNEL_OVERHEAD`]).
