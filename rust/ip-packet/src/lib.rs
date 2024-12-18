@@ -39,6 +39,14 @@ use udp_header_slice_mut::UdpHeaderSliceMut;
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
+/// The maximum payload an IP packet can have.
+///
+/// IPv6 headers are always a fixed size whereas IPv4 headers can vary.
+/// The max length of an IPv4 header is > the fixed length of an IPv6 header.
+pub const MAX_IP_PAYLOAD: usize = MAX_IP_SIZE - etherparse::Ipv4Header::MAX_LEN;
+/// The maximum payload a UDP packet can have.
+pub const MAX_UPD_PAYLOAD: usize = MAX_IP_PAYLOAD - etherparse::UdpHeader::LEN;
+
 /// The maximum payload of a UDP packet that carries an encrypted IP packet.
 pub const MAX_DATAGRAM_PAYLOAD: usize =
     MAX_IP_SIZE + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
