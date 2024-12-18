@@ -38,10 +38,10 @@ use tcp_header_slice_mut::TcpHeaderSliceMut;
 use udp_header_slice_mut::UdpHeaderSliceMut;
 
 /// The maximum size of an IP packet we can handle.
-pub const PACKET_SIZE: usize = 1280;
+pub const MAX_IP_SIZE: usize = 1280;
 /// The maximum payload of a UDP packet that carries an encrypted IP packet.
 pub const MAX_DATAGRAM_PAYLOAD: usize =
-    PACKET_SIZE + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
+    MAX_IP_SIZE + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
 /// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
 const WG_OVERHEAD: usize = 32;
 /// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
@@ -331,7 +331,7 @@ pub fn ipv6_translated(ip: Ipv6Addr) -> Option<Ipv4Addr> {
 
 impl IpPacket {
     pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
-        anyhow::ensure!(len <= PACKET_SIZE, "Packet too large (len: {len})");
+        anyhow::ensure!(len <= MAX_IP_SIZE, "Packet too large (len: {len})");
 
         Ok(match buf.inner[NAT46_OVERHEAD] >> 4 {
             4 => IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf, len)?),
