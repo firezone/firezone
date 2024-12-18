@@ -762,14 +762,23 @@ impl Allocation {
     }
 
     pub fn encode_channel_data_header(
-        &self,
+        &mut self,
         peer: SocketAddr,
         buffer: &mut [u8],
         now: Instant,
     ) -> Option<EncodeOk> {
+        let active_socket = self.active_socket?;
         let payload_length = buffer.len() - 4;
 
-        let channel_number = self.channel_bindings.connected_channel_to_peer(peer, now)?;
+        let channel_number = match self.channel_bindings.connected_channel_to_peer(peer, now) {
+            Some(cn) => cn,
+            None => {
+                tracing::debug!(%peer, %active_socket, "No channel to peer, binding new one");
+                self.bind_channel(peer, now);
+
+                return None;
+            }
+        };
         crate::channel_data::encode_header_to_slice(
             &mut buffer[..4],
             channel_number,
@@ -777,7 +786,7 @@ impl Allocation {
         );
 
         Some(EncodeOk {
-            socket: self.active_socket?,
+            socket: active_socket,
         })
     }
 

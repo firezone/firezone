@@ -485,14 +485,13 @@ where
                 buffer,
             })),
             PeerSocket::Relay { relay, dest: peer } => {
-                let Some(allocation) = self.allocations.get(&relay) else {
+                let Some(allocation) = self.allocations.get_mut(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
                 let Some(encode_ok) =
                     allocation.encode_channel_data_header(peer, &mut buffer[..packet_end], now)
                 else {
-                    tracing::warn!(%peer, "No channel");
                     return Ok(None);
                 };
 
