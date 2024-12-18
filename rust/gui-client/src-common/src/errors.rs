@@ -40,7 +40,6 @@ impl Error {
             Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
             Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),
             Error::Ipc(ipc::Error::NotFound(_)) => "Couldn't find Firezone IPC service. Is the service running?".to_string(),
-            Error::Ipc(ipc::Error::PermissionDenied) => "Permission denied for Firezone IPC service. This should only happen on dev systems.".to_string(),
             Error::Ipc(ipc::Error::Other(error)) => error.to_string(),
             Error::IpcClosed => "IPC connection closed".to_string(),
             Error::IpcRead => "IPC read failure".to_string(),
