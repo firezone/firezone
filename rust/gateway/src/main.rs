@@ -106,7 +106,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
 
     let (sender, receiver) = mpsc::channel::<Interface>(10);
 
-    let mut tun_device_manager = TunDeviceManager::new(ip_packet::PACKET_SIZE, cli.tun_threads)?;
+    let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, cli.tun_threads)?;
     let tun = tun_device_manager.make_tun()?;
     tunnel.set_tun(Box::new(tun));
 
