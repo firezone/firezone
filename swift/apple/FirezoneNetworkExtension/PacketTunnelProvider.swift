@@ -78,7 +78,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         try await adapter.start()
 
-        // Tell the system the tunnel is up, moving the tunnelManager status to
+        // Tell the system the tunnel is up, moving the tunnel manager status to
         // `connected`.
         completionHandler(nil)
       } catch {
