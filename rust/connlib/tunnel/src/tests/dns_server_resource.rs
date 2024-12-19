@@ -8,7 +8,7 @@ use domain::base::{
     iana::{Class, Rcode},
     Message, MessageBuilder, Record, RecordData, ToName, Ttl,
 };
-use ip_packet::{IpPacket, MAX_UPD_PAYLOAD};
+use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
 
 use super::dns_records::DnsRecords;
 
@@ -102,12 +102,12 @@ fn handle_dns_query(query: &Message<[u8]>, global_dns_records: &DnsRecords) -> M
 fn truncate_dns_response(message: Message<Vec<u8>>) -> Vec<u8> {
     let mut message_bytes = message.as_octets().to_vec();
 
-    if message_bytes.len() > MAX_UPD_PAYLOAD {
+    if message_bytes.len() > MAX_UDP_PAYLOAD {
         let mut new_message = message.clone();
         new_message.header_mut().set_tc(true);
 
         let message_truncation = match message.answer() {
-            Ok(answer) if answer.pos() <= MAX_UPD_PAYLOAD => answer.pos(),
+            Ok(answer) if answer.pos() <= MAX_UDP_PAYLOAD => answer.pos(),
             // This should be very unlikely or impossible.
             _ => message.question().pos(),
         };

@@ -21,7 +21,7 @@ use firezone_logging::{
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, UdpSlice, MAX_UPD_PAYLOAD};
+use ip_packet::{IpPacket, UdpSlice, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
@@ -1828,7 +1828,7 @@ fn maybe_mangle_dns_response_from_cidr_resource(
 
 fn truncate_dns_response(mut message: Message<Vec<u8>>) -> Vec<u8> {
     let message_length = message.as_octets().len();
-    if message_length <= MAX_UPD_PAYLOAD {
+    if message_length <= MAX_UDP_PAYLOAD {
         return message.into_octets();
     }
 
@@ -1837,7 +1837,7 @@ fn truncate_dns_response(mut message: Message<Vec<u8>>) -> Vec<u8> {
     message.header_mut().set_tc(true);
 
     let message_truncation = match message.answer() {
-        Ok(answer) if answer.pos() <= MAX_UPD_PAYLOAD => answer.pos(),
+        Ok(answer) if answer.pos() <= MAX_UDP_PAYLOAD => answer.pos(),
         // This should be very unlikely or impossible.
         _ => message.question().pos(),
     };

@@ -45,7 +45,7 @@ pub const MAX_IP_SIZE: usize = 1280;
 /// The max length of an IPv4 header is > the fixed length of an IPv6 header.
 pub const MAX_IP_PAYLOAD: usize = MAX_IP_SIZE - etherparse::Ipv4Header::MAX_LEN;
 /// The maximum payload a UDP packet can have.
-pub const MAX_UPD_PAYLOAD: usize = MAX_IP_PAYLOAD - etherparse::UdpHeader::LEN;
+pub const MAX_UDP_PAYLOAD: usize = MAX_IP_PAYLOAD - etherparse::UdpHeader::LEN;
 
 /// The maximum size of the payload that Firezone will send between nodes.
 ///
