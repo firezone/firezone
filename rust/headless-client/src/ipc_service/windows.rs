@@ -2,6 +2,7 @@ use crate::CliCommon;
 use anyhow::{bail, Context as _, Result};
 use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_logging::anyhow_dyn_err;
+use firezone_telemetry::Telemetry;
 use futures::future::{self, Either};
 use std::{
     ffi::{c_void, OsString},
