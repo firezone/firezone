@@ -14,7 +14,12 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries href={href} arches={arches} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="7551">
+          Fixes an issue where large DNS responses were incorrectly
+          discarded.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.0" date={new Date("2024-12-13")}>
         <ChangeItem pull="7210">
           Adds support for GSO (Generic Segmentation Offload), delivering
