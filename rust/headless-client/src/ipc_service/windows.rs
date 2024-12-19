@@ -2,6 +2,7 @@ use crate::CliCommon;
 use anyhow::{bail, Context as _, Result};
 use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_logging::anyhow_dyn_err;
+use firezone_telemetry::Telemetry;
 use futures::future::{self, Either};
 use std::{
     ffi::{c_void, OsString},
@@ -209,13 +210,23 @@ fn fallible_service_run(
         process_id: None,
     })?;
 
+    let mut telemetry = Telemetry::default();
+
     // Add new features in `service_run_async` if possible.
     // We don't want to bail out of `fallible_service_run` and forget to tell
     // Windows that we're shutting down.
-    let result = rt.block_on(service_run_async(&log_filter_reloader, shutdown_rx));
-    if let Err(error) = &result {
-        tracing::error!(error = anyhow_dyn_err(error));
-    }
+    let result = rt
+        .block_on(service_run_async(
+            &log_filter_reloader,
+            &mut telemetry,
+            shutdown_rx,
+        ))
+        .inspect(|_| rt.block_on(telemetry.stop()))
+        .inspect_err(|e| {
+            tracing::error!(error = anyhow_dyn_err(e), "IPC service failed");
+
+            rt.block_on(telemetry.stop_on_crash())
+        });
 
     // Drop the logging handle so it flushes the logs before we let Windows kill our process.
     // There is no obvious and elegant way to do this, since the logging and `ServiceState`
@@ -254,6 +265,7 @@ fn fallible_service_run(
 /// Logging must already be set up before calling this.
 async fn service_run_async(
     log_filter_reloader: &crate::LogFilterReloader,
+    telemetry: &mut Telemetry,
     mut shutdown_rx: mpsc::Receiver<()>,
 ) -> Result<()> {
     // Useless - Windows will never send us Ctrl+C when running as a service
@@ -262,7 +274,8 @@ async fn service_run_async(
     let listen_fut = pin!(super::ipc_listen(
         DnsControlMethod::Nrpt,
         log_filter_reloader,
-        &mut signals
+        &mut signals,
+        telemetry
     ));
     match future::select(listen_fut, pin!(shutdown_rx.recv())).await {
         Either::Left((Err(error), _)) => Err(error).context("`ipc_listen` threw an error"),
