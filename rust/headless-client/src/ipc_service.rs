@@ -101,7 +101,6 @@ pub enum ClientMsg {
         release: String,
         account_slug: Option<String>,
     },
-    StopTelemetry,
 }
 
 /// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
@@ -563,9 +562,6 @@ impl<'a> Handler<'a> {
                 if let Some(account_slug) = account_slug {
                     self.telemetry.set_account_slug(account_slug);
                 }
-            }
-            ClientMsg::StopTelemetry => {
-                self.telemetry.stop().await;
             }
         }
         Ok(())
