@@ -6,6 +6,7 @@
 
 import FirezoneKit
 import NetworkExtension
+import System
 import os
 
 enum PacketTunnelProviderError: Error {
@@ -15,6 +16,13 @@ enum PacketTunnelProviderError: Error {
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
+
+  enum LogExportState {
+    case inProgress(TunnelArchiveByteStream, LogCompressor)
+    case idle
+  }
+
+  private var logExportState: LogExportState = .idle
 
   override func startTunnel(
     options: [String: NSObject]?,
@@ -145,6 +153,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       clearLogs(completionHandler)
     case .getLogFolderSize:
       getLogFolderSize(completionHandler)
+    case .exportLogs:
+      guard let completionHandler
+      else {
+        Log.tunnel.error(
+          "\(#function): Need a completion handler to export logs."
+        )
+
+        return
+      }
+
+      exportLogs(completionHandler)
     }
   }
 
@@ -173,6 +192,44 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let data = withUnsafeBytes(of: size) { Data($0) }
 
       completionHandler?(data)
+    }
+  }
+
+  func exportLogs(_ chunkHandler: @escaping (Data?) -> Void) {
+
+    switch self.logExportState {
+
+    case .inProgress(let tunnelArchiveByteStream, _):
+      tunnelArchiveByteStream.ready(chunkHandler)
+
+    case .idle:
+      guard let logFolderURL = SharedAccess.logFolderURL,
+            let logFolderPath = FilePath(logFolderURL)
+      else {
+        Log.tunnel.error("\(#function): log folder not available")
+        chunkHandler(nil)
+
+        return
+      }
+
+      let byteStream = TunnelArchiveByteStream(
+        logger: Log.tunnel,
+        chunkHandler: chunkHandler,
+        completionHandler: { self.logExportState = .idle }
+      )
+
+      Task {
+        do {
+          let compressor = LogCompressor()
+          self.logExportState = .inProgress(byteStream, compressor)
+          try compressor.start(source: logFolderPath, to: byteStream)
+
+        } catch {
+          Log.tunnel.error("\(#function): \(error)")
+
+          chunkHandler(nil)
+        }
+      }
     }
   }
 }
