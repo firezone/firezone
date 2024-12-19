@@ -237,7 +237,7 @@ fn main() -> Result<()> {
         let mut hangup = signals::Hangup::new()?;
 
         let mut tun_device = TunDeviceManager::new(
-            ip_packet::PACKET_SIZE,
+            ip_packet::MAX_IP_SIZE,
             firezone_headless_client::NUM_TUN_THREADS,
         )?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();

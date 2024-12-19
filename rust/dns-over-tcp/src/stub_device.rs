@@ -47,7 +47,7 @@ impl smoltcp::phy::Device for InMemoryDevice {
     fn capabilities(&self) -> smoltcp::phy::DeviceCapabilities {
         let mut caps = smoltcp::phy::DeviceCapabilities::default();
         caps.medium = smoltcp::phy::Medium::Ip;
-        caps.max_transmission_unit = ip_packet::PACKET_SIZE;
+        caps.max_transmission_unit = ip_packet::MAX_IP_SIZE;
 
         caps
     }
@@ -62,7 +62,7 @@ impl smoltcp::phy::TxToken for SmolTxToken<'_> {
     where
         F: FnOnce(&mut [u8]) -> R,
     {
-        let max_len = ip_packet::PACKET_SIZE;
+        let max_len = ip_packet::MAX_IP_SIZE;
 
         if len > max_len {
             tracing::warn!("Packets larger than {max_len} are not supported; len={len}");

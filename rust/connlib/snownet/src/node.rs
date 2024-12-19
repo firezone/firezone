@@ -182,7 +182,7 @@ where
             connections: Default::default(),
             stats: Default::default(),
             buffer_pool: Arc::new(lockfree_object_pool::SpinLockObjectPool::new(
-                || vec![0; ip_packet::MAX_DATAGRAM_PAYLOAD],
+                || vec![0; ip_packet::MAX_FZ_PAYLOAD],
                 |v| v.fill(0),
             )),
         }
@@ -735,7 +735,7 @@ where
             wg_timer: DEFAULT_WG_TIMER,
             next_wg_timer_update: now,
             stats: Default::default(),
-            buffer: vec![0; ip_packet::MAX_DATAGRAM_PAYLOAD],
+            buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
             intent_sent_at,
             signalling_completed_at: now,
             remote_pub_key: remote,
