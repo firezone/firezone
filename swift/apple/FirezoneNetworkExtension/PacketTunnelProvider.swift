@@ -18,7 +18,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
 
   enum LogExportState {
-    case inProgress(FilePath, TunnelArchiveByteStream, LogCompressor)
+    case inProgress(TunnelArchiveByteStream, LogCompressor)
     case idle
   }
 
@@ -199,7 +199,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     switch self.logExportState {
 
-    case .inProgress(_, let tunnelArchiveByteStream, _):
+    case .inProgress(let tunnelArchiveByteStream, _):
       tunnelArchiveByteStream.ready(chunkHandler)
 
     case .idle:
@@ -221,11 +221,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       Task {
         do {
           let compressor = LogCompressor()
-          self.logExportState = .inProgress(
-            logFolderPath,
-            byteStream,
-            compressor
-          )
+          self.logExportState = .inProgress(byteStream, compressor)
           try compressor.start(source: logFolderPath, to: byteStream)
 
         } catch {
