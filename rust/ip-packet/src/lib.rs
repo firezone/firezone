@@ -38,14 +38,32 @@ use tcp_header_slice_mut::TcpHeaderSliceMut;
 use udp_header_slice_mut::UdpHeaderSliceMut;
 
 /// The maximum size of an IP packet we can handle.
-pub const PACKET_SIZE: usize = 1280;
-/// The maximum payload of a UDP packet that carries an encrypted IP packet.
-pub const MAX_DATAGRAM_PAYLOAD: usize =
-    PACKET_SIZE + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
+pub const MAX_IP_SIZE: usize = 1280;
+/// The maximum payload an IP packet can have.
+///
+/// IPv6 headers are always a fixed size whereas IPv4 headers can vary.
+/// The max length of an IPv4 header is > the fixed length of an IPv6 header.
+pub const MAX_IP_PAYLOAD: usize = MAX_IP_SIZE - etherparse::Ipv4Header::MAX_LEN;
+/// The maximum payload a UDP packet can have.
+pub const MAX_UDP_PAYLOAD: usize = MAX_IP_PAYLOAD - etherparse::UdpHeader::LEN;
+
+/// The maximum size of the payload that Firezone will send between nodes.
+///
+/// - The TUN device MTU is constrained to 1280 ([`MAX_IP_SIZE`]).
+/// - WireGuard adds an overhoad of 32 bytes ([`WG_OVERHEAD`]).
+/// - In case NAT46 comes into effect, the size may increase by 20 ([`NAT46_OVERHEAD`]).
+/// - In case the connection is relayed, a 4 byte overhead is added ([`DATA_CHANNEL_OVERHEAD`]).
+///
+/// There is only a single scenario within which all of these apply at once:
+/// A client receiving a relayed IPv6 packet from a Gateway from an IPv4-only DNS resource where the sender (i.e. the resource) maxed out the MTU (1280).
+/// In that case, the Gateway needs to translate the packet to IPv6, thus increasing the header size by 20 bytes.
+/// WireGuard adds its fixed 32-byte overhead and the relayed connections adds its 4 byte overhead.
+pub const MAX_FZ_PAYLOAD: usize =
+    MAX_IP_SIZE + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
 /// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
 const WG_OVERHEAD: usize = 32;
 /// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
-pub const NAT46_OVERHEAD: usize = 20;
+pub(crate) const NAT46_OVERHEAD: usize = 20;
 /// TURN's data channels have a 4 byte overhead.
 const DATA_CHANNEL_OVERHEAD: usize = 4;
 
@@ -331,7 +349,7 @@ pub fn ipv6_translated(ip: Ipv6Addr) -> Option<Ipv4Addr> {
 
 impl IpPacket {
     pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
-        anyhow::ensure!(len <= PACKET_SIZE, "Packet too large (len: {len})");
+        anyhow::ensure!(len <= MAX_IP_SIZE, "Packet too large (len: {len})");
 
         Ok(match buf.inner[NAT46_OVERHEAD] >> 4 {
             4 => IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf, len)?),
