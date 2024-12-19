@@ -6,6 +6,7 @@
 
 import FirezoneKit
 import NetworkExtension
+import System
 import os
 
 enum PacketTunnelProviderError: Error {
@@ -17,7 +18,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
 
   enum LogExportState {
-    case inProgress(URL, TunnelArchiveByteStream, LogCompressor)
+    case inProgress(FilePath, TunnelArchiveByteStream, LogCompressor)
     case idle
   }
 
@@ -202,7 +203,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       tunnelArchiveByteStream.ready(chunkHandler)
 
     case .idle:
-      guard let logFolderURL = SharedAccess.logFolderURL
+      guard let logFolderURL = SharedAccess.logFolderURL,
+            let logFolderPath = FilePath(logFolderURL)
       else {
         Log.tunnel.error("\(#function): log folder not available")
         chunkHandler(nil)
@@ -220,11 +222,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         do {
           let compressor = LogCompressor()
           self.logExportState = .inProgress(
-            logFolderURL,
+            logFolderPath,
             byteStream,
             compressor
           )
-          try compressor.start(source: logFolderURL, to: byteStream)
+          try compressor.start(source: logFolderPath, to: byteStream)
 
         } catch {
           Log.tunnel.error("\(#function): \(error)")

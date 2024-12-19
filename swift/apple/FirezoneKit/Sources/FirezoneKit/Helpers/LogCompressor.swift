@@ -24,101 +24,66 @@ import System
 public struct LogCompressor {
   enum CompressionError: Error {
     case unableToReadSourceDirectory
-    case unableToOpenWriteStream
-    case unableToOpenCompressionStream
-    case unableToOpenEncodeStream
-    case unableToDefineHeaderKeys
+    case unableToInitialize
   }
 
   public init() {}
 
   public func start(
-    source directory: URL,
-    to file: URL
+    source directory: FilePath,
+    to file: FilePath
   ) throws {
-    guard let path = FilePath(file),
-          let stream = ArchiveByteStream.fileStream(
-            path: path,
-            mode: .writeOnly,
-            options: [.create],
-            permissions: FilePermissions(rawValue: 0o644)
-          )
-    else {
-      throw CompressionError.unableToOpenWriteStream
-    }
+    let stream = ArchiveByteStream.fileStream(
+      path: file,
+      mode: .writeOnly,
+      options: [.create],
+      permissions: FilePermissions(rawValue: 0o644)
+    )
 
     try compress(source: directory, writeStream: stream)
   }
 
   public func start(
-    source directory: URL,
+    source path: FilePath,
     to byteStream: TunnelArchiveByteStream
   ) throws {
-    guard let stream = ArchiveByteStream.customStream(
-      instance: byteStream
-    )
-    else {
-      throw CompressionError.unableToOpenWriteStream
-    }
+    let stream = ArchiveByteStream.customStream(instance: byteStream)
 
-    try compress(source: directory, writeStream: stream)
+    try compress(source: path, writeStream: stream)
   }
 
   // Compress to a given writeStream which was opened either from a FilePath or
   // TunnelArchiveByteStream
   private func compress(
-    source directory: URL,
-    writeStream: ArchiveByteStream
+    source path: FilePath,
+    writeStream: ArchiveByteStream?
   ) throws {
-    let compressionStream = try openCompressionStream(writeStream)
-    let encodeStream = try openEncodeStream(compressionStream)
-    let keySet = try defineHeaderKeys()
+    let headerKeys = "TYP,PAT,LNK,DEV,DAT,UID,GID,MOD,FLG,MTM,BTM,CTM"
 
-    guard let sourcePath = FilePath(directory)
+    guard let writeStream = writeStream,
+          let compressionStream =
+            ArchiveByteStream.compressionStream(
+              using: .lzfse,
+              writingTo: writeStream
+            ),
+          let encodeStream =
+            ArchiveStream.encodeStream(
+              writingTo: compressionStream
+            ),
+          let keySet = ArchiveHeader.FieldKeySet(headerKeys)
     else {
-      throw CompressionError.unableToReadSourceDirectory
+      throw CompressionError.unableToInitialize
+    }
+
+    defer {
+      try? encodeStream.close()
+      try? compressionStream.close()
+      try? writeStream.close()
     }
 
     try encodeStream.writeDirectoryContents(
-      archiveFrom: sourcePath,
+      archiveFrom: path,
       keySet: keySet
     )
-
-    try? encodeStream.close()
-    try? compressionStream.close()
-    try? writeStream.close()
-  }
-
-  private func openCompressionStream(_ writeStream: ArchiveByteStream) throws -> ArchiveByteStream {
-    guard let stream = ArchiveByteStream.compressionStream(
-      using: .lzfse,
-      writingTo: writeStream
-    )
-    else {
-      throw CompressionError.unableToOpenCompressionStream
-    }
-
-    return stream
-  }
-
-  private func openEncodeStream(
-    _ compressionStream: ArchiveByteStream
-  ) throws -> ArchiveStream {
-    guard let stream = ArchiveStream.encodeStream(writingTo: compressionStream)
-    else {
-      throw CompressionError.unableToOpenEncodeStream
-    }
-
-    return stream
-  }
-
-  private func defineHeaderKeys() throws -> ArchiveHeader.FieldKeySet {
-    let keys = "TYP,PAT,LNK,DEV,DAT,UID,GID,MOD,FLG,MTM,BTM,CTM"
-    guard let keySet = ArchiveHeader.FieldKeySet(keys)
-    else {
-      throw CompressionError.unableToDefineHeaderKeys
-    }
-
-    return keySet
   }
 }
