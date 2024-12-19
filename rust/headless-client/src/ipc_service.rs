@@ -181,12 +181,20 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
         .build()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
+    let mut telemetry = Telemetry::default();
 
     rt.block_on(ipc_listen(
         cli.common.dns_control,
         &log_filter_reloader,
         &mut signals,
+        &mut telemetry,
     ))
+    .inspect(|_| rt.block_on(telemetry.stop()))
+    .inspect_err(|e| {
+        tracing::error!(error = anyhow_dyn_err(e), "IPC service failed");
+
+        rt.block_on(telemetry.stop_on_crash())
+    })
 }
 
 #[cfg(not(debug_assertions))]
@@ -241,6 +249,7 @@ async fn ipc_listen(
     dns_control_method: DnsControlMethod,
     log_filter_reloader: &LogFilterReloader,
     signals: &mut signals::Terminate,
+    telemetry: &mut Telemetry,
 ) -> Result<()> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
@@ -248,7 +257,6 @@ async fn ipc_listen(
         .context("Failed to read / create device ID")?
         .id;
 
-    let mut telemetry = Telemetry::default();
     telemetry.set_firezone_id(firezone_id);
 
     let mut server = IpcServer::new(ServiceId::Prod).await?;
@@ -258,7 +266,7 @@ async fn ipc_listen(
             &mut server,
             &mut dns_controller,
             log_filter_reloader,
-            &mut telemetry,
+            telemetry,
         ));
         let Some(handler) = poll_fn(|cx| {
             if let Poll::Ready(()) = signals.poll_recv(cx) {

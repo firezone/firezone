@@ -1,6 +1,8 @@
 use super::CliCommon;
 use crate::signals;
 use anyhow::{bail, Result};
+use firezone_logging::anyhow_dyn_err;
+use firezone_telemetry::Telemetry;
 
 /// Cross-platform entry point for systemd / Windows services
 ///
@@ -15,12 +17,20 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
         .build()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
+    let mut telemetry = Telemetry::default();
 
     rt.block_on(super::ipc_listen(
         cli.dns_control,
         &log_filter_reloader,
         &mut signals,
+        &mut telemetry,
     ))
+    .inspect(|_| rt.block_on(telemetry.stop()))
+    .inspect_err(|e| {
+        tracing::error!(error = anyhow_dyn_err(e), "IPC service failed");
+
+        rt.block_on(telemetry.stop_on_crash())
+    })
 }
 
 /// Returns true if the IPC service can run properly
