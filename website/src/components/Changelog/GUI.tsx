@@ -19,6 +19,12 @@ export default function GUI({ title }: { title: string }) {
           Fixes an issue where large DNS responses were not incorrectly
           discarded.
         </ChangeItem>
+        {title == "Windows" && (
+          <ChangeItem pull="7556">
+            Disables URO/GRO to fix a rare issue with certain Ethernet cards
+            that prevented Firezone from working.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.4.0" date={new Date("2024-12-13")}>
         <ChangeItem pull="7210">
