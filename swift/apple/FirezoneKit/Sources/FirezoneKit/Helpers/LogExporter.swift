@@ -17,22 +17,16 @@ import System
 ///
 /// On iOS, the app process can compress the entire log directory itself, with no help from the tunnel process,
 /// thus avoiding IPC. In this case we write directly to the provided archiveURL.
-struct LogExporter {
+
+#if os(macOS)
+enum LogExporter {
   enum ExportError: Error {
-    case sourceDirectoryInvalid
-    case invalidArchiveURL
+    case invalidSourceDirectory
+    case invalidFilePath
     case invalidFileHandle
   }
 
-  private static let fileManager = FileManager.default
-
   static func export(to archiveURL: URL) async throws {
-    guard let logFolderURL = SharedAccess.logFolderURL
-    else {
-      throw ExportError.sourceDirectoryInvalid
-    }
-
-#if os(macOS)
     // 1. Create a temporary working directory to stage app and tunnel archives
     let sharedLogFolderURL = fileManager
       .temporaryDirectory
@@ -64,7 +58,6 @@ struct LogExporter {
             }
 
           } catch {
-            Log.app.error("\(#function): \(error)")
             try? fileHandle.close()
 
             continuation.resume(throwing: error)
@@ -78,19 +71,46 @@ struct LogExporter {
 
     // 4. Create log archive from app process
     let appLogURL = sharedLogFolderURL.appendingPathComponent("app.aar")
-    try LogCompressor().start(source: logFolderURL, to: appLogURL)
-#else
-    let sharedLogFolderURL = logFolderURL
-#endif
+    try LogCompressor().start(
+      source: toPath(sharedLogFolderURL),
+      to: toPath(appLogURL)
+    )
 
     // Remove existing archive if it exists
     try? fileManager.removeItem(at: archiveURL)
 
     // Write final log archive
-    try LogCompressor().start(source: sharedLogFolderURL, to: archiveURL)
+    try LogCompressor().start(
+      source: toPath(sharedLogFolderURL),
+      to: toPath(archiveURL)
+    )
   }
+}
+#endif
 
 #if os(iOS)
+enum LogExporter {
+  enum ExportError: Error {
+    case invalidSourceDirectory
+    case invalidFilePath
+  }
+
+  static func export(to archiveURL: URL) async throws {
+    guard let logFolderURL = SharedAccess.logFolderURL
+    else {
+      throw ExportError.invalidSourceDirectory
+    }
+
+    // Remove existing archive if it exists
+    try? fileManager.removeItem(at: archiveURL)
+
+    // Write final log archive
+    try LogCompressor().start(
+      source: toPath(logFolderURL),
+      to: toPath(archiveURL)
+    )
+  }
+
   // iOS doesn't let us save to any ol' place, we must write to our temporary
   // directory and then the OS will move it into place when the ShareSheet
   // is dismissed.
@@ -98,7 +118,11 @@ struct LogExporter {
     let fileName = "firezone_logs_\(now()).aar"
     return fileManager.temporaryDirectory.appendingPathComponent(fileName)
   }
+}
 #endif
+
+extension LogExporter {
+  private static let fileManager = FileManager.default
 
   static func now() -> String {
     let dateFormatter = ISO8601DateFormatter()
@@ -110,5 +134,14 @@ struct LogExporter {
     let timeStampString = dateFormatter.string(from: Date())
 
     return timeStampString
+  }
+
+  private static func toPath(_ url: URL) throws -> FilePath {
+    guard let path = FilePath(url)
+    else {
+      throw ExportError.invalidFilePath
+    }
+
+    return path
   }
 }
