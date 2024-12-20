@@ -9,91 +9,72 @@ import AppleArchive
 import Foundation
 import System
 
-struct LogCompressor {
-  private let destinationURL: URL?
-  let fileName: String
-
-  init(destinationURL: URL? = nil) {
-    let dateFormatter = ISO8601DateFormatter()
-    dateFormatter.formatOptions = [.withFullDate, .withTime, .withTimeZone]
-    let timeStampString = dateFormatter.string(from: Date())
-    self.fileName = "firezone_logs_\(timeStampString).aar"
-    self.destinationURL = destinationURL
+/// This module handles the business work of interacting with the AppleArchive framework to do the actual
+/// compression. It's used from both the app and tunnel process in nearly the same way, save for how the
+/// writeStream is opened.
+///
+/// In the tunnel process, the writeStream is a custom stream derived from our TunnelArchiveByteStream,
+/// which keeps state around the writing of compressed bytes in order to handle sending chunks back to the
+/// app process.
+///
+/// In the app process, the writeStream is derived from a passed file path where the Apple Archive
+/// framework handles writing for us -- no custom byte stream instance is needed.
+///
+/// Once the writeStream is opened, the remaining operations are the same for both.
+public struct LogCompressor {
+  enum CompressionError: Error {
+    case unableToReadSourceDirectory
+    case unableToInitialize
   }
 
-  public func compressFolder(destinationURL: URL? = nil) async throws {
-    try await compressFolderReturningURL(destinationURL: destinationURL)
+  public init() {}
+
+  public func start(
+    source directory: FilePath,
+    to file: FilePath
+  ) throws {
+    let stream = ArchiveByteStream.fileStream(
+      path: file,
+      mode: .writeOnly,
+      options: [.create],
+      permissions: FilePermissions(rawValue: 0o644)
+    )
+
+    try compress(source: directory, writeStream: stream)
   }
 
-  @discardableResult
-  public func compressFolderReturningURL(destinationURL: URL? = nil) async throws -> URL? {
-    guard let logFilesFolderURL = SharedAccess.logFolderURL,
-      let logFilesFolderPath = FilePath(logFilesFolderURL)
+  // Compress to a given writeStream which was opened either from a FilePath or
+  // TunnelArchiveByteStream
+  private func compress(
+    source path: FilePath,
+    writeStream: ArchiveByteStream?
+  ) throws {
+    let headerKeys = "TYP,PAT,LNK,DEV,DAT,UID,GID,MOD,FLG,MTM,BTM,CTM"
+
+    guard let writeStream = writeStream,
+          let compressionStream =
+            ArchiveByteStream.compressionStream(
+              using: .lzfse,
+              writingTo: writeStream
+            ),
+          let encodeStream =
+            ArchiveStream.encodeStream(
+              writingTo: compressionStream
+            ),
+          let keySet = ArchiveHeader.FieldKeySet(headerKeys)
     else {
-      throw SettingsViewError.logFolderIsUnavailable
+      throw CompressionError.unableToInitialize
     }
 
-    let fileManager = FileManager.default
-    let fileURL =
-      destinationURL
-      ?? fileManager.temporaryDirectory.appendingPathComponent(fileName)
-
-    // Remove logfile if it happens to exist
-    try? fileManager.removeItem(at: fileURL)
-
-    // Create the file stream to write the compressed file
-    guard let filePath = FilePath(fileURL),
-      let writeFileStream = ArchiveByteStream.fileStream(
-        path: filePath,
-        mode: .writeOnly,
-        options: [.create],
-        permissions: FilePermissions(rawValue: 0o644))
-    else {
-      Log.app.error("\(#function): Couldn't create the file stream")
-      return nil
-    }
-    defer {
-      try? writeFileStream.close()
-    }
-
-    // Create the compression stream
-    guard
-      let compressStream = ArchiveByteStream.compressionStream(
-        using: .lzfse,
-        writingTo: writeFileStream)
-    else {
-      Log.app.error("\(#function): Couldn't create the compression stream")
-      return nil
-    }
-    defer {
-      try? compressStream.close()
-    }
-
-    // Create the encoding stream
-    guard let encodeStream = ArchiveStream.encodeStream(writingTo: compressStream) else {
-      Log.app.error("\(#function): Couldn't create encoding stream")
-      return nil
-    }
     defer {
       try? encodeStream.close()
+      try? compressionStream.close()
+      try? writeStream.close()
     }
 
-    // Define header keys
-    guard let keySet = ArchiveHeader.FieldKeySet("TYP,PAT,LNK,DEV,DAT,UID,GID,MOD,FLG,MTM,BTM,CTM")
-    else {
-      Log.app.error("\(#function): Couldn't define header keys")
-      return nil
-    }
-
-    do {
-      try encodeStream.writeDirectoryContents(
-        archiveFrom: logFilesFolderPath,
-        keySet: keySet)
-    } catch {
-      Log.app.error("Write directory contents failed.")
-      return nil
-    }
-
-    return fileURL
+    try encodeStream.writeDirectoryContents(
+      archiveFrom: path,
+      keySet: keySet
+    )
   }
 }
