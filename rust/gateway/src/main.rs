@@ -76,7 +76,8 @@ fn main() -> ExitCode {
 }
 
 async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
-    firezone_logging::setup_global_subscriber(layer::Identity::default())?;
+    firezone_logging::setup_global_subscriber(layer::Identity::default())
+        .context("Failed to set up logging")?;
 
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
@@ -87,7 +88,8 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
         &SecretString::new(cli.token),
         firezone_id,
         cli.firezone_name,
-    )?;
+    )
+    .context("Failed to construct URL for logging into portal")?;
 
     let mut tunnel = GatewayTunnel::new(Arc::new(tcp_socket_factory), Arc::new(udp_socket_factory));
     let portal = PhoenixChannel::disconnected(
@@ -106,8 +108,11 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
 
     let (sender, receiver) = mpsc::channel::<Interface>(10);
 
-    let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, cli.tun_threads)?;
-    let tun = tun_device_manager.make_tun()?;
+    let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, cli.tun_threads)
+        .context("Failed to create TUN device manager")?;
+    let tun = tun_device_manager
+        .make_tun()
+        .context("Failed to create TUN device")?;
     tunnel.set_tun(Box::new(tun));
 
     tokio::spawn(update_device_task(tun_device_manager, receiver));
