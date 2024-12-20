@@ -1967,6 +1967,7 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "libc",
+ "nix 0.29.0",
  "phoenix-channel",
  "rustls",
  "secrecy",
