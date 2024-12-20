@@ -292,6 +292,11 @@ fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {
                     IcmpError::Network => icmpv4::DestUnreachableHeader::Network,
                     IcmpError::Host => icmpv4::DestUnreachableHeader::Host,
                     IcmpError::Port => icmpv4::DestUnreachableHeader::Port,
+                    IcmpError::PacketTooBig { mtu } => {
+                        icmpv4::DestUnreachableHeader::FragmentationNeeded {
+                            next_hop_mtu: u16::try_from(mtu).unwrap_or(u16::MAX),
+                        }
+                    }
                 }),
             );
 
@@ -299,11 +304,18 @@ fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
             let icmpv6 = ip_packet::PacketBuilder::ipv6(src.octets(), dst.octets(), 20).icmpv6(
-                Icmpv6Type::DestinationUnreachable(match error {
-                    IcmpError::Network => icmpv6::DestUnreachableCode::NoRoute,
-                    IcmpError::Host => icmpv6::DestUnreachableCode::NoRoute,
-                    IcmpError::Port => icmpv6::DestUnreachableCode::Port,
-                }),
+                match error {
+                    IcmpError::Network => {
+                        Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::NoRoute)
+                    }
+                    IcmpError::Host => {
+                        Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::NoRoute)
+                    }
+                    IcmpError::Port => {
+                        Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Port)
+                    }
+                    IcmpError::PacketTooBig { mtu } => Icmpv6Type::PacketTooBig { mtu },
+                },
             );
 
             ip_packet::build!(icmpv6, payload)
