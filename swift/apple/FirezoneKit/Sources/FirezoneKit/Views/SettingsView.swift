@@ -76,7 +76,7 @@ public final class SettingsViewModel: ObservableObject {
 
     do {
 #if os(macOS)
-      let providerLogFolderSize = try await store.tunnelManager.getLogFolderSize()
+      let providerLogFolderSize = try await TunnelManager.shared.getLogFolderSize()
       let totalSize = logFolderSize + providerLogFolderSize
 #else
       let totalSize = logFolderSize
@@ -105,7 +105,7 @@ public final class SettingsViewModel: ObservableObject {
     try Log.clear(in: SharedAccess.logFolderURL)
 
 #if os(macOS)
-    try await store.tunnelManager.clearLogs()
+    try await TunnelManager.shared.clearLogs()
 #endif
   }
 }
