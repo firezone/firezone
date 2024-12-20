@@ -10,7 +10,11 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="7565">
+          Fails early in case the binary is not started as `root`.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.2" date={new Date("2024-12-13")}>
         <ChangeItem pull="7210">
           Adds support for GSO (Generic Segmentation Offload), delivering
