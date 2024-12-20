@@ -362,7 +362,13 @@ impl ReferenceState {
             }),
             Transition::SendDnsQueries(queries) => {
                 for query in queries {
-                    state.client.exec_mut(|client| client.on_dns_query(query));
+                    state.client.exec_mut(|client| {
+                        client.on_dns_query(query);
+
+                        if let Some(resource) = client.dns_query_via_resource(query) {
+                            client.connect_to_internet_or_cidr_resource(resource);
+                        }
+                    });
                 }
             }
             Transition::SendIcmpPacket {
