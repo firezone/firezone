@@ -18,7 +18,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
 
   enum LogExportState {
-    case inProgress(TunnelArchiveByteStream, LogCompressor)
+    case inProgress(TunnelLogArchive)
     case idle
   }
 
@@ -154,16 +154,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     case .getLogFolderSize:
       getLogFolderSize(completionHandler)
     case .exportLogs:
-      guard let completionHandler
-      else {
-        Log.tunnel.error(
-          "\(#function): Need a completion handler to export logs."
-        )
+      Task {
+        guard let completionHandler
+        else {
+          Log.tunnel.error(
+            "\(#function): Need a completion handler to export logs."
+          )
 
-        return
+          return
+        }
+
+        exportLogs(completionHandler)
       }
-
-      exportLogs(completionHandler)
     }
   }
 
@@ -195,41 +197,49 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   }
 
-  func exportLogs(_ chunkHandler: @escaping (Data?) -> Void) {
+  func exportLogs(_ completionHandler: @escaping (Data?) -> Void) {
+    func sendChunk(_ tunnelLogArchive: TunnelLogArchive) {
+      do {
+        let chunk = try tunnelLogArchive.readChunk()
+        completionHandler(chunk)
+      } catch {
+        Log.tunnel.error("\(#function): error reading chunk: \(error)")
+
+        completionHandler(nil)
+      }
+    }
 
     switch self.logExportState {
 
-    case .inProgress(let tunnelArchiveByteStream, _):
-      tunnelArchiveByteStream.ready(chunkHandler)
+    case .inProgress(let tunnelLogArchive):
+      sendChunk(tunnelLogArchive)
 
     case .idle:
       guard let logFolderURL = SharedAccess.logFolderURL,
             let logFolderPath = FilePath(logFolderURL)
       else {
         Log.tunnel.error("\(#function): log folder not available")
-        chunkHandler(nil)
+        completionHandler(nil)
 
         return
       }
 
-      let byteStream = TunnelArchiveByteStream(
+      let tunnelLogArchive = TunnelLogArchive(
         logger: Log.tunnel,
-        chunkHandler: chunkHandler,
-        completionHandler: { self.logExportState = .idle }
+        source: logFolderPath
       )
 
-      Task {
-        do {
-          let compressor = LogCompressor()
-          self.logExportState = .inProgress(byteStream, compressor)
-          try compressor.start(source: logFolderPath, to: byteStream)
+      do {
+        try tunnelLogArchive.archive()
+      } catch {
+        Log.tunnel.error("\(#function): error archiving logs: \(error)")
+        completionHandler(nil)
 
-        } catch {
-          Log.tunnel.error("\(#function): \(error)")
-
-          chunkHandler(nil)
-        }
+        return
       }
+
+      self.logExportState = .inProgress(tunnelLogArchive)
+      sendChunk(tunnelLogArchive)
     }
   }
 }

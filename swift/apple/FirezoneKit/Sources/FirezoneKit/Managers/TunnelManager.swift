@@ -334,7 +334,7 @@ public class TunnelManager {
   // of some sort, like a file. The completed buffer is a valid Apple Archive
   // in AAR format.
   func exportLogs(
-    appender: @escaping (TunnelArchiveByteStream.Chunk) -> Void,
+    appender: @escaping (LogChunk) -> Void,
     errorHandler: @escaping (TunnelManagerError) -> Void
   ) {
     let decoder = PropertyListDecoder()
@@ -353,7 +353,7 @@ public class TunnelManager {
           }
 
           guard let chunk = try? decoder.decode(
-            TunnelArchiveByteStream.Chunk.self, from: data
+            LogChunk.self, from: data
           )
           else {
             Log.app.error("Error: \(#function): Invalid data received")

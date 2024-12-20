@@ -27,6 +27,11 @@ enum LogExporter {
   }
 
   static func export(to archiveURL: URL) async throws {
+    guard let logFolderURL = SharedAccess.logFolderURL
+    else {
+      throw ExportError.invalidSourceDirectory
+    }
+
     // 1. Create a temporary working directory to stage app and tunnel archives
     let sharedLogFolderURL = fileManager
       .temporaryDirectory
@@ -37,13 +42,13 @@ enum LogExporter {
       withIntermediateDirectories: true
     )
 
-    // 2. Create log archive from tunnel process
+    // 2. Create tunnel log archive from tunnel process
     let tunnelLogURL = sharedLogFolderURL
       .appendingPathComponent("tunnel.aar")
     fileManager.createFile(atPath: tunnelLogURL.path, contents: nil)
     let fileHandle = try FileHandle(forWritingTo: tunnelLogURL)
 
-    // 3. Await tunnel log export
+    // 3. Await tunnel log export from tunnel process
     try await withCheckedThrowingContinuation { continuation in
       TunnelManager.shared.exportLogs(
         appender: { chunk in
@@ -69,10 +74,10 @@ enum LogExporter {
       )
     }
 
-    // 4. Create log archive from app process
+    // 4. Create app log archive
     let appLogURL = sharedLogFolderURL.appendingPathComponent("app.aar")
     try LogCompressor().start(
-      source: toPath(sharedLogFolderURL),
+      source: toPath(logFolderURL),
       to: toPath(appLogURL)
     )
 
@@ -84,6 +89,10 @@ enum LogExporter {
       source: toPath(sharedLogFolderURL),
       to: toPath(archiveURL)
     )
+
+    // Remove intermediate log archives
+    try? fileManager.removeItem(at: tunnelLogURL)
+    try? fileManager.removeItem(at: appLogURL)
   }
 }
 #endif

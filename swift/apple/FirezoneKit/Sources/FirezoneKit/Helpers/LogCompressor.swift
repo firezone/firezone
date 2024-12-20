@@ -43,15 +43,6 @@ public struct LogCompressor {
     try compress(source: directory, writeStream: stream)
   }
 
-  public func start(
-    source path: FilePath,
-    to byteStream: TunnelArchiveByteStream
-  ) throws {
-    let stream = ArchiveByteStream.customStream(instance: byteStream)
-
-    try compress(source: path, writeStream: stream)
-  }
-
   // Compress to a given writeStream which was opened either from a FilePath or
   // TunnelArchiveByteStream
   private func compress(
