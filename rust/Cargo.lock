@@ -5508,7 +5508,7 @@ dependencies = [
 [[package]]
 name = "sentry"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "httpdate",
  "reqwest",
@@ -5527,7 +5527,7 @@ dependencies = [
 [[package]]
 name = "sentry-backtrace"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "backtrace",
  "once_cell",
@@ -5538,7 +5538,7 @@ dependencies = [
 [[package]]
 name = "sentry-contexts"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "hostname",
  "libc",
@@ -5551,7 +5551,7 @@ dependencies = [
 [[package]]
 name = "sentry-core"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "once_cell",
  "rand 0.8.5",
@@ -5563,7 +5563,7 @@ dependencies = [
 [[package]]
 name = "sentry-debug-images"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "findshlibs",
  "once_cell",
@@ -5573,7 +5573,7 @@ dependencies = [
 [[package]]
 name = "sentry-panic"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -5582,7 +5582,7 @@ dependencies = [
 [[package]]
 name = "sentry-tracing"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -5593,7 +5593,7 @@ dependencies = [
 [[package]]
 name = "sentry-types"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "debugid",
  "hex",
@@ -7779,7 +7779,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
