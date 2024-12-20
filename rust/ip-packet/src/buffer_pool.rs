@@ -3,13 +3,13 @@ use std::{
     sync::{Arc, LazyLock},
 };
 
-use crate::MAX_DATAGRAM_PAYLOAD;
+use crate::MAX_FZ_PAYLOAD;
 
 type BufferPool = Arc<lockfree_object_pool::MutexObjectPool<Vec<u8>>>;
 
 static BUFFER_POOL: LazyLock<BufferPool> = LazyLock::new(|| {
     Arc::new(lockfree_object_pool::MutexObjectPool::new(
-        || vec![0; MAX_DATAGRAM_PAYLOAD],
+        || vec![0; MAX_FZ_PAYLOAD],
         |v| v.fill(0),
     ))
 });
@@ -63,7 +63,7 @@ impl Drop for Buffer {
     fn drop(&mut self) {
         debug_assert_eq!(
             self.0.capacity(),
-            MAX_DATAGRAM_PAYLOAD,
+            MAX_FZ_PAYLOAD,
             "Buffer should never re-allocate"
         )
     }

@@ -129,7 +129,7 @@ pub mod dns_resource_nat {
             let serialized = serde_json::to_vec(&assigned_ips).unwrap();
 
             assert_eq!(serialized.len(), 402);
-            assert!(serialized.len() <= ip_packet::PACKET_SIZE);
+            assert!(serialized.len() <= ip_packet::MAX_IP_SIZE);
         }
 
         #[test]
