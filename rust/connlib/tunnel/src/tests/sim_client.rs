@@ -508,11 +508,15 @@ impl RefClient {
                 continue;
             }
 
-            if let Some(resource) = table.exact_match(resource.address) {
-                if self.is_connected_to_internet_or_cidr(*resource) {
+            if let Some(overlapping_resource) = table.exact_match(resource.address) {
+                if self.is_connected_to_internet_or_cidr(*overlapping_resource) {
+                    tracing::debug!(%overlapping_resource, resource = %resource.id, address = %resource.address, "Already connected to resource with this exact address, retaining existing route");
+
                     continue;
                 }
             }
+
+            tracing::debug!(resource = %resource.id, address = %resource.address, "Adding CIDR route");
 
             table.insert(resource.address, resource.id);
         }
@@ -644,7 +648,7 @@ impl RefClient {
         );
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
+    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource, gateway))]
     fn on_packet<E>(
         &mut self,
         src: IpAddr,
@@ -665,11 +669,15 @@ impl RefClient {
             return;
         };
 
+        tracing::Span::current().record("gateway", tracing::field::display(gateway));
+
         self.connect_to_resource(resource, dst);
 
         if !self.is_tunnel_ip(src) {
             return;
         }
+
+        tracing::debug!(%payload, "Sending packet to resource");
 
         map(self)
             .entry(gateway)
@@ -695,7 +703,11 @@ impl RefClient {
         }
 
         if self.cidr_resources.iter().any(|(_, r)| *r == resource) {
-            self.connected_cidr_resources.insert(resource);
+            let is_new = self.connected_cidr_resources.insert(resource);
+
+            if is_new {
+                tracing::debug!(%resource, "Now connected to CIDR resource");
+            }
         }
     }
 
