@@ -30,6 +30,7 @@ public enum TunnelMessage: Codable {
   case internetResourceEnabled(Bool)
   case clearLogs
   case getLogFolderSize
+  case exportLogs
 
   enum CodingKeys: String, CodingKey {
     case type
@@ -42,6 +43,7 @@ public enum TunnelMessage: Codable {
     case internetResourceEnabled
     case clearLogs
     case getLogFolderSize
+    case exportLogs
   }
 
   public init(from decoder: Decoder) throws {
@@ -60,6 +62,8 @@ public enum TunnelMessage: Codable {
       self = .clearLogs
     case .getLogFolderSize:
       self = .getLogFolderSize
+    case .exportLogs:
+      self = .exportLogs
       }
   }
   public func encode(to encoder: Encoder) throws {
@@ -77,6 +81,8 @@ public enum TunnelMessage: Codable {
       try container.encode(MessageType.clearLogs, forKey: .type)
     case .getLogFolderSize:
       try container.encode(MessageType.getLogFolderSize, forKey: .type)
+    case .exportLogs:
+      try container.encode(MessageType.exportLogs, forKey: .type)
       }
   }
 }
@@ -314,7 +320,6 @@ public class TunnelManager {
 
             return
           }
-
           data.withUnsafeBytes { rawBuffer in
             continuation.resume(returning: rawBuffer.load(as: Int64.self))
           }
@@ -323,6 +328,54 @@ public class TunnelManager {
         continuation.resume(throwing: error)
       }
     }
+  }
+
+  // Call this with a closure that will append each chunk to a buffer
+  // of some sort, like a file. The completed buffer is a valid Apple Archive
+  // in AAR format.
+  func exportLogs(
+    appender: @escaping (LogChunk) -> Void,
+    errorHandler: @escaping (TunnelManagerError) -> Void
+  ) {
+    let decoder = PropertyListDecoder()
+
+    func loop() {
+      do {
+        try session().sendProviderMessage(
+          encoder.encode(TunnelMessage.exportLogs)
+        ) { data in
+          guard let data = data
+          else {
+            Log.app.error("Error: \(#function): No data received")
+            errorHandler(TunnelManagerError.decodeIPCDataFailed)
+
+            return
+          }
+
+          guard let chunk = try? decoder.decode(
+            LogChunk.self, from: data
+          )
+          else {
+            Log.app.error("Error: \(#function): Invalid data received")
+            errorHandler(TunnelManagerError.decodeIPCDataFailed)
+
+            return
+          }
+
+          appender(chunk)
+
+          if !chunk.done {
+            // Continue
+            loop()
+          }
+        }
+      } catch {
+        Log.app.error("Error: \(#function): \(error)")
+      }
+    }
+
+    // Start exporting
+    loop()
   }
 
   private func session() -> NETunnelProviderSession {

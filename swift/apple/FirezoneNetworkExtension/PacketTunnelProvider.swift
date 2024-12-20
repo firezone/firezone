@@ -6,6 +6,7 @@
 
 import FirezoneKit
 import NetworkExtension
+import System
 import os
 
 enum PacketTunnelProviderError: Error {
@@ -15,6 +16,13 @@ enum PacketTunnelProviderError: Error {
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
+
+  enum LogExportState {
+    case inProgress(TunnelLogArchive)
+    case idle
+  }
+
+  private var logExportState: LogExportState = .idle
 
   override func startTunnel(
     options: [String: NSObject]?,
@@ -145,6 +153,19 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       clearLogs(completionHandler)
     case .getLogFolderSize:
       getLogFolderSize(completionHandler)
+    case .exportLogs:
+      Task {
+        guard let completionHandler
+        else {
+          Log.tunnel.error(
+            "\(#function): Need a completion handler to export logs."
+          )
+
+          return
+        }
+
+        exportLogs(completionHandler)
+      }
     }
   }
 
@@ -173,6 +194,52 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let data = withUnsafeBytes(of: size) { Data($0) }
 
       completionHandler?(data)
+    }
+  }
+
+  func exportLogs(_ completionHandler: @escaping (Data?) -> Void) {
+    func sendChunk(_ tunnelLogArchive: TunnelLogArchive) {
+      do {
+        let chunk = try tunnelLogArchive.readChunk()
+        completionHandler(chunk)
+      } catch {
+        Log.tunnel.error("\(#function): error reading chunk: \(error)")
+
+        completionHandler(nil)
+      }
+    }
+
+    switch self.logExportState {
+
+    case .inProgress(let tunnelLogArchive):
+      sendChunk(tunnelLogArchive)
+
+    case .idle:
+      guard let logFolderURL = SharedAccess.logFolderURL,
+            let logFolderPath = FilePath(logFolderURL)
+      else {
+        Log.tunnel.error("\(#function): log folder not available")
+        completionHandler(nil)
+
+        return
+      }
+
+      let tunnelLogArchive = TunnelLogArchive(
+        logger: Log.tunnel,
+        source: logFolderPath
+      )
+
+      do {
+        try tunnelLogArchive.archive()
+      } catch {
+        Log.tunnel.error("\(#function): error archiving logs: \(error)")
+        completionHandler(nil)
+
+        return
+      }
+
+      self.logExportState = .inProgress(tunnelLogArchive)
+      sendChunk(tunnelLogArchive)
     }
   }
 }
