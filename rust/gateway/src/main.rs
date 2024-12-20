@@ -31,6 +31,12 @@ mod eventloop;
 const ID_PATH: &str = "/var/lib/firezone/gateway_id";
 
 fn main() -> ExitCode {
+    #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
+    if !nix::unistd::Uid::effective().is_root() {
+        eprintln!("firzone-gateway needs to run as root");
+        return ExitCode::FAILURE;
+    }
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
