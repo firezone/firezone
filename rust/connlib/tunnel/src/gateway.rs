@@ -308,10 +308,7 @@ impl GatewayState {
                 Ok(dns_resource_nat::NatStatus::Active)
             })
             .unwrap_or_else(|e| {
-                tracing::warn!(
-                    error = anyhow_dyn_err(&e),
-                    "Failed to setup DNS resource NAT"
-                );
+                tracing::info!("Failed to setup DNS resource NAT: {e:#}");
 
                 dns_resource_nat::NatStatus::Inactive
             });
