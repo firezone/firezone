@@ -31,6 +31,7 @@ public enum TunnelMessage: Codable {
   case clearLogs
   case getLogFolderSize
   case exportLogs
+  case consumeStopReason
 
   enum CodingKeys: String, CodingKey {
     case type
@@ -44,6 +45,7 @@ public enum TunnelMessage: Codable {
     case clearLogs
     case getLogFolderSize
     case exportLogs
+    case consumeStopReason
   }
 
   public init(from decoder: Decoder) throws {
@@ -64,6 +66,8 @@ public enum TunnelMessage: Codable {
       self = .getLogFolderSize
     case .exportLogs:
       self = .exportLogs
+    case .consumeStopReason:
+      self = .consumeStopReason
       }
   }
   public func encode(to encoder: Encoder) throws {
@@ -83,6 +87,8 @@ public enum TunnelMessage: Codable {
       try container.encode(MessageType.getLogFolderSize, forKey: .type)
     case .exportLogs:
       try container.encode(MessageType.exportLogs, forKey: .type)
+    case .consumeStopReason:
+      try container.encode(MessageType.consumeStopReason, forKey: .type)
       }
   }
 }
@@ -376,6 +382,37 @@ public class TunnelManager {
 
     // Start exporting
     loop()
+  }
+
+  func consumeStopReason() async throws -> String {
+    return try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(
+          encoder.encode(TunnelMessage.consumeStopReason)
+        ) { data in
+
+          guard let data = data
+          else {
+            continuation
+              .resume(throwing: TunnelManagerError.decodeIPCDataFailed)
+
+            return
+          }
+
+          guard let reason = String(data: data, encoding: .utf8)
+          else {
+            continuation
+              .resume(throwing: TunnelManagerError.decodeIPCDataFailed)
+
+            return
+          }
+
+          continuation.resume(returning: reason)
+        }
+      } catch {
+        continuation.resume(throwing: error)
+      }
+    }
   }
 
   private func session() -> NETunnelProviderSession {

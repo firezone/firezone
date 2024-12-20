@@ -166,7 +166,21 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         exportLogs(completionHandler)
       }
+    case .consumeStopReason:
+      Task {
+        guard let completionHandler
+        else {
+          Log.tunnel.error(
+            "\(#function): Need a completion handler to consumeStopReason."
+          )
+
+          return
+        }
+
+        consumeStopReason(completionHandler)
+      }
     }
+
   }
 
   func clearLogs(_ completionHandler: ((Data?) -> Void)? = nil) {
@@ -240,6 +254,23 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       self.logExportState = .inProgress(tunnelLogArchive)
       sendChunk(tunnelLogArchive)
+    }
+  }
+
+  func consumeStopReason(_ completionHandler: (Data?) -> Void) {
+    do {
+      let data = try Data(
+        contentsOf: SharedAccess.providerStopReasonURL
+      )
+
+      try? FileManager.default
+        .removeItem(at: SharedAccess.providerStopReasonURL)
+
+      completionHandler(data)
+    } catch {
+      Log.tunnel.error("\(#function): error reading stop reason: \(error)")
+
+      completionHandler(nil)
     }
   }
 }
