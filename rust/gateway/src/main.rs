@@ -9,13 +9,11 @@ use firezone_bin_shared::{
 };
 use firezone_logging::anyhow_dyn_err;
 use firezone_telemetry::Telemetry;
-use firezone_tunnel::messages::Interface;
-use firezone_tunnel::{GatewayTunnel, IPV4_PEERS, IPV6_PEERS};
+use firezone_tunnel::GatewayTunnel;
 use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
 
-use futures::channel::mpsc;
-use futures::{future, StreamExt, TryFutureExt};
+use futures::{future, TryFutureExt};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use std::path::Path;
@@ -106,8 +104,6 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
     )
     .context("Failed to resolve portal URL")?;
 
-    let (sender, receiver) = mpsc::channel::<Interface>(10);
-
     let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, cli.tun_threads)
         .context("Failed to create TUN device manager")?;
     let tun = tun_device_manager
@@ -115,10 +111,8 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
         .context("Failed to create TUN device")?;
     tunnel.set_tun(Box::new(tun));
 
-    tokio::spawn(update_device_task(tun_device_manager, receiver));
-
     let task = tokio::spawn(future::poll_fn({
-        let mut eventloop = Eventloop::new(tunnel, portal, sender);
+        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager);
 
         move |cx| eventloop.poll(cx)
     }))
@@ -135,7 +129,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
         .map_err(|e| e.factor_first().0)?
     {
         future::Either::Left((Err(e), _)) => {
-            tracing::info!("Failed to login to portal: {e}");
+            tracing::info!("{e}");
 
             Ok(ExitCode::FAILURE)
         }
@@ -166,27 +160,6 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     let id = Uuid::new_v4().to_string();
     id_file.write_all(id.as_bytes()).await?;
     Ok(id)
-}
-
-async fn update_device_task(
-    mut tun_device: TunDeviceManager,
-    mut receiver: mpsc::Receiver<Interface>,
-) {
-    while let Some(next_interface) = receiver.next().await {
-        if let Err(e) = tun_device
-            .set_ips(next_interface.ipv4, next_interface.ipv6)
-            .await
-        {
-            tracing::warn!(error = anyhow_dyn_err(&e), "Failed to set interface");
-        }
-
-        if let Err(e) = tun_device
-            .set_routes(vec![IPV4_PEERS], vec![IPV6_PEERS])
-            .await
-        {
-            tracing::warn!(error = anyhow_dyn_err(&e), "Failed; to set routes");
-        };
-    }
 }
 
 #[derive(Parser)]
