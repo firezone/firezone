@@ -260,9 +260,9 @@ pub fn translate_icmp_unreachable(
 
             Icmpv6Type::PacketTooBig { mtu: mtu as u32 }
         }
-        FragmentationNeeded { .. } => {
-            return None; // FIXME: We don't know our IPv4 / IPv6 MTU here so cannot currently implement this.
-        }
+        FragmentationNeeded { next_hop_mtu } => Icmpv6Type::PacketTooBig {
+            mtu: next_hop_mtu as u32 + 20,
+        },
 
         // Code 5 (Source Route Failed):  Set the Code to 0 (No route
         //    to destination).  Note that this error is unlikely since
