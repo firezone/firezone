@@ -11,6 +11,7 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 backoff = { workspace = true }
 boringtun = { workspace = true }
+caps = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 connlib-model = { workspace = true }

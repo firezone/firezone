@@ -1,6 +1,7 @@
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
+use caps::{CapSet, Capability};
 use clap::Parser;
 use firezone_bin_shared::{
     http_health_check,
@@ -33,6 +34,12 @@ mod eventloop;
 const ID_PATH: &str = "/var/lib/firezone/gateway_id";
 
 fn main() -> ExitCode {
+    #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
+    if !caps::has_cap(None, CapSet::Effective, Capability::CAP_NET_ADMIN).is_ok_and(|b| b) {
+        eprintln!("firzone-gateway needs to be executed with the `CAP_NET_ADMIN` capability");
+        return ExitCode::FAILURE;
+    }
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
