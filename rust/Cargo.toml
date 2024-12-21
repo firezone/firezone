@@ -59,6 +59,7 @@ glob = "0.3.1"
 hex = "0.4.3"
 hex-display = "0.3.0"
 hex-literal = "0.4.1"
+caps = "0.5.5"
 humantime = "2.1"
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
