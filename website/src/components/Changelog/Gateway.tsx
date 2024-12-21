@@ -12,7 +12,8 @@ export default function Gateway() {
     <Entries href={href} arches={arches} title="Gateway">
       <Unreleased>
         <ChangeItem pull="7565">
-          Fails early in case the binary is not started as `root`.
+          Fails early in case the binary is not started with the
+          `CAP_NET_ADMIN` capability.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.4.2" date={new Date("2024-12-13")}>
