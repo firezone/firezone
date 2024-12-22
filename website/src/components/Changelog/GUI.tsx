@@ -18,6 +18,11 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem pull="7551">
           Fixes an issue where large DNS responses were incorrectly discarded.
         </ChangeItem>
+        {title == "Windows" && (
+          <ChangeItem pull="7556">
+            Disables URO/GRO due to hardware / driver bugs.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.4.0" date={new Date("2024-12-13")}>
         <ChangeItem pull="7210">
