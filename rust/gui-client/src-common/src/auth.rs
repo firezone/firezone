@@ -160,7 +160,9 @@ impl Auth {
             nonce: generate_nonce(),
             state: generate_nonce(),
         });
-        Ok(Some(self.ongoing_request()?))
+        let request = self.ongoing_request().ok_or(Error::NoInflightRequest)?;
+
+        Ok(Some(request))
     }
 
     /// Complete an ongoing sign-in flow using parameters from a deep link
@@ -170,7 +172,7 @@ impl Auth {
     ///
     /// Errors if we don't have any ongoing flow, or if the response is invalid
     pub(crate) fn handle_response(&mut self, resp: Response) -> Result<SecretString, Error> {
-        let req = self.ongoing_request()?;
+        let req = self.ongoing_request().ok_or(Error::NoInflightRequest)?;
 
         if !secure_equality(&resp.state, &req.state) {
             self.sign_out()?;
@@ -255,10 +257,10 @@ impl Auth {
         Ok(Some(SessionAndToken { session, token }))
     }
 
-    pub fn ongoing_request(&self) -> Result<&Request, Error> {
+    pub fn ongoing_request(&self) -> Option<&Request> {
         match &self.state {
-            State::NeedResponse(x) => Ok(x),
-            State::SignedIn(_) | State::SignedOut => Err(Error::NoInflightRequest),
+            State::NeedResponse(x) => Some(x),
+            State::SignedIn(_) | State::SignedOut => None,
         }
     }
 }

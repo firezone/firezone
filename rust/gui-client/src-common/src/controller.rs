@@ -739,7 +739,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 Status::WaitingForPortal { .. } => system_tray::ConnlibState::WaitingForPortal,
                 Status::WaitingForTunnel { .. } => system_tray::ConnlibState::WaitingForTunnel,
             }
-        } else if self.auth.ongoing_request().is_ok() {
+        } else if self.auth.ongoing_request().is_some() {
             // Signing in, waiting on deep link callback
             system_tray::ConnlibState::WaitingForBrowser
         } else {
