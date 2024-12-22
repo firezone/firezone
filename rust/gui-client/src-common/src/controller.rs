@@ -375,10 +375,11 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
 
         tracing::info!("Received deep link over IPC");
 
-        let req = self
-            .auth
-            .ongoing_request()
-            .ok_or(Error::NoInflightRequest)?;
+        let Some(req) = self.auth.ongoing_request() else {
+            tracing::debug!("No pending auth request");
+            return Ok(());
+        };
+
         // Uses `std::fs`
         let token = self
             .auth
