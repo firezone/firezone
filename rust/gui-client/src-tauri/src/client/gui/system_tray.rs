@@ -10,7 +10,6 @@ use firezone_gui_client_common::{
     compositor::{self, Image},
     system_tray::{AppState, ConnlibState, Entry, Icon, IconBase, Item, Menu},
 };
-use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use tauri::AppHandle;
 
 type IsMenuItem = dyn tauri::menu::IsMenuItem<tauri::Wry>;
@@ -62,7 +61,7 @@ impl Tray {
         }
     }
 
-    pub(crate) fn update(&mut self, state: AppState) -> Result<()> {
+    pub(crate) fn update(&mut self, state: AppState) {
         let base = match &state.connlib {
             ConnlibState::Loading
             | ConnlibState::Quitting
@@ -86,28 +85,22 @@ impl Tray {
         if Some(&menu) == self.last_menu_set.as_ref() {
             tracing::debug!("Skipping redundant menu update");
         } else {
-            self.app
-                .run_on_main_thread(move || {
-                    if let Err(error) = update(handle, &app, &menu) {
-                        tracing::error!(
-                            error = anyhow_dyn_err(&error),
-                            "Error while updating tray icon"
-                        );
-                    }
-                })
-                .context("Failed to update tray icon")?;
+            self.run_on_main_thread(move || {
+                firezone_logging::unwrap_or_debug!(
+                    update(handle, &app, &menu),
+                    "Error while updating tray menu: {}"
+                );
+            });
         }
-        self.set_icon(new_icon)?;
+        self.set_icon(new_icon);
         self.last_menu_set = Some(menu_clone);
-
-        Ok(())
     }
 
     // Only needed for the stress test
     // Otherwise it would be inlined
-    pub(crate) fn set_icon(&mut self, icon: Icon) -> Result<()> {
+    pub(crate) fn set_icon(&mut self, icon: Icon) {
         if icon == self.last_icon_set {
-            return Ok(());
+            return;
         }
 
         // Don't call `set_icon` too often. On Linux it writes a PNG to `/run/user/$UID/tao/tray-icon-*.png` every single time.
@@ -116,12 +109,22 @@ impl Tray {
         // on disk.
         let handle = self.handle.clone();
         self.last_icon_set = icon.clone();
-        self.app.run_on_main_thread(move || {
-            if let Err(e) = handle.set_icon(Some(icon_to_tauri_icon(&icon))) {
-                tracing::warn!(error = std_dyn_err(&e), "Failed to set tray icon")
-            }
-        })?;
-        Ok(())
+        self.run_on_main_thread(move || {
+            let result = handle
+                .set_icon(Some(icon_to_tauri_icon(&icon)))
+                .context("Failed to set tray icon");
+
+            firezone_logging::unwrap_or_debug!(result, "{}");
+        });
+    }
+
+    fn run_on_main_thread(&self, f: impl FnOnce() + Send + 'static) {
+        let result = self
+            .app
+            .run_on_main_thread(f)
+            .context("Failed to run closure on main thread");
+
+        firezone_logging::unwrap_or_debug!(result, "{}");
     }
 }
 

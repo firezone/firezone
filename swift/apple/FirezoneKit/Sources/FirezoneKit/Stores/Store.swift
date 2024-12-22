@@ -28,7 +28,6 @@ public final class Store: ObservableObject {
   // we could periodically update it if we need to.
   @Published private(set) var decision: UNAuthorizationStatus
 
-  private let tunnelManager: TunnelManager
   private var sessionNotification: SessionNotification
   private var cancellables: Set<AnyCancellable> = []
   private var resourcesTimer: Timer?
@@ -38,7 +37,6 @@ public final class Store: ObservableObject {
     self.decision = .authorized
     self.settings = Settings.defaultValue
 
-    self.tunnelManager = TunnelManager()
     self.sessionNotification = SessionNotification()
 
     initNotifications()
@@ -46,7 +44,7 @@ public final class Store: ObservableObject {
   }
 
   public func internetResourceEnabled() -> Bool {
-    tunnelManager.internetResourceEnabled
+    TunnelManager.shared.internetResourceEnabled
   }
 
   private func initNotifications() {
@@ -65,11 +63,11 @@ public final class Store: ObservableObject {
   }
 
   private func initTunnelManager() {
-    // Subscribe to status updates from the tunnelManager
-    tunnelManager.statusChangeHandler = handleVPNStatusChange
+    // Subscribe to status updates from the tunnel manager
+    TunnelManager.shared.statusChangeHandler = handleVPNStatusChange
 
     // Load our existing VPN profile and initialize our state
-    tunnelManager.load() { loadedStatus, loadedSettings, loadedActorName in
+    TunnelManager.shared.load() { loadedStatus, loadedSettings, loadedActorName in
       DispatchQueue.main.async {
         self.status = loadedStatus
 
@@ -98,7 +96,7 @@ public final class Store: ObservableObject {
   func createVPNProfile() {
     DispatchQueue.main.async {
       Task {
-        self.settings = try await self.tunnelManager.create()
+        self.settings = try await TunnelManager.shared.create()
       }
     }
   }
@@ -114,25 +112,25 @@ public final class Store: ObservableObject {
       return
     }
 
-    tunnelManager.start(token: token)
+    TunnelManager.shared.start(token: token)
   }
 
   func stop(clearToken: Bool = false) {
     guard [.connected, .connecting, .reasserting].contains(status)
     else { return }
 
-    tunnelManager.stop(clearToken: clearToken)
+    TunnelManager.shared.stop(clearToken: clearToken)
   }
 
   func signIn(authResponse: AuthResponse) async throws {
     // Save actorName
     DispatchQueue.main.async { self.actorName = authResponse.actorName }
 
-    try await tunnelManager.saveSettings(settings)
-    try await tunnelManager.saveActorName(authResponse.actorName)
+    try await TunnelManager.shared.saveSettings(settings)
+    try await TunnelManager.shared.saveActorName(authResponse.actorName)
 
     // Bring the tunnel up and send it a token to start
-    tunnelManager.start(token: authResponse.token)
+    TunnelManager.shared.start(token: authResponse.token)
   }
 
   func signOut() async throws {
@@ -145,11 +143,11 @@ public final class Store: ObservableObject {
   func beginUpdatingResources(callback: @escaping (ResourceList) -> Void) {
     Log.app.log("\(#function)")
 
-    tunnelManager.fetchResources(callback: callback)
+    TunnelManager.shared.fetchResources(callback: callback)
     let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
       guard let self = self else { return }
-      tunnelManager.fetchResources(callback: callback)
+      TunnelManager.shared.fetchResources(callback: callback)
     }
     RunLoop.main.add(timer, forMode: .common)
     resourcesTimer = timer
@@ -163,7 +161,7 @@ public final class Store: ObservableObject {
   func save(_ newSettings: Settings) async throws {
     Task {
       do {
-        try await tunnelManager.saveSettings(newSettings)
+        try await TunnelManager.shared.saveSettings(newSettings)
         DispatchQueue.main.async { self.settings = newSettings }
       } catch {
         Log.app.error("\(#function): \(error)")
@@ -172,9 +170,9 @@ public final class Store: ObservableObject {
   }
 
   func toggleInternetResource(enabled: Bool) {
-    tunnelManager.toggleInternetResource(enabled: enabled)
+    TunnelManager.shared.toggleInternetResource(enabled: enabled)
     var newSettings = settings
-    newSettings.internetResourceEnabled = tunnelManager.internetResourceEnabled
+    newSettings.internetResourceEnabled = TunnelManager.shared.internetResourceEnabled
     Task {
       try await save(newSettings)
     }

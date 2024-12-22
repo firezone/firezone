@@ -24,6 +24,9 @@ export default function Apple() {
           Makes use of the new control protocol, delivering faster and more
           robust connection establishment.
         </ChangeItem>
+        <ChangeItem pull="7477">
+          Improves connection setup latency by buffering initial packets.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.3.9" date={new Date("2024-11-08")}>
         <ChangeItem pull="7288">

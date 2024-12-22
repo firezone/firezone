@@ -431,13 +431,6 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) connected_cidr_resources: HashSet<ResourceId>,
 
-    /// The DNS resources the client is connected to.
-    #[debug(skip)]
-    pub(crate) connected_dns_resources: HashSet<ResourceId>,
-
-    #[debug(skip)]
-    pub(crate) connected_gateways: BTreeSet<GatewayId>,
-
     /// Actively disabled resources by the UI
     #[debug(skip)]
     pub(crate) disabled_resources: BTreeSet<ResourceId>,
@@ -486,7 +479,6 @@ impl RefClient {
         self.ipv6_routes.remove(resource);
 
         self.connected_cidr_resources.remove(resource);
-        self.connected_dns_resources.remove(resource);
 
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.connected_internet_resource = false;
@@ -516,11 +508,15 @@ impl RefClient {
                 continue;
             }
 
-            if let Some(resource) = table.exact_match(resource.address) {
-                if self.is_connected_to_internet_or_cidr(*resource) {
+            if let Some(overlapping_resource) = table.exact_match(resource.address) {
+                if self.is_connected_to_internet_or_cidr(*overlapping_resource) {
+                    tracing::debug!(%overlapping_resource, resource = %resource.id, address = %resource.address, "Already connected to resource with this exact address, retaining existing route");
+
                     continue;
                 }
             }
+
+            tracing::debug!(resource = %resource.id, address = %resource.address, "Adding CIDR route");
 
             table.insert(resource.address, resource.id);
         }
@@ -530,9 +526,7 @@ impl RefClient {
 
     pub(crate) fn reset_connections(&mut self) {
         self.connected_cidr_resources.clear();
-        self.connected_dns_resources.clear();
         self.connected_internet_resource = false;
-        self.connected_gateways.clear();
     }
 
     pub(crate) fn add_internet_resource(&mut self, r: InternetResource) {
@@ -654,7 +648,7 @@ impl RefClient {
         );
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource))]
+    #[tracing::instrument(level = "debug", skip_all, fields(dst, resource, gateway))]
     fn on_packet<E>(
         &mut self,
         src: IpAddr,
@@ -675,41 +669,26 @@ impl RefClient {
             return;
         };
 
-        if self.is_connected_to_resource(resource) && self.is_tunnel_ip(src) {
-            tracing::debug!("Connected to resource, expecting packet to be routed");
-            map(self)
-                .entry(gateway)
-                .or_default()
-                .insert(payload, packet_id);
+        tracing::Span::current().record("gateway", tracing::field::display(gateway));
+
+        self.connect_to_resource(resource, dst);
+
+        if !self.is_tunnel_ip(src) {
             return;
         }
 
-        if let Destination::DomainName { name: dst, .. } = &dst {
-            debug_assert!(
-                self.dns_records.iter().any(|(name, _)| name == dst),
-                "Should only sample domains that we resolved"
-            );
-        }
+        tracing::debug!(%payload, "Sending packet to resource");
 
-        tracing::debug!("Not connected to resource, expecting to trigger connection intent");
-
-        self.connect_to_resource(resource, dst, gateway);
+        map(self)
+            .entry(gateway)
+            .or_default()
+            .insert(payload, packet_id);
     }
 
-    fn connect_to_resource(
-        &mut self,
-        resource: ResourceId,
-        destination: Destination,
-        gateway: GatewayId,
-    ) {
+    fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
         match destination {
-            Destination::DomainName { .. } => {
-                if !self.disabled_resources.contains(&resource) {
-                    self.connected_dns_resources.insert(resource);
-                    self.connected_gateways.insert(gateway);
-                }
-            }
-            Destination::IpAddr(_) => self.connect_to_internet_or_cidr_resource(resource, gateway),
+            Destination::DomainName { .. } => {}
+            Destination::IpAddr(_) => self.connect_to_internet_or_cidr_resource(resource),
         }
     }
 
@@ -717,20 +696,18 @@ impl RefClient {
         self.is_connected_to_cidr(resource) || self.is_connected_to_internet(resource)
     }
 
-    pub(crate) fn connect_to_internet_or_cidr_resource(
-        &mut self,
-        resource: ResourceId,
-        gateway: GatewayId,
-    ) {
+    pub(crate) fn connect_to_internet_or_cidr_resource(&mut self, resource: ResourceId) {
         if self.internet_resource.is_some_and(|r| r == resource) {
             self.connected_internet_resource = true;
-            self.connected_gateways.insert(gateway);
             return;
         }
 
         if self.cidr_resources.iter().any(|(_, r)| *r == resource) {
-            self.connected_cidr_resources.insert(resource);
-            self.connected_gateways.insert(gateway);
+            let is_new = self.connected_cidr_resources.insert(resource);
+
+            if is_new {
+                tracing::debug!(%resource, "Now connected to CIDR resource");
+            }
         }
     }
 
@@ -766,14 +743,6 @@ impl RefClient {
             .collect_vec()
     }
 
-    fn is_connected_to_resource(&self, resource: ResourceId) -> bool {
-        if self.is_connected_to_internet_or_cidr(resource) {
-            return true;
-        }
-
-        self.connected_dns_resources.contains(&resource)
-    }
-
     fn is_connected_to_internet(&self, id: ResourceId) -> bool {
         self.active_internet_resource() == Some(id) && self.connected_internet_resource
     }
@@ -785,21 +754,6 @@ impl RefClient {
     pub(crate) fn active_internet_resource(&self) -> Option<ResourceId> {
         self.internet_resource
             .filter(|r| !self.disabled_resources.contains(r))
-    }
-
-    pub(crate) fn is_locally_answered_query(&self, domain: &DomainName, rtype: Rtype) -> bool {
-        let is_known_host = self.known_hosts.contains_key(&domain.to_string());
-        let is_dns_resource = self.dns_resource_by_domain(domain).is_some();
-        let is_suppported_type = matches!(rtype, Rtype::A | Rtype::AAAA | Rtype::PTR);
-
-        if matches!(rtype, Rtype::PTR)
-            && crate::dns::reverse_dns_addr(&domain.to_string())
-                .is_some_and(|ip| self.known_hosts.values().flatten().any(|c| c == &ip))
-        {
-            return true;
-        }
-
-        (is_known_host || is_dns_resource) && is_suppported_type
     }
 
     fn resource_by_dst(&self, destination: &Destination) -> Option<ResourceId> {
@@ -1097,7 +1051,6 @@ fn ref_client(
                     cidr_resources: IpNetworkTable::new(),
                     dns_records: Default::default(),
                     connected_cidr_resources: Default::default(),
-                    connected_dns_resources: Default::default(),
                     connected_internet_resource: Default::default(),
                     expected_icmp_handshakes: Default::default(),
                     expected_udp_handshakes: Default::default(),
@@ -1108,7 +1061,6 @@ fn ref_client(
                     resources: Default::default(),
                     ipv4_routes: Default::default(),
                     ipv6_routes: Default::default(),
-                    connected_gateways: Default::default(),
                 }
             },
         )

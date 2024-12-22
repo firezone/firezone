@@ -603,7 +603,7 @@ where
         // TODO: Verify that this is the correct error code.
         let Some(allocation) = self.allocations.get_mut(&sender) else {
             let (error_response, msg) = make_error_response(AllocationMismatch, &request);
-            tracing::warn!(target: "relay", "{msg}: Sender doesn't have an allocation");
+            tracing::info!(target: "relay", "{msg}: Sender doesn't have an allocation");
 
             return Err(error_response);
         };
@@ -655,7 +655,7 @@ where
         let Some(allocation) = self.allocations.get_mut(&sender) else {
             let (error_response, msg) = make_error_response(AllocationMismatch, &request);
 
-            tracing::warn!(target: "relay", "{msg}: Sender doesn't have an allocation");
+            tracing::info!(target: "relay", "{msg}: Sender doesn't have an allocation");
 
             return Err(error_response);
         };
@@ -850,7 +850,15 @@ where
             .verify(&self.auth_secret, username.name(), SystemTime::now()) // This is impure but we don't need to control this in our tests.
             .map_err(|e| {
                 let (error_response, msg) = make_error_response(Unauthorized, request);
-                tracing::warn!(target: "relay", "{msg}: MessageIntegrity check failed: {e}");
+
+                match e {
+                    auth::Error::UnknownNonce | auth::Error::NonceUsedUp | auth::Error::Expired | auth::Error::InvalidPassword => {
+                        tracing::debug!(target: "relay", "{msg}: MessageIntegrity check failed: {e}");
+                    },
+                    auth::Error::CannotAuthenticate(_) | auth::Error::InvalidUsername => {
+                        tracing::warn!(target: "relay", "{msg}: MessageIntegrity check failed: {e}")
+                    },
+                }
 
                 error_response
             })?;

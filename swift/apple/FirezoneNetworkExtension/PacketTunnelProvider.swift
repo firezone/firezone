@@ -6,6 +6,7 @@
 
 import FirezoneKit
 import NetworkExtension
+import System
 import os
 
 enum PacketTunnelProviderError: Error {
@@ -15,6 +16,13 @@ enum PacketTunnelProviderError: Error {
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
+
+  enum LogExportState {
+    case inProgress(TunnelLogArchive)
+    case idle
+  }
+
+  private var logExportState: LogExportState = .idle
 
   override func startTunnel(
     options: [String: NSObject]?,
@@ -78,7 +86,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         try await adapter.start()
 
-        // Tell the system the tunnel is up, moving the tunnelManager status to
+        // Tell the system the tunnel is up, moving the tunnel manager status to
         // `connected`.
         completionHandler(nil)
       } catch {
@@ -124,6 +132,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler()
   }
 
+  // TODO: It would be helpful to be able to encapsulate Errors here. To do that
+  // we need to update TunnelMessage to encode/decode Result to and from Data.
   override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
     guard let tunnelMessage =  try? PropertyListDecoder().decode(TunnelMessage.self, from: message) else { return }
 
@@ -139,6 +149,97 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         resourceListJSON in
         completionHandler?(resourceListJSON?.data(using: .utf8))
       }
+    case .clearLogs:
+      clearLogs(completionHandler)
+    case .getLogFolderSize:
+      getLogFolderSize(completionHandler)
+    case .exportLogs:
+      Task {
+        guard let completionHandler
+        else {
+          Log.tunnel.error(
+            "\(#function): Need a completion handler to export logs."
+          )
+
+          return
+        }
+
+        exportLogs(completionHandler)
+      }
+    }
+  }
+
+  func clearLogs(_ completionHandler: ((Data?) -> Void)? = nil) {
+    Task {
+      do {
+        try Log.clear(in: SharedAccess.logFolderURL)
+      } catch {
+        Log.tunnel.error("Error clearing logs: \(error)")
+      }
+
+      completionHandler?(nil)
+    }
+  }
+
+  func getLogFolderSize(_ completionHandler: ((Data?) -> Void)? = nil) {
+    guard let logFolderURL = SharedAccess.logFolderURL
+    else {
+      completionHandler?(nil)
+
+      return
+    }
+
+    Task {
+      let size = await Log.size(of: logFolderURL)
+      let data = withUnsafeBytes(of: size) { Data($0) }
+
+      completionHandler?(data)
+    }
+  }
+
+  func exportLogs(_ completionHandler: @escaping (Data?) -> Void) {
+    func sendChunk(_ tunnelLogArchive: TunnelLogArchive) {
+      do {
+        let chunk = try tunnelLogArchive.readChunk()
+        completionHandler(chunk)
+      } catch {
+        Log.tunnel.error("\(#function): error reading chunk: \(error)")
+
+        completionHandler(nil)
+      }
+    }
+
+    switch self.logExportState {
+
+    case .inProgress(let tunnelLogArchive):
+      sendChunk(tunnelLogArchive)
+
+    case .idle:
+      guard let logFolderURL = SharedAccess.logFolderURL,
+            let logFolderPath = FilePath(logFolderURL)
+      else {
+        Log.tunnel.error("\(#function): log folder not available")
+        completionHandler(nil)
+
+        return
+      }
+
+      let tunnelLogArchive = TunnelLogArchive(
+        logger: Log.tunnel,
+        source: logFolderPath
+      )
+
+      do {
+        try tunnelLogArchive.archive()
+      } catch {
+        Log.tunnel.error("\(#function): error archiving logs: \(error)")
+        completionHandler(nil)
+
+        return
+      }
+
+      self.logExportState = .inProgress(tunnelLogArchive)
+      sendChunk(tunnelLogArchive)
     }
   }
 }

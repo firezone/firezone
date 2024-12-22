@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::http_health_check;
@@ -16,10 +16,11 @@ use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use secrecy::{Secret, SecretString};
+use std::borrow::Cow;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::task::Poll;
+use std::task::{ready, Poll};
 use std::time::{Duration, Instant};
 use tokio::signal::unix;
 use tracing::{level_filters::LevelFilter, Subscriber};
@@ -418,6 +419,8 @@ where
                 return Poll::Ready(Ok(()));
             }
 
+            ready!(self.sockets.flush(cx))?;
+
             // Priority 1: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
@@ -425,7 +428,7 @@ where
                         if let Err(e) = self.sockets.try_send(
                             self.server.listen_port(),
                             recipient.into_socket(),
-                            &payload,
+                            Cow::Owned(payload),
                         ) {
                             tracing::warn!(target: "relay", error = std_dyn_err(&e), %recipient, "Failed to send message");
                         }
@@ -493,10 +496,11 @@ where
                             .expect("valid ChannelData if we should relay it")
                             .data(); // When relaying data from a client to peer, we need to forward only the channel-data's payload.
 
-                        if let Err(e) =
-                            self.sockets
-                                .try_send(port.value(), peer.into_socket(), payload)
-                        {
+                        if let Err(e) = self.sockets.try_send(
+                            port.value(),
+                            peer.into_socket(),
+                            Cow::Borrowed(payload),
+                        ) {
                             tracing::warn!(target: "relay", error = std_dyn_err(&e), %peer, "Failed to relay data to peer");
                         }
                     };
@@ -521,7 +525,7 @@ where
                         if let Err(e) = self.sockets.try_send(
                             self.server.listen_port(), // Packets coming in from peers always go out on the TURN port
                             client.into_socket(),
-                            &self.buffer[..total_length],
+                            Cow::Borrowed(&self.buffer[..total_length]),
                         ) {
                             tracing::warn!(target: "relay", error = std_dyn_err(&e), %client, "Failed to relay data to client");
                         };
@@ -550,11 +554,10 @@ where
 
             // Priority 5: Handle portal messages
             match self.channel.as_mut().map(|c| c.poll(cx)) {
-                Some(Poll::Ready(Err(e))) => {
-                    return Poll::Ready(Err(anyhow!("Portal connection failed: {e}")));
-                }
-                Some(Poll::Ready(Ok(event))) => {
+                Some(Poll::Ready(result)) => {
+                    let event = result.context("Portal connection failed")?;
                     self.handle_portal_event(event);
+
                     continue;
                 }
                 Some(Poll::Pending) | None => {}

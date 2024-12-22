@@ -20,9 +20,6 @@ pub const RELAY_DSN: Dsn = Dsn("https://9d5f664d8f8f7f1716d4b63a58bcafd5@o450797
 #[derive(Default)]
 pub struct Telemetry {
     inner: Option<sentry::ClientInitGuard>,
-
-    account_slug: Option<String>,
-    firezone_id: Option<String>,
 }
 
 impl Drop for Telemetry {
@@ -38,10 +35,6 @@ impl Drop for Telemetry {
 
 impl Telemetry {
     pub fn start(&mut self, api_url: &str, release: &str, dsn: Dsn) {
-        if self.inner.is_some() {
-            return;
-        }
-
         // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
         // <https://docs.sentry.io/platforms/rust/configuration/environments/>
         let environment = match api_url {
@@ -53,6 +46,27 @@ impl Telemetry {
                 return;
             }
         };
+
+        if self
+            .inner
+            .as_ref()
+            .and_then(|i| i.options().environment.as_ref())
+            .is_some_and(|env| env == environment)
+        {
+            tracing::debug!("Telemetry already initialised");
+
+            return;
+        }
+
+        // Stop any previous telemetry session.
+        if let Some(inner) = self.inner.take() {
+            tracing::debug!("Stopping previous telemetry session");
+
+            sentry::end_session();
+            drop(inner);
+
+            set_current_user(None);
+        }
 
         tracing::info!("Starting telemetry");
         let inner = sentry::init((
@@ -88,8 +102,6 @@ impl Telemetry {
         });
         self.inner.replace(inner);
         sentry::start_session();
-
-        self.update_user_context();
     }
 
     /// Flushes events to sentry.io and drops the guard
@@ -121,27 +133,27 @@ impl Telemetry {
     }
 
     pub fn set_account_slug(&mut self, slug: String) {
-        self.account_slug = Some(slug);
-        self.update_user_context();
+        self.update_user(|user| {
+            user.other.insert("account_slug".to_owned(), slug.into());
+        });
     }
 
     pub fn set_firezone_id(&mut self, id: String) {
-        self.firezone_id = Some(id);
-        self.update_user_context();
+        self.update_user(|user| {
+            user.id = Some(id);
+        });
     }
 
-    fn update_user_context(&self) {
-        let mut user = sentry::User {
-            id: self.firezone_id.clone(),
-            ..Default::default()
-        };
+    fn update_user(&mut self, update: impl FnOnce(&mut sentry::User)) {
+        sentry::Hub::main().configure_scope(|scope| {
+            let mut user = scope.user().cloned().unwrap_or_default();
+            update(&mut user);
 
-        user.other.extend(
-            self.account_slug
-                .clone()
-                .map(|slug| ("account_slug".to_owned(), slug.into())),
-        );
-
-        sentry::Hub::main().configure_scope(|scope| scope.set_user(Some(user)));
+            scope.set_user(Some(user));
+        });
     }
+}
+
+fn set_current_user(user: Option<sentry::User>) {
+    sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
 }

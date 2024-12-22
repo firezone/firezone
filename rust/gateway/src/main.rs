@@ -9,18 +9,16 @@ use firezone_bin_shared::{
 };
 use firezone_logging::anyhow_dyn_err;
 use firezone_telemetry::Telemetry;
-use firezone_tunnel::messages::Interface;
-use firezone_tunnel::{GatewayTunnel, IPV4_PEERS, IPV6_PEERS};
+use firezone_tunnel::GatewayTunnel;
 use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
 
-use futures::channel::mpsc;
-use futures::{future, StreamExt, TryFutureExt};
-use phoenix_channel::{PhoenixChannel, PublicKeyParam};
+use futures::{future, TryFutureExt};
+use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
-use std::convert::Infallible;
 use std::path::Path;
 use std::pin::pin;
+use std::process::ExitCode;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
@@ -32,7 +30,7 @@ mod eventloop;
 
 const ID_PATH: &str = "/var/lib/firezone/gateway_id";
 
-fn main() {
+fn main() -> ExitCode {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
@@ -52,24 +50,32 @@ fn main() {
         .build()
         .expect("Failed to create tokio runtime");
 
-    match runtime.block_on(try_main(cli, &mut telemetry)) {
-        Ok(()) => runtime.block_on(telemetry.stop()),
+    match runtime
+        .block_on(try_main(cli, &mut telemetry))
+        .context("Failed to start Gateway")
+    {
+        Ok(ExitCode::SUCCESS) => {
+            runtime.block_on(telemetry.stop());
+
+            ExitCode::SUCCESS
+        }
+        Ok(_) => {
+            runtime.block_on(telemetry.stop_on_crash());
+
+            ExitCode::FAILURE
+        }
         Err(e) => {
-            // Enforce errors only being printed on a single line using the technique recommended in the anyhow docs:
-            // https://docs.rs/anyhow/latest/anyhow/struct.Error.html#display-representations
-            //
-            // By default, `anyhow` prints a stacktrace when it exits.
-            // That looks like a "crash" but we "just" exit with a fatal error.
             tracing::error!(error = anyhow_dyn_err(&e));
             runtime.block_on(telemetry.stop_on_crash());
 
-            std::process::exit(1);
+            ExitCode::FAILURE
         }
     }
 }
 
-async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
-    firezone_logging::setup_global_subscriber(layer::Identity::default())?;
+async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
+    firezone_logging::setup_global_subscriber(layer::Identity::default())
+        .context("Failed to set up logging")?;
 
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
@@ -80,10 +86,37 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         &SecretString::new(cli.token),
         firezone_id,
         cli.firezone_name,
-    )?;
+    )
+    .context("Failed to construct URL for logging into portal")?;
 
-    let task = tokio::spawn(run(login, cli.tun_threads)).err_into();
+    let mut tunnel = GatewayTunnel::new(Arc::new(tcp_socket_factory), Arc::new(udp_socket_factory));
+    let portal = PhoenixChannel::disconnected(
+        Secret::new(login),
+        get_user_agent(None, env!("CARGO_PKG_VERSION")),
+        PHOENIX_TOPIC,
+        (),
+        || {
+            ExponentialBackoffBuilder::default()
+                .with_max_elapsed_time(None)
+                .build()
+        },
+        Arc::new(tcp_socket_factory),
+    )
+    .context("Failed to resolve portal URL")?;
 
+    let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, cli.tun_threads)
+        .context("Failed to create TUN device manager")?;
+    let tun = tun_device_manager
+        .make_tun()
+        .context("Failed to create TUN device")?;
+    tunnel.set_tun(Box::new(tun));
+
+    let task = tokio::spawn(future::poll_fn({
+        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager);
+
+        move |cx| eventloop.poll(cx)
+    }))
+    .err_into();
     let ctrl_c = pin!(ctrl_c().map_err(anyhow::Error::new));
 
     tokio::spawn(http_health_check::serve(
@@ -95,13 +128,17 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         .await
         .map_err(|e| e.factor_first().0)?
     {
-        future::Either::Left((res, _)) => {
-            res?;
-        }
-        future::Either::Right(_) => {}
-    };
+        future::Either::Left((Err(e), _)) => {
+            tracing::info!("{e}");
 
-    Ok(())
+            Ok(ExitCode::FAILURE)
+        }
+        future::Either::Right(((), _)) => {
+            tracing::info!("Received CTRL+C, goodbye!");
+
+            Ok(ExitCode::SUCCESS)
+        }
+    }
 }
 
 async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
@@ -123,59 +160,6 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     let id = Uuid::new_v4().to_string();
     id_file.write_all(id.as_bytes()).await?;
     Ok(id)
-}
-
-async fn run(login: LoginUrl<PublicKeyParam>, num_tun_threads: usize) -> Result<Infallible> {
-    let mut tunnel = GatewayTunnel::new(Arc::new(tcp_socket_factory), Arc::new(udp_socket_factory));
-    let portal = PhoenixChannel::disconnected(
-        Secret::new(login),
-        get_user_agent(None, env!("CARGO_PKG_VERSION")),
-        PHOENIX_TOPIC,
-        (),
-        || {
-            ExponentialBackoffBuilder::default()
-                .with_max_elapsed_time(None)
-                .build()
-        },
-        Arc::new(tcp_socket_factory),
-    )?;
-
-    let (sender, receiver) = mpsc::channel::<Interface>(10);
-    let mut tun_device_manager = TunDeviceManager::new(ip_packet::PACKET_SIZE, num_tun_threads)?;
-    let tun = tun_device_manager.make_tun()?;
-    tunnel.set_tun(Box::new(tun));
-
-    let update_device_task = update_device_task(tun_device_manager, receiver);
-
-    let mut eventloop = Eventloop::new(tunnel, portal, sender);
-    let eventloop_task = future::poll_fn(move |cx| eventloop.poll(cx));
-
-    let ((), result) = futures::join!(update_device_task, eventloop_task);
-
-    result.context("Eventloop failed")?;
-
-    unreachable!()
-}
-
-async fn update_device_task(
-    mut tun_device: TunDeviceManager,
-    mut receiver: mpsc::Receiver<Interface>,
-) {
-    while let Some(next_interface) = receiver.next().await {
-        if let Err(e) = tun_device
-            .set_ips(next_interface.ipv4, next_interface.ipv6)
-            .await
-        {
-            tracing::warn!(error = anyhow_dyn_err(&e), "Failed to set interface");
-        }
-
-        if let Err(e) = tun_device
-            .set_routes(vec![IPV4_PEERS], vec![IPV6_PEERS])
-            .await
-        {
-            tracing::warn!(error = anyhow_dyn_err(&e), "Failed; to set routes");
-        };
-    }
 }
 
 #[derive(Parser)]

@@ -1,9 +1,8 @@
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::candidate_set::CandidateSet;
 use crate::index::IndexLfsr;
-use crate::ringbuffer::RingBuffer;
 use crate::stats::{ConnectionStats, NodeStats};
-use crate::utils::earliest;
+use crate::utils::{channel_data_packet_buffer, earliest};
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
@@ -11,12 +10,11 @@ use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
 use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt;
-use ip_packet::{
-    ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf, MAX_DATAGRAM_PAYLOAD,
-};
+use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf};
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, Rng, SeedableRng};
+use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
 use std::borrow::Cow;
@@ -126,6 +124,9 @@ pub struct Node<T, TId, RId> {
     pending_events: VecDeque<Event<TId>>,
 
     stats: NodeStats,
+    // All access to [`Node`] happens in the same thread, so we should never get contention which makes a spinlock ideal.
+    // This is wrapped in an `Arc` so we can use `pull_owned`.
+    buffer_pool: Arc<lockfree_object_pool::SpinLockObjectPool<Vec<u8>>>,
 
     mode: T,
     rng: StdRng,
@@ -180,6 +181,10 @@ where
             allocations: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
+            buffer_pool: Arc::new(lockfree_object_pool::SpinLockObjectPool::new(
+                || vec![0; ip_packet::MAX_FZ_PAYLOAD],
+                |v| v.fill(0),
+            )),
         }
     }
 
@@ -438,11 +443,11 @@ where
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
 
-        let mut buffer = EncryptBuffer::default();
+        let mut buffer = self.buffer_pool.pull_owned();
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
-            .encapsulate(packet.packet(), &mut buffer.inner[4..], now)?
+            .encapsulate(packet.packet(), &mut buffer[4..], now)?
             .map(|p| p.len())
         // Mapping to len() here terminate the mutable borrow of buffer, allowing re-borrowing further down.
         else {
@@ -454,7 +459,7 @@ where
 
         let socket = match &mut conn.state {
             ConnectionState::Connecting { buffered, .. } => {
-                buffered.push(buffer.inner[packet_start..packet_end].to_vec());
+                buffered.push(buffer[packet_start..packet_end].to_vec());
                 let num_buffered = buffered.len();
 
                 let _guard = conn.span.enter();
@@ -477,21 +482,26 @@ where
                 dst: remote,
                 packet_start,
                 packet_len,
-                buffer: buffer.inner,
+                buffer,
             })),
             PeerSocket::Relay { relay, dest: peer } => {
-                let Some(allocation) = self.allocations.get(&relay) else {
+                let Some(allocation) = self.allocations.get_mut(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
                 };
-                let Some(enc_packet) =
-                    allocation.encode_to_encrypted_packet(peer, buffer.inner, packet_end, now)
+                let Some(encode_ok) =
+                    allocation.encode_channel_data_header(peer, &mut buffer[..packet_end], now)
                 else {
-                    tracing::warn!(%peer, "No channel");
                     return Ok(None);
                 };
 
-                Ok(Some(enc_packet))
+                Ok(Some(EncryptedPacket {
+                    src: None,
+                    dst: encode_ok.socket,
+                    packet_start: 0,
+                    packet_len: packet_end,
+                    buffer,
+                }))
             }
         }
     }
@@ -569,7 +579,7 @@ where
         self.allocations
             .retain(|rid, allocation| match allocation.can_be_freed() {
                 Some(e) => {
-                    tracing::warn!(%rid, "Disconnecting from relay; {e}");
+                    tracing::info!(%rid, "Disconnecting from relay; {e}");
 
                     false
                 }
@@ -725,13 +735,13 @@ where
             wg_timer: DEFAULT_WG_TIMER,
             next_wg_timer_update: now,
             stats: Default::default(),
-            buffer: vec![0; ip_packet::MAX_DATAGRAM_PAYLOAD],
+            buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
             intent_sent_at,
             signalling_completed_at: now,
             remote_pub_key: remote,
             state: ConnectionState::Connecting {
                 relay,
-                buffered: RingBuffer::new(10),
+                buffered: AllocRingBuffer::new(128),
             },
             possible_sockets: BTreeSet::default(),
             span: info_span!(parent: tracing::Span::none(), "connection", %cid),
@@ -1316,37 +1326,6 @@ where
     }
 }
 
-/// Wraps the message as a channel data message via the relay, iff:
-///
-/// - `relay` is in fact a relay
-/// - We have an allocation on the relay
-/// - There is a channel bound to the provided peer
-fn encode_as_channel_data<RId>(
-    relay: RId,
-    dest: SocketAddr,
-    contents: &[u8],
-    allocations: &mut BTreeMap<RId, Allocation>,
-    now: Instant,
-) -> Result<Transmit<'static>, EncodeError>
-where
-    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug,
-{
-    let allocation = allocations
-        .get_mut(&relay)
-        .ok_or(EncodeError::NoAllocation)?;
-    let transmit = allocation
-        .encode_to_owned_transmit(dest, contents, now)
-        .ok_or(EncodeError::NoChannel)?;
-
-    Ok(transmit)
-}
-
-#[derive(Debug)]
-enum EncodeError {
-    NoAllocation,
-    NoChannel,
-}
-
 fn add_local_candidate<TId>(
     id: TId,
     agent: &mut IceAgent,
@@ -1473,31 +1452,12 @@ pub enum Event<TId> {
     ConnectionClosed(TId),
 }
 
-struct EncryptBuffer {
-    inner: [u8; MAX_DATAGRAM_PAYLOAD],
-}
-
-impl EncryptBuffer {
-    fn new() -> Self {
-        Self {
-            inner: [0u8; MAX_DATAGRAM_PAYLOAD],
-        }
-    }
-}
-
-impl Default for EncryptBuffer {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[derive(Debug, Clone)]
 pub struct EncryptedPacket {
     pub(crate) src: Option<SocketAddr>,
     pub(crate) dst: SocketAddr,
     pub(crate) packet_start: usize,
     pub(crate) packet_len: usize,
-    pub(crate) buffer: [u8; MAX_DATAGRAM_PAYLOAD],
+    pub(crate) buffer: lockfree_object_pool::SpinLockOwnedReusable<Vec<u8>>,
 }
 
 impl EncryptedPacket {
@@ -1638,7 +1598,7 @@ enum ConnectionState<RId> {
         /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
         ///
         /// It can also happen if we attempt to encapsulate a packet prior to the WireGuard handshake which triggers the creation of a WireGuard handshake initiation packet.
-        buffered: RingBuffer<Vec<u8>>,
+        buffered: AllocRingBuffer<Vec<u8>>,
     },
     /// A socket has been nominated.
     Connected {
@@ -1970,7 +1930,7 @@ where
         while let Some(transmit) = self.agent.poll_transmit() {
             let source = transmit.source;
             let dst = transmit.destination;
-            let packet = transmit.contents;
+            let stun_packet = transmit.contents;
 
             // Check if `str0m` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
             let allocation = allocations
@@ -1978,27 +1938,35 @@ where
                 .find(|(_, allocation)| allocation.has_socket(source));
 
             let Some((relay, allocation)) = allocation else {
-                self.stats.stun_bytes_to_peer_direct += packet.len();
+                self.stats.stun_bytes_to_peer_direct += stun_packet.len();
 
                 // `source` did not match any of our allocated sockets, must be a local one then!
                 transmits.push_back(Transmit {
                     src: Some(source),
                     dst,
-                    payload: Cow::Owned(packet.into()),
+                    payload: Cow::Owned(stun_packet.into()),
                 });
                 continue;
             };
 
+            let mut data_channel_packet = channel_data_packet_buffer(&stun_packet);
+
             // Payload should be sent from a "remote socket", let's wrap it in a channel data message!
-            let Some(channel_data) = allocation.encode_to_owned_transmit(dst, &packet, now) else {
+            let Some(encode_ok) =
+                allocation.encode_channel_data_header(dst, &mut data_channel_packet, now)
+            else {
                 // Unlikely edge-case, drop the packet and continue.
                 tracing::trace!(%relay, peer = %dst, "Dropping packet because allocation does not offer a channel to peer");
                 continue;
             };
 
-            self.stats.stun_bytes_to_peer_relayed += channel_data.payload.len();
+            self.stats.stun_bytes_to_peer_relayed += data_channel_packet.len();
 
-            transmits.push_back(channel_data);
+            transmits.push_back(Transmit {
+                src: None,
+                dst: encode_ok.socket,
+                payload: Cow::Owned(data_channel_packet),
+            });
         }
     }
 
@@ -2180,7 +2148,16 @@ where
             payload: Cow::Owned(message.into()),
         },
         PeerSocket::Relay { relay, dest: peer } => {
-            encode_as_channel_data(relay, peer, message, allocations, now).ok()?
+            let allocation = allocations.get_mut(&relay)?;
+
+            let mut buffer = channel_data_packet_buffer(message);
+            let encode_ok = allocation.encode_channel_data_header(peer, &mut buffer, now)?;
+
+            Transmit {
+                src: None,
+                dst: encode_ok.socket,
+                payload: Cow::Owned(buffer),
+            }
         }
     };
 

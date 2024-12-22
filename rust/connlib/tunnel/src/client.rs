@@ -3,6 +3,7 @@ mod resource;
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::dns::StubResolver;
 use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
@@ -20,7 +21,7 @@ use firezone_logging::{
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, UdpSlice, MAX_DATAGRAM_PAYLOAD};
+use ip_packet::{IpPacket, UdpSlice, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
@@ -151,18 +152,56 @@ pub struct ClientState {
 }
 
 enum DnsResourceNatState {
-    Pending { sent_at: Instant },
+    Pending {
+        sent_at: Instant,
+        buffered_packets: AllocRingBuffer<IpPacket>,
+    },
     Confirmed,
 }
 
 impl DnsResourceNatState {
-    fn confirm(&mut self) {
-        *self = Self::Confirmed;
+    fn num_buffered_packets(&self) -> usize {
+        match self {
+            DnsResourceNatState::Pending {
+                buffered_packets, ..
+            } => buffered_packets.len(),
+            DnsResourceNatState::Confirmed => 0,
+        }
+    }
+
+    fn confirm(&mut self) -> impl Iterator<Item = IpPacket> {
+        let buffered_packets = match std::mem::replace(self, DnsResourceNatState::Confirmed) {
+            DnsResourceNatState::Pending {
+                buffered_packets, ..
+            } => Some(buffered_packets.into_iter()),
+            DnsResourceNatState::Confirmed => None,
+        };
+
+        buffered_packets.into_iter().flatten()
     }
 }
 
 struct PendingFlow {
     last_intent_sent_at: Instant,
+    packets: AllocRingBuffer<IpPacket>,
+}
+
+impl PendingFlow {
+    /// How many packets we will at most buffer in a [`PendingFlow`].
+    ///
+    /// `PendingFlow`s are per _resource_ (which could be Internet Resource or wildcard DNS resources).
+    /// Thus, we may receive a fair few packets before we can send them.
+    const CAPACITY_POW_2: usize = 7; // 2^7 = 128
+
+    fn new(now: Instant, packet: IpPacket) -> Self {
+        let mut packets = AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2);
+        packets.push(packet);
+
+        Self {
+            last_intent_sent_at: now,
+            packets,
+        }
+    }
 }
 
 impl ClientState {
@@ -285,7 +324,38 @@ impl ClientState {
     /// 3. If we don't receive a response within 2s and this function is called again, we send another message.
     ///
     /// The complexity of this function is O(N) with the number of resolved DNS resources.
-    fn update_dns_resource_nat(&mut self, now: Instant) {
+    fn update_dns_resource_nat(
+        &mut self,
+        now: Instant,
+        buffered_packets: impl Iterator<Item = IpPacket>,
+    ) {
+        // Organise all buffered packets by gateway + domain.
+        let mut buffered_packets_by_gateway_and_domain = buffered_packets
+            .map(|packet| {
+                let (domain, resource) = self
+                    .stub_resolver
+                    .resolve_resource_by_ip(&packet.destination())
+                    .context("IP is not associated with a DNS resource domain")?;
+                let gateway_id = self
+                    .resources_gateways
+                    .get(resource)
+                    .context("No gateway for resource")?;
+
+                anyhow::Ok((*gateway_id, domain, packet))
+            })
+            .filter_map(|res| {
+                res.inspect_err(|e| tracing::debug!("Dropping buffered packet: {e}"))
+                    .ok()
+            })
+            .fold(
+                BTreeMap::<_, VecDeque<IpPacket>>::new(),
+                |mut map, (gid, domain, packet)| {
+                    map.entry((gid, domain)).or_default().push_back(packet);
+
+                    map
+                },
+            );
+
         use std::collections::btree_map::Entry;
 
         for (domain, rid, proxy_ips, gid) in
@@ -305,6 +375,10 @@ impl ClientState {
                 continue;
             };
 
+            let packets_for_domain = buffered_packets_by_gateway_and_domain
+                .remove(&(*gid, domain))
+                .unwrap_or_default();
+
             match self
                 .dns_resource_nat_by_gateway
                 .entry((*gid, domain.clone()))
@@ -312,13 +386,22 @@ impl ClientState {
                 Entry::Vacant(v) => {
                     self.peers
                         .add_ips_with_resource(gid, proxy_ips.iter().copied(), rid);
+                    let mut buffered_packets = AllocRingBuffer::with_capacity_power_of_2(5); // 2^5 = 32
+                    buffered_packets.extend(packets_for_domain);
 
-                    v.insert(DnsResourceNatState::Pending { sent_at: now });
+                    v.insert(DnsResourceNatState::Pending {
+                        sent_at: now,
+                        buffered_packets,
+                    });
                 }
                 Entry::Occupied(mut o) => match o.get_mut() {
                     DnsResourceNatState::Confirmed => continue,
-                    DnsResourceNatState::Pending { sent_at } => {
+                    DnsResourceNatState::Pending {
+                        sent_at,
+                        buffered_packets,
+                    } => {
                         let time_since_last_attempt = now.duration_since(*sent_at);
+                        buffered_packets.extend(packets_for_domain);
 
                         if time_since_last_attempt < Duration::from_secs(2) {
                             continue;
@@ -346,18 +429,13 @@ impl ClientState {
 
             tracing::debug!(%gid, %domain, "Setting up DNS resource NAT");
 
-            let Some(transmit) = self
-                .node
-                .encapsulate(*gid, packet, now)
-                .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
-                .ok()
-                .flatten()
-            else {
-                continue;
-            };
-
-            self.buffered_transmits
-                .push_back(transmit.to_transmit().into_owned());
+            encapsulate_and_buffer(
+                packet,
+                *gid,
+                now,
+                &mut self.node,
+                &mut self.buffered_transmits,
+            );
         }
     }
 
@@ -435,7 +513,14 @@ impl ClientState {
         }
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
-            handle_p2p_control_packet(gid, fz_p2p_control, &mut self.dns_resource_nat_by_gateway);
+            handle_p2p_control_packet(
+                gid,
+                fz_p2p_control,
+                &mut self.dns_resource_nat_by_gateway,
+                &mut self.node,
+                &mut self.buffered_transmits,
+                now,
+            );
             return None;
         }
 
@@ -491,7 +576,7 @@ impl ClientState {
                     });
 
                 unwrap_or_warn!(
-                    self.try_queue_udp_dns_response(server, source, &message),
+                    self.try_queue_udp_dns_response(server, source, message),
                     "Failed to queue UDP DNS response"
                 );
             }
@@ -528,24 +613,24 @@ impl ClientState {
 
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
         else {
-            self.on_not_connected_resource(resource, now);
+            self.on_not_connected_resource(resource, packet, now);
             return None;
         };
-
-        // TODO: Don't send packets unless we have a positive response for the DNS resource NAT.
 
         // TODO: Check DNS resource NAT state for the domain that the destination IP belongs to.
         // Re-send if older than X.
 
-        // if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst) {
-        //     if self
-        //         .dns_resource_nat_by_gateway
-        //         .get(&(peer.id(), domain.clone()))
-        //         .is_some_and(|s| s.is_pending())
-        //     {
-        //         self.update_dns_resource_nat(now);
-        //     }
-        // }
+        if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst) {
+            if let Some(DnsResourceNatState::Pending {
+                buffered_packets, ..
+            }) = self
+                .dns_resource_nat_by_gateway
+                .get_mut(&(peer.id(), domain.clone()))
+            {
+                buffered_packets.push(packet);
+                return None;
+            }
+        }
 
         let gid = peer.id();
 
@@ -562,7 +647,7 @@ impl ClientState {
         &mut self,
         from: SocketAddr,
         dst: SocketAddr,
-        message: &Message<Vec<u8>>,
+        message: Message<Vec<u8>>,
     ) -> anyhow::Result<()> {
         let saddr = *self
             .dns_mapping
@@ -600,7 +685,7 @@ impl ClientState {
         self.drain_node_events();
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%gateway_id))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%resource_id))]
     #[expect(clippy::too_many_arguments)]
     pub fn handle_flow_created(
         &mut self,
@@ -613,16 +698,18 @@ impl ClientState {
         gateway_ice: IceCredentials,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
-        tracing::trace!("Updating resource routing table");
+        tracing::debug!(%gateway_id, "New flow authorized for resource");
 
         let resource = self
             .resources_by_id
             .get(&resource_id)
             .context("Unknown resource")?;
 
-        self.pending_flows
-            .remove(&resource_id)
-            .context("No pending flow for resource")?;
+        let Some(pending_flow) = self.pending_flows.remove(&resource_id) else {
+            tracing::debug!("No pending flow");
+
+            return Ok(Ok(()));
+        };
 
         if let Some(old_gateway_id) = self.resources_gateways.insert(resource_id, gateway_id) {
             if self.peers.get(&old_gateway_id).is_some() {
@@ -655,14 +742,29 @@ impl ClientState {
             self.peers.insert(GatewayOnClient::new(gateway_id), &[]);
         };
 
-        // This only works for CIDR & Internet Resource.
-        self.peers.add_ips_with_resource(
-            &gateway_id,
-            resource.addresses().into_iter(),
-            &resource_id,
-        );
+        let buffered_packets = pending_flow.packets;
 
-        self.update_dns_resource_nat(now);
+        match resource {
+            Resource::Cidr(_) | Resource::Internet(_) => {
+                self.peers.add_ips_with_resource(
+                    &gateway_id,
+                    resource.addresses().into_iter(),
+                    &resource_id,
+                );
+
+                // For CIDR and Internet resources, we can directly queue the buffered packets.
+                for packet in buffered_packets {
+                    encapsulate_and_buffer(
+                        packet,
+                        gateway_id,
+                        now,
+                        &mut self.node,
+                        &mut self.buffered_transmits,
+                    );
+                }
+            }
+            Resource::Dns(_) => self.update_dns_resource_nat(now, buffered_packets.into_iter()),
+        }
 
         Ok(Ok(()))
     }
@@ -711,17 +813,19 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%resource))]
-    fn on_not_connected_resource(&mut self, resource: ResourceId, now: Instant) {
+    fn on_not_connected_resource(&mut self, resource: ResourceId, packet: IpPacket, now: Instant) {
         debug_assert!(self.resources_by_id.contains_key(&resource));
 
         match self.pending_flows.entry(resource) {
             Entry::Vacant(v) => {
-                v.insert(PendingFlow {
-                    last_intent_sent_at: now,
-                });
+                v.insert(PendingFlow::new(now, packet));
             }
             Entry::Occupied(mut o) => {
                 let pending_flow = o.get_mut();
+                pending_flow.packets.push(packet);
+                let num_buffered = pending_flow.packets.len();
+
+                tracing::debug!(%num_buffered, "Buffering packet in `PendingFlow`");
 
                 let time_since_last_intent = now.duration_since(pending_flow.last_intent_sent_at);
 
@@ -1032,10 +1136,10 @@ impl ClientState {
         match self.stub_resolver.handle(message) {
             dns::ResolveStrategy::LocalResponse(response) => {
                 self.clear_dns_resource_nat_for_domain(response.for_slice_ref());
-                self.update_dns_resource_nat(now);
+                self.update_dns_resource_nat(now, iter::empty());
 
                 unwrap_or_debug!(
-                    self.try_queue_udp_dns_response(upstream, source, &response),
+                    self.try_queue_udp_dns_response(upstream, source, response),
                     "Failed to queue UDP DNS response: {}"
                 );
             }
@@ -1077,7 +1181,7 @@ impl ClientState {
         match self.stub_resolver.handle(message.for_slice_ref()) {
             dns::ResolveStrategy::LocalResponse(response) => {
                 self.clear_dns_resource_nat_for_domain(response.for_slice_ref());
-                self.update_dns_resource_nat(now);
+                self.update_dns_resource_nat(now, iter::empty());
 
                 unwrap_or_debug!(
                     self.tcp_dns_server.send_message(query.socket, response),
@@ -1512,6 +1616,25 @@ impl ClientState {
     }
 }
 
+fn encapsulate_and_buffer(
+    packet: IpPacket,
+    gid: GatewayId,
+    now: Instant,
+    node: &mut ClientNode<GatewayId, RelayId>,
+    buffered_transmits: &mut VecDeque<Transmit<'static>>,
+) {
+    let Some(enc_packet) = node
+        .encapsulate(gid, packet, now)
+        .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
+        .ok()
+        .flatten()
+    else {
+        return;
+    };
+
+    buffered_transmits.push_back(enc_packet.to_transmit().into_owned());
+}
+
 fn parse_udp_dns_message<'b>(datagram: &UdpSlice<'b>) -> anyhow::Result<Message<&'b [u8]>> {
     let port = datagram.destination_port();
 
@@ -1530,6 +1653,9 @@ fn handle_p2p_control_packet(
     gid: GatewayId,
     fz_p2p_control: ip_packet::FzP2pControlSlice,
     dns_resource_nat_by_gateway: &mut BTreeMap<(GatewayId, DomainName), DnsResourceNatState>,
+    node: &mut ClientNode<GatewayId, RelayId>,
+    buffered_transmits: &mut VecDeque<Transmit<'static>>,
+    now: Instant,
 ) {
     use p2p_control::dns_resource_nat;
 
@@ -1552,9 +1678,13 @@ fn handle_p2p_control_packet(
                 return;
             };
 
-            tracing::debug!(%gid, domain = %res.domain, "DNS resource NAT is active");
+            tracing::debug!(%gid, domain = %res.domain, num_buffered_packets = %nat_state.num_buffered_packets(), "DNS resource NAT is active");
 
-            nat_state.confirm();
+            let buffered_packets = nat_state.confirm();
+
+            for packet in buffered_packets {
+                encapsulate_and_buffer(packet, gid, now, node, buffered_transmits);
+            }
         }
         code => {
             tracing::debug!(code = %code.into_u8(), "Unknown control protocol");
@@ -1593,7 +1723,7 @@ fn effective_dns_servers(
         .peekable();
 
     if dns_servers.peek().is_none() {
-        tracing::warn!("No system default DNS servers available! Can't initialize resolver. DNS interception will be disabled.");
+        tracing::info!("No system default DNS servers available! Can't initialize resolver. DNS resources won't work.");
         return Vec::new();
     }
 
@@ -1696,25 +1826,24 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     packet
 }
 
-fn truncate_dns_response(message: &Message<Vec<u8>>) -> Vec<u8> {
-    let mut message_bytes = message.as_octets().to_vec();
-
-    if message_bytes.len() > MAX_DATAGRAM_PAYLOAD {
-        tracing::debug!(?message, message_length = %message_bytes.len(), "Too big DNS response, truncating");
-
-        let mut new_message = message.clone();
-        new_message.header_mut().set_tc(true);
-
-        let message_truncation = match message.answer() {
-            Ok(answer) if answer.pos() <= MAX_DATAGRAM_PAYLOAD => answer.pos(),
-            // This should be very unlikely or impossible.
-            _ => message.question().pos(),
-        };
-
-        message_bytes = new_message.as_octets().to_vec();
-
-        message_bytes.truncate(message_truncation);
+fn truncate_dns_response(mut message: Message<Vec<u8>>) -> Vec<u8> {
+    let message_length = message.as_octets().len();
+    if message_length <= MAX_UDP_PAYLOAD {
+        return message.into_octets();
     }
+
+    tracing::debug!(?message, %message_length, "Too big DNS response, truncating");
+
+    message.header_mut().set_tc(true);
+
+    let message_truncation = match message.answer() {
+        Ok(answer) if answer.pos() <= MAX_UDP_PAYLOAD => answer.pos(),
+        // This should be very unlikely or impossible.
+        _ => message.question().pos(),
+    };
+
+    let mut message_bytes = message.into_octets();
+    message_bytes.truncate(message_truncation);
 
     message_bytes
 }

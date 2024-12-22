@@ -101,7 +101,6 @@ pub enum ClientMsg {
         release: String,
         account_slug: Option<String>,
     },
-    StopTelemetry,
 }
 
 /// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
@@ -182,12 +181,20 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
         .build()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
+    let mut telemetry = Telemetry::default();
 
     rt.block_on(ipc_listen(
         cli.common.dns_control,
         &log_filter_reloader,
         &mut signals,
+        &mut telemetry,
     ))
+    .inspect(|_| rt.block_on(telemetry.stop()))
+    .inspect_err(|e| {
+        tracing::error!(error = anyhow_dyn_err(e), "IPC service failed");
+
+        rt.block_on(telemetry.stop_on_crash())
+    })
 }
 
 #[cfg(not(debug_assertions))]
@@ -242,6 +249,7 @@ async fn ipc_listen(
     dns_control_method: DnsControlMethod,
     log_filter_reloader: &LogFilterReloader,
     signals: &mut signals::Terminate,
+    telemetry: &mut Telemetry,
 ) -> Result<()> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
@@ -249,7 +257,6 @@ async fn ipc_listen(
         .context("Failed to read / create device ID")?
         .id;
 
-    let mut telemetry = Telemetry::default();
     telemetry.set_firezone_id(firezone_id);
 
     let mut server = IpcServer::new(ServiceId::Prod).await?;
@@ -259,7 +266,7 @@ async fn ipc_listen(
             &mut server,
             &mut dns_controller,
             log_filter_reloader,
-            &mut telemetry,
+            telemetry,
         ));
         let Some(handler) = poll_fn(|cx| {
             if let Poll::Ready(()) = signals.poll_recv(cx) {
@@ -329,7 +336,7 @@ impl<'a> Handler<'a> {
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        let tun_device = TunDeviceManager::new(ip_packet::PACKET_SIZE, crate::NUM_TUN_THREADS)?;
+        let tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, crate::NUM_TUN_THREADS)?;
 
         Ok(Self {
             dns_controller,
@@ -564,9 +571,6 @@ impl<'a> Handler<'a> {
                     self.telemetry.set_account_slug(account_slug);
                 }
             }
-            ClientMsg::StopTelemetry => {
-                self.telemetry.stop().await;
-            }
         }
         Ok(())
     }
@@ -602,7 +606,7 @@ impl<'a> Handler<'a> {
             // The IPC service must use the GUI's version number, not the Headless Client's.
             // But refactoring to separate the IPC service from the Headless Client will take a while.
             // mark:next-gui-version
-            get_user_agent(None, "1.4.0"),
+            get_user_agent(None, "1.4.1"),
             "client",
             (),
             || {

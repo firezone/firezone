@@ -34,7 +34,7 @@ The recommended way for benchmarking any of the Rust components is Linux' `perf`
 For example, to attach to a running application, do:
 
 1. Ensure the binary you are profiling is compiled with the `release` profile.
-1. `sudo perf perf record -g --freq 10000 --pid $(pgrep <your-binary>)`.
+1. `sudo perf record -g --freq 10000 --pid $(pgrep <your-binary>)`.
 1. Run the speed test or whatever load-inducing task you want to measure.
 1. `sudo perf script > profile.perf`
 1. Open [profiler.firefox.com](https://profiler.firefox.com) and load `profile.perf`

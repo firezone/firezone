@@ -98,7 +98,7 @@ impl ClientTunnel {
 
     pub fn reset(&mut self) {
         self.role_state.reset();
-        self.io.rebind_sockets();
+        self.io.reset();
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<ClientEvent>> {

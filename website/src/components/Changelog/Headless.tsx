@@ -11,7 +11,8 @@ export default function Headless() {
   return (
     <Entries href={href} arches={arches} title="Linux headless">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.0" date={new Date("2024-12-13")}>
         <ChangeItem pull="7350">
           Allows disabling telemetry by setting `FIREZONE_NO_TELEMETRY=true`.
         </ChangeItem>
@@ -27,7 +28,10 @@ export default function Headless() {
           Uses multiple threads to read & write to the TUN device, greatly
           improving performance.
         </ChangeItem>
-      </Unreleased>
+        <ChangeItem pull="7477">
+          Improves connection setup latency by buffering initial packets.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.3.7" date={new Date("2024-11-15")}>
         <ChangeItem pull="7334">
           Fixes an issue where symmetric NATs would generate unnecessary

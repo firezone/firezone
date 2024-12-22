@@ -52,70 +52,61 @@ public final class SettingsViewModel: ObservableObject {
     }
   }
 
-  func calculateLogDirSize() -> String? {
+  // Calculates the total size of our logs by summing the size of the
+  // app, tunnel, and connlib log directories.
+  //
+  // On iOS, SharedAccess.logFolderURL is a single folder that contains all
+  // three directories, but on macOS, the app log directory lives in a different
+  // Group Container than tunnel and connlib directories, so we use IPC to make
+  // a call to sum both the tunnel and connlib directories.
+  //
+  // Unfortunately the IPC method doesn't work on iOS because the tunnel process
+  // is not started on demand, so the IPC calls hang. Thus, we use separate code
+  // paths for iOS and macOS.
+  func calculateLogDirSize() async -> String {
     Log.app.log("\(#function)")
 
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
       Log.app.error("\(#function): Log folder is unavailable")
-      return nil
+
+      return "Unknown"
     }
 
-    let fileManager = FileManager.default
+    let logFolderSize = await Log.size(of: logFilesFolderURL)
 
-    var totalSize = 0
-    fileManager.forEachFileUnder(
-      logFilesFolderURL,
-      including: [
-        .totalFileAllocatedSizeKey,
-        .totalFileSizeKey,
-        .isRegularFileKey,
-      ]
-    ) { url, resourceValues in
-      if resourceValues.isRegularFile ?? false {
-        totalSize += (resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
-      }
+    do {
+#if os(macOS)
+      let providerLogFolderSize = try await TunnelManager.shared.getLogFolderSize()
+      let totalSize = logFolderSize + providerLogFolderSize
+#else
+      let totalSize = logFolderSize
+#endif
+
+      let byteCountFormatter = ByteCountFormatter()
+      byteCountFormatter.countStyle = .file
+      byteCountFormatter.allowsNonnumericFormatting = false
+      byteCountFormatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB, .usePB]
+
+      return byteCountFormatter.string(fromByteCount: Int64(totalSize))
+
+    } catch {
+      Log.app.error("\(#function): \(error)")
+
+      return "Unknown"
     }
-
-    if Task.isCancelled {
-      return nil
-    }
-
-    let byteCountFormatter = ByteCountFormatter()
-    byteCountFormatter.countStyle = .file
-    byteCountFormatter.allowsNonnumericFormatting = false
-    byteCountFormatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB, .usePB]
-    return byteCountFormatter.string(fromByteCount: Int64(totalSize))
   }
 
-  func clearAllLogs() throws {
+  // On iOS, all the logs are stored in one directory.
+  // On macOS, we need to clear logs from the app process, then call over IPC
+  // to clear the provider's log directory.
+  func clearAllLogs() async throws {
     Log.app.log("\(#function)")
 
-    guard let logFilesFolderURL = SharedAccess.logFolderURL else {
-      Log.app.error("\(#function): Log folder is unavailable")
-      return
-    }
+    try Log.clear(in: SharedAccess.logFolderURL)
 
-    let fileManager = FileManager.default
-    var unremovedFilesCount = 0
-    fileManager.forEachFileUnder(
-      logFilesFolderURL,
-      including: [
-        .isRegularFileKey
-      ]
-    ) { url, resourceValues in
-      if resourceValues.isRegularFile ?? false {
-        do {
-          try fileManager.removeItem(at: url)
-        } catch {
-          unremovedFilesCount += 1
-          Log.app.error("Unable to remove '\(url)': \(error)")
-        }
-      }
-    }
-
-    if unremovedFilesCount > 0 {
-      Log.app.log("\(#function): Unable to remove \(unremovedFilesCount) files")
-    }
+#if os(macOS)
+    try await TunnelManager.shared.clearLogs()
+#endif
   }
 }
 
@@ -487,8 +478,9 @@ public struct SettingsView: View {
                 action: {
                   self.isExportingLogs = true
                   Task {
-                    let compressor = LogCompressor()
-                    self.logTempZipFileURL = try await compressor.compressFolderReturningURL()
+                    let archiveURL = LogExporter.tempFile()
+                    try await LogExporter.export(to: archiveURL)
+                    self.logTempZipFileURL = archiveURL
                     self.isPresentingExportLogShareSheet = true
                   }
                 }
@@ -569,13 +561,14 @@ public struct SettingsView: View {
 
   #if os(macOS)
     func exportLogsWithSavePanelOnMac() {
-      let compressor = LogCompressor()
       self.isExportingLogs = true
 
       let savePanel = NSSavePanel()
       savePanel.prompt = "Save"
-      savePanel.nameFieldLabel = "Save log zip bundle to:"
-      savePanel.nameFieldStringValue = compressor.fileName
+      savePanel.nameFieldLabel = "Save log archive to:"
+      let fileName = "firezone_logs_\(LogExporter.now()).aar"
+
+      savePanel.nameFieldStringValue = fileName
 
       guard
         let window = NSApp.windows.first(where: {
@@ -599,17 +592,23 @@ public struct SettingsView: View {
 
         Task {
           do {
-            try await compressor.compressFolder(destinationURL: destinationURL)
-            self.isExportingLogs = false
+            try await LogExporter.export(to: destinationURL)
+
             await MainActor.run {
               window.contentViewController?.presentingViewController?.dismiss(self)
             }
           } catch {
-            self.isExportingLogs = false
+            Log.app.error("\(#function): \(error)")
+
+            let alert = NSAlert()
+            alert.messageText = "Error exporting logs: \(error.localizedDescription)"
+            alert.alertStyle = .critical
             await MainActor.run {
-              // Show alert
+              let _ = alert.runModal()
             }
           }
+
+          self.isExportingLogs = false
         }
       }
     }
@@ -623,7 +622,7 @@ public struct SettingsView: View {
     self.calculateLogSizeTask = Task.detached(priority: .userInitiated) {
       let calculatedLogsSize = await model.calculateLogDirSize()
       await MainActor.run {
-        self.calculatedLogsSize = calculatedLogsSize ?? "Unknown"
+        self.calculatedLogsSize = calculatedLogsSize
         self.isCalculatingLogsSize = false
         self.calculateLogSizeTask = nil
       }

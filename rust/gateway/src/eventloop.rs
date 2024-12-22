@@ -3,23 +3,25 @@ use boringtun::x25519::PublicKey;
 use connlib_model::DomainName;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
-use firezone_logging::{
-    anyhow_dyn_err, err_with_src, std_dyn_err, telemetry_event, telemetry_span,
-};
+use firezone_bin_shared::TunDeviceManager;
+use firezone_logging::{anyhow_dyn_err, telemetry_event, telemetry_span};
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
 };
-use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
-use firezone_tunnel::{DnsResourceNatEntry, GatewayTunnel, ResolveDnsRequest};
-use futures::channel::mpsc;
+use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
+use firezone_tunnel::{
+    DnsResourceNatEntry, GatewayTunnel, ResolveDnsRequest, IPV4_PEERS, IPV6_PEERS,
+};
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
 use std::convert::Infallible;
 use std::io;
 use std::net::IpAddr;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 use tracing::Instrument;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
@@ -43,30 +45,32 @@ enum ResolveTrigger {
 pub struct Eventloop {
     tunnel: GatewayTunnel,
     portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
-    tun_device_channel: mpsc::Sender<Interface>,
+    tun_device_manager: Arc<Mutex<TunDeviceManager>>,
 
     resolve_tasks: futures_bounded::FuturesTupleSet<Result<Vec<IpAddr>>, ResolveTrigger>,
+    set_interface_tasks: futures_bounded::FuturesSet<Result<()>>,
 }
 
 impl Eventloop {
     pub(crate) fn new(
         tunnel: GatewayTunnel,
         mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
-        tun_device_channel: mpsc::Sender<Interface>,
+        tun_device_manager: TunDeviceManager,
     ) -> Self {
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
         Self {
             tunnel,
             portal,
+            tun_device_manager: Arc::new(Mutex::new(tun_device_manager)),
             resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 1000),
-            tun_device_channel,
+            set_interface_tasks: futures_bounded::FuturesSet::new(Duration::from_secs(5), 10),
         }
     }
 }
 
 impl Eventloop {
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible, Error>> {
         loop {
             match self.tunnel.poll_next_event(cx) {
                 Poll::Ready(Ok(event)) => {
@@ -76,8 +80,23 @@ impl Eventloop {
                 Poll::Ready(Err(e)) if e.kind() == io::ErrorKind::WouldBlock => {
                     continue;
                 }
+                Poll::Ready(Err(e))
+                    if e.kind() == io::ErrorKind::NetworkUnreachable
+                        || e.kind() == io::ErrorKind::HostUnreachable =>
+                {
+                    // Network unreachable most likely means we don't have IPv4 or IPv6 connectivity.
+                    continue;
+                }
                 Poll::Ready(Err(e)) => {
-                    telemetry_event!("Tunnel error: {}", err_with_src(&e));
+                    let e = anyhow::Error::from(e);
+
+                    if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
+                        // Some IP packets cannot be translated and should be dropped "silently".
+                        // Do so by ignoring the error here.
+                        continue;
+                    }
+
+                    telemetry_event!("Tunnel error: {e:#}");
                     continue;
                 }
                 Poll::Pending => {}
@@ -112,6 +131,15 @@ impl Eventloop {
                     };
 
                     continue;
+                }
+                Poll::Pending => {}
+            }
+
+            match self.set_interface_tasks.poll_unpin(cx) {
+                Poll::Ready(result) => {
+                    result
+                        .unwrap_or_else(|e| Err(anyhow::Error::new(e)))
+                        .context("Failed to update TUN interface")?;
                 }
                 Poll::Pending => {}
             }
@@ -296,12 +324,30 @@ impl Eventloop {
                     Instant::now(),
                 );
 
-                // FIXME(tech-debt): Currently, the `Tunnel` creates the TUN device as part of `set_interface`.
-                // For the gateway, it doesn't do anything else so in an ideal world, we would cause the side-effect out here and just pass an opaque `Device` to the `Tunnel`.
-                // That requires more refactoring of other platforms, so for now, we need to rely on the `Tunnel` interface and cause the side-effect separately via the `TunDeviceManager`.
-                if let Err(e) = self.tun_device_channel.try_send(init.interface) {
-                    tracing::warn!(error = std_dyn_err(&e), "Failed to set interface");
-                }
+                if self
+                    .set_interface_tasks
+                    .try_push({
+                        let tun_device_manager = self.tun_device_manager.clone();
+
+                        async move {
+                            let mut tun_device_manager = tun_device_manager.lock().await;
+
+                            tun_device_manager
+                                .set_ips(init.interface.ipv4, init.interface.ipv6)
+                                .await
+                                .context("Failed to set TUN interface IPs")?;
+                            tun_device_manager
+                                .set_routes(vec![IPV4_PEERS], vec![IPV6_PEERS])
+                                .await
+                                .context("Failed to set TUN routes")?;
+
+                            Ok(())
+                        }
+                    })
+                    .is_err()
+                {
+                    tracing::warn!("Too many 'Update TUN device' tasks");
+                };
             }
             phoenix_channel::Event::InboundMessage {
                 msg: IngressMessages::ResourceUpdated(resource_description),
@@ -406,6 +452,14 @@ impl Eventloop {
             tracing::warn!(error = anyhow_dyn_err(&e), client = %req.client_id, "Allow access request failed");
         };
     }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("Failed to login to portal: {0}")]
+    PhoenixChannel(#[from] phoenix_channel::Error),
+    #[error("Failed to update TUN device: {0:#}")]
+    UpdateTun(#[from] anyhow::Error),
 }
 
 async fn resolve(domain: Option<DomainName>) -> Result<Vec<IpAddr>> {

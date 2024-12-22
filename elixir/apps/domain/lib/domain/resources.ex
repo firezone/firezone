@@ -43,6 +43,26 @@ defmodule Domain.Resources do
     end
   end
 
+  def fetch_active_resource_by_id_or_persistent_id(id, %Auth.Subject{} = subject, opts \\ []) do
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_resources_permission(),
+         Authorizer.view_available_resources_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
+         true <- Repo.valid_uuid?(id) do
+      Resource.Query.not_deleted()
+      |> Resource.Query.by_id_or_persistent_id(id)
+      |> Authorizer.for_subject(Resource, subject)
+      |> Repo.fetch(Resource.Query, opts)
+    else
+      false -> {:error, :not_found}
+      other -> other
+    end
+  end
+
   def fetch_and_authorize_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <-
            Auth.ensure_has_permissions(subject, Authorizer.view_available_resources_permission()),

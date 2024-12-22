@@ -21,7 +21,7 @@ defmodule Domain.Auth.Identity.Changeset do
         attrs
       ) do
     %Identity{}
-    |> cast(attrs, ~w[provider_identifier provider_virtual_state]a)
+    |> cast(attrs, ~w[email provider_identifier provider_virtual_state]a)
     |> validate_required(~w[provider_identifier]a)
     |> put_change(:actor_id, actor.id)
     |> put_change(:provider_id, provider.id)
@@ -35,7 +35,7 @@ defmodule Domain.Auth.Identity.Changeset do
         attrs
       ) do
     %Identity{}
-    |> cast(attrs, ~w[provider_identifier provider_state provider_virtual_state]a)
+    |> cast(attrs, ~w[email provider_identifier provider_state provider_virtual_state]a)
     |> validate_required(~w[provider_identifier]a)
     |> cast_assoc(:actor,
       with: fn _actor, attrs ->
@@ -51,7 +51,7 @@ defmodule Domain.Auth.Identity.Changeset do
 
   def update_identity_and_actor(%Identity{} = identity, attrs) do
     identity
-    |> cast(attrs, ~w[provider_state]a)
+    |> cast(attrs, ~w[email provider_state]a)
     |> cast_assoc(:actor,
       with: fn actor, attrs ->
         Actors.Actor.Changeset.sync(actor, attrs)
@@ -65,6 +65,9 @@ defmodule Domain.Auth.Identity.Changeset do
     changeset
     |> unique_constraint(:provider_identifier,
       name: :auth_identities_account_id_provider_id_provider_identifier_idx
+    )
+    |> unique_constraint(:email,
+      name: :auth_identities_acct_id_provider_id_email_prov_ident_unique_idx
     )
   end
 

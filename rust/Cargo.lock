@@ -1946,7 +1946,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1975,6 +1975,7 @@ dependencies = [
  "snownet",
  "socket-factory",
  "static_assertions",
+ "thiserror",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -1984,7 +1985,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -2028,12 +2029,13 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client-common"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "anyhow",
  "arboard",
  "atomicwrites",
  "connlib-model",
+ "derive_more 1.0.0",
  "dirs",
  "firezone-bin-shared",
  "firezone-headless-client",
@@ -2068,7 +2070,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.4.0"
+version = "1.4.1"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -2220,6 +2222,7 @@ dependencies = [
  "proptest-state-machine",
  "rand 0.8.5",
  "rangemap",
+ "ringbuffer",
  "secrecy",
  "serde",
  "serde_json",
@@ -3180,6 +3183,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "etherparse",
+ "lockfree-object-pool",
  "proptest",
  "test-strategy",
  "thiserror 1.0.69",
@@ -4952,8 +4956,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-udp"
-version = "0.5.7"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#31a0440009afd5a7e29101410aa9d3da2d1f8077"
+version = "0.5.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c40286217b4ba3a71d644d752e6a0b71f13f1b6a2c5311acfcbe0c2418ed904"
 dependencies = [
  "cfg_aliases",
  "libc",
@@ -5243,6 +5248,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ringbuffer"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3df6368f71f205ff9c33c076d170dd56ebf68e8161c733c0caa07a7a5509ed53"
+
+[[package]]
 name = "rtnetlink"
 version = "0.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5498,7 +5509,7 @@ dependencies = [
 [[package]]
 name = "sentry"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "httpdate",
  "reqwest",
@@ -5517,7 +5528,7 @@ dependencies = [
 [[package]]
 name = "sentry-backtrace"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "backtrace",
  "once_cell",
@@ -5528,7 +5539,7 @@ dependencies = [
 [[package]]
 name = "sentry-contexts"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "hostname",
  "libc",
@@ -5541,7 +5552,7 @@ dependencies = [
 [[package]]
 name = "sentry-core"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "once_cell",
  "rand 0.8.5",
@@ -5553,7 +5564,7 @@ dependencies = [
 [[package]]
 name = "sentry-debug-images"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "findshlibs",
  "once_cell",
@@ -5563,7 +5574,7 @@ dependencies = [
 [[package]]
 name = "sentry-panic"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -5572,7 +5583,7 @@ dependencies = [
 [[package]]
 name = "sentry-tracing"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "sentry-backtrace",
  "sentry-core",
@@ -5583,7 +5594,7 @@ dependencies = [
 [[package]]
 name = "sentry-types"
 version = "0.35.0"
-source = "git+https://github.com/getsentry/sentry-rust?branch=master#caa746df4e5362f7be341e21cb186bb1ea351cd3"
+source = "git+https://github.com/getsentry/sentry-rust?branch=master#fd92a324630069138d079959367b8ad0bf7c642b"
 dependencies = [
  "debugid",
  "hex",
@@ -5898,8 +5909,10 @@ dependencies = [
  "hex-display",
  "ip-packet",
  "itertools 0.13.0",
+ "lockfree-object-pool",
  "once_cell",
  "rand 0.8.5",
+ "ringbuffer",
  "secrecy",
  "sha2",
  "str0m",
@@ -6770,9 +6783,9 @@ checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
 
 [[package]]
 name = "tokio"
-version = "1.41.1"
+version = "1.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22cfb5bee7a6a52939ca9224d6ac897bb669134078daa8735560897f69de4d33"
+checksum = "5cec9b21b0450273377fc97bd4c33a8acffc8c996c987a7c5b319a0083707551"
 dependencies = [
  "backtrace",
  "bytes",
@@ -6810,9 +6823,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-stream"
-version = "0.1.16"
+version = "0.1.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4f4e6ce100d0eb49a2734f8c0812bcd324cf357d21810932c5df6b96ef2b86f1"
+checksum = "eca58d7bba4a75707817a2c44174253f9236b2d5fbd055602e9d5c07c139a047"
 dependencies = [
  "futures-core",
  "pin-project-lite",
@@ -7787,7 +7800,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

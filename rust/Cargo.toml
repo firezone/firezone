@@ -74,6 +74,7 @@ native-dialog = "0.7.0"
 nix = "0.29.0"
 nu-ansi-term = "0.50"
 once_cell = "1.17.1"
+ringbuffer = "0.15.0"
 opentelemetry = "0.26.0"
 opentelemetry-otlp = "0.26.0"
 opentelemetry_sdk = "0.26.0"
@@ -82,7 +83,7 @@ output_vt100 = "0.1"
 png = "0.17.13"
 proptest = "1"
 proptest-state-machine = "0.3"
-quinn-udp = { version = "0.5.7", features = ["fast-apple-datapath"] }
+quinn-udp = { version = "0.5.8", features = ["fast-apple-datapath"] }
 rand = "0.8.5"
 rand_core = "0.6.4"
 rangemap = "1.5.1"
@@ -108,6 +109,7 @@ subprocess = "0.2.9"
 subtle = "2.5.0"
 swift-bridge = "0.1.57"
 swift-bridge-build = "0.1.57"
+lockfree-object-pool = "0.1.6"
 tauri = "2.0.3"
 tauri-build = "2.0.1"
 tauri-plugin-dialog = "2.0.1"
@@ -120,8 +122,8 @@ test-case = "3.3.1"
 test-strategy = "0.4.0"
 thiserror = "1.0.68"
 time = "0.3.36"
-tokio = "1.41"
-tokio-stream = "0.1.16"
+tokio = "1.42"
+tokio-stream = "0.1.17"
 flume = { version = "0.11.1", features = ["async"] }
 tokio-tungstenite = "0.23.1"
 tokio-util = "0.7.11"
@@ -176,7 +178,6 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 
 [patch.crates-io]
 smoltcp = { git = "https://github.com/smoltcp-rs/smoltcp", branch = "main" }
-quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" }
 boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.

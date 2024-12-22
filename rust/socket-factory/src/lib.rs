@@ -4,7 +4,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::{
     borrow::Cow,
-    // collections::VecDeque,
     io::{self, IoSliceMut},
     net::{IpAddr, SocketAddr},
     slice,
