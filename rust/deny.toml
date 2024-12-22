@@ -257,6 +257,8 @@ skip = [
   "syn",
   "sync_wrapper",
   "tauri-winrt-notification",
+  "thiserror",
+  "thiserror-impl",
   "toml",
   "toml_edit",
   "tower",
