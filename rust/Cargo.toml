@@ -123,7 +123,7 @@ test-strategy = "0.4.0"
 thiserror = "1.0.68"
 time = "0.3.36"
 tokio = "1.42"
-tokio-stream = "0.1.16"
+tokio-stream = "0.1.17"
 flume = { version = "0.11.1", features = ["async"] }
 tokio-tungstenite = "0.23.1"
 tokio-util = "0.7.11"
