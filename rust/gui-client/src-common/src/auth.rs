@@ -170,10 +170,12 @@ impl Auth {
     /// Returns a valid token.
     /// Performs I/O.
     ///
-    /// Errors if we don't have any ongoing flow, or if the response is invalid
-    pub(crate) fn handle_response(&mut self, resp: Response) -> Result<SecretString, Error> {
-        let req = self.ongoing_request().ok_or(Error::NoInflightRequest)?;
-
+    /// Errors if the response is invalid.
+    pub(crate) fn handle_response(
+        &mut self,
+        req: &Request,
+        resp: Response,
+    ) -> Result<SecretString, Error> {
         if !secure_equality(&resp.state, &req.state) {
             self.sign_out()?;
             return Err(Error::StatesDontMatch);

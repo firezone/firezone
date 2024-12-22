@@ -374,10 +374,15 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
         tracing::info!("Received deep link over IPC");
+
+        let req = self
+            .auth
+            .ongoing_request()
+            .ok_or(Error::NoInflightRequest)?;
         // Uses `std::fs`
         let token = self
             .auth
-            .handle_response(auth_response)
+            .handle_response(req, auth_response)
             .context("Couldn't handle auth response")?;
         self.start_session(token).await?;
         Ok(())
