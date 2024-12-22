@@ -47,6 +47,7 @@ fn icmp_error() -> impl Strategy<Value = IcmpError> {
         Just(IcmpError::Network),
         Just(IcmpError::Host),
         Just(IcmpError::Port),
+        any::<u32>().prop_map(|mtu| IcmpError::PacketTooBig { mtu })
     ]
 }
 
@@ -56,4 +57,5 @@ pub(crate) enum IcmpError {
     Network,
     Host,
     Port,
+    PacketTooBig { mtu: u32 },
 }
