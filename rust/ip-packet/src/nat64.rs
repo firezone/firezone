@@ -218,18 +218,8 @@ fn translate_icmpv6_header(
         Icmpv6Type::DestinationUnreachable(i) => {
             Icmpv4Type::DestinationUnreachable(translate_dest_unreachable(i)?)
         }
-        // Packet Too Big (Type 2):  Translate to an ICMPv4 Destination
-        //      Unreachable (Type 3) with Code 4, and adjust the ICMPv4
-        //      checksum both to take the type change into account and to
-        //      exclude the ICMPv6 pseudo-header.  The MTU field MUST be
-        //      adjusted for the difference between the IPv4 and IPv6 header
-        //      sizes, taking into account whether or not the packet in error
-        //      includes a Fragment Header, i.e., minimum(advertised MTU-20,
-        //      MTU_of_IPv4_nexthop, (MTU_of_IPv6_nexthop)-20).
-        //
-        //      See also the requirements in Section 6.
-        Icmpv6Type::PacketTooBig { .. } => {
-            return None; // FIXME
+        Icmpv6Type::PacketTooBig { mtu } => {
+            Icmpv4Type::DestinationUnreachable(translate_packet_too_big(mtu))
         }
         // Time Exceeded (Type 3):  Set the Type to 11, and adjust the ICMPv4
         //      checksum both to take the type change into account and to
@@ -285,6 +275,25 @@ fn translate_icmpv6_header(
     };
 
     Some(Icmpv4Header::new(icmpv4_type))
+}
+
+pub fn translate_packet_too_big(mtu: u32) -> etherparse::icmpv4::DestUnreachableHeader {
+    // Packet Too Big (Type 2):  Translate to an ICMPv4 Destination
+    //      Unreachable (Type 3) with Code 4, and adjust the ICMPv4
+    //      checksum both to take the type change into account and to
+    //      exclude the ICMPv6 pseudo-header.  The MTU field MUST be
+    //      adjusted for the difference between the IPv4 and IPv6 header
+    //      sizes, taking into account whether or not the packet in error
+    //      includes a Fragment Header, i.e., minimum(advertised MTU-20,
+    //      MTU_of_IPv4_nexthop, (MTU_of_IPv6_nexthop)-20).
+    //
+    //      See also the requirements in Section 6.
+
+    let mtu = u16::try_from(mtu).unwrap_or(u16::MAX); // Unlikely but necessary fallback.
+
+    etherparse::icmpv4::DestUnreachableHeader::FragmentationNeeded {
+        next_hop_mtu: mtu - 20, // We don't know the next-hop MTUs here so we just subtract 20 bytes.
+    }
 }
 
 pub fn translate_dest_unreachable(

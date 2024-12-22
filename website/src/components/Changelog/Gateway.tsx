@@ -10,7 +10,12 @@ export default function Gateway() {
 
   return (
     <Entries href={href} arches={arches} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="7567">
+          Fixes an issue where ICMPv6's `PacketTooBig' errors were not correctly
+          translated by the NAT64 module.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.2" date={new Date("2024-12-13")}>
         <ChangeItem pull="7210">
           Adds support for GSO (Generic Segmentation Offload), delivering

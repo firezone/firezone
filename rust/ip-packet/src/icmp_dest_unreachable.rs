@@ -11,15 +11,19 @@ pub enum DestUnreachable {
         header: icmpv4::DestUnreachableHeader,
         total_length: u16,
     },
-    V6(icmpv6::DestUnreachableCode),
+    V6Unreachable(icmpv6::DestUnreachableCode),
+    V6PacketTooBig {
+        mtu: u32,
+    },
 }
 
 impl DestUnreachable {
     pub fn into_icmp_v4_type(self) -> Result<Icmpv4Type> {
         let header = match self {
             DestUnreachable::V4 { header, .. } => header,
-            DestUnreachable::V6(code) => nat64::translate_dest_unreachable(code)
+            DestUnreachable::V6Unreachable(code) => nat64::translate_dest_unreachable(code)
                 .with_context(|| format!("Cannot translate {code:?} to ICMPv4"))?,
+            DestUnreachable::V6PacketTooBig { mtu } => nat64::translate_packet_too_big(mtu),
         };
 
         Ok(Icmpv4Type::DestinationUnreachable(header))
@@ -37,7 +41,8 @@ impl DestUnreachable {
 
                 Ok(icmpv6_type)
             }
-            DestUnreachable::V6(code) => Ok(Icmpv6Type::DestinationUnreachable(code)),
+            DestUnreachable::V6Unreachable(code) => Ok(Icmpv6Type::DestinationUnreachable(code)),
+            DestUnreachable::V6PacketTooBig { mtu } => Ok(Icmpv6Type::PacketTooBig { mtu }),
         }
     }
 }

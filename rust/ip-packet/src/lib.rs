@@ -677,8 +677,16 @@ impl IpPacket {
                 return Ok(None);
             }
 
-            let Icmpv6Type::DestinationUnreachable(error) = icmp_type else {
-                bail!("ICMP message is not `DestinationUnreachable` but {icmp_type:?}");
+            #[expect(
+                clippy::wildcard_enum_match_arm,
+                reason = "We only want to match on these two variants"
+            )]
+            let dest_unreachable = match icmp_type {
+                Icmpv6Type::DestinationUnreachable(error) => DestUnreachable::V6Unreachable(error),
+                Icmpv6Type::PacketTooBig { mtu } => DestUnreachable::V6PacketTooBig { mtu },
+                other => {
+                    bail!("ICMP message is not `DestinationUnreachable` or `PacketTooBig` but {other:?}");
+                }
             };
 
             let (ipv6, _) = LaxIpv6Slice::from_slice(icmpv6.payload())
@@ -697,7 +705,7 @@ impl IpPacket {
                     l4_proto,
                     raw: icmpv6.payload().to_vec(),
                 },
-                DestUnreachable::V6(error),
+                dest_unreachable,
             )));
         }
 
