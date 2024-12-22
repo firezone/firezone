@@ -1975,7 +1975,7 @@ dependencies = [
  "snownet",
  "socket-factory",
  "static_assertions",
- "thiserror",
+ "thiserror 1.0.69",
  "tokio",
  "tracing",
  "tracing-subscriber",
