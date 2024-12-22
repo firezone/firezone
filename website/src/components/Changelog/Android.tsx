@@ -27,6 +27,9 @@ export default function Android() {
         <ChangeItem pull="7477">
           Improves connection setup latency by buffering initial packets.
         </ChangeItem>
+        <ChangeItem pull="7551">
+          Fixes an issue where large DNS responses were incorrectly discarded.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.7" date={new Date("2024-11-08")}>
         <ChangeItem pull="7263">
