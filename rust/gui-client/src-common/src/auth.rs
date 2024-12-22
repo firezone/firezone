@@ -22,8 +22,6 @@ pub enum Error {
     DeleteFile(std::io::Error),
     #[error(transparent)]
     Keyring(#[from] keyring::Error),
-    #[error("No in-flight request")]
-    NoInflightRequest,
     #[error("session file path has no parent, this should be impossible")]
     PathWrong,
     #[error("Couldn't read session file: {0}")]
@@ -160,7 +158,9 @@ impl Auth {
             nonce: generate_nonce(),
             state: generate_nonce(),
         });
-        let request = self.ongoing_request().ok_or(Error::NoInflightRequest)?;
+        let State::NeedResponse(request) = &self.state else {
+            unreachable!("We just set `self.state`")
+        };
 
         Ok(request)
     }
