@@ -154,7 +154,7 @@ impl Auth {
     ///
     /// Returns parameters used to make a URL for the web browser to open
     /// May return Ok(None) if we're already signed in
-    pub fn start_sign_in(&mut self) -> Result<Option<&Request>, Error> {
+    pub fn start_sign_in(&mut self) -> Result<&Request, Error> {
         self.sign_out()?;
         self.state = State::NeedResponse(Request {
             nonce: generate_nonce(),
@@ -162,7 +162,7 @@ impl Auth {
         });
         let request = self.ongoing_request().ok_or(Error::NoInflightRequest)?;
 
-        Ok(Some(request))
+        Ok(request)
     }
 
     /// Complete an ongoing sign-in flow using parameters from a deep link

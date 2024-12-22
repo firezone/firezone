@@ -437,17 +437,16 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 }
             }
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
-                if let Some(req) = self
+                let req = self
                     .auth
                     .start_sign_in()
-                    .context("Couldn't start sign-in flow")?
-                {
-                    let url = req.to_url(&self.advanced_settings.auth_base_url);
-                    self.refresh_system_tray_menu();
-                    self.integration.open_url(url.expose_secret())
-                        .context("Couldn't open auth page")?;
-                    self.integration.set_welcome_window_visible(false)?;
-                }
+                    .context("Couldn't start sign-in flow")?;
+
+                let url = req.to_url(&self.advanced_settings.auth_base_url);
+                self.refresh_system_tray_menu();
+                self.integration.open_url(url.expose_secret())
+                    .context("Couldn't open auth page")?;
+                self.integration.set_welcome_window_visible(false)?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::AddFavorite(resource_id)) => {
                 self.advanced_settings.favorite_resources.insert(resource_id);
