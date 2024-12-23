@@ -154,13 +154,17 @@ impl Auth {
     ///
     /// Returns parameters used to make a URL for the web browser to open
     /// May return Ok(None) if we're already signed in
-    pub fn start_sign_in(&mut self) -> Result<Option<&Request>, Error> {
+    pub fn start_sign_in(&mut self) -> Result<&Request, Error> {
         self.sign_out()?;
         self.state = State::NeedResponse(Request {
             nonce: generate_nonce(),
             state: generate_nonce(),
         });
-        Ok(Some(self.ongoing_request()?))
+        let State::NeedResponse(request) = &self.state else {
+            unreachable!("We just set `self.state`")
+        };
+
+        Ok(request)
     }
 
     /// Complete an ongoing sign-in flow using parameters from a deep link
@@ -168,9 +172,9 @@ impl Auth {
     /// Returns a valid token.
     /// Performs I/O.
     ///
-    /// Errors if we don't have any ongoing flow, or if the response is invalid
+    /// Errors if the response is invalid.
     pub(crate) fn handle_response(&mut self, resp: Response) -> Result<SecretString, Error> {
-        let req = self.ongoing_request()?;
+        let req = self.ongoing_request().ok_or(Error::NoInflightRequest)?;
 
         if !secure_equality(&resp.state, &req.state) {
             self.sign_out()?;
@@ -255,10 +259,10 @@ impl Auth {
         Ok(Some(SessionAndToken { session, token }))
     }
 
-    pub fn ongoing_request(&self) -> Result<&Request, Error> {
+    pub fn ongoing_request(&self) -> Option<&Request> {
         match &self.state {
-            State::NeedResponse(x) => Ok(x),
-            State::SignedIn(_) | State::SignedOut => Err(Error::NoInflightRequest),
+            State::NeedResponse(x) => Some(x),
+            State::SignedIn(_) | State::SignedOut => None,
         }
     }
 }
@@ -442,7 +446,7 @@ mod tests {
             assert!(state.token().unwrap().is_none());
 
             // User clicks "Sign In", build a fake server response
-            let req = state.start_sign_in().unwrap().unwrap();
+            let req = state.start_sign_in().unwrap();
             let resp = Response {
                 account_slug: "firezone".into(),
                 actor_name: actor_name.into(),
@@ -470,7 +474,7 @@ mod tests {
             // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding.
             // For now, we treat that like signing out and back in immediately, so it wipes the old token.
             // TODO: That sounds wrong.
-            assert!(state.start_sign_in().unwrap().is_some());
+            assert!(state.start_sign_in().is_ok());
             assert!(state.token().unwrap().is_none());
 
             // Sign out again, now the token is gone

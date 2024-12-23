@@ -374,6 +374,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
             deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
         tracing::info!("Received deep link over IPC");
+
         // Uses `std::fs`
         let token = self
             .auth
@@ -426,22 +427,27 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 tx.send(self.advanced_settings.clone()).ok();
             }
             Req::SchemeRequest(url) => {
-                if let Err(error) = self.handle_deep_link(&url).await {
-                    tracing::error!(error = std_dyn_err(&error), "`handle_deep_link` failed");
+                match self.handle_deep_link(&url).await {
+                    Ok(()) => {},
+                    Err(Error::Other(error)) if error.root_cause().downcast_ref::<auth::Error>().is_some_and(|e| matches!(e, auth::Error::NoInflightRequest)) => {
+                        tracing::debug!("Ignoring deep-link; no local state");
+                    }
+                    Err(error) => {
+                        tracing::error!(error = std_dyn_err(&error), "`handle_deep_link` failed");
+                    }
                 }
             }
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
-                if let Some(req) = self
+                let req = self
                     .auth
                     .start_sign_in()
-                    .context("Couldn't start sign-in flow")?
-                {
-                    let url = req.to_url(&self.advanced_settings.auth_base_url);
-                    self.refresh_system_tray_menu();
-                    self.integration.open_url(url.expose_secret())
-                        .context("Couldn't open auth page")?;
-                    self.integration.set_welcome_window_visible(false)?;
-                }
+                    .context("Couldn't start sign-in flow")?;
+
+                let url = req.to_url(&self.advanced_settings.auth_base_url);
+                self.refresh_system_tray_menu();
+                self.integration.open_url(url.expose_secret())
+                    .context("Couldn't open auth page")?;
+                self.integration.set_welcome_window_visible(false)?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::AddFavorite(resource_id)) => {
                 self.advanced_settings.favorite_resources.insert(resource_id);
@@ -739,7 +745,7 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 Status::WaitingForPortal { .. } => system_tray::ConnlibState::WaitingForPortal,
                 Status::WaitingForTunnel { .. } => system_tray::ConnlibState::WaitingForTunnel,
             }
-        } else if self.auth.ongoing_request().is_ok() {
+        } else if self.auth.ongoing_request().is_some() {
             // Signing in, waiting on deep link callback
             system_tray::ConnlibState::WaitingForBrowser
         } else {
