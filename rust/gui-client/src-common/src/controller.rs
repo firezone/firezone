@@ -375,15 +375,10 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
 
         tracing::info!("Received deep link over IPC");
 
-        let Some(req) = self.auth.ongoing_request() else {
-            tracing::debug!("No pending auth request");
-            return Ok(());
-        };
-
         // Uses `std::fs`
         let token = self
             .auth
-            .handle_response(req, auth_response)
+            .handle_response(auth_response)
             .context("Couldn't handle auth response")?;
         self.start_session(token).await?;
         Ok(())
@@ -432,8 +427,14 @@ impl<'a, I: GuiIntegration> Controller<'a, I> {
                 tx.send(self.advanced_settings.clone()).ok();
             }
             Req::SchemeRequest(url) => {
-                if let Err(error) = self.handle_deep_link(&url).await {
-                    tracing::error!(error = std_dyn_err(&error), "`handle_deep_link` failed");
+                match self.handle_deep_link(&url).await {
+                    Ok(()) => {},
+                    Err(Error::Other(error)) if error.root_cause().downcast_ref::<auth::Error>().is_some_and(|e| matches!(e, auth::Error::NoInflightRequest)) => {
+                        tracing::debug!("Ignoring deep-link; no local state");
+                    }
+                    Err(error) => {
+                        tracing::error!(error = std_dyn_err(&error), "`handle_deep_link` failed");
+                    }
                 }
             }
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {

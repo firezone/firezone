@@ -22,6 +22,8 @@ pub enum Error {
     DeleteFile(std::io::Error),
     #[error(transparent)]
     Keyring(#[from] keyring::Error),
+    #[error("No in-flight request")]
+    NoInflightRequest,
     #[error("session file path has no parent, this should be impossible")]
     PathWrong,
     #[error("Couldn't read session file: {0}")]
@@ -171,11 +173,9 @@ impl Auth {
     /// Performs I/O.
     ///
     /// Errors if the response is invalid.
-    pub(crate) fn handle_response(
-        &mut self,
-        req: &Request,
-        resp: Response,
-    ) -> Result<SecretString, Error> {
+    pub(crate) fn handle_response(&mut self, resp: Response) -> Result<SecretString, Error> {
+        let req = self.ongoing_request().ok_or(Error::NoInflightRequest)?;
+
         if !secure_equality(&resp.state, &req.state) {
             self.sign_out()?;
             return Err(Error::StatesDontMatch);
