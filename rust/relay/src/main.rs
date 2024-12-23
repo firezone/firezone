@@ -197,7 +197,7 @@ async fn try_main(args: Args) -> Result<()> {
 
         Some(channel)
     } else {
-        tracing::warn!(target: "relay", "No portal token supplied, starting standalone mode");
+        tracing::info!(target: "relay", "No portal token supplied, starting standalone mode");
 
         None
     };
