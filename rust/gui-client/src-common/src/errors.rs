@@ -11,10 +11,8 @@ pub enum Error {
     DeepLink(#[from] deep_link::Error),
     #[error("Logging module error: {0}")]
     Logging(#[from] common::logging::Error),
-
-    // `client.rs` provides a more user-friendly message when showing the error dialog box for certain variants
-    #[error("IPC")]
-    Ipc(#[from] ipc::Error),
+    #[error("IPC service not found")]
+    IpcNotFound,
     #[error("IPC closed")]
     IpcClosed,
     #[error("IPC read failed")]
@@ -29,6 +27,15 @@ pub enum Error {
     Other(#[from] anyhow::Error),
 }
 
+impl From<ipc::Error> for Error {
+    fn from(value: ipc::Error) -> Self {
+        match value {
+            ipc::Error::NotFound(_) => Self::IpcNotFound,
+            ipc::Error::Other(error) => Self::Other(error),
+        }
+    }
+}
+
 impl Error {
     // Decision to put the error strings here: <https://github.com/firezone/firezone/pull/3464#discussion_r1473608415>
     // This message gets shown to users in the GUI and could be localized, unlike
@@ -39,9 +46,7 @@ impl Error {
             Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-client>.".to_string(),
             Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
             Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),
-            Error::Ipc(ipc::Error::NotFound(_)) => "Couldn't find Firezone IPC service. Is the service running?".to_string(),
-            Error::Ipc(ipc::Error::PermissionDenied) => "Permission denied for Firezone IPC service. This should only happen on dev systems.".to_string(),
-            Error::Ipc(ipc::Error::Other(error)) => error.to_string(),
+            Error::IpcNotFound => "Couldn't find Firezone IPC service. Is the service running?".to_string(),
             Error::IpcClosed => "IPC connection closed".to_string(),
             Error::IpcRead => "IPC read failure".to_string(),
             Error::IpcServiceTerminating => "The Firezone IPC service is terminating. Please restart the GUI Client.".to_string(),

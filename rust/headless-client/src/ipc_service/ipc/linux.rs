@@ -27,7 +27,6 @@ pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
                 Error::Other(anyhow!("ConnectionRefused by Unix domain socket"))
             }
             ErrorKind::NotFound => Error::NotFound(path.display().to_string()),
-            ErrorKind::PermissionDenied => Error::PermissionDenied,
             _ => Error::Other(
                 anyhow!(error.to_string()).context("Couldn't connect to Unix domain socket"),
             ),
