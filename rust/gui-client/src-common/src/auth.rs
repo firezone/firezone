@@ -474,7 +474,7 @@ mod tests {
             // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding.
             // For now, we treat that like signing out and back in immediately, so it wipes the old token.
             // TODO: That sounds wrong.
-            assert!(state.start_sign_in().is_some());
+            assert!(state.start_sign_in().is_ok());
             assert!(state.token().unwrap().is_none());
 
             // Sign out again, now the token is gone
