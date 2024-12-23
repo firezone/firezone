@@ -17,9 +17,7 @@ use super::DnsController;
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
 use firezone_logging::std_dyn_err;
-use std::{
-    io::ErrorKind, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command,
-};
+use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 use windows::Win32::System::GroupPolicy::{RefreshPolicyEx, RP_FORCE};
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
@@ -33,10 +31,10 @@ impl DnsController {
     pub fn deactivate(&mut self) -> Result<()> {
         let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
-        if let Err(error) = delete_subkey(local_nrpt_path().join(NRPT_REG_KEY)) {
+        if let Err(error) = delete_subkey(&hklm, local_nrpt_path().join(NRPT_REG_KEY)) {
             tracing::error!(error = std_dyn_err(&error), "Failed to delete local NRPT");
         }
-        if let Err(error) = delete_subkey(group_nrpt_path().join(NRPT_REG_KEY)) {
+        if let Err(error) = delete_subkey(&hklm, group_nrpt_path().join(NRPT_REG_KEY)) {
             tracing::error!(error = std_dyn_err(&error), "Failed to delete group NRPT");
         }
 
@@ -80,8 +78,8 @@ impl DnsController {
 fn delete_subkey(key: &winreg::RegKey, subkey: impl AsRef<Path>) -> io::Result<()> {
     let path = subkey.as_ref();
 
-    if let Err(error) = hklm.delete_subkey(&path) {
-        if error.kind() == ErrorKind::NotFound {
+    if let Err(error) = key.delete_subkey(&path) {
+        if error.kind() == io::ErrorKind::NotFound {
             return Ok(());
         }
 
