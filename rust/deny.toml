@@ -86,6 +86,9 @@ ignore = [
   "RUSTSEC-2024-0419",
   "RUSTSEC-2024-0420",
   "RUSTSEC-2024-0421",
+
+  "RUSTSEC-2024-0429", # `glib`, need to wait for tauri to upgrade
+
   #"RUSTSEC-0000-0000",
   #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
   #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
