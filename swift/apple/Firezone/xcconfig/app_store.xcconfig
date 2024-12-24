@@ -1,4 +1,4 @@
-// Apple Developer account-specific configuration
+// Apple Developer account-specific configuration for App Store distribution
 DEVELOPMENT_TEAM = 47R2M6779T
 PRODUCT_BUNDLE_IDENTIFIER = dev.firezone.firezone
 APP_GROUP_ID[sdk=macosx*] = 47R2M6779T.dev.firezone.firezone

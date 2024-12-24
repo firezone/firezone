@@ -102,7 +102,7 @@ jobs:
           sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
 
           # Copy xcconfig
-          cp Firezone/xcconfig/release.xcconfig Firezone/xcconfig/config.xcconfig
+          cp Firezone/xcconfig/app_store.xcconfig Firezone/xcconfig/config.xcconfig
 
           # App Store Connect requires a new build version on each upload and it must be an integer.
           # See https://developer.apple.com/documentation/xcode/build-settings-reference#Current-Project-Version
