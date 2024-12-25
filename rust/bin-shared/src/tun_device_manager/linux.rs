@@ -261,6 +261,11 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         return;
     }
 
+    // On systems without support for a certain IP version (i.e. no IPv6), attempting to add a route may result in "Not supported (os error 95)".
+    if matches!(&err, NetlinkError(err) if err.raw_code() == -libc::EOPNOTSUPP) {
+        return;
+    }
+
     tracing::warn!(error = std_dyn_err(&err), %route, "Failed to add route");
 }
 
