@@ -77,8 +77,9 @@ Development but fail to run successfully on another user's machine.
 
 To build a standalone release binary:
 
-1. Go to https://developer.apple.com/account/resources/certificates/list.
-1. Download the "Developer ID Application" certificate which has the latest expiration date and double-click it to install it in your keychain.
+1. You'll need the developer ID certificate (including private key) we use to sign the app. Developer ID certificates
+   are not compatible with "Automatically manage signing" in Xcode, so you to download this certificate from 1Password and
+   install it into your local keychain. The certificate stored in the Apple Developer Portal does not include the private key.
 1. Go to https://developer.apple.com/account/resources/profiles/list.
 1. Download both of the "Developer ID Application" provisioning profiles (one each for the App and Network Extension).
 1. Copy the `standalone` release xcconfig:
