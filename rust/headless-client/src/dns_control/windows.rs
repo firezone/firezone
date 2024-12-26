@@ -78,7 +78,7 @@ impl DnsController {
 fn delete_subkey(key: &winreg::RegKey, subkey: impl AsRef<Path>) -> io::Result<()> {
     let path = subkey.as_ref();
 
-    if let Err(error) = key.delete_subkey(&path) {
+    if let Err(error) = key.delete_subkey(path) {
         if error.kind() == io::ErrorKind::NotFound {
             return Ok(());
         }
