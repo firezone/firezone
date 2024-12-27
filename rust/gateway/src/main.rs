@@ -203,7 +203,7 @@ struct Cli {
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
 
-    /// Don't check permissions.
+    /// Don't preemtively check permissions.
     #[arg(long, default_value_t = false)]
     no_check: bool,
 
