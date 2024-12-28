@@ -47,6 +47,29 @@ xcodebuild build \
     -sdk macosx \
     -destination 'platform=macOS'
 
+# Notarize app before embedding within disk image
+if [ "$notarize" = "true" ]; then
+    # Notary service expects a single file, not app bundle
+    ditto -c "$temp_dir/Firezone.app" "$temp_dir/Firezone.zip"
+
+    private_key_path="$temp_dir/firezone-api-key.p8"
+    base64_decode "$API_KEY" "$private_key_path"
+
+    # Submit app bundle to be notarized. Can take a few minutes.
+    # Notarizes embedded app bundle as well.
+    xcrun notarytool submit "$temp_dir/Firezone.zip" \
+        --key "$private_key_path" \
+        --key-id "$API_KEY_ID" \
+        --issuer "$ISSUER_ID" \
+        --wait
+
+    # Clean up private key
+    rm "$private_key_path"
+
+    # Staple notarization ticket to app bundle
+    xcrun stapler staple "$temp_dir/Firezone.app"
+fi
+
 # Create disk image
 mkdir -p "$dmg_dir/.background"
 mv "$temp_dir/Firezone.app" "$dmg_dir/Firezone.app"
@@ -95,26 +118,6 @@ hdiutil convert "$package_path" -format UDZO -o "$dmg_path"
 codesign --force --sign "$codesign_identity" "$dmg_path"
 
 echo "Disk image created at $dmg_path"
-
-# Notarize disk image and embedded app
-if [ "$notarize" = "true" ]; then
-    private_key_path="$temp_dir/firezone-api-key.p8"
-    base64_decode "$API_KEY" "$private_key_path"
-
-    # Submit app bundle to be notarized. Can take a few minutes.
-    # Notarizes embedded app bundle as well.
-    xcrun notarytool submit "$dmg_path" \
-        --key "$private_key_path" \
-        --key-id "$API_KEY_ID" \
-        --issuer "$ISSUER_ID" \
-        --wait
-
-    # Clean up private key
-    rm "$private_key_path"
-
-    # Staple notarization ticket to disk image
-    xcrun stapler staple "$dmg_path"
-fi
 
 # Move to final location the uploader expects
 if [[ -n "${ARTIFACT_PATH:-}" ]]; then
