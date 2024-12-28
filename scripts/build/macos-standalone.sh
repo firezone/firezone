@@ -103,7 +103,7 @@ if [ "$notarize" = "true" ]; then
 
     # Submit app bundle to be notarized. Can take a few minutes.
     # Notarizes embedded app bundle as well.
-    notarytool submit "$dmg_path" \
+    xcrun notarytool submit "$dmg_path" \
         --key "$private_key_path" \
         --key-id "$API_KEY_ID" \
         --issuer-id "$ISSUER_ID" \
