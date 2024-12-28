@@ -20,6 +20,7 @@ firezone-logging = { workspace = true }
 futures = { workspace = true, features = ["std", "async-await", "executor"] }
 futures-bounded = { workspace = true }
 futures-util = { workspace = true, features = ["std", "async-await", "async-await-macro"] }
+gat-lending-iterator = { workspace = true }
 glob = { workspace = true }
 hex = { workspace = true }
 ip-packet = { workspace = true }

@@ -5,6 +5,7 @@ use domain::base::Message;
 use firezone_logging::{telemetry_event, telemetry_span};
 use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
+use gat_lending_iterator::LendingIterator;
 use gso_queue::GsoQueue;
 use ip_packet::{IpPacket, MAX_FZ_PAYLOAD};
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
@@ -26,7 +27,6 @@ use tun::Tun;
 /// Reading IP packets from the channel in batches allows us to process (i.e. encrypt) them as a batch.
 /// UDP datagrams of the same size and destination can then be sent in a single syscall using GSO.
 const MAX_INBOUND_PACKET_BATCH: usize = 100;
-const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
@@ -54,16 +54,12 @@ struct DnsQueryMetaData {
 
 pub(crate) struct Buffers {
     ip: Vec<IpPacket>,
-    udp4: Vec<u8>,
-    udp6: Vec<u8>,
 }
 
 impl Default for Buffers {
     fn default() -> Self {
         Self {
             ip: Vec::with_capacity(MAX_INBOUND_PACKET_BATCH),
-            udp4: Vec::from([0; MAX_UDP_SIZE]),
-            udp6: Vec::from([0; MAX_UDP_SIZE]),
         }
     }
 }
@@ -110,15 +106,15 @@ impl Io {
         buffers: &'b mut Buffers,
     ) -> Poll<
         io::Result<
-            Input<impl Iterator<Item = IpPacket> + use<'b>, impl Iterator<Item = DatagramIn<'b>>>,
+            Input<
+                impl Iterator<Item = IpPacket> + use<'b>,
+                impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>,
+            >,
         >,
     > {
         ready!(self.flush_send_queue(cx)?);
 
-        if let Poll::Ready(network) =
-            self.sockets
-                .poll_recv_from(&mut buffers.udp4, &mut buffers.udp6, cx)?
-        {
+        if let Poll::Ready(network) = self.sockets.poll_recv_from(cx)? {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
         }
 
@@ -372,11 +368,7 @@ mod tests {
         assert!(timeout.duration_since(now) < Duration::from_millis(1));
     }
 
-    static mut DUMMY_BUF: Buffers = Buffers {
-        ip: Vec::new(),
-        udp4: Vec::new(),
-        udp6: Vec::new(),
-    };
+    static mut DUMMY_BUF: Buffers = Buffers { ip: Vec::new() };
 
     /// Helper functions to make the test more concise.
     impl Io {
@@ -392,8 +384,10 @@ mod tests {
 
         async fn next(
             &mut self,
-        ) -> Input<impl Iterator<Item = IpPacket>, impl Iterator<Item = DatagramIn<'static>>>
-        {
+        ) -> Input<
+            impl Iterator<Item = IpPacket>,
+            impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>,
+        > {
             poll_fn(|cx| {
                 self.poll(
                     cx,
@@ -409,7 +403,10 @@ mod tests {
             &mut self,
         ) -> Poll<
             io::Result<
-                Input<impl Iterator<Item = IpPacket>, impl Iterator<Item = DatagramIn<'static>>>,
+                Input<
+                    impl Iterator<Item = IpPacket>,
+                    impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>,
+                >,
             >,
         > {
             self.poll(

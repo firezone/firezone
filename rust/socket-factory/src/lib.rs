@@ -1,9 +1,11 @@
 use bytes::Buf as _;
 use firezone_logging::std_dyn_err;
+use gat_lending_iterator::LendingIterator;
 use quinn_udp::Transmit;
 use std::collections::HashMap;
 use std::fmt;
 use std::ops::Deref;
+use std::sync::Arc;
 use std::{
     io::{self, IoSliceMut},
     net::{IpAddr, SocketAddr},
@@ -146,6 +148,9 @@ pub struct UdpSocket {
     /// A cache of source IPs by their destination IPs.
     src_by_dst_cache: HashMap<IpAddr, IpAddr>,
 
+    /// A buffer pool for batches of incoming UDP packets.
+    buffer_pool: Arc<lockfree_object_pool::MutexObjectPool<Vec<u8>>>,
+
     port: u16,
 }
 
@@ -159,6 +164,10 @@ impl UdpSocket {
             inner,
             source_ip_resolver: Box::new(|_| Ok(None)),
             src_by_dst_cache: Default::default(),
+            buffer_pool: Arc::new(lockfree_object_pool::MutexObjectPool::new(
+                || vec![0u8; 1 << 16], // 65k
+                |b| b.fill(0),
+            )),
         })
     }
 
@@ -209,16 +218,18 @@ pub struct DatagramOut<B> {
 }
 
 impl UdpSocket {
-    pub fn poll_recv_from<'b>(
+    pub fn poll_recv_from(
         &self,
-        buffer: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>> + fmt::Debug>> {
+    ) -> Poll<io::Result<impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + fmt::Debug>>
+    {
         let Self {
             port, inner, state, ..
         } = self;
 
-        let bufs = &mut [IoSliceMut::new(buffer)];
+        let mut buffer = self.buffer_pool.pull_owned();
+
+        let bufs = &mut [IoSliceMut::new(&mut buffer)];
         let mut meta = quinn_udp::RecvMeta::default();
 
         loop {
@@ -259,15 +270,13 @@ impl UdpSocket {
 
                 tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, %num_packets, %segment_size, %trailing_bytes);
 
-                let iter = buffer[..meta.len]
-                    .chunks(meta.stride)
-                    .map(move |packet| DatagramIn {
-                        local,
-                        from: meta.addr,
-                        packet,
-                    });
-
-                return Poll::Ready(Ok(iter));
+                return Poll::Ready(Ok(DatagramSegmentIter::new(
+                    local,
+                    meta.addr,
+                    buffer,
+                    meta.len,
+                    segment_size,
+                )));
             }
         }
     }
@@ -416,5 +425,93 @@ impl UdpSocket {
         };
 
         Ok(Some(src))
+    }
+}
+
+/// An iterator that segments a given buffer into individual datagrams.
+///
+/// This iterator is generic over its buffer to allow easier testing without a buffer pool.
+#[derive(derive_more::Debug)]
+struct DatagramSegmentIter<B> {
+    local: SocketAddr,
+    from: SocketAddr,
+    #[debug(skip)]
+    buffer: B,
+
+    index: usize,
+    length: usize,
+    segment_size: usize,
+}
+
+impl<B> DatagramSegmentIter<B> {
+    fn new(
+        local: SocketAddr,
+        from: SocketAddr,
+        buffer: B,
+        length: usize,
+        segment_size: usize,
+    ) -> Self {
+        Self {
+            local,
+            from,
+            buffer,
+            index: 0,
+            length,
+            segment_size,
+        }
+    }
+}
+
+impl<B> LendingIterator for DatagramSegmentIter<B>
+where
+    B: Deref<Target = Vec<u8>> + 'static,
+{
+    type Item<'a> = DatagramIn<'a>;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        if self.index >= self.length {
+            return None;
+        }
+
+        let start = self.index;
+        let end = std::cmp::min(self.index + self.segment_size, self.length);
+
+        self.index += self.segment_size;
+
+        Some(DatagramIn {
+            local: self.local,
+            from: self.from,
+            packet: &self.buffer[start..end],
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gat_lending_iterator::LendingIterator as _;
+    use std::net::Ipv4Addr;
+
+    use super::*;
+
+    #[derive(derive_more::Deref)]
+    struct DummyBuffer(Vec<u8>);
+
+    #[test]
+    fn datagram_iter_segments_buffer_correctly() {
+        let mut iter = DatagramSegmentIter::new(
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+            DummyBuffer(b"foobar1foobar2foobar3foobar4foobar5foo                 ".to_vec()),
+            38,
+            7,
+        );
+
+        assert_eq!(iter.next().unwrap().packet, b"foobar1");
+        assert_eq!(iter.next().unwrap().packet, b"foobar2");
+        assert_eq!(iter.next().unwrap().packet, b"foobar3");
+        assert_eq!(iter.next().unwrap().packet, b"foobar4");
+        assert_eq!(iter.next().unwrap().packet, b"foobar5");
+        assert_eq!(iter.next().unwrap().packet, b"foo");
+        assert!(iter.next().is_none());
     }
 }

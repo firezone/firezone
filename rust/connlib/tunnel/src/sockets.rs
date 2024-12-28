@@ -1,3 +1,4 @@
+use gat_lending_iterator::LendingIterator;
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, UdpSocket};
 use std::{
     io,
@@ -81,27 +82,17 @@ impl Sockets {
         Ok(())
     }
 
-    pub fn poll_recv_from<'b>(
+    pub fn poll_recv_from(
         &mut self,
-        ip4_buffer: &'b mut [u8],
-        ip6_buffer: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>>>> {
+    ) -> Poll<io::Result<impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>>> {
         let mut iter = PacketIter::new();
 
-        if let Some(Poll::Ready(packets)) = self
-            .socket_v4
-            .as_ref()
-            .map(|s| s.poll_recv_from(ip4_buffer, cx))
-        {
+        if let Some(Poll::Ready(packets)) = self.socket_v4.as_ref().map(|s| s.poll_recv_from(cx)) {
             iter.ip4 = Some(packets?);
         }
 
-        if let Some(Poll::Ready(packets)) = self
-            .socket_v6
-            .as_ref()
-            .map(|s| s.poll_recv_from(ip6_buffer, cx))
-        {
+        if let Some(Poll::Ready(packets)) = self.socket_v6.as_ref().map(|s| s.poll_recv_from(cx)) {
             iter.ip6 = Some(packets?);
         }
 
@@ -131,14 +122,14 @@ impl<T4, T6> PacketIter<T4, T6> {
     }
 }
 
-impl<'a, T4, T6> Iterator for PacketIter<T4, T6>
+impl<T4, T6> LendingIterator for PacketIter<T4, T6>
 where
-    T4: Iterator<Item = DatagramIn<'a>>,
-    T6: Iterator<Item = DatagramIn<'a>>,
+    T4: 'static + for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>,
+    T6: 'static + for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>,
 {
-    type Item = DatagramIn<'a>;
+    type Item<'a> = DatagramIn<'a>;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    fn next(&mut self) -> Option<Self::Item<'_>> {
         if let Some(packet) = self.ip4.as_mut().and_then(|i| i.next()) {
             return Some(packet);
         }
