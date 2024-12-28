@@ -21,7 +21,7 @@ cd "$temp_dir"
 xcrun altool \
     --upload-app \
     -f "$ARTIFACT_PATH" \
-    -t iOS \
+    -t "$PLATFORM" \
     --apiKey "$API_KEY_ID" \
     --apiIssuer "$ISSUER_ID"
 

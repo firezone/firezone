@@ -19,14 +19,16 @@ jobs:
           - job_name: build-ios
             rust-targets: aarch64-apple-ios
             build-script: scripts/build/ios-appstore.sh
-            artifact-file: "Firezone.ipa"
             upload-script: scripts/upload/app-store-connect.sh
+            artifact-file: "Firezone.ipa"
+            platform: iOS
 
           - job_name: build-macos-appstore
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
             build-script: scripts/build/macos-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
             artifact-file: "Firezone.pkg"
+            platform: macOS
 
           - job_name: build-macos-standalone
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
@@ -77,6 +79,7 @@ jobs:
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           RELEASE_NAME: "${{ matrix.release-name }}"
+          PLATFORM: "${{ matrix.platform }}"
       - uses: actions/cache/save@v4
         if: ${{ steps.cache.outputs.cache-hit != 'true'}}
         name: Save Swift DerivedData Cache

@@ -11,7 +11,6 @@ app_profile_id=8da59aa3-e8da-4a8c-9902-2d540324d92c
 ne_profile_id=0fccb78a-97c0-41b9-8c54-9c995280ea8e
 temp_dir=$(mktemp -d)
 archive_path="$temp_dir/Firezone.xcarchive"
-package_path="$temp_dir/Firezone.ipa"
 export_options_plist_path="$temp_dir/ExportOptions.plist"
 git_sha=${GITHUB_SHA:-$(git rev-parse HEAD)}
 project_file=swift/apple/Firezone.xcodeproj
@@ -66,11 +65,14 @@ cat <<EOF >"$export_options_plist_path"
 EOF
 
 # Export the archive
+# -exportPath MUST be a directory; the Firezone.ipa will be written here
 xcodebuild \
     -exportArchive \
     -archivePath "$archive_path" \
-    -exportPath "$package_path" \
+    -exportPath "$temp_dir" \
     -exportOptionsPlist "$export_options_plist_path"
+
+package_path="$temp_dir/Firezone.ipa"
 
 echo "Package created at $package_path"
 
