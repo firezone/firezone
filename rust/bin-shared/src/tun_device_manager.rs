@@ -17,6 +17,7 @@ pub use platform::TunDeviceManager;
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 mod tests {
     use super::*;
+    use gat_lending_iterator::LendingIterator as _;
     use ip_network::Ipv4Network;
     use socket_factory::DatagramOut;
     use std::{
@@ -106,8 +107,7 @@ mod tests {
             .unwrap();
 
         let task = std::future::poll_fn(|cx| {
-            let mut buf = [0u8; 1000];
-            let result = std::task::ready!(socket.poll_recv_from(&mut buf, cx));
+            let result = std::task::ready!(socket.poll_recv_from(cx));
 
             let _response = result.unwrap().next().unwrap();
 

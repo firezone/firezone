@@ -6,8 +6,14 @@ license = { workspace = true }
 
 [dependencies]
 bytes = { workspace = true }
+derive_more = { workspace = true, features = ["debug"] }
 firezone-logging = { workspace = true }
+gat-lending-iterator = { workspace = true }
+lockfree-object-pool = { workspace = true }
 quinn-udp = { workspace = true }
 socket2 = { workspace = true }
 tokio = { workspace = true, features = ["net"] }
 tracing = { workspace = true }
+
+[dev-dependencies]
+derive_more = { workspace = true, features = ["deref"] }

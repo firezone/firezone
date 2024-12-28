@@ -12,6 +12,7 @@ axum = { workspace = true, features = ["http1", "tokio"] }
 clap = { workspace = true, features = ["derive", "env"] }
 firezone-logging = { workspace = true }
 futures = { workspace = true, features = ["std", "async-await"] }
+gat-lending-iterator = { workspace = true }
 hex-literal = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true, features = ["serde"] }
