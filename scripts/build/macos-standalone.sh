@@ -36,6 +36,8 @@ xcodebuild build \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY="$codesign_identity" \
     PACKET_TUNNEL_PROVIDER_SUFFIX=-systemextension \
+    OTHER_CODE_SIGN_FLAGS="--timestamp" \
+    CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
     CONFIGURATION_BUILD_DIR="$temp_dir" \
     APP_PROFILE_ID="$app_profile_id" \
     NE_PROFILE_ID="$ne_profile_id" \
