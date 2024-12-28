@@ -54,6 +54,6 @@ productbuild \
 echo "Installer package created at $package_path"
 
 # Move to final location the uploader expects
-if [[ -n "${ARCHIVE_PATH:-}" ]]; then
-    mv "$package_path" "$ARCHIVE_PATH"
+if [[ -n "${ARTIFACT_PATH:-}" ]]; then
+    mv "$package_path" "$ARTIFACT_PATH"
 fi
