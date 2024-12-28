@@ -408,7 +408,7 @@ impl UdpSocket {
 ///
 /// This iterator is generic over its buffer to allow easier testing without a buffer pool.
 #[derive(derive_more::Debug)]
-struct DatagramSegmentIter<B, const N: usize> {
+struct DatagramSegmentIter<const N: usize, B = lockfree_object_pool::MutexOwnedReusable<Vec<u8>>> {
     #[debug(skip)]
     buffers: [B; N],
     metas: [quinn_udp::RecvMeta; N],
@@ -419,7 +419,7 @@ struct DatagramSegmentIter<B, const N: usize> {
     segment_index: usize,
 }
 
-impl<B, const N: usize> DatagramSegmentIter<B, N> {
+impl<B, const N: usize> DatagramSegmentIter<N, B> {
     fn new(buffers: [B; N], metas: [quinn_udp::RecvMeta; N], port: u16) -> Self {
         Self {
             buffers,
@@ -431,7 +431,7 @@ impl<B, const N: usize> DatagramSegmentIter<B, N> {
     }
 }
 
-impl<B, const N: usize> LendingIterator for DatagramSegmentIter<B, N>
+impl<B, const N: usize> LendingIterator for DatagramSegmentIter<N, B>
 where
     B: Deref<Target = Vec<u8>> + 'static,
 {
