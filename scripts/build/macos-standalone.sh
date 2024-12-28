@@ -28,7 +28,7 @@ if [ "${CI:-}" = "true" ]; then
 fi
 
 # Build and sign
-insert_build_timestamp "$project_file/project.pbxproj"
+set_project_build_version "$project_file/project.pbxproj"
 
 echo "Building and signing app..."
 xcodebuild build \
@@ -99,7 +99,7 @@ echo "Disk image created at $dmg_path"
 # Notarize disk image and embedded app
 if [ "$notarize" = "true" ]; then
     private_key_path="$temp_dir/firezone-api-key.p8"
-    echo -n "$API_KEY" | base64 --decode -o "$private_key_path"
+    base64_decode "$API_KEY" "$private_key_path"
 
     # Submit app bundle to be notarized. Can take a few minutes.
     # Notarizes embedded app bundle as well.

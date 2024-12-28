@@ -5,9 +5,9 @@ set -e
 # See https://docs.github.com/en/actions/use-cases-and-examples/deploying/installing-an-apple-certificate-on-macos-runners-for-xcode-development
 function setup_runner() {
     local app_profile="$1"
-    local app_profile_path="$2"
+    local app_profile_file="$2"
     local ne_profile="$3"
-    local ne_profile_path="$4"
+    local ne_profile_file="$4"
     profiles_path="$HOME/Library/MobileDevice/Provisioning Profiles"
     keychain_pass=$(openssl rand -base64 32)
     keychain_path="$(mktemp -d)/app-signing.keychain-db"
@@ -17,19 +17,19 @@ function setup_runner() {
 
     # Install provisioning profiles
     mkdir -p "$profiles_path"
-    install_provisioning_profile \
-        "$profiles_path" \
-        "$app_profile" \
-        "$app_profile_path"
-    install_provisioning_profile \
-        "$profiles_path" \
-        "$ne_profile" \
-        "$ne_profile_path"
+    base64_decode "$app_profile" "$profiles_path/$app_profile_file"
+    base64_decode "$ne_profile" "$profiles_path/$ne_profile_file"
 
     # Create a keychain to use for signing
     security create-keychain -p "$keychain_pass" "$keychain_path"
+
+    # Set it as the default keychain so Xcode can find the signing certs
     security default-keychain -s "$keychain_path"
+
+    # Ensure it stays unlocked during the build
     security set-keychain-settings -lut 21600 "$keychain_path"
+
+    # Unlock the keychain for use
     security unlock-keychain -p "$keychain_pass" "$keychain_path"
 
     # Install signing certs
@@ -50,12 +50,11 @@ function setup_runner() {
         "$keychain_path"
 }
 
-function install_provisioning_profile() {
-    local profiles_path="$1"
-    local profile="$2"
-    local profile_file="$3"
+function base64_decode() {
+    local input_stdin="$1"
+    local output_path="$2"
 
-    echo -n "$profile" | base64 --decode -o "$profiles_path/$profile_file"
+    echo -n "$input_stdin" | base64 --decode -o "$output_path"
 }
 
 function install_cert() {
@@ -67,22 +66,27 @@ function install_cert() {
 
     cert_path="$(mktemp -d)/cert.p12"
 
-    echo -n "$cert" | base64 --decode -o "$cert_path"
+    base64_decode "$cert" "$cert_path"
+
+    # Import cert into keychain
     security import "$cert_path" \
         -P "$pass" \
         -A \
         -t cert \
         -f pkcs12 \
         -k "$keychain_path"
+
+    # Prevent the keychain from asking for password to access the cert
     security set-key-partition-list \
         -S apple-tool:,apple: \
         -k "$keychain_pass" \
         "$keychain_path"
 
+    # Clean up
     rm "$cert_path"
 }
 
-function insert_build_timestamp() {
+function set_project_build_version() {
     local project_file="$1"
 
     seconds_since_epoch=$(date +%s)

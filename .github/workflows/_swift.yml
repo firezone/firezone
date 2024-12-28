@@ -19,24 +19,23 @@ jobs:
           - job_name: build-ios
             rust-targets: aarch64-apple-ios
             build-script: scripts/build/ios-appstore.sh
-            ARTIFACT_PATH: "./Firezone.ipa"
+            artifact-file: "Firezone.ipa"
             upload-script: scripts/upload/app-store-connect.sh
 
           - job_name: build-macos-appstore
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
             build-script: scripts/build/macos-appstore.sh
-            ARTIFACT_PATH: "./Firezone.pkg"
             upload-script: scripts/upload/app-store-connect.sh
+            artifact-file: "Firezone.pkg"
 
           - job_name: build-macos-standalone
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
             build-script: scripts/build/macos-standalone.sh
+            upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
-            ARTIFACT_PATH: "./firezone-macos-client-1.4.0.dmg"
-            NOTARIZE: "${{ (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') && 'true' || 'false' }}"
+            artifact-file: "firezone-macos-client-1.4.0.dmg"
             # mark:next-apple-version
-            upload-script: scripts/upload/github.sh
-            RELEASE_NAME: macos-client-1.4.0
+            release-name: macos-client-1.4.0
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,20 +63,20 @@ jobs:
           INSTALLER_CERT_PASS: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
           STANDALONE_BUILD_CERT: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64 }}"
           STANDALONE_BUILD_CERT_PASS: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD }}"
-          ARTIFACT_PATH: "${{ matrix.ARTIFACT_PATH }}"
-          NOTARIZE: "${{ matrix.NOTARIZE }}"
+          ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
+          NOTARIZE: "${{ (github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main') }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
       - run: ${{ matrix.upload-script }}
         if: ${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
         env:
-          ARTIFACT_PATH: "${{ matrix.ARTIFACT_PATH }}"
+          ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          RELEASE_NAME: "${{ matrix.RELEASE_NAME }}"
+          RELEASE_NAME: "${{ matrix.release-name }}"
       - uses: actions/cache/save@v4
         if: ${{ steps.cache.outputs.cache-hit != 'true'}}
         name: Save Swift DerivedData Cache

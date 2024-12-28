@@ -27,7 +27,7 @@ if [ "${CI:-}" = "true" ]; then
 fi
 
 # Build and sign app
-insert_build_timestamp "$project_file/project.pbxproj"
+set_project_build_version "$project_file/project.pbxproj"
 
 echo "Building and signing app..."
 xcodebuild archive \
