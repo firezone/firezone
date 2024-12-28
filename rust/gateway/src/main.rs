@@ -37,7 +37,7 @@ fn main() -> ExitCode {
     #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
     if !has_necessary_permissions() && !cli.no_check {
         eprintln!(
-            "firzone-gateway needs to be executed as `root` or with the `CAP_NET_ADMIN` capability.\nSee https://www.firezone.dev/kb/deploy/gateways#permissions for details."
+            "firezone-gateway needs to be executed as `root` or with the `CAP_NET_ADMIN` capability.\nSee https://www.firezone.dev/kb/deploy/gateways#permissions for details."
         );
         return ExitCode::FAILURE;
     }
