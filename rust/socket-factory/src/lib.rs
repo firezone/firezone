@@ -432,7 +432,7 @@ impl UdpSocket {
 ///
 /// This iterator is generic over its buffer to allow easier testing without a buffer pool.
 #[derive(derive_more::Debug)]
-struct DatagramSegmentIter<B> {
+pub struct DatagramSegmentIter<B = lockfree_object_pool::MutexOwnedReusable<Vec<u8>>> {
     local: SocketAddr,
     from: SocketAddr,
     #[debug(skip)]
