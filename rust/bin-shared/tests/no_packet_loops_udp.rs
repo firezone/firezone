@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used)]
 
 use firezone_bin_shared::{TunDeviceManager, platform::udp_socket_factory};
+use gat_lending_iterator::LendingIterator as _;
 use ip_network::Ipv4Network;
 use socket_factory::DatagramOut;
 use std::{
@@ -49,8 +50,7 @@ async fn no_packet_loops_udp() {
         .unwrap();
 
     let task = std::future::poll_fn(|cx| {
-        let mut buf = [0u8; 1000];
-        let result = std::task::ready!(socket.poll_recv_from(&mut buf, cx));
+        let result = std::task::ready!(socket.poll_recv_from(cx));
 
         let _response = result.unwrap().next().unwrap();
 
