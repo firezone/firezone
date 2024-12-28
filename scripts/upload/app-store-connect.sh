@@ -26,6 +26,6 @@ xcrun altool \
     --apiIssuer "$ISSUER_ID"
 
 # Clean up private key
-rm "$PRIVATE_KEY_PATH"
+rm -rf "$private_key_dir"
 
 cd "$cur_dir"
