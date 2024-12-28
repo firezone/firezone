@@ -8,7 +8,7 @@ function setup_runner() {
     local app_profile_file="$2"
     local ne_profile="$3"
     local ne_profile_file="$4"
-    profiles_path="$HOME/Library/MobileDevice/Provisioning Profiles"
+    profiles_path="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
     keychain_pass=$(openssl rand -base64 32)
     keychain_path="$(mktemp -d)/app-signing.keychain-db"
 

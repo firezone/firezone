@@ -50,7 +50,7 @@ xcodebuild build \
 # Notarize app before embedding within disk image
 if [ "$notarize" = "true" ]; then
     # Notary service expects a single file, not app bundle
-    ditto -c "$temp_dir/Firezone.app" "$temp_dir/Firezone.zip"
+    ditto -c -k "$temp_dir/Firezone.app" "$temp_dir/Firezone.zip"
 
     private_key_path="$temp_dir/firezone-api-key.p8"
     base64_decode "$API_KEY" "$private_key_path"
