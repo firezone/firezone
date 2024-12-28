@@ -106,7 +106,7 @@ if [ "$notarize" = "true" ]; then
     xcrun notarytool submit "$dmg_path" \
         --key "$private_key_path" \
         --key-id "$API_KEY_ID" \
-        --issuer-id "$ISSUER_ID" \
+        --issuer "$ISSUER_ID" \
         --wait
 
     # Clean up private key
