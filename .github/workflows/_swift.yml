@@ -8,7 +8,7 @@ jobs:
     name: ${{ matrix.job_name }}
     runs-on: macos-15
     permissions:
-      contents: write
+      contents: write # for attaching the build artifacts to the release
       id-token: write
     env:
       XCODE_VERSION: "16.2"
@@ -78,7 +78,6 @@ jobs:
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
-          REPOSITORY: ${{ github.repository }}
           RELEASE_NAME: "${{ matrix.release-name }}"
           PLATFORM: "${{ matrix.platform }}"
       - uses: actions/cache/save@v4
