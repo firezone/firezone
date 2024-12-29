@@ -17,9 +17,7 @@ use super::DnsController;
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
 use firezone_logging::std_dyn_err;
-use std::{
-    io::ErrorKind, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command,
-};
+use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 use windows::Win32::System::GroupPolicy::{RefreshPolicyEx, RP_FORCE};
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
@@ -32,21 +30,17 @@ impl DnsController {
     /// Must be `sync` so we can call it from `Drop`
     pub fn deactivate(&mut self) -> Result<()> {
         let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
-        if let Err(error) = hklm.delete_subkey(local_nrpt_path().join(NRPT_REG_KEY)) {
-            if error.kind() != ErrorKind::NotFound {
-                tracing::error!(error = std_dyn_err(&error), "Couldn't delete local NRPT");
-            }
+
+        if let Err(error) = delete_subkey(&hklm, local_nrpt_path().join(NRPT_REG_KEY)) {
+            tracing::error!(error = std_dyn_err(&error), "Failed to delete local NRPT");
         }
-        if let Err(error) = hklm.delete_subkey(group_nrpt_path().join(NRPT_REG_KEY)) {
-            if error.kind() != ErrorKind::NotFound {
-                tracing::error!(
-                    error = std_dyn_err(&error),
-                    "Couldn't delete Group Policy NRPT"
-                );
-            }
+        if let Err(error) = delete_subkey(&hklm, group_nrpt_path().join(NRPT_REG_KEY)) {
+            tracing::error!(error = std_dyn_err(&error), "Failed to delete group NRPT");
         }
+
         refresh_group_policy()?;
         tracing::info!("Deactivated DNS control");
+
         Ok(())
     }
 
@@ -79,6 +73,22 @@ impl DnsController {
         tracing::debug!("Flushed DNS.");
         Ok(())
     }
+}
+
+fn delete_subkey(key: &winreg::RegKey, subkey: impl AsRef<Path>) -> io::Result<()> {
+    let path = subkey.as_ref();
+
+    if let Err(error) = key.delete_subkey(path) {
+        if error.kind() == io::ErrorKind::NotFound {
+            return Ok(());
+        }
+
+        return Err(error);
+    }
+
+    tracing::debug!(path = %path.display(), "Deleted registry key");
+
+    Ok(())
 }
 
 pub(crate) fn system_resolvers(_method: DnsControlMethod) -> Result<Vec<IpAddr>> {
