@@ -6014,7 +6014,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.6.3"
-source = "git+https://github.com/algesten/str0m?branch=main#423361be7784966eb907c2d32cbfb5e1ef478b8b"
+source = "git+https://github.com/algesten/str0m?branch=main#c46970284af32b3497c780aceaad41304447a57b"
 dependencies = [
  "combine",
  "crc",
