@@ -55,6 +55,10 @@ jobs:
           # mark:next-gui-version
           - release_name: gui-client-1.4.1
             config_name: release-drafter-gui-client.yml
+          # mark:next-apple-version
+          - release_name: macos-client-1.4.0
+            config_name: release-drafter-macos-client.yml
+
     steps:
       - uses: release-drafter/release-drafter@v6
         # Only draft releases on merges to main
