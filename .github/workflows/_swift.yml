@@ -8,8 +8,8 @@ jobs:
     name: ${{ matrix.job_name }}
     runs-on: macos-15
     permissions:
-      contents: read
-      id-token: "write"
+      contents: write # for attaching the build artifacts to the release
+      id-token: write
     env:
       XCODE_VERSION: "16.2"
     strategy:
@@ -71,7 +71,7 @@ jobs:
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
       - run: ${{ matrix.upload-script }}
-        if: ${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
+        if: "${{ github.event_name == 'workflow_dispatch' || github.ref_name == 'main' }}"
         env:
           ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
