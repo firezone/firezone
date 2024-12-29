@@ -15,6 +15,11 @@ export default function Gateway() {
           Fixes an issue where ICMPv6's `PacketTooBig' errors were not correctly
           translated by the NAT64 module.
         </ChangeItem>
+        <ChangeItem pull="7565">
+          Fails early in case the binary is not started as `root` or with the
+          `CAP_NET_ADMIN` capability. The check can be skipped with
+          `--no-check`.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.2" date={new Date("2024-12-13")}>
         <ChangeItem pull="7210">

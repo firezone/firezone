@@ -753,6 +753,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "caps"
+version = "0.5.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "190baaad529bcfbde9e1a19022c42781bdb6ff9de25721abdb8fd98c0807730b"
+dependencies = [
+ "libc",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cargo-platform"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1952,6 +1962,7 @@ dependencies = [
  "async-trait",
  "backoff",
  "boringtun",
+ "caps",
  "chrono",
  "clap",
  "connlib-model",
@@ -1967,6 +1978,7 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "libc",
+ "nix 0.29.0",
  "phoenix-channel",
  "rustls",
  "secrecy",

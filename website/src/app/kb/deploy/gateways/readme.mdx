@@ -63,6 +63,23 @@ you'll need to make sure the following outbound traffic is allowed:
 | github.com, www.firezone.dev | Varies                                | `443`         | HTTPS           | Only required for [Gateway upgrades](/kb/administer/upgrading). |
 | sentry.io                    | Varies                                | `443`         | HTTPS           | Crash-reporting, see [Telemetry](#telemetry)                    |
 
+#### Permissions
+
+In order to function correctly, Gateways need access to several parts of the
+Linux system:
+
+1. The TUN device as `/dev/net/tun`
+1. Permissions to open new UDP sockets
+1. Permissions to add and remove routes via `netlink`
+
+Typically, it is enough to run Gateways with the `CAP_NET_ADMIN` capability.
+Alternatively, you can run them as `root`.
+
+Gateways will check on startup for these two conditions and fail if neither are
+met. You can skip these permission checks by passing `--no-check`. This is only
+advisable in case you have configured access in ways not covered by these
+checks.
+
 ## Where to deploy Gateways
 
 Ideally, Gateways should be deployed as close to the Resources they're serving
