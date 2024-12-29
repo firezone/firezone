@@ -2476,6 +2476,7 @@ dependencies = [
  "firezone-logging",
  "firezone-relay",
  "firezone-telemetry",
+ "flume",
  "futures",
  "futures-bounded",
  "gat-lending-iterator",

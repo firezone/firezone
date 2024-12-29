@@ -49,6 +49,7 @@ async fn no_packet_loops_udp() {
             segment_size: None,
             ecn: Ecn::NonEct,
         })
+        .await
         .unwrap();
 
     let task = std::future::poll_fn(|cx| {
