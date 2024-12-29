@@ -20,7 +20,6 @@ jobs:
             rust-targets: aarch64-apple-ios
             build-script: scripts/build/ios-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
-            should-upload: "${{ github.event_name == 'workflow_dispatch' }}"
             artifact-file: "Firezone.ipa"
             platform: iOS
 
@@ -28,7 +27,6 @@ jobs:
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
             build-script: scripts/build/macos-appstore.sh
             upload-script: scripts/upload/app-store-connect.sh
-            should-upload: "${{ github.event_name == 'workflow_dispatch' }}"
             artifact-file: "Firezone.pkg"
             platform: macOS
 
@@ -36,7 +34,6 @@ jobs:
             rust-targets: aarch64-apple-darwin x86_64-apple-darwin
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
-            shoud-upload: "${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}"
             # mark:next-apple-version
             artifact-file: "firezone-macos-client-1.4.0.dmg"
             # mark:next-apple-version
@@ -74,7 +71,7 @@ jobs:
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
       - run: ${{ matrix.upload-script }}
-        if: ${{ matrix.should-upload }}
+        if: "${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}"
         env:
           ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
