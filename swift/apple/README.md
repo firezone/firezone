@@ -269,7 +269,7 @@ APPLE_MACOS_NE_PROVISIONING_PROFILE
 1. Encode to base64 and save each using the secrets names above:
 
 ```bash
-base64 < <profile>.mobileprovision
+base64 < profile.mobileprovision
 ```
 
 1. Now, you need to update the build scripts to use these. Edit
