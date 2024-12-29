@@ -2,8 +2,12 @@
 
 Firezone clients for macOS and iOS.
 
-## Pre-requisites
+This document is intended as a reference for developers working on the Apple
+clients.
 
+## Prerequisites
+
+1. Ensure you have the latest stable version of Xcode installed and selected.
 1. Rust: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 1. Request your Firezone email added to our Apple Developer Account
 1. Open Xcode, go to Settings -> Account and log in.
@@ -11,19 +15,23 @@ Firezone clients for macOS and iOS.
 If you're working on the macOS client, you'll need to disable SIP and enable
 system extension development mode:
 
-1. Follow [these instructions](https://developer.apple.com/documentation/security/disabling-and-enabling-system-integrity-protection) to disable SIP.
+1. Follow
+   [these instructions](https://developer.apple.com/documentation/security/disabling-and-enabling-system-integrity-protection)
+   to disable SIP.
 1. After that's complete, turn on system extension development mode:
 
 ```bash
 systemextensionsctl developer on
 ```
 
-This will prevent macOS from blocking the Network Extension from loading due to notarization or filepath restrictions.
+This will prevent macOS from blocking the Network Extension from loading due to
+notarization or filepath restrictions.
 
 **Be sure to re-enable SIP to test the app in a production-like environment.**
 
-You may consider using a macOS VM (such as Parallels Desktop) to develop the macOS client, as it's easier to
-disable SIP, take snapshots, and muck around with your system configuration without risking your main machine.
+You may consider using a macOS VM (such as Parallels Desktop) to test the
+standalone macOS client, as it can be easier to test different macOS versions
+and configurations without risking your main machine.
 
 ## Building
 
@@ -49,54 +57,54 @@ disable SIP, take snapshots, and muck around with your system configuration with
    cd swift/apple
    ```
 
-1. Copy an appropriate xcconfig:
-
-If building for Development, the debug.xcconfig should work out-of-the-box.
-
-```bash
-cp Firezone/xcconfig/debug.xcconfig Firezone/xcconfig/config.xcconfig
-vim Firezone/xcconfig/config.xcconfig
-```
-
 1. Open project in Xcode:
 
-```bash
-open Firezone.xcodeproj
-```
+   ```bash
+   open Firezone.xcodeproj
+   ```
 
 1. Build and run the `Firezone` target.
 
-### Making macOS standalone release builds for local testing
+**Note**: To test the iOS app, you'll need a physical iOS device such as an
+iPhone or iPad. Network Extensions can't be debugged in the iOS simulator.
 
-For the macOS standalone app, it's a good idea to smoke test release builds of the app
-whenever anything related to the app's packaging or notarization changes. This
-is because standalone binaries on macOS don't go through the App Store submission
-and distribution process which typically catches any packaging issues. Standalone binaries
-are subject to Gatekeeper restrictions which means they can build and run just fine in
-Development but fail to run successfully on another user's machine.
+### Making release builds for local testing
 
-To build a standalone release binary:
+1. Install the needed signing certificates to your keychain by exporting them
+   from 1Password and double-clicking them to install. Contact a team member if
+   you need access. Once installed, you should see the distribution, developer
+   ID, and installer certificates in your keychain:
 
-1. You'll need the developer ID certificate (including private key) we use to sign the app. Developer ID certificates
-   are not compatible with "Automatically manage signing" in Xcode, so you need to download this certificate from 1Password and
-   install it into your local keychain. The certificate stored in the Apple Developer Portal does not include the private key.
-1. Go to https://developer.apple.com/account/resources/profiles/list.
-1. Download both of the "Developer ID Application" provisioning profiles (one each for the App and Network Extension).
-1. Copy the `standalone` release xcconfig:
+   ```bash
+   > security find-identity -v -p codesigning
 
-```bash
-cp Firezone/xcconfig/standalone.xcconfig Firezone/xcconfig/config.xcconfig
-```
+   ...
+   6) A6815986DDB2A0FA999DA89F04E4F6E0B3ACD724 "Apple Distribution: Firezone, Inc. (47R2M6779T)"
+   7) 281CCA77645E0399F9E80D6190D8F412EE7BA871 "3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
+   8) 8BA4CA21B9737F37397253A6AA483196033ABAE2 "Developer ID Application: Firezone, Inc. (47R2M6779T)"
+       8 valid identities found
+   ```
 
-1. Open Xcode, drag the provisioning profiles onto the Xcode app icon in the Dock to install them.
-1. In Xcode, ensure the `Firezone` scheme is selected, then go to `Product -> Archive`. This will build the app and open the Organizer window.
-1. In the Organizer window, select the latest build and click `Distribute App`.
-1. Choose `Direct Distribution` and click `Distribute`.
-1. Apple will then sign and notarize the app. Notarization typically takes a minute or two, but can take up to an hour during busy times.
-1. Once notarization is complete, Xcode will notify you that the app is ready to distribute. Click `Export` and save the app to the `/Applications` folder. macOS will not allow system extensions to be activated unless they are in `/Applications`.
-1. Launch the app from `/Applications` and ensure it works as expected.
+1. Download the provisioning profiles from the Apple Developer Portal and
+   install them by dragging them onto the Xcode icon in the Dock.
 
-Because it can be a bit of a hassle to ensure your development machine will mimic the behavior of a user's machine, it's a good idea to test standalone builds on a clean macOS VM. Parallels for Mac is a good choice for this.
+1. Run the appropriate build script:
+
+   ```bash
+   scripts/build/ios-appstore.sh
+   ```
+
+   or
+
+   ```bash
+   scripts/build/macos-appstore.sh
+   ```
+
+   or
+
+   ```bash
+   scripts/build/macos-standalone.sh
+   ```
 
 ## Debugging
 
@@ -111,7 +119,16 @@ simulator, so you'll need a physical iOS device to develop the iOS build on.
 
 ### NetworkExtension not loading (macOS)
 
-If the tunnel fails to come up after signing in, it can be for a large number of reasons. Here are some of the more common ones:
+If the tunnel fails to come up after signing in, it can be for a number of
+reasons. Start by checking the system logs for errors -- commonly it is due to
+entitlements, signing, notarization, or some other security issue.
+
+One technique is to start a `log stream` in another terminal while replicating
+the issue, looking for errors reported by other macOS subsystems hinting at why
+the Network Extension failed to load.
+
+If nothing seem obviously wrong, it could be that the Network Extension isn't
+loading because of a LaunchAgent issue.
 
 Try clearing your LaunchAgent db:
 
@@ -128,7 +145,7 @@ reflected when you run/debug, it could be that PluginKit is still launching your
 old NetworkExtension. Try this to remove it:
 
 ```bash
-pluginkit -v -m -D -i <bundle-id>
+pluginkit -v -m -D -i dev.firezone.firezone.network-extension
 pluginkit -a <path>
 pluginkit -r <path>
 ```
@@ -167,6 +184,7 @@ cd swift/apple
 
 ```
 rm -rf $HOME/Library/Group\ Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/connlib
+sudo rm -rf /private/var/root/Library/Group\ Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs/connlib
 ```
 
 ### Clearing the Keychain item
@@ -178,13 +196,14 @@ item is missing. You can remove the keychain item with the following command:
 security delete-generic-password -s "dev.firezone.firezone"
 ```
 
-## Generating new signing certificates and provisioning profiles
+## Generating new signing certificates and provisioning profiles for app store distribution
 
-Certs are only good for a year, then you need to generate new ones. Since we use
-GitHub CI, we have to use manually-managed signing and provisioning. Here's how
-you populate the required GitHub secrets.
+App Store distribution certifications are only good for a year, then you need to
+generate new ones. Since we use GitHub CI, we must manually manage signing and
+provisioning since it's not possible (nor advised) to sign into Xcode from the
+GitHub runner CI. Here's how you populate the required GitHub secrets.
 
-**Note**: Be sure to enter these variables for Dependabot as well, otherwise its
+**Note**: Be sure to enter these secrets for Dependabot as well, otherwise its
 CI runs will fail.
 
 ### Certificates
@@ -211,15 +230,20 @@ How to do it:
    Certificate Assistant -> Request a Certificate from a Certificate Authority
    and follow the prompts. Make sure to select "save to disk" to save the CSR.
 1. Upload the CSR to Apple Developer. Download the resulting certificate.
-   Double-click to install it in Keychain Access.
+1. **Important**: Back up the downloaded certificate into 1Password. You will no
+   longer have have access to its private key (required for signing) if you lose
+   it.
+1. Double-click to install it in Keychain Access.
 1. Right-click the cert in Keychain access. Export the certificate, choose p12
    file. Make sure to set a password -- this is the
    `APPLE_BUILD_CERTIFICATE_P12_PASSWORD`.
 1. Convert the p12 file to base64:
    ```bash
-   cat cert.p12 | base64
+   base64 < cert.p12
    ```
 1. Save the base64 output as `APPLE_BUILD_CERTIFICATE_BASE64`.
+1. Delete cert.p12 and the cert from Keychain Access once you're sure it's
+   backed up to 1Password.
 
 Repeat the steps above but choose "Mac Installer certificate" instead of
 "distribution certificate" in step 2, and save the resulting base64 and password
@@ -245,22 +269,32 @@ APPLE_MACOS_NE_PROVISIONING_PROFILE
 1. Encode to base64 and save each using the secrets names above:
 
 ```bash
-cat profile.mobileprovision | base64
+base64 < profile.mobileprovision
 ```
 
-1. Now, you need to update the XCConfig to use these. Edit
-   Firezone/xcconfig/release.xcconfig and update the provisioning profile UUIDs.
-   The UUID can be found by grepping for them in the provisioning profile files
+1. Now, you need to update the build scripts to use these. Edit
+   `scripts/build/*-appstore.sh` and update the provisioning profile UUIDs. The
+   UUID can be found by grepping for them in the provisioning profile files
    themselves, or just opening them in a text editor and looking halfway down
-   the file.
-1. Now, for iOS only, you need to edit Firezone/ExportOptions.plist and update
-   the provisioning profile UUIDs there as well.
+   the file. They should be the only UUIDs in the file.
 
-### Runner keychain password
+## Generating new signing certificates and provisioning profiles for standalone distribution
 
-This can be randomly generated. It's only used ephemerally to load the secrets
-into the runner's keychain for the build.
+The process is much the same as above for the macOS standalone client, with one
+important difference: the signing certificate must be a Developer ID Application
+certificate, not an Apple Distribution certificate. **DO NOT GENERATE A NEW
+CERTIFICATE UNLESS THE OLD ONE HAS EXPIRED OR IS LOST.** Developer ID
+Application certificates are **precious** and we only have a limited number of
+them. They also cannot be revoked. So do not generate them. Instead, obtain it
+from 1Password.
+
+Once you've done that, you can create the provisioning profiles and update the
+GitHub secrets using the same steps as above, only using the following secrets
+names:
 
 ```
-APPLE_RUNNER_KEYCHAIN_PASSWORD
+APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64
+APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD
+APPLE_STANDALONE_MACOS_APP_PROVISIONING_PROFILE
+APPLE_STANDALONE_MACOS_NE_PROVISIONING_PROFILE
 ```
