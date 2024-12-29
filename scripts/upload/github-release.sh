@@ -2,7 +2,7 @@
 
 # Uploads built packages to a GitHub release
 
-set -euo pipefail
+set -euox pipefail
 
 # Only clobber existing release assets if the release is a draft
 is_draft=$(gh release view "$RELEASE_NAME" --json isDraft --jq '.isDraft' | tr -d '\n')
