@@ -17,4 +17,5 @@ sha256sum "$ARTIFACT_PATH" >"$ARTIFACT_PATH.sha256sum.txt"
 gh release upload "$RELEASE_NAME" \
     "$ARTIFACT_PATH" \
     "$ARTIFACT_PATH.sha256sum.txt" \
-    $clobber
+    $clobber \
+    --repo "$REPOSITORY"
