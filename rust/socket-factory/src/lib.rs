@@ -3,7 +3,6 @@ use firezone_logging::std_dyn_err;
 use gat_lending_iterator::LendingIterator;
 use quinn_udp::Transmit;
 use std::collections::HashMap;
-use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::{
@@ -218,11 +217,11 @@ pub struct DatagramOut<B> {
 }
 
 impl UdpSocket {
-    pub fn poll_recv_from(
-        &self,
-        cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + fmt::Debug>>
-    {
+    pub async fn recv_from(&self) -> io::Result<DatagramSegmentIter> {
+        std::future::poll_fn(|cx| self.poll_recv_from(cx)).await
+    }
+
+    pub fn poll_recv_from(&self, cx: &mut Context<'_>) -> Poll<io::Result<DatagramSegmentIter>> {
         let Self {
             port, inner, state, ..
         } = self;
@@ -285,7 +284,7 @@ impl UdpSocket {
         self.inner.poll_send_ready(cx)
     }
 
-    pub fn send<B>(&mut self, datagram: DatagramOut<B>) -> io::Result<()>
+    pub async fn send<B>(&mut self, datagram: DatagramOut<B>) -> io::Result<()>
     where
         B: Deref<Target: bytes::Buf>,
     {
@@ -316,9 +315,11 @@ impl UdpSocket {
 
                     tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_packets, %segment_size);
 
-                    self.inner.try_io(Interest::WRITABLE, || {
-                        self.state.try_send((&self.inner).into(), &transmit)
-                    })?;
+                    self.inner
+                        .async_io(Interest::WRITABLE, || {
+                            self.state.try_send((&self.inner).into(), &transmit)
+                        })
+                        .await?;
                 }
             }
             None => {
@@ -326,9 +327,11 @@ impl UdpSocket {
 
                 tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_bytes);
 
-                self.inner.try_io(Interest::WRITABLE, || {
-                    self.state.try_send((&self.inner).into(), &transmit)
-                })?;
+                self.inner
+                    .async_io(Interest::WRITABLE, || {
+                        self.state.try_send((&self.inner).into(), &transmit)
+                    })
+                    .await?;
             }
         }
 
