@@ -12,14 +12,14 @@ by advanced users and admins.
 
 ## Log directory locations
 
-| Component               | Log directory                                                                                                                   |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| macOS Client            | `~/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs`                                               |
-| iOS Client              | N/A                                                                                                                             |
-| Android/ChromeOS Client | `/data/data/dev.firezone.android/caches/logs`                                                                                   |
-| Linux Client            | Set by the user via the `LOG_DIR` environment variable, otherwise STDOUT                                                        |
-| Windows Client          | `%APPDATA%\Local\dev.firezone.client\data\logs`                                                                                 |
-| Gateway                 | Logs are written to STDOUT by default and viewable either by `docker logs firezone-gateway` or `journalctl -u firezone-gateway` |
+| Component               | Log directory                                                                                                                                                                          |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| macOS Client            | `~/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs` and `/private/var/root/Library/Group Containers/47R2M6779T.dev.firezone.firezone/Library/Caches/logs |
+| iOS Client              | N/A                                                                                                                                                                                    |
+| Android/ChromeOS Client | `/data/data/dev.firezone.android/caches/logs`                                                                                                                                          |
+| Linux Client            | Set by the user via the `LOG_DIR` environment variable, otherwise STDOUT                                                                                                               |
+| Windows Client          | `%APPDATA%\Local\dev.firezone.client\data\logs`                                                                                                                                        |
+| Gateway                 | Logs are written to STDOUT by default and viewable either by `docker logs firezone-gateway` or `journalctl -u firezone-gateway`                                                        |
 
 ## Exporting Client logs
 
