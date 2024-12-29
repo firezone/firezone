@@ -29,9 +29,9 @@ notarization or filepath restrictions.
 
 **Be sure to re-enable SIP to test the app in a production-like environment.**
 
-You may consider using a macOS VM (such as Parallels Desktop) to develop the
-macOS client, as it's easier to disable SIP, take snapshots, and muck around
-with your system configuration without risking your main machine.
+You may consider using a macOS VM (such as Parallels Desktop) to test the
+standalone macOS client, as it can be easier to test different macOS versions
+and configurations without risking your main machine.
 
 ## Building
 
