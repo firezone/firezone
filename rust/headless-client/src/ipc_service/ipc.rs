@@ -29,8 +29,6 @@ pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, Encoder<IpcSe
 pub enum Error {
     #[error("Couldn't find IPC service `{0}`")]
     NotFound(String),
-    #[error("Permission denied")]
-    PermissionDenied,
 
     #[error("{0:#}")] // Use alternate display here to log entire chain of errors.
     Other(anyhow::Error),

@@ -66,6 +66,37 @@ open Firezone.xcodeproj
 
 1. Build and run the `Firezone` target.
 
+### Making macOS standalone release builds for local testing
+
+For the macOS standalone app, it's a good idea to smoke test release builds of the app
+whenever anything related to the app's packaging or notarization changes. This
+is because standalone binaries on macOS don't go through the App Store submission
+and distribution process which typically catches any packaging issues. Standalone binaries
+are subject to Gatekeeper restrictions which means they can build and run just fine in
+Development but fail to run successfully on another user's machine.
+
+To build a standalone release binary:
+
+1. Go to https://developer.apple.com/account/resources/certificates/list.
+1. Download the "Developer ID Application" certificate which has the latest expiration date and double-click it to install it in your keychain.
+1. Go to https://developer.apple.com/account/resources/profiles/list.
+1. Download both of the "Developer ID Application" provisioning profiles (one each for the App and Network Extension).
+1. Copy the `standalone` release xcconfig:
+
+```bash
+cp Firezone/xcconfig/standalone.xcconfig Firezone/xcconfig/config.xcconfig
+```
+
+1. Open Xcode, drag the provisioning profiles onto the Xcode app icon in the Dock to install them.
+1. In Xcode, ensure the `Firezone` scheme is selected, then go to `Product -> Archive`. This will build the app and open the Organizer window.
+1. In the Organizer window, select the latest build and click `Distribute App`.
+1. Choose `Direct Distribution` and click `Distribute`.
+1. Apple will then sign and notarize the app. Notarization typically takes a minute or two, but can take up to an hour during busy times.
+1. Once notarization is complete, Xcode will notify you that the app is ready to distribute. Click `Export` and save the app to the `/Applications` folder. macOS will not allow system extensions to be activated unless they are in `/Applications`.
+1. Launch the app from `/Applications` and ensure it works as expected.
+
+Because it can be a bit of a hassle to ensure your development machine will mimic the behavior of a user's machine, it's a good idea to test standalone builds on a clean macOS VM. Parallels for Mac is a good choice for this.
+
 ## Debugging
 
 [This Network Extension debugging guide](https://developer.apple.com/forums/thread/725805)
