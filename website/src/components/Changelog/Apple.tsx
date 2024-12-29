@@ -12,6 +12,11 @@ export default function Apple() {
     >
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="7594">
+          Fixes a race condition that could cause the app to crash in rare
+          cirucumstances if the VPN profile is removed from system settings
+          while the app is running.
+        </ChangeItem>
         <ChangeItem pull="7593">
           Fixes a bug where the VPN status would not properly update upon the
           first launch of the app.

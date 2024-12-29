@@ -248,7 +248,7 @@ public class TunnelManager {
     }
 
     do {
-      try session().startTunnel(options: options)
+      try session()?.startTunnel(options: options)
     } catch {
       Log.app.error("Error starting tunnel: \(error)")
     }
@@ -257,21 +257,21 @@ public class TunnelManager {
   func stop(clearToken: Bool = false) {
     if clearToken {
       do {
-        try session().sendProviderMessage(encoder.encode(TunnelMessage.signOut)) { _ in
-          self.session().stopTunnel()
+        try session()?.sendProviderMessage(encoder.encode(TunnelMessage.signOut)) { _ in
+          self.session()?.stopTunnel()
         }
       } catch {
         Log.app.error("\(#function): \(error)")
       }
     } else {
-      session().stopTunnel()
+      session()?.stopTunnel()
     }
   }
 
   func updateInternetResourceState() {
-    guard session().status == .connected else { return }
+    guard session()?.status == .connected else { return }
 
-    try? session().sendProviderMessage(encoder.encode(TunnelMessage.internetResourceEnabled(internetResourceEnabled))) { _ in }
+    try? session()?.sendProviderMessage(encoder.encode(TunnelMessage.internetResourceEnabled(internetResourceEnabled))) { _ in }
   }
 
   func toggleInternetResource(enabled: Bool) {
@@ -280,10 +280,10 @@ public class TunnelManager {
   }
 
   func fetchResources(callback: @escaping (ResourceList) -> Void) {
-    guard session().status == .connected else { return }
+    guard session()?.status == .connected else { return }
 
     do {
-      try session().sendProviderMessage(encoder.encode(TunnelMessage.getResourceList(resourceListHash))) { data in
+      try session()?.sendProviderMessage(encoder.encode(TunnelMessage.getResourceList(resourceListHash))) { data in
         if let data = data {
           self.resourceListHash = Data(SHA256.hash(data: data))
           let decoder = JSONDecoder()
@@ -301,7 +301,7 @@ public class TunnelManager {
   func clearLogs() async throws {
     return try await withCheckedThrowingContinuation { continuation in
       do {
-        try session().sendProviderMessage(
+        try session()?.sendProviderMessage(
           encoder.encode(TunnelMessage.clearLogs)
         ) { _ in continuation.resume() }
       } catch {
@@ -313,7 +313,7 @@ public class TunnelManager {
   func getLogFolderSize() async throws -> Int64 {
     return try await withCheckedThrowingContinuation { continuation in
       do {
-        try session().sendProviderMessage(
+        try session()?.sendProviderMessage(
           encoder.encode(TunnelMessage.getLogFolderSize)
         ) { data in
 
@@ -345,7 +345,7 @@ public class TunnelManager {
 
     func loop() {
       do {
-        try session().sendProviderMessage(
+        try session()?.sendProviderMessage(
           encoder.encode(TunnelMessage.exportLogs)
         ) { data in
           guard let data = data
@@ -385,7 +385,7 @@ public class TunnelManager {
   func consumeStopReason() async throws -> String {
     return try await withCheckedThrowingContinuation { continuation in
       do {
-        try session().sendProviderMessage(
+        try session()?.sendProviderMessage(
           encoder.encode(TunnelMessage.consumeStopReason)
         ) { data in
 
@@ -413,12 +413,8 @@ public class TunnelManager {
     }
   }
 
-  private func session() -> NETunnelProviderSession {
-    guard let manager = manager,
-          let session = manager.connection as? NETunnelProviderSession
-    else { fatalError("Could not cast tunnel connection to NETunnelProviderSession!") }
-
-    return session
+  private func session() -> NETunnelProviderSession? {
+    return manager?.connection as? NETunnelProviderSession
   }
 
   // Subscribe to system notifications about our VPN status changing
