@@ -40,7 +40,7 @@ public final class Store: ObservableObject {
     self.sessionNotification = SessionNotification()
 
     initNotifications()
-    initTunnelManager()
+    loadTunnelManager()
   }
 
   public func internetResourceEnabled() -> Bool {
@@ -62,7 +62,7 @@ public final class Store: ObservableObject {
       .store(in: &cancellables)
   }
 
-  private func initTunnelManager() {
+  private func loadTunnelManager() {
     // Subscribe to status updates from the tunnel manager
     TunnelManager.shared.statusChangeHandler = handleVPNStatusChange
 
@@ -94,9 +94,14 @@ public final class Store: ObservableObject {
   }
 
   func createVPNProfile() {
-    DispatchQueue.main.async {
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+
       Task {
-        self.settings = try await TunnelManager.shared.create()
+        try await TunnelManager.shared.create()
+
+        // Load the new settings and bind observers
+        self.loadTunnelManager()
       }
     }
   }
