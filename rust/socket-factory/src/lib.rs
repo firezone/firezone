@@ -5,10 +5,10 @@ use gat_lending_iterator::LendingIterator;
 use ip_packet::Ecn;
 use quinn_udp::{EcnCodepoint, Transmit};
 use std::collections::HashMap;
+use std::io;
 use std::io::IoSliceMut;
 use std::ops::Deref;
 use std::sync::Arc;
-use std::{fmt, io};
 use std::{
     net::{IpAddr, SocketAddr},
     task::{Context, Poll, ready},
@@ -221,18 +221,17 @@ pub struct DatagramOut<B> {
 }
 
 impl UdpSocket {
-    pub fn poll_recv_from(
-        &self,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + fmt::Debug + use<>>>
-    {
-        const NUM_BUFFERS: usize = 10;
+    pub async fn recv_from(&self) -> Result<DatagramSegmentIter> {
+        std::future::poll_fn(|cx| self.poll_recv_from(cx)).await
+    }
+
+    pub fn poll_recv_from(&self, cx: &mut Context<'_>) -> Poll<Result<DatagramSegmentIter>> {
         let Self {
             port, inner, state, ..
         } = self;
 
-        let mut bufs = std::array::from_fn::<_, NUM_BUFFERS, _>(|_| self.buffer_pool.pull_owned());
-        let mut meta = std::array::from_fn::<_, NUM_BUFFERS, _>(|_| quinn_udp::RecvMeta::default());
+        let mut bufs = std::array::from_fn(|_| self.buffer_pool.pull_owned());
+        let mut meta = std::array::from_fn(|_| quinn_udp::RecvMeta::default());
 
         loop {
             ready!(inner.poll_recv_ready(cx)).context("Failed to poll UDP socket for readiness")?;
@@ -255,7 +254,7 @@ impl UdpSocket {
         self.inner.poll_send_ready(cx)
     }
 
-    pub fn send<B>(&mut self, datagram: DatagramOut<B>) -> Result<()>
+    pub async fn send<B>(&mut self, datagram: DatagramOut<B>) -> Result<()>
     where
         B: Deref<Target: bytes::Buf>,
     {
@@ -292,14 +291,11 @@ impl UdpSocket {
                     tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, %num_packets, %segment_size);
 
                     self.inner
-                        .try_io(Interest::WRITABLE, || {
+                        .async_io(Interest::WRITABLE, || {
                             self.state.try_send((&self.inner).into(), &transmit)
                         })
-                        .with_context(|| {
-                            format!(
-                                "Failed to send datagram-batch with segment_size {segment_size} to {dst}"
-                            )
-                        })?;
+                        .await
+                        .with_context(|| format!("Failed to send datagram-batch with segment_size {segment_size} to {dst}"))?;
                 }
             }
             None => {
@@ -308,9 +304,10 @@ impl UdpSocket {
                 tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, %num_bytes);
 
                 self.inner
-                    .try_io(Interest::WRITABLE, || {
+                    .async_io(Interest::WRITABLE, || {
                         self.state.try_send((&self.inner).into(), &transmit)
                     })
+                    .await
                     .with_context(|| format!("Failed to send single-datagram to {dst}"))?;
             }
         }
@@ -434,7 +431,10 @@ impl UdpSocket {
 ///
 /// This iterator is generic over its buffer to allow easier testing without a buffer pool.
 #[derive(derive_more::Debug)]
-struct DatagramSegmentIter<const N: usize, B = lockfree_object_pool::MutexOwnedReusable<Vec<u8>>> {
+pub struct DatagramSegmentIter<
+    const N: usize = 10,
+    B = lockfree_object_pool::MutexOwnedReusable<Vec<u8>>,
+> {
     #[debug(skip)]
     buffers: [B; N],
     metas: [quinn_udp::RecvMeta; N],
