@@ -309,7 +309,14 @@ impl Allocation {
         let passed_message_integrity_check = self.check_message_integrity(&message);
 
         if message.method() != BINDING && !passed_message_integrity_check {
-            tracing::warn!("Message integrity check failed");
+            // We don't want to `remove` the message here otherwise an attacker could change our state with unauthenticated messages.
+            let request = self
+                .sent_requests
+                .get(&transaction_id)
+                .map(|(_, r, _, _, _)| r.attributes().map(display_attr).collect::<Vec<_>>());
+            let response = message.attributes().map(display_attr).collect::<Vec<_>>();
+
+            tracing::warn!(?request, ?response, "Message integrity check failed");
             return true; // The message still indicated that it was for this `Allocation`.
         }
 

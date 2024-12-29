@@ -182,23 +182,20 @@ public final class Store: ObservableObject {
   private func handleVPNStatusChange(status: NEVPNStatus) async {
     self.status = status
 
+#if os(macOS)
+    // On iOS, we can initiate notifications directly from the tunnel process.
+    // On macOS, however, the system extension runs as root which doesn't
+    // support showing User notifications. Instead, we read the last stopped
+    // reason and alert the user if it was due to receiving a 401 from the
+    // portal.
     if status == .disconnected,
-       let savedValue = try? String(contentsOf: SharedAccess.providerStopReasonURL, encoding: .utf8),
+       let savedValue = try? await TunnelManager.shared.consumeStopReason(),
        let rawValue = Int(savedValue),
        let reason = NEProviderStopReason(rawValue: rawValue),
        case .authenticationCanceled = reason
     {
-      await consumeCanceledAuthentication()
+      self.sessionNotification.showSignedOutAlertmacOS()
     }
-  }
-
-  private func consumeCanceledAuthentication() async {
-    try? FileManager.default.removeItem(at: SharedAccess.providerStopReasonURL)
-
-    // Show alert (macOS -- iOS is handled in the PacketTunnelProvider)
-    // TODO: See if we can show standard notifications NotificationCenter here
-#if os(macOS)
-    self.sessionNotification.showSignedOutAlertmacOS()
 #endif
   }
 }
