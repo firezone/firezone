@@ -19,6 +19,7 @@ dns-types = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 futures = { workspace = true }
+flume = { workspace = true, features = ["async"] }
 futures-bounded = { workspace = true }
 gat-lending-iterator = { workspace = true }
 glob = { workspace = true }

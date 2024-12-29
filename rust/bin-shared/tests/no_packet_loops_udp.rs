@@ -47,6 +47,7 @@ async fn no_packet_loops_udp() {
             packet: &hex_literal::hex!("000100002112A4420123456789abcdef01234567").as_ref(),
             segment_size: None,
         })
+        .await
         .unwrap();
 
     let task = std::future::poll_fn(|cx| {
