@@ -123,7 +123,7 @@ If the tunnel fails to come up after signing in, it can be for a number of
 reasons. Start by checking the system logs for errors -- commonly it is due to
 entitlements, signing, notarization, or some other security issue.
 
-One technique is to start a `log stream` in aother terminal while replicating
+One technique is to start a `log stream` in another terminal while replicating
 the issue, looking for errors reported by other macOS subsystems hinting at why
 the Network Extension failed to load.
 
