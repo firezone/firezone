@@ -159,51 +159,62 @@ impl ThreadedUdpSocket {
         let (outbound_tx, outbound_rx) = flume::bounded(100);
         let (inbound_tx, inbound_rx) = flume::bounded(100);
 
-        std::thread::spawn(|| {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("Failed to spawn tokio runtime on UDP thread")
-                .block_on(async move {
-                    loop {
-                        match futures::future::select(
-                            outbound_rx.recv_async(),
-                            std::future::poll_fn(|cx| socket.poll_recv_from(cx)),
-                        )
-                        .await
-                        {
-                            futures::future::Either::Left((Ok(datagram), _)) => {
-                                if let Err(e) = socket.send(datagram).await {
-                                    tracing::debug!("Failed to send datagram: {}", err_with_src(&e))
-                                };
-                            }
-                            futures::future::Either::Left((
-                                Err(flume::RecvError::Disconnected),
-                                _,
-                            )) => {
-                                tracing::debug!(
-                                    "Channel for outbound datagrams closed; exiting UDP thread"
-                                );
-                                break;
-                            }
-                            futures::future::Either::Right((Ok(datagrams), _)) => {
-                                if inbound_tx.send_async(datagrams).await.is_err() {
+        std::thread::Builder::new()
+            .name(
+                match addr {
+                    SocketAddr::V4(_) => "UDP send/recv IPv4",
+                    SocketAddr::V6(_) => "UDP send/recv IPv6",
+                }
+                .to_owned(),
+            )
+            .spawn(|| {
+                tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("Failed to spawn tokio runtime on UDP thread")
+                    .block_on(async move {
+                        loop {
+                            match futures::future::select(
+                                outbound_rx.recv_async(),
+                                std::future::poll_fn(|cx| socket.poll_recv_from(cx)),
+                            )
+                            .await
+                            {
+                                futures::future::Either::Left((Ok(datagram), _)) => {
+                                    if let Err(e) = socket.send(datagram).await {
+                                        tracing::debug!(
+                                            "Failed to send datagram: {}",
+                                            err_with_src(&e)
+                                        )
+                                    };
+                                }
+                                futures::future::Either::Left((
+                                    Err(flume::RecvError::Disconnected),
+                                    _,
+                                )) => {
                                     tracing::debug!(
-                                        "Channel for inbound datagrams closed; exiting UDP thread"
+                                        "Channel for outbound datagrams closed; exiting UDP thread"
                                     );
                                     break;
                                 }
-                            }
-                            futures::future::Either::Right((Err(e), _)) => {
-                                tracing::debug!(
-                                    "Failed to receive from socket: {}",
-                                    err_with_src(&e)
-                                )
+                                futures::future::Either::Right((Ok(datagrams), _)) => {
+                                    if inbound_tx.send_async(datagrams).await.is_err() {
+                                        tracing::debug!(
+                                        "Channel for inbound datagrams closed; exiting UDP thread"
+                                    );
+                                        break;
+                                    }
+                                }
+                                futures::future::Either::Right((Err(e), _)) => {
+                                    tracing::debug!(
+                                        "Failed to receive from socket: {}",
+                                        err_with_src(&e)
+                                    )
+                                }
                             }
                         }
-                    }
-                })
-        });
+                    })
+            })?;
 
         Ok(Self {
             outbound_tx: outbound_tx.into_sink(),
