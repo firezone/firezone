@@ -22,34 +22,58 @@ jobs:
         run: ./gradlew spotlessCheck
 
   build_release:
+    permissions:
+      contents: write # for uploading artifacts to the release
+      id-token: write
+    name: build-release-${{ matrix.package-type }}
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-22.04
-    name: build-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package-type: aab
+            build-command: "./gradlew bundleRelease"
+            output-path: app/build/outputs/bundle/release/app-release.aab
+          - package-type: apk
+            build-command: "./gradlew assembleRelease"
+            output-path: app/build/outputs/apk/release/app-release.apk
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-android
-      - name: Bundle and sign release
+      - name: Build the release package
         env:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
           KEYSTORE_KEY_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}
         run: |
-          KEYSTORE_PATH=$(pwd)/app/keystore.jks
-          echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
-          ./gradlew bundleRelease
+          KEYSTORE_PATH="$(pwd)/app/keystore.jks"
+          echo -n "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          ${{ matrix.build-command }}
+          rm "$KEYSTORE_PATH"
       - name: Run Unit Test
         run: |
           ./gradlew testReleaseUnitTest
-      - name: Upload app bundle
+      - name: Upload package artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Android app bundle
+          name: Android ${{ matrix.package-type }}
           path: |
-            ./kotlin/android/app/build/outputs/bundle/*
-      - name: Upload release
+            ./kotlin/android/${{ matrix.output-path }}
+      - name: Upload package to release
         if: ${{ github.event_name == 'workflow_dispatch' || github.ref_name == 'main' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # mark:next-android-version
+          RELEASE_NAME: firezone-android-client-1.4.0
+        run: |
+          export ARTIFACT_PATH="$RUNNER_TEMP/${RELEASE_NAME}.${{ matrix.package-type }}"
+          cp "${{ matrix.output-path }}" "$ARTIFACT_PATH"
+          ../../scripts/upload/github-release.sh
+      - name: Distribute release to Firebase App Distribution
+        if: ${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
         env:
           FIREBASE_APP_DISTRIBUTION_CREDENTIALS: ${{ secrets.FIREBASE_APP_DISTRIBUTION_CREDENTIALS }}
           FIREBASE_CREDENTIALS_PATH: firebase-credentials.json
