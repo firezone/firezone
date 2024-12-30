@@ -1229,7 +1229,13 @@ impl ClientState {
     }
 
     fn maybe_update_tun_routes(&mut self) {
-        self.active_cidr_resources = self.recalculate_active_cidr_resources();
+        let new_resources = self.recalculate_active_cidr_resources();
+
+        if self.active_cidr_resources != new_resources {
+            tracing::info!(?self.active_cidr_resources, ?new_resources, "Re-calculated active CIDR resources");
+
+            self.active_cidr_resources = new_resources;
+        }
 
         let Some(config) = self.tun_config.clone() else {
             return;
