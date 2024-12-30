@@ -67,9 +67,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # mark:next-android-version
-          RELEASE_NAME: firezone-android-client-1.4.0
+          RELEASE_NAME: android-client-1.4.0
         run: |
-          export ARTIFACT_PATH="$RUNNER_TEMP/${RELEASE_NAME}.${{ matrix.package-type }}"
+          export ARTIFACT_PATH="$RUNNER_TEMP/firezone-${RELEASE_NAME}.${{ matrix.package-type }}"
           cp "${{ matrix.output-path }}" "$ARTIFACT_PATH"
           ../../scripts/upload/github-release.sh
       - name: Distribute release to Firebase App Distribution
