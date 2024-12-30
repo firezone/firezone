@@ -99,7 +99,7 @@ public final class Store: ObservableObject {
 
       DispatchQueue.main.async { [weak self] in
         guard let self else { return }
-        
+
         // Load the new settings and bind observers
         self.loadTunnelManager()
       }
