@@ -43,16 +43,16 @@ jobs:
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-android
-      - name: Write credentials
+      - name: Build the release package
         env:
           KEYSTORE_BASE64: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_PASSWORD }}
           KEYSTORE_KEY_PASSWORD: ${{ secrets.GOOGLE_UPLOAD_KEYSTORE_KEY_PASSWORD }}
         run: |
-          KEYSTORE_PATH=$(pwd)/app/keystore.jks
-          echo -n "$KEYSTORE_BASE64" | base64 --decode > $KEYSTORE_PATH
-      - name: Build the release package
-        run: ${{ matrix.build-command }}
+          KEYSTORE_PATH="$(pwd)/app/keystore.jks"
+          echo -n "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          ${{ matrix.build-command }}
+          rm "$KEYSTORE_PATH"
       - name: Run Unit Test
         run: |
           ./gradlew testReleaseUnitTest
