@@ -17,9 +17,7 @@ public enum KeychainError: Error {
   case unableToGetPluginsPath
 }
 
-public actor Keychain {
-  public static let shared = Keychain()
-
+public enum Keychain {
   public typealias PersistentRef = Data
 
   public enum SecStatus: Equatable {
@@ -39,91 +37,73 @@ public actor Keychain {
     }
   }
 
-  public init() {}
-
-  public func add(query: [CFString: Any]) async throws {
-    return try await withCheckedThrowingContinuation { continuation in
-      var ref: CFTypeRef?
-      let ret = SecStatus(SecItemAdd(query as CFDictionary, &ref))
-      guard ret.isSuccess else {
-        continuation.resume(
-          throwing: KeychainError.appleSecError(call: "SecItemAdd", status: ret))
-        return
-      }
-
-      continuation.resume()
-      return
+  public static func add(query: [CFString: Any]) throws {
+    var ref: CFTypeRef?
+    let ret = SecStatus(SecItemAdd(query as CFDictionary, &ref))
+    guard ret.isSuccess else {
+      throw KeychainError.appleSecError(call: "SecItemAdd", status: ret)
     }
+
+    return
   }
 
-  public func update(
+  public static func update(
     query: [CFString: Any],
     attributesToUpdate: [CFString: Any]
-  ) async throws {
-    return try await withCheckedThrowingContinuation { continuation in
-      let ret = SecStatus(
-        SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary))
-      guard ret.isSuccess else {
-        continuation.resume(
-          throwing: KeychainError.appleSecError(call: "SecItemUpdate", status: ret))
-        return
-      }
-      continuation.resume()
+  ) throws {
+
+    let ret = SecStatus(
+      SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary))
+
+    guard ret.isSuccess else {
+      throw KeychainError.appleSecError(call: "SecItemUpdate", status: ret)
     }
   }
 
-  public func load(persistentRef: PersistentRef) async -> Data? {
-    return await withCheckedContinuation { continuation in
-      let query =
-      [
-        kSecClass: kSecClassGenericPassword,
-        kSecValuePersistentRef: persistentRef,
-        kSecReturnData: true,
-      ] as [CFString: Any]
-      var result: CFTypeRef?
-      let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))
-      if ret.isSuccess,
-         let resultData = result as? Data
-      {
-        continuation.resume(returning: resultData)
-      } else {
-        continuation.resume(returning: nil)
-      }
+  public static func load(persistentRef: PersistentRef) -> Data? {
+    let query = [
+      kSecClass: kSecClassGenericPassword,
+      kSecValuePersistentRef: persistentRef,
+      kSecReturnData: true,
+    ] as [CFString: Any]
+
+    var result: CFTypeRef?
+    let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))
+
+    guard ret.isSuccess,
+          let resultData = result as? Data
+    else {
+      return nil
     }
+
+    return resultData
   }
 
-  public func search(query: [CFString: Any]) async -> PersistentRef? {
-    return await withCheckedContinuation { continuation in
-      let query = query.merging([
-        kSecClass: kSecClassGenericPassword,
-        kSecReturnPersistentRef: true,
-      ]) { (current, new) in new }
+  public static func search(query: [CFString: Any]) -> PersistentRef? {
+    let query = query.merging([
+      kSecClass: kSecClassGenericPassword,
+      kSecReturnPersistentRef: true,
+    ]) { (_, new) in new }
 
-      var result: CFTypeRef?
-      let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))
+    var result: CFTypeRef?
+    let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))
 
-      if ret.isSuccess, let persistentRef = result as? Data {
-        continuation.resume(returning: persistentRef)
-      } else {
-        continuation.resume(returning: nil)
-      }
+    guard ret.isSuccess,
+          let persistentRef = result as? Data
+    else {
+      return nil
     }
+
+    return persistentRef
   }
 
-  public func delete(persistentRef: PersistentRef) async throws {
-    return try await withCheckedThrowingContinuation { continuation in
-      let query = [kSecValuePersistentRef: persistentRef] as [CFString: Any]
-      let ret = SecStatus(SecItemDelete(query as CFDictionary))
-      guard ret.isSuccess || ret == .status(.itemNotFound) else {
-        continuation.resume(
-          throwing: KeychainError.appleSecError(call: "SecItemDelete", status: ret))
-        return
-      }
-      continuation.resume(returning: ())
-    }
-  }
+  public static func delete(persistentRef: PersistentRef) throws {
+    let query = [kSecValuePersistentRef: persistentRef] as [CFString: Any]
+    let ret = SecStatus(SecItemDelete(query as CFDictionary))
 
-  private func securityError(_ status: OSStatus) -> Error {
-    KeychainError.securityError(KeychainStatus(rawValue: status)!)
+    guard ret.isSuccess || ret == .status(.itemNotFound)
+    else {
+      throw KeychainError.appleSecError(call: "SecItemDelete", status: ret)
+    }
   }
 }

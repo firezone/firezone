@@ -78,9 +78,9 @@ struct FirezoneApp: App {
         // data going forward.
         //
         // Can be removed once all clients >= 1.4.0
-        try await FirezoneId.migrate()
+        try FirezoneId.migrate()
 
-        try await FirezoneId.createIfMissing()
+        try FirezoneId.createIfMissing()
       }
 
       if let store = store {
