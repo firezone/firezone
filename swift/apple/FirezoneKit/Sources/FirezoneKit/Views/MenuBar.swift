@@ -273,7 +273,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
   @objc private func signInButtonTapped() {
     NSApp.activate(ignoringOtherApps: true)
-    Task { await WebAuthSession.signIn(store: model.store) }
+    WebAuthSession.signIn(store: model.store)
   }
 
   @objc private func signOutButtonTapped() {
@@ -290,7 +290,11 @@ public final class MenuBar: NSObject, ObservableObject {
 
   @objc private func grantVPNPermissionButtonTapped() {
     Task {
-      model.store.createVPNProfile()
+      do {
+        try await model.store.createVPNProfile()
+      } catch {
+        Log.app.error("\(#function): \(error)")
+      }
     }
   }
 
