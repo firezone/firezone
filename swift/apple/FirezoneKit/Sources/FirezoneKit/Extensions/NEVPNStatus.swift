@@ -8,7 +8,7 @@
 import NetworkExtension
 
 /// Make NEVPNStatus convertible to a string
-extension NEVPNStatus: CustomStringConvertible {
+extension NEVPNStatus: @retroactive CustomStringConvertible {
   public var description: String {
     switch self {
     case .disconnected: return "Disconnected"
