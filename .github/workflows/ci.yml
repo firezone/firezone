@@ -40,7 +40,7 @@ jobs:
     secrets: inherit
 
   update-release-draft:
-    name: update-release-draft-${{ matrix.config_name }}
+    name: update-release-draft-${{ matrix.job_suffix }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -48,16 +48,16 @@ jobs:
         include:
           # mark:next-gateway-version
           - release_name: gateway-1.4.3
-            config_name: release-drafter-gateway.yml
+            job_suffix: gateway
           # mark:next-headless-version
           - release_name: headless-client-1.4.1
-            config_name: release-drafter-headless-client.yml
+            job_suffix: headless-client
           # mark:next-gui-version
           - release_name: gui-client-1.4.1
-            config_name: release-drafter-gui-client.yml
+            job_suffix: gui-client
           # mark:next-apple-version
           - release_name: macos-client-1.4.0
-            config_name: release-drafter-macos-client.yml
+            job_suffix: macos-client
 
     steps:
       - uses: release-drafter/release-drafter@v6
@@ -65,7 +65,6 @@ jobs:
         if: ${{ github.ref_name == 'main' }}
         id: update-release-draft
         with:
-          config-name: ${{ matrix.config_name }}
           tag: ${{ matrix.release_name }}
           version: ${{ matrix.release_name }}
           name: ${{ matrix.release_name }}
