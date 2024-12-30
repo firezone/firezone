@@ -63,6 +63,15 @@ locally.
 
 1. Perform a test build: `./gradlew assembleDebug`.
 
+If you get errors about `rustc` or `cargo` not being found, it can help to
+explicitly specify the path to these in your shell environment. For example:
+
+```
+# ~/.zprofile or ~/.bash_profile
+export RUST_ANDROID_GRADLE_RUSTC_COMMAND=$HOME/.cargo/bin/rustc
+export RUST_ANDROID_GRADLE_CARGO_COMMAND=$HOME/.cargo/bin/cargo
+```
+
 # Release Setup
 
 We release from GitHub CI, so this shouldn't be necessary. But if you're looking
