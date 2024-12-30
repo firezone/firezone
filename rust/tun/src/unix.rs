@@ -70,23 +70,23 @@ pub async fn send_recv_tun<T>(
         }));
         let next_outbound_packet = pin!(outbound_rx.next());
 
-        match futures::future::select(next_inbound_packet, next_outbound_packet).await {
-            Either::Left((Ok(None), _)) => {
+        match futures::future::select(next_outbound_packet, next_inbound_packet).await {
+            Either::Right((Ok(None), _)) => {
                 tracing::error!("TUN FD is closed");
                 return;
             }
-            Either::Left((Ok(Some(packet)), _)) => {
+            Either::Right((Ok(Some(packet)), _)) => {
                 if inbound_tx.send(packet).await.is_err() {
                     tracing::debug!("Inbound packet receiver gone, shutting down task");
 
                     return;
                 };
             }
-            Either::Left((Err(e), _)) => {
+            Either::Right((Err(e), _)) => {
                 tracing::warn!("Failed to read from TUN FD: {e}");
                 continue;
             }
-            Either::Right((Some(packet), _)) => {
+            Either::Left((Some(packet), _)) => {
                 if let Err(e) = fd
                     .async_io(tokio::io::Interest::WRITABLE, |fd| {
                         write(fd.as_raw_fd(), &packet)
@@ -98,7 +98,7 @@ pub async fn send_recv_tun<T>(
 
                 outbound_capacity_waker.wake(); // We wrote a packet, notify about the new capacity.
             }
-            Either::Right((None, _)) => {
+            Either::Left((None, _)) => {
                 tracing::debug!("Outbound packet sender gone, shutting down task");
                 return;
             }
