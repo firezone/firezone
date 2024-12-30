@@ -124,7 +124,7 @@ public class TunnelManager {
   private let bundleDescription = "Firezone"
 
   // Initialize and save a new VPN profile in system Preferences
-  func create() async throws -> Settings {
+  func create() async throws {
     let protocolConfiguration = NETunnelProviderProtocol()
     let manager = NETunnelProviderManager()
     let settings = Settings.defaultValue
@@ -144,8 +144,6 @@ public class TunnelManager {
 
     await statusChangeHandler?(manager.connection.status)
     self.manager = manager
-
-    return settings
   }
 
   func load(callback: @escaping (NEVPNStatus, Settings?, String?) -> Void) {
