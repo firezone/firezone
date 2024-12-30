@@ -14,7 +14,7 @@ export default function Apple() {
       <Unreleased>
         <ChangeItem pull="7594">
           Fixes a race condition that could cause the app to crash in rare
-          cirucumstances if the VPN profile is removed from system settings
+          circumstances if the VPN profile is removed from system settings
           while the app is running.
         </ChangeItem>
         <ChangeItem pull="7593">
