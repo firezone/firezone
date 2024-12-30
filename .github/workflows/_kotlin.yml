@@ -49,7 +49,7 @@ jobs:
           path: |
             ./kotlin/android/app/build/outputs/bundle/*
       - name: Upload release
-        if: ${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
+        if: ${{ github.event_name == 'workflow_dispatch' || github.ref_name == 'main' }}
         env:
           FIREBASE_APP_DISTRIBUTION_CREDENTIALS: ${{ secrets.FIREBASE_APP_DISTRIBUTION_CREDENTIALS }}
           FIREBASE_CREDENTIALS_PATH: firebase-credentials.json
