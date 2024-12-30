@@ -1,3 +1,4 @@
+tag-prefix: "macos-client-"
 template: >
   Please see our
   [changelog](https://www.firezone.dev/changelog?utm_source=github-releases)
