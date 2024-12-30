@@ -94,12 +94,12 @@ public final class Store: ObservableObject {
   }
 
   func createVPNProfile() {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
+    Task {
+      try await TunnelManager.shared.create()
 
-      Task {
-        try await TunnelManager.shared.create()
-
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+        
         // Load the new settings and bind observers
         self.loadTunnelManager()
       }
