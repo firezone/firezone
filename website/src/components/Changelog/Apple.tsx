@@ -12,6 +12,10 @@ export default function Apple() {
     >
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="7593">
+          Fixes a bug where the VPN status would not properly update upon the
+          first launch of the app.
+        </ChangeItem>
         <ChangeItem pull="7334">
           Fixes an issue where symmetric NATs would generate unnecessary
           candidate for hole-punching.
