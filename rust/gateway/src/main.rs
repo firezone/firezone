@@ -1,6 +1,7 @@
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
+use caps::{CapSet, Capability};
 use clap::Parser;
 use firezone_bin_shared::{
     http_health_check,
@@ -31,11 +32,20 @@ mod eventloop;
 const ID_PATH: &str = "/var/lib/firezone/gateway_id";
 
 fn main() -> ExitCode {
+    let cli = Cli::parse();
+
+    #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
+    if !has_necessary_permissions() && !cli.no_check {
+        eprintln!(
+            "firezone-gateway needs to be executed as `root` or with the `CAP_NET_ADMIN` capability.\nSee https://www.firezone.dev/kb/deploy/gateways#permissions for details."
+        );
+        return ExitCode::FAILURE;
+    }
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
-    let cli = Cli::parse();
     let mut telemetry = Telemetry::default();
     if cli.is_telemetry_allowed() {
         telemetry.start(
@@ -71,6 +81,15 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+#[must_use]
+fn has_necessary_permissions() -> bool {
+    let is_root = nix::unistd::Uid::current().is_root();
+    let has_net_admin =
+        caps::has_cap(None, CapSet::Effective, Capability::CAP_NET_ADMIN).is_ok_and(|b| b);
+
+    is_root || has_net_admin
 }
 
 async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
@@ -183,6 +202,10 @@ struct Cli {
     /// Disable sentry.io crash-reporting agent.
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
+
+    /// Don't preemtively check permissions.
+    #[arg(long, default_value_t = false)]
+    no_check: bool,
 
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,

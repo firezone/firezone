@@ -65,7 +65,7 @@ impl TunDeviceManager {
     ///
     /// Panics if called without a Tokio runtime.
     pub fn new(mtu: usize, num_threads: usize) -> Result<Self> {
-        let (cxn, handle, _) = new_connection()?;
+        let (cxn, handle, _) = new_connection().context("Failed to create netlink connection")?;
         let task = tokio::spawn(cxn);
         let connection = Connection { handle, task };
 

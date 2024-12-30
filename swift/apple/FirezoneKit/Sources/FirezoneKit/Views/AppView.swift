@@ -116,7 +116,7 @@ public extension AppViewModel {
     public var externalEventMatchString: String { rawValue }
     public var externalEventOpenURL: URL { URL(string: "firezone://\(rawValue)")! }
 
-    public func openWindow() {
+    @MainActor public func openWindow() {
       if let window = NSApp.windows.first(where: {
         $0.identifier?.rawValue.hasPrefix(identifier) ?? false
       }) {
@@ -129,7 +129,7 @@ public extension AppViewModel {
       }
     }
 
-    public func window() -> NSWindow? {
+    @MainActor public func window() -> NSWindow? {
       NSApp.windows.first { window in
         if let windowId = window.identifier?.rawValue {
           return windowId.hasPrefix(self.identifier)
