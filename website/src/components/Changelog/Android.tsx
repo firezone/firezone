@@ -12,6 +12,16 @@ export default function Android() {
     >
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="7599">
+          The Android app is now distributed{" "}
+          <Link
+            href="https://www.github.com/firezone/firezone/releases"
+            className="text-accent-500 underline hover:no-underline"
+          >
+            via GitHub Releases in addition
+          </Link>
+          to the Google Play Store.
+        </ChangeItem>
         <ChangeItem pull="7334">
           Fixes an issue where symmetric NATs would generate unnecessary
           candidate for hole-punching.
@@ -31,7 +41,7 @@ export default function Android() {
           Fixes an issue where large DNS responses were incorrectly discarded.
         </ChangeItem>
       </Unreleased>
-      <Entry version="1.4.7" date={new Date("2024-11-08")}>
+      <Entry version="1.3.7" date={new Date("2024-11-08")}>
         <ChangeItem pull="7263">
           Mitigates a crash in case the maximum packet size is not respected.
         </ChangeItem>

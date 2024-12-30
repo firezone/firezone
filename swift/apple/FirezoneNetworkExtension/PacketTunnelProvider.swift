@@ -40,8 +40,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // initialize the id here too.
         try await FirezoneId.createIfMissing()
 
-        var passedToken = options?["token"] as? String
-        var keychainToken = try await Token.load()
+        let passedToken = options?["token"] as? String
+        let keychainToken = try await Token.load()
 
         // Use the provided token or try loading one from the Keychain
         guard let token = Token(passedToken) ?? keychainToken
@@ -275,7 +275,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 }
 
-extension NEProviderStopReason: CustomStringConvertible {
+extension NEProviderStopReason: @retroactive CustomStringConvertible {
   public var description: String {
     switch self {
     case .none: return "None"
@@ -295,6 +295,7 @@ extension NEProviderStopReason: CustomStringConvertible {
     case .connectionFailed: return "Connection failed"
     case .sleep: return "Sleep"
     case .appUpdate: return "App update"
+    case .internalError: return "Internal error"
     @unknown default: return "Unknown"
     }
   }

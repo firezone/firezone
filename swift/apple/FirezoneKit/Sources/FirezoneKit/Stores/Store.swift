@@ -94,11 +94,11 @@ public final class Store: ObservableObject {
   }
 
   func createVPNProfile() {
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
+    Task {
+      try await TunnelManager.shared.create()
 
-      Task {
-        try await TunnelManager.shared.create()
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
 
         // Load the new settings and bind observers
         self.loadTunnelManager()
@@ -151,7 +151,7 @@ public final class Store: ObservableObject {
     TunnelManager.shared.fetchResources(callback: callback)
     let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
-      guard let self = self else { return }
+      guard self != nil else { return }
       TunnelManager.shared.fetchResources(callback: callback)
     }
     RunLoop.main.add(timer, forMode: .common)
