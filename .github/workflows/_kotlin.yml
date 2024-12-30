@@ -81,3 +81,20 @@ jobs:
         run: |
           echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_CREDENTIALS_PATH
           ./gradlew appDistributionUploadRelease uploadCrashlyticsSymbolFileRelease
+
+  build_debug:
+    # Android SDK tools hardware accel is available only on Linux runners
+    runs-on: ubuntu-22.04
+    name: build-debug
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-android
+      - name: Build debug APK
+        run: |
+          ./gradlew assembleDebug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android debug APK
+          path: |
+            ./kotlin/android/app/build/outputs/apk/*
