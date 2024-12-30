@@ -41,7 +41,7 @@ export default function Android() {
           Fixes an issue where large DNS responses were incorrectly discarded.
         </ChangeItem>
       </Unreleased>
-      <Entry version="1.4.7" date={new Date("2024-11-08")}>
+      <Entry version="1.3.7" date={new Date("2024-11-08")}>
         <ChangeItem pull="7263">
           Mitigates a crash in case the maximum packet size is not respected.
         </ChangeItem>
