@@ -58,6 +58,9 @@ jobs:
           # mark:next-apple-version
           - release_name: macos-client-1.4.0
             config_name: release-drafter-macos-client.yml
+          # mark:next-android-version
+          - release_name: android-client-1.4.0
+            config_name: release-drafter-android-client.yml
 
     steps:
       - uses: release-drafter/release-drafter@v6
