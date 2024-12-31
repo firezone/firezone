@@ -7,6 +7,13 @@
 import Sentry
 
 public enum Telemetry {
+  // We can only create a new User object after Sentry is started; not retrieve
+  // the existing one. So we need to collect these fields from various codepaths
+  // during initialization / sign in so we can build a new User object any time
+  // one of these is updated.
+  private static var userId: String?
+  private static var accountSlug: String?
+
   public static func start() {
     SentrySDK.start { options in
 
@@ -45,6 +52,32 @@ public enum Telemetry {
 
     SentrySDK.configureScope { configuration in
       configuration.setEnvironment(environment)
+    }
+  }
+
+  public static func setFirezoneId(_ id: String?) {
+    self.userId = id
+    updateUser()
+  }
+
+  public static func setAccountSlug(_ slug: String?) {
+    self.accountSlug = slug
+    updateUser()
+  }
+
+  private static func updateUser() {
+    guard let userId,
+          let accountSlug
+    else {
+      return
+    }
+
+    SentrySDK.configureScope { configuration in
+      // Matches the format we use in rust/telemetry/lib.rs
+      let user = User(userId: userId)
+      user.data = ["account_slug": accountSlug]
+
+      configuration.setUser(user)
     }
   }
 }

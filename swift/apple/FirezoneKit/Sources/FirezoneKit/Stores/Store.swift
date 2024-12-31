@@ -126,7 +126,7 @@ public final class Store: ObservableObject {
     DispatchQueue.main.async { self.actorName = authResponse.actorName }
 
     try await TunnelManager.shared.saveSettings(settings)
-    try await TunnelManager.shared.saveActorName(authResponse.actorName)
+    try await TunnelManager.shared.saveAuthResponse(authResponse)
 
     // Bring the tunnel up and send it a token to start
     TunnelManager.shared.start(token: authResponse.token)

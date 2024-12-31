@@ -15,7 +15,7 @@ public struct FirezoneId {
     kSecAttrDescription: "Firezone device id",
   ]
 
-  private var uuid: UUID
+  public var uuid: UUID
 
   public init(_ uuid: UUID? = nil) {
     self.uuid = uuid ?? UUID()

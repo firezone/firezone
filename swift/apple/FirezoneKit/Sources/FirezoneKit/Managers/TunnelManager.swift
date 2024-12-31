@@ -20,6 +20,7 @@ public enum TunnelManagerKeys {
   static let actorName = "actorName"
   static let authBaseURL = "authBaseURL"
   static let apiURL = "apiURL"
+  public static let accountSlug = "accountSlug"
   public static let logFilter = "logFilter"
   public static let internetResourceEnabled = "internetResourceEnabled"
 }
@@ -172,8 +173,11 @@ public class TunnelManager {
           }
           let status = manager.connection.status
 
-          // Configure our Sentry environment
+          // Configure our Telemetry environment
           Telemetry.setEnvironmentOrClose(settings.apiURL)
+          Telemetry.setAccountSlug(
+            providerConfiguration[TunnelManagerKeys.accountSlug]
+          )
 
           // Share what we found with our caller
           callback(status, settings, actorName)
@@ -197,7 +201,7 @@ public class TunnelManager {
     }
   }
 
-  func saveActorName(_ actorName: String?) async throws {
+  func saveAuthResponse(_ authResponse: AuthResponse) async throws {
     guard let manager = manager,
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           var providerConfiguration = protocolConfiguration.providerConfiguration
@@ -206,7 +210,8 @@ public class TunnelManager {
       throw TunnelManagerError.cannotSaveIfMissing
     }
 
-    providerConfiguration[TunnelManagerKeys.actorName] = actorName
+    providerConfiguration[TunnelManagerKeys.actorName] = authResponse.actorName
+    providerConfiguration[TunnelManagerKeys.accountSlug] = authResponse.accountSlug
     protocolConfiguration.providerConfiguration = providerConfiguration
     manager.protocolConfiguration = protocolConfiguration
 
