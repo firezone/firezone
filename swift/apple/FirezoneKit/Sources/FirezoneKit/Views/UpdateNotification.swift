@@ -36,12 +36,12 @@ class UpdateChecker {
           guard let self = self else { return }
 
           if let error = error {
-            Log.app.error("Error fetching version manifest: \(error)")
+            Log.error("Error fetching version manifest: \(error)")
             return
           }
 
           guard let versionInfo = VersionInfo.from(data: data)  else {
-            Log.app.error("No data or failed to decode data")
+            Log.error("No data or failed to decode data")
             return
           }
 
@@ -90,7 +90,7 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
     notificationCenter.delegate = self
     notificationCenter.requestAuthorization(options: [.sound, .badge, .alert]) { _, error in
 	  if let error = error {
-	    Log.app.error("Failed to request authorization for notifications: \(error)")
+	    Log.error("Failed to request authorization for notifications: \(error)")
 	  }
     }
 
@@ -114,7 +114,7 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
 
     UNUserNotificationCenter.current().add(request) { error in
       if let error = error {
-        Log.app.error("\(#function): Error requesting notification: \(error)")
+        Log.error("\(#function): Error requesting notification: \(error)")
       }
     }
 

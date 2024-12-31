@@ -16,7 +16,7 @@ final class GrantVPNViewModel: ObservableObject {
   }
 
   func grantPermissionButtonTapped() {
-    Log.app.log("\(#function)")
+    Log.log("\(#function)")
     store.createVPNProfile()
   }
 }

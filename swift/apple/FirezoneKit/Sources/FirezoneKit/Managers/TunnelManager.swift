@@ -152,11 +152,11 @@ public class TunnelManager {
       // Since our bundle ID can change (by us), find the one that's current and ignore the others.
       guard let managers = try? await NETunnelProviderManager.loadAllFromPreferences()
       else {
-        Log.app.error("\(#function): Could not load VPN configurations!")
+        Log.error("\(#function): Could not load VPN configurations!")
         return
       }
 
-      Log.app.log("\(#function): \(managers.count) tunnel managers found")
+      Log.log("\(#function): \(managers.count) tunnel managers found")
       for manager in managers {
         if let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
            protocolConfiguration.providerBundleIdentifier == TunnelManager.bundleIdentifier,
@@ -199,7 +199,7 @@ public class TunnelManager {
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           var providerConfiguration = protocolConfiguration.providerConfiguration
     else {
-      Log.app.error("Manager doesn't seem initialized. Can't save settings.")
+      Log.error("Manager doesn't seem initialized. Can't save settings.")
       throw TunnelManagerError.cannotSaveIfMissing
     }
 
@@ -220,7 +220,7 @@ public class TunnelManager {
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {
-      Log.app.error("Manager doesn't seem initialized. Can't save settings.")
+      Log.error("Manager doesn't seem initialized. Can't save settings.")
       throw TunnelManagerError.cannotSaveIfMissing
     }
 
@@ -250,7 +250,7 @@ public class TunnelManager {
     do {
       try session()?.startTunnel(options: options)
     } catch {
-      Log.app.error("Error starting tunnel: \(error)")
+      Log.error("Error starting tunnel: \(error)")
     }
   }
 
@@ -261,7 +261,7 @@ public class TunnelManager {
           self.session()?.stopTunnel()
         }
       } catch {
-        Log.app.error("\(#function): \(error)")
+        Log.error("\(#function): \(error)")
       }
     } else {
       session()?.stopTunnel()
@@ -294,7 +294,7 @@ public class TunnelManager {
         callback(self.resourcesListCache)
       }
     } catch {
-      Log.app.error("Error: sendProviderMessage: \(error)")
+      Log.error("Error: sendProviderMessage: \(error)")
     }
   }
 
@@ -350,7 +350,7 @@ public class TunnelManager {
         ) { data in
           guard let data = data
           else {
-            Log.app.error("Error: \(#function): No data received")
+            Log.error("Error: \(#function): No data received")
             errorHandler(TunnelManagerError.decodeIPCDataFailed)
 
             return
@@ -360,7 +360,7 @@ public class TunnelManager {
             LogChunk.self, from: data
           )
           else {
-            Log.app.error("Error: \(#function): Invalid data received")
+            Log.error("Error: \(#function): Invalid data received")
             errorHandler(TunnelManagerError.decodeIPCDataFailed)
 
             return
@@ -374,7 +374,7 @@ public class TunnelManager {
           }
         }
       } catch {
-        Log.app.error("Error: \(#function): \(error)")
+        Log.error("Error: \(#function): \(error)")
       }
     }
 
@@ -420,7 +420,7 @@ public class TunnelManager {
   // Subscribe to system notifications about our VPN status changing
   // and let our handler know about them.
   private func setupTunnelObservers() {
-    Log.app.log("\(#function)")
+    Log.log("\(#function)")
 
     for task in tunnelObservingTasks {
       task.cancel()
@@ -434,7 +434,7 @@ public class TunnelManager {
         ) {
           guard let session = notification.object as? NETunnelProviderSession
           else {
-            Log.app.error("\(#function): NEVPNStatusDidChange notification doesn't seem to be valid")
+            Log.error("\(#function): NEVPNStatusDidChange notification doesn't seem to be valid")
             return
           }
 
