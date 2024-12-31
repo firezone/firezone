@@ -47,7 +47,7 @@ public final class SettingsViewModel: ObservableObject {
       do {
         try await store.save(settings)
       } catch {
-        Log.app.error("Error saving settings to tunnel store: \(error)")
+        Log.error("Error saving settings to tunnel store: \(error)")
       }
     }
   }
@@ -64,10 +64,10 @@ public final class SettingsViewModel: ObservableObject {
   // is not started on demand, so the IPC calls hang. Thus, we use separate code
   // paths for iOS and macOS.
   func calculateLogDirSize() async -> String {
-    Log.app.log("\(#function)")
+    Log.log("\(#function)")
 
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
-      Log.app.error("\(#function): Log folder is unavailable")
+      Log.error("\(#function): Log folder is unavailable")
 
       return "Unknown"
     }
@@ -90,7 +90,7 @@ public final class SettingsViewModel: ObservableObject {
       return byteCountFormatter.string(fromByteCount: Int64(totalSize))
 
     } catch {
-      Log.app.error("\(#function): \(error)")
+      Log.error("\(#function): \(error)")
 
       return "Unknown"
     }
@@ -100,7 +100,7 @@ public final class SettingsViewModel: ObservableObject {
   // On macOS, we need to clear logs from the app process, then call over IPC
   // to clear the provider's log directory.
   func clearAllLogs() async throws {
-    Log.app.log("\(#function)")
+    Log.log("\(#function)")
 
     try Log.clear(in: SharedAccess.logFolderURL)
 
@@ -135,7 +135,7 @@ extension FileManager {
         let resourceValues = try url.resourceValues(forKeys: resourceKeys)
         handler(url, resourceValues)
       } catch {
-        Log.app.error("Unable to get resource value for '\(url)': \(error)")
+        Log.error("Unable to get resource value for '\(url)': \(error)")
       }
     }
   }
@@ -576,7 +576,7 @@ public struct SettingsView: View {
         })
       else {
         self.isExportingLogs = false
-        Log.app.log("Settings window not found. Can't show save panel.")
+        Log.log("Settings window not found. Can't show save panel.")
         return
       }
 
@@ -598,7 +598,7 @@ public struct SettingsView: View {
               window.contentViewController?.presentingViewController?.dismiss(self)
             }
           } catch {
-            Log.app.error("\(#function): \(error)")
+            Log.error("\(#function): \(error)")
 
             let alert = NSAlert()
             alert.messageText = "Error exporting logs: \(error.localizedDescription)"

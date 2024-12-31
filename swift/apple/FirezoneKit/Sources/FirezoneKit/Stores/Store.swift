@@ -113,7 +113,7 @@ public final class Store: ObservableObject {
   func start(token: String? = nil) async throws {
     guard status == .disconnected
     else {
-      Log.app.log("\(#function): Already connected")
+      Log.log("\(#function): Already connected")
       return
     }
 
@@ -146,7 +146,7 @@ public final class Store: ObservableObject {
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
   func beginUpdatingResources(callback: @escaping (ResourceList) -> Void) {
-    Log.app.log("\(#function)")
+    Log.log("\(#function)")
 
     TunnelManager.shared.fetchResources(callback: callback)
     let intervalInSeconds: TimeInterval = 1
@@ -169,7 +169,7 @@ public final class Store: ObservableObject {
         try await TunnelManager.shared.saveSettings(newSettings)
         DispatchQueue.main.async { self.settings = newSettings }
       } catch {
-        Log.app.error("\(#function): \(error)")
+        Log.error("\(#function): \(error)")
       }
     }
   }

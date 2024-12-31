@@ -36,7 +36,7 @@ public class AppViewModel: ObservableObject {
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
-        Log.app.log("Status: \(status)")
+        Log.log("Status: \(status)")
 
         self.status = status
 
@@ -62,7 +62,7 @@ public class AppViewModel: ObservableObject {
       .sink(receiveValue: { [weak self] decision in
         guard let self = self else { return }
 
-        Log.app.log("Decision: \(decision)")
+        Log.log("Decision: \(decision)")
         self.decision = decision
       })
       .store(in: &cancellables)

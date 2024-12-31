@@ -8,47 +8,49 @@ import Foundation
 import OSLog
 
 public final class Log {
-  public static let app = Log(category: .app, folderURL: SharedAccess.appLogFolderURL)
-  public static let tunnel = Log(category: .tunnel, folderURL: SharedAccess.tunnelLogFolderURL)
-
-  public enum Category: String, Codable {
-    case app = "app"
-    case tunnel = "tunnel"
+  private static var logger = switch Bundle.main.bundleIdentifier {
+  case "dev.firezone.firezone":
+    Logger(subsystem: "dev.firezone.firezone", category: "app")
+  case "dev.firezone.firezone.network-extension":
+    Logger(subsystem: "dev.firezone.firezone", category: "tunnel")
+  default:
+    fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
   }
 
-  private let logger: Logger
-  private let logWriter: LogWriter?
-
-  public init(category: Category, folderURL: URL?) {
-    self.logger = Logger(subsystem: "dev.firezone.firezone", category: category.rawValue)
-    self.logWriter = LogWriter(folderURL: folderURL, logger: self.logger)
+  private static var logWriter = switch Bundle.main.bundleIdentifier {
+  case "dev.firezone.firezone":
+    LogWriter(folderURL: SharedAccess.appLogFolderURL, logger: logger)
+  case "dev.firezone.firezone.network-extension":
+    LogWriter(folderURL: SharedAccess.tunnelLogFolderURL, logger: logger)
+  default:
+    fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
   }
 
-  public func log(_ message: String) {
+  public static func log(_ message: String) {
     debug(message)
   }
 
-  public func trace(_ message: String) {
+  public static func trace(_ message: String) {
     logger.trace("\(message, privacy: .public)")
     logWriter?.write(severity: .trace, message: message)
   }
 
-  public func debug(_ message: String) {
+  public static func debug(_ message: String) {
     self.logger.debug("\(message, privacy: .public)")
     logWriter?.write(severity: .debug, message: message)
   }
 
-  public func info(_ message: String) {
+  public static func info(_ message: String) {
     logger.info("\(message, privacy: .public)")
     logWriter?.write(severity: .info, message: message)
   }
 
-  public func warning(_ message: String) {
+  public static func warning(_ message: String) {
     logger.warning("\(message, privacy: .public)")
     logWriter?.write(severity: .warning, message: message)
   }
 
-  public func error(_ message: String) {
+  public static func error(_ message: String) {
     self.logger.error("\(message, privacy: .public)")
     logWriter?.write(severity: .error, message: message)
   }

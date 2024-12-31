@@ -18,7 +18,7 @@ class SystemConfigurationResolvers {
   init() {
     guard let dynamicStore = SCDynamicStoreCreate(nil, storeName, nil, nil)
     else {
-      Log.tunnel.error("\(#function): Failed to create dynamic store")
+      Log.error("\(#function): Failed to create dynamic store")
       self.dynamicStore = nil
       return
     }
@@ -47,7 +47,7 @@ class SystemConfigurationResolvers {
     let interfaceSearchKey = "Setup:/Network/Service/.*/Interface" as CFString
     guard let services = SCDynamicStoreCopyKeyList(dynamicStore, interfaceSearchKey) as? [String]
     else {
-      Log.tunnel.error("\(#function): Unable to retrieve network services")
+      Log.error("\(#function): Unable to retrieve network services")
       return []
     }
 

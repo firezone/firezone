@@ -35,7 +35,7 @@ public class CallbackHandler {
     tunnelAddressIPv6: RustString,
     dnsAddresses: RustString
   ) {
-    Log.tunnel.log(
+    Log.log(
       """
         CallbackHandler.onSetInterfaceConfig:
           IPv4: \(tunnelAddressIPv4.toString())
@@ -54,18 +54,18 @@ public class CallbackHandler {
   }
 
   func onUpdateRoutes(routeList4: RustString, routeList6: RustString) {
-    Log.tunnel.log("CallbackHandler.onUpdateRoutes: \(routeList4) \(routeList6)")
+    Log.log("CallbackHandler.onUpdateRoutes: \(routeList4) \(routeList6)")
     delegate?.onUpdateRoutes(routeList4: routeList4.toString(), routeList6: routeList6.toString())
   }
 
   func onUpdateResources(resourceList: RustString) {
-    Log.tunnel.log("CallbackHandler.onUpdateResources: \(resourceList.toString())")
+    Log.log("CallbackHandler.onUpdateResources: \(resourceList.toString())")
     delegate?.onUpdateResources(resourceList: resourceList.toString())
   }
 
   func onDisconnect(error: RustString) {
     let error = error.toString()
-    Log.tunnel.log("CallbackHandler.onDisconnect: \(error)")
+    Log.log("CallbackHandler.onDisconnect: \(error)")
     delegate?.onDisconnect(error: error)
   }
 }
