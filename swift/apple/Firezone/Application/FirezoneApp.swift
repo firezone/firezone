@@ -18,6 +18,9 @@ struct FirezoneApp: App {
   @StateObject var store: Store
 
   init() {
+    // Initialize Telemetry as early as possible
+    Telemetry.start()
+
     let favorites = Favorites()
     let store = Store()
     _favorites = StateObject(wrappedValue: favorites)

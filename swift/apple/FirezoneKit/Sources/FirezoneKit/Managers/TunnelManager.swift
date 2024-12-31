@@ -172,6 +172,9 @@ public class TunnelManager {
           }
           let status = manager.connection.status
 
+          // Configure our Sentry environment
+          Telemetry.setEnvironmentOrClose(settings.apiURL)
+
           // Share what we found with our caller
           callback(status, settings, actorName)
 
@@ -238,6 +241,9 @@ public class TunnelManager {
 
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
+
+    // Reconfigure our Telemetry environment in case it changed
+    Telemetry.setEnvironmentOrClose(settings.apiURL)
   }
 
   func start(token: String? = nil) {

@@ -24,6 +24,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   private var logExportState: LogExportState = .idle
 
+  override init() {
+    // Initialize Telemetry as early as possible
+    Telemetry.start()
+
+    super.init()
+  }
+
   override func startTunnel(
     options: [String: NSObject]?,
     completionHandler: @escaping (Error?) -> Void
@@ -61,6 +68,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
           return
         }
+
+        // Reconfigure our Telemetry environment now that we know the API URL
+        Telemetry.setEnvironmentOrClose(apiURL)
 
         guard
           let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?
