@@ -21,7 +21,7 @@ public final class Log {
 
   public init(category: Category, folderURL: URL?) {
     self.logger = Logger(subsystem: "dev.firezone.firezone", category: category.rawValue)
-    self.logWriter = LogWriter(category: category, folderURL: folderURL, logger: self.logger)
+    self.logWriter = LogWriter(folderURL: folderURL, logger: self.logger)
   }
 
   public func log(_ message: String) {
@@ -107,20 +107,18 @@ private final class LogWriter {
 
   struct LogEntry: Codable {
     let time: String
-    let category: Log.Category
     let severity: Severity
     let message: String
   }
 
   // All log writes happen in the workQueue
   private let workQueue: DispatchQueue
-  private let category: Log.Category
   private let logger: Logger
   private let handle: FileHandle
   private let dateFormatter: ISO8601DateFormatter
   private let jsonEncoder: JSONEncoder
 
-  init?(category: Log.Category, folderURL: URL?, logger: Logger) {
+  init?(folderURL: URL?, logger: Logger) {
     let fileManager = FileManager.default
     let dateFormatter = ISO8601DateFormatter()
     let jsonEncoder = JSONEncoder()
@@ -130,7 +128,6 @@ private final class LogWriter {
     self.dateFormatter = dateFormatter
     self.jsonEncoder = jsonEncoder
     self.logger = logger
-    self.category = category
 
     // Create log dir if not exists
     guard let folderURL = folderURL,
@@ -168,7 +165,6 @@ private final class LogWriter {
   func write(severity: Severity, message: String) {
     let logEntry = LogEntry(
       time: dateFormatter.string(from: Date()),
-      category: category,
       severity: severity,
       message: message)
 
