@@ -42,11 +42,9 @@ class TunnelLogArchive {
   var offset: UInt64 = 0
   var fileHandle: FileHandle?
   var source: FilePath
-  var logger: Log
 
-  init(logger: Log, source: FilePath) {
+  init(source: FilePath) {
     self.source = source
-    self.logger = logger
   }
 
   deinit {
