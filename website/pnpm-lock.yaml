@@ -57,8 +57,8 @@ importers:
         specifier: ^0.10.2
         version: 0.10.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.17)
       framer-motion:
-        specifier: ^11.12.0
-        version: 11.12.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+        specifier: ^11.15.0
+        version: 11.15.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1
@@ -909,12 +909,12 @@ packages:
   fraction.js@4.3.7:
     resolution: {integrity: sha512-ZsDfxO51wGAXREY55a7la9LScWpwv9RxIrYABrlvOFBlH/ShPnrtsXeuUIfXKKOVicNxQ+o8JTbJvjS4M89yew==}
 
-  framer-motion@11.12.0:
-    resolution: {integrity: sha512-gZaZeqFM6pX9kMVti60hYAa75jGpSsGYWAHbBfIkuHN7DkVHVkxSxeNYnrGmHuM0zPkWTzQx10ZT+fDjn7N4SA==}
+  framer-motion@11.15.0:
+    resolution: {integrity: sha512-MLk8IvZntxOMg7lDBLw2qgTHHv664bYoYmnFTmE0Gm/FW67aOJk0WM3ctMcG+Xhcv+vh5uyyXwxvxhSeJzSe+w==}
     peerDependencies:
       '@emotion/is-prop-valid': '*'
-      react: ^18.0.0
-      react-dom: ^18.0.0
+      react: ^18.0.0 || ^19.0.0
+      react-dom: ^18.0.0 || ^19.0.0
     peerDependenciesMeta:
       '@emotion/is-prop-valid':
         optional: true
@@ -1341,6 +1341,12 @@ packages:
 
   mixpanel-browser@2.58.0:
     resolution: {integrity: sha512-ZayNE4augjSJh5RxYKRPhFe1jzS9HZnoowvZaN4DaUeCezbLGVck46L+N9X8VLtK74UgLUYfehPgCr41rtgpRA==}
+
+  motion-dom@11.14.3:
+    resolution: {integrity: sha512-lW+D2wBy5vxLJi6aCP0xyxTxlTfiu+b+zcpVbGVFUxotwThqhdpPRSmX8xztAgtZMPMeU0WGVn/k1w4I+TbPqA==}
+
+  motion-utils@11.14.3:
+    resolution: {integrity: sha512-Xg+8xnqIJTpr0L/cidfTTBFkvRw26ZtGGuIhA94J9PQ2p4mEa06Xx7QVYZH0BP+EpMSaDlu+q0I0mmvwADPsaQ==}
 
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
@@ -2773,8 +2779,10 @@ snapshots:
 
   fraction.js@4.3.7: {}
 
-  framer-motion@11.12.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
+  framer-motion@11.15.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1):
     dependencies:
+      motion-dom: 11.14.3
+      motion-utils: 11.14.3
       tslib: 2.8.1
     optionalDependencies:
       react: 18.3.1
@@ -3507,6 +3515,10 @@ snapshots:
   mixpanel-browser@2.58.0:
     dependencies:
       rrweb: 2.0.0-alpha.13
+
+  motion-dom@11.14.3: {}
+
+  motion-utils@11.14.3: {}
 
   ms@2.1.3: {}
 
