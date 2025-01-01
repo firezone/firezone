@@ -16,12 +16,12 @@ final class GrantVPNViewModel: ObservableObject {
   }
 
   func grantPermissionButtonTapped() {
-    Log.app.log("\(#function)")
+    Log.log("\(#function)")
     Task {
       do {
         try await store.createVPNProfile()
       } catch {
-        Log.app.error("\(#function): \(error)")
+        Log.error("\(#function): \(error)")
       }
     }
   }
