@@ -10,6 +10,13 @@ import SwiftUI
 
 enum SettingsViewError: Error {
   case logFolderIsUnavailable
+
+  var description: String {
+    switch self {
+    case .logFolderIsUnavailable:
+      return "Log folder is unavailable."
+    }
+  }
 }
 
 @MainActor
@@ -47,7 +54,7 @@ public final class SettingsViewModel: ObservableObject {
       do {
         try await store.save(settings)
       } catch {
-        Log.error("Error saving settings to tunnel store: \(error)")
+        Log.error(error)
       }
     }
   }
@@ -67,8 +74,6 @@ public final class SettingsViewModel: ObservableObject {
     Log.log("\(#function)")
 
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
-      Log.error("\(#function): Log folder is unavailable")
-
       return "Unknown"
     }
 
@@ -90,7 +95,7 @@ public final class SettingsViewModel: ObservableObject {
       return byteCountFormatter.string(fromByteCount: Int64(totalSize))
 
     } catch {
-      Log.error("\(#function): \(error)")
+      Log.error(error)
 
       return "Unknown"
     }
@@ -135,7 +140,7 @@ extension FileManager {
         let resourceValues = try url.resourceValues(forKeys: resourceKeys)
         handler(url, resourceValues)
       } catch {
-        Log.error("Unable to get resource value for '\(url)': \(error)")
+        Log.error(error)
       }
     }
   }
@@ -598,7 +603,7 @@ public struct SettingsView: View {
               window.contentViewController?.presentingViewController?.dismiss(self)
             }
           } catch {
-            Log.error("\(#function): \(error)")
+            Log.error(error)
 
             let alert = NSAlert()
             alert.messageText = "Error exporting logs: \(error.localizedDescription)"

@@ -109,7 +109,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // `connected`.
         completionHandler(nil)
       } catch {
-        Log.error("\(#function): Error! \(error)")
+        Log.error(error)
         completionHandler(error)
       }
     }
@@ -134,7 +134,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         try String(reason.rawValue).write(
           to: SharedAccess.providerStopReasonURL, atomically: true, encoding: .utf8)
       } catch {
-        Log.error(
+        Log.warning(
           "\(#function): Couldn't write provider stop reason to file. Notification won't work.")
       }
       #if os(iOS)
@@ -174,32 +174,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       getLogFolderSize(completionHandler)
     case .exportLogs:
       Task {
-        guard let completionHandler
-        else {
-          Log.error(
-            "\(#function): Need a completion handler to export logs."
-          )
-
-          return
-        }
-
-        exportLogs(completionHandler)
+        exportLogs(completionHandler!)
       }
     case .consumeStopReason:
       Task {
-        guard let completionHandler
-        else {
-          Log.error(
-            "\(#function): Need a completion handler to consumeStopReason."
-          )
-
-          return
-        }
-
-        consumeStopReason(completionHandler)
+        consumeStopReason(completionHandler!)
       }
     }
-
   }
 
   func clearLogs(_ completionHandler: ((Data?) -> Void)? = nil) {
@@ -207,7 +188,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       do {
         try Log.clear(in: SharedAccess.logFolderURL)
       } catch {
-        Log.error("Error clearing logs: \(error)")
+        Log.error(error)
       }
 
       completionHandler?(nil)
@@ -236,7 +217,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let chunk = try tunnelLogArchive.readChunk()
         completionHandler(chunk)
       } catch {
-        Log.error("\(#function): error reading chunk: \(error)")
+        Log.error(error)
 
         completionHandler(nil)
       }
@@ -251,7 +232,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       guard let logFolderURL = SharedAccess.logFolderURL,
             let logFolderPath = FilePath(logFolderURL)
       else {
-        Log.error("\(#function): log folder not available")
         completionHandler(nil)
 
         return
@@ -262,7 +242,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       do {
         try tunnelLogArchive.archive()
       } catch {
-        Log.error("\(#function): error archiving logs: \(error)")
+        Log.error(error)
         completionHandler(nil)
 
         return
@@ -274,20 +254,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   func consumeStopReason(_ completionHandler: (Data?) -> Void) {
-    do {
-      let data = try Data(
-        contentsOf: SharedAccess.providerStopReasonURL
-      )
-
-      try? FileManager.default
-        .removeItem(at: SharedAccess.providerStopReasonURL)
-
-      completionHandler(data)
-    } catch {
-      Log.error("\(#function): error reading stop reason: \(error)")
-
+    guard let data = try? Data(contentsOf: SharedAccess.providerStopReasonURL)
+    else {
       completionHandler(nil)
+
+      return
     }
+
+    try? FileManager.default
+      .removeItem(at: SharedAccess.providerStopReasonURL)
+
+    completionHandler(data)
   }
 }
 

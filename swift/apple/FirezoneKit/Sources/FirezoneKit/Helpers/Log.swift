@@ -50,9 +50,10 @@ public final class Log {
     logWriter?.write(severity: .warning, message: message)
   }
 
-  public static func error(_ message: String) {
-    self.logger.error("\(message, privacy: .public)")
-    logWriter?.write(severity: .error, message: message)
+  public static func error(_ err: Error, _ message: String? = nil) {
+    self.logger.error("\(message ?? err.localizedDescription, privacy: .public)")
+    logWriter?.write(severity: .error, message: message ?? err.localizedDescription)
+    Telemetry.capture(err)
   }
 
   // Returns the size in bytes of the provided directory, calculated by summing

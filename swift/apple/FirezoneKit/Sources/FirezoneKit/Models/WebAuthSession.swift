@@ -32,7 +32,13 @@ struct WebAuthSession {
         return
       }
 
-      Task { try await store.signIn(authResponse: authResponse) }
+      Task {
+        do {
+          try await store.signIn(authResponse: authResponse)
+        } catch {
+          Log.error(error)
+        }
+      }
     }
 
     // Apple weirdness, doesn't seem to be actually used in macOS

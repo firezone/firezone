@@ -163,7 +163,7 @@ public final class Store: ObservableObject {
         try await TunnelManager.shared.saveSettings(newSettings)
         DispatchQueue.main.async { self.settings = newSettings }
       } catch {
-        Log.error("\(#function): \(error)")
+        Log.error(error)
       }
     }
   }

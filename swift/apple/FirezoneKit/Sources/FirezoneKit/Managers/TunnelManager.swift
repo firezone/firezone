@@ -13,7 +13,22 @@ import NetworkExtension
 
 enum TunnelManagerError: Error {
   case cannotSaveIfMissing
+  case cannotLoad
   case decodeIPCDataFailed
+  case invalidStatusChange
+
+  var description: String {
+    switch self {
+    case .cannotSaveIfMissing:
+      return "Manager doesn't seem initialized. Can't save settings."
+    case .decodeIPCDataFailed:
+      return "Decoding IPC data failed."
+    case .invalidStatusChange:
+      return "NEVPNStatusDidChange notification doesn't seem to be valid."
+    case .cannotLoad:
+      return "Could not load VPN configurations!"
+    }
+  }
 }
 
 public enum TunnelManagerKeys {
@@ -153,7 +168,7 @@ public class TunnelManager {
       // Since our bundle ID can change (by us), find the one that's current and ignore the others.
       guard let managers = try? await NETunnelProviderManager.loadAllFromPreferences()
       else {
-        Log.error("\(#function): Could not load VPN configurations!")
+        Log.error(TunnelManagerError.cannotLoad)
         return
       }
 
@@ -206,7 +221,6 @@ public class TunnelManager {
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           var providerConfiguration = protocolConfiguration.providerConfiguration
     else {
-      Log.error("Manager doesn't seem initialized. Can't save settings.")
       throw TunnelManagerError.cannotSaveIfMissing
     }
 
@@ -228,7 +242,6 @@ public class TunnelManager {
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {
-      Log.error("Manager doesn't seem initialized. Can't save settings.")
       throw TunnelManagerError.cannotSaveIfMissing
     }
 
@@ -261,7 +274,7 @@ public class TunnelManager {
     do {
       try session()?.startTunnel(options: options)
     } catch {
-      Log.error("Error starting tunnel: \(error)")
+      Log.error(error)
     }
   }
 
@@ -272,7 +285,7 @@ public class TunnelManager {
           self.session()?.stopTunnel()
         }
       } catch {
-        Log.error("\(#function): \(error)")
+        Log.error(error)
       }
     } else {
       session()?.stopTunnel()
@@ -305,7 +318,7 @@ public class TunnelManager {
         callback(self.resourcesListCache)
       }
     } catch {
-      Log.error("Error: sendProviderMessage: \(error)")
+      Log.error(error)
     }
   }
 
@@ -361,7 +374,6 @@ public class TunnelManager {
         ) { data in
           guard let data = data
           else {
-            Log.error("Error: \(#function): No data received")
             errorHandler(TunnelManagerError.decodeIPCDataFailed)
 
             return
@@ -371,7 +383,6 @@ public class TunnelManager {
             LogChunk.self, from: data
           )
           else {
-            Log.error("Error: \(#function): Invalid data received")
             errorHandler(TunnelManagerError.decodeIPCDataFailed)
 
             return
@@ -385,7 +396,7 @@ public class TunnelManager {
           }
         }
       } catch {
-        Log.error("Error: \(#function): \(error)")
+        Log.error(error)
       }
     }
 
@@ -445,7 +456,7 @@ public class TunnelManager {
         ) {
           guard let session = notification.object as? NETunnelProviderSession
           else {
-            Log.error("\(#function): NEVPNStatusDidChange notification doesn't seem to be valid")
+            Log.error(TunnelManagerError.invalidStatusChange)
             return
           }
 

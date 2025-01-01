@@ -55,6 +55,10 @@ public enum Telemetry {
     }
   }
 
+  public static func capture(_ err: Error) {
+    SentrySDK.capture(error: err)
+  }
+
   public static func setFirezoneId(_ id: String?) {
     self.userId = id
     updateUser()
