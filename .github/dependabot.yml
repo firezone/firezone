@@ -115,10 +115,6 @@ updates:
     schedule:
       interval: monthly
   - package-ecosystem: npm
-    directory: scripts/tests/browser/
-    schedule:
-      interval: monthly
-  - package-ecosystem: npm
     directory: elixir/apps/web/assets/
     schedule:
       interval: monthly
