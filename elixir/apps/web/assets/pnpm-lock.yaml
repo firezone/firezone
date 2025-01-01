@@ -9,16 +9,16 @@ importers:
   .:
     dependencies:
       '@fontsource/source-sans-3':
-        specifier: ^5.1.0
-        version: 5.1.0
+        specifier: ^5.1.1
+        version: 5.1.1
       flowbite:
         specifier: ^2.5.2
         version: 2.5.2
 
 packages:
 
-  '@fontsource/source-sans-3@5.1.0':
-    resolution: {integrity: sha512-BUHzdaEiLBgqWR+QCv1g67sqlcE40BeuMOBH5uNaWQPxBen72Xj/J47MzydGoZqNAC73S6SYi5IzxgH3D/XEnQ==}
+  '@fontsource/source-sans-3@5.1.1':
+    resolution: {integrity: sha512-WVSo2dfrhPhcrWMeSMFdwhp7afUi/3uaRHwYxKZR524rx2RtcT0vpUbftQ0SmZ0vHSqcYhS5HNnVASw9clh0sA==}
 
   '@popperjs/core@2.11.8':
     resolution: {integrity: sha512-P1st0aksCrn9sGZhp8GMYwBnQsbvAWsZAX44oXNNvLHGqAOcoVxmjZiohstwQ7SqKnbR47akdNi+uleWD8+g6A==}
@@ -103,7 +103,7 @@ packages:
 
 snapshots:
 
-  '@fontsource/source-sans-3@5.1.0': {}
+  '@fontsource/source-sans-3@5.1.1': {}
 
   '@popperjs/core@2.11.8': {}
 
