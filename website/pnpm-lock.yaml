@@ -60,8 +60,8 @@ importers:
         specifier: ^11.12.0
         version: 11.12.0(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       highlight.js:
-        specifier: ^11.10.0
-        version: 11.10.0
+        specifier: ^11.11.1
+        version: 11.11.1
       md5:
         specifier: ^2.3.0
         version: 2.3.0
@@ -999,8 +999,8 @@ packages:
   highlight.js@10.7.3:
     resolution: {integrity: sha512-tzcUFauisWKNHaRkN4Wjl/ZA07gENAjFl3J/c480dprkGTg5EQstgaNFqBfUqCq54kZRIEcreTsAgF/m2quD7A==}
 
-  highlight.js@11.10.0:
-    resolution: {integrity: sha512-SYVnVFswQER+zu1laSya563s+F8VDGt7o35d4utbamowvUNLLMovFqwCLSocpZTz3MgaSRA1IbqRWZv97dtErQ==}
+  highlight.js@11.11.1:
+    resolution: {integrity: sha512-Xwwo44whKBVCYoliBQwaPvtd/2tYFkRQtXDWj1nackaV2JPXx3L0+Jvd8/qCJ2p+ML0/XVkJ2q+Mr+UVdpJK5w==}
     engines: {node: '>=12.0.0'}
 
   highlight.js@11.9.0:
@@ -2918,7 +2918,7 @@ snapshots:
 
   highlight.js@10.7.3: {}
 
-  highlight.js@11.10.0: {}
+  highlight.js@11.11.1: {}
 
   highlight.js@11.9.0: {}
 
