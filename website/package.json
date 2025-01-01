@@ -31,7 +31,7 @@
     "framer-motion": "^11.12.0",
     "highlight.js": "^11.10.0",
     "md5": "^2.3.0",
-    "mixpanel-browser": "^2.56.0",
+    "mixpanel-browser": "^2.58.0",
     "next": "^14.2.18",
     "next-hubspot": "^1.3.0",
     "next-sitemap": "^4.2.3",
