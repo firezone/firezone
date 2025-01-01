@@ -15,7 +15,7 @@ import AuthenticationServices
 struct WebAuthSession {
   private static let scheme = "firezone-fd0020211111"
 
-  static func signIn(store: Store) async {
+  static func signIn(store: Store) {
     guard let authURL = store.authURL(),
           let authClient = try? AuthClient(authURL: authURL),
           let url = try? authClient.build()

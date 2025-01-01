@@ -50,7 +50,7 @@ public final class Store: ObservableObject {
   private func initNotifications() {
     // Finish initializing notification binding
     sessionNotification.signInHandler = {
-      Task { await WebAuthSession.signIn(store: self) }
+      WebAuthSession.signIn(store: self)
     }
 
     sessionNotification.$decision
@@ -93,17 +93,11 @@ public final class Store: ObservableObject {
     #endif
   }
 
-  func createVPNProfile() {
-    Task {
-      try await TunnelManager.shared.create()
+  func createVPNProfile() async throws {
+    try await TunnelManager.shared.create()
 
-      DispatchQueue.main.async { [weak self] in
-        guard let self else { return }
-
-        // Load the new settings and bind observers
-        self.loadTunnelManager()
-      }
-    }
+    // Load the new settings and bind observers
+    self.loadTunnelManager()
   }
 
   func authURL() -> URL? {

@@ -54,7 +54,7 @@ struct iOSNavigationView<Content: View>: View {
         }
       } else {
         Button(action: {
-          Task { await WebAuthSession.signIn(store: model.store) }
+          WebAuthSession.signIn(store: model.store)
         }) {
           Label("Sign in", systemImage: "person.crop.circle.fill.badge.plus")
         }
