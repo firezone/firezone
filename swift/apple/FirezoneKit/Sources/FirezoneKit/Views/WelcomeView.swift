@@ -17,15 +17,12 @@ final class WelcomeViewModel: ObservableObject {
   }
 
   func signInButtonTapped() {
-    Task { await WebAuthSession.signIn(store: store) }
+    WebAuthSession.signIn(store: store)
   }
 }
 
 struct WelcomeView: View {
   @ObservedObject var model: WelcomeViewModel
-
-  // Debounce button taps
-  @State private var tapped = false
 
   var body: some View {
     VStack(
@@ -44,19 +41,8 @@ struct WelcomeView: View {
         """).multilineTextAlignment(.center)
           .padding(.bottom, 10)
         Button("Sign in") {
-          if !tapped {
-            tapped = true
-
-            DispatchQueue.main.async {
-              model.signInButtonTapped()
-            }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-              tapped = false
-            }
-          }
+          model.signInButtonTapped()
         }
-        .disabled(tapped)
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         Spacer()
