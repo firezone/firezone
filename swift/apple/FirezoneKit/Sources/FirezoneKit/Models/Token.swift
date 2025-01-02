@@ -31,26 +31,23 @@ public struct Token: CustomStringConvertible {
     self.data = data
   }
 
-  public static func delete(
-    _ keychain: Keychain = Keychain.shared
-  ) async throws {
-
-    guard let tokenRef = await keychain.search(query: query)
+  public static func delete() throws {
+    guard let tokenRef = Keychain.search(query: query)
     else { return }
 
-    try await keychain.delete(persistentRef: tokenRef)
+    try Keychain.delete(persistentRef: tokenRef)
   }
 
   // Upsert token to Keychain
-  public func save(_ keychain: Keychain = Keychain.shared) async throws {
+  public func save() throws {
 
-    guard await keychain.search(query: Token.query) == nil
+    guard Keychain.search(query: Token.query) == nil
     else {
       let query = Token.query.merging([
         kSecClass: kSecClassGenericPassword
       ]) { (_, new) in new }
 
-      return try await keychain.update(
+      return try Keychain.update(
         query: query,
         attributesToUpdate: [kSecValueData: data]
       )
@@ -61,18 +58,16 @@ public struct Token: CustomStringConvertible {
       kSecValueData: data
     ]) { (_, new) in new }
 
-    try await keychain.add(query: query)
+    try Keychain.add(query: query)
   }
 
   // Attempt to load token from Keychain
-  public static func load(
-    _ keychain: Keychain = Keychain.shared
-  ) async throws -> Token? {
+  public static func load() throws -> Token? {
 
-    guard let tokenRef = await keychain.search(query: query)
+    guard let tokenRef = Keychain.search(query: query)
     else { return nil }
 
-    guard let data = await keychain.load(persistentRef: tokenRef)
+    guard let data = Keychain.load(persistentRef: tokenRef)
     else { return nil }
 
     return Token(data)

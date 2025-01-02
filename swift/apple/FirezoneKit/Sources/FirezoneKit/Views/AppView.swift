@@ -42,7 +42,7 @@ public class AppViewModel: ObservableObject {
 
 #if os(macOS)
         Task {
-          let firezoneId = try await FirezoneId.load()
+          let firezoneId = try FirezoneId.load()
 
           if status == .invalid || firezoneId == nil {
 

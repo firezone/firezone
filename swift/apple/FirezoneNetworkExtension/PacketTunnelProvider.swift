@@ -34,14 +34,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Task {
       do {
         // Can be removed after all clients >= 1.4.0
-        try await FirezoneId.migrate()
+        try FirezoneId.migrate()
 
         // The tunnel can come up without the app having been launched first, so
         // initialize the id here too.
-        try await FirezoneId.createIfMissing()
+        try FirezoneId.createIfMissing()
 
         let passedToken = options?["token"] as? String
-        let keychainToken = try await Token.load()
+        let keychainToken = try Token.load()
 
         // Use the provided token or try loading one from the Keychain
         guard let token = Token(passedToken) ?? keychainToken
@@ -52,7 +52,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
 
         // Save the token back to the Keychain
-        try await token.save()
+        try token.save()
 
         // Now we should have a token, so continue connecting
         guard let apiURL = protocolConfiguration.serverAddress
@@ -107,7 +107,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     if case .authenticationCanceled = reason {
       do {
         // This was triggered from onDisconnect, so clear our token
-        Task { try await Token.delete() }
+        try Token.delete()
 
         // There's no good way to send data like this from the
         // Network Extension to the GUI, so save it to a file for the GUI to read upon
@@ -141,9 +141,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     case .internetResourceEnabled(let value):
       adapter?.setInternetResourceEnabled(value)
     case .signOut:
-      Task {
-        try await Token.delete()
-      }
+      try? Token.delete()
     case .getResourceList(let value):
       adapter?.getResourcesIfVersionDifferentFrom(hash: value) {
         resourceListJSON in

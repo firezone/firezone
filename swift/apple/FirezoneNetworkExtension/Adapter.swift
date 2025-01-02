@@ -132,7 +132,7 @@ class Adapter {
       let jsonEncoder = JSONEncoder()
       jsonEncoder.keyEncodingStrategy = .convertToSnakeCase
 
-      let firezoneId = try await FirezoneId.load()
+      let firezoneId = try FirezoneId.load()
 
       // Grab a session pointer
       let session =
