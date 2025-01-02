@@ -34,7 +34,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
-      - uses: lycheeverse/lychee-action@v2.1.0
+      - uses: lycheeverse/lychee-action@v2.2.0
         with:
           fail: true
           args: --offline --verbose --no-progress **/*.md
