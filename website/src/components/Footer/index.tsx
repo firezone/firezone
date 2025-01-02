@@ -220,7 +220,7 @@ export default function Footer() {
         <hr className="my-2 border-neutral-500 sm:mx-auto md:my-4" />
         <div className="flex grid sm:grid-cols-3">
           <div className="text-xs">
-            © 2024{" "}
+            © {new Date().getFullYear()}{" "}
             <Link
               href="/"
               className="text-neutral-200 hover:underline hover:text-neutral-50"
