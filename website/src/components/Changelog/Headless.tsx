@@ -5,11 +5,23 @@ import Link from "next/link";
 import Unreleased from "./Unreleased";
 
 export default function Headless() {
-  const href = "/dl/firezone-client-headless-linux/:version/:arch";
-  const arches = ["x86_64", "aarch64", "armv7"];
+  const downloadLinks = [
+    {
+      href: "https://www.firezone.dev/dl/firezone-client-headless-linux/:version/x86_64",
+      title: "Download for x86_64",
+    },
+    {
+      href: "https://www.firezone.dev/dl/firezone-client-headless-linux/:version/aarch64",
+      title: "Download for aarch64",
+    },
+    {
+      href: "https://www.firezone.dev/dl/firezone-client-headless-linux/:version/armv7",
+      title: "Download for armv7",
+    },
+  ];
 
   return (
-    <Entries href={href} arches={arches} title="Linux headless">
+    <Entries downloadLinks={downloadLinks} title="Linux headless">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="7551">

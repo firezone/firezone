@@ -5,11 +5,23 @@ import ChangeItem from "./ChangeItem";
 import Unreleased from "./Unreleased";
 
 export default function Gateway() {
-  const href = "/dl/firezone-gateway/:version/:arch";
-  const arches = ["x86_64", "aarch64", "armv7"];
+  const downloadLinks = [
+    {
+      href: "https://www.firezone.dev/dl/firezone-gateway/:version/x86_64",
+      title: "Download for x86_64",
+    },
+    {
+      href: "https://www.firezone.dev/dl/firezone-gateway/:version/aarch64",
+      title: "Download for aarch64",
+    },
+    {
+      href: "https://www.firezone.dev/dl/firezone-gateway/:version/armv7",
+      title: "Download for armv7",
+    },
+  ];
 
   return (
-    <Entries href={href} arches={arches} title="Gateway">
+    <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
         <ChangeItem pull="7567">
           Fixes an issue where ICMPv6's `PacketTooBig' errors were not correctly
