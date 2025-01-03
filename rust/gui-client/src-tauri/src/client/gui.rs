@@ -24,7 +24,6 @@ use futures::FutureExt;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{panic::AssertUnwindSafe, str::FromStr, time::Duration};
 use tauri::Manager;
-use tauri_plugin_shell::ShellExt as _;
 use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 
@@ -76,7 +75,9 @@ impl GuiIntegration for TauriIntegration {
     }
 
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
-        Ok(self.app.shell().open(url.as_ref(), None)?)
+        tauri_plugin_opener::open_url(url, Option::<&str>::None)?;
+
+        Ok(())
     }
 
     fn set_tray_icon(&mut self, icon: common::system_tray::Icon) {
@@ -170,6 +171,7 @@ pub(crate) fn run(
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
             let setup_inner = move || {
                 // Check for updates
