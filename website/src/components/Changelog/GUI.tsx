@@ -5,14 +5,27 @@ import ChangeItem from "./ChangeItem";
 import Unreleased from "./Unreleased";
 
 export default function GUI({ title }: { title: string }) {
-  const href =
+  const downloadLinks =
     title === "Windows"
-      ? "/dl/firezone-client-gui-windows/:version/:arch"
-      : "/dl/firezone-client-gui-linux/:version/:arch";
-  const arches = title === "Windows" ? ["x86_64"] : ["x86_64", "aarch64"];
+      ? [
+          {
+            title: "Download for x86_64",
+            href: "https://www.firezone.dev/dl/firezone-client-gui-windows/:version/x86_64",
+          },
+        ]
+      : [
+          {
+            title: "Download for x86_64",
+            href: "https://www.firezone.dev/dl/firezone-client-gui-linux/:version/x86_64",
+          },
+          {
+            title: "Download for aarch64",
+            href: "https://www.firezone.dev/dl/firezone-client-gui-linux/:version/aarch64",
+          },
+        ];
 
   return (
-    <Entries href={href} arches={arches} title={title}>
+    <Entries downloadLinks={downloadLinks} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="7551">

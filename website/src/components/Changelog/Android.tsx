@@ -5,11 +5,23 @@ import Link from "next/link";
 import Unreleased from "./Unreleased";
 
 export default function Android() {
+  const downloadLinks = [
+    {
+      href: "https://play.google.com/store/apps/details?id=dev.firezone.android",
+      title: "Download on Google Play",
+    },
+    {
+      href: "https://www.firezone.dev/dl/firezone-client-android/:version/apk",
+      title: "Download APK",
+    },
+    {
+      href: "https://www.firezone.dev/dl/firezone-client-android/:version/aab",
+      title: "Download AAB",
+    },
+  ];
+
   return (
-    <Entries
-      href="https://play.google.com/store/apps/details?id=dev.firezone.android"
-      title="Android"
-    >
+    <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="7599">

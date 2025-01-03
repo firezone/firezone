@@ -5,11 +5,15 @@ import ChangeItem from "./ChangeItem";
 import Unreleased from "./Unreleased";
 
 export default function Apple() {
+  const downloadLinks = [
+    {
+      href: "https://apps.apple.com/us/app/firezone/id6443661826",
+      title: "Download on App Store",
+    },
+  ];
+
   return (
-    <Entries
-      href="https://apps.apple.com/us/app/firezone/id6443661826"
-      title="macOS / iOS"
-    >
+    <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="7594">

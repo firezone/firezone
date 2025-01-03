@@ -3,16 +3,19 @@ import Entry from "./Entry";
 import Link from "next/link";
 import Unreleased from "./Unreleased";
 
+export type DownloadLink = {
+  title?: string;
+  href: string;
+};
+
 function Latest({
-  arches,
-  href,
+  downloadLinks,
   title,
   version,
   date,
   children,
 }: {
-  arches?: string[];
-  href: string;
+  downloadLinks: DownloadLink[];
   title: string;
   version: string;
   date: Date;
@@ -41,29 +44,15 @@ function Latest({
           </span>
         </p>
         <p className="mb-4 md:mb-6 xl:mb-8">
-          <span className="mr-2">Download:</span>
-          {arches ? (
-            arches.map((arch) => (
-              <Link
-                key={arch}
-                href={{
-                  pathname: href
-                    .replace(":arch", arch)
-                    .replace(":version", version),
-                }}
-                className="hover:no-underline underline text-accent-500 mr-2"
-              >
-                {arch}
-              </Link>
-            ))
-          ) : (
+          {downloadLinks.map((link) => (
             <Link
-              href={new URL(href)}
-              className="hover:no-underline underline text-accent-500"
+              key={link.href}
+              href={new URL(link.href.replace(":version", version))}
+              className="hover:no-underline underline text-accent-500 mr-2"
             >
-              Download for all platforms
+              {link.title}
             </Link>
-          )}
+          ))}
         </p>
         {children}
       </div>
@@ -113,13 +102,11 @@ function Previous({
 }
 
 export default function Entries({
-  href,
-  arches,
+  downloadLinks,
   title,
   children,
 }: {
-  href: string;
-  arches?: string[];
+  downloadLinks: DownloadLink[];
   title: string;
   children: React.ReactNode;
 }) {
@@ -135,8 +122,7 @@ export default function Entries({
   return (
     <div className="relative overflow-x-auto p-4 md:p-6 xl:p-8">
       <Latest
-        href={href}
-        arches={arches}
+        downloadLinks={downloadLinks}
         title={title}
         version={version}
         date={date}
