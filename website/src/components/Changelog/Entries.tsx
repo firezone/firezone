@@ -4,7 +4,7 @@ import Link from "next/link";
 import Unreleased from "./Unreleased";
 
 export type DownloadLink = {
-  title?: string;
+  title: string;
   href: string;
 };
 
