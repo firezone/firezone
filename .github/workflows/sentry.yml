@@ -23,12 +23,13 @@ jobs:
           - component: headless-client
             projects: headless-client
           - component: macos-client
-            projects: apple-client apple-macos
+            projects: apple-client
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: ./.github/actions/create-sentry-release
+        if: ${{ startsWith(github.event.release.name, matrix.component) }}
         with:
           component: ${{ matrix.component }}
           projects: ${{ matrix.projects }}

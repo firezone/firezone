@@ -17,8 +17,8 @@ public enum Telemetry {
   public static func start() {
     SentrySDK.start { options in
       options.dsn = "https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488"
-      options.releaseName = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
       options.environment = "entrypoint" // will be reconfigured in TunnelManager
+      options.releaseName = releaseName()
 
 #if DEBUG
       // https://docs.sentry.io/platforms/apple/guides/ios/configuration/options/#debug
@@ -77,5 +77,24 @@ public enum Telemetry {
 
       configuration.setUser(user)
     }
+  }
+
+  private static func releaseName() -> String {
+    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+    var prefix: String = ""
+
+#if os(iOS)
+    prefix = "ios-appstore-"
+#else
+    // Apps from the app store have a receipt file
+    if let receiptURL = Bundle.main.appStoreReceiptURL,
+       FileManager.default.fileExists(atPath: receiptURL.path) {
+      prefix = "macos-appstore-"
+    } else {
+      prefix = "macos-standalone-"
+    }
+#endif
+
+    return "\(prefix)\(version ?? "unknown")"
   }
 }
