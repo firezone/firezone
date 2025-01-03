@@ -4,7 +4,7 @@ import { NextResponse, NextRequest } from "next/server";
 // more than once. See https://github.com/vercel/next.js/issues/66891
 const versionedRedirects = [
   {
-    source: /^\/dl\/firezone-client-android\/(\d+\.\d+\.\d+)\/apk/,
+    source: /^\/dl\/firezone-client-android\/(\d+\.\d+\.\d+)$/,
     destination:
       "https://www.github.com/firezone/firezone/releases/download/android-client-:version/firezone-android-client-:version.apk",
   },
