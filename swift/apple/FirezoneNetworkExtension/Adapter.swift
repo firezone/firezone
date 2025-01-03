@@ -137,14 +137,13 @@ class Adapter {
       let jsonEncoder = JSONEncoder()
       jsonEncoder.keyEncodingStrategy = .convertToSnakeCase
 
-      let firezoneId = try await FirezoneId.load()
-
       // Grab a session pointer
       let session =
         try WrappedSession.connect(
           apiURL,
           "\(token)",
-          "\(firezoneId!)",
+          "\(Telemetry.firezoneId!)",
+          "\(Telemetry.accountSlug!)",
           DeviceMetadata.getDeviceName(),
           DeviceMetadata.getOSVersion(),
           connlibLogFolderPath,
