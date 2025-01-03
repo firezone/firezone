@@ -14,10 +14,6 @@ export default function Android() {
       href: "https://www.firezone.dev/dl/firezone-client-android/:version/apk",
       title: "Download APK",
     },
-    {
-      href: "https://www.firezone.dev/dl/firezone-client-android/:version/aab",
-      title: "Download AAB",
-    },
   ];
 
   return (
