@@ -14,7 +14,7 @@ class SystemConfigurationResolvers {
     case failedToCreateDynamicStore
     case unableToRetrieveNetworkServices
 
-    var description: String {
+    var localizedDescription: String {
       switch self {
       case .failedToCreateDynamicStore:
         return "Failed to create dynamic store"

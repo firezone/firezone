@@ -11,7 +11,7 @@ import SwiftUI
 enum SettingsViewError: Error {
   case logFolderIsUnavailable
 
-  var description: String {
+  var localizedDescription: String {
     switch self {
     case .logFolderIsUnavailable:
       return "Log folder is unavailable."
@@ -116,6 +116,17 @@ public final class SettingsViewModel: ObservableObject {
 }
 
 extension FileManager {
+  enum FileManagerError: Error {
+    case invalidURL(URL, Error)
+
+    var localizedDescription: String {
+      switch self {
+      case .invalidURL(let url, let error):
+        return "Unable to get resource value for '\(url)': \(error)"
+      }
+    }
+  }
+
   func forEachFileUnder(
     _ dirURL: URL,
     including resourceKeys: Set<URLResourceKey>,
@@ -140,7 +151,7 @@ extension FileManager {
         let resourceValues = try url.resourceValues(forKeys: resourceKeys)
         handler(url, resourceValues)
       } catch {
-        Log.error(error)
+        Log.error(FileManagerError.invalidURL(url, error))
       }
     }
   }

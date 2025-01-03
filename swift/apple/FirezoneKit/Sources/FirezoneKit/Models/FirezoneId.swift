@@ -91,12 +91,17 @@ public struct FirezoneId {
     try await firezoneId.save()
   }
 
-  public static func createIfMissing() async throws {
-    guard try await load() == nil
-    else { return } // New firezone-id already saved in Keychain
+  public static func createIfMissing() async throws -> FirezoneId {
+    guard let id = try await load()
+    else {
+      let id = FirezoneId(UUID())
+      try await id.save()
 
-    let firezoneId = FirezoneId(UUID())
-    try await firezoneId.save()
+      return id
+    }
+
+    // New firezone-id already saved in Keychain
+    return id
   }
 }
 

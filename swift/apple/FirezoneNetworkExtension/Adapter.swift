@@ -15,7 +15,7 @@ enum AdapterError: Error {
   /// connlib failed to start
   case connlibConnectError(String)
 
-  var description: String {
+  var localizedDescription: String {
     switch self {
     case .invalidState(let state):
       return "Adapter is in an invalid state: \(state)"

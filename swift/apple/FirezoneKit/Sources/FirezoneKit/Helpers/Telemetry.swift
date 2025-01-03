@@ -16,18 +16,12 @@ public enum Telemetry {
 
   public static func start() {
     SentrySDK.start { options in
-
-      // Different Sentry projects for macOS and iOS
-#if os(macOS)
-      options.dsn = "https://5420feea6f18a799f28a34f30cdcd555@o4507971108339712.ingest.us.sentry.io/4508564061224960"
-#elseif os(iOS)
-      options.dsn = "https://617b332660d27526eb96e39571b62f27@o4507971108339712.ingest.us.sentry.io/4508564070989824"
-#endif
-
+      options.dsn = "https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488"
       options.releaseName = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
       options.environment = "entrypoint" // will be reconfigured in TunnelManager
 
 #if DEBUG
+      // https://docs.sentry.io/platforms/apple/guides/ios/configuration/options/#debug
       options.debug = true
 #endif
     }

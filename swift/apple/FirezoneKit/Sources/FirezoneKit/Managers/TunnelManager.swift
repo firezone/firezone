@@ -17,7 +17,7 @@ enum TunnelManagerError: Error {
   case decodeIPCDataFailed
   case invalidStatusChange
 
-  var description: String {
+  var localizedDescription: String {
     switch self {
     case .cannotSaveIfMissing:
       return "Manager doesn't seem initialized. Can't save settings."

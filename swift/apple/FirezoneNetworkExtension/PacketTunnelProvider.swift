@@ -45,11 +45,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         // The tunnel can come up without the app having been launched first, so
         // initialize the id here too.
-        try await FirezoneId.createIfMissing()
+        let id = try await FirezoneId.createIfMissing()
 
         // Hydrate the telemetry userId with our firezone id
-        let id = try await FirezoneId.load()
-        Telemetry.setFirezoneId(id?.uuid.uuidString)
+        Telemetry.setFirezoneId(id.uuid.uuidString)
 
         let passedToken = options?["token"] as? String
         let keychainToken = try await Token.load()
@@ -134,8 +133,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         try String(reason.rawValue).write(
           to: SharedAccess.providerStopReasonURL, atomically: true, encoding: .utf8)
       } catch {
-        Log.warning(
-          "\(#function): Couldn't write provider stop reason to file. Notification won't work.")
+        Log.error(
+          SharedAccess.Error.unableToWriteToFile(
+            SharedAccess.providerStopReasonURL,
+            error
+          )
+        )
       }
       #if os(iOS)
         // iOS notifications should be shown from the tunnel process

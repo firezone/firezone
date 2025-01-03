@@ -14,7 +14,7 @@ class UpdateChecker {
   enum UpdateError: Error {
     case invalidVersion(String)
 
-    var description: String {
+    var localizedDescription: String {
       switch self {
       case .invalidVersion(let version):
         return "Invalid version: \(version)"
