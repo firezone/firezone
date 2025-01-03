@@ -347,6 +347,17 @@ impl TunnelTest {
                     .expect("to only remove gateways that exist");
 
                 state.disconnected_gateways.insert(gateway_id, gateway);
+
+                // Spin for 3 minutes to ensure we detect a disconnected gateway even if our connection is idle.
+                // The test suite doesn't send packets concurrently so the connection is always idle when we disconnect the gateway.
+                let cut_off = state.flux_capacitor.now::<Instant>() + Duration::from_secs(3 * 60);
+
+                debug_assert_eq!(buffered_transmits.packet_counter(), 0);
+
+                while state.flux_capacitor.now::<Instant>() <= cut_off {
+                    state.flux_capacitor.tick(Duration::from_secs(5));
+                    state.advance(ref_state, &mut buffered_transmits);
+                }
             }
         };
         state.advance(ref_state, &mut buffered_transmits);
