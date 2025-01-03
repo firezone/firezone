@@ -22,6 +22,23 @@ updates:
     schedule:
       interval: weekly
     groups:
+      tauri:
+        # See https://github.com/tauri-apps/tauri/blob/dev/Cargo.toml
+        patterns:
+          - tauri
+          - tauri-runtime
+          - tauri-runtime-wry
+          - tauri-macros
+          - tauri-utils
+          - tauri-build
+          - tauri-codegen
+          - tauri-plugin
+          - tauri-schema-generator
+          - tauri-schema-worker
+          - tauri-cli
+          - tauri-bundler
+          - tauri-macos-sign
+          - tauri-driver
       netlink:
         patterns:
           - rtnetlink
@@ -114,6 +131,10 @@ updates:
     directory: rust/gui-client/
     schedule:
       interval: monthly
+    groups:
+      tauri:
+        patterns:
+          - "@tauri-apps/*"
   - package-ecosystem: npm
     directory: elixir/apps/web/assets/
     schedule:
