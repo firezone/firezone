@@ -36,6 +36,7 @@ subtle = { workspace = true }
 tauri = { workspace = true, features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-notification = { workspace = true }
+tauri-plugin-opener = { workspace = true }
 tauri-plugin-shell = { workspace = true }
 tauri-runtime = { workspace = true }
 tauri-utils = { workspace = true }
