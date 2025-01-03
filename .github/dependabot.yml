@@ -131,6 +131,10 @@ updates:
     directory: rust/gui-client/
     schedule:
       interval: monthly
+    groups:
+      tauri:
+        patterns:
+          - "@tauri-apps/*"
   - package-ecosystem: npm
     directory: elixir/apps/web/assets/
     schedule:
