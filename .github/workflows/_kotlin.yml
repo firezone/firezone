@@ -63,7 +63,7 @@ jobs:
           path: |
             ./kotlin/android/${{ matrix.output-path }}
       - name: Upload package to release
-        if: ${{ github.event_name == 'workflow_dispatch' || github.ref_name == 'main' }}
+        if: ${{ matrix.package-type == 'apk' && github.event_name == 'workflow_dispatch' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # mark:next-android-version
@@ -73,7 +73,7 @@ jobs:
           cp "${{ matrix.output-path }}" "$ARTIFACT_PATH"
           ../../scripts/upload/github-release.sh
       - name: Distribute release to Firebase App Distribution
-        if: ${{ github.event_name == 'workflow_dispatch' || (github.ref == 'refs/heads/main' && contains(github.event.head_commit.modified, 'elixir/VERSION')) }}
+        if: ${{ matrix.package-type == 'aab' && github.event_name == 'workflow_dispatch' }}
         env:
           FIREBASE_APP_DISTRIBUTION_CREDENTIALS: ${{ secrets.FIREBASE_APP_DISTRIBUTION_CREDENTIALS }}
           FIREBASE_CREDENTIALS_PATH: firebase-credentials.json
