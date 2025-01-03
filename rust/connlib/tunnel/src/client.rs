@@ -916,6 +916,7 @@ impl ClientState {
             self.disable_resource(*disabled_resource);
         }
 
+        self.maybe_update_cidr_resources();
         self.maybe_update_tun_routes()
     }
 
@@ -1229,8 +1230,6 @@ impl ClientState {
     }
 
     fn maybe_update_tun_routes(&mut self) {
-        self.maybe_update_cidr_resources();
-
         let Some(config) = self.tun_config.clone() else {
             return;
         };
@@ -1439,6 +1438,7 @@ impl ClientState {
             self.add_resource(resource)
         }
 
+        self.maybe_update_cidr_resources();
         self.maybe_update_tun_routes();
         self.emit_resources_changed();
     }
@@ -1490,6 +1490,10 @@ impl ClientState {
 
         tracing::info!(%name, address, %sites, "Activating resource");
 
+        if matches!(new_resource, Resource::Cidr(_)) {
+            self.maybe_update_cidr_resources();
+        }
+
         self.maybe_update_tun_routes();
         self.emit_resources_changed();
     }
@@ -1497,7 +1501,15 @@ impl ClientState {
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
     pub fn remove_resource(&mut self, id: ResourceId) {
         self.disable_resource(id);
-        self.resources_by_id.remove(&id);
+
+        if self
+            .resources_by_id
+            .remove(&id)
+            .is_some_and(|r| matches!(r, Resource::Cidr(_)))
+        {
+            self.maybe_update_cidr_resources();
+        };
+
         self.maybe_update_tun_routes();
         self.emit_resources_changed();
     }
