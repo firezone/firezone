@@ -10,41 +10,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  create_gateway_sentry_release:
-    if: ${{ startsWith(github.event.release.name, 'gateway') }}
+  create_sentry_release:
+    name: create_${{ matrix.component }}_sentry_release
     runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - component: gateway
+            projects: gateway
+          - component: gui-client
+            projects: gui-client-gui gui-client-ipc-service
+          - component: headless-client
+            projects: headless-client
+          - component: macos-client
+            projects: apple-client apple-macos
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - uses: ./.github/actions/create-sentry-release
         with:
-          component: gateway
-          projects: gateway
-          sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-
-  create_gui-client_sentry_release:
-    if: ${{ startsWith(github.event.release.name, 'gui-client') }}
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: ./.github/actions/create-sentry-release
-        with:
-          component: gui-client
-          projects: gui-client-gui gui-client-ipc-service
-          sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-
-  create_headless-client_sentry_release:
-    if: ${{ startsWith(github.event.release.name, 'headless-client') }}
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: ./.github/actions/create-sentry-release
-        with:
-          component: headless-client
-          projects: headless-client
+          component: ${{ matrix.component }}
+          projects: ${{ matrix.projects }}
           sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
