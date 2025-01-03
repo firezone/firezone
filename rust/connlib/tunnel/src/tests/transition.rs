@@ -2,7 +2,7 @@ use crate::{
     client::{Resource, IPV4_RESOURCES, IPV6_RESOURCES},
     proptest::{host_v4, host_v6},
 };
-use connlib_model::RelayId;
+use connlib_model::{GatewayId, RelayId};
 
 use super::sim_net::{any_ip_stack, any_port, Host};
 use crate::messages::DnsServer;
@@ -83,6 +83,11 @@ pub(crate) enum Transition {
     ///
     /// In this case, we won't receive a `relays_presence` but instead we will receive relays with the same ID yet different credentials.
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
+
+    /// Disconnect a gateway from the portal.
+    ///
+    /// A disconnected gateway is considered unroutable by the portal and new connections will fail over to another gateway in the same site.
+    DisconnectGateway(GatewayId),
 }
 
 #[derive(Debug, Clone)]

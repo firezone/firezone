@@ -43,6 +43,12 @@ pub(crate) struct TunnelTest {
     relays: BTreeMap<RelayId, Host<SimRelay>>,
 
     drop_direct_client_traffic: bool,
+
+    /// Tracks all disconnected gateways.
+    ///
+    /// Gateways are moved here when getting disconnected in order to retain their state for the assertions.
+    disconnected_gateways: BTreeMap<GatewayId, Host<SimGateway>>,
+
     network: RoutingTable,
 }
 
@@ -92,6 +98,7 @@ impl TunnelTest {
             client,
             gateways,
             relays,
+            disconnected_gateways: Default::default(),
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
@@ -333,6 +340,25 @@ impl TunnelTest {
 
                 state.deploy_new_relays(new_relays, now, to_remove);
             }
+            Transition::DisconnectGateway(gateway_id) => {
+                let gateway = state
+                    .gateways
+                    .remove(&gateway_id)
+                    .expect("to only remove gateways that exist");
+
+                state.disconnected_gateways.insert(gateway_id, gateway);
+
+                // Spin for 3 minutes to ensure we detect a disconnected gateway even if our connection is idle.
+                // The test suite doesn't send packets concurrently so the connection is always idle when we disconnect the gateway.
+                let cut_off = state.flux_capacitor.now::<Instant>() + Duration::from_secs(3 * 60);
+
+                debug_assert_eq!(buffered_transmits.packet_counter(), 0);
+
+                while state.flux_capacitor.now::<Instant>() <= cut_off {
+                    state.flux_capacitor.tick(Duration::from_secs(5));
+                    state.advance(ref_state, &mut buffered_transmits);
+                }
+            }
         };
         state.advance(ref_state, &mut buffered_transmits);
 
@@ -346,6 +372,7 @@ impl TunnelTest {
         let sim_gateways = state
             .gateways
             .iter()
+            .chain(state.disconnected_gateways.iter())
             .map(|(id, g)| (*id, g.inner()))
             .collect();
 
@@ -657,10 +684,11 @@ impl TunnelTest {
                     return;
                 }
 
-                self.gateways
-                    .get_mut(&id)
-                    .expect("unknown gateway")
-                    .receive(transmit, at);
+                let Some(host) = self.gateways.get_mut(&id) else {
+                    return;
+                };
+
+                host.receive(transmit, at);
             }
             HostId::Relay(id) => {
                 self.relays
@@ -682,7 +710,9 @@ impl TunnelTest {
                 candidates,
                 conn_id,
             } => {
-                let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
+                let Some(gateway) = self.gateways.get_mut(&conn_id) else {
+                    return;
+                };
 
                 gateway.exec_mut(|g| {
                     for candidate in candidates {
@@ -694,7 +724,9 @@ impl TunnelTest {
                 candidates,
                 conn_id,
             } => {
-                let gateway = self.gateways.get_mut(&conn_id).expect("unknown gateway");
+                let Some(gateway) = self.gateways.get_mut(&conn_id) else {
+                    return;
+                };
 
                 gateway.exec_mut(|g| {
                     for candidate in candidates {
@@ -708,7 +740,11 @@ impl TunnelTest {
             } => {
                 let (gateway_id, site_id) =
                     portal.handle_connection_intent(resource_id, connected_gateway_ids);
-                let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
+                let Some(gateway) = self.gateways.get_mut(&gateway_id) else {
+                    tracing::error!("Attempted to connect to an unknown gateway");
+
+                    return;
+                };
                 let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
                 let client_key = self.client.inner().sut.public_key();
