@@ -1383,6 +1383,7 @@ impl ClientState {
         self.node.reset();
         self.recently_connected_gateways.clear(); // Ensure we don't have sticky gateways when we roam.
         self.dns_resource_nat_by_gateway.clear();
+        self.resources_gateways.clear();
         self.drain_node_events();
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.

@@ -39,6 +39,9 @@ pub(crate) struct ReferenceState {
     /// A subset of all DNS resource records that have been selected to produce an ICMP error.
     pub(crate) unreachable_hosts: UnreachableHosts,
 
+    /// A subset of gateways that are got disconnected from the network (both portal and p2p) and are thus unroutable.
+    pub(crate) disconnected_gateways: BTreeMap<GatewayId, Host<RefGateway>>,
+
     pub(crate) network: RoutingTable,
 }
 
@@ -166,6 +169,7 @@ impl ReferenceState {
                         unreachable_hosts,
                         network,
                         drop_direct_client_traffic,
+                        disconnected_gateways: Default::default(),
                     }
                 },
             )
@@ -204,6 +208,9 @@ impl ReferenceState {
                 ))
                 .prop_map(Transition::RebootRelaysWhilePartitioned),
             )
+            .with_if_not_empty(1, state.online_gateways_in_ha_sites(), |gateways| {
+                sample::select(gateways).prop_map(Transition::DisconnectGateway)
+            })
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
@@ -449,6 +456,15 @@ impl ReferenceState {
                     state.client.exec_mut(|client| client.reset_connections());
                 }
             }
+            Transition::DisconnectGateway(gateway_id) => {
+                let gateway = state
+                    .gateways
+                    .remove(gateway_id)
+                    .expect("to only remove online gateways");
+                state.disconnected_gateways.insert(*gateway_id, gateway);
+
+                state.portal.disconnect_gateway(*gateway_id);
+            }
         };
 
         state
@@ -621,6 +637,7 @@ impl ReferenceState {
             }
             Transition::Idle => true,
             Transition::PartitionRelaysFromPortal => true,
+            Transition::DisconnectGateway(gateway_id) => state.gateways.contains_key(gateway_id),
         }
     }
 
@@ -682,6 +699,23 @@ impl ReferenceState {
                 SocketAddr::V4(_) => self.client.ip4.is_some(),
                 SocketAddr::V6(_) => self.client.ip6.is_some(),
             })
+            .collect()
+    }
+
+    /// Returns all gateways that are in a "high-availability" site, i.e. where at least 2 gateways are online within the site.
+    fn online_gateways_in_ha_sites(&self) -> Vec<GatewayId> {
+        // Get all gateways that are in high-availability sites.
+        let mut high_availability_gateways = self.portal.high_availability_gateways();
+
+        // Only keep the ones that are still online.
+        for gateways in &mut high_availability_gateways {
+            gateways.retain(|g| self.gateways.contains_key(g));
+        }
+
+        high_availability_gateways
+            .into_iter()
+            .filter(|gateways| gateways.len() >= 2) // Only retain gateways in sites that still have a backup gateway.
+            .flatten()
             .collect()
     }
 

@@ -26,6 +26,8 @@ use std::{
 pub(crate) struct StubPortal {
     gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>>,
 
+    offline_gateways: BTreeSet<GatewayId>,
+
     #[debug(skip)]
     sites_by_resource: BTreeMap<ResourceId, SiteId>,
 
@@ -94,6 +96,7 @@ impl StubPortal {
             cidr_resources,
             dns_resources,
             internet_resource,
+            offline_gateways: Default::default(),
         }
     }
 
@@ -120,15 +123,16 @@ impl StubPortal {
         resource: ResourceId,
         _connected_gateway_ids: BTreeSet<GatewayId>,
     ) -> (GatewayId, SiteId) {
-        let site_id = self
+        let site_id = *self
             .sites_by_resource
             .get(&resource)
             .expect("resource to be known");
 
-        let gateways = self.gateways_by_site.get(site_id).unwrap();
-        let gateway = self.gateway_selector.select(gateways);
+        let gateway = self
+            .select_gateway(site_id)
+            .expect("to always have a suitable gateway for a resource");
 
-        (*gateway, *site_id)
+        (*gateway, site_id)
     }
 
     pub(crate) fn map_client_resource_to_gateway_resource(
@@ -181,8 +185,18 @@ impl StubPortal {
             .flatten();
 
         let sid = cidr_site.or(dns_site).or(internet_site)?;
+        let gid = self.select_gateway(sid)?;
+
+        Some(gid)
+    }
+
+    fn select_gateway(&self, sid: SiteId) -> Option<&GatewayId> {
         let gateways = self.gateways_by_site.get(&sid)?;
-        let gid = self.gateway_selector.try_select(gateways)?;
+        let gid = self.gateway_selector.try_select(
+            gateways
+                .iter()
+                .filter(|g| !self.offline_gateways.contains(g)),
+        )?;
 
         Some(gid)
     }
@@ -194,6 +208,10 @@ impl StubPortal {
             .map(|gid| (Just(*gid), ref_gateway_host())) // Map each ID to a strategy that samples a gateway.
             .collect::<Vec<_>>() // A `Vec<Strategy>` implements `Strategy<Value = Vec<_>>`
             .prop_map(BTreeMap::from_iter)
+    }
+
+    pub(crate) fn high_availability_gateways(&self) -> Vec<BTreeSet<GatewayId>> {
+        self.gateways_by_site.values().cloned().collect()
     }
 
     pub(crate) fn client(
@@ -243,6 +261,10 @@ impl StubPortal {
 
                 map
             })
+    }
+
+    pub(crate) fn disconnect_gateway(&mut self, gateway_id: GatewayId) {
+        self.offline_gateways.insert(gateway_id);
     }
 }
 
