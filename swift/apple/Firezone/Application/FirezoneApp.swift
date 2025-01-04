@@ -18,6 +18,9 @@ struct FirezoneApp: App {
   @StateObject var store: Store
 
   init() {
+    // Initialize Telemetry as early as possible
+    Telemetry.start()
+
     let favorites = Favorites()
     let store = Store()
     _favorites = StateObject(wrappedValue: favorites)
@@ -80,7 +83,10 @@ struct FirezoneApp: App {
         // Can be removed once all clients >= 1.4.0
         try await FirezoneId.migrate()
 
-        try await FirezoneId.createIfMissing()
+        let id = try await FirezoneId.createIfMissing()
+
+        // Hydrate telemetry userId with our firezone id
+        Telemetry.setFirezoneId(id.uuid.uuidString)
       }
 
       if let store = store {

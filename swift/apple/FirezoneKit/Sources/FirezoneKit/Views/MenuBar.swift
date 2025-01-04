@@ -293,7 +293,7 @@ public final class MenuBar: NSObject, ObservableObject {
       do {
         try await model.store.createVPNProfile()
       } catch {
-        Log.error("\(#function): \(error)")
+        Log.error(error)
       }
     }
   }

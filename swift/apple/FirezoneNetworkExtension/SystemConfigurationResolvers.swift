@@ -10,6 +10,19 @@ import Foundation
 import SystemConfiguration
 
 class SystemConfigurationResolvers {
+  enum SystemConfigurationError: Error {
+    case failedToCreateDynamicStore
+    case unableToRetrieveNetworkServices
+
+    var localizedDescription: String {
+      switch self {
+      case .failedToCreateDynamicStore:
+        return "Failed to create dynamic store"
+      case .unableToRetrieveNetworkServices:
+        return "Unable to retrieve network services"
+      }
+    }
+  }
   private var dynamicStore: SCDynamicStore?
 
   // Arbitrary name for the connection to the store
@@ -18,7 +31,7 @@ class SystemConfigurationResolvers {
   init() {
     guard let dynamicStore = SCDynamicStoreCreate(nil, storeName, nil, nil)
     else {
-      Log.error("\(#function): Failed to create dynamic store")
+      Log.error(SystemConfigurationError.failedToCreateDynamicStore)
       self.dynamicStore = nil
       return
     }
@@ -47,7 +60,7 @@ class SystemConfigurationResolvers {
     let interfaceSearchKey = "Setup:/Network/Service/.*/Interface" as CFString
     guard let services = SCDynamicStoreCopyKeyList(dynamicStore, interfaceSearchKey) as? [String]
     else {
-      Log.error("\(#function): Unable to retrieve network services")
+      Log.error(SystemConfigurationError.unableToRetrieveNetworkServices)
       return []
     }
 

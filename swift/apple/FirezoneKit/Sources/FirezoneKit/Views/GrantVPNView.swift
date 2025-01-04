@@ -21,7 +21,7 @@ final class GrantVPNViewModel: ObservableObject {
       do {
         try await store.createVPNProfile()
       } catch {
-        Log.error("\(#function): \(error)")
+        Log.error(error)
       }
     }
   }
