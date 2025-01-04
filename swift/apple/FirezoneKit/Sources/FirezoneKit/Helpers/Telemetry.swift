@@ -80,21 +80,19 @@ public enum Telemetry {
   }
 
   private static func releaseName() -> String {
-    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
-    var prefix: String = ""
+    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"]
+    as? String ?? "unknown"
 
 #if os(iOS)
-    prefix = "ios-appstore-"
+    return "ios-appstore-\(version)"
 #else
     // Apps from the app store have a receipt file
     if let receiptURL = Bundle.main.appStoreReceiptURL,
        FileManager.default.fileExists(atPath: receiptURL.path) {
-      prefix = "macos-appstore-"
-    } else {
-      prefix = "macos-standalone-"
+      return "macos-appstore-\(version)"
     }
-#endif
 
-    return "\(prefix)\(version ?? "unknown")"
+    return "macos-client-\(version)"
+#endif
   }
 }
