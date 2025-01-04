@@ -8,16 +8,25 @@ import Foundation
 import NetworkExtension
 import OSLog
 
-public enum AdapterError: Error {
+enum AdapterError: Error {
   /// Failure to perform an operation in such state.
-  case invalidState
+  case invalidState(AdapterState)
 
   /// connlib failed to start
   case connlibConnectError(String)
+
+  var localizedDescription: String {
+    switch self {
+    case .invalidState(let state):
+      return "Adapter is in an invalid state: \(state)"
+    case .connlibConnectError(let error):
+      return "connlib failed to start: \(error)"
+    }
+  }
 }
 
 /// Enum representing internal state of the  adapter
-private enum AdapterState: CustomStringConvertible {
+enum AdapterState: CustomStringConvertible {
   case tunnelStarted(session: WrappedSession)
   case tunnelStopped
 
@@ -118,14 +127,10 @@ class Adapter {
   public func start() async throws {
     Log.log("Adapter.start")
     guard case .tunnelStopped = self.state else {
-      throw AdapterError.invalidState
+      throw AdapterError.invalidState(self.state)
     }
 
     callbackHandler.delegate = self
-
-    if connlibLogFolderPath.isEmpty {
-      Log.error("Cannot get shared log folder for connlib")
-    }
 
     Log.log("Adapter.start: Starting connlib")
     do {
@@ -377,8 +382,7 @@ extension Adapter: CallbackHandlerDelegate {
         networkSettings.dnsAddresses = dnsAddresses
         networkSettings.apply()
       case .tunnelStopped:
-        Log.error(
-          "\(#function): Unexpected state: \(self.state)")
+        Log.error(AdapterError.invalidState(self.state))
       }
     }
   }

@@ -13,13 +13,29 @@ import NetworkExtension
 
 enum TunnelManagerError: Error {
   case cannotSaveIfMissing
+  case cannotLoad
   case decodeIPCDataFailed
+  case invalidStatusChange
+
+  var localizedDescription: String {
+    switch self {
+    case .cannotSaveIfMissing:
+      return "Manager doesn't seem initialized. Can't save settings."
+    case .decodeIPCDataFailed:
+      return "Decoding IPC data failed."
+    case .invalidStatusChange:
+      return "NEVPNStatusDidChange notification doesn't seem to be valid."
+    case .cannotLoad:
+      return "Could not load VPN configurations!"
+    }
+  }
 }
 
 public enum TunnelManagerKeys {
   static let actorName = "actorName"
   static let authBaseURL = "authBaseURL"
   static let apiURL = "apiURL"
+  public static let accountSlug = "accountSlug"
   public static let logFilter = "logFilter"
   public static let internetResourceEnabled = "internetResourceEnabled"
 }
@@ -152,7 +168,7 @@ public class TunnelManager {
       // Since our bundle ID can change (by us), find the one that's current and ignore the others.
       guard let managers = try? await NETunnelProviderManager.loadAllFromPreferences()
       else {
-        Log.error("\(#function): Could not load VPN configurations!")
+        Log.error(TunnelManagerError.cannotLoad)
         return
       }
 
@@ -171,6 +187,12 @@ public class TunnelManager {
 
           }
           let status = manager.connection.status
+
+          // Configure our Telemetry environment
+          Telemetry.setEnvironmentOrClose(settings.apiURL)
+          Telemetry.setAccountSlug(
+            providerConfiguration[TunnelManagerKeys.accountSlug]
+          )
 
           // Share what we found with our caller
           callback(status, settings, actorName)
@@ -194,16 +216,16 @@ public class TunnelManager {
     }
   }
 
-  func saveActorName(_ actorName: String?) async throws {
+  func saveAuthResponse(_ authResponse: AuthResponse) async throws {
     guard let manager = manager,
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           var providerConfiguration = protocolConfiguration.providerConfiguration
     else {
-      Log.error("Manager doesn't seem initialized. Can't save settings.")
       throw TunnelManagerError.cannotSaveIfMissing
     }
 
-    providerConfiguration[TunnelManagerKeys.actorName] = actorName
+    providerConfiguration[TunnelManagerKeys.actorName] = authResponse.actorName
+    providerConfiguration[TunnelManagerKeys.accountSlug] = authResponse.accountSlug
     protocolConfiguration.providerConfiguration = providerConfiguration
     manager.protocolConfiguration = protocolConfiguration
 
@@ -220,7 +242,6 @@ public class TunnelManager {
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {
-      Log.error("Manager doesn't seem initialized. Can't save settings.")
       throw TunnelManagerError.cannotSaveIfMissing
     }
 
@@ -238,6 +259,9 @@ public class TunnelManager {
 
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
+
+    // Reconfigure our Telemetry environment in case it changed
+    Telemetry.setEnvironmentOrClose(settings.apiURL)
   }
 
   func start(token: String? = nil) {
@@ -250,7 +274,7 @@ public class TunnelManager {
     do {
       try session()?.startTunnel(options: options)
     } catch {
-      Log.error("Error starting tunnel: \(error)")
+      Log.error(error)
     }
   }
 
@@ -261,7 +285,7 @@ public class TunnelManager {
           self.session()?.stopTunnel()
         }
       } catch {
-        Log.error("\(#function): \(error)")
+        Log.error(error)
       }
     } else {
       session()?.stopTunnel()
@@ -294,7 +318,7 @@ public class TunnelManager {
         callback(self.resourcesListCache)
       }
     } catch {
-      Log.error("Error: sendProviderMessage: \(error)")
+      Log.error(error)
     }
   }
 
@@ -350,7 +374,6 @@ public class TunnelManager {
         ) { data in
           guard let data = data
           else {
-            Log.error("Error: \(#function): No data received")
             errorHandler(TunnelManagerError.decodeIPCDataFailed)
 
             return
@@ -360,7 +383,6 @@ public class TunnelManager {
             LogChunk.self, from: data
           )
           else {
-            Log.error("Error: \(#function): Invalid data received")
             errorHandler(TunnelManagerError.decodeIPCDataFailed)
 
             return
@@ -374,7 +396,7 @@ public class TunnelManager {
           }
         }
       } catch {
-        Log.error("Error: \(#function): \(error)")
+        Log.error(error)
       }
     }
 
@@ -434,7 +456,7 @@ public class TunnelManager {
         ) {
           guard let session = notification.object as? NETunnelProviderSession
           else {
-            Log.error("\(#function): NEVPNStatusDidChange notification doesn't seem to be valid")
+            Log.error(TunnelManagerError.invalidStatusChange)
             return
           }
 

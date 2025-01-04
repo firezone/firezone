@@ -97,9 +97,9 @@ public class SessionNotification: NSObject {
         )
         UNUserNotificationCenter.current().add(request) { error in
           if let error = error {
-            Log.error("\(#function): Error requesting notification: \(error)")
+            Log.error(error)
           } else {
-            Log.error("\(#function): Successfully requested notification")
+            Log.debug("\(#function): Successfully requested notification")
           }
         }
       }

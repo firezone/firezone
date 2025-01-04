@@ -11,6 +11,17 @@ import UserNotifications
 import Cocoa
 
 class UpdateChecker {
+  enum UpdateError: Error {
+    case invalidVersion(String)
+
+    var localizedDescription: String {
+      switch self {
+      case .invalidVersion(let version):
+        return "Invalid version: \(version)"
+      }
+    }
+  }
+
   private var timer: Timer?
   private let notificationAdapter: NotificationAdapter = NotificationAdapter()
   private let versionCheckUrl: URL = URL(string: "https://www.firezone.dev/api/releases")!
@@ -36,12 +47,13 @@ class UpdateChecker {
           guard let self = self else { return }
 
           if let error = error {
-            Log.error("Error fetching version manifest: \(error)")
+            Log.error(error)
             return
           }
 
           guard let versionInfo = VersionInfo.from(data: data)  else {
-            Log.error("No data or failed to decode data")
+            let attemptedVersion = String(data: data ?? Data(), encoding: .utf8) ?? ""
+            Log.error(UpdateError.invalidVersion(attemptedVersion))
             return
           }
 
@@ -89,9 +101,9 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
 
     notificationCenter.delegate = self
     notificationCenter.requestAuthorization(options: [.sound, .badge, .alert]) { _, error in
-	  if let error = error {
-	    Log.error("Failed to request authorization for notifications: \(error)")
-	  }
+      if let error = error {
+        Log.error(error)
+      }
     }
 
   }
@@ -114,7 +126,7 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
 
     UNUserNotificationCenter.current().add(request) { error in
       if let error = error {
-        Log.error("\(#function): Error requesting notification: \(error)")
+        Log.error(error)
       }
     }
 

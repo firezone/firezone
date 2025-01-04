@@ -53,9 +53,7 @@ class NetworkSettings {
 
     packetTunnelProvider?.setTunnelNetworkSettings(tunnelNetworkSettings) { error in
       if let error = error {
-        Log.error(
-          "\(#function): Error occurred while applying network settings! Error: \(error.localizedDescription)"
-        )
+        Log.error(error)
       }
 
       completionHandler?()
