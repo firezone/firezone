@@ -48,7 +48,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let id = try await FirezoneId.createIfMissing()
 
         // Hydrate the telemetry userId with our firezone id
-        Telemetry.setFirezoneId(id.uuid.uuidString)
+        Telemetry.firezoneId = id.uuid.uuidString
 
         let passedToken = options?["token"] as? String
         let keychainToken = try await Token.load()
@@ -87,9 +87,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
 
         // Hydrate telemetry account slug
-        Telemetry.setAccountSlug(
-          providerConfiguration[TunnelManagerKeys.accountSlug]
-        )
+        Telemetry.accountSlug = providerConfiguration[TunnelManagerKeys.accountSlug]
 
         let internetResourceEnabled: Bool = if let internetResourceEnabledJSON = providerConfiguration[TunnelManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
           (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabledJSON )) ?? false
