@@ -190,9 +190,7 @@ public class TunnelManager {
 
           // Configure our Telemetry environment
           Telemetry.setEnvironmentOrClose(settings.apiURL)
-          Telemetry.setAccountSlug(
-            providerConfiguration[TunnelManagerKeys.accountSlug]
-          )
+          Telemetry.accountSlug = providerConfiguration[TunnelManagerKeys.accountSlug]
 
           // Share what we found with our caller
           callback(status, settings, actorName)

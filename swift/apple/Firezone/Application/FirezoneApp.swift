@@ -86,7 +86,7 @@ struct FirezoneApp: App {
         let id = try await FirezoneId.createIfMissing()
 
         // Hydrate telemetry userId with our firezone id
-        Telemetry.setFirezoneId(id.uuid.uuidString)
+        Telemetry.firezoneId = id.uuid.uuidString
       }
 
       if let store = store {

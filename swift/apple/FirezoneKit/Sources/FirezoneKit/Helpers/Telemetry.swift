@@ -11,8 +11,26 @@ public enum Telemetry {
   // the existing one. So we need to collect these fields from various codepaths
   // during initialization / sign in so we can build a new User object any time
   // one of these is updated.
-  private static var userId: String?
-  private static var accountSlug: String?
+  private static var _firezoneId: String?
+  private static var _accountSlug: String?
+  public static var firezoneId: String? {
+    set {
+      self._firezoneId = newValue
+      updateUser(id: self._firezoneId, slug: self._accountSlug)
+    }
+    get {
+      return self._firezoneId
+    }
+  }
+  public static var accountSlug: String? {
+    set {
+      self._accountSlug = newValue
+      updateUser(id: self._firezoneId, slug: self._accountSlug)
+    }
+    get {
+      return self._accountSlug
+    }
+  }
 
   public static func start() {
     SentrySDK.start { options in
@@ -53,27 +71,17 @@ public enum Telemetry {
     SentrySDK.capture(error: err)
   }
 
-  public static func setFirezoneId(_ id: String?) {
-    self.userId = id
-    updateUser()
-  }
-
-  public static func setAccountSlug(_ slug: String?) {
-    self.accountSlug = slug
-    updateUser()
-  }
-
-  private static func updateUser() {
-    guard let userId,
-          let accountSlug
+  private static func updateUser(id: String?, slug: String?) {
+    guard let id,
+          let slug
     else {
       return
     }
 
     SentrySDK.configureScope { configuration in
       // Matches the format we use in rust/telemetry/lib.rs
-      let user = User(userId: userId)
-      user.data = ["account_slug": accountSlug]
+      let user = User(userId: id)
+      user.data = ["account_slug": slug]
 
       configuration.setUser(user)
     }
