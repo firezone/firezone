@@ -565,7 +565,7 @@ impl<'a> Handler<'a> {
                 account_slug,
             } => {
                 self.telemetry
-                    .start(&environment, &release, firezone_telemetry::IPC_SERVICE_DSN);
+                    .start(&environment, &release, firezone_telemetry::GUI_DSN);
 
                 if let Some(account_slug) = account_slug {
                     self.telemetry.set_account_slug(account_slug);
