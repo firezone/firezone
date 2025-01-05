@@ -11,7 +11,7 @@ This directory houses the Firezone staging environment.
 1. SSH to the Gateway using instance connect:
    ```
    aws ec2-instance-connect ssh --instance-id \
-     $(aws ec2 describe-instances --filters "Name=tag:Name,Values=gateway - staging" --query "Reservations[*].Instances[*].InstanceId" --output text) \
+     $(aws ec2 describe-instances --filters "Name=tag:Name,Values=gateway - staging" "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].InstanceId" --output text) \
      --os-user ubuntu --connection-type eice
    ```
 
