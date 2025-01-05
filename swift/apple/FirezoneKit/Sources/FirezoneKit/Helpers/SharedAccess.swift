@@ -21,7 +21,7 @@ public struct SharedAccess {
   public static var baseFolderURL: URL {
     guard
       let url = FileManager.default.containerURL(
-        forSecurityApplicationGroupIdentifier: AppInfoPlistConstants.appGroupId)
+        forSecurityApplicationGroupIdentifier: BundleHelper.appGroupId)
     else {
       fatalError("Shared folder unavailable")
     }

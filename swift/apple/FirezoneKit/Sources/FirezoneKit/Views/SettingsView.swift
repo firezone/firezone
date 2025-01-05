@@ -373,7 +373,7 @@ public struct SettingsView: View {
         }
         Spacer()
         HStack {
-          Text("Build: \(AppInfoPlistConstants.gitSha)")
+          Text("Build: \(BundleHelper.gitSha)")
             .textSelection(.enabled)
             .foregroundColor(.gray)
           Spacer()
@@ -447,7 +447,7 @@ public struct SettingsView: View {
         }
         Spacer()
         HStack {
-          Text("Build: \(AppInfoPlistConstants.gitSha)")
+          Text("Build: \(BundleHelper.gitSha)")
             .textSelection(.enabled)
             .foregroundColor(.gray)
           Spacer()

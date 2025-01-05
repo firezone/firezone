@@ -95,8 +95,7 @@ public enum Telemetry {
     return "ios-appstore-\(version)"
 #else
     // Apps from the app store have a receipt file
-    if let receiptURL = Bundle.main.appStoreReceiptURL,
-       FileManager.default.fileExists(atPath: receiptURL.path) {
+    if BundleHelper.isAppStore() {
       return "macos-appstore-\(version)"
     }
 
