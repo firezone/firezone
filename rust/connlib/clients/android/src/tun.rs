@@ -71,19 +71,17 @@ impl Tun {
             .spawn({
                 let outbound_capacity_waker = outbound_capacity_waker.clone();
                 || {
-                    tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()?
-                        .block_on(tun::unix::send_recv_tun(
+                    firezone_logging::unwrap_or_warn!(
+                        tun::unix::send_recv_tun(
                             fd,
                             inbound_tx,
                             outbound_rx.into_stream(),
                             outbound_capacity_waker,
                             read,
                             write,
-                        ))?;
-
-                    io::Result::Ok(())
+                        ),
+                        "Failed to send / recv from TUN device"
+                    )
                 }
             })
             .map_err(io::Error::other)?;

@@ -7,6 +7,7 @@ license = { workspace = true }
 
 [dependencies]
 ip-packet = { workspace = true }
+anyhow = { workspace = true }
 
 [target.'cfg(target_family = "unix")'.dependencies]
 libc = { workspace = true }

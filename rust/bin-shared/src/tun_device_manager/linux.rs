@@ -320,19 +320,17 @@ impl Tun {
             std::thread::Builder::new()
                 .name(format!("TUN send/recv {n}/{num_threads}"))
                 .spawn(move || {
-                    tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()?
-                        .block_on(tun::unix::send_recv_tun(
+                    firezone_logging::unwrap_or_warn!(
+                        tun::unix::send_recv_tun(
                             fd,
                             inbound_tx,
                             outbound_rx,
                             outbound_capacity_waker,
                             read,
                             write,
-                        ))?;
-
-                    io::Result::Ok(())
+                        ),
+                        "Failed to send / recv from TUN device"
+                    )
                 })
                 .map_err(io::Error::other)?;
         }
