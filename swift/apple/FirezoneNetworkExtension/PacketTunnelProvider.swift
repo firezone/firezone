@@ -121,22 +121,24 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Log.log("stopTunnel: Reason: \(reason)")
 
     if case .authenticationCanceled = reason {
-      do {
-        // This was triggered from onDisconnect, so clear our token
-        try Token.delete()
+      Task {
+        do {
+          // This was triggered from onDisconnect, so clear our token
+          try Token.delete()
 
-        // There's no good way to send data like this from the
-        // Network Extension to the GUI, so save it to a file for the GUI to read upon
-        // either status change or the next launch.
-        try String(reason.rawValue).write(
-          to: SharedAccess.providerStopReasonURL, atomically: true, encoding: .utf8)
-      } catch {
-        Log.error(
-          SharedAccess.Error.unableToWriteToFile(
-            SharedAccess.providerStopReasonURL,
-            error
+          // There's no good way to send data like this from the
+          // Network Extension to the GUI, so save it to a file for the GUI to read upon
+          // either status change or the next launch.
+          try String(reason.rawValue).write(
+            to: SharedAccess.providerStopReasonURL, atomically: true, encoding: .utf8)
+        } catch {
+          Log.error(
+            SharedAccess.Error.unableToWriteToFile(
+              SharedAccess.providerStopReasonURL,
+              error
+            )
           )
-        )
+        }
       }
       #if os(iOS)
         // iOS notifications should be shown from the tunnel process
@@ -161,7 +163,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     case .internetResourceEnabled(let value):
       adapter?.setInternetResourceEnabled(value)
     case .signOut:
-      try? Token.delete()
+      Task {
+        do {
+          try Token.delete()
+        } catch {
+          Log.error(error)
+        }
+      }
     case .getResourceList(let value):
       adapter?.getResourcesIfVersionDifferentFrom(hash: value) {
         resourceListJSON in
