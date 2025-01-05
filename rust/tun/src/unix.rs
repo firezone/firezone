@@ -88,11 +88,6 @@ where
                 };
             }
             Either::Right((Err(e), _)) => {
-                if is_rt_shutdown_err(&e) {
-                    tracing::debug!("Runtime is shutting down; exiting TUN read/write task");
-                    break;
-                }
-
                 tracing::warn!("Failed to read from TUN FD: {e}");
                 continue;
             }
@@ -116,20 +111,4 @@ where
     }
 
     Ok(())
-}
-
-/// Checks if the cause of an IO error is due to the tokio runtime shutting down.
-///
-/// Inspired from <https://github.com/tokio-rs/tokio/blob/9d42b977df149363c11257c77c465efe4ce288ee/tokio/src/process/unix/pidfd_reaper.rs#L98-L109>.
-#[allow(deprecated)]
-fn is_rt_shutdown_err(err: &io::Error) -> bool {
-    let Some(inner) = err.get_ref() else {
-        return false;
-    };
-
-    // Using `Error::description()` is more efficient than `format!("{inner}")`,
-    // so we use it here even if it is deprecated.
-    err.kind() == io::ErrorKind::Other
-        && inner.source().is_none()
-        && inner.description() == "A Tokio 1.x context was found, but it is being shutdown."
 }
