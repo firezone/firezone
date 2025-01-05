@@ -7,6 +7,15 @@
 import Foundation
 
 struct AppInfoPlistConstants {
+  static func isAppStore() -> Bool {
+    if let receiptURL = Bundle.main.appStoreReceiptURL,
+       FileManager.default.fileExists(atPath: receiptURL.path) {
+      return true
+    }
+
+    return false
+  }
+
   static var gitSha: String {
     guard let gitSha = Bundle.main.object(forInfoDictionaryKey: "GitSha") as? String,
           !gitSha.isEmpty

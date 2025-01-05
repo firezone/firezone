@@ -73,9 +73,15 @@ class UpdateChecker {
 
         task.resume()
     }
-}
 
-public let appStoreLink = URL(string: "https://apps.apple.com/app/firezone/id6443661826")!
+  static func downloadURL() -> URL {
+    if AppInfoPlistConstants.isAppStore() {
+      return URL(string: "https://apps.apple.com/app/firezone/id6443661826")!
+    }
+
+    return URL(string: "https://www.firezone.dev/dl/firezone-client-macos/latest")!
+  }
+}
 
 private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
   private var lastNotifiedVersion: SemVerString?
@@ -140,7 +146,7 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
         return
       }
 
-      NSWorkspace.shared.open(appStoreLink)
+      NSWorkspace.shared.open(UpdateChecker.downloadURL())
 
       completionHandler()
   }
