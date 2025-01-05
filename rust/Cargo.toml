@@ -30,7 +30,7 @@ license = "Apache-2.0"
 edition = "2021"
 
 [workspace.dependencies]
-anyhow = "1.0.93"
+anyhow = "1.0.95"
 arboard = { version = "3.4.0", default-features = false }
 async-trait = { version = "0.1", default-features = false }
 atomicwrites = "0.4.4"
