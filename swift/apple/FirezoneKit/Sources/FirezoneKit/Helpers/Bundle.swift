@@ -1,12 +1,12 @@
 //
-//  AppInfoPlistConstants.swift
+//  Bundle.swift
 //  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
 import Foundation
 
-struct AppInfoPlistConstants {
+enum BundleHelper {
   static func isAppStore() -> Bool {
     if let receiptURL = Bundle.main.appStoreReceiptURL,
        FileManager.default.fileExists(atPath: receiptURL.path) {

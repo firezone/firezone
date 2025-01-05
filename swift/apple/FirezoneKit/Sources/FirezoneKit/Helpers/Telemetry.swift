@@ -95,7 +95,7 @@ public enum Telemetry {
     return "ios-appstore-\(version)"
 #else
     // Apps from the app store have a receipt file
-    if AppInfoPlistConstants.isAppStore() {
+    if BundleHelper.isAppStore() {
       return "macos-appstore-\(version)"
     }
 

@@ -75,7 +75,7 @@ class UpdateChecker {
     }
 
   static func downloadURL() -> URL {
-    if AppInfoPlistConstants.isAppStore() {
+    if BundleHelper.isAppStore() {
       return URL(string: "https://apps.apple.com/app/firezone/id6443661826")!
     }
 
