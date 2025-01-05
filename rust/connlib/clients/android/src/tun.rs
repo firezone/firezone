@@ -3,7 +3,6 @@ use ip_packet::{IpPacket, IpPacketBuf};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{io, os::fd::RawFd};
-use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc;
 use tun::ioctl;
 use tun::unix::TunFd;
@@ -61,8 +60,6 @@ impl Tun {
         // Safety: We are forwarding the safety requirements to the caller.
         let fd = unsafe { TunFd::new(fd) };
 
-        let fd = AsyncFd::new(fd)?;
-
         let (inbound_tx, inbound_rx) = mpsc::channel(1000);
         let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
         let outbound_capacity_waker = Arc::new(AtomicWaker::new());
@@ -84,7 +81,7 @@ impl Tun {
                             outbound_capacity_waker,
                             read,
                             write,
-                        ));
+                        ))?;
 
                     io::Result::Ok(())
                 }

@@ -44,15 +44,18 @@ impl Drop for TunFd {
 /// - In case any of the channels close, we exit the task.
 /// - IO errors are not fallible.
 pub async fn send_recv_tun<T>(
-    fd: AsyncFd<T>,
+    fd: T,
     inbound_tx: mpsc::Sender<IpPacket>,
     mut outbound_rx: flume::r#async::RecvStream<'static, IpPacket>,
     outbound_capacity_waker: Arc<AtomicWaker>,
     read: impl Fn(RawFd, &mut IpPacketBuf) -> io::Result<usize>,
     write: impl Fn(RawFd, &IpPacket) -> io::Result<usize>,
-) where
+) -> io::Result<()>
+where
     T: AsRawFd,
 {
+    let fd = AsyncFd::new(fd)?;
+
     loop {
         let next_inbound_packet = pin!(fd.async_io(tokio::io::Interest::READABLE, |fd| {
             let mut ip_packet_buf = IpPacketBuf::new();
@@ -72,20 +75,22 @@ pub async fn send_recv_tun<T>(
 
         match futures::future::select(next_outbound_packet, next_inbound_packet).await {
             Either::Right((Ok(None), _)) => {
-                tracing::error!("TUN FD is closed");
-                return;
+                return Err(io::Error::new(
+                    io::ErrorKind::NotConnected,
+                    "TUN file descriptor is closed",
+                ));
             }
             Either::Right((Ok(Some(packet)), _)) => {
                 if inbound_tx.send(packet).await.is_err() {
                     tracing::debug!("Inbound packet receiver gone, shutting down task");
 
-                    return;
+                    break;
                 };
             }
             Either::Right((Err(e), _)) => {
                 if is_rt_shutdown_err(&e) {
                     tracing::debug!("Runtime is shutting down; exiting TUN read/write task");
-                    return;
+                    break;
                 }
 
                 tracing::warn!("Failed to read from TUN FD: {e}");
@@ -105,10 +110,12 @@ pub async fn send_recv_tun<T>(
             }
             Either::Left((None, _)) => {
                 tracing::debug!("Outbound packet sender gone, shutting down task");
-                return;
+                break;
             }
         }
     }
+
+    Ok(())
 }
 
 /// Checks if the cause of an IO error is due to the tokio runtime shutting down.
