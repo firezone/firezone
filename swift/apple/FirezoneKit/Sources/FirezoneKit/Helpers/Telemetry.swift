@@ -37,6 +37,7 @@ public enum Telemetry {
       options.dsn = "https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488"
       options.environment = "entrypoint" // will be reconfigured in TunnelManager
       options.releaseName = releaseName()
+      options.dist = distributionType()
 
 #if DEBUG
       // https://docs.sentry.io/platforms/apple/guides/ios/configuration/options/#debug
@@ -87,19 +88,23 @@ public enum Telemetry {
     }
   }
 
+  private static func distributionType() -> String {
+    // Apps from the app store have a receipt file
+    if BundleHelper.isAppStore() {
+      return "appstore"
+    }
+
+    return "standalone"
+  }
+
   private static func releaseName() -> String {
     let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"]
     as? String ?? "unknown"
 
 #if os(iOS)
-    return "ios-appstore-\(version)"
+    return "ios-client@\(version)"
 #else
-    // Apps from the app store have a receipt file
-    if BundleHelper.isAppStore() {
-      return "macos-appstore-\(version)"
-    }
-
-    return "macos-client-\(version)"
+    return "macos-client@\(version)"
 #endif
   }
 }
