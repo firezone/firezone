@@ -5,13 +5,32 @@ import Link from "next/link";
 import Unreleased from "./Unreleased";
 
 export default function Android() {
+  const downloadLinks = [
+    {
+      href: "https://play.google.com/store/apps/details?id=dev.firezone.android",
+      title: "Download on Google Play",
+    },
+    {
+      href: "https://www.firezone.dev/dl/firezone-client-android/:version",
+      title: "Download APK",
+    },
+  ];
+
   return (
-    <Entries
-      href="https://play.google.com/store/apps/details?id=dev.firezone.android"
-      title="Android"
-    >
+    <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.0" date={new Date("2025-01-02")}>
+        <ChangeItem pull="7599">
+          The Android app is now distributed{" "}
+          <Link
+            href="https://www.github.com/firezone/firezone/releases"
+            className="text-accent-500 underline hover:no-underline"
+          >
+            via GitHub Releases in addition
+          </Link>
+          to the Google Play Store.
+        </ChangeItem>
         <ChangeItem pull="7334">
           Fixes an issue where symmetric NATs would generate unnecessary
           candidate for hole-punching.
@@ -30,7 +49,7 @@ export default function Android() {
         <ChangeItem pull="7551">
           Fixes an issue where large DNS responses were incorrectly discarded.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.3.7" date={new Date("2024-11-08")}>
         <ChangeItem pull="7263">
           Mitigates a crash in case the maximum packet size is not respected.

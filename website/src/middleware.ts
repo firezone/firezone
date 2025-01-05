@@ -4,6 +4,16 @@ import { NextResponse, NextRequest } from "next/server";
 // more than once. See https://github.com/vercel/next.js/issues/66891
 const versionedRedirects = [
   {
+    source: /^\/dl\/firezone-client-macos\/(\d+\.\d+\.\d+)$/,
+    destination:
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-:version/firezone-macos-client-:version.dmg",
+  },
+  {
+    source: /^\/dl\/firezone-client-android\/(\d+\.\d+\.\d+)$/,
+    destination:
+      "https://www.github.com/firezone/firezone/releases/download/android-client-:version/firezone-android-client-:version.apk",
+  },
+  {
     source: /^\/dl\/firezone-client-gui-windows\/(\d+\.\d+\.\d+)\/x86_64$/,
     destination:
       "https://www.github.com/firezone/firezone/releases/download/gui-client-:version/firezone-client-gui-windows_:version_x86_64.msi",

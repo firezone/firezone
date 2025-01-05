@@ -36,25 +36,23 @@ struct AuthClient {
 
   func response(url: URL?) throws -> AuthResponse {
     guard let url = url,
-          let returnedState = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "state" })?.value,
+          let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
+          let returnedState = urlComponents.sanitizedQueryParam("state"),
           areStringsEqualConstantTime(state, returnedState),
-          let fragment = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-          .queryItems?
-          .first(where: { $0.name == "fragment" })?
-          .value,
-          let actorName = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-          .queryItems?
-          .first(where: { $0.name == "actor_name" })?
-          .value?
-          .removingPercentEncoding?
-          .replacingOccurrences(of: "+", with: " ")
+          let fragment = urlComponents.sanitizedQueryParam("fragment"),
+          let actorName = urlComponents.sanitizedQueryParam("actor_name"),
+          let accountSlug = urlComponents.sanitizedQueryParam("account_slug")
     else {
       throw AuthClientError.invalidCallbackURL
     }
 
     let token = nonce + fragment
 
-    return AuthResponse(token: token, actorName: actorName)
+    return AuthResponse(
+      actorName: actorName,
+      accountSlug: accountSlug,
+      token: token
+    )
   }
 
   private static func createRandomHexString(byteCount: Int) throws -> String {
@@ -99,5 +97,13 @@ extension URL {
 
     components.queryItems!.append(queryItem)
     return components.url ?? self
+  }
+}
+
+extension URLComponents {
+  func sanitizedQueryParam(_ queryParam: String) -> String? {
+    let value = self.queryItems?.first(where: { $0.name == queryParam })?.value
+
+    return value?.removingPercentEncoding?.replacingOccurrences(of: "+", with: " ")
   }
 }

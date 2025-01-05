@@ -40,7 +40,7 @@ public final class Store: ObservableObject {
     self.sessionNotification = SessionNotification()
 
     initNotifications()
-    initTunnelManager()
+    loadTunnelManager()
   }
 
   public func internetResourceEnabled() -> Bool {
@@ -50,7 +50,7 @@ public final class Store: ObservableObject {
   private func initNotifications() {
     // Finish initializing notification binding
     sessionNotification.signInHandler = {
-      Task { await WebAuthSession.signIn(store: self) }
+      WebAuthSession.signIn(store: self)
     }
 
     sessionNotification.$decision
@@ -62,7 +62,7 @@ public final class Store: ObservableObject {
       .store(in: &cancellables)
   }
 
-  private func initTunnelManager() {
+  private func loadTunnelManager() {
     // Subscribe to status updates from the tunnel manager
     TunnelManager.shared.statusChangeHandler = handleVPNStatusChange
 
@@ -93,12 +93,11 @@ public final class Store: ObservableObject {
     #endif
   }
 
-  func createVPNProfile() {
-    DispatchQueue.main.async {
-      Task {
-        self.settings = try await TunnelManager.shared.create()
-      }
-    }
+  func createVPNProfile() async throws {
+    try await TunnelManager.shared.create()
+
+    // Load the new settings and bind observers
+    self.loadTunnelManager()
   }
 
   func authURL() -> URL? {
@@ -108,7 +107,7 @@ public final class Store: ObservableObject {
   func start(token: String? = nil) async throws {
     guard status == .disconnected
     else {
-      Log.app.log("\(#function): Already connected")
+      Log.log("\(#function): Already connected")
       return
     }
 
@@ -127,7 +126,7 @@ public final class Store: ObservableObject {
     DispatchQueue.main.async { self.actorName = authResponse.actorName }
 
     try await TunnelManager.shared.saveSettings(settings)
-    try await TunnelManager.shared.saveActorName(authResponse.actorName)
+    try await TunnelManager.shared.saveAuthResponse(authResponse)
 
     // Bring the tunnel up and send it a token to start
     TunnelManager.shared.start(token: authResponse.token)
@@ -141,7 +140,7 @@ public final class Store: ObservableObject {
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
   func beginUpdatingResources(callback: @escaping (ResourceList) -> Void) {
-    Log.app.log("\(#function)")
+    Log.log("\(#function)")
 
     TunnelManager.shared.fetchResources(callback: callback)
     let intervalInSeconds: TimeInterval = 1
@@ -164,7 +163,7 @@ public final class Store: ObservableObject {
         try await TunnelManager.shared.saveSettings(newSettings)
         DispatchQueue.main.async { self.settings = newSettings }
       } catch {
-        Log.app.error("\(#function): \(error)")
+        Log.error(error)
       }
     }
   }

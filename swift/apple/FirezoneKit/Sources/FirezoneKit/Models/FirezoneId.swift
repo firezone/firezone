@@ -11,11 +11,11 @@ public struct FirezoneId {
   private static let query: [CFString: Any] = [
     kSecAttrLabel: "Firezone id",
     kSecAttrAccount: "2",
-    kSecAttrService: AppInfoPlistConstants.appGroupId,
+    kSecAttrService: BundleHelper.appGroupId,
     kSecAttrDescription: "Firezone device id",
   ]
 
-  private var uuid: UUID
+  public var uuid: UUID
 
   public init(_ uuid: UUID? = nil) {
     self.uuid = uuid ?? UUID()
@@ -91,12 +91,17 @@ public struct FirezoneId {
     try firezoneId.save()
   }
 
-  public static func createIfMissing() throws {
-    guard try load() == nil
-    else { return } // New firezone-id already saved in Keychain
+  public static func createIfMissing() throws -> FirezoneId {
+    guard let id = try load()
+    else {
+      let id = FirezoneId(UUID())
+      try id.save()
 
-    let firezoneId = FirezoneId(UUID())
-    try firezoneId.save()
+      return id
+    }
+
+    // New firezone-id already saved in Keychain
+    return id
   }
 }
 

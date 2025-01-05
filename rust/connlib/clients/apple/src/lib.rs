@@ -57,6 +57,7 @@ mod ffi {
             api_url: String,
             token: String,
             device_id: String,
+            account_slug: String,
             device_name_override: Option<String>,
             os_version_override: Option<String>,
             log_dir: String,
@@ -236,6 +237,7 @@ impl WrappedSession {
         api_url: String,
         token: String,
         device_id: String,
+        account_slug: String,
         device_name_override: Option<String>,
         os_version_override: Option<String>,
         log_dir: String,
@@ -246,6 +248,7 @@ impl WrappedSession {
         let mut telemetry = Telemetry::default();
         telemetry.start(&api_url, RELEASE, APPLE_DSN);
         telemetry.set_firezone_id(device_id.clone());
+        telemetry.set_account_slug(account_slug);
 
         init_logging(log_dir.into(), log_filter)?;
         install_rustls_crypto_provider();

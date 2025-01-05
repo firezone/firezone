@@ -11,6 +11,17 @@ import UserNotifications
 import Cocoa
 
 class UpdateChecker {
+  enum UpdateError: Error {
+    case invalidVersion(String)
+
+    var localizedDescription: String {
+      switch self {
+      case .invalidVersion(let version):
+        return "Invalid version: \(version)"
+      }
+    }
+  }
+
   private var timer: Timer?
   private let notificationAdapter: NotificationAdapter = NotificationAdapter()
   private let versionCheckUrl: URL = URL(string: "https://www.firezone.dev/api/releases")!
@@ -36,12 +47,13 @@ class UpdateChecker {
           guard let self = self else { return }
 
           if let error = error {
-            Log.app.error("Error fetching version manifest: \(error)")
+            Log.error(error)
             return
           }
 
           guard let versionInfo = VersionInfo.from(data: data)  else {
-            Log.app.error("No data or failed to decode data")
+            let attemptedVersion = String(data: data ?? Data(), encoding: .utf8) ?? ""
+            Log.error(UpdateError.invalidVersion(attemptedVersion))
             return
           }
 
@@ -61,9 +73,15 @@ class UpdateChecker {
 
         task.resume()
     }
-}
 
-public let appStoreLink = URL(string: "https://apps.apple.com/app/firezone/id6443661826")!
+  static func downloadURL() -> URL {
+    if BundleHelper.isAppStore() {
+      return URL(string: "https://apps.apple.com/app/firezone/id6443661826")!
+    }
+
+    return URL(string: "https://www.firezone.dev/dl/firezone-client-macos/latest")!
+  }
+}
 
 private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
   private var lastNotifiedVersion: SemVerString?
@@ -89,9 +107,9 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
 
     notificationCenter.delegate = self
     notificationCenter.requestAuthorization(options: [.sound, .badge, .alert]) { _, error in
-	  if let error = error {
-	    Log.app.error("Failed to request authorization for notifications: \(error)")
-	  }
+      if let error = error {
+        Log.error(error)
+      }
     }
 
   }
@@ -114,7 +132,7 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
 
     UNUserNotificationCenter.current().add(request) { error in
       if let error = error {
-        Log.app.error("\(#function): Error requesting notification: \(error)")
+        Log.error(error)
       }
     }
 
@@ -128,7 +146,7 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
         return
       }
 
-      NSWorkspace.shared.open(appStoreLink)
+      NSWorkspace.shared.open(UpdateChecker.downloadURL())
 
       completionHandler()
   }

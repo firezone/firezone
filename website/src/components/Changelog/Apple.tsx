@@ -5,13 +5,26 @@ import ChangeItem from "./ChangeItem";
 import Unreleased from "./Unreleased";
 
 export default function Apple() {
+  const downloadLinks = [
+    {
+      href: "https://apps.apple.com/us/app/firezone/id6443661826",
+      title: "Download on App Store",
+    },
+  ];
+
   return (
-    <Entries
-      href="https://apps.apple.com/us/app/firezone/id6443661826"
-      title="macOS / iOS"
-    >
+    <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="7594">
+          Fixes a race condition that could cause the app to crash in rare
+          circumstances if the VPN profile is removed from system settings while
+          the app is running.
+        </ChangeItem>
+        <ChangeItem pull="7593">
+          Fixes a bug where the VPN status would not properly update upon the
+          first launch of the app.
+        </ChangeItem>
         <ChangeItem pull="7334">
           Fixes an issue where symmetric NATs would generate unnecessary
           candidate for hole-punching.

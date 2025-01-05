@@ -11,7 +11,7 @@ public struct Token: CustomStringConvertible {
   private static let query: [CFString: Any] = [
     kSecAttrLabel: "Firezone token",
     kSecAttrAccount: "1",
-    kSecAttrService: AppInfoPlistConstants.appGroupId,
+    kSecAttrService: BundleHelper.appGroupId,
     kSecAttrDescription: "Firezone access token",
   ]
 

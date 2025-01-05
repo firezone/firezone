@@ -63,7 +63,7 @@ public class SessionNotification: NSObject {
 #if os(iOS)
   func askUserForNotificationPermissions() {
     guard case .notDetermined = self.decision else {
-      Log.app.log("Already determined!")
+      Log.log("Already determined!")
       return
     }
 
@@ -84,7 +84,7 @@ public class SessionNotification: NSObject {
   public static func showSignedOutNotificationiOS() {
     UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
       if notificationSettings.authorizationStatus == .authorized {
-        Log.app.log(
+        Log.log(
           "Notifications are allowed. Alert style is \(notificationSettings.alertStyle.rawValue)"
         )
         let content = UNMutableNotificationContent()
@@ -97,9 +97,9 @@ public class SessionNotification: NSObject {
         )
         UNUserNotificationCenter.current().add(request) { error in
           if let error = error {
-            Log.app.error("\(#function): Error requesting notification: \(error)")
+            Log.error(error)
           } else {
-            Log.app.error("\(#function): Successfully requested notification")
+            Log.debug("\(#function): Successfully requested notification")
           }
         }
       }
@@ -117,7 +117,7 @@ public class SessionNotification: NSObject {
     NSApp.activate(ignoringOtherApps: true)
     let response = alert.runModal()
     if response == NSApplication.ModalResponse.alertFirstButtonReturn {
-      Log.app.log("\(#function): 'Sign In' clicked in notification")
+      Log.log("\(#function): 'Sign In' clicked in notification")
       signInHandler?()
     }
   }
@@ -127,7 +127,7 @@ public class SessionNotification: NSObject {
 #if os(iOS)
 extension SessionNotification: UNUserNotificationCenterDelegate {
   public func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
-    Log.app.log("\(#function): 'Sign In' clicked in notification")
+    Log.log("\(#function): 'Sign In' clicked in notification")
     let actionId = response.actionIdentifier
     let categoryId = response.notification.request.content.categoryIdentifier
     if categoryId == NotificationIndentifier.sessionEndedNotificationCategory.rawValue,

@@ -8,16 +8,25 @@ import Foundation
 import NetworkExtension
 import OSLog
 
-public enum AdapterError: Error {
+enum AdapterError: Error {
   /// Failure to perform an operation in such state.
-  case invalidState
+  case invalidState(AdapterState)
 
   /// connlib failed to start
   case connlibConnectError(String)
+
+  var localizedDescription: String {
+    switch self {
+    case .invalidState(let state):
+      return "Adapter is in an invalid state: \(state)"
+    case .connlibConnectError(let error):
+      return "connlib failed to start: \(error)"
+    }
+  }
 }
 
 /// Enum representing internal state of the  adapter
-private enum AdapterState: CustomStringConvertible {
+enum AdapterState: CustomStringConvertible {
   case tunnelStarted(session: WrappedSession)
   case tunnelStopped
 
@@ -69,7 +78,7 @@ class Adapter {
   /// Adapter state.
   private var state: AdapterState {
     didSet {
-      Log.tunnel.log("Adapter state changed to: \(self.state)")
+      Log.log("Adapter state changed to: \(self.state)")
     }
   }
 
@@ -102,44 +111,39 @@ class Adapter {
 
   // Could happen abruptly if the process is killed.
   deinit {
-    Log.tunnel.log("Adapter.deinit")
+    Log.log("Adapter.deinit")
 
     // Cancel network monitor
     networkMonitor?.cancel()
 
     // Shutdown the tunnel
     if case .tunnelStarted(let session) = self.state {
-      Log.tunnel.log("Adapter.deinit: Shutting down connlib")
+      Log.log("Adapter.deinit: Shutting down connlib")
       session.disconnect()
     }
   }
 
   /// Start the tunnel.
   public func start() async throws {
-    Log.tunnel.log("Adapter.start")
+    Log.log("Adapter.start")
     guard case .tunnelStopped = self.state else {
-      throw AdapterError.invalidState
+      throw AdapterError.invalidState(self.state)
     }
 
     callbackHandler.delegate = self
 
-    if connlibLogFolderPath.isEmpty {
-      Log.tunnel.error("Cannot get shared log folder for connlib")
-    }
-
-    Log.tunnel.log("Adapter.start: Starting connlib")
+    Log.log("Adapter.start: Starting connlib")
     do {
       let jsonEncoder = JSONEncoder()
       jsonEncoder.keyEncodingStrategy = .convertToSnakeCase
-
-      let firezoneId = try FirezoneId.load()
 
       // Grab a session pointer
       let session =
         try WrappedSession.connect(
           apiURL,
           "\(token)",
-          "\(firezoneId!)",
+          "\(Telemetry.firezoneId!)",
+          "\(Telemetry.accountSlug!)",
           DeviceMetadata.getDeviceName(),
           DeviceMetadata.getOSVersion(),
           connlibLogFolderPath,
@@ -172,7 +176,7 @@ class Adapter {
   ///  This can happen before the tunnel is in the tunnelReady state, such as if the portal
   ///  is slow to send the init.
   public func stop() {
-    Log.tunnel.log("Adapter.stop")
+    Log.log("Adapter.stop")
 
     if case .tunnelStarted(let session) = state {
       state = .tunnelStopped
@@ -241,7 +245,7 @@ class Adapter {
 
 extension Adapter {
   private func beginPathMonitoring() {
-    Log.tunnel.log("Beginning path monitoring")
+    Log.log("Beginning path monitoring")
     let networkMonitor = NWPathMonitor()
     networkMonitor.pathUpdateHandler = { [weak self] path in
       self?.didReceivePathUpdate(path: path)
@@ -366,7 +370,7 @@ extension Adapter: CallbackHandlerDelegate {
           packetTunnelProvider: packetTunnelProvider)
       }
 
-      Log.tunnel.log(
+      Log.log(
         "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses)")
 
       switch state {
@@ -377,8 +381,7 @@ extension Adapter: CallbackHandlerDelegate {
         networkSettings.dnsAddresses = dnsAddresses
         networkSettings.apply()
       case .tunnelStopped:
-        Log.tunnel.error(
-          "\(#function): Unexpected state: \(self.state)")
+        Log.error(AdapterError.invalidState(self.state))
       }
     }
   }
@@ -392,7 +395,7 @@ extension Adapter: CallbackHandlerDelegate {
         fatalError("onUpdateRoutes called before network settings was initialized!")
       }
 
-      Log.tunnel.log("\(#function): \(routeList4) \(routeList6)")
+      Log.log("\(#function): \(routeList4) \(routeList6)")
 
       networkSettings.routes4 = try! JSONDecoder().decode(
         [NetworkSettings.Cidr].self, from: routeList4.data(using: .utf8)!
@@ -410,7 +413,7 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      Log.tunnel.log("\(#function)")
+      Log.log("\(#function)")
 
       // Update resource List. We don't care what's inside.
       resourceListJSON = resourceList
@@ -424,7 +427,7 @@ extension Adapter: CallbackHandlerDelegate {
     // to ensure that we can clean up even if connlib exits before we are done.
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      Log.tunnel.log("\(#function)")
+      Log.log("\(#function)")
 
       // Set a default stop reason. In the future, we may have more to act upon in
       // different ways.
