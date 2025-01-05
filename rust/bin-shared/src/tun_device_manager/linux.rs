@@ -26,7 +26,6 @@ use std::{
     fs, io,
     os::{fd::RawFd, unix::fs::PermissionsExt},
 };
-use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc;
 use tun::ioctl;
 use tun::unix::TunFd;
@@ -313,7 +312,7 @@ impl Tun {
         let outbound_capacity_waker = Arc::new(AtomicWaker::new());
 
         for n in 0..num_threads {
-            let fd = AsyncFd::new(open_tun()?)?;
+            let fd = open_tun()?;
             let outbound_rx = outbound_rx.clone().into_stream();
             let inbound_tx = inbound_tx.clone();
             let outbound_capacity_waker = outbound_capacity_waker.clone();
@@ -321,19 +320,17 @@ impl Tun {
             std::thread::Builder::new()
                 .name(format!("TUN send/recv {n}/{num_threads}"))
                 .spawn(move || {
-                    tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()?
-                        .block_on(tun::unix::send_recv_tun(
+                    firezone_logging::unwrap_or_warn!(
+                        tun::unix::send_recv_tun(
                             fd,
                             inbound_tx,
                             outbound_rx,
                             outbound_capacity_waker,
                             read,
                             write,
-                        ));
-
-                    io::Result::Ok(())
+                        ),
+                        "Failed to send / recv from TUN device"
+                    )
                 })
                 .map_err(io::Error::other)?;
         }

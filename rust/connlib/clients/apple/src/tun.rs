@@ -7,7 +7,6 @@ use std::{
     io,
     os::fd::{AsRawFd as _, RawFd},
 };
-use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc;
 
 #[derive(Debug)]
@@ -24,8 +23,6 @@ impl Tun {
         set_non_blocking(fd)?;
         let name = name(fd)?;
 
-        let fd = AsyncFd::new(fd)?;
-
         let (inbound_tx, inbound_rx) = mpsc::channel(1000);
         let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
         let outbound_capacity_waker = Arc::new(AtomicWaker::new());
@@ -34,20 +31,18 @@ impl Tun {
             .name("TUN send/recv".to_owned())
             .spawn({
                 let outbound_capacity_waker = outbound_capacity_waker.clone();
-                || {
-                    tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()?
-                        .block_on(tun::unix::send_recv_tun(
+                move || {
+                    firezone_logging::unwrap_or_warn!(
+                        tun::unix::send_recv_tun(
                             fd,
                             inbound_tx,
                             outbound_rx.into_stream(),
                             outbound_capacity_waker,
                             read,
                             write,
-                        ));
-
-                    io::Result::Ok(())
+                        ),
+                        "Failed to send / recv from TUN device"
+                    )
                 }
             })
             .map_err(io::Error::other)?;
