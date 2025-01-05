@@ -293,7 +293,7 @@ public class TunnelManager {
   func updateInternetResourceState() {
     guard session()?.status == .connected else { return }
 
-    try? session()?.sendProviderMessage(encoder.encode(TunnelMessage.internetResourceEnabled(internetResourceEnabled))) { _ in }
+    try? session()?.sendProviderMessage(encoder.encode(TunnelMessage.internetResourceEnabled(internetResourceEnabled)))
   }
 
   func toggleInternetResource(enabled: Bool) {
