@@ -163,12 +163,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     case .internetResourceEnabled(let value):
       adapter?.setInternetResourceEnabled(value)
     case .signOut:
-      Task {
-        do {
-          try Token.delete()
-        } catch {
-          Log.error(error)
-        }
+      do {
+        try Token.delete()
+      } catch {
+        Log.error(error)
       }
     case .getResourceList(let value):
       adapter?.getResourcesIfVersionDifferentFrom(hash: value) {
@@ -180,26 +178,21 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     case .getLogFolderSize:
       getLogFolderSize(completionHandler)
     case .exportLogs:
-      Task {
-        exportLogs(completionHandler!)
-      }
+      exportLogs(completionHandler!)
+
     case .consumeStopReason:
-      Task {
-        consumeStopReason(completionHandler!)
-      }
+      consumeStopReason(completionHandler!)
     }
   }
 
   func clearLogs(_ completionHandler: ((Data?) -> Void)? = nil) {
-    Task {
-      do {
-        try Log.clear(in: SharedAccess.logFolderURL)
-      } catch {
-        Log.error(error)
-      }
-
-      completionHandler?(nil)
+    do {
+      try Log.clear(in: SharedAccess.logFolderURL)
+    } catch {
+      Log.error(error)
     }
+
+    completionHandler?(nil)
   }
 
   func getLogFolderSize(_ completionHandler: ((Data?) -> Void)? = nil) {
