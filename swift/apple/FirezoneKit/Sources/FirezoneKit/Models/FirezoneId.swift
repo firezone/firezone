@@ -11,7 +11,7 @@ public struct FirezoneId {
   private static let query: [CFString: Any] = [
     kSecAttrLabel: "Firezone id",
     kSecAttrAccount: "2",
-    kSecAttrService: AppInfoPlistConstants.appGroupId,
+    kSecAttrService: BundleHelper.appGroupId,
     kSecAttrDescription: "Firezone device id",
   ]
 
