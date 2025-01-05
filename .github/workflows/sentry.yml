@@ -19,7 +19,7 @@ jobs:
           - component: gateway
             projects: gateway
           - component: gui-client
-            projects: gui-client-gui gui-client-ipc-service
+            projects: gui-client
           - component: headless-client
             projects: headless-client
           - component: macos-client
