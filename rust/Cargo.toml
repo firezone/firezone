@@ -81,7 +81,7 @@ opentelemetry-otlp = "0.26.0"
 opentelemetry_sdk = "0.26.0"
 os_info = { version = "3", default-features = false }
 output_vt100 = "0.1"
-png = "0.17.13"
+png = "0.17.16"
 proptest = "1"
 proptest-state-machine = "0.3"
 quinn-udp = { version = "0.5.8", features = ["fast-apple-datapath"] }
