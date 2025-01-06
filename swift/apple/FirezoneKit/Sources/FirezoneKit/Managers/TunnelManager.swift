@@ -141,6 +141,9 @@ public class TunnelManager {
 
   init() {
     encoder.outputFormat = .binary
+
+    // Hook up status updates
+    setupTunnelObservers()
   }
 
   // Initialize and save a new VPN profile in system Preferences
@@ -205,9 +208,6 @@ public class TunnelManager {
           break
         }
       }
-
-      // Hook up status updates
-      setupTunnelObservers()
 
       // If no tunnel configuration was found, update state to
       // prompt user to create one.
