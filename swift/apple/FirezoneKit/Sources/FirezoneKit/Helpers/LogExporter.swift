@@ -28,7 +28,7 @@ enum LogExporter {
 
   static func export(
     to archiveURL: URL,
-    with tunnelManager: TunnelManager
+    with vpnProfileManager: VPNProfileManager
   ) async throws {
     guard let logFolderURL = SharedAccess.logFolderURL
     else {
@@ -53,7 +53,7 @@ enum LogExporter {
 
     // 3. Await tunnel log export from tunnel process
     try await withCheckedThrowingContinuation { continuation in
-      tunnelManager.exportLogs(
+      vpnProfileManager.exportLogs(
         appender: { chunk in
           do {
             // Append each chunk to the archive

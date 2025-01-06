@@ -28,7 +28,7 @@ public final class Store: ObservableObject {
   // we could periodically update it if we need to.
   @Published private(set) var decision: UNAuthorizationStatus
 
-  let tunnelManager: TunnelManager
+  let vpnProfileManager: VPNProfileManager
   private var sessionNotification: SessionNotification
   private var cancellables: Set<AnyCancellable> = []
   private var resourcesTimer: Timer?
@@ -38,13 +38,13 @@ public final class Store: ObservableObject {
     self.decision = .authorized
     self.settings = Settings.defaultValue
     self.sessionNotification = SessionNotification()
-    self.tunnelManager = TunnelManager()
+    self.vpnProfileManager = VPNProfileManager()
 
     initNotifications()
   }
 
   public func internetResourceEnabled() -> Bool {
-    self.tunnelManager.internetResourceEnabled
+    self.vpnProfileManager.internetResourceEnabled
   }
 
   private func initNotifications() {
@@ -64,7 +64,7 @@ public final class Store: ObservableObject {
 
   func bindToVPNProfileUpdates() async throws {
     // Load our existing VPN profile and set an update handler
-    try await self.tunnelManager.loadFromPreferences(
+    try await self.vpnProfileManager.loadFromPreferences(
       vpnStateUpdateHandler: { [weak self] status, settings, actorName in
         guard let self else { return }
 
@@ -80,11 +80,9 @@ public final class Store: ObservableObject {
           }
         }
 
-#if os(macOS)
         if status == .disconnected {
           maybeShowSignedOutAlert()
         }
-#endif
       }
     )
   }
@@ -97,12 +95,14 @@ public final class Store: ObservableObject {
   private func maybeShowSignedOutAlert() {
     Task {
       do {
-        if let savedValue = try await self.tunnelManager.consumeStopReason(),
+        if let savedValue = try await self.vpnProfileManager.consumeStopReason(),
            let rawValue = Int(savedValue),
            let reason = NEProviderStopReason(rawValue: rawValue),
            case .authenticationCanceled = reason
         {
+#if os(macOS)
           self.sessionNotification.showSignedOutAlertmacOS()
+#endif
         }
       } catch {
         Log.error(error)
@@ -111,30 +111,24 @@ public final class Store: ObservableObject {
   }
 
   func grantVPNPermissions() async throws {
-
 #if os(macOS)
-    // Install the system extension. No-op if already installed.
-    try await installSystemExtension()
-#endif
-
-    // Create a new VPN profile in system settings.
-    try await self.tunnelManager.create()
-
-    // Reload our state
-    try await bindToVPNProfileUpdates()
-  }
-
-  private func installSystemExtension() async throws {
     // Apple recommends installing the system extension as early as possible after app launch.
     // See https://developer.apple.com/documentation/systemextensions/installing-system-extensions-and-drivers
     try await withCheckedThrowingContinuation {
       (continuation: CheckedContinuation<Void, Error>) in
 
       SystemExtensionManager.shared.installSystemExtension(
-        identifier: TunnelManager.bundleIdentifier,
+        identifier: VPNProfileManager.bundleIdentifier,
         continuation: continuation
       )
     }
+#endif
+
+    // Create a new VPN profile in system settings.
+    try await self.vpnProfileManager.create()
+
+    // Reload our state
+    try await bindToVPNProfileUpdates()
   }
 
   func requestNotifications() {
@@ -154,25 +148,25 @@ public final class Store: ObservableObject {
       return
     }
 
-    self.tunnelManager.start(token: token)
+    self.vpnProfileManager.start(token: token)
   }
 
   func stop(clearToken: Bool = false) {
     guard [.connected, .connecting, .reasserting].contains(status)
     else { return }
 
-    self.tunnelManager.stop(clearToken: clearToken)
+    self.vpnProfileManager.stop(clearToken: clearToken)
   }
 
   func signIn(authResponse: AuthResponse) async throws {
     // Save actorName
     DispatchQueue.main.async { self.actorName = authResponse.actorName }
 
-    try await self.tunnelManager.saveSettings(settings)
-    try await self.tunnelManager.saveAuthResponse(authResponse)
+    try await self.vpnProfileManager.saveSettings(settings)
+    try await self.vpnProfileManager.saveAuthResponse(authResponse)
 
     // Bring the tunnel up and send it a token to start
-    self.tunnelManager.start(token: authResponse.token)
+    self.vpnProfileManager.start(token: authResponse.token)
   }
 
   func signOut() async throws {
@@ -185,12 +179,12 @@ public final class Store: ObservableObject {
   func beginUpdatingResources(callback: @escaping (ResourceList) -> Void) {
     Log.log("\(#function)")
 
-    self.tunnelManager.fetchResources(callback: callback)
+    self.vpnProfileManager.fetchResources(callback: callback)
     let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
       Task { @MainActor in
         guard let self else { return }
-        self.tunnelManager.fetchResources(callback: callback)
+        self.vpnProfileManager.fetchResources(callback: callback)
       }
     }
     RunLoop.main.add(timer, forMode: .common)
@@ -205,7 +199,7 @@ public final class Store: ObservableObject {
   func save(_ newSettings: Settings) async throws {
     Task {
       do {
-        try await self.tunnelManager.saveSettings(newSettings)
+        try await self.vpnProfileManager.saveSettings(newSettings)
         DispatchQueue.main.async { self.settings = newSettings }
       } catch {
         Log.error(error)
@@ -214,9 +208,9 @@ public final class Store: ObservableObject {
   }
 
   func toggleInternetResource(enabled: Bool) {
-    self.tunnelManager.toggleInternetResource(enabled: enabled)
+    self.vpnProfileManager.toggleInternetResource(enabled: enabled)
     var newSettings = settings
-    newSettings.internetResourceEnabled = self.tunnelManager.internetResourceEnabled
+    newSettings.internetResourceEnabled = self.vpnProfileManager.internetResourceEnabled
     Task {
       try await save(newSettings)
     }

@@ -378,7 +378,7 @@ public final class MenuBar: NSObject, ObservableObject {
     // Update "Sign In" / "Sign Out" menu items
     switch status {
     case nil:
-      signInMenuItem.title = "Loading VPN configurations…"
+      signInMenuItem.title = "Loading VPN profiles from system settings…"
       signInMenuItem.action = nil
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = nil
