@@ -28,6 +28,7 @@ public final class Store: ObservableObject {
   // we could periodically update it if we need to.
   @Published private(set) var decision: UNAuthorizationStatus
 
+  let tunnelManager: TunnelManager
   private var sessionNotification: SessionNotification
   private var cancellables: Set<AnyCancellable> = []
   private var resourcesTimer: Timer?
@@ -39,12 +40,14 @@ public final class Store: ObservableObject {
 
     self.sessionNotification = SessionNotification()
 
+    self.tunnelManager = TunnelManager()
+
     initNotifications()
     loadTunnelManager()
   }
 
   public func internetResourceEnabled() -> Bool {
-    TunnelManager.shared.internetResourceEnabled
+    self.tunnelManager.internetResourceEnabled
   }
 
   private func initNotifications() {
@@ -64,10 +67,10 @@ public final class Store: ObservableObject {
 
   private func loadTunnelManager() {
     // Subscribe to status updates from the tunnel manager
-    TunnelManager.shared.statusChangeHandler = handleVPNStatusChange
+    self.tunnelManager.statusChangeHandler = handleVPNStatusChange
 
     // Load our existing VPN profile and initialize our state
-    TunnelManager.shared.load() { loadedStatus, loadedSettings, loadedActorName in
+    self.tunnelManager.load() { loadedStatus, loadedSettings, loadedActorName in
       DispatchQueue.main.async {
         self.status = loadedStatus
 
@@ -111,25 +114,25 @@ public final class Store: ObservableObject {
       return
     }
 
-    TunnelManager.shared.start(token: token)
+    self.tunnelManager.start(token: token)
   }
 
   func stop(clearToken: Bool = false) {
     guard [.connected, .connecting, .reasserting].contains(status)
     else { return }
 
-    TunnelManager.shared.stop(clearToken: clearToken)
+    self.tunnelManager.stop(clearToken: clearToken)
   }
 
   func signIn(authResponse: AuthResponse) async throws {
     // Save actorName
     DispatchQueue.main.async { self.actorName = authResponse.actorName }
 
-    try await TunnelManager.shared.saveSettings(settings)
-    try await TunnelManager.shared.saveAuthResponse(authResponse)
+    try await self.tunnelManager.saveSettings(settings)
+    try await self.tunnelManager.saveAuthResponse(authResponse)
 
     // Bring the tunnel up and send it a token to start
-    TunnelManager.shared.start(token: authResponse.token)
+    self.tunnelManager.start(token: authResponse.token)
   }
 
   func signOut() async throws {
@@ -142,11 +145,13 @@ public final class Store: ObservableObject {
   func beginUpdatingResources(callback: @escaping (ResourceList) -> Void) {
     Log.log("\(#function)")
 
-    TunnelManager.shared.fetchResources(callback: callback)
+    self.tunnelManager.fetchResources(callback: callback)
     let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
-      guard self != nil else { return }
-      TunnelManager.shared.fetchResources(callback: callback)
+      Task { @MainActor in
+        guard let self else { return }
+        self.tunnelManager.fetchResources(callback: callback)
+      }
     }
     RunLoop.main.add(timer, forMode: .common)
     resourcesTimer = timer
@@ -160,7 +165,7 @@ public final class Store: ObservableObject {
   func save(_ newSettings: Settings) async throws {
     Task {
       do {
-        try await TunnelManager.shared.saveSettings(newSettings)
+        try await self.tunnelManager.saveSettings(newSettings)
         DispatchQueue.main.async { self.settings = newSettings }
       } catch {
         Log.error(error)
@@ -169,9 +174,9 @@ public final class Store: ObservableObject {
   }
 
   func toggleInternetResource(enabled: Bool) {
-    TunnelManager.shared.toggleInternetResource(enabled: enabled)
+    self.tunnelManager.toggleInternetResource(enabled: enabled)
     var newSettings = settings
-    newSettings.internetResourceEnabled = TunnelManager.shared.internetResourceEnabled
+    newSettings.internetResourceEnabled = self.tunnelManager.internetResourceEnabled
     Task {
       try await save(newSettings)
     }
@@ -188,7 +193,7 @@ public final class Store: ObservableObject {
     // reason and alert the user if it was due to receiving a 401 from the
     // portal.
     if status == .disconnected,
-       let savedValue = try? await TunnelManager.shared.consumeStopReason(),
+       let savedValue = try? await self.tunnelManager.consumeStopReason(),
        let rawValue = Int(savedValue),
        let reason = NEProviderStopReason(rawValue: rawValue),
        case .authenticationCanceled = reason

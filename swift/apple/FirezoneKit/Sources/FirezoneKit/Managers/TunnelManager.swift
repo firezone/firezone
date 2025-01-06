@@ -110,8 +110,6 @@ public enum TunnelMessage: Codable {
 }
 
 public class TunnelManager {
-  public static let shared = TunnelManager()
-
   // Expose closures that someone else can use to respond to events
   // for this manager.
   var statusChangeHandler: ((NEVPNStatus) async -> Void)?

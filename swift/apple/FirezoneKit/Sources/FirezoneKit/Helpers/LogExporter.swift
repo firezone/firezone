@@ -26,7 +26,10 @@ enum LogExporter {
     case invalidFileHandle
   }
 
-  static func export(to archiveURL: URL) async throws {
+  static func export(
+    to archiveURL: URL,
+    with tunnelManager: TunnelManager
+  ) async throws {
     guard let logFolderURL = SharedAccess.logFolderURL
     else {
       throw ExportError.invalidSourceDirectory
@@ -50,7 +53,7 @@ enum LogExporter {
 
     // 3. Await tunnel log export from tunnel process
     try await withCheckedThrowingContinuation { continuation in
-      TunnelManager.shared.exportLogs(
+      tunnelManager.exportLogs(
         appender: { chunk in
           do {
             // Append each chunk to the archive
