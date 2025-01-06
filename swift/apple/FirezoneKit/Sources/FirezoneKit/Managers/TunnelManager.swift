@@ -139,6 +139,10 @@ public class TunnelManager {
   public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
   private let bundleDescription = "Firezone"
 
+  init() {
+    encoder.outputFormat = .binary
+  }
+
   // Initialize and save a new VPN profile in system Preferences
   func create() async throws {
     let protocolConfiguration = NETunnelProviderProtocol()
@@ -150,7 +154,6 @@ public class TunnelManager {
     protocolConfiguration.serverAddress = settings.apiURL
     manager.localizedDescription = bundleDescription
     manager.protocolConfiguration = protocolConfiguration
-    encoder.outputFormat = .binary
 
     // Save the new VPN profile to System Preferences and reload it,
     // which should update our status from invalid -> disconnected.
