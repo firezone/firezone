@@ -22,7 +22,7 @@ public final class Store: ObservableObject {
 
   // Enacapsulate Tunnel status here to make it easier for other components
   // to observe
-  @Published private(set) var status: NEVPNStatus
+  @Published private(set) var status: NEVPNStatus?
 
   // This is not currently updated after it is initialized, but
   // we could periodically update it if we need to.
@@ -35,7 +35,6 @@ public final class Store: ObservableObject {
 
   public init() {
     // Initialize all stored properties
-    self.status = .disconnected
     self.decision = .authorized
     self.settings = Settings.defaultValue
     self.sessionNotification = SessionNotification()

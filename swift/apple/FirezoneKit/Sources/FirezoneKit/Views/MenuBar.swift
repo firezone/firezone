@@ -26,7 +26,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private var cancellables: Set<AnyCancellable> = []
 
-  private var vpnStatus: NEVPNStatus = .disconnected
+  private var vpnStatus: NEVPNStatus?
 
   private var updateChecker: UpdateChecker = UpdateChecker()
   private var updateMenuDisplayed: Bool = false
@@ -316,9 +316,9 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func updateAnimation(status: NEVPNStatus) {
+  private func updateAnimation(status: NEVPNStatus?) {
     switch status {
-    case .invalid, .disconnected:
+    case nil, .invalid, .disconnected:
       self.stopConnectingAnimation()
     case .connected:
       self.stopConnectingAnimation()
@@ -329,13 +329,13 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func getStatusIcon(status: NEVPNStatus, notification: Bool) -> NSImage? {
+  private func getStatusIcon(status: NEVPNStatus?, notification: Bool) -> NSImage? {
     if status == .connecting || status == .disconnecting || status == .reasserting {
       return self.connectingAnimationImages.last!
     }
 
     switch status {
-    case .invalid, .disconnected:
+    case nil, .invalid, .disconnected:
       return notification ? self.signedOutIconNotification : self.signedOutIcon
     case .connected:
       return notification ? self.signedInConnectedIconNotification : self.signedInConnectedIcon
@@ -377,6 +377,11 @@ public final class MenuBar: NSObject, ObservableObject {
     let status = model.status
     // Update "Sign In" / "Sign Out" menu items
     switch status {
+    case nil:
+      signInMenuItem.title = "Loading VPN configurations…"
+      signInMenuItem.action = nil
+      signOutMenuItem.isHidden = true
+      settingsMenuItem.target = nil
     case .invalid:
       signInMenuItem.title = "Allow the VPN permission to sign in…"
       signInMenuItem.target = self
@@ -435,7 +440,7 @@ public final class MenuBar: NSObject, ObservableObject {
       resourcesUnavailableReasonMenuItem.target = nil
       resourcesUnavailableReasonMenuItem.title = "Disconnecting…"
       resourcesSeparatorMenuItem.isHidden = false
-    case .disconnected, .invalid:
+    case nil, .disconnected, .invalid:
       // We should never be in a state where the tunnel is
       // down but the user is signed in, but we have
       // code to handle it just for the sake of completion.

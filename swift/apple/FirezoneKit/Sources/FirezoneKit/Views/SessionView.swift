@@ -14,7 +14,7 @@ public final class SessionViewModel: ObservableObject {
   @Published private(set) var actorName: String? = nil
   @Published private(set) var favorites: Favorites
   @Published private(set) var resources: ResourceList = ResourceList.loading
-  @Published private(set) var status: NEVPNStatus = .disconnected
+  @Published private(set) var status: NEVPNStatus?
 
   let store: Store
 

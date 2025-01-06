@@ -60,7 +60,6 @@ public class AppViewModel: ObservableObject {
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
-        Log.log("Status: \(status)")
 
         self.status = status
       })
@@ -106,6 +105,8 @@ public struct AppView: View {
     }
 #elseif os(macOS)
     switch model.status {
+    case nil:
+      ProgressView()
     case .invalid:
       GrantVPNView(model: GrantVPNViewModel(store: model.store))
     default:
