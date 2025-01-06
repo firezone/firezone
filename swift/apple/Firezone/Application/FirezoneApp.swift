@@ -81,9 +81,9 @@ struct FirezoneApp: App {
         // data going forward.
         //
         // Can be removed once all clients >= 1.4.0
-        try await FirezoneId.migrate()
+        try FirezoneId.migrate()
 
-        let id = try await FirezoneId.createIfMissing()
+        let id = try FirezoneId.createIfMissing()
 
         // Hydrate telemetry userId with our firezone id
         Telemetry.firezoneId = id.uuid.uuidString

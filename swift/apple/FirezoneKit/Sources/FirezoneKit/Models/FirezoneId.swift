@@ -22,13 +22,13 @@ public struct FirezoneId {
   }
 
   // Upsert the firezone-id to the Keychain
-  public func save(_ keychain: Keychain = Keychain.shared) async throws {
-    guard await keychain.search(query: FirezoneId.query) == nil
+  public func save() throws {
+    guard Keychain.search(query: FirezoneId.query) == nil
     else {
       let query = FirezoneId.query.merging([
         kSecClass: kSecClassGenericPassword
       ]) { (_, new) in new }
-      return try await keychain.update(
+      return try Keychain.update(
         query: query,
         attributesToUpdate: [kSecValueData: uuid.toData()]
       )
@@ -39,15 +39,15 @@ public struct FirezoneId {
       kSecValueData: uuid.toData()
     ]) { (_, new) in new }
 
-    try await keychain.add(query: query)
+    try Keychain.add(query: query)
   }
 
   // Attempt to load the firezone-id from the Keychain
-  public static func load(_ keychain: Keychain = Keychain.shared) async throws -> FirezoneId? {
-    guard let idRef = await keychain.search(query: query)
+  public static func load() throws -> FirezoneId? {
+    guard let idRef = Keychain.search(query: query)
     else { return nil }
 
-    guard let data = await keychain.load(persistentRef: idRef)
+    guard let data = Keychain.load(persistentRef: idRef)
     else { return nil }
 
     guard data.count == UUID.sizeInBytes
@@ -66,8 +66,8 @@ public struct FirezoneId {
   // is a no-op.
   //
   // Can be refactored to remove the file check once all clients >= 1.4.0
-  public static func migrate() async throws {
-    guard try await load() == nil
+  public static func migrate() throws {
+    guard try load() == nil
     else { return } // New firezone-id already saved in Keychain
 
 #if os(macOS)
@@ -88,14 +88,14 @@ public struct FirezoneId {
     else { return }
 
     let firezoneId = FirezoneId(UUID(uuidString: uuidString))
-    try await firezoneId.save()
+    try firezoneId.save()
   }
 
-  public static func createIfMissing() async throws -> FirezoneId {
-    guard let id = try await load()
+  public static func createIfMissing() throws -> FirezoneId {
+    guard let id = try load()
     else {
       let id = FirezoneId(UUID())
-      try await id.save()
+      try id.save()
 
       return id
     }
