@@ -9,14 +9,11 @@ import SystemExtensions
 
 public enum SystemExtensionError: Error {
   case unknownResult(OSSystemExtensionRequest.Result)
-  case needsUserApproval
 
   var description: String {
     switch self {
     case .unknownResult(let result):
       return "Unknown result: \(result)"
-    case .needsUserApproval:
-      return "Needs user approval"
     }
   }
 }
@@ -25,13 +22,13 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate,
   // Maintain a static handle to the extension manager for tracking the state of the extension activation.
   public static let shared = SystemExtensionManager()
 
-  private var completionHandler: ((Error?) -> Void)?
+  private var continuation: CheckedContinuation<Void, Error>?
 
   public func installSystemExtension(
     identifier: String,
-    completionHandler: @escaping (Error?) -> Void
+    continuation: CheckedContinuation<Void, Error>
   ) {
-    self.completionHandler = completionHandler
+    self.continuation = continuation
 
     let request = OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier: identifier, queue: .main)
     request.delegate = self
@@ -44,25 +41,35 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate,
 
   public func request(_ request: OSSystemExtensionRequest, didFinishWithResult result: OSSystemExtensionRequest.Result) {
     guard result == .completed else {
-      completionHandler?(SystemExtensionError.unknownResult(result))
+      consumeContinuation(throwing: SystemExtensionError.unknownResult(result))
 
       return
     }
 
     // Success
-    completionHandler?(nil)
+    consumeContinuation()
   }
 
   public func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
-    completionHandler?(error)
+    consumeContinuation(throwing: error)
   }
 
   public func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
-    completionHandler?(SystemExtensionError.needsUserApproval)
+    // We assume this state until we receive a success response.
   }
 
   public func request(_ request: OSSystemExtensionRequest, actionForReplacingExtension existing: OSSystemExtensionProperties, withExtension ext: OSSystemExtensionProperties) -> OSSystemExtensionRequest.ReplacementAction {
     return .replace
+  }
+
+  private func consumeContinuation(throwing error: Error) {
+    self.continuation?.resume(throwing: error)
+    self.continuation = nil
+  }
+
+  private func consumeContinuation() {
+    self.continuation?.resume()
+    self.continuation = nil
   }
 }
 #endif

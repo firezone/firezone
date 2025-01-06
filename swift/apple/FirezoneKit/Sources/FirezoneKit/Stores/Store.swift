@@ -34,19 +34,14 @@ public final class Store: ObservableObject {
   private var resourcesTimer: Timer?
 
   public init() {
+    // Initialize all stored properties
     self.status = .disconnected
     self.decision = .authorized
     self.settings = Settings.defaultValue
-
     self.sessionNotification = SessionNotification()
-
     self.tunnelManager = TunnelManager()
 
-    // Subscribe to status updates from the tunnel manager
-    self.tunnelManager.statusChangeHandler = handleVPNStatusChange
-
     initNotifications()
-    loadVPNProfile()
   }
 
   public func internetResourceEnabled() -> Bool {
@@ -68,6 +63,54 @@ public final class Store: ObservableObject {
       .store(in: &cancellables)
   }
 
+  func bindToVPNProfileUpdates() async throws {
+    // Load our existing VPN profile and set an update handler
+    try await self.tunnelManager.loadFromPreferences(
+      vpnStateUpdateHandler: { [weak self] status, settings, actorName in
+        guard let self else { return }
+
+        DispatchQueue.main.async {
+          self.status = status
+
+          if let settings {
+            self.settings = settings
+          }
+
+          if let actorName {
+            self.actorName = actorName
+          }
+        }
+
+#if os(macOS)
+        if status == .disconnected {
+          maybeShowSignedOutAlert()
+        }
+#endif
+      }
+    )
+  }
+
+  /// On iOS, we can initiate notifications directly from the tunnel process.
+  /// On macOS, however, the system extension runs as root which doesn't
+  /// support showing User notifications. Instead, we read the last stopped
+  /// reason and alert the user if it was due to receiving a 401 from the
+  /// portal.
+  private func maybeShowSignedOutAlert() {
+    Task {
+      do {
+        if let savedValue = try await self.tunnelManager.consumeStopReason(),
+           let rawValue = Int(savedValue),
+           let reason = NEProviderStopReason(rawValue: rawValue),
+           case .authenticationCanceled = reason
+        {
+          self.sessionNotification.showSignedOutAlertmacOS()
+        }
+      } catch {
+        Log.error(error)
+      }
+    }
+  }
+
   func grantVPNPermissions() async throws {
 
 #if os(macOS)
@@ -79,7 +122,7 @@ public final class Store: ObservableObject {
     try await self.tunnelManager.create()
 
     // Reload our state
-    loadVPNProfile()
+    try await bindToVPNProfileUpdates()
   }
 
   private func installSystemExtension() async throws {
@@ -89,39 +132,9 @@ public final class Store: ObservableObject {
       (continuation: CheckedContinuation<Void, Error>) in
 
       SystemExtensionManager.shared.installSystemExtension(
-        identifier: TunnelManager.bundleIdentifier
-      ) { error in
-
-        if let error {
-          continuation.resume(throwing: error)
-
-          return
-        }
-
-        continuation.resume()
-      }
-    }
-  }
-
-  private func loadVPNProfile() {
-    // Load our existing VPN profile and initialize our state
-    self.tunnelManager.load() { loadedStatus, loadedSettings, loadedActorName in
-      DispatchQueue.main.async {
-        self.status = loadedStatus
-
-        if let loadedSettings = loadedSettings {
-          self.settings = loadedSettings
-        }
-
-        if let loadedActorName = loadedActorName {
-          self.actorName = loadedActorName
-        }
-
-        // Try to connect on app launch
-        if self.status == .disconnected {
-          Task { try await self.start() }
-        }
-      }
+        identifier: TunnelManager.bundleIdentifier,
+        continuation: continuation
+      )
     }
   }
 
@@ -208,26 +221,5 @@ public final class Store: ObservableObject {
     Task {
       try await save(newSettings)
     }
-  }
-
-  // Handles the frequent VPN state changes during sign in, sign out, etc.
-  private func handleVPNStatusChange(status: NEVPNStatus) async {
-    self.status = status
-
-#if os(macOS)
-    // On iOS, we can initiate notifications directly from the tunnel process.
-    // On macOS, however, the system extension runs as root which doesn't
-    // support showing User notifications. Instead, we read the last stopped
-    // reason and alert the user if it was due to receiving a 401 from the
-    // portal.
-    if status == .disconnected,
-       let savedValue = try? await self.tunnelManager.consumeStopReason(),
-       let rawValue = Int(savedValue),
-       let reason = NEProviderStopReason(rawValue: rawValue),
-       case .authenticationCanceled = reason
-    {
-      self.sessionNotification.showSignedOutAlertmacOS()
-    }
-#endif
   }
 }
