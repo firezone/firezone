@@ -7,19 +7,31 @@
 #if os(macOS)
 import SystemExtensions
 
+public enum SystemExtensionError: Error {
+  case unknownResult(OSSystemExtensionRequest.Result)
+  case needsUserApproval
+
+  var description: String {
+    switch self {
+    case .unknownResult(let result):
+      return "Unknown result: \(result)"
+    case .needsUserApproval:
+      return "Needs user approval"
+    }
+  }
+}
+
 public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
   // Maintain a static handle to the extension manager for tracking the state of the extension activation.
   public static let shared = SystemExtensionManager()
 
-  @Published public var status: ExtensionStatus = .unknown
+  private var completionHandler: ((Error?) -> Void)?
 
-  public enum ExtensionStatus {
-    case awaitingUserApproval
-    case installed
-    case unknown
-  }
-
-  public func installSystemExtension(identifier: String) {
+  public func installSystemExtension(
+    identifier: String,
+    completionHandler: @escaping (Error?) -> Void
+  ) {
+    self.completionHandler = completionHandler
 
     let request = OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier: identifier, queue: .main)
     request.delegate = self
@@ -32,21 +44,21 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate,
 
   public func request(_ request: OSSystemExtensionRequest, didFinishWithResult result: OSSystemExtensionRequest.Result) {
     guard result == .completed else {
-      status = .awaitingUserApproval
+      completionHandler?(SystemExtensionError.unknownResult(result))
 
       return
     }
 
     // Success
-    status = .installed
+    completionHandler?(nil)
   }
 
   public func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
-    status = .awaitingUserApproval
+    completionHandler?(error)
   }
 
   public func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
-    status = .awaitingUserApproval
+    completionHandler?(SystemExtensionError.needsUserApproval)
   }
 
   public func request(_ request: OSSystemExtensionRequest, actionForReplacingExtension existing: OSSystemExtensionProperties, withExtension ext: OSSystemExtensionProperties) -> OSSystemExtensionRequest.ReplacementAction {

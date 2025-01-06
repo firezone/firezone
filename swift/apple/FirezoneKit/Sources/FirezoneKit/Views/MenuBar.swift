@@ -27,7 +27,6 @@ public final class MenuBar: NSObject, ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
 
   private var vpnStatus: NEVPNStatus = .disconnected
-  private var extensionStatus: SystemExtensionManager.ExtensionStatus = .unknown
 
   private var updateChecker: UpdateChecker = UpdateChecker()
   private var updateMenuDisplayed: Bool = false
@@ -97,16 +96,6 @@ public final class MenuBar: NSObject, ObservableObject {
             self.updateStatusItemIcon()
             self.refreshUpdateItem()
       }).store(in: &cancellables)
-
-    SystemExtensionManager.shared.$status
-      .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] status in
-        guard let self = self else { return }
-
-        self.extensionStatus = status
-        self.handleTunnelStatusOrResourcesChanged()
-      })
-      .store(in: &cancellables)
   }
 
   private lazy var menu = NSMenu()
@@ -282,16 +271,10 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  @objc private func installSystemExtensionButtonTapped() {
-    Task {
-      SystemExtensionManager.shared.installSystemExtension(identifier: TunnelManager.bundleIdentifier)
-    }
-  }
-
-  @objc private func grantVPNPermissionButtonTapped() {
+  @objc private func grantPermissionMenuItemTapped() {
     Task {
       do {
-        try await model.store.createVPNProfile()
+        try await model.store.grantVPNPermissions()
       } catch {
         Log.error(error)
       }
@@ -393,34 +376,28 @@ public final class MenuBar: NSObject, ObservableObject {
     let resources = model.resources
     let status = model.status
     // Update "Sign In" / "Sign Out" menu items
-    switch (extensionStatus, status) {
-    case (.awaitingUserApproval, _):
-      signInMenuItem.title = "Enable the system extension to sign in…"
-      signInMenuItem.target = self
-      signInMenuItem.action = #selector(installSystemExtensionButtonTapped)
-      signOutMenuItem.isHidden = true
-      settingsMenuItem.target = nil
-    case (_, .invalid):
+    switch status {
+    case .invalid:
       signInMenuItem.title = "Allow the VPN permission to sign in…"
       signInMenuItem.target = self
-      signInMenuItem.action = #selector(grantVPNPermissionButtonTapped)
+      signInMenuItem.action = #selector(grantPermissionMenuItemTapped)
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = nil
-    case (_, .disconnected):
+    case .disconnected:
       signInMenuItem.title = "Sign In"
       signInMenuItem.target = self
       signInMenuItem.action = #selector(signInButtonTapped)
       signInMenuItem.isEnabled = true
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = self
-    case (_, .disconnecting):
+    case .disconnecting:
       signInMenuItem.title = "Signing out…"
       signInMenuItem.target = self
       signInMenuItem.action = #selector(signInButtonTapped)
       signInMenuItem.isEnabled = false
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = self
-    case (_, .connected), (_, .reasserting), (_, .connecting):
+    case .connected, .reasserting, .connecting:
       let title = "Signed in as \(model.store.actorName ?? "Unknown User")"
       signInMenuItem.title = title
       signInMenuItem.target = nil

@@ -42,8 +42,11 @@ public final class Store: ObservableObject {
 
     self.tunnelManager = TunnelManager()
 
+    // Subscribe to status updates from the tunnel manager
+    self.tunnelManager.statusChangeHandler = handleVPNStatusChange
+
     initNotifications()
-    loadTunnelManager()
+    loadVPNProfile()
   }
 
   public func internetResourceEnabled() -> Bool {
@@ -65,10 +68,42 @@ public final class Store: ObservableObject {
       .store(in: &cancellables)
   }
 
-  private func loadTunnelManager() {
-    // Subscribe to status updates from the tunnel manager
-    self.tunnelManager.statusChangeHandler = handleVPNStatusChange
+  func grantVPNPermissions() async throws {
 
+#if os(macOS)
+    // Install the system extension. No-op if already installed.
+    try await installSystemExtension()
+#endif
+
+    // Create a new VPN profile in system settings.
+    try await self.tunnelManager.create()
+
+    // Reload our state
+    loadVPNProfile()
+  }
+
+  private func installSystemExtension() async throws {
+    // Apple recommends installing the system extension as early as possible after app launch.
+    // See https://developer.apple.com/documentation/systemextensions/installing-system-extensions-and-drivers
+    try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<Void, Error>) in
+
+      SystemExtensionManager.shared.installSystemExtension(
+        identifier: TunnelManager.bundleIdentifier
+      ) { error in
+
+        if let error {
+          continuation.resume(throwing: error)
+
+          return
+        }
+
+        continuation.resume()
+      }
+    }
+  }
+
+  private func loadVPNProfile() {
     // Load our existing VPN profile and initialize our state
     self.tunnelManager.load() { loadedStatus, loadedSettings, loadedActorName in
       DispatchQueue.main.async {
@@ -94,13 +129,6 @@ public final class Store: ObservableObject {
     #if os(iOS)
     sessionNotification.askUserForNotificationPermissions()
     #endif
-  }
-
-  func createVPNProfile() async throws {
-    try await TunnelManager.shared.create()
-
-    // Load the new settings and bind observers
-    self.loadTunnelManager()
   }
 
   func authURL() -> URL? {
