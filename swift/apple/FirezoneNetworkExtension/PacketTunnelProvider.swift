@@ -100,7 +100,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         self.adapter = adapter
 
 
-        try await adapter.start()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+          adapter.start { error in
+            if let error {
+              continuation.resume(throwing: error)
+              return
+            }
+
+            continuation.resume()
+          }
+        }
 
         // Tell the system the tunnel is up, moving the tunnel manager status to
         // `connected`.

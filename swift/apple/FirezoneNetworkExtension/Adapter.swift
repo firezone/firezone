@@ -9,6 +9,9 @@ import NetworkExtension
 import OSLog
 
 enum AdapterError: Error {
+  /// We were deinit'd before the queued operation began execution
+  case notInitialized
+
   /// Failure to perform an operation in such state.
   case invalidState(AdapterState)
 
@@ -17,6 +20,8 @@ enum AdapterError: Error {
 
   var localizedDescription: String {
     switch self {
+    case .notInitialized:
+      return "Adapter is not initialized"
     case .invalidState(let state):
       return "Adapter is in an invalid state: \(state)"
     case .connlibConnectError(let error):
@@ -65,9 +70,8 @@ class Adapter {
   /// A path update is considered relevant if certain properties change that require us to reset connlib's network state.
   private var lastRelevantPath: Network.NWPath?
 
-  /// Private queue used to ensure consistent ordering among path update and connlib callbacks
-  /// This is the primary async primitive used in this class.
-  private let workQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
+  /// Private queue used for queueing path update callbacks
+  private let pathUpdateQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
 
   /// Currently disabled resources
   private var internetResourceEnabled: Bool = false
@@ -124,45 +128,60 @@ class Adapter {
   }
 
   /// Start the tunnel.
-  public func start() async throws {
+  public func start(completionHandler: @escaping (Error?) -> Void) {
     Log.log("Adapter.start")
-    guard case .tunnelStopped = self.state else {
-      throw AdapterError.invalidState(self.state)
-    }
 
-    callbackHandler.delegate = self
+    // Spawn the "main" connlib thread with .utility QoS so that subsequent
+    // packet processing threads inherit it.
+    // See https://forums.developer.apple.com/forums/thread/107904 for why
+    // .utility is used
+    DispatchQueue(label: "ConnlibQueue", qos: .utility).async { [weak self] in
+      guard let self = self
+      else {
+        completionHandler(AdapterError.notInitialized)
+        return
+      }
 
-    Log.log("Adapter.start: Starting connlib")
-    do {
-      let jsonEncoder = JSONEncoder()
-      jsonEncoder.keyEncodingStrategy = .convertToSnakeCase
+      guard case .tunnelStopped = self.state else {
+        completionHandler(AdapterError.invalidState(self.state))
+        return
+      }
 
-      // Grab a session pointer
-      let session =
+      self.callbackHandler.delegate = self
+
+      Log.log("Adapter.start: Starting connlib")
+      do {
+        let jsonEncoder = JSONEncoder()
+        jsonEncoder.keyEncodingStrategy = .convertToSnakeCase
+
+        // Grab a session pointer
+        let session =
         try WrappedSession.connect(
-          apiURL,
-          "\(token)",
+          self.apiURL,
+          "\(self.token)",
           "\(Telemetry.firezoneId!)",
           "\(Telemetry.accountSlug!)",
           DeviceMetadata.getDeviceName(),
           DeviceMetadata.getOSVersion(),
-          connlibLogFolderPath,
-          logFilter,
-          callbackHandler,
+          self.connlibLogFolderPath,
+          self.logFilter,
+          self.callbackHandler,
           String(data: jsonEncoder.encode(DeviceMetadata.deviceInfo()), encoding: .utf8)!
         )
 
-      // Start listening for network change events. The first few will be our
-      // tunnel interface coming up, but that's ok -- it will trigger a `set_dns`
-      // connlib.
-      beginPathMonitoring()
+        // Start listening for network change events. The first few will be our
+        // tunnel interface coming up, but that's ok -- it will trigger a `set_dns`
+        // connlib.
+        self.beginPathMonitoring()
 
-      // Update state in case everything succeeded
-      self.state = .tunnelStarted(session: session)
-    } catch let error {
-      let msg = error as! RustString
-      // `toString` needed to deep copy the string and avoid a possible dangling pointer
-      throw AdapterError.connlibConnectError(msg.toString())
+        // Update state in case everything succeeded
+        self.state = .tunnelStarted(session: session)
+        completionHandler(nil)
+      } catch let error {
+        let msg = error as! RustString
+        // `toString` needed to deep copy the string and avoid a possible dangling pointer
+        completionHandler(AdapterError.connlibConnectError(msg.toString()))
+      }
     }
   }
 
@@ -194,16 +213,11 @@ class Adapter {
   public func getResourcesIfVersionDifferentFrom(
     hash: Data, completionHandler: @escaping (String?) -> Void
   ) {
-    // This is async to avoid blocking the main UI thread
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-
-      if hash == Data(SHA256.hash(data: Data((resourceListJSON ?? "").utf8))) {
-        // nothing changed
-        completionHandler(nil)
-      } else {
-        completionHandler(resourceListJSON)
-      }
+    if hash == Data(SHA256.hash(data: Data((resourceListJSON ?? "").utf8))) {
+      // nothing changed
+      completionHandler(nil)
+    } else {
+      completionHandler(resourceListJSON)
     }
   }
 
@@ -215,11 +229,8 @@ class Adapter {
   }
 
   public func setInternetResourceEnabled(_ enabled: Bool) {
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-      self.internetResourceEnabled = enabled
-      self.resourcesUpdated()
-    }
+    self.internetResourceEnabled = enabled
+    self.resourcesUpdated()
   }
 
   public func resourcesUpdated() {
@@ -250,7 +261,7 @@ extension Adapter {
     networkMonitor.pathUpdateHandler = { [weak self] path in
       self?.didReceivePathUpdate(path: path)
     }
-    networkMonitor.start(queue: self.workQueue)
+    networkMonitor.start(queue: self.pathUpdateQueue)
   }
 
   /// Primary callback we receive whenever:
@@ -361,91 +372,75 @@ extension Adapter: CallbackHandlerDelegate {
   public func onSetInterfaceConfig(
     tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddresses: [String]
   ) {
-    // This is a queued callback to ensure ordering
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-      if networkSettings == nil {
-        // First time receiving this callback, so initialize our network settings
-        networkSettings = NetworkSettings(
-          packetTunnelProvider: packetTunnelProvider)
-      }
+    if networkSettings == nil {
+      // First time receiving this callback, so initialize our network settings
+      networkSettings = NetworkSettings(
+        packetTunnelProvider: packetTunnelProvider)
+    }
 
-      Log.log(
-        "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses)")
+    Log.log(
+      "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses)")
 
-      switch state {
-      case .tunnelStarted(session: _):
-        guard let networkSettings = networkSettings else { return }
-        networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
-        networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
-        networkSettings.dnsAddresses = dnsAddresses
-        networkSettings.apply()
-      case .tunnelStopped:
-        Log.error(AdapterError.invalidState(self.state))
-      }
+    switch state {
+    case .tunnelStarted(session: _):
+      guard let networkSettings = networkSettings else { return }
+      networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
+      networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
+      networkSettings.dnsAddresses = dnsAddresses
+      networkSettings.apply()
+    case .tunnelStopped:
+      Log.error(AdapterError.invalidState(self.state))
     }
   }
 
   public func onUpdateRoutes(routeList4: String, routeList6: String) {
-    // This is a queued callback to ensure ordering
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-      guard let networkSettings = networkSettings
-      else {
-        fatalError("onUpdateRoutes called before network settings was initialized!")
-      }
-
-      Log.log("\(#function): \(routeList4) \(routeList6)")
-
-      networkSettings.routes4 = try! JSONDecoder().decode(
-        [NetworkSettings.Cidr].self, from: routeList4.data(using: .utf8)!
-      ).compactMap { $0.asNEIPv4Route }
-      networkSettings.routes6 = try! JSONDecoder().decode(
-        [NetworkSettings.Cidr].self, from: routeList6.data(using: .utf8)!
-      ).compactMap { $0.asNEIPv6Route }
-
-      networkSettings.apply()
+    guard let networkSettings = networkSettings
+    else {
+      fatalError("onUpdateRoutes called before network settings was initialized!")
     }
+
+    Log.log("\(#function): \(routeList4) \(routeList6)")
+
+    networkSettings.routes4 = try! JSONDecoder().decode(
+      [NetworkSettings.Cidr].self, from: routeList4.data(using: .utf8)!
+    ).compactMap { $0.asNEIPv4Route }
+    networkSettings.routes6 = try! JSONDecoder().decode(
+      [NetworkSettings.Cidr].self, from: routeList6.data(using: .utf8)!
+    ).compactMap { $0.asNEIPv6Route }
+
+    networkSettings.apply()
   }
 
   public func onUpdateResources(resourceList: String) {
-    // This is a queued callback to ensure ordering
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
+    Log.log("\(#function)")
 
-      Log.log("\(#function)")
+    // Update resource List. We don't care what's inside.
+    resourceListJSON = resourceList
 
-      // Update resource List. We don't care what's inside.
-      resourceListJSON = resourceList
-
-      self.resourcesUpdated()
-    }
+    self.resourcesUpdated()
   }
 
   public func onDisconnect(error: String) {
     // Since connlib has already shutdown by this point, we queue this callback
     // to ensure that we can clean up even if connlib exits before we are done.
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-      Log.log("\(#function)")
+    Log.log("\(#function)")
 
-      // Set a default stop reason. In the future, we may have more to act upon in
-      // different ways.
-      var reason: NEProviderStopReason = .connectionFailed
+    // Set a default stop reason. In the future, we may have more to act upon in
+    // different ways.
+    var reason: NEProviderStopReason = .connectionFailed
 
-      // connlib-initiated -- session is already disconnected, move directly to .tunnelStopped
-      // provider will call our stop() at the end.
-      state = .tunnelStopped
+    // connlib-initiated -- session is already disconnected, move directly to .tunnelStopped
+    // provider will call our stop() at the end.
+    state = .tunnelStopped
 
-      // HACK: Define more connlib error types across the FFI so we can switch on them
-      // directly and not parse error strings here.
-      if error.contains("401 Unauthorized") {
-        reason = .authenticationCanceled
-      }
-
-      // Start the process of telling the system to shut us down
-      self.packetTunnelProvider?.stopTunnel(with: reason) {}
+    // HACK: Define more connlib error types across the FFI so we can switch on them
+    // directly and not parse error strings here.
+    if error.contains("401 Unauthorized") {
+      reason = .authenticationCanceled
     }
+
+    // Start the process of telling the system to shut us down
+    self.packetTunnelProvider?.stopTunnel(with: reason) {}
   }
 
   private func getSystemDefaultResolvers(interfaceName: String?) -> [String] {
