@@ -1810,8 +1810,6 @@ where
             return;
         }
 
-        // TODO: `boringtun` is impure because it calls `Instant::now`.
-
         if now >= self.next_wg_timer_update {
             self.next_wg_timer_update = now + self.wg_timer;
 
