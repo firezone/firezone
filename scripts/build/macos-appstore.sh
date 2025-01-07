@@ -9,7 +9,7 @@ source "./scripts/build/lib.sh"
 # Define needed variables
 app_profile_id=2bf20e38-81ea-40d0-91e5-330cf58f52d9
 ne_profile_id=2c683d1a-4479-451c-9ee6-ae7d4aca5c93
-temp_dir=$(mktemp -d)
+temp_dir="${RUNNER_TEMP:-$(mktemp -d)}"
 package_path="$temp_dir/Firezone.pkg"
 git_sha=${GITHUB_SHA:-$(git rev-parse HEAD)}
 project_file=swift/apple/Firezone.xcodeproj
