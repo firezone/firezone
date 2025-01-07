@@ -278,12 +278,10 @@ pub(crate) fn subdomain_records(
 /// This uses the `TEST-NET-2` (`198.51.100.0/24`) address space reserved for documentation and examples in [RFC5737](https://datatracker.ietf.org/doc/html/rfc5737).
 /// `TEST-NET-2` only contains 256 addresses which is small enough to generate overlapping IPs for our DNS resources (i.e. two different domains pointing to the same IP).
 fn dns_resource_ip4s() -> impl Strategy<Value = Ipv4Addr> {
-    let ips = Ipv4Network::new(Ipv4Addr::new(198, 51, 100, 0), 24)
-        .unwrap()
-        .hosts()
-        .collect_vec();
+    const FIRST: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 0);
+    const LAST: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 255);
 
-    sample::select(ips)
+    (FIRST.to_bits()..=LAST.to_bits()).prop_map(Ipv4Addr::from_bits)
 }
 
 /// A [`Strategy`] of [`Ipv6Addr`]s used for the "real" IPs of DNS resources.
@@ -292,21 +290,20 @@ fn dns_resource_ip4s() -> impl Strategy<Value = Ipv4Addr> {
 fn dns_resource_ip6s() -> impl Strategy<Value = Ipv6Addr> {
     const DNS_SUBNET: u16 = 0x2020;
 
-    documentation_ip6s(DNS_SUBNET, 256)
+    documentation_ip6s(DNS_SUBNET)
 }
 
-pub(crate) fn documentation_ip6s(subnet: u16, num_ips: usize) -> impl Strategy<Value = Ipv6Addr> {
-    let ips = Ipv6Network::new_truncate(
+pub(crate) fn documentation_ip6s(subnet: u16) -> impl Strategy<Value = Ipv6Addr> {
+    let network = Ipv6Network::new_truncate(
         Ipv6Addr::new(0x2001, 0xDB80, subnet, subnet, 0, 0, 0, 0),
         32,
     )
-    .unwrap()
-    .subnets_with_prefix(128)
-    .map(|n| n.network_address())
-    .take(num_ips)
-    .collect_vec();
+    .unwrap();
 
-    sample::select(ips)
+    let first = network.network_address().to_bits();
+    let last = network.last_address().to_bits();
+
+    (first..=last).prop_map(Ipv6Addr::from_bits)
 }
 
 pub(crate) fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
