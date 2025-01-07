@@ -26,8 +26,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private var cancellables: Set<AnyCancellable> = []
 
-  private var vpnStatus: NEVPNStatus = .disconnected
-  private var extensionStatus: SystemExtensionManager.ExtensionStatus = .unknown
+  private var vpnStatus: NEVPNStatus?
 
   private var updateChecker: UpdateChecker = UpdateChecker()
   private var updateMenuDisplayed: Bool = false
@@ -97,16 +96,6 @@ public final class MenuBar: NSObject, ObservableObject {
             self.updateStatusItemIcon()
             self.refreshUpdateItem()
       }).store(in: &cancellables)
-
-    SystemExtensionManager.shared.$status
-      .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] status in
-        guard let self = self else { return }
-
-        self.extensionStatus = status
-        self.handleTunnelStatusOrResourcesChanged()
-      })
-      .store(in: &cancellables)
   }
 
   private lazy var menu = NSMenu()
@@ -282,16 +271,10 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  @objc private func installSystemExtensionButtonTapped() {
-    Task {
-      SystemExtensionManager.shared.installSystemExtension(identifier: TunnelManager.bundleIdentifier)
-    }
-  }
-
-  @objc private func grantVPNPermissionButtonTapped() {
+  @objc private func grantPermissionMenuItemTapped() {
     Task {
       do {
-        try await model.store.createVPNProfile()
+        try await model.store.grantVPNPermissions()
       } catch {
         Log.error(error)
       }
@@ -333,9 +316,9 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func updateAnimation(status: NEVPNStatus) {
+  private func updateAnimation(status: NEVPNStatus?) {
     switch status {
-    case .invalid, .disconnected:
+    case nil, .invalid, .disconnected:
       self.stopConnectingAnimation()
     case .connected:
       self.stopConnectingAnimation()
@@ -346,13 +329,13 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func getStatusIcon(status: NEVPNStatus, notification: Bool) -> NSImage? {
+  private func getStatusIcon(status: NEVPNStatus?, notification: Bool) -> NSImage? {
     if status == .connecting || status == .disconnecting || status == .reasserting {
       return self.connectingAnimationImages.last!
     }
 
     switch status {
-    case .invalid, .disconnected:
+    case nil, .invalid, .disconnected:
       return notification ? self.signedOutIconNotification : self.signedOutIcon
     case .connected:
       return notification ? self.signedInConnectedIconNotification : self.signedInConnectedIcon
@@ -393,34 +376,33 @@ public final class MenuBar: NSObject, ObservableObject {
     let resources = model.resources
     let status = model.status
     // Update "Sign In" / "Sign Out" menu items
-    switch (extensionStatus, status) {
-    case (.awaitingUserApproval, _):
-      signInMenuItem.title = "Enable the system extension to sign in…"
-      signInMenuItem.target = self
-      signInMenuItem.action = #selector(installSystemExtensionButtonTapped)
+    switch status {
+    case nil:
+      signInMenuItem.title = "Loading VPN profiles from system settings…"
+      signInMenuItem.action = nil
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = nil
-    case (_, .invalid):
+    case .invalid:
       signInMenuItem.title = "Allow the VPN permission to sign in…"
       signInMenuItem.target = self
-      signInMenuItem.action = #selector(grantVPNPermissionButtonTapped)
+      signInMenuItem.action = #selector(grantPermissionMenuItemTapped)
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = nil
-    case (_, .disconnected):
+    case .disconnected:
       signInMenuItem.title = "Sign In"
       signInMenuItem.target = self
       signInMenuItem.action = #selector(signInButtonTapped)
       signInMenuItem.isEnabled = true
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = self
-    case (_, .disconnecting):
+    case .disconnecting:
       signInMenuItem.title = "Signing out…"
       signInMenuItem.target = self
       signInMenuItem.action = #selector(signInButtonTapped)
       signInMenuItem.isEnabled = false
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = self
-    case (_, .connected), (_, .reasserting), (_, .connecting):
+    case .connected, .reasserting, .connecting:
       let title = "Signed in as \(model.store.actorName ?? "Unknown User")"
       signInMenuItem.title = title
       signInMenuItem.target = nil
@@ -458,7 +440,7 @@ public final class MenuBar: NSObject, ObservableObject {
       resourcesUnavailableReasonMenuItem.target = nil
       resourcesUnavailableReasonMenuItem.title = "Disconnecting…"
       resourcesSeparatorMenuItem.isHidden = false
-    case .disconnected, .invalid:
+    case nil, .disconnected, .invalid:
       // We should never be in a state where the tunnel is
       // down but the user is signed in, but we have
       // code to handle it just for the sake of completion.
