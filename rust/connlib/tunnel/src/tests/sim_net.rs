@@ -4,7 +4,6 @@ use connlib_model::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
 use ip_network::{IpNetwork, Ipv4Network};
 use ip_network_table::IpNetworkTable;
-use itertools::Itertools as _;
 use prop::sample;
 use proptest::prelude::*;
 use snownet::Transmit;
@@ -308,13 +307,10 @@ pub(crate) fn dual_ip_stack() -> impl Strategy<Value = IpStack> {
 ///
 /// This uses the `TEST-NET-3` (`203.0.113.0/24`) address space reserved for documentation and examples in [RFC5737](https://datatracker.ietf.org/doc/html/rfc5737).
 pub(crate) fn host_ip4s() -> impl Strategy<Value = Ipv4Addr> {
-    let ips = Ipv4Network::new(Ipv4Addr::new(203, 0, 113, 0), 24)
-        .unwrap()
-        .hosts()
-        .take(100)
-        .collect_vec();
+    const FIRST: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 0);
+    const LAST: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 255);
 
-    sample::select(ips)
+    (FIRST.to_bits()..=LAST.to_bits()).prop_map(Ipv4Addr::from_bits)
 }
 
 /// A [`Strategy`] of [`Ipv6Addr`]s used for routing packets between hosts within our test.
@@ -323,5 +319,5 @@ pub(crate) fn host_ip4s() -> impl Strategy<Value = Ipv4Addr> {
 pub(crate) fn host_ip6s() -> impl Strategy<Value = Ipv6Addr> {
     const HOST_SUBNET: u16 = 0x1010;
 
-    documentation_ip6s(HOST_SUBNET, 100)
+    documentation_ip6s(HOST_SUBNET)
 }
