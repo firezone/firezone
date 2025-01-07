@@ -35,7 +35,7 @@ public enum Telemetry {
   public static func start() {
     SentrySDK.start { options in
       options.dsn = "https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488"
-      options.environment = "entrypoint" // will be reconfigured in TunnelManager
+      options.environment = "entrypoint" // will be reconfigured in VPNProfileManager
       options.releaseName = releaseName()
       options.dist = distributionType()
 

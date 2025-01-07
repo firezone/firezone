@@ -32,28 +32,36 @@ public class AppViewModel: ObservableObject {
     self.favorites = favorites
     self.store = store
 
+    Task {
+      do {
+        try await self.store.bindToVPNProfileUpdates()
+
+#if os(macOS)
+        if self.store.status == .invalid {
+
+          // Show the main Window if VPN permission needs to be granted
+          AppViewModel.WindowDefinition.main.openWindow()
+        } else {
+          AppViewModel.WindowDefinition.main.window()?.close()
+        }
+#endif
+
+        if self.store.status == .disconnected {
+
+          // Try to connect on start
+          self.store.vpnProfileManager.start()
+        }
+      } catch {
+        Log.error(error)
+      }
+    }
+
     store.$status
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
-        Log.log("Status: \(status)")
 
         self.status = status
-
-#if os(macOS)
-        Task {
-          let firezoneId = try FirezoneId.load()
-
-          if status == .invalid || firezoneId == nil {
-
-            // Show the Wecome view if VPN permission needs to be granted
-            // or it's the first time starting
-            AppViewModel.WindowDefinition.main.openWindow()
-          } else {
-            AppViewModel.WindowDefinition.main.window()?.close()
-          }
-        }
-#endif
       })
       .store(in: &cancellables)
 
@@ -96,7 +104,9 @@ public struct AppView: View {
       }
     }
 #elseif os(macOS)
-    switch model.store.status {
+    switch model.status {
+    case nil:
+      ProgressView()
     case .invalid:
       GrantVPNView(model: GrantVPNViewModel(store: model.store))
     default:

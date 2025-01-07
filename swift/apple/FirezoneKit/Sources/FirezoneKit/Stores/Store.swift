@@ -22,29 +22,29 @@ public final class Store: ObservableObject {
 
   // Enacapsulate Tunnel status here to make it easier for other components
   // to observe
-  @Published private(set) var status: NEVPNStatus
+  @Published private(set) var status: NEVPNStatus?
 
   // This is not currently updated after it is initialized, but
   // we could periodically update it if we need to.
   @Published private(set) var decision: UNAuthorizationStatus
 
+  let vpnProfileManager: VPNProfileManager
   private var sessionNotification: SessionNotification
   private var cancellables: Set<AnyCancellable> = []
   private var resourcesTimer: Timer?
 
   public init() {
-    self.status = .disconnected
+    // Initialize all stored properties
     self.decision = .authorized
     self.settings = Settings.defaultValue
-
     self.sessionNotification = SessionNotification()
+    self.vpnProfileManager = VPNProfileManager()
 
     initNotifications()
-    loadTunnelManager()
   }
 
   public func internetResourceEnabled() -> Bool {
-    TunnelManager.shared.internetResourceEnabled
+    self.vpnProfileManager.internetResourceEnabled
   }
 
   private func initNotifications() {
@@ -62,42 +62,79 @@ public final class Store: ObservableObject {
       .store(in: &cancellables)
   }
 
-  private func loadTunnelManager() {
-    // Subscribe to status updates from the tunnel manager
-    TunnelManager.shared.statusChangeHandler = handleVPNStatusChange
+  func bindToVPNProfileUpdates() async throws {
+    // Load our existing VPN profile and set an update handler
+    try await self.vpnProfileManager.loadFromPreferences(
+      vpnStateUpdateHandler: { [weak self] status, settings, actorName in
+        guard let self else { return }
 
-    // Load our existing VPN profile and initialize our state
-    TunnelManager.shared.load() { loadedStatus, loadedSettings, loadedActorName in
-      DispatchQueue.main.async {
-        self.status = loadedStatus
+        DispatchQueue.main.async {
+          self.status = status
 
-        if let loadedSettings = loadedSettings {
-          self.settings = loadedSettings
+          if let settings {
+            self.settings = settings
+          }
+
+          if let actorName {
+            self.actorName = actorName
+          }
         }
 
-        if let loadedActorName = loadedActorName {
-          self.actorName = loadedActorName
-        }
-
-        // Try to connect on app launch
-        if self.status == .disconnected {
-          Task { try await self.start() }
+        if status == .disconnected {
+          maybeShowSignedOutAlert()
         }
       }
+    )
+  }
+
+  /// On iOS, we can initiate notifications directly from the tunnel process.
+  /// On macOS, however, the system extension runs as root which doesn't
+  /// support showing User notifications. Instead, we read the last stopped
+  /// reason and alert the user if it was due to receiving a 401 from the
+  /// portal.
+  private func maybeShowSignedOutAlert() {
+    Task {
+      do {
+        if let savedValue = try await self.vpnProfileManager.consumeStopReason(),
+           let rawValue = Int(savedValue),
+           let reason = NEProviderStopReason(rawValue: rawValue),
+           case .authenticationCanceled = reason
+        {
+#if os(macOS)
+          self.sessionNotification.showSignedOutAlertmacOS()
+#endif
+        }
+      } catch {
+        Log.error(error)
+      }
     }
+  }
+
+  func grantVPNPermissions() async throws {
+#if os(macOS)
+    // Apple recommends installing the system extension as early as possible after app launch.
+    // See https://developer.apple.com/documentation/systemextensions/installing-system-extensions-and-drivers
+    try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<Void, Error>) in
+
+      SystemExtensionManager.shared.installSystemExtension(
+        identifier: VPNProfileManager.bundleIdentifier,
+        continuation: continuation
+      )
+    }
+#endif
+
+    // Create a new VPN profile in system settings.
+    try await self.vpnProfileManager.create()
+
+    // Reload our state
+    try await bindToVPNProfileUpdates()
   }
 
   func requestNotifications() {
     #if os(iOS)
     sessionNotification.askUserForNotificationPermissions()
     #endif
-  }
-
-  func createVPNProfile() async throws {
-    try await TunnelManager.shared.create()
-
-    // Load the new settings and bind observers
-    self.loadTunnelManager()
   }
 
   func authURL() -> URL? {
@@ -111,25 +148,25 @@ public final class Store: ObservableObject {
       return
     }
 
-    TunnelManager.shared.start(token: token)
+    self.vpnProfileManager.start(token: token)
   }
 
   func stop(clearToken: Bool = false) {
     guard [.connected, .connecting, .reasserting].contains(status)
     else { return }
 
-    TunnelManager.shared.stop(clearToken: clearToken)
+    self.vpnProfileManager.stop(clearToken: clearToken)
   }
 
   func signIn(authResponse: AuthResponse) async throws {
     // Save actorName
     DispatchQueue.main.async { self.actorName = authResponse.actorName }
 
-    try await TunnelManager.shared.saveSettings(settings)
-    try await TunnelManager.shared.saveAuthResponse(authResponse)
+    try await self.vpnProfileManager.saveSettings(settings)
+    try await self.vpnProfileManager.saveAuthResponse(authResponse)
 
     // Bring the tunnel up and send it a token to start
-    TunnelManager.shared.start(token: authResponse.token)
+    self.vpnProfileManager.start(token: authResponse.token)
   }
 
   func signOut() async throws {
@@ -142,11 +179,13 @@ public final class Store: ObservableObject {
   func beginUpdatingResources(callback: @escaping (ResourceList) -> Void) {
     Log.log("\(#function)")
 
-    TunnelManager.shared.fetchResources(callback: callback)
+    self.vpnProfileManager.fetchResources(callback: callback)
     let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
-      guard self != nil else { return }
-      TunnelManager.shared.fetchResources(callback: callback)
+      Task { @MainActor in
+        guard let self else { return }
+        self.vpnProfileManager.fetchResources(callback: callback)
+      }
     }
     RunLoop.main.add(timer, forMode: .common)
     resourcesTimer = timer
@@ -160,7 +199,7 @@ public final class Store: ObservableObject {
   func save(_ newSettings: Settings) async throws {
     Task {
       do {
-        try await TunnelManager.shared.saveSettings(newSettings)
+        try await self.vpnProfileManager.saveSettings(newSettings)
         DispatchQueue.main.async { self.settings = newSettings }
       } catch {
         Log.error(error)
@@ -169,32 +208,11 @@ public final class Store: ObservableObject {
   }
 
   func toggleInternetResource(enabled: Bool) {
-    TunnelManager.shared.toggleInternetResource(enabled: enabled)
+    self.vpnProfileManager.toggleInternetResource(enabled: enabled)
     var newSettings = settings
-    newSettings.internetResourceEnabled = TunnelManager.shared.internetResourceEnabled
+    newSettings.internetResourceEnabled = self.vpnProfileManager.internetResourceEnabled
     Task {
       try await save(newSettings)
     }
-  }
-
-  // Handles the frequent VPN state changes during sign in, sign out, etc.
-  private func handleVPNStatusChange(status: NEVPNStatus) async {
-    self.status = status
-
-#if os(macOS)
-    // On iOS, we can initiate notifications directly from the tunnel process.
-    // On macOS, however, the system extension runs as root which doesn't
-    // support showing User notifications. Instead, we read the last stopped
-    // reason and alert the user if it was due to receiving a 401 from the
-    // portal.
-    if status == .disconnected,
-       let savedValue = try? await TunnelManager.shared.consumeStopReason(),
-       let rawValue = Int(savedValue),
-       let reason = NEProviderStopReason(rawValue: rawValue),
-       case .authenticationCanceled = reason
-    {
-      self.sessionNotification.showSignedOutAlertmacOS()
-    }
-#endif
   }
 }

@@ -1,5 +1,5 @@
 //
-//  TunnelManager.swift
+//  VPNProfileManager.swift
 //
 //
 //  Created by Jamil Bou Kheir on 4/2/24.
@@ -11,16 +11,16 @@ import CryptoKit
 import Foundation
 import NetworkExtension
 
-enum TunnelManagerError: Error {
-  case cannotSaveIfMissing
+enum VPNProfileManagerError: Error {
+  case managerNotInitialized
   case cannotLoad
   case decodeIPCDataFailed
   case invalidStatusChange
 
   var localizedDescription: String {
     switch self {
-    case .cannotSaveIfMissing:
-      return "Manager doesn't seem initialized. Can't save settings."
+    case .managerNotInitialized:
+      return "Manager doesn't seem initialized."
     case .decodeIPCDataFailed:
       return "Decoding IPC data failed."
     case .invalidStatusChange:
@@ -31,7 +31,7 @@ enum TunnelManagerError: Error {
   }
 }
 
-public enum TunnelManagerKeys {
+public enum VPNProfileManagerKeys {
   static let actorName = "actorName"
   static let authBaseURL = "authBaseURL"
   static let apiURL = "apiURL"
@@ -109,12 +109,7 @@ public enum TunnelMessage: Codable {
   }
 }
 
-public class TunnelManager {
-  public static let shared = TunnelManager()
-
-  // Expose closures that someone else can use to respond to events
-  // for this manager.
-  var statusChangeHandler: ((NEVPNStatus) async -> Void)?
+public class VPNProfileManager {
 
   // Connect status updates with our listeners
   private var tunnelObservingTasks: [Task<Void, Never>] = []
@@ -134,17 +129,15 @@ public class TunnelManager {
   public var internetResourceEnabled: Bool = false
 
   // Encoder used to send messages to the tunnel
-  private let encoder = PropertyListEncoder()
+  private let encoder = {
+    let _encoder = PropertyListEncoder()
+    _encoder.outputFormat = .binary
+
+    return _encoder
+  }()
 
   public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
   private let bundleDescription = "Firezone"
-
-  init() {
-    encoder.outputFormat = .binary
-
-    // Hook up status updates
-    setupTunnelObservers()
-  }
 
   // Initialize and save a new VPN profile in system Preferences
   func create() async throws {
@@ -153,68 +146,78 @@ public class TunnelManager {
     let settings = Settings.defaultValue
 
     protocolConfiguration.providerConfiguration = settings.toProviderConfiguration()
-    protocolConfiguration.providerBundleIdentifier = TunnelManager.bundleIdentifier
+    protocolConfiguration.providerBundleIdentifier = VPNProfileManager.bundleIdentifier
     protocolConfiguration.serverAddress = settings.apiURL
     manager.localizedDescription = bundleDescription
     manager.protocolConfiguration = protocolConfiguration
 
     // Save the new VPN profile to System Preferences and reload it,
-    // which should update our status from invalid -> disconnected.
+    // which should update our status from nil -> disconnected.
     // If the user denied the operation, the status will be .invalid
-    try await manager.saveToPreferences()
-    try await manager.loadFromPreferences()
+    do {
+      try await manager.saveToPreferences()
+      try await manager.loadFromPreferences()
+      self.manager = manager
+    } catch let error as NSError {
+      if error.domain == "NEVPNErrorDomain" && error.code == 5 {
+        // Silence error when the user doesn't click "Allow" on the VPN
+        // permission dialog
+        Log.info("VPN permission was denied by the user")
 
-    await statusChangeHandler?(manager.connection.status)
-    self.manager = manager
-  }
-
-  func load(callback: @escaping (NEVPNStatus, Settings?, String?) -> Void) {
-    Task {
-      // loadAllFromPreferences() returns list of tunnel configurations created by our main app's bundle ID.
-      // Since our bundle ID can change (by us), find the one that's current and ignore the others.
-      guard let managers = try? await NETunnelProviderManager.loadAllFromPreferences()
-      else {
-        Log.error(TunnelManagerError.cannotLoad)
         return
       }
 
-      Log.log("\(#function): \(managers.count) tunnel managers found")
-      for manager in managers {
-        if let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-           protocolConfiguration.providerBundleIdentifier == TunnelManager.bundleIdentifier,
-           let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
-        {
-          // Found it
-          let settings = Settings.fromProviderConfiguration(providerConfiguration)
-          let actorName = providerConfiguration[TunnelManagerKeys.actorName]
-          if let internetResourceEnabled = providerConfiguration[TunnelManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
+      throw error
+    }
+  }
 
-            self.internetResourceEnabled = (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabled)) ?? false
+  func loadFromPreferences(vpnStateUpdateHandler: @escaping (NEVPNStatus, Settings?, String?) -> Void) async throws {
+    // loadAllFromPreferences() returns list of VPN profiles created by our main app's bundle ID.
+    // Since our bundle ID can change (by us), find the one that's current and ignore the others.
+    let managers = try await NETunnelProviderManager.loadAllFromPreferences()
 
-          }
-          let status = manager.connection.status
+    Log.log("\(#function): \(managers.count) tunnel managers found")
+    for manager in managers {
+      if manager.localizedDescription == bundleDescription { // Found it
 
-          // Configure our Telemetry environment
-          Telemetry.setEnvironmentOrClose(settings.apiURL)
-          Telemetry.accountSlug = providerConfiguration[TunnelManagerKeys.accountSlug]
-
-          // Share what we found with our caller
-          callback(status, settings, actorName)
-
-          // Update our state
-          self.manager = manager
-
-          // Stop looking for our tunnel
-          break
+        guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+              let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
+        else {
+          throw VPNProfileManagerError.cannotLoad
         }
-      }
 
-      // If no tunnel configuration was found, update state to
-      // prompt user to create one.
-      if manager == nil {
-        callback(.invalid, nil, nil)
+        // Update our state
+        self.manager = manager
+
+        let settings = Settings.fromProviderConfiguration(providerConfiguration)
+        let actorName = providerConfiguration[VPNProfileManagerKeys.actorName]
+        if let internetResourceEnabled = providerConfiguration[VPNProfileManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
+
+          self.internetResourceEnabled = (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabled)) ?? false
+
+        }
+        let status = manager.connection.status
+
+        // Configure our Telemetry environment
+        Telemetry.setEnvironmentOrClose(settings.apiURL)
+        Telemetry.accountSlug = providerConfiguration[VPNProfileManagerKeys.accountSlug]
+
+        // Share what we found with our caller
+        vpnStateUpdateHandler(status, settings, actorName)
+
+        // Stop looking for our tunnel
+        break
       }
     }
+
+    // If no tunnel configuration was found, update state to
+    // prompt user to create one.
+    if manager == nil {
+      vpnStateUpdateHandler(.invalid, nil, nil)
+    }
+
+    // Hook up status updates
+    subscribeToVPNStatusUpdates(handler: vpnStateUpdateHandler)
   }
 
   func saveAuthResponse(_ authResponse: AuthResponse) async throws {
@@ -222,11 +225,11 @@ public class TunnelManager {
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           var providerConfiguration = protocolConfiguration.providerConfiguration
     else {
-      throw TunnelManagerError.cannotSaveIfMissing
+      throw VPNProfileManagerError.managerNotInitialized
     }
 
-    providerConfiguration[TunnelManagerKeys.actorName] = authResponse.actorName
-    providerConfiguration[TunnelManagerKeys.accountSlug] = authResponse.accountSlug
+    providerConfiguration[VPNProfileManagerKeys.actorName] = authResponse.actorName
+    providerConfiguration[VPNProfileManagerKeys.accountSlug] = authResponse.accountSlug
     protocolConfiguration.providerConfiguration = providerConfiguration
     manager.protocolConfiguration = protocolConfiguration
 
@@ -243,13 +246,13 @@ public class TunnelManager {
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {
-      throw TunnelManagerError.cannotSaveIfMissing
+      throw VPNProfileManagerError.managerNotInitialized
     }
 
     var newProviderConfiguration = settings.toProviderConfiguration()
 
     // Don't clobber existing actorName
-    newProviderConfiguration[TunnelManagerKeys.actorName] = providerConfiguration[TunnelManagerKeys.actorName]
+    newProviderConfiguration[VPNProfileManagerKeys.actorName] = providerConfiguration[VPNProfileManagerKeys.actorName]
     protocolConfiguration.providerConfiguration = newProviderConfiguration
     protocolConfiguration.serverAddress = settings.apiURL
     manager.protocolConfiguration = protocolConfiguration
@@ -325,8 +328,15 @@ public class TunnelManager {
 
   func clearLogs() async throws {
     return try await withCheckedThrowingContinuation { continuation in
+      guard let session = session()
+      else {
+        continuation.resume(throwing: VPNProfileManagerError.managerNotInitialized)
+
+        return
+      }
+
       do {
-        try session()?.sendProviderMessage(
+        try session.sendProviderMessage(
           encoder.encode(TunnelMessage.clearLogs)
         ) { _ in continuation.resume() }
       } catch {
@@ -337,15 +347,22 @@ public class TunnelManager {
 
   func getLogFolderSize() async throws -> Int64 {
     return try await withCheckedThrowingContinuation { continuation in
+      guard let session = session()
+      else {
+        continuation.resume(throwing: VPNProfileManagerError.managerNotInitialized)
+
+        return
+      }
+
       do {
-        try session()?.sendProviderMessage(
+        try session.sendProviderMessage(
           encoder.encode(TunnelMessage.getLogFolderSize)
         ) { data in
 
           guard let data = data
           else {
             continuation
-              .resume(throwing: TunnelManagerError.decodeIPCDataFailed)
+              .resume(throwing: VPNProfileManagerError.decodeIPCDataFailed)
 
             return
           }
@@ -364,7 +381,7 @@ public class TunnelManager {
   // in AAR format.
   func exportLogs(
     appender: @escaping (LogChunk) -> Void,
-    errorHandler: @escaping (TunnelManagerError) -> Void
+    errorHandler: @escaping (VPNProfileManagerError) -> Void
   ) {
     let decoder = PropertyListDecoder()
 
@@ -375,7 +392,7 @@ public class TunnelManager {
         ) { data in
           guard let data = data
           else {
-            errorHandler(TunnelManagerError.decodeIPCDataFailed)
+            errorHandler(VPNProfileManagerError.decodeIPCDataFailed)
 
             return
           }
@@ -384,7 +401,7 @@ public class TunnelManager {
             LogChunk.self, from: data
           )
           else {
-            errorHandler(TunnelManagerError.decodeIPCDataFailed)
+            errorHandler(VPNProfileManagerError.decodeIPCDataFailed)
 
             return
           }
@@ -405,17 +422,23 @@ public class TunnelManager {
     loop()
   }
 
-  func consumeStopReason() async throws -> String {
+  func consumeStopReason() async throws -> String? {
     return try await withCheckedThrowingContinuation { continuation in
+      guard let session = session()
+      else {
+        continuation.resume(throwing: VPNProfileManagerError.managerNotInitialized)
+
+        return
+      }
+
       do {
-        try session()?.sendProviderMessage(
+        try session.sendProviderMessage(
           encoder.encode(TunnelMessage.consumeStopReason)
         ) { data in
 
           guard let data = data
           else {
-            continuation
-              .resume(throwing: TunnelManagerError.decodeIPCDataFailed)
+            continuation.resume(returning: nil)
 
             return
           }
@@ -423,7 +446,7 @@ public class TunnelManager {
           guard let reason = String(data: data, encoding: .utf8)
           else {
             continuation
-              .resume(throwing: TunnelManagerError.decodeIPCDataFailed)
+              .resume(throwing: VPNProfileManagerError.decodeIPCDataFailed)
 
             return
           }
@@ -442,7 +465,7 @@ public class TunnelManager {
 
   // Subscribe to system notifications about our VPN status changing
   // and let our handler know about them.
-  private func setupTunnelObservers() {
+  private func subscribeToVPNStatusUpdates(handler: @escaping (NEVPNStatus, Settings?, String?) -> Void) {
     Log.log("\(#function)")
 
     for task in tunnelObservingTasks {
@@ -457,7 +480,7 @@ public class TunnelManager {
         ) {
           guard let session = notification.object as? NETunnelProviderSession
           else {
-            Log.error(TunnelManagerError.invalidStatusChange)
+            Log.error(VPNProfileManagerError.invalidStatusChange)
             return
           }
 
@@ -467,7 +490,7 @@ public class TunnelManager {
             resourcesListCache = ResourceList.loading
           }
 
-          await statusChangeHandler?(session.status)
+          handler(session.status, nil, nil)
         }
       }
     )
