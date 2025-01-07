@@ -163,7 +163,7 @@ public class VPNProfileManager {
         // Silence error when the user doesn't click "Allow" on the VPN
         // permission dialog
         Log.info("VPN permission was denied by the user")
-        
+
         return
       }
 
