@@ -154,8 +154,19 @@ public class VPNProfileManager {
     // Save the new VPN profile to System Preferences and reload it,
     // which should update our status from nil -> disconnected.
     // If the user denied the operation, the status will be .invalid
-    try await manager.saveToPreferences()
-    try await manager.loadFromPreferences()
+    do {
+      try await manager.saveToPreferences()
+      try await manager.loadFromPreferences()
+    } catch let error as NSError {
+      guard error.domain == "NEVPNErrorDomain",
+            error.code == 5 // permission denied
+      else {
+        throw error
+      }
+
+      // Silence error when the user doesn't click "Allow" on the VPN
+      // permission dialog
+    }
 
     self.manager = manager
   }
