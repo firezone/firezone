@@ -10,7 +10,7 @@ source "./scripts/build/lib.sh"
 app_profile_id=c5d97f71-de80-4dfc-80f8-d0a4393ff082
 ne_profile_id=153db941-2136-4d6c-96ef-52f748521e78
 notarize=${NOTARIZE:-"false"}
-temp_dir="${RUNNER_TEMP:-$(mktemp -d)}"
+temp_dir="${TEMP_DIR:-$(mktemp -d)}"
 dmg_dir="$temp_dir/dmg"
 dmg_path="$temp_dir/Firezone.dmg"
 package_path="$temp_dir/package.dmg"
@@ -83,10 +83,6 @@ hdiutil create \
     -ov \
     -format UDRW \
     "$package_path"
-
-# Remove dmg_dir to prevent sentry-cli debug-files upload from searching
-# the /Applications symlink recursively.
-rm -rf "$dmg_dir"
 
 # Mount disk image for customization
 mount_dir=$(hdiutil attach "$package_path" -readwrite -noverify -noautoopen | grep -o "/Volumes/.*")
