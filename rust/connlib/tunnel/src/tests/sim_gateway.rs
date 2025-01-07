@@ -259,8 +259,8 @@ impl RefGateway {
     /// Initialize the [`GatewayState`].
     ///
     /// This simulates receiving the `init` message from the portal.
-    pub(crate) fn init(self, id: GatewayId) -> SimGateway {
-        SimGateway::new(id, GatewayState::new(self.key.0)) // Cheating a bit here by reusing the key as seed.
+    pub(crate) fn init(self, id: GatewayId, now: Instant) -> SimGateway {
+        SimGateway::new(id, GatewayState::new(self.key.0, now)) // Cheating a bit here by reusing the key as seed.
     }
 }
 
