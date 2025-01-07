@@ -84,6 +84,10 @@ hdiutil create \
     -format UDRW \
     "$package_path"
 
+# Remove dmg_dir to prevent sentry-cli debug-files upload from searching
+# the /Applications symlink recursively.
+rm -rf "$dmg_dir"
+
 # Mount disk image for customization
 mount_dir=$(hdiutil attach "$package_path" -readwrite -noverify -noautoopen | grep -o "/Volumes/.*")
 
