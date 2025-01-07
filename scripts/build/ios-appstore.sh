@@ -9,7 +9,7 @@ source "./scripts/build/lib.sh"
 # Define needed variables
 app_profile_id=8da59aa3-e8da-4a8c-9902-2d540324d92c
 ne_profile_id=0fccb78a-97c0-41b9-8c54-9c995280ea8e
-temp_dir=$(mktemp -d)
+temp_dir="${RUNNER_TEMP:-$(mktemp -d)}"
 archive_path="$temp_dir/Firezone.xcarchive"
 export_options_plist_path="$temp_dir/ExportOptions.plist"
 git_sha=${GITHUB_SHA:-$(git rev-parse HEAD)}

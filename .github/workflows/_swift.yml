@@ -70,6 +70,7 @@ jobs:
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
+          RUNNER_TEMP: "${{ runner.temp }}"
       - run: ${{ matrix.upload-script }}
         if: "${{ github.event_name == 'workflow_dispatch' }}"
         env:
@@ -80,6 +81,16 @@ jobs:
           GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
           RELEASE_NAME: "${{ matrix.release-name }}"
           PLATFORM: "${{ matrix.platform }}"
+      - name: Setup sentry CLI
+        if: ${{ github.ref_name == 'main' }}
+        uses: matbour/setup-sentry-cli@v2
+        with:
+          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          organization: firezone-inc
+      - name: Upload debug symbols to Sentry
+        if: ${{ github.ref_name == 'main' }}
+        run: |
+          sentry-cli debug-files upload --log-level info --project apple-client --include-sources ${{ runner.temp }}
       - uses: actions/cache/save@v4
         if: ${{ steps.cache.outputs.cache-hit != 'true'}}
         name: Save Swift DerivedData Cache
