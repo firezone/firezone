@@ -70,7 +70,7 @@ jobs:
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
-          RUNNER_TEMP: "${{ runner.temp }}"
+          TEMP_DIR: "${{ runner.temp }}"
       - run: ${{ matrix.upload-script }}
         if: "${{ github.event_name == 'workflow_dispatch' }}"
         env:
@@ -90,6 +90,10 @@ jobs:
       - name: Upload debug symbols to Sentry
         if: ${{ github.ref_name == 'main' }}
         run: |
+          # Remove the /Applications symlink in the DMG staging directory so Sentry doesn't
+          # attempt to walk it.
+          rm -f "${{ runner.temp }}/dmg/Applications"
+
           sentry-cli debug-files upload --log-level info --project apple-client --include-sources ${{ runner.temp }}
       - uses: actions/cache/save@v4
         if: ${{ steps.cache.outputs.cache-hit != 'true'}}
