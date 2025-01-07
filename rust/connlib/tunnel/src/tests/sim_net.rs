@@ -2,9 +2,8 @@ use crate::tests::buffered_transmits::BufferedTransmits;
 use crate::tests::strategies::documentation_ip6s;
 use connlib_model::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
-use ip_network::{IpNetwork, Ipv4Network};
+use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use prop::sample;
 use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
