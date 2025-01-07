@@ -92,7 +92,7 @@ jobs:
         run: |
           # Remove the /Applications symlink in the DMG staging directory so Sentry doesn't
           # attempt to walk it.
-          rm "$dmg_dir/Applications"
+          rm "${{ runner.temp }}/dmg/Applications"
 
           sentry-cli debug-files upload --log-level info --project apple-client --include-sources ${{ runner.temp }}
       - uses: actions/cache/save@v4
