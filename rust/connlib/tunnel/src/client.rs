@@ -219,7 +219,7 @@ impl ClientState {
             buffered_events: Default::default(),
             tun_config: Default::default(),
             buffered_packets: Default::default(),
-            node: ClientNode::new(seed),
+            node: ClientNode::new(seed, now),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
@@ -1377,10 +1377,10 @@ impl ClientState {
         self.buffered_events.pop_front()
     }
 
-    pub(crate) fn reset(&mut self) {
+    pub(crate) fn reset(&mut self, now: Instant) {
         tracing::info!("Resetting network state");
 
-        self.node.reset();
+        self.node.reset(now);
         self.recently_connected_gateways.clear(); // Ensure we don't have sticky gateways when we roam.
         self.dns_resource_nat_by_gateway.clear();
         self.drain_node_events();

@@ -504,12 +504,6 @@ dependencies = [
 
 [[package]]
 name = "base64"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e1b586273c5702936fe7b7d6896644d8be71e6314cfe09d3167c95f712589e8"
-
-[[package]]
-name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d297deb1925b89f2ccc13d7635fa0714f12c87adce1c75356b39ca9b7178567"
@@ -614,10 +608,10 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.6.0"
-source = "git+https://github.com/firezone/boringtun?branch=master#b07142b38d51095ab7d7830db42d5f7e91c2bacf"
+source = "git+https://github.com/firezone/boringtun?branch=master#2adc2637783c5955b8687604207d5999abce9740"
 dependencies = [
  "aead",
- "base64 0.13.1",
+ "base64 0.22.1",
  "blake2",
  "chacha20poly1305",
  "hex",
@@ -627,7 +621,7 @@ dependencies = [
  "libc",
  "nix 0.29.0",
  "parking_lot",
- "rand_core 0.6.4",
+ "rand 0.8.5",
  "ring",
  "tracing",
  "untrusted",

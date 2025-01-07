@@ -60,7 +60,7 @@ impl TunnelTest {
             .iter()
             .map(|(gid, gateway)| {
                 let gateway = gateway.map(
-                    |ref_gateway, _, _| ref_gateway.init(*gid),
+                    |ref_gateway, _, _| ref_gateway.init(*gid, flux_capacitor.now()),
                     debug_span!("gateway", %gid),
                 );
 
@@ -248,7 +248,7 @@ impl TunnelTest {
                     .add_host(state.client.inner().id, &state.client));
 
                 state.client.exec_mut(|c| {
-                    c.sut.reset();
+                    c.sut.reset(now);
 
                     // In prod, we reconnect to the portal and receive a new `init` message.
                     c.update_relays(iter::empty(), state.relays.iter(), now);
