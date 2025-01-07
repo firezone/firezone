@@ -9,6 +9,12 @@ jobs:
     permissions:
       pull-requests: read
     steps:
+      - name: Enforce PR title length <= 72
+        run: |
+          if [ $(echo ${{ github.event.pull_request.title }} | wc -c) -gt 72 ]; then
+            echo "PR title too long. Please keep it under 72 characters."
+            exit 1
+          fi
       - uses: amannn/action-semantic-pull-request@v5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
