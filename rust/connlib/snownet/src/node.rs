@@ -165,6 +165,7 @@ where
         let mut rng = StdRng::from_seed(seed);
         let private_key = StaticSecret::random_from_rng(&mut rng);
         let public_key = &(&private_key).into();
+        let index = IndexLfsr::new(&mut rng);
 
         Self {
             rng,
@@ -172,7 +173,7 @@ where
             private_key,
             public_key: *public_key,
             mode: T::new(),
-            index: IndexLfsr::default(),
+            index,
             rate_limiter: Arc::new(RateLimiter::new(public_key, HANDSHAKE_RATE_LIMIT)),
             shared_candidates: Default::default(),
             buffered_transmits: VecDeque::default(),
