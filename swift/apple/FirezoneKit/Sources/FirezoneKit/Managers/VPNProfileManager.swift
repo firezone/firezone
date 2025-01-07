@@ -157,18 +157,18 @@ public class VPNProfileManager {
     do {
       try await manager.saveToPreferences()
       try await manager.loadFromPreferences()
+      self.manager = manager
     } catch let error as NSError {
-      guard error.domain == "NEVPNErrorDomain",
-            error.code == 5 // permission denied
-      else {
-        throw error
+      if error.domain == "NEVPNErrorDomain" && error.code == 5 {
+        // Silence error when the user doesn't click "Allow" on the VPN
+        // permission dialog
+        Log.info("VPN permission was denied by the user")
+        
+        return
       }
 
-      // Silence error when the user doesn't click "Allow" on the VPN
-      // permission dialog
+      throw error
     }
-
-    self.manager = manager
   }
 
   func loadFromPreferences(vpnStateUpdateHandler: @escaping (NEVPNStatus, Settings?, String?) -> Void) async throws {
