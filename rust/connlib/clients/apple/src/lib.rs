@@ -89,10 +89,9 @@ mod ffi {
             tunnelAddressIPv4: String,
             tunnelAddressIPv6: String,
             dnsAddresses: String,
+            routeList4: String,
+            routeList6: String,
         );
-
-        #[swift_bridge(swift_name = "onUpdateRoutes")]
-        fn on_update_routes(&self, routeList4: String, routeList6: String);
 
         #[swift_bridge(swift_name = "onUpdateResources")]
         fn on_update_resources(&self, resourceList: String);
@@ -149,8 +148,9 @@ impl Callbacks for CallbackHandler {
                     tunnel_address_v4.to_string(),
                     tunnel_address_v6.to_string(),
                     dns_addresses,
+                    route_list_4,
+                    route_list_6,
                 );
-                self.inner.on_update_routes(route_list_4, route_list_6);
             }
             (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
                 tracing::error!(error = std_dyn_err(&e), "Failed to serialize to JSON");

@@ -359,7 +359,7 @@ extension Adapter {
 
 extension Adapter: CallbackHandlerDelegate {
   public func onSetInterfaceConfig(
-    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddresses: [String]
+    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddresses: [String], routeListv4: String, routeListv6: String
   ) {
     // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
@@ -371,7 +371,7 @@ extension Adapter: CallbackHandlerDelegate {
       }
 
       Log.log(
-        "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses)")
+        "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses) \(routeListv4) \(routeListv6)")
 
       switch state {
       case .tunnelStarted(session: _):
@@ -379,32 +379,17 @@ extension Adapter: CallbackHandlerDelegate {
         networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
         networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
         networkSettings.dnsAddresses = dnsAddresses
+        networkSettings.routes4 = try! JSONDecoder().decode(
+        [NetworkSettings.Cidr].self, from: routeListv4.data(using: .utf8)!
+        ).compactMap { $0.asNEIPv4Route }
+        networkSettings.routes6 = try! JSONDecoder().decode(
+        [NetworkSettings.Cidr].self, from: routeListv6.data(using: .utf8)!
+        ).compactMap { $0.asNEIPv6Route }
+
         networkSettings.apply()
       case .tunnelStopped:
         Log.error(AdapterError.invalidState(self.state))
       }
-    }
-  }
-
-  public func onUpdateRoutes(routeList4: String, routeList6: String) {
-    // This is a queued callback to ensure ordering
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-      guard let networkSettings = networkSettings
-      else {
-        fatalError("onUpdateRoutes called before network settings was initialized!")
-      }
-
-      Log.log("\(#function): \(routeList4) \(routeList6)")
-
-      networkSettings.routes4 = try! JSONDecoder().decode(
-        [NetworkSettings.Cidr].self, from: routeList4.data(using: .utf8)!
-      ).compactMap { $0.asNEIPv4Route }
-      networkSettings.routes6 = try! JSONDecoder().decode(
-        [NetworkSettings.Cidr].self, from: routeList6.data(using: .utf8)!
-      ).compactMap { $0.asNEIPv6Route }
-
-      networkSettings.apply()
     }
   }
 
