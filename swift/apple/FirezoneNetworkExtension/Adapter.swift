@@ -313,23 +313,20 @@ extension Adapter {
       }
 
       if shouldFetchSystemResolvers(path: path) {
-        // Spawn a new thread to avoid blocking the UI on iOS
-        Task {
-          let resolvers = getSystemDefaultResolvers(
-            interfaceName: path.availableInterfaces.first?.name)
-
-          if lastFetchedResolvers != resolvers,
-            let jsonResolvers = try? String(
-              decoding: JSONEncoder().encode(resolvers), as: UTF8.self
-            ).intoRustString()
-          {
-
-            // Update connlib DNS
-            session.setDns(jsonResolvers)
-
-            // Update our state tracker
-            lastFetchedResolvers = resolvers
-          }
+        let resolvers = getSystemDefaultResolvers(
+          interfaceName: path.availableInterfaces.first?.name)
+        
+        if lastFetchedResolvers != resolvers,
+           let jsonResolvers = try? String(
+            decoding: JSONEncoder().encode(resolvers), as: UTF8.self
+           ).intoRustString()
+        {
+          
+          // Update connlib DNS
+          session.setDns(jsonResolvers)
+          
+          // Update our state tracker
+          lastFetchedResolvers = resolvers
         }
       }
 
