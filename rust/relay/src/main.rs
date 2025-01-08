@@ -91,15 +91,9 @@ struct Args {
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
 
-    /// Disable sentry.io crash-reporting agent.
-    #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
-    no_telemetry: bool,
-}
-
-impl Args {
-    fn is_telemetry_allowed(&self) -> bool {
-        !self.no_telemetry
-    }
+    /// Enable sentry.io crash-reporting agent.
+    #[arg(long, env = "FIREZONE_TELEMETRY", default_value_t = false)]
+    telemetry: bool,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -117,7 +111,7 @@ fn main() {
     let args = Args::parse();
 
     let mut telemetry = Telemetry::default();
-    if args.is_telemetry_allowed() {
+    if args.telemetry {
         telemetry.start(
             args.api_url.as_str(),
             option_env!("GITHUB_SHA").unwrap_or("unknown"),
