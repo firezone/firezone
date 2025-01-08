@@ -449,6 +449,7 @@ where
             .ok_or(Error::NotConnected)?;
 
         let mut buffer = self.buffer_pool.pull_owned();
+        let was_idle = conn.state.is_idle();
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
@@ -458,6 +459,16 @@ where
         else {
             return Ok(None);
         };
+
+        // If we just came back from being idle, update all timers.
+        if was_idle {
+            conn.handle_timeout(
+                connection,
+                now,
+                &mut self.allocations,
+                &mut self.buffered_transmits,
+            );
+        }
 
         let packet_start = 4;
         let packet_end = 4 + packet_len;
@@ -1713,6 +1724,10 @@ where
         };
         apply_default_stun_timings(agent);
         *wg_timer = DEFAULT_WG_TIMER;
+    }
+
+    fn is_idle(&self) -> bool {
+        matches!(self, Self::Idle { .. })
     }
 }
 
