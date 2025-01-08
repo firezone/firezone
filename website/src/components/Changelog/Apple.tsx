@@ -8,7 +8,11 @@ export default function Apple() {
   const downloadLinks = [
     {
       href: "https://apps.apple.com/us/app/firezone/id6443661826",
-      title: "Download on App Store",
+      title: "Download on App Store for macOS and iOS",
+    },
+    {
+      href: "https://www.firezone.dev/dl/firezone-client-macos/latest",
+      title: "Download standalone package for macOS",
     },
   ];
 
@@ -16,6 +20,15 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="7581">
+          Adds download links and CI configuration to publish the macOS app as a
+          standalone package.
+        </ChangeItem>
+        <ChangeItem pull="7344">
+          The macOS app now uses a System Extension instead of an App Extension
+          for tunneling. This is needed for the app to be distributed outside of
+          the Mac App Store.
+        </ChangeItem>
         <ChangeItem pull="7594">
           Fixes a race condition that could cause the app to crash in rare
           circumstances if the VPN profile is removed from system settings while
@@ -26,12 +39,8 @@ export default function Apple() {
           first launch of the app.
         </ChangeItem>
         <ChangeItem pull="7334">
-          Fixes an issue where symmetric NATs would generate unnecessary
-          candidate for hole-punching.
-        </ChangeItem>
-        <ChangeItem pull="7210">
-          Adds support for GSO (Generic Segmentation Offload), delivering
-          throughput improvements of up to 60%.
+          Fixes an issue where certain NAT types would cause excessive signaling
+          traffic which led to connectivity issues.
         </ChangeItem>
         <ChangeItem>
           Makes use of the new control protocol, delivering faster and more
