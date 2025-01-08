@@ -366,7 +366,9 @@ impl ClientOnGateway {
             .context("No filter")
             .context(DstNotAllowed(dst))?;
 
-        filter.apply(packet).context(DstNotAllowed(dst))?;
+        filter
+            .apply(packet.destination_protocol())
+            .context(DstNotAllowed(dst))?;
 
         Ok(())
     }
