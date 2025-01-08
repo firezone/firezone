@@ -1811,8 +1811,6 @@ where
         }
 
         if now >= self.next_wg_timer_update {
-            self.next_wg_timer_update = now + self.wg_timer;
-
             // Don't update wireguard timers until we are connected.
             let Some(peer_socket) = self.socket() else {
                 return;
@@ -1841,6 +1839,11 @@ where
                     panic!("Unexpected result from update_timers")
                 }
             };
+
+            self.next_wg_timer_update = self
+                .tunnel
+                .next_timer_update()
+                .unwrap_or(now + self.wg_timer);
         }
 
         while let Some(event) = self.agent.poll_event() {
