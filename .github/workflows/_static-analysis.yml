@@ -9,12 +9,13 @@ jobs:
     permissions:
       pull-requests: read
     steps:
-      - name: Enforce PR title length <= 72
+      - name: Enforce PR title length <= 64
         # Don't run for Dependabot PRs
         if: ${{ !contains(github.event.pull_request.head.label, 'dependabot') }}
         run: |
-          if [ $(echo "${{ github.event.pull_request.title }}" | wc -c) -gt 72 ]; then
-            echo "PR title too long. Please keep it under 72 characters."
+          # 64 instead of 72 because GitHub adds the PR number to the title
+          if [ $(echo "${{ github.event.pull_request.title }}" | wc -c) -gt 64 ]; then
+            echo "PR title too long. Please keep it under 64 characters."
             exit 1
           fi
       - uses: amannn/action-semantic-pull-request@v5
