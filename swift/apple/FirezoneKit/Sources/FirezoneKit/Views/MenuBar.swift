@@ -261,7 +261,6 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func signInButtonTapped() {
-    NSApp.activate(ignoringOtherApps: true)
     WebAuthSession.signIn(store: model.store)
   }
 
@@ -274,7 +273,12 @@ public final class MenuBar: NSObject, ObservableObject {
   @objc private func grantPermissionMenuItemTapped() {
     Task {
       do {
-        try await model.store.grantVPNPermissions()
+        // If we get here, it means either system extension got disabled or
+        // our VPN profile got removed. Since we don't know which, reinstall
+        // the system extension here too just in case. It's a no-op if already
+        // installed.
+        try await model.store.installSystemExtension()
+        try await model.store.grantVPNPermission()
       } catch {
         Log.error(error)
       }

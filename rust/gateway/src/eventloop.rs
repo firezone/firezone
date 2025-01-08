@@ -77,9 +77,6 @@ impl Eventloop {
                     self.handle_tunnel_event(event);
                     continue;
                 }
-                Poll::Ready(Err(e)) if e.kind() == io::ErrorKind::WouldBlock => {
-                    continue;
-                }
                 Poll::Ready(Err(e))
                     if e.kind() == io::ErrorKind::NetworkUnreachable
                         || e.kind() == io::ErrorKind::HostUnreachable =>
@@ -88,6 +85,12 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
+                    debug_assert_ne!(
+                        e.kind(),
+                        io::ErrorKind::WouldBlock,
+                        "Tunnel should never emit WouldBlock errors but suspend instead"
+                    );
+
                     let e = anyhow::Error::from(e);
 
                     if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
