@@ -315,16 +315,16 @@ extension Adapter {
       if shouldFetchSystemResolvers(path: path) {
         let resolvers = getSystemDefaultResolvers(
           interfaceName: path.availableInterfaces.first?.name)
-        
+
         if lastFetchedResolvers != resolvers,
            let jsonResolvers = try? String(
             decoding: JSONEncoder().encode(resolvers), as: UTF8.self
            ).intoRustString()
         {
-          
+
           // Update connlib DNS
           session.setDns(jsonResolvers)
-          
+
           // Update our state tracker
           lastFetchedResolvers = resolvers
         }
