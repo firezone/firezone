@@ -1810,9 +1810,9 @@ where
             return;
         }
 
-        if now >= self.next_wg_timer_update {
-            self.handle_tunnel_timeout(now, allocations, transmits);
+        self.handle_tunnel_timeout(now, allocations, transmits);
 
+        if now >= self.next_wg_timer_update {
             self.next_wg_timer_update = self
                 .tunnel
                 .next_timer_update()
