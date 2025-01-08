@@ -288,6 +288,16 @@ impl ClientOnGateway {
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<IpPacket>> {
+        let packet = self.transform_tun_to_network(packet, now)?;
+
+        Ok(packet)
+    }
+
+    fn transform_tun_to_network(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> anyhow::Result<Option<IpPacket>> {
         let (proto, ip) = match self.nat_table.translate_incoming(&packet, now)? {
             TranslateIncomingResult::Ok { proto, src } => (proto, src),
             TranslateIncomingResult::DestinationUnreachable(prototype) => {
