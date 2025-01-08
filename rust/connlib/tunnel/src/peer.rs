@@ -288,9 +288,13 @@ impl ClientOnGateway {
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<IpPacket>> {
-        let packet = self.transform_tun_to_network(packet, now)?;
+        let Some(packet) = self.transform_tun_to_network(packet, now)? else {
+            return Ok(None);
+        };
 
-        Ok(packet)
+        self.ensure_client_ip(packet.destination())?;
+
+        Ok(Some(packet))
     }
 
     fn transform_tun_to_network(
@@ -333,15 +337,15 @@ impl ClientOnGateway {
     }
 
     fn ensure_allowed(&self, packet: &IpPacket) -> anyhow::Result<()> {
-        self.ensure_allowed_src(packet.source())?;
+        self.ensure_client_ip(packet.source())?;
         self.ensure_allowed_dst(packet)?;
 
         Ok(())
     }
 
-    fn ensure_allowed_src(&self, ip: IpAddr) -> anyhow::Result<()> {
+    fn ensure_client_ip(&self, ip: IpAddr) -> anyhow::Result<()> {
         if !self.allowed_ips().contains(&ip) {
-            return Err(anyhow::Error::new(SrcNotAllowed(ip)));
+            return Err(anyhow::Error::new(NotClientIp(ip)));
         }
 
         Ok(())
@@ -377,7 +381,7 @@ impl GatewayOnClient {
         let src = packet.source();
 
         if self.allowed_ips.longest_match(src).is_none() {
-            return Err(anyhow::Error::new(SrcNotAllowed(src)));
+            return Err(anyhow::Error::new(NotClientIp(src)));
         }
 
         Ok(())
@@ -389,8 +393,8 @@ impl GatewayOnClient {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("Source not allowed: {0}")]
-pub(crate) struct SrcNotAllowed(IpAddr);
+#[error("Not a client IP: {0}")]
+pub(crate) struct NotClientIp(IpAddr);
 
 #[derive(Debug, thiserror::Error)]
 #[error("Destination not allowed: {0}")]
