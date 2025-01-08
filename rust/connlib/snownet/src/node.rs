@@ -1811,7 +1811,12 @@ where
         }
 
         if now >= self.next_wg_timer_update {
-            self.handle_tunnel_timeout(now, allocations, transmits)
+            self.handle_tunnel_timeout(now, allocations, transmits);
+
+            self.next_wg_timer_update = self
+                .tunnel
+                .next_timer_update()
+                .unwrap_or(now + self.wg_timer);
         }
 
         while let Some(event) = self.agent.poll_event() {
@@ -1980,11 +1985,6 @@ where
                 panic!("Unexpected result from update_timers")
             }
         };
-
-        self.next_wg_timer_update = self
-            .tunnel
-            .next_timer_update()
-            .unwrap_or(now + self.wg_timer);
     }
 
     fn encapsulate<'b>(
