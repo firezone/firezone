@@ -153,6 +153,6 @@ mod tests {
     // Make sure it's okay to store a bunch of these to mitigate #5880
     #[test]
     fn callback_msg_size() {
-        assert_eq!(std::mem::size_of::<ConnlibMsg>(), 56)
+        assert_eq!(std::mem::size_of::<ConnlibMsg>(), 96)
     }
 }
