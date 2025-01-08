@@ -85,12 +85,10 @@ pub enum ConnlibMsg {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
         dns: Vec<IpAddr>,
+        ipv4_routes: Vec<Ipv4Network>,
+        ipv6_routes: Vec<Ipv6Network>,
     },
     OnUpdateResources(Vec<ResourceView>),
-    OnUpdateRoutes {
-        ipv4: Vec<Ipv4Network>,
-        ipv6: Vec<Ipv6Network>,
-    },
 }
 
 #[derive(Clone)]
@@ -117,14 +115,14 @@ impl Callbacks for CallbackHandler {
         ipv6_routes: Vec<Ipv6Network>,
     ) {
         self.cb_tx
-            .try_send(ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
-            .expect("Should be able to send OnSetInterfaceConfig");
-        self.cb_tx
-            .try_send(ConnlibMsg::OnUpdateRoutes {
-                ipv4: ipv4_routes,
-                ipv6: ipv6_routes,
+            .try_send(ConnlibMsg::OnSetInterfaceConfig {
+                ipv4,
+                ipv6,
+                dns,
+                ipv4_routes,
+                ipv6_routes,
             })
-            .expect("Should be able to send messages");
+            .expect("Should be able to send OnSetInterfaceConfig");
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceView>) {
