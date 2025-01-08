@@ -1,8 +1,11 @@
 import SupportOptions from "@/components/SupportOptions";
+import { TabsGroup, TabsItem } from "@/components/Tabs";
+import Alert from "@/components/DocsAlert";
 
 # macOS Client
 
-Firezone supports macOS with a native client available in the macOS App Store.
+Firezone supports macOS with a native client available both in the Mac App Store
+and as a standalone distributable.
 
 ## Prerequisites
 
@@ -11,12 +14,53 @@ Firezone supports macOS with a native client available in the macOS App Store.
 
 ## Installation
 
+Firezone distributes the macOS client in two ways: through the **Mac App Store**
+and as a **standalone** download.
+
+If you're looking for the easiest way to install and manage Firezone on your
+Mac, use the **App Store** version.
+
+If you want the ability to rollback to an earlier release or install the client
+without an Apple account, use the **standalone** version.
+
+<TabsGroup>
+<TabsItem title="App Store">
+
 1. [Download the Client](https://apps.apple.com/us/app/firezone/id6443661826)
-   from the Apple App Store.
+   from the Mac App Store.
 1. Click `Open` in the App Store. The `Welcome to Firezone` window will open.
 1. Click `Grant VPN Permission`. macOS will show a dialog saying,
    `"Firezone" Would Like to Add VPN Configurations`.
 1. Click `Allow`.
+
+</TabsItem>
+<TabsItem title="Standalone">
+
+1. [Download the Client](/dl/firezone-client-macos/latest)
+1. Open the downloaded `.dmg` file.
+1. Drag the Firezone icon to the Applications folder.
+1. Open the Applications folder and double-click the Firezone icon.
+1. Click `Enable System Extension` and follow the instructions to enable the
+   system extension.
+1. Click `Grant VPN Permission`. macOS will show a dialog saying,
+   `"Firezone" Would Like to Add VPN Configurations`.
+1. Click `Allow`.
+
+</TabsItem>
+</TabsGroup>
+
+### Switching between App Store and Standalone
+
+If you have the App Store version installed and want to switch to the standalone
+version (or vice versa), follow these steps:
+
+1. Quit the Firezone Client.
+1. Uninstall the Firezone Client by dragging it to the Trash and emptying the
+   Trash.
+1. Install the desired version using the instructions above.
+
+**Note:** This will reset any changes you've made to the client settings, so be
+sure to configure them again if needed.
 
 ## Usage
 
@@ -61,9 +105,25 @@ will use its normal DNS and Internet behavior.
 
 ## Upgrading
 
+<TabsGroup>
+<TabsItem title="App Store">
+
 Use the App Store to update the Firezone Apple Client. See Apple's documentation
 ["Use the App Store to update apps on Mac"](https://support.apple.com/guide/app-store/update-apps-fir9b01adda3/3.0/mac/14.0)
 for more information.
+
+</TabsItem>
+<TabsItem title="Standalone">
+
+1. Quit the Firezone Client if it's running.
+1. [Download](/dl/firezone-client-macos/latest) the latest version.
+1. Open the downloaded `.dmg` file.
+1. Drag the Firezone icon to the Applications folder, replacing the existing
+   version.
+1. Open the Applications folder and double-click the Firezone icon.
+
+</TabsItem>
+</TabsGroup>
 
 ## Diagnostic logs
 
@@ -81,9 +141,8 @@ To export or clear your logs:
 ## Uninstalling
 
 1. Quit the Firezone Client.
-1. Open Launchpad and find Firezone.
-1. Press and hold the `Option` key, and click on the "X" button on the Firezone
-   icon.
+1. Drag the Firezone icon from the Applications folder to the Trash.
+1. Empty the Trash.
 
 See Apple's documentation
 ["Uninstall apps on your Mac"](https://support.apple.com/en-us/102610) for more
