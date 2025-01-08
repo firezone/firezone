@@ -1811,36 +1811,12 @@ where
         }
 
         if now >= self.next_wg_timer_update {
-            self.next_wg_timer_update = now + self.wg_timer;
+            self.handle_tunnel_timeout(now, allocations, transmits);
 
-            // Don't update wireguard timers until we are connected.
-            let Some(peer_socket) = self.socket() else {
-                return;
-            };
-
-            /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
-            ///
-            /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
-            const MAX_SCRATCH_SPACE: usize = 148;
-
-            let mut buf = [0u8; MAX_SCRATCH_SPACE];
-
-            match self.tunnel.update_timers_at(&mut buf, now) {
-                TunnResult::Done => {}
-                TunnResult::Err(WireGuardError::ConnectionExpired) => {
-                    tracing::info!("Connection failed (wireguard tunnel expired)");
-                    self.state = ConnectionState::Failed;
-                }
-                TunnResult::Err(e) => {
-                    tracing::warn!(?e);
-                }
-                TunnResult::WriteToNetwork(b) => {
-                    transmits.extend(make_owned_transmit(peer_socket, b, allocations, now));
-                }
-                TunnResult::WriteToTunnelV4(..) | TunnResult::WriteToTunnelV6(..) => {
-                    panic!("Unexpected result from update_timers")
-                }
-            };
+            self.next_wg_timer_update = self
+                .tunnel
+                .next_timer_update()
+                .unwrap_or(now + self.wg_timer);
         }
 
         while let Some(event) = self.agent.poll_event() {
@@ -1973,6 +1949,42 @@ where
                 payload: Cow::Owned(data_channel_packet),
             });
         }
+    }
+
+    fn handle_tunnel_timeout(
+        &mut self,
+        now: Instant,
+        allocations: &mut BTreeMap<RId, Allocation>,
+        transmits: &mut VecDeque<Transmit<'static>>,
+    ) {
+        // Don't update wireguard timers until we are connected.
+        let Some(peer_socket) = self.socket() else {
+            return;
+        };
+
+        /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
+        ///
+        /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
+        const MAX_SCRATCH_SPACE: usize = 148;
+
+        let mut buf = [0u8; MAX_SCRATCH_SPACE];
+
+        match self.tunnel.update_timers_at(&mut buf, now) {
+            TunnResult::Done => {}
+            TunnResult::Err(WireGuardError::ConnectionExpired) => {
+                tracing::info!("Connection failed (wireguard tunnel expired)");
+                self.state = ConnectionState::Failed;
+            }
+            TunnResult::Err(e) => {
+                tracing::warn!(?e);
+            }
+            TunnResult::WriteToNetwork(b) => {
+                transmits.extend(make_owned_transmit(peer_socket, b, allocations, now));
+            }
+            TunnResult::WriteToTunnelV4(..) | TunnResult::WriteToTunnelV6(..) => {
+                panic!("Unexpected result from update_timers")
+            }
+        };
     }
 
     fn encapsulate<'b>(
