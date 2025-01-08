@@ -89,10 +89,9 @@ mod ffi {
             tunnelAddressIPv4: String,
             tunnelAddressIPv6: String,
             dnsAddresses: String,
+            routeListv4: String,
+            routeListv6: String,
         );
-
-        #[swift_bridge(swift_name = "onUpdateRoutes")]
-        fn on_update_routes(&self, routeList4: String, routeList6: String);
 
         #[swift_bridge(swift_name = "onUpdateResources")]
         fn on_update_resources(&self, resourceList: String);
@@ -129,6 +128,8 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
+        route_list_v4: Vec<Ipv4Network>,
+        route_list_v6: Vec<Ipv6Network>,
     ) {
         let dns_addresses = match serde_json::to_string(&dns_addresses) {
             Ok(dns_addresses) => dns_addresses,
@@ -137,24 +138,22 @@ impl Callbacks for CallbackHandler {
                 return;
             }
         };
-
-        self.inner.on_set_interface_config(
-            tunnel_address_v4.to_string(),
-            tunnel_address_v6.to_string(),
-            dns_addresses,
-        );
-    }
-
-    fn on_update_routes(&self, route_list_4: Vec<Ipv4Network>, route_list_6: Vec<Ipv6Network>) {
         match (
-            serde_json::to_string(&V4RouteList::new(route_list_4)),
-            serde_json::to_string(&V6RouteList::new(route_list_6)),
+            serde_json::to_string(&dns_addresses),
+            serde_json::to_string(&V4RouteList::new(route_list_v4)),
+            serde_json::to_string(&V6RouteList::new(route_list_v6)),
         ) {
-            (Ok(route_list_4), Ok(route_list_6)) => {
-                self.inner.on_update_routes(route_list_4, route_list_6);
+            (Ok(dns_addresses), Ok(route_list_4), Ok(route_list_6)) => {
+                self.inner.on_set_interface_config(
+                    tunnel_address_v4.to_string(),
+                    tunnel_address_v6.to_string(),
+                    dns_addresses,
+                    route_list_4,
+                    route_list_6,
+                );
             }
-            (Err(e), _) | (_, Err(e)) => {
-                tracing::error!(error = std_dyn_err(&e), "Failed to serialize route list");
+            (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
+                tracing::error!(error = std_dyn_err(&e), "Failed to serialize to JSON");
             }
         }
     }

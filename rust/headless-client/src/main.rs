@@ -298,9 +298,18 @@ fn main() -> Result<()> {
                     // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
                 }
-                ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+                ConnlibMsg::OnSetInterfaceConfig {
+                    ipv4,
+                    ipv6,
+                    dns,
+                    ipv4_routes,
+                    ipv6_routes,
+                } => {
                     tun_device.set_ips(ipv4, ipv6).await?;
+                    tun_device.set_routes(ipv4_routes, ipv6_routes).await?;
+
                     dns_controller.set_dns(dns).await?;
+
                     // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready
                     // <https://github.com/firezone/firezone/pull/6026#discussion_r1692297438>
                     if let Some(instant) = last_connlib_start_instant.take() {
@@ -312,9 +321,6 @@ fn main() -> Result<()> {
                         tracing::info!("Exiting due to `--exit` CLI flag");
                         break Ok(());
                     }
-                }
-                ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                    tun_device.set_routes(ipv4, ipv6).await?;
                 }
             }
         };

@@ -456,12 +456,21 @@ impl<'a> Handler<'a> {
                     .await
                     .context("Error while sending IPC message `OnDisconnect`")?
             }
-            ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+            ConnlibMsg::OnSetInterfaceConfig {
+                ipv4,
+                ipv6,
+                dns,
+                ipv4_routes,
+                ipv6_routes,
+            } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(dns).await?;
                 if let Some(instant) = self.last_connlib_start_instant.take() {
                     tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
                 }
+                self.tun_device.set_routes(ipv4_routes, ipv6_routes).await?;
+                self.dns_controller.flush()?;
+
                 self.ipc_tx
                     .send(&ServerMsg::TunnelReady)
                     .await
@@ -474,10 +483,6 @@ impl<'a> Handler<'a> {
                     .send(&ServerMsg::OnUpdateResources(resources))
                     .await
                     .context("Error while sending IPC message `OnUpdateResources`")?;
-            }
-            ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                self.tun_device.set_routes(ipv4, ipv6).await?;
-                self.dns_controller.flush()?;
             }
         }
         Ok(())
