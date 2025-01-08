@@ -1,6 +1,7 @@
 import SupportOptions from "@/components/SupportOptions";
 import { TabsGroup, TabsItem } from "@/components/Tabs";
 import Alert from "@/components/DocsAlert";
+import { FaInfoCircle } from "react-icons/fa";
 
 # macOS Client
 
@@ -33,6 +34,8 @@ without an Apple account, use the **standalone** version.
    `"Firezone" Would Like to Add VPN Configurations`.
 1. Click `Allow`.
 
+Firezone is now ready for use.
+
 </TabsItem>
 <TabsItem title="Standalone">
 
@@ -40,11 +43,16 @@ without an Apple account, use the **standalone** version.
 1. Open the downloaded `.dmg` file.
 1. Drag the Firezone icon to the Applications folder.
 1. Open the Applications folder and double-click the Firezone icon.
-1. Click `Enable System Extension` and follow the instructions to enable the
-   system extension.
-1. Click `Grant VPN Permission`. macOS will show a dialog saying,
+1. Click `Enable System Extension` in the window that appears.
+1. Click `Open System Settings` in the dialog that appears.
+1. Toggle the switch next to `FirezoneNetworkExtension` to enable the system
+   extension.
+1. Click `Done`.
+1. Next, click `Grant VPN Permission`. macOS will show a dialog saying,
    `"Firezone" Would Like to Add VPN Configurations`.
 1. Click `Allow`.
+
+Firezone is now ready for use.
 
 </TabsItem>
 </TabsGroup>
@@ -105,6 +113,9 @@ will use its normal DNS and Internet behavior.
 
 ## Upgrading
 
+We recommend keeping the Firezone client up to date if possible. How this is
+achieved depends on how you installed the client.
+
 <TabsGroup>
 <TabsItem title="App Store">
 
@@ -114,6 +125,8 @@ for more information.
 
 </TabsItem>
 <TabsItem title="Standalone">
+
+To upgrade the standalone Firezone Client:
 
 1. Quit the Firezone Client if it's running.
 1. [Download](/dl/firezone-client-macos/latest) the latest version.
@@ -149,6 +162,45 @@ See Apple's documentation
 information.
 
 ## Troubleshooting
+
+### Signing in doesn't do anything
+
+If you go through the sign in process successfully and nothing happens, it could
+be because the System Extension is not enabled or installed correctly. To fix
+it, perform the following steps:
+
+#### Step 1: Remove the VPN Profile
+
+1. Quit the Firezone Client.
+1. Open System Settings.
+1. Go to `VPN`.
+1. Click the <span><FaInfoCircle className="inline" /></span> in the `Firezone`
+   entry to open its settings.
+1. Click the `Remove Configuration...` button and confirm the removal.
+
+#### Step 2: Remove the Network Extension
+
+1. Open System Settings.
+1. Go to `General -> Login Items & Extensions`.
+1. Scroll to the bottom and look for the `Network Extensions` section.
+1. Click the <span><FaInfoCircle className="inline" /></span> in the
+   `Network Extensions` section to open its settings.
+1. Click the ellipsis (`...`) button in the `Firezone.app` entry to open the
+   contextual menu.
+1. Click `Delete Extension`.
+
+#### Step 3: Open the Firezone Client
+
+1. Open the Firezone Client.
+1. Click `Enable System Extension` and follow the instructions to enable the
+   system extension.
+1. Click `Grant VPN Permission` and follow the instructions to allow the VPN
+   profile.
+
+#### Step 4: Sign in
+
+The system extension and related VPN profile should now be installed correctly.
+If you still have issues, please [contact support](/support).
 
 ### Check if Firezone is controlling DNS
 
@@ -192,7 +244,8 @@ Normal system DNS:
   may interfere with Firezone's ability to successfully forward and reply to DNS
   queries made by applications on macOS. The symptom when this occurs is that
   all DNS queries on the system will fail, not just those that match the DNS
-  Resources you have in your account. See this issue for more information:
+  Resources you have in your account. The issue seems to mainly be present on
+  `x86_64` systems only. See this issue for more information:
   [#6768](https://github.com/firezone/firezone/issues/6768).
 
 <SupportOptions />
