@@ -8,95 +8,251 @@ module "relays" {
   #  - /website/src/app/kb/deploy/gateways/readme.mdx
   #  - /website/src/app/kb/architecture/tech-stack/readme.mdx
   instances = {
-    "asia-east1" = {
+    "africa-south1" = {
       cidr_range = "10.129.0.0/24"
       type       = "e2-micro"
-      replicas   = 2
-      zones      = ["asia-east1-c"]
+      replicas   = 1
+      zones      = ["africa-south1-a"]
     }
-
-    "asia-south1" = {
+    "asia-east1" = {
       cidr_range = "10.130.0.0/24"
       type       = "e2-micro"
-      replicas   = 2
-      zones      = ["asia-south1-c"]
+      replicas   = 1
+      zones      = ["asia-east1-a"]
     }
-
-    "australia-southeast1" = {
+    "asia-east2" = {
       cidr_range = "10.131.0.0/24"
       type       = "e2-micro"
-      replicas   = 2
-      zones      = ["australia-southeast1-c"]
+      replicas   = 1
+      zones      = ["asia-east2-a"]
     }
-
-    "europe-west1" = {
+    "asia-northeast1" = {
       cidr_range = "10.132.0.0/24"
       type       = "e2-micro"
-      replicas   = 2
-      zones      = ["europe-west1-d"]
+      replicas   = 1
+      zones      = ["asia-northeast1-a"]
     }
-
-    # "me-central1" = {
-    #   cidr_range = "10.133.0.0/24"
-    #   type       = "e2-micro"
-    #   replicas   = 2
-    #   zones      ["me-central1-a"]
-    # }
-
-    "southamerica-east1" = {
+    "asia-northeast2" = {
+      cidr_range = "10.133.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["asia-northeast2-a"]
+    }
+    "asia-northeast3" = {
       cidr_range = "10.134.0.0/24"
       type       = "e2-micro"
-      replicas   = 2
-      zones      = ["southamerica-east1-c"]
+      replicas   = 1
+      zones      = ["asia-northeast3-a"]
     }
-
-    "us-central1" = {
+    "asia-south1" = {
       cidr_range = "10.135.0.0/24"
       type       = "e2-micro"
-      replicas   = 2
-      zones      = ["us-central1-f"]
+      replicas   = 1
+      zones      = ["asia-south1-a"]
     }
-
-    "us-east1" = {
+    "asia-south2" = {
       cidr_range = "10.136.0.0/24"
       type       = "e2-micro"
-      replicas   = 2
-      zones      = ["us-east1-c"]
+      replicas   = 1
+      zones      = ["asia-south2-a"]
     }
-
-    "us-west2" = {
+    "asia-southeast1" = {
       cidr_range = "10.137.0.0/24"
       type       = "e2-micro"
-      replicas   = 2
-      zones      = ["us-west2-b"]
+      replicas   = 1
+      zones      = ["asia-southeast1-a"]
     }
-
-    "europe-central2" = {
+    "asia-southeast2" = {
       cidr_range = "10.138.0.0/24"
       type       = "e2-micro"
-      replicas   = 2
-      zones      = ["europe-central2-c"]
+      replicas   = 1
+      zones      = ["asia-southeast2-a"]
     }
-
-    "europe-north1" = {
+    "australia-southeast1" = {
       cidr_range = "10.139.0.0/24"
       type       = "e2-micro"
-      replicas   = 2
-      zones      = ["europe-north1-c"]
+      replicas   = 1
+      zones      = ["australia-southeast1-a"]
     }
-
-    "europe-west2" = {
+    "australia-southeast2" = {
       cidr_range = "10.140.0.0/24"
       type       = "e2-micro"
-      replicas   = 2
-      zones      = ["europe-west2-c"]
+      replicas   = 1
+      zones      = ["australia-southeast2-a"]
     }
-
-    "us-east4" = {
+    "europe-central2" = {
       cidr_range = "10.141.0.0/24"
       type       = "e2-micro"
-      replicas   = 2
-      zones      = ["us-east4-c"]
+      replicas   = 1
+      zones      = ["europe-central2-a"]
+    }
+    "europe-north1" = {
+      cidr_range = "10.142.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["europe-north1-a"]
+    }
+    "europe-southwest1" = {
+      cidr_range = "10.143.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["europe-southwest1-a"]
+    }
+    "europe-west1" = {
+      cidr_range = "10.144.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["europe-west1-b"]
+    }
+    "europe-west2" = {
+      cidr_range = "10.145.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["europe-west2-a"]
+    }
+    "europe-west3" = {
+      cidr_range = "10.146.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["europe-west3-a"]
+    }
+    "europe-west4" = {
+      cidr_range = "10.147.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["europe-west4-a"]
+    }
+    "europe-west6" = {
+      cidr_range = "10.148.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["europe-west6-a"]
+    }
+    "europe-west8" = {
+      cidr_range = "10.149.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["europe-west8-a"]
+    }
+    "europe-west9" = {
+      cidr_range = "10.150.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["europe-west9-a"]
+    }
+    "europe-west10" = {
+      cidr_range = "10.151.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["europe-west10-a"]
+    }
+    "europe-west12" = {
+      cidr_range = "10.152.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["europe-west12-a"]
+    }
+    "me-central1" = {
+      cidr_range = "10.153.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["me-central1-a"]
+    }
+    "me-central2" = {
+      cidr_range = "10.154.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["me-central2-a"]
+    }
+    "me-west1" = {
+      cidr_range = "10.155.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["me-west1-a"]
+    }
+    "northamerica-northeast1" = {
+      cidr_range = "10.156.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["northamerica-northeast1-a"]
+    }
+    "northamerica-northeast2" = {
+      cidr_range = "10.157.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["northamerica-northeast2-a"]
+    }
+    "northamerica-south1" = {
+      cidr_range = "10.158.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["northamerica-south1-a"]
+    }
+    "southamerica-east1" = {
+      cidr_range = "10.159.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["southamerica-east1-a"]
+    }
+    "southamerica-west1" = {
+      cidr_range = "10.160.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["southamerica-west1-a"]
+    }
+    "us-central1" = {
+      cidr_range = "10.161.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["us-central1-a"]
+    }
+    "us-east1" = {
+      cidr_range = "10.162.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["us-east1-b"]
+    }
+    "us-east4" = {
+      cidr_range = "10.163.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["us-east4-a"]
+    }
+    "us-east5" = {
+      cidr_range = "10.164.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["us-east5-a"]
+    }
+    "us-south1" = {
+      cidr_range = "10.165.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["us-south1-a"]
+    }
+    "us-west1" = {
+      cidr_range = "10.166.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["us-west1-a"]
+    }
+    "us-west2" = {
+      cidr_range = "10.167.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["us-west2-a"]
+    }
+    "us-west3" = {
+      cidr_range = "10.168.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["us-west3-a"]
+    }
+    "us-west4" = {
+      cidr_range = "10.169.0.0/24"
+      type       = "e2-micro"
+      replicas   = 1
+      zones      = ["us-west4-a"]
     }
   }
 
