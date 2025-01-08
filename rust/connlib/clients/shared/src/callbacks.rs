@@ -9,10 +9,15 @@ pub trait Callbacks: Clone + Send + Sync {
     /// The first time this is called, the Resources list is also ready,
     /// the routes are also ready, and the Client can consider the tunnel
     /// to be ready for incoming traffic.
-    fn on_set_interface_config(&self, _: Ipv4Addr, _: Ipv6Addr, _: Vec<IpAddr>) {}
-
-    /// Called when the route list changes.
-    fn on_update_routes(&self, _: Vec<Ipv4Network>, _: Vec<Ipv6Network>) {}
+    fn on_set_interface_config(
+        &self,
+        _: Ipv4Addr,
+        _: Ipv6Addr,
+        _: Vec<IpAddr>,
+        _: Vec<Ipv4Network>,
+        _: Vec<Ipv6Network>,
+    ) {
+    }
 
     /// Called when the resource list changes.
     ///

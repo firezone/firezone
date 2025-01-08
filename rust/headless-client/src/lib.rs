@@ -108,10 +108,23 @@ impl Callbacks for CallbackHandler {
             .expect("should be able to send OnDisconnect");
     }
 
-    fn on_set_interface_config(&self, ipv4: Ipv4Addr, ipv6: Ipv6Addr, dns: Vec<IpAddr>) {
+    fn on_set_interface_config(
+        &self,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+        dns: Vec<IpAddr>,
+        ipv4_routes: Vec<Ipv4Network>,
+        ipv6_routes: Vec<Ipv6Network>,
+    ) {
         self.cb_tx
             .try_send(ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
             .expect("Should be able to send OnSetInterfaceConfig");
+        self.cb_tx
+            .try_send(ConnlibMsg::OnUpdateRoutes {
+                ipv4: ipv4_routes,
+                ipv6: ipv6_routes,
+            })
+            .expect("Should be able to send messages");
     }
 
     fn on_update_resources(&self, resources: Vec<ResourceView>) {
@@ -119,12 +132,6 @@ impl Callbacks for CallbackHandler {
         self.cb_tx
             .try_send(ConnlibMsg::OnUpdateResources(resources))
             .expect("Should be able to send OnUpdateResources");
-    }
-
-    fn on_update_routes(&self, ipv4: Vec<Ipv4Network>, ipv6: Vec<Ipv6Network>) {
-        self.cb_tx
-            .try_send(ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 })
-            .expect("Should be able to send messages");
     }
 }
 

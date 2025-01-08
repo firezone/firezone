@@ -166,9 +166,10 @@ where
             firezone_tunnel::ClientEvent::TunInterfaceUpdated(config) => {
                 let dns_servers = config.dns_by_sentinel.left_values().copied().collect();
 
-                self.callbacks
-                    .on_set_interface_config(config.ip4, config.ip6, dns_servers);
-                self.callbacks.on_update_routes(
+                self.callbacks.on_set_interface_config(
+                    config.ip4,
+                    config.ip6,
+                    dns_servers,
                     Vec::from_iter(config.ipv4_routes),
                     Vec::from_iter(config.ipv6_routes),
                 );

@@ -170,6 +170,8 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
+        route_list_4: Vec<Ipv4Network>,
+        route_list_6: Vec<Ipv6Network>,
     ) {
         self.env(|mut env| {
             let tunnel_address_v4 =
@@ -190,26 +192,6 @@ impl Callbacks for CallbackHandler {
                     name: "dns_addresses",
                     source,
                 })?;
-            let name = "onSetInterfaceConfig";
-            env.call_method(
-                &self.callback_handler,
-                name,
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
-                &[
-                    JValue::from(&tunnel_address_v4),
-                    JValue::from(&tunnel_address_v6),
-                    JValue::from(&dns_addresses),
-                ],
-            )
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
-
-            Ok(())
-        })
-        .expect("onSetInterfaceConfig callback failed");
-    }
-
-    fn on_update_routes(&self, route_list_4: Vec<Ipv4Network>, route_list_6: Vec<Ipv6Network>) {
-        self.env(|mut env| {
             let route_list_4 = env
                 .new_string(serde_json::to_string(&V4RouteList::new(route_list_4))?)
                 .map_err(|source| CallbackError::NewStringFailed {
@@ -223,18 +205,35 @@ impl Callbacks for CallbackHandler {
                     source,
                 })?;
 
-            let name = "onUpdateRoutes";
-            env.call_method(
-                &self.callback_handler,
-                name,
-                "(Ljava/lang/String;Ljava/lang/String;)V",
-                &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
-            )
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
+            {
+                let name = "onSetInterfaceConfig";
+                env.call_method(
+                    &self.callback_handler,
+                    name,
+                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+                    &[
+                        JValue::from(&tunnel_address_v4),
+                        JValue::from(&tunnel_address_v6),
+                        JValue::from(&dns_addresses),
+                    ],
+                )
+                .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
+            }
+
+            {
+                let name = "onUpdateRoutes";
+                env.call_method(
+                    &self.callback_handler,
+                    name,
+                    "(Ljava/lang/String;Ljava/lang/String;)V",
+                    &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
+                )
+                .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
+            }
 
             Ok(())
         })
-        .expect("onUpdateRoutes callback failed");
+        .expect("onSetInterfaceConfig callback failed");
     }
 
     fn on_update_resources(&self, resource_list: Vec<ResourceView>) {
