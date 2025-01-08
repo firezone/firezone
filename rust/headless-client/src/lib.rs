@@ -85,12 +85,10 @@ pub enum ConnlibMsg {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
         dns: Vec<IpAddr>,
+        ipv4_routes: Vec<Ipv4Network>,
+        ipv6_routes: Vec<Ipv6Network>,
     },
     OnUpdateResources(Vec<ResourceView>),
-    OnUpdateRoutes {
-        ipv4: Vec<Ipv4Network>,
-        ipv6: Vec<Ipv6Network>,
-    },
 }
 
 #[derive(Clone)]
@@ -108,9 +106,22 @@ impl Callbacks for CallbackHandler {
             .expect("should be able to send OnDisconnect");
     }
 
-    fn on_set_interface_config(&self, ipv4: Ipv4Addr, ipv6: Ipv6Addr, dns: Vec<IpAddr>) {
+    fn on_set_interface_config(
+        &self,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+        dns: Vec<IpAddr>,
+        ipv4_routes: Vec<Ipv4Network>,
+        ipv6_routes: Vec<Ipv6Network>,
+    ) {
         self.cb_tx
-            .try_send(ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns })
+            .try_send(ConnlibMsg::OnSetInterfaceConfig {
+                ipv4,
+                ipv6,
+                dns,
+                ipv4_routes,
+                ipv6_routes,
+            })
             .expect("Should be able to send OnSetInterfaceConfig");
     }
 
@@ -119,12 +130,6 @@ impl Callbacks for CallbackHandler {
         self.cb_tx
             .try_send(ConnlibMsg::OnUpdateResources(resources))
             .expect("Should be able to send OnUpdateResources");
-    }
-
-    fn on_update_routes(&self, ipv4: Vec<Ipv4Network>, ipv6: Vec<Ipv6Network>) {
-        self.cb_tx
-            .try_send(ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 })
-            .expect("Should be able to send messages");
     }
 }
 
@@ -148,6 +153,6 @@ mod tests {
     // Make sure it's okay to store a bunch of these to mitigate #5880
     #[test]
     fn callback_msg_size() {
-        assert_eq!(std::mem::size_of::<ConnlibMsg>(), 56)
+        assert_eq!(std::mem::size_of::<ConnlibMsg>(), 96)
     }
 }

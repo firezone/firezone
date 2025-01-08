@@ -20,9 +20,10 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onSetInterfaceConfig(
     tunnelAddressIPv4: String,
     tunnelAddressIPv6: String,
-    dnsAddresses: [String]
+    dnsAddresses: [String],
+    routeListv4: String,
+    routeListv6: String
   )
-  func onUpdateRoutes(routeList4: String, routeList6: String)
   func onUpdateResources(resourceList: String)
   func onDisconnect(error: String)
 }
@@ -33,7 +34,9 @@ public class CallbackHandler {
   func onSetInterfaceConfig(
     tunnelAddressIPv4: RustString,
     tunnelAddressIPv6: RustString,
-    dnsAddresses: RustString
+    dnsAddresses: RustString,
+    routeListv4: RustString,
+    routeListv6: RustString
   ) {
     Log.log(
       """
@@ -41,6 +44,8 @@ public class CallbackHandler {
           IPv4: \(tunnelAddressIPv4.toString())
           IPv6: \(tunnelAddressIPv6.toString())
           DNS: \(dnsAddresses.toString())
+          IPv4 routes:  \(routeListv4.toString())
+          IPv6 routes: \(routeListv6.toString())
       """)
 
     let dnsData = dnsAddresses.toString().data(using: .utf8)!
@@ -49,13 +54,10 @@ public class CallbackHandler {
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
       tunnelAddressIPv6: tunnelAddressIPv6.toString(),
-      dnsAddresses: dnsArray
+      dnsAddresses: dnsArray,
+      routeListv4: routeListv4.toString(),
+      routeListv6: routeListv6.toString()
     )
-  }
-
-  func onUpdateRoutes(routeList4: RustString, routeList6: RustString) {
-    Log.log("CallbackHandler.onUpdateRoutes: \(routeList4) \(routeList6)")
-    delegate?.onUpdateRoutes(routeList4: routeList4.toString(), routeList6: routeList6.toString())
   }
 
   func onUpdateResources(resourceList: RustString) {

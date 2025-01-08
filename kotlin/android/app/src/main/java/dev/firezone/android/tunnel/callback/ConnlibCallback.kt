@@ -6,9 +6,6 @@ interface ConnlibCallback {
         addressIPv4: String,
         addressIPv6: String,
         dnsAddresses: String,
-    )
-
-    fun onUpdateRoutes(
         routes4JSON: String,
         routes6JSON: String,
     )
