@@ -110,6 +110,9 @@ module "relays" {
 
   application_name    = "relay"
   application_version = replace(local.relay_image_tag, ".", "-")
+  application_environment_variables = {
+    FIREZONE_TELEMETRY = "true"
+  }
 
   health_check = {
     name     = "health"
