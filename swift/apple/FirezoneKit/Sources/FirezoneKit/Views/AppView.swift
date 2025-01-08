@@ -37,7 +37,9 @@ public class AppViewModel: ObservableObject {
         try await self.store.bindToVPNProfileUpdates()
 
 #if os(macOS)
-        if self.store.status == .invalid {
+        try await self.store.checkedIfInstalled()
+
+        if !self.store.isInstalled || self.store.status == .invalid {
 
           // Show the main Window if VPN permission needs to be granted
           AppViewModel.WindowDefinition.main.openWindow()
@@ -104,10 +106,10 @@ public struct AppView: View {
       }
     }
 #elseif os(macOS)
-    switch model.status {
-    case nil:
+    switch (model.store.isInstalled, model.status) {
+    case (_, nil):
       ProgressView()
-    case .invalid:
+    case (false, _), (_, .invalid):
       GrantVPNView(model: GrantVPNViewModel(store: model.store))
     default:
       FirstTimeView()

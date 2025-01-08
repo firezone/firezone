@@ -24,6 +24,9 @@ public final class Store: ObservableObject {
   // to observe
   @Published private(set) var status: NEVPNStatus?
 
+  // Track whether our system extension has been installed (macOS)
+  @Published private(set) var isInstalled: Bool = false
+
   // This is not currently updated after it is initialized, but
   // we could periodically update it if we need to.
   @Published private(set) var decision: UNAuthorizationStatus
@@ -110,20 +113,39 @@ public final class Store: ObservableObject {
     }
   }
 
-  func grantVPNPermissions() async throws {
+  func checkedIfInstalled() async throws {
 #if os(macOS)
-    // Apple recommends installing the system extension as early as possible after app launch.
-    // See https://developer.apple.com/documentation/systemextensions/installing-system-extensions-and-drivers
-    try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<Void, Error>) in
+    let checker = SystemExtensionManager()
 
-      SystemExtensionManager.shared.installSystemExtension(
+    self.isInstalled = try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<Bool, Error>) in
+
+      checker.isInstalled(
         identifier: VPNProfileManager.bundleIdentifier,
         continuation: continuation
       )
     }
 #endif
+  }
 
+  func installSystemExtension() async throws {
+#if os(macOS)
+    let installer = SystemExtensionManager()
+
+    // Apple recommends installing the system extension as early as possible after app launch.
+    // See https://developer.apple.com/documentation/systemextensions/installing-system-extensions-and-drivers
+    self.isInstalled = try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<Bool, Error>) in
+
+      installer.installSystemExtension(
+        identifier: VPNProfileManager.bundleIdentifier,
+        continuation: continuation
+      )
+    }
+#endif
+  }
+
+  func grantVPNPermission() async throws {
     // Create a new VPN profile in system settings.
     try await self.vpnProfileManager.create()
 
