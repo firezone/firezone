@@ -333,17 +333,15 @@ impl ClientOnGateway {
     }
 
     fn ensure_allowed(&self, packet: &IpPacket) -> anyhow::Result<()> {
-        self.ensure_allowed_src(packet)?;
+        self.ensure_allowed_src(packet.source())?;
         self.ensure_allowed_dst(packet)?;
 
         Ok(())
     }
 
-    fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
-        let src = packet.source();
-
-        if !self.allowed_ips().contains(&src) {
-            return Err(anyhow::Error::new(SrcNotAllowed(src)));
+    fn ensure_allowed_src(&self, ip: IpAddr) -> anyhow::Result<()> {
+        if !self.allowed_ips().contains(&ip) {
+            return Err(anyhow::Error::new(SrcNotAllowed(ip)));
         }
 
         Ok(())
