@@ -709,16 +709,30 @@ mod tests {
     // Regression tests to ensure we can parse sockets as well as domains for the otlp-grpc endpoint.
     #[test]
     fn args_can_parse_otlp_endpoint_from_socket() {
-        let args =
-            Args::try_parse_from(["relay", "--otlp-grpc-endpoint", "127.0.0.1:4317"]).unwrap();
+        let args = Args::try_parse_from([
+            "relay",
+            "--otlp-grpc-endpoint",
+            "127.0.0.1:4317",
+            "--api-url",
+            "localhost:1234",
+            "TOKEN",
+        ])
+        .unwrap();
 
         assert_eq!(args.otlp_grpc_endpoint.unwrap(), "127.0.0.1:4317");
     }
 
     #[test]
     fn args_can_parse_otlp_endpoint_from_domain() {
-        let args =
-            Args::try_parse_from(["relay", "--otlp-grpc-endpoint", "localhost:4317"]).unwrap();
+        let args = Args::try_parse_from([
+            "relay",
+            "--otlp-grpc-endpoint",
+            "localhost:4317",
+            "--api-url",
+            "localhost:1234",
+            "TOKEN",
+        ])
+        .unwrap();
 
         assert_eq!(args.otlp_grpc_endpoint.unwrap(), "localhost:4317");
     }
