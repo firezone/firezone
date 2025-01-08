@@ -205,31 +205,20 @@ impl Callbacks for CallbackHandler {
                     source,
                 })?;
 
-            {
-                let name = "onSetInterfaceConfig";
-                env.call_method(
-                    &self.callback_handler,
-                    name,
-                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
-                    &[
-                        JValue::from(&tunnel_address_v4),
-                        JValue::from(&tunnel_address_v6),
-                        JValue::from(&dns_addresses),
-                    ],
-                )
-                .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
-            }
-
-            {
-                let name = "onUpdateRoutes";
-                env.call_method(
-                    &self.callback_handler,
-                    name,
-                    "(Ljava/lang/String;Ljava/lang/String;)V",
-                    &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
-                )
-                .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
-            }
+            let name = "onSetInterfaceConfig";
+            env.call_method(
+                &self.callback_handler,
+                name,
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+                &[
+                    JValue::from(&tunnel_address_v4),
+                    JValue::from(&tunnel_address_v6),
+                    JValue::from(&dns_addresses),
+                    JValue::from(&route_list_4),
+                    JValue::from(&route_list_6),
+                ],
+            )
+            .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
 
             Ok(())
         })

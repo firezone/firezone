@@ -118,22 +118,16 @@ class TunnelService : VpnService() {
                 addressIPv4: String,
                 addressIPv6: String,
                 dnsAddresses: String,
-            ) {
-                // init tunnel config
-                tunnelDnsAddresses = moshi.adapter<MutableList<String>>().fromJson(dnsAddresses)!!
-                tunnelIpv4Address = addressIPv4
-                tunnelIpv6Address = addressIPv6
-
-                buildVpnService()
-            }
-
-            override fun onUpdateRoutes(
                 routes4JSON: String,
                 routes6JSON: String,
             ) {
+                // init tunnel config
+                tunnelDnsAddresses = moshi.adapter<MutableList<String>>().fromJson(dnsAddresses)!!
                 val routes4 = moshi.adapter<MutableList<Cidr>>().fromJson(routes4JSON)!!
                 val routes6 = moshi.adapter<MutableList<Cidr>>().fromJson(routes6JSON)!!
 
+                tunnelIpv4Address = addressIPv4
+                tunnelIpv6Address = addressIPv6
                 tunnelRoutes.clear()
                 tunnelRoutes.addAll(routes4)
                 tunnelRoutes.addAll(routes6)
