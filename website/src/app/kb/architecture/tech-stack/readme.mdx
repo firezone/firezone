@@ -106,28 +106,61 @@ Firezone uses the following tools for ops and infrastructure:
 The Firezone-managed components are deployed globally across the following GCP
 zones for load balancing and latency optimization:
 
-| City                               | Region                 | Zones                    |
-| ---------------------------------- | ---------------------- | ------------------------ |
-| Changhua, Taiwan                   | `asia-east1`           | `asia-east1-c`           |
-| Mumbai, India                      | `asia-south1`          | `asia-south1-c`          |
-| Sydney, Australia                  | `australia-southeast1` | `australia-southeast1-c` |
-| Warsaw, Poland                     | `europe-central2`      | `europe-central2-c`      |
-| Hamina, Finland                    | `europe-north1`        | `europe-north1-c`        |
-| Saint-Ghislain, Belgium            | `europe-west1`         | `europe-west1-d`         |
-| London, UK                         | `europe-west2`         | `europe-west2-c`         |
-| São Paulo, Brazil                  | `southamerica-east1`   | `southamerica-east1-c`   |
-| Council Bluffs, Iowa, USA          | `us-central1`          | `us-central1-f`          |
-| Moncks Corner, South Carolina, USA | `us-east1`             | `us-east1-c`             |
-| Los Angeles, California, USA       | `us-west2`             | `us-west2-b`             |
-| Ashburn, Northern Virginia, USA    | `us-east4`             | `us-east4-c`             |
+| City                               | Region                    | Zone                        |
+| ---------------------------------- | ------------------------- | --------------------------- |
+| Changhua County, Taiwan            | `asia-east1`              | `asia-east1-a`              |
+| Hong Kong                          | `asia-east2`              | `asia-east2-a`              |
+| Tokyo, Japan                       | `asia-northeast1`         | `asia-northeast1-a`         |
+| Osaka, Japan                       | `asia-northeast2`         | `asia-northeast2-a`         |
+| Seoul, South Korea                 | `asia-northeast3`         | `asia-northeast3-a`         |
+| Mumbai, India                      | `asia-south1`             | `asia-south1-a`             |
+| Delhi, India                       | `asia-south2`             | `asia-south2-a`             |
+| Jurong West, Singapore             | `asia-southeast1`         | `asia-southeast1-a`         |
+| Jakarta, Indonesia                 | `asia-southeast2`         | `asia-southeast2-a`         |
+| Sydney, Australia                  | `australia-southeast1`    | `australia-southeast1-a`    |
+| Melbourne, Australia               | `australia-southeast2`    | `australia-southeast2-a`    |
+| Warsaw, Poland                     | `europe-central2`         | `europe-central2-a`         |
+| Hamina, Finland                    | `europe-north1`           | `europe-north1-a`           |
+| St. Ghislain, Belgium              | `europe-west1`            | `europe-west1-a`            |
+| London, UK                         | `europe-west2`            | `europe-west2-a`            |
+| Frankfurt, Germany                 | `europe-west3`            | `europe-west3-a`            |
+| Eemshaven, Netherlands             | `europe-west4`            | `europe-west4-a`            |
+| Zurich, Switzerland                | `europe-west6`            | `europe-west6-a`            |
+| Milan, Italy                       | `europe-west8`            | `europe-west8-a`            |
+| Paris, France                      | `europe-west9`            | `europe-west9-a`            |
+| Berlin, Germany                    | `europe-west10`           | `europe-west10-a`           |
+| Turin, Italy                       | `europe-west12`           | `europe-west12-a`           |
+| Madrid, Spain                      | `europe-southwest1`       | `europe-southwest1-a`       |
+| Doha, Qatar                        | `me-central1`             | `me-central1-a`             |
+| Dammam, Saudi Arabia               | `me-central2`             | `me-central2-a`             |
+| Tel Aviv, Israel                   | `me-west1`                | `me-west1-a`                |
+| Montréal, Canada                   | `northamerica-northeast1` | `northamerica-northeast1-a` |
+| Toronto, Canada                    | `northamerica-northeast2` | `northamerica-northeast2-a` |
+| Querétaro, Mexico                  | `northamerica-south1`     | `northamerica-south1-a`     |
+| Santiago, Chile                    | `southamerica-west1`      | `southamerica-west1-a`      |
+| Osasco, São Paulo, Brazil          | `southamerica-east1`      | `southamerica-east1-a`      |
+| Council Bluffs, Iowa, USA          | `us-central1`             | `us-central1-a`             |
+| Moncks Corner, South Carolina, USA | `us-east1`                | `us-east1-a`                |
+| Ashburn, Northern Virginia, USA    | `us-east4`                | `us-east4-a`                |
+| Columbus, Ohio, USA                | `us-east5`                | `us-east5-a`                |
+| Dallas, Texas, USA                 | `us-south1`               | `us-south1-a`               |
+| The Dalles, Oregon, USA            | `us-west1`                | `us-west1-a`                |
+| Los Angeles, California, USA       | `us-west2`                | `us-west2-a`                |
+| Salt Lake City, Utah, USA          | `us-west3`                | `us-west3-a`                |
+| Las Vegas, Nevada, USA             | `us-west4`                | `us-west4-a`                |
+
+#### Regional availability map
+
+{/* Regenerate this using map.py in the current directory */}
 
 <Link
   target="_blank"
-  href="/images/kb/architecture/tech-stack/regional-availability.svg"
+  href="/images/kb/architecture/tech-stack/regional-availability.png"
 >
   <Image
-    src="/images/kb/architecture/tech-stack/regional-availability.svg"
+    src="/images/kb/architecture/tech-stack/regional-availability.png"
     alt="Firezone regional availability diagram"
+    className=""
     width={1200}
     height={1200}
   />
