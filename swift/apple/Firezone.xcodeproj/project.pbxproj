@@ -35,6 +35,9 @@
 		8DC08BD72B297DB400675F46 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */ = {isa = PBXBuildFile; fileRef = 6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */; };
 		8DC1699D2CFF77D1006801B5 /* dev.firezone.firezone.network-extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8DC169A02CFF77D1006801B5 /* dev.firezone.firezone.network-extension.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */; platformFilters = (macos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		8DC333F92D2FA85200E627D5 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC333F72D2FA85200E627D5 /* libresolv.tbd */; };
+		8DC333FA2D2FA85200E627D5 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC333F82D2FA85200E627D5 /* libresolv.9.tbd */; };
+		8DC333FB2D2FA89100E627D5 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6FFECD5B2AD6998400E00273 /* SystemConfiguration.framework */; };
 		8DC9FB852CF5A738001BCE6A /* NetworkExtension.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */; };
 		8DCC021D28D512AC007E12D2 /* FirezoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */; };
 		8DCC022628D512AE007E12D2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8DCC022528D512AE007E12D2 /* Assets.xcassets */; };
@@ -107,6 +110,8 @@
 		8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		8DC08BCC2B296C5900675F46 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = usr/lib/libresolv.9.tbd; sourceTree = SDKROOT; };
 		8DC08BD12B297B7B00675F46 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
+		8DC333F72D2FA85200E627D5 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.2.sdk/usr/lib/libresolv.tbd; sourceTree = DEVELOPER_DIR; };
+		8DC333F82D2FA85200E627D5 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.2.sdk/usr/lib/libresolv.9.tbd; sourceTree = DEVELOPER_DIR; };
 		8DCC021928D512AC007E12D2 /* Firezone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Firezone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirezoneApp.swift; sourceTree = "<group>"; };
 		8DCC022528D512AE007E12D2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -122,6 +127,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8DC333F92D2FA85200E627D5 /* libresolv.tbd in Frameworks */,
+				8DC333FA2D2FA85200E627D5 /* libresolv.9.tbd in Frameworks */,
 				8D4087D52D24653B005B2BAF /* Sentry in Frameworks */,
 				794C38152970A2660029F38F /* FirezoneKit in Frameworks */,
 				05CF1CF1290B1CEE00CF4755 /* NetworkExtension.framework in Frameworks */,
@@ -132,6 +139,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8DC333FB2D2FA89100E627D5 /* SystemConfiguration.framework in Frameworks */,
 				8D5047F82CE6AA22009802E9 /* FirezoneKit in Frameworks */,
 				8DC9FB852CF5A738001BCE6A /* NetworkExtension.framework in Frameworks */,
 				8D4087D92D246541005B2BAF /* Sentry in Frameworks */,
@@ -185,6 +193,8 @@
 			children = (
 				8DC08BD12B297B7B00675F46 /* libresolv.tbd */,
 				8DC08BCC2B296C5900675F46 /* libresolv.9.tbd */,
+				8DC333F72D2FA85200E627D5 /* libresolv.tbd */,
+				8DC333F82D2FA85200E627D5 /* libresolv.9.tbd */,
 				6FFECD5B2AD6998400E00273 /* SystemConfiguration.framework */,
 				05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */,
 			);
