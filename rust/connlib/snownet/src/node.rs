@@ -1812,11 +1812,16 @@ where
 
         self.handle_tunnel_timeout(now, allocations, transmits);
 
+        // If this was a scheduled update, hop to the next interval.
         if now >= self.next_wg_timer_update {
-            self.next_wg_timer_update = self
-                .tunnel
-                .next_timer_update()
-                .unwrap_or(now + self.wg_timer);
+            self.next_wg_timer_update = now + self.wg_timer;
+        }
+
+        // If `boringtun` wants to be called earlier than the scheduled interval, move it forward.
+        if let Some(next_update) = self.tunnel.next_timer_update() {
+            if next_update < self.next_wg_timer_update {
+                self.next_wg_timer_update = next_update;
+            }
         }
 
         while let Some(event) = self.agent.poll_event() {
