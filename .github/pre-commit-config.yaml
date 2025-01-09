@@ -24,9 +24,9 @@ repos:
       - id: check-yaml
       - id: check-merge-conflict
       - id: end-of-file-fixer
-        exclude: (^website/public/images/|^elixir/apps/web/priv/static/)
+        exclude: (^website/public/images/|^elixir/apps/web/priv/static/|^swift/apple/FirezoneNetworkExtension/Connlib/Generated/)
       - id: trailing-whitespace
-        exclude: ^website/public/images/
+        exclude: (^website/public/images/|^swift/apple/FirezoneNetworkExtension/Connlib/Generated/)
       - id: check-merge-conflict
       - id: no-commit-to-branch
         args:

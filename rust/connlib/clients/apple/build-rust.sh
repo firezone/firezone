@@ -115,14 +115,3 @@ target_list="${target_list% }"
 
 # Build the library
 cargo build --verbose $target_list $CONFIGURATION_ARGS
-
-# Strip unused symbols from the libraries
-for target in "${TARGETS[@]}"; do
-    profile="debug"
-    if [ "$CONFIGURATION" == "Release" ]; then
-        profile="release"
-    fi
-
-    lib="$CONNLIB_TARGET_DIR/$target/$profile/libconnlib.a"
-    strip "$lib"
-done
