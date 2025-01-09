@@ -45,6 +45,8 @@ struct FirezoneApp: App {
       if let menuBar = appDelegate.menuBar {
         // menuBar will be initialized by this point
         AppView(model: appViewModel).environmentObject(menuBar)
+      } else {
+        ProgressView("Loading...")
       }
     }
     .handlesExternalEvents(
