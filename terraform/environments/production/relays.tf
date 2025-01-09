@@ -158,12 +158,14 @@ module "relays" {
       replicas   = 1
       zones      = ["me-central1-a"]
     }
-    "me-central2" = {
-      cidr_range = "10.154.1.0/24"
-      type       = "e2-micro"
-      replicas   = 1
-      zones      = ["me-central2-a"]
-    }
+    # Fails with:
+    # Access to the region is unavailable. Please contact our sales team at https://cloud.google.com/contact for further assistance."
+    # "me-central2" = {
+    #   cidr_range = "10.154.1.0/24"
+    #   type       = "e2-micro"
+    #   replicas   = 1
+    #   zones      = ["me-central2-a"]
+    # }
     "me-west1" = {
       cidr_range = "10.155.1.0/24"
       type       = "e2-micro"
