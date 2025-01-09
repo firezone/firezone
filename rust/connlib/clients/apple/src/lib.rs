@@ -131,13 +131,6 @@ impl Callbacks for CallbackHandler {
         route_list_v4: Vec<Ipv4Network>,
         route_list_v6: Vec<Ipv6Network>,
     ) {
-        let dns_addresses = match serde_json::to_string(&dns_addresses) {
-            Ok(dns_addresses) => dns_addresses,
-            Err(e) => {
-                tracing::error!(error = std_dyn_err(&e), "Failed to serialize DNS addresses");
-                return;
-            }
-        };
         match (
             serde_json::to_string(&dns_addresses),
             serde_json::to_string(&V4RouteList::new(route_list_v4)),
