@@ -30,13 +30,17 @@ public struct FirezoneId {
       ]) { (_, new) in new }
       return try Keychain.update(
         query: query,
-        attributesToUpdate: [kSecValueData: uuid.toData()]
+        attributesToUpdate: [
+          kSecValueData: uuid.toData(),
+          kSecUseDataProtectionKeychain: true
+        ]
       )
     }
 
     let query = FirezoneId.query.merging([
       kSecClass: kSecClassGenericPassword,
-      kSecValueData: uuid.toData()
+      kSecValueData: uuid.toData(),
+      kSecUseDataProtectionKeychain: true
     ]) { (_, new) in new }
 
     try Keychain.add(query: query)
