@@ -1,7 +1,7 @@
 const XCODE_CONFIGURATION_ENV: &str = "CONFIGURATION";
 
 fn main() {
-    let out_dir = "Sources/Connlib/Generated";
+    let out_dir = "../../../../swift/apple/FirezoneNetworkExtension/Connlib/Generated";
 
     let bridges = vec!["src/lib.rs"];
     for path in &bridges {
