@@ -85,11 +85,3 @@ function install_cert() {
     # Clean up
     rm "$cert_path"
 }
-
-function set_project_build_version() {
-    local project_file="$1"
-
-    seconds_since_epoch=$(date +%s)
-    sed -i '' "s/CURRENT_PROJECT_VERSION = [0-9]/CURRENT_PROJECT_VERSION = $seconds_since_epoch/" \
-        "$project_file"
-}

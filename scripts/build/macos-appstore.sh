@@ -26,9 +26,8 @@ if [ "${CI:-}" = "true" ]; then
 fi
 
 # Build and sign
-set_project_build_version "$project_file/project.pbxproj"
-
 echo "Building and signing app..."
+seconds_since_epoch=$(date +%s)
 xcodebuild build \
     GIT_SHA="$git_sha" \
     CODE_SIGN_STYLE=Manual \
@@ -37,6 +36,7 @@ xcodebuild build \
     APP_PROFILE_ID="$app_profile_id" \
     NE_PROFILE_ID="$ne_profile_id" \
     ONLY_ACTIVE_ARCH=NO \
+    CURRENT_PROJECT_VERSION="$seconds_since_epoch" \
     -project "$project_file" \
     -skipMacroValidation \
     -configuration Release \
