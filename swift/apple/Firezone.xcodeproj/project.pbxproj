@@ -453,22 +453,20 @@
 		};
 		8D8555822D0A796100A1EA09 /* Build Connlib */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"$(SRCROOT)/../../rust/**/*.rs",
-				"$(SRCROOT)/../../rust/**/*.toml",
-				"$(SRCROOT)/../../rust/Cargo.lock",
 			);
 			name = "Build Connlib";
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(SRCROOT)/../../rust/target/*-apple-*/debug/libconnlib.a",
-				"$(SRCROOT)/../../rust/target/*-apple-*/release/libconnlib.a",
+				"$(SRC_ROOT)/../../rust/target/aarch64-apple-darwin/debug/libconnlib.a",
+				"$(SRC_ROOT)/../../rust/target/aarch64-apple-darwin/release/libconnlib.a",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -476,26 +474,24 @@
 		};
 		8D8555832D0A7CBB00A1EA09 /* Build Connlib */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			inputFileListPaths = (
 			);
 			inputPaths = (
-				"$(SRCROOT)/../../rust/**/*.rs",
-				"$(SRCROOT)/../../rust/**/*.toml",
-				"$(SRCROOT)/../../rust/Cargo.lock",
 			);
 			name = "Build Connlib";
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(SRCROOT)/../../rust/target/*-apple-*/debug/libconnlib.a",
-				"$(SRCROOT)/../../rust/target/*-apple-*/release/libconnlib.a",
+				"$(SRC_ROOT)/../../rust/target/aarch64-apple-darwin/debug/libconnlib.a",
+				"$(SRC_ROOT)/../../rust/target/aarch64-apple-darwin/release/libconnlib.a",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\ncd ../../rust/connlib/clients/apple\n./build-rust.sh\n";
+			shellScript = "cd ../../rust/connlib/clients/apple\n./build-rust.sh\n";
 		};
 		8DE721892ACA295200E395D5 /* swift-format */ = {
 			isa = PBXShellScriptBuildPhase;
