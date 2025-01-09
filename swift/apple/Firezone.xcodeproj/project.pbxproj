@@ -22,10 +22,7 @@
 		8D4087DD2D246651005B2BAF /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 8D4087DC2D246651005B2BAF /* Sentry */; };
 		8D41B9A52D15DD6800D16065 /* TunnelLogArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */; };
 		8D41B9A62D15DD6800D16065 /* TunnelLogArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */; };
-		8D5047F52CE6AA1E009802E9 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8D5047F32CE6AA1E009802E9 /* libresolv.9.tbd */; };
-		8D5047F62CE6AA1E009802E9 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8D5047F42CE6AA1E009802E9 /* libresolv.tbd */; };
 		8D5047F82CE6AA22009802E9 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8D5047F72CE6AA22009802E9 /* FirezoneKit */; };
-		8D5047FA2CE6AA2E009802E9 /* SystemConfiguration.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8D5047F92CE6AA2E009802E9 /* SystemConfiguration.framework */; };
 		8D5047FB2CE6AA37009802E9 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */ = {isa = PBXBuildFile; fileRef = 6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */; };
 		8D5047FC2CE6AA47009802E9 /* CallbackHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FE455082A5D110D006549B1 /* CallbackHandler.swift */; };
 		8D5047FD2CE6AA47009802E9 /* connlib-client-apple.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FE4550E2A5D112C006549B1 /* connlib-client-apple.swift */; };
@@ -35,8 +32,6 @@
 		8D5048012CE6AA60009802E9 /* NetworkSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FE93AFA2A738D7E002D278A /* NetworkSettings.swift */; };
 		8D5048042CE6B0AE009802E9 /* SwiftBridgeCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FE4550B2A5D111D006549B1 /* SwiftBridgeCore.swift */; };
 		8D69392C2BA24FE600AF4396 /* BindResolvers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D69392B2BA24FE600AF4396 /* BindResolvers.swift */; };
-		8DC08BCB2B296C4500675F46 /* libresolv.9.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC08BCA2B296C4500675F46 /* libresolv.9.tbd */; };
-		8DC08BD42B297B8200675F46 /* libresolv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 8DC08BD32B297B8200675F46 /* libresolv.tbd */; };
 		8DC08BD72B297DB400675F46 /* FirezoneNetworkExtension-Bridging-Header.h in Sources */ = {isa = PBXBuildFile; fileRef = 6FE455112A5D13A2006549B1 /* FirezoneNetworkExtension-Bridging-Header.h */; };
 		8DC1699D2CFF77D1006801B5 /* dev.firezone.firezone.network-extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		8DC169A02CFF77D1006801B5 /* dev.firezone.firezone.network-extension.systemextension in Embed System Extensions */ = {isa = PBXBuildFile; fileRef = 8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */; platformFilters = (macos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -107,16 +102,11 @@
 		8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelLogArchive.swift; sourceTree = "<group>"; };
 		8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */ = {isa = PBXFileReference; explicitFileType = "wrapper.system-extension"; includeInIndex = 0; path = "dev.firezone.firezone.network-extension.systemextension"; sourceTree = BUILT_PRODUCTS_DIR; };
 		8D5047E82CE6A8F4009802E9 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
-		8D5047F32CE6AA1E009802E9 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.1.sdk/usr/lib/libresolv.9.tbd; sourceTree = DEVELOPER_DIR; };
-		8D5047F42CE6AA1E009802E9 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.1.sdk/usr/lib/libresolv.tbd; sourceTree = DEVELOPER_DIR; };
-		8D5047F92CE6AA2E009802E9 /* SystemConfiguration.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SystemConfiguration.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.1.sdk/System/Library/Frameworks/SystemConfiguration.framework; sourceTree = DEVELOPER_DIR; };
 		8D69392B2BA24FE600AF4396 /* BindResolvers.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BindResolvers.swift; sourceTree = "<group>"; };
 		8D6939312BA2521A00AF4396 /* SystemConfigurationResolvers.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SystemConfigurationResolvers.swift; sourceTree = "<group>"; };
 		8DA12C322BB7DA04007D91EB /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		8DC08BCA2B296C4500675F46 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.2.sdk/usr/lib/libresolv.9.tbd; sourceTree = DEVELOPER_DIR; };
 		8DC08BCC2B296C5900675F46 /* libresolv.9.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.9.tbd; path = usr/lib/libresolv.9.tbd; sourceTree = SDKROOT; };
 		8DC08BD12B297B7B00675F46 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
-		8DC08BD32B297B8200675F46 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS17.2.sdk/usr/lib/libresolv.tbd; sourceTree = DEVELOPER_DIR; };
 		8DCC021928D512AC007E12D2 /* Firezone.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Firezone.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		8DCC021C28D512AC007E12D2 /* FirezoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FirezoneApp.swift; sourceTree = "<group>"; };
 		8DCC022528D512AE007E12D2 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -133,8 +123,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				8D4087D52D24653B005B2BAF /* Sentry in Frameworks */,
-				8DC08BD42B297B8200675F46 /* libresolv.tbd in Frameworks */,
-				8DC08BCB2B296C4500675F46 /* libresolv.9.tbd in Frameworks */,
 				794C38152970A2660029F38F /* FirezoneKit in Frameworks */,
 				05CF1CF1290B1CEE00CF4755 /* NetworkExtension.framework in Frameworks */,
 			);
@@ -144,11 +132,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8D5047F52CE6AA1E009802E9 /* libresolv.9.tbd in Frameworks */,
-				8D5047F62CE6AA1E009802E9 /* libresolv.tbd in Frameworks */,
 				8D5047F82CE6AA22009802E9 /* FirezoneKit in Frameworks */,
 				8DC9FB852CF5A738001BCE6A /* NetworkExtension.framework in Frameworks */,
-				8D5047FA2CE6AA2E009802E9 /* SystemConfiguration.framework in Frameworks */,
 				8D4087D92D246541005B2BAF /* Sentry in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -198,13 +183,8 @@
 		8D3F90C328D64FAD00980124 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
-				8D5047F92CE6AA2E009802E9 /* SystemConfiguration.framework */,
 				8DC08BD12B297B7B00675F46 /* libresolv.tbd */,
-				8DC08BD32B297B8200675F46 /* libresolv.tbd */,
-				8D5047F42CE6AA1E009802E9 /* libresolv.tbd */,
-				8DC08BCA2B296C4500675F46 /* libresolv.9.tbd */,
 				8DC08BCC2B296C5900675F46 /* libresolv.9.tbd */,
-				8D5047F32CE6AA1E009802E9 /* libresolv.9.tbd */,
 				6FFECD5B2AD6998400E00273 /* SystemConfiguration.framework */,
 				05D3BB1628FDBD8A00BC3727 /* NetworkExtension.framework */,
 			);
@@ -270,7 +250,6 @@
 			buildConfigurationList = 05CF1CFA290B1CEE00CF4755 /* Build configuration list for PBXNativeTarget "FirezoneNetworkExtensioniOS" */;
 			buildPhases = (
 				8D8555832D0A7CBB00A1EA09 /* Build Connlib */,
-				6F3E231A2A5D830D00737CF1 /* Copy Connlib Headers and Swift Files */,
 				05CF1CEC290B1CEE00CF4755 /* Sources */,
 				05CF1CED290B1CEE00CF4755 /* Frameworks */,
 				05CF1CEE290B1CEE00CF4755 /* Resources */,
@@ -293,7 +272,6 @@
 			buildConfigurationList = 8D5047F02CE6A8F4009802E9 /* Build configuration list for PBXNativeTarget "FirezoneNetworkExtensionmacOS" */;
 			buildPhases = (
 				8D8555822D0A796100A1EA09 /* Build Connlib */,
-				8D5048072CE6B243009802E9 /* Copy Connlib Headers and Swift Files */,
 				8D5047DF2CE6A8F4009802E9 /* Sources */,
 				8D5047E02CE6A8F4009802E9 /* Frameworks */,
 				8D5047E12CE6A8F4009802E9 /* Resources */,
@@ -411,46 +389,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		6F3E231A2A5D830D00737CF1 /* Copy Connlib Headers and Swift Files */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Copy Connlib Headers and Swift Files";
-			outputFileListPaths = (
-				"$(SRCROOT)/FirezoneNetworkExtension/Connlib.xcfilelist",
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n./copy_generated_connlib_files.sh\n";
-			showEnvVarsInLog = 0;
-		};
-		8D5048072CE6B243009802E9 /* Copy Connlib Headers and Swift Files */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Copy Connlib Headers and Swift Files";
-			outputFileListPaths = (
-				"$(SRCROOT)/FirezoneNetworkExtension/Connlib.xcfilelist",
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n./copy_generated_connlib_files.sh\n";
-			showEnvVarsInLog = 0;
-		};
 		8D8555822D0A796100A1EA09 /* Build Connlib */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -463,10 +401,9 @@
 			);
 			name = "Build Connlib";
 			outputFileListPaths = (
+				"$(SRCROOT)/FirezoneNetworkExtension/Connlib.xcfilelist",
 			);
 			outputPaths = (
-				"$(SRC_ROOT)/../../rust/target/aarch64-apple-darwin/debug/libconnlib.a",
-				"$(SRC_ROOT)/../../rust/target/aarch64-apple-darwin/release/libconnlib.a",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -484,10 +421,9 @@
 			);
 			name = "Build Connlib";
 			outputFileListPaths = (
+				"$(SRCROOT)/FirezoneNetworkExtension/Connlib.xcfilelist",
 			);
 			outputPaths = (
-				"$(SRC_ROOT)/../../rust/target/aarch64-apple-darwin/debug/libconnlib.a",
-				"$(SRC_ROOT)/../../rust/target/aarch64-apple-darwin/release/libconnlib.a",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
