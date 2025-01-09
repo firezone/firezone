@@ -733,7 +733,7 @@ where
                 self.private_key.clone(),
                 remote,
                 Some(key),
-                Some(25), // 25 is the default of the kernel implementation.
+                self.mode.is_client().then_some(25), // 25 is the default of the kernel implementation.
                 self.index.next(),
                 Some(self.rate_limiter.clone()),
                 self.rng.next_u64(),
