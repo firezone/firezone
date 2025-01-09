@@ -123,5 +123,5 @@ echo "Disk image created at $dmg_path"
 
 # Move to final location the uploader expects
 if [[ -n "${ARTIFACT_PATH:-}" ]]; then
-    mv "$package_path" "$ARTIFACT_PATH"
+    mv "$dmg_path" "$ARTIFACT_PATH"
 fi
