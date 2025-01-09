@@ -739,7 +739,6 @@ where
                 self.rng.next_u64(),
                 now,
             ),
-            wg_timer: DEFAULT_WG_TIMER,
             next_wg_timer_update: now,
             stats: Default::default(),
             buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
@@ -1574,8 +1573,6 @@ struct Connection<RId> {
 
     tunnel: Tunn,
     remote_pub_key: PublicKey,
-    /// At which interval we update the [`Tunn`]s timers.
-    wg_timer: Duration,
     /// When to next update the [`Tunn`]'s timers.
     next_wg_timer_update: Instant,
 
@@ -1641,7 +1638,7 @@ where
         }
     }
 
-    fn handle_timeout(&mut self, agent: &mut IceAgent, wg_timer: &mut Duration, now: Instant) {
+    fn handle_timeout(&mut self, agent: &mut IceAgent, now: Instant) {
         let Self::Connected {
             last_outgoing,
             last_incoming,
@@ -1657,10 +1654,10 @@ where
 
         let peer_socket = *peer_socket;
 
-        self.transition_to_idle(peer_socket, agent, wg_timer);
+        self.transition_to_idle(peer_socket, agent);
     }
 
-    fn on_outgoing(&mut self, agent: &mut IceAgent, wg_timer: &mut Duration, now: Instant) {
+    fn on_outgoing(&mut self, agent: &mut IceAgent, now: Instant) {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
             Self::Connected { last_outgoing, .. } => {
@@ -1670,10 +1667,10 @@ where
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(peer_socket, agent, wg_timer, now);
+        self.transition_to_connected(peer_socket, agent, now);
     }
 
-    fn on_incoming(&mut self, agent: &mut IceAgent, wg_timer: &mut Duration, now: Instant) {
+    fn on_incoming(&mut self, agent: &mut IceAgent, now: Instant) {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
             Self::Connected { last_incoming, .. } => {
@@ -1683,26 +1680,19 @@ where
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(peer_socket, agent, wg_timer, now);
+        self.transition_to_connected(peer_socket, agent, now);
     }
 
-    fn transition_to_idle(
-        &mut self,
-        peer_socket: PeerSocket<RId>,
-        agent: &mut IceAgent,
-        wg_timer: &mut Duration,
-    ) {
+    fn transition_to_idle(&mut self, peer_socket: PeerSocket<RId>, agent: &mut IceAgent) {
         tracing::debug!("Connection is idle");
         *self = Self::Idle { peer_socket };
         apply_idle_stun_timings(agent);
-        *wg_timer = IDLE_WG_TIMER;
     }
 
     fn transition_to_connected(
         &mut self,
         peer_socket: PeerSocket<RId>,
         agent: &mut IceAgent,
-        wg_timer: &mut Duration,
         now: Instant,
     ) {
         tracing::debug!("Connection resumed");
@@ -1712,7 +1702,6 @@ where
             last_incoming: now,
         };
         apply_default_stun_timings(agent);
-        *wg_timer = DEFAULT_WG_TIMER;
     }
 }
 
@@ -1798,8 +1787,7 @@ where
         RId: Copy + Ord + fmt::Display,
     {
         self.agent.handle_timeout(now);
-        self.state
-            .handle_timeout(&mut self.agent, &mut self.wg_timer, now);
+        self.state.handle_timeout(&mut self.agent, now);
 
         if self
             .candidate_timeout()
@@ -1814,7 +1802,7 @@ where
 
         // If this was a scheduled update, hop to the next interval.
         if now >= self.next_wg_timer_update {
-            self.next_wg_timer_update = now + self.wg_timer;
+            self.next_wg_timer_update = now + Duration::from_secs(1); // TODO: Remove fixed interval in favor of precise `next_timer_update` function in `boringtun`.
         }
 
         // If `boringtun` wants to be called earlier than the scheduled interval, move it forward.
@@ -2009,8 +1997,7 @@ where
             }
         };
 
-        self.state
-            .on_outgoing(&mut self.agent, &mut self.wg_timer, now);
+        self.state.on_outgoing(&mut self.agent, now);
 
         Ok(Some(&buffer[..len]))
     }
@@ -2103,8 +2090,7 @@ where
         };
 
         if control_flow.is_continue() {
-            self.state
-                .on_incoming(&mut self.agent, &mut self.wg_timer, now);
+            self.state.on_incoming(&mut self.agent, now);
         }
 
         control_flow
@@ -2199,17 +2185,6 @@ fn new_agent() -> IceAgent {
 
     agent
 }
-
-/// By default, we will update the internal timers of a WireGuard tunnel every second.
-///
-/// This allows [`boringtun`] to send keep-alive and re-key messages at the correct times.
-const DEFAULT_WG_TIMER: Duration = Duration::from_secs(1);
-
-/// When a connection is idle, the only thing that [`boringtun`] needs to do is send keep-alive messages.
-///
-/// Those happen at a rate of 25s.
-/// By waking up less often, we can save some CPU power.
-const IDLE_WG_TIMER: Duration = Duration::from_secs(30);
 
 fn apply_default_stun_timings(agent: &mut IceAgent) {
     agent.set_max_stun_retransmits(8);
