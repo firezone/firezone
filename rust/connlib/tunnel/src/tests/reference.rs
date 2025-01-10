@@ -664,12 +664,6 @@ impl ReferenceState {
         self.global_dns_records
             .domains_iter()
             .map(|d| (d.clone(), self.global_dns_records.domain_rtypes(&d)))
-            .chain(self.client.inner().known_hosts.keys().map(|h| {
-                (
-                    DomainName::vec_from_str(h).unwrap(),
-                    vec![Rtype::A, Rtype::AAAA],
-                )
-            }))
             .collect()
     }
 
