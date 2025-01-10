@@ -220,7 +220,7 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
-            stub_resolver: StubResolver::new(),
+            stub_resolver: Default::default(),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
             internet_resource: None,
