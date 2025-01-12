@@ -16,7 +16,7 @@ jobs:
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-android
       - name: Run linter
         run: ./gradlew spotlessCheck
@@ -39,7 +39,7 @@ jobs:
             build-command: "./gradlew assembleRelease"
             output-path: app/build/outputs/apk/release/app-release.apk
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-android
@@ -57,7 +57,7 @@ jobs:
         run: |
           ./gradlew testReleaseUnitTest
       - name: Upload package artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: Android ${{ matrix.package-type }}
           path: |
@@ -87,13 +87,13 @@ jobs:
     runs-on: ubuntu-22.04
     name: build-debug
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-android
       - name: Build debug APK
         run: |
           ./gradlew assembleDebug
       - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: Android debug APK
           path: |

@@ -25,7 +25,7 @@ runs:
         echo "version=$version" >> $GITHUB_OUTPUT
       shell: bash
 
-    - uses: getsentry/action-release@v1
+    - uses: getsentry/action-release@1841d945bad68068f92f796114d0fa534129764d # v1.8.0
       env:
         SENTRY_AUTH_TOKEN: ${{ inputs.sentry_token }}
         SENTRY_ORG: firezone-inc
