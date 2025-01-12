@@ -4838,8 +4838,9 @@ dependencies = [
 
 [[package]]
 name = "proptest"
-version = "1.5.0"
-source = "git+https://github.com/proptest-rs/proptest?branch=main#772e64733187dc65f669db51f627ddf9e8951bc8"
+version = "1.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "14cae93065090804185d3b75f0bf93b8eeda30c7a9b4a33d3bdb3988d6229e50"
 dependencies = [
  "bit-set",
  "bit-vec",
@@ -4857,8 +4858,9 @@ dependencies = [
 
 [[package]]
 name = "proptest-state-machine"
-version = "0.3.0"
-source = "git+https://github.com/proptest-rs/proptest?branch=main#772e64733187dc65f669db51f627ddf9e8951bc8"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e943d140e09d07740fb496487c51fb8eb31c70389ac4a2e9dcd8a0d9fdf228d4"
 dependencies = [
  "proptest",
 ]
