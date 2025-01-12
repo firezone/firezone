@@ -20,7 +20,7 @@ variable "instances" {
 variable "base_cidr_block" {
   type        = string
   default     = "10.200.0.0/16"
-  description = "The base CIDR block for subnets."
+  description = "The base CIDR block for subnets. Must not overlap with existing subnet."
 }
 
 variable "extension_bits" {
