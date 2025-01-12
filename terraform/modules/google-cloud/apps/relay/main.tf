@@ -54,7 +54,7 @@ locals {
   # Generate persistent CIDR blocks based on state tracking
   instance_cidr_blocks = {
     for region, instance in var.instances :
-    region => cidrsubnet(var.base_cidr_block, var.subnet_size, index(region, keys(var.instances)))
+    region => cidrsubnet(var.base_cidr_block, var.extension_bits, index(keys(var.instances), region))
   }
 }
 
@@ -141,12 +141,20 @@ resource "google_compute_network" "network" {
   ]
 }
 
+# Subnet names must be unique across all regions
+resource "random_string" "subnet_suffix" {
+  length  = 8
+  special = false
+  upper   = false
+  number  = true
+}
+
 resource "google_compute_subnetwork" "subnetwork" {
   for_each = var.instances
 
   project = var.project_id
 
-  name   = "relays-${each.key}-${local.instance_cidr_blocks[each.key]}"
+  name   = "relays-${each.key}-${random_string.subnet_suffix.result}"
   region = each.key
 
   network = google_compute_network.network.self_link

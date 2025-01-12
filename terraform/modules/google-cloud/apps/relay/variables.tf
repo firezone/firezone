@@ -24,10 +24,10 @@ variable "base_cidr_block" {
   description = "The base CIDR block for subnets."
 }
 
-variable "subnet_size" {
-  description = "Subnet mask size for each region."
+variable "extension_bits" {
   type        = number
-  default     = 24
+  default     = 8
+  description = "Number of bits to extend the base CIDR block by."
 }
 
 ################################################################################
