@@ -179,7 +179,7 @@ resource "google_compute_subnetwork" "subnetwork" {
   ip_cidr_range = cidrsubnet(
     var.base_cidr_block,
     var.extension_bits,
-    random_integer.numbering_offset + index(keys(var.instances), each.key)
+    random_integer.numbering_offset.result + index(keys(var.instances), each.key)
   )
   ipv6_access_type         = "EXTERNAL"
   private_ip_google_access = true
