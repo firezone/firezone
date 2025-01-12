@@ -50,6 +50,12 @@ locals {
       value = var.api_url
     }
   ], var.application_environment_variables)
+
+  # Generate persistent CIDR blocks based on state tracking
+  instance_cidr_blocks = {
+    for region, instance in var.instances :
+    region => cidrsubnet(var.base_cidr_block, var.subnet_size, index(region, keys(var.instances)))
+  }
 }
 
 # Fetch most recent COS image
@@ -140,7 +146,7 @@ resource "google_compute_subnetwork" "subnetwork" {
 
   project = var.project_id
 
-  name   = "relays-${each.key}"
+  name   = "relays-${each.key}-${local.instance_cidr_blocks[each.key]}"
   region = each.key
 
   network = google_compute_network.network.self_link
@@ -151,7 +157,7 @@ resource "google_compute_subnetwork" "subnetwork" {
   }
 
   stack_type               = "IPV4_IPV6"
-  ip_cidr_range            = each.value.cidr_range
+  ip_cidr_range            = local.instance_cidr_blocks[each.key]
   ipv6_access_type         = "EXTERNAL"
   private_ip_google_access = true
 }

@@ -18,6 +18,18 @@ variable "instances" {
   description = "List deployment locations for the application."
 }
 
+variable "base_cidr_block" {
+  type        = string
+  default     = "10.129.0.0/16"
+  description = "The base CIDR block for subnets."
+}
+
+variable "subnet_size" {
+  description = "Subnet mask size for each region."
+  type        = number
+  default     = 24
+}
+
 ################################################################################
 ## Container Registry
 ################################################################################
