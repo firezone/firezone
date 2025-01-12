@@ -9,13 +9,24 @@ variable "project_id" {
 
 variable "instances" {
   type = map(object({
-    cidr_range = string
-    type       = string
-    replicas   = number
-    zones      = list(string)
+    type     = string
+    replicas = number
+    zones    = list(string)
   }))
 
   description = "List deployment locations for the application."
+}
+
+variable "base_cidr_block" {
+  type        = string
+  default     = "10.129.0.0/16"
+  description = "The base CIDR block for subnets."
+}
+
+variable "extension_bits" {
+  type        = number
+  default     = 8
+  description = "Number of bits to extend the base CIDR block by."
 }
 
 ################################################################################
