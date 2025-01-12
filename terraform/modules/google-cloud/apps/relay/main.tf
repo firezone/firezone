@@ -146,7 +146,7 @@ resource "random_string" "subnet_suffix" {
   length  = 8
   special = false
   upper   = false
-  number  = true
+  numeric = true
 }
 
 resource "google_compute_subnetwork" "subnetwork" {
