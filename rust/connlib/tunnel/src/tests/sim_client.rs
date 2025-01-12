@@ -23,7 +23,6 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
 use itertools::Itertools as _;
-use prop::collection;
 use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
@@ -389,7 +388,6 @@ impl SimClient {
 pub struct RefClient {
     pub(crate) id: ClientId,
     pub(crate) key: PrivateKey,
-    pub(crate) known_hosts: BTreeMap<String, Vec<IpAddr>>,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
 
@@ -463,7 +461,7 @@ impl RefClient {
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(self, now: Instant) -> SimClient {
-        let mut client_state = ClientState::new(self.known_hosts, self.key.0, now); // Cheating a bit here by reusing the key as seed.
+        let mut client_state = ClientState::new(self.key.0, now); // Cheating a bit here by reusing the key as seed.
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
@@ -1027,7 +1025,6 @@ fn ref_client(
         upstream_dns,
         client_id(),
         private_key(),
-        known_hosts(),
     )
         .prop_map(
             move |(
@@ -1037,12 +1034,10 @@ fn ref_client(
                 upstream_dns_resolvers,
                 id,
                 key,
-                known_hosts,
             )| {
                 RefClient {
                     id,
                     key,
-                    known_hosts,
                     tunnel_ip4,
                     tunnel_ip6,
                     system_dns_resolvers,
@@ -1086,15 +1081,4 @@ fn default_routes_v6() -> Vec<Ipv6Network> {
         )
         .unwrap(),
     ]
-}
-
-fn known_hosts() -> impl Strategy<Value = BTreeMap<String, Vec<IpAddr>>> {
-    collection::btree_map(
-        prop_oneof![
-            Just("api.firezone.dev".to_owned()),
-            Just("api.firez.one".to_owned())
-        ],
-        collection::vec(any::<IpAddr>(), 1..3),
-        1..=2,
-    )
 }

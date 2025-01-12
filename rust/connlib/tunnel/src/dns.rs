@@ -45,8 +45,6 @@ pub struct StubResolver {
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by the glob pattern they match against.
     dns_resources: BTreeMap<Pattern, ResourceId>,
-    /// Fixed dns name that will be resolved to fixed ip addrs, similar to /etc/hosts
-    known_hosts: KnownHosts,
 }
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
@@ -108,60 +106,18 @@ pub(crate) enum ResolveStrategy {
     Recurse,
 }
 
-struct KnownHosts {
-    fqdn_to_ips: BTreeMap<DomainName, Vec<IpAddr>>,
-    ips_to_fqdn: BTreeMap<IpAddr, DomainName>,
-}
-
-impl KnownHosts {
-    fn new(hosts: BTreeMap<String, Vec<IpAddr>>) -> KnownHosts {
-        KnownHosts {
-            fqdn_to_ips: fqdn_to_ips_for_known_hosts(&hosts),
-            ips_to_fqdn: ips_to_fqdn_for_known_hosts(&hosts),
-        }
-    }
-
-    fn get_records(
-        &self,
-        qtype: Rtype,
-        domain: &DomainName,
-    ) -> Option<Vec<AllRecordData<Vec<u8>, DomainName>>> {
-        match qtype {
-            Rtype::A => {
-                let ips = self.fqdn_to_ips.get::<DomainName>(domain)?;
-
-                Some(to_a_records(ips.iter().copied()))
-            }
-
-            Rtype::AAAA => {
-                let ips = self.fqdn_to_ips.get::<DomainName>(domain)?;
-
-                Some(to_aaaa_records(ips.iter().copied()))
-            }
-            Rtype::PTR => {
-                let ip = reverse_dns_addr(&domain.to_string())?;
-                let fqdn = self.ips_to_fqdn.get(&ip)?;
-
-                Some(vec![AllRecordData::Ptr(domain::rdata::Ptr::new(
-                    fqdn.clone(),
-                ))])
-            }
-            _ => None,
-        }
-    }
-}
-
-impl StubResolver {
-    pub(crate) fn new(known_hosts: BTreeMap<String, Vec<IpAddr>>) -> StubResolver {
+impl Default for StubResolver {
+    fn default() -> Self {
         StubResolver {
             fqdn_to_ips: Default::default(),
             ips_to_fqdn: Default::default(),
             ip_provider: IpProvider::for_resources(),
             dns_resources: Default::default(),
-            known_hosts: KnownHosts::new(known_hosts),
         }
     }
+}
 
+impl StubResolver {
     /// Attempts to resolve an IP to a given resource.
     ///
     /// Semantically, this is like a PTR query, i.e. we check whether we handed out this IP as part of answering a DNS query for one of our resources.
@@ -310,11 +266,6 @@ impl StubResolver {
             return Ok(ResolveStrategy::LocalResponse(payload));
         }
 
-        if let Some(records) = self.known_hosts.get_records(qtype, &domain) {
-            let response = build_dns_with_answer(message, domain, records)?;
-            return Ok(ResolveStrategy::LocalResponse(response));
-        }
-
         // `match_resource` is `O(N)` which we deem fine for DNS queries.
         let maybe_resource = self.match_resource_linear(&domain);
 
@@ -446,29 +397,6 @@ fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
         IpAddr::V4(_) => None,
         IpAddr::V6(v6) => Some(v6),
     }
-}
-
-fn fqdn_to_ips_for_known_hosts(
-    hosts: &BTreeMap<String, Vec<IpAddr>>,
-) -> BTreeMap<DomainName, Vec<IpAddr>> {
-    hosts
-        .iter()
-        .filter_map(|(d, a)| DomainName::vec_from_str(d).ok().map(|d| (d, a.clone())))
-        .collect()
-}
-
-fn ips_to_fqdn_for_known_hosts(
-    hosts: &BTreeMap<String, Vec<IpAddr>>,
-) -> BTreeMap<IpAddr, DomainName> {
-    hosts
-        .iter()
-        .filter_map(|(d, a)| {
-            DomainName::vec_from_str(d)
-                .ok()
-                .map(|d| a.iter().map(move |a| (*a, d.clone())))
-        })
-        .flatten()
-        .collect()
 }
 
 mod pattern {
@@ -743,7 +671,7 @@ mod tests {
 
     #[test]
     fn prioritises_non_wildcard_over_wildcard_domain() {
-        let mut resolver = StubResolver::new(BTreeMap::default());
+        let mut resolver = StubResolver::default();
         let wc = ResourceId::from_u128(0);
         let non_wc = ResourceId::from_u128(1);
 
@@ -764,7 +692,7 @@ mod tests {
 
     #[test]
     fn query_for_doh_canary_domain_records_nx_domain() {
-        let mut resolver = StubResolver::new(BTreeMap::default());
+        let mut resolver = StubResolver::default();
 
         let mut builder = MessageBuilder::new_vec().question();
         builder
@@ -797,7 +725,7 @@ mod benches {
     fn match_domain_linear<const NUM_RES: u128>(bencher: divan::Bencher) {
         bencher
             .with_inputs(|| {
-                let mut resolver = StubResolver::new(BTreeMap::default());
+                let mut resolver = StubResolver::default();
                 let mut rng = rand::thread_rng();
 
                 for n in 0..NUM_RES {

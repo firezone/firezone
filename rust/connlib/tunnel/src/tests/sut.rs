@@ -370,7 +370,6 @@ impl TunnelTest {
         );
         assert_udp_dns_packets_properties(ref_client, sim_client);
         assert_tcp_dns(ref_client, sim_client);
-        assert_known_hosts_are_valid(ref_client, sim_client);
         assert_dns_servers_are_valid(ref_client, sim_client);
         assert_routes_are_valid(ref_client, sim_client);
     }

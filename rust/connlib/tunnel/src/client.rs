@@ -205,11 +205,7 @@ impl PendingFlow {
 }
 
 impl ClientState {
-    pub(crate) fn new(
-        known_hosts: BTreeMap<String, Vec<IpAddr>>,
-        seed: [u8; 32],
-        now: Instant,
-    ) -> Self {
+    pub(crate) fn new(seed: [u8; 32], now: Instant) -> Self {
         Self {
             resources_gateways: Default::default(),
             active_cidr_resources: IpNetworkTable::new(),
@@ -224,7 +220,7 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
-            stub_resolver: StubResolver::new(known_hosts),
+            stub_resolver: Default::default(),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
             internet_resource: None,
@@ -1979,7 +1975,7 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(BTreeMap::new(), rand::random(), Instant::now())
+            ClientState::new(rand::random(), Instant::now())
         }
     }
 
