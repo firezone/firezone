@@ -28,7 +28,7 @@ runs:
       if: ${{ runner.os == 'Linux' && inputs.runtime == 'true' }}
       run: sudo apt-get --yes install at-spi2-core xvfb
       shell: bash
-    - uses: actions/cache@v4
+    - uses: actions/cache@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
       if: ${{ runner.os == 'Windows' && inputs.runtime == 'true' }}
       id: cache-webview2-installer
       with:
