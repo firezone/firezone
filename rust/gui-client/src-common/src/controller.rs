@@ -179,7 +179,7 @@ enum EventloopTick {
     UpdateNotification(Option<Option<updates::Notification>>),
 }
 
-impl<'a, I: GuiIntegration> Controller<'a, I> {
+impl<I: GuiIntegration> Controller<'_, I> {
     pub async fn start(
         ctlr_tx: CtlrTx,
         integration: I,

@@ -5,7 +5,7 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
-  outputs = { nixpkgs, flake-utils, rust-overlay, ... } @ inputs:
+  outputs = { nixpkgs, flake-utils, rust-overlay, ... }:
     flake-utils.lib.eachDefaultSystem
       (
         system:
