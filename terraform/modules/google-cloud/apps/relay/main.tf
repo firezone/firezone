@@ -148,8 +148,7 @@ resource "random_string" "name_suffix" {
 }
 
 resource "random_integer" "numbering_offset" {
-  description = "Subnet numbering offset for relay instances to reduce the chance of collision."
-  min         = 0
+  min = 0
 
   # 10.129.0.0 - 10.255.255.255 is 32512 /24 subnets
   max = 32512 - length(var.instances)
