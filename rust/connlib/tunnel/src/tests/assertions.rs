@@ -198,16 +198,6 @@ fn assert_packets_properties<T, U>(
     }
 }
 
-pub(crate) fn assert_known_hosts_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
-    for (record, actual) in &sim_client.dns_records {
-        if let Some(expected) = ref_client.known_hosts.get(&record.to_string()) {
-            if actual != expected {
-                tracing::error!(target: "assertions", ?actual, ?expected, "❌ Unexpected known-hosts");
-            }
-        }
-    }
-}
-
 pub(crate) fn assert_dns_servers_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
     let expected = ref_client.expected_dns_servers();
     let actual = sim_client.effective_dns_servers();

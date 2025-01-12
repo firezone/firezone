@@ -12,7 +12,7 @@ use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
@@ -87,7 +87,7 @@ impl ClientTunnel {
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
-            role_state: ClientState::new(BTreeMap::default(), rand::random(), Instant::now()),
+            role_state: ClientState::new(rand::random(), Instant::now()),
             buffers: Buffers::default(),
         }
     }
