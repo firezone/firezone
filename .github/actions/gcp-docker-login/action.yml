@@ -12,7 +12,7 @@ runs:
   using: "composite"
   steps:
     - id: auth
-      uses: google-github-actions/auth@v2
+      uses: google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f # v2.1.7
       with:
         token_format: access_token
         workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
@@ -22,7 +22,7 @@ runs:
       shell: bash
       run: gcloud --quiet config set project ${{ inputs.project }}
     - name: Login to Google Artifact Registry
-      uses: docker/login-action@v3
+      uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
       with:
         registry: "us-east1-docker.pkg.dev"
         username: oauth2accesstoken

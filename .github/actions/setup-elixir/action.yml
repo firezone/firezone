@@ -17,8 +17,8 @@ runs:
   steps:
     - name: Tool Versions
       id: versions
-      uses: marocchino/tool-versions-action@v1.2.0
-    - uses: erlef/setup-beam@v1
+      uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
+    - uses: erlef/setup-beam@5304e04ea2b355f03681464e683d92e3b2f18451 # v1.18.2
       id: setup-beam
       with:
         otp-version: ${{ steps.versions.outputs.erlang }}
@@ -29,7 +29,7 @@ runs:
       run: |
         mix local.hex --force
         mix local.rebar --force
-    - uses: actions/cache/restore@v4
+    - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
       name: Restore Elixir Deps Cache
       id: cache
       with:
@@ -47,7 +47,7 @@ runs:
       shell: bash
       working-directory: ./elixir
       run: mix deps.compile --skip-umbrella-children
-    - uses: actions/cache/save@v4
+    - uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
       name: Save Elixir Deps Cache
       if: ${{ github.ref_name == 'main' }}
       with:
