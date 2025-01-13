@@ -65,7 +65,7 @@ ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
 itertools = "0.13"
 jni = "0.21.1"
-keyring = "3.2.1"
+keyring = "3.6.1"
 known-folders = "1.2.0"
 libc = "0.2.150"
 log = "0.4"
