@@ -2234,6 +2234,7 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "itertools 0.13.0",
+ "lockfree-object-pool",
  "lru",
  "proptest",
  "proptest-state-machine",
@@ -5936,6 +5937,7 @@ dependencies = [
 name = "socket-factory"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "firezone-logging",
  "quinn-udp",
  "socket2",

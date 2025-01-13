@@ -26,6 +26,7 @@ ip-packet = { workspace = true }
 ip_network = { workspace = true }
 ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
+lockfree-object-pool = { workspace = true }
 lru = { workspace = true }
 proptest = { workspace = true, optional = true }
 rand = { workspace = true }
