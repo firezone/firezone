@@ -50,7 +50,7 @@ resource "google_compute_subnetwork" "apps" {
 
   stack_type = "IPV4_IPV6"
 
-  ip_cidr_range = "10.0.0.0/20"
+  ip_cidr_range = "10.128.0.0/20"
   region        = local.region
   network       = module.google-cloud-vpc.id
 
