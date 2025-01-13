@@ -27,6 +27,17 @@ use tracing_subscriber::Layer;
 const LOG_FILE_BASE_NAME: &str = "connlib";
 pub const TIME_FORMAT: &str = "[year]-[month]-[day]-[hour]-[minute]-[second]";
 
+/// How many lines we will at most buffer in the channel with the background thread that writes to disk.
+///
+/// We don't need this number to be very high because:
+/// a. `connlib` doesn't actually log a lot
+/// b. The background continuously reads from the channel and writes to disk.
+///
+/// This buffer only needs to be able to handle bursts.
+///
+/// As per docs on [`tracing_appender::non_blocking::DEFAULT_BUFFERED_LINES_LIMIT`], this is a power of 2.
+const MAX_BUFFERED_LINES: usize = 1024;
+
 /// Create a new file logger layer.
 pub fn layer<T>(log_dir: &Path) -> (Box<dyn Layer<T> + Send + Sync + 'static>, Handle)
 where
@@ -62,7 +73,9 @@ fn new_appender(directory: PathBuf, file_extension: &'static str) -> (NonBlockin
         file_extension,
     };
 
-    let (non_blocking, guard) = tracing_appender::non_blocking(appender);
+    let (non_blocking, guard) = tracing_appender::non_blocking::NonBlockingBuilder::default()
+        .buffered_lines_limit(MAX_BUFFERED_LINES)
+        .finish(appender);
 
     (non_blocking, guard)
 }
