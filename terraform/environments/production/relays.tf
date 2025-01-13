@@ -372,10 +372,6 @@ module "relays" {
 
   api_url = "wss://api.${local.tld}"
   token   = var.relay_token
-
-  depends_on = [
-    google_compute_subnetwork.subnetwork
-  ]
 }
 
 # Allow SSH access using IAP for relays
