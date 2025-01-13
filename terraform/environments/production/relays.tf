@@ -46,7 +46,7 @@ locals {
 # Create networks
 resource "google_compute_network" "network" {
   project = module.google-cloud-project.project.project_id
-  name    = "relay"
+  name    = "relays"
 
   routing_mode = "GLOBAL"
 
