@@ -100,6 +100,11 @@ where
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = &mut P> {
         self.peer_by_id.values_mut()
     }
+
+    pub(crate) fn clear(&mut self) {
+        self.id_by_ip = IpNetworkTable::new();
+        self.peer_by_id.clear();
+    }
 }
 
 pub(crate) trait Peer {

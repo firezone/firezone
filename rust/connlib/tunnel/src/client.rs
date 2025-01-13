@@ -1376,9 +1376,13 @@ impl ClientState {
     pub(crate) fn reset(&mut self, now: Instant) {
         tracing::info!("Resetting network state");
 
-        self.node.reset(now);
+        self.node.reset(now); // Clear all network connections.
+        self.peers.clear(); // Clear all state associated with Gateways.
+
+        self.resources_gateways.clear(); // Clear Resource <> Gateway mapping (we will re-create this as new flows are authorized).
+
         self.recently_connected_gateways.clear(); // Ensure we don't have sticky gateways when we roam.
-        self.dns_resource_nat_by_gateway.clear();
+        self.dns_resource_nat_by_gateway.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events();
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.
