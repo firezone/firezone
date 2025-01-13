@@ -150,8 +150,8 @@ resource "random_string" "name_suffix" {
 resource "random_integer" "numbering_offset" {
   min = 0
 
-  # 10.129.0.0 - 10.255.255.255 is 32512 /24 subnets
-  max = 32512 - length(var.instances)
+  # 10.128.0.0/9 is 2^(32-9) / 2^(32-24) = 32,768 /24 networks
+  max = 32767 - length(var.instances)
 
   keepers = {
     image_tag = var.image_tag
