@@ -60,7 +60,7 @@ resource "google_compute_network" "network" {
 resource "google_compute_subnetwork" "subnetwork" {
   for_each = local.subnet_ip_cidr_ranges
   project  = module.google-cloud-project.project.project_id
-  name     = "relay-${each.key}"
+  name     = "relays-${each.key}"
   region   = each.key
   network  = google_compute_network.network.self_link
 
