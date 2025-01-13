@@ -103,6 +103,8 @@ jobs:
         run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.FIREZONE_GUI_VERSION }}_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
+        env:
+          SKIP_PACKAGE_TEST: "${{ github.ref_name == 'main' }}"
         run: ${{ env.RENAME_SCRIPT }}
       - name: Upload debug symbols to Sentry
         if: ${{ github.ref_name == 'main' }}
