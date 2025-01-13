@@ -34,3 +34,9 @@ Note: The NAT gateway VM will default to using a non-symmetric NAT when deployed
    ```
    sudo iptables -t nat -F && sudo iptables -t nat -A POSTROUTING -o ens5 -j MASQUERADE
    ```
+
+## View gateway logs
+
+1. SSH into the Gateway instance as per the above instructions.
+1. Run `sudo journalctl -u gateway.service --no-hostname --output cat`.
+   This will give you coloured logs without additional clutter like duplicate timestamps or hostnames.
