@@ -61,11 +61,11 @@ pub const MAX_UDP_PAYLOAD: usize = MAX_IP_PAYLOAD - etherparse::UdpHeader::LEN;
 pub const MAX_FZ_PAYLOAD: usize =
     MAX_IP_SIZE + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
 /// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
-const WG_OVERHEAD: usize = 32;
+pub const WG_OVERHEAD: usize = 32;
 /// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
 pub(crate) const NAT46_OVERHEAD: usize = 20;
 /// TURN's data channels have a 4 byte overhead.
-const DATA_CHANNEL_OVERHEAD: usize = 4;
+pub const DATA_CHANNEL_OVERHEAD: usize = 4;
 
 macro_rules! for_both {
     ($this:ident, |$name:ident| $body:expr) => {

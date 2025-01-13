@@ -20,7 +20,6 @@ mod tests {
     use ip_network::Ipv4Network;
     use socket_factory::DatagramOut;
     use std::{
-        borrow::Cow,
         net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
         time::Duration,
     };
@@ -101,9 +100,7 @@ mod tests {
             .send(DatagramOut {
                 src: None,
                 dst: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(141, 101, 90, 0), 3478)), // stun.cloudflare.com,
-                packet: Cow::Borrowed(&hex_literal::hex!(
-                    "000100002112A4420123456789abcdef01234567"
-                )),
+                packet: &hex_literal::hex!("000100002112A4420123456789abcdef01234567").as_ref(),
                 segment_size: None,
             })
             .unwrap();
