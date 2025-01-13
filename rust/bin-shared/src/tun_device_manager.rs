@@ -100,7 +100,7 @@ mod tests {
             .send(DatagramOut {
                 src: None,
                 dst: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(141, 101, 90, 0), 3478)), // stun.cloudflare.com,
-                packet: hex_literal::hex!("000100002112A4420123456789abcdef01234567").as_ref(),
+                packet: &hex_literal::hex!("000100002112A4420123456789abcdef01234567").as_ref(),
                 segment_size: None,
             })
             .unwrap();

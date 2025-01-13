@@ -2,6 +2,7 @@ use socket_factory::{DatagramIn, DatagramOut, SocketFactory, UdpSocket};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    ops::Deref,
     task::{ready, Context, Poll, Waker},
 };
 
@@ -59,7 +60,7 @@ impl Sockets {
 
     pub fn send<B>(&mut self, datagram: DatagramOut<B>) -> io::Result<()>
     where
-        B: bytes::Buf,
+        B: Deref<Target: bytes::Buf>,
     {
         let socket = match datagram.dst {
             SocketAddr::V4(dst) => self.socket_v4.as_mut().ok_or_else(|| {

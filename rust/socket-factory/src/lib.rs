@@ -1,7 +1,9 @@
+use bytes::Buf as _;
 use firezone_logging::std_dyn_err;
 use quinn_udp::Transmit;
 use std::collections::HashMap;
 use std::fmt;
+use std::ops::Deref;
 use std::{
     io::{self, IoSliceMut},
     net::{IpAddr, SocketAddr},
@@ -276,12 +278,12 @@ impl UdpSocket {
 
     pub fn send<B>(&mut self, datagram: DatagramOut<B>) -> io::Result<()>
     where
-        B: bytes::Buf,
+        B: Deref<Target: bytes::Buf>,
     {
         let Some(transmit) = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
-            datagram.packet.chunk(),
+            datagram.packet.deref().chunk(),
             datagram.segment_size,
         )?
         else {

@@ -1,26 +1,39 @@
 use std::{
-    collections::BTreeMap,
+    collections::HashMap,
     net::SocketAddr,
+    sync::Arc,
     time::{Duration, Instant},
 };
 
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use socket_factory::DatagramOut;
 
 use super::MAX_INBOUND_PACKET_BATCH;
+
+const MAX_SEGMENT_SIZE: usize =
+    ip_packet::MAX_IP_SIZE + ip_packet::WG_OVERHEAD + ip_packet::DATA_CHANNEL_OVERHEAD;
 
 /// Holds UDP datagrams that we need to send, indexed by src, dst and segment size.
 ///
 /// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
 /// The buffer is then flushed using GSO in a single syscall.
 pub struct GsoQueue {
-    inner: BTreeMap<Key, DatagramBuffer>,
+    inner: HashMap<Key, DatagramBuffer>,
+    buffer_pool: Arc<lockfree_object_pool::SpinLockObjectPool<BytesMut>>,
 }
 
 impl GsoQueue {
     pub fn new() -> Self {
         Self {
             inner: Default::default(),
+            buffer_pool: Arc::new(lockfree_object_pool::SpinLockObjectPool::new(
+                || {
+                    tracing::debug!("Initialising new buffer for GSO queue");
+
+                    BytesMut::with_capacity(MAX_SEGMENT_SIZE * MAX_INBOUND_PACKET_BATCH)
+                },
+                |b| b.clear(),
+            )),
         }
     }
 
@@ -41,13 +54,13 @@ impl GsoQueue {
         payload: &[u8],
         now: Instant,
     ) {
+        let buffer = self.buffer_pool.pull_owned();
         let segment_size = payload.len();
 
-        // At most, a single batch translates to packets all going to the same destination and length.
-        // Thus, to avoid a lot of re-allocations during sending, allocate enough space to store a quarter of the packets in a batch.
-        // Re-allocations happen by doubling the capacity, so this means we have at most 2 re-allocation.
-        // This number has been chosen empirically by observing how big the GSO batches typically are.
-        let capacity = segment_size * MAX_INBOUND_PACKET_BATCH / 4;
+        debug_assert!(
+            segment_size <= MAX_SEGMENT_SIZE,
+            "MAX_SEGMENT_SIZE is miscalculated"
+        );
 
         self.inner
             .entry(Key {
@@ -55,18 +68,24 @@ impl GsoQueue {
                 dst,
                 segment_size,
             })
-            .or_insert_with(|| DatagramBuffer::new(now, capacity))
+            .or_insert_with(|| DatagramBuffer {
+                inner: buffer,
+                last_access: now,
+            })
             .extend(payload, now);
     }
 
-    pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut<Bytes>> + '_ {
+    pub fn datagrams(
+        &mut self,
+    ) -> impl Iterator<Item = DatagramOut<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>> + '_
+    {
         self.inner
-            .iter_mut()
+            .drain()
             .filter(|(_, b)| !b.is_empty())
             .map(|(key, buffer)| DatagramOut {
                 src: key.src,
                 dst: key.dst,
-                packet: buffer.inner.split().freeze(),
+                packet: buffer.inner,
                 segment_size: Some(key.segment_size),
             })
     }
@@ -84,18 +103,11 @@ struct Key {
 }
 
 struct DatagramBuffer {
-    inner: BytesMut,
+    inner: lockfree_object_pool::SpinLockOwnedReusable<BytesMut>,
     last_access: Instant,
 }
 
 impl DatagramBuffer {
-    pub fn new(now: Instant, capacity: usize) -> Self {
-        Self {
-            inner: BytesMut::with_capacity(capacity),
-            last_access: now,
-        }
-    }
-
     pub(crate) fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
