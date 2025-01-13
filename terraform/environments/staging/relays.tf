@@ -1,52 +1,52 @@
 locals {
   subnet_ip_cidr_ranges = {
-    "africa-south1"           = "10.129.0.0/24",
-    "asia-east1"              = "10.129.1.0/24",
-    "asia-east2"              = "10.129.2.0/24",
-    "asia-northeast1"         = "10.129.3.0/24",
-    "asia-northeast2"         = "10.129.4.0/24",
-    "asia-northeast3"         = "10.129.5.0/24",
-    "asia-south1"             = "10.129.6.0/24",
-    "asia-south2"             = "10.129.7.0/24",
-    "asia-southeast1"         = "10.129.8.0/24",
-    "asia-southeast2"         = "10.129.9.0/24",
-    "australia-southeast1"    = "10.129.10.0/24",
-    "australia-southeast2"    = "10.129.11.0/24",
-    "europe-central2"         = "10.129.12.0/24",
-    "europe-north1"           = "10.129.13.0/24",
-    "europe-southwest1"       = "10.129.14.0/24",
-    "europe-west1"            = "10.129.15.0/24",
-    "europe-west2"            = "10.129.16.0/24",
-    "europe-west3"            = "10.129.17.0/24",
-    "europe-west4"            = "10.129.18.0/24",
-    "europe-west6"            = "10.129.19.0/24",
-    "europe-west8"            = "10.129.20.0/24",
-    "europe-west9"            = "10.129.21.0/24",
-    "europe-west10"           = "10.129.22.0/24",
-    "europe-west12"           = "10.129.23.0/24",
-    "me-central1"             = "10.129.24.0/24",
-    "me-west1"                = "10.129.25.0/24",
-    "northamerica-northeast1" = "10.129.26.0/24",
-    "northamerica-northeast2" = "10.129.27.0/24",
-    "northamerica-south1"     = "10.129.28.0/24",
-    "southamerica-east1"      = "10.129.29.0/24",
-    "southamerica-west1"      = "10.129.30.0/24",
-    "us-central1"             = "10.129.31.0/24",
-    "us-east1"                = "10.129.32.0/24",
-    "us-east4"                = "10.129.33.0/24",
-    "us-east5"                = "10.129.34.0/24",
-    "us-south1"               = "10.129.35.0/24",
-    "us-west1"                = "10.129.36.0/24",
-    "us-west2"                = "10.129.37.0/24",
-    "us-west3"                = "10.129.38.0/24",
-    "us-west4"                = "10.129.39.0/24"
+    "africa-south1"           = "10.240.0.0/24",
+    "asia-east1"              = "10.240.1.0/24",
+    "asia-east2"              = "10.240.2.0/24",
+    "asia-northeast1"         = "10.240.3.0/24",
+    "asia-northeast2"         = "10.240.4.0/24",
+    "asia-northeast3"         = "10.240.5.0/24",
+    "asia-south1"             = "10.240.6.0/24",
+    "asia-south2"             = "10.240.7.0/24",
+    "asia-southeast1"         = "10.240.8.0/24",
+    "asia-southeast2"         = "10.240.9.0/24",
+    "australia-southeast1"    = "10.240.10.0/24",
+    "australia-southeast2"    = "10.240.11.0/24",
+    "europe-central2"         = "10.240.12.0/24",
+    "europe-north1"           = "10.240.13.0/24",
+    "europe-southwest1"       = "10.240.14.0/24",
+    "europe-west1"            = "10.240.15.0/24",
+    "europe-west2"            = "10.240.16.0/24",
+    "europe-west3"            = "10.240.17.0/24",
+    "europe-west4"            = "10.240.18.0/24",
+    "europe-west6"            = "10.240.19.0/24",
+    "europe-west8"            = "10.240.20.0/24",
+    "europe-west9"            = "10.240.21.0/24",
+    "europe-west10"           = "10.240.22.0/24",
+    "europe-west12"           = "10.240.23.0/24",
+    "me-central1"             = "10.240.24.0/24",
+    "me-west1"                = "10.240.25.0/24",
+    "northamerica-northeast1" = "10.240.26.0/24",
+    "northamerica-northeast2" = "10.240.27.0/24",
+    "northamerica-south1"     = "10.240.28.0/24",
+    "southamerica-east1"      = "10.240.29.0/24",
+    "southamerica-west1"      = "10.240.30.0/24",
+    "us-central1"             = "10.240.31.0/24",
+    "us-east1"                = "10.240.32.0/24",
+    "us-east4"                = "10.240.33.0/24",
+    "us-east5"                = "10.240.34.0/24",
+    "us-south1"               = "10.240.35.0/24",
+    "us-west1"                = "10.240.36.0/24",
+    "us-west2"                = "10.240.37.0/24",
+    "us-west3"                = "10.240.38.0/24",
+    "us-west4"                = "10.240.39.0/24"
   }
 }
 
 # Create networks
 resource "google_compute_network" "network" {
   project = module.google-cloud-project.project.project_id
-  name    = "relays"
+  name    = "relay"
 
   routing_mode = "GLOBAL"
 
@@ -60,7 +60,7 @@ resource "google_compute_network" "network" {
 resource "google_compute_subnetwork" "subnetwork" {
   for_each = local.subnet_ip_cidr_ranges
   project  = module.google-cloud-project.project.project_id
-  name     = "relays-${each.key}"
+  name     = "relay-${each.key}"
   region   = each.key
   network  = google_compute_network.network.self_link
 
@@ -359,10 +359,6 @@ module "relays" {
   }
   api_url = "wss://api.${local.tld}"
   token   = var.relay_token
-
-  depends_on = [
-    google_compute_subnetwork.subnetwork
-  ]
 }
 
 # Allow SSH access using IAP for relays
