@@ -19,13 +19,13 @@ variable "instances" {
 
 variable "base_cidr_block" {
   type        = string
-  default     = "10.200.0.0/16"
+  default     = "10.128.0.0/9"
   description = "The base CIDR block for subnets. Must not overlap with existing subnet."
 }
 
 variable "extension_bits" {
   type        = number
-  default     = 8
+  default     = 15
   description = "Number of bits to extend the base CIDR block by."
 }
 
