@@ -30,7 +30,6 @@ coordinates = [
     {"city": "Turin, Italy", "lon": 7.6869, "lat": 45.0703},
     {"city": "Madrid, Spain", "lon": -3.7038, "lat": 40.4168},
     {"city": "Doha, Qatar", "lon": 51.2285, "lat": 25.2760},
-    {"city": "Dammam, Saudi Arabia", "lon": 50.0888, "lat": 26.4207},
     {"city": "Tel Aviv, Israel", "lon": 34.7818, "lat": 32.0853},
     {"city": "Montréal, Canada", "lon": -73.5673, "lat": 45.5017},
     {"city": "Toronto, Canada", "lon": -79.3837, "lat": 43.6511},
