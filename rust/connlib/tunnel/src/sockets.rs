@@ -57,7 +57,10 @@ impl Sockets {
         Poll::Ready(Ok(()))
     }
 
-    pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
+    pub fn send<B>(&mut self, datagram: DatagramOut<B>) -> io::Result<()>
+    where
+        B: bytes::Buf,
+    {
         let socket = match datagram.dst {
             SocketAddr::V4(dst) => self.socket_v4.as_mut().ok_or_else(|| {
                 io::Error::new(

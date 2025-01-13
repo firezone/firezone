@@ -5936,6 +5936,7 @@ dependencies = [
 name = "socket-factory"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "firezone-logging",
  "quinn-udp",
  "socket2",

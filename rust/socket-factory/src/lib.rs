@@ -3,7 +3,6 @@ use quinn_udp::Transmit;
 use std::collections::HashMap;
 use std::fmt;
 use std::{
-    borrow::Cow,
     io::{self, IoSliceMut},
     net::{IpAddr, SocketAddr},
     slice,
@@ -200,10 +199,10 @@ pub struct DatagramIn<'a> {
 }
 
 /// An outbound UDP datagram.
-pub struct DatagramOut<'a> {
+pub struct DatagramOut<B> {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
-    pub packet: Cow<'a, [u8]>,
+    pub packet: B,
     pub segment_size: Option<usize>,
 }
 
@@ -275,11 +274,14 @@ impl UdpSocket {
         self.inner.poll_send_ready(cx)
     }
 
-    pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
+    pub fn send<B>(&mut self, datagram: DatagramOut<B>) -> io::Result<()>
+    where
+        B: bytes::Buf,
+    {
         let Some(transmit) = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
-            &datagram.packet,
+            datagram.packet.chunk(),
             datagram.segment_size,
         )?
         else {

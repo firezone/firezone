@@ -1,11 +1,10 @@
 use std::{
-    borrow::Cow,
     collections::BTreeMap,
     net::SocketAddr,
     time::{Duration, Instant},
 };
 
-use bytes::BytesMut;
+use bytes::{Bytes, BytesMut};
 use socket_factory::DatagramOut;
 
 use super::MAX_INBOUND_PACKET_BATCH;
@@ -60,14 +59,14 @@ impl GsoQueue {
             .extend(payload, now);
     }
 
-    pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut<'static>> + '_ {
+    pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut<Bytes>> + '_ {
         self.inner
             .iter_mut()
             .filter(|(_, b)| !b.is_empty())
             .map(|(key, buffer)| DatagramOut {
                 src: key.src,
                 dst: key.dst,
-                packet: Cow::Owned(buffer.inner.split().freeze().into()),
+                packet: buffer.inner.split().freeze(),
                 segment_size: Some(key.segment_size),
             })
     }

@@ -5,6 +5,7 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [dependencies]
+bytes = { workspace = true }
 firezone-logging = { workspace = true }
 quinn-udp = { workspace = true }
 socket2 = { workspace = true }
