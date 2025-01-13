@@ -369,8 +369,8 @@ where
             | CandidateKind::PeerReflexive => {}
         }
 
-        let Some(allocation) = self.allocations.get_mut(&relay) else {
-            tracing::debug!(rid = %relay, "Unknown relay");
+        let Some(allocation) = relay.and_then(|r| self.allocations.get_mut(&r)) else {
+            tracing::debug!(rid = ?relay, "Unknown relay");
             return;
         };
 
@@ -746,7 +746,7 @@ where
             signalling_completed_at: now,
             remote_pub_key: remote,
             state: ConnectionState::Connecting {
-                relay,
+                relay: Some(relay),
                 buffered: AllocRingBuffer::new(128),
             },
             possible_sockets: BTreeSet::default(),
@@ -1215,12 +1215,18 @@ where
             let peer_socket = match &mut c.state {
                 Connected { peer_socket, .. } | Idle { peer_socket } => peer_socket,
                 Failed => continue,
-                Connecting { relay, .. } => {
+                Connecting {
+                    relay: maybe_relay, ..
+                } => {
+                    let Some(relay) = maybe_relay else {
+                        continue;
+                    };
                     if allocations.contains_key(relay) {
                         continue;
                     }
 
                     tracing::debug!("Selected relay disconnected during ICE; connection may fail");
+                    *maybe_relay = None;
                     continue;
                 }
             };
@@ -1250,8 +1256,11 @@ where
         maybe_initial_connection.or(maybe_established_connection)
     }
 
-    fn connecting_agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, RId)> {
-        let maybe_initial_connection = self.initial.get_mut(&id).map(|i| (&mut i.agent, i.relay));
+    fn connecting_agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, Option<RId>)> {
+        let maybe_initial_connection = self
+            .initial
+            .get_mut(&id)
+            .map(|i| (&mut i.agent, Some(i.relay)));
         let maybe_pending_connection = self.established.get_mut(&id).and_then(|c| match c.state {
             ConnectionState::Connecting { relay, .. } => Some((&mut c.agent, relay)),
             ConnectionState::Failed
@@ -1273,9 +1282,9 @@ where
             use ConnectionState::*;
 
             match c.state {
-                Connecting { relay, .. } if relay == id => {
-                    Some((*cid, &mut c.agent, c.span.enter()))
-                }
+                Connecting {
+                    relay: Some(relay), ..
+                } if relay == id => Some((*cid, &mut c.agent, c.span.enter())),
                 Failed | Idle { .. } | Connecting { .. } | Connected { .. } => None,
             }
         });
@@ -1594,7 +1603,7 @@ enum ConnectionState<RId> {
     /// We are still running ICE to figure out, which socket to use to send data.
     Connecting {
         /// The relay we have selected for this connection.
-        relay: RId,
+        relay: Option<RId>,
 
         /// Packets emitted by wireguard whilst are still running ICE.
         ///
