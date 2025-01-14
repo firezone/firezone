@@ -38,13 +38,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     super.startTunnel(options: options, completionHandler: completionHandler)
     Log.log("\(#function)")
 
-    Task {
+    do {
       // If we don't have a token, we can't continue.
       guard let token = loadAndSaveToken(from: options)
       else {
-        completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
-
-        return
+        throw PacketTunnelProviderError.tokenNotFoundInKeychain
       }
 
       // Try to save the token back to the Keychain but continue if we can't
@@ -57,9 +55,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       // Now we should have a token, so continue connecting
       guard let apiURL = protocolConfiguration.serverAddress
       else {
-        completionHandler(
-          PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
-        return
+        throw PacketTunnelProviderError
+          .savedProtocolConfigurationIsInvalid("serverAddress")
       }
 
       // Reconfigure our Telemetry environment now that we know the API URL
@@ -70,10 +67,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           .providerConfiguration as? [String: String],
         let logFilter = providerConfiguration[VPNProfileManagerKeys.logFilter]
       else {
-        completionHandler(
-          PacketTunnelProviderError.savedProtocolConfigurationIsInvalid(
-            "providerConfiguration.logFilter"))
-        return
+        throw PacketTunnelProviderError
+          .savedProtocolConfigurationIsInvalid("providerConfiguration.logFilter")
       }
 
       // Hydrate telemetry account slug
@@ -83,12 +78,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // connected. The system will try to restart us with a fresh config
         // once the user fixes the problem, but we'd rather not connect
         // without a slug.
-        completionHandler(
-          PacketTunnelProviderError.savedProtocolConfigurationIsInvalid(
-            "providerConfiguration.accountSlug"
-          )
-        )
-        return
+        throw PacketTunnelProviderError
+          .savedProtocolConfigurationIsInvalid("providerConfiguration.accountSlug")
       }
 
       Telemetry.accountSlug = accountSlug
@@ -107,19 +98,24 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         internetResourceEnabled: internetResourceEnabled,
         packetTunnelProvider: self
       )
+
+      try adapter.start()
+
       self.adapter = adapter
-
-      do { try await adapter.start() }
-      catch {
-        Log.error(error)
-        completionHandler(error)
-
-        return
-      }
 
       // Tell the system the tunnel is up, moving the tunnel manager status to
       // `connected`.
       completionHandler(nil)
+
+    } catch let error as PacketTunnelProviderError {
+
+      // These are expected, no need to log them
+      completionHandler(error)
+
+    } catch {
+
+      Log.error(error)
+      completionHandler(error)
     }
   }
 
