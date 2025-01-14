@@ -127,7 +127,7 @@ class Adapter {
   }
 
   /// Start the tunnel.
-  public func start() async throws {
+  public func start() throws {
     Log.log("Adapter.start")
     guard case .tunnelStopped = self.state else {
       throw AdapterError.invalidState(self.state)
