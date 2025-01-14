@@ -38,87 +38,85 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     super.startTunnel(options: options, completionHandler: completionHandler)
     Log.log("\(#function)")
 
-    // If we don't have a token, we can't continue.
-    guard let token = loadAndSaveToken(from: options)
-    else {
-      completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
+    do {
+      // If we don't have a token, we can't continue.
+      guard let token = loadAndSaveToken(from: options)
+      else {
+        throw PacketTunnelProviderError.tokenNotFoundInKeychain
+      }
 
-      return
-    }
+      // Try to save the token back to the Keychain but continue if we can't
+      do { try token.save() } catch { Log.error(error) }
 
-    // Try to save the token back to the Keychain but continue if we can't
-    do { try token.save() } catch { Log.error(error) }
+      // Use and persist the provided ID or try loading it from disk,
+      // generating a new one if both of those are nil.
+      let id = loadAndSaveFirezoneId(from: options)
 
-    // Use and persist the provided ID or try loading it from disk,
-    // generating a new one if both of those are nil.
-    let id = loadAndSaveFirezoneId(from: options)
+      // Now we should have a token, so continue connecting
+      guard let apiURL = protocolConfiguration.serverAddress
+      else {
+        throw PacketTunnelProviderError
+          .savedProtocolConfigurationIsInvalid("serverAddress")
+      }
 
-    // Now we should have a token, so continue connecting
-    guard let apiURL = protocolConfiguration.serverAddress
-    else {
-      completionHandler(
-        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
-      return
-    }
+      // Reconfigure our Telemetry environment now that we know the API URL
+      Telemetry.setEnvironmentOrClose(apiURL)
 
-    // Reconfigure our Telemetry environment now that we know the API URL
-    Telemetry.setEnvironmentOrClose(apiURL)
+      guard
+        let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?
+          .providerConfiguration as? [String: String],
+        let logFilter = providerConfiguration[VPNProfileManagerKeys.logFilter]
+      else {
+        throw PacketTunnelProviderError
+          .savedProtocolConfigurationIsInvalid("providerConfiguration.logFilter")
+      }
 
-    guard
-      let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?
-        .providerConfiguration as? [String: String],
-      let logFilter = providerConfiguration[VPNProfileManagerKeys.logFilter]
-    else {
-      completionHandler(
-        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid(
-          "providerConfiguration.logFilter"))
-      return
-    }
+      // Hydrate telemetry account slug
+      guard let accountSlug = providerConfiguration[VPNProfileManagerKeys.accountSlug]
+      else {
+        // This can happen if the user deletes the VPN profile while it's
+        // connected. The system will try to restart us with a fresh config
+        // once the user fixes the problem, but we'd rather not connect
+        // without a slug.
+        throw PacketTunnelProviderError
+          .savedProtocolConfigurationIsInvalid("providerConfiguration.accountSlug")
+      }
 
-    // Hydrate telemetry account slug
-    guard let accountSlug = providerConfiguration[VPNProfileManagerKeys.accountSlug]
-    else {
-      // This can happen if the user deletes the VPN profile while it's
-      // connected. The system will try to restart us with a fresh config
-      // once the user fixes the problem, but we'd rather not connect
-      // without a slug.
-      completionHandler(
-        PacketTunnelProviderError.savedProtocolConfigurationIsInvalid(
-          "providerConfiguration.accountSlug"
-        )
+      Telemetry.accountSlug = accountSlug
+
+      let internetResourceEnabled: Bool = if let internetResourceEnabledJSON = providerConfiguration[VPNProfileManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
+        (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabledJSON )) ?? false
+      } else {
+        false
+      }
+
+      let adapter = Adapter(
+        apiURL: apiURL,
+        token: token,
+        id: id,
+        logFilter: logFilter,
+        internetResourceEnabled: internetResourceEnabled,
+        packetTunnelProvider: self
       )
-      return
-    }
 
-    Telemetry.accountSlug = accountSlug
+      try adapter.start()
 
-    let internetResourceEnabled: Bool = if let internetResourceEnabledJSON = providerConfiguration[VPNProfileManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
-      (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabledJSON )) ?? false
-    } else {
-      false
-    }
+      self.adapter = adapter
 
-    let adapter = Adapter(
-      apiURL: apiURL,
-      token: token,
-      id: id,
-      logFilter: logFilter,
-      internetResourceEnabled: internetResourceEnabled,
-      packetTunnelProvider: self
-    )
-    self.adapter = adapter
+      // Tell the system the tunnel is up, moving the tunnel manager status to
+      // `connected`.
+      completionHandler(nil)
 
-    do { try adapter.start() }
-    catch {
-      Log.error(error)
+    } catch let error as PacketTunnelProviderError {
+
+      // These are expected, no need to log them
       completionHandler(error)
 
-      return
-    }
+    } catch {
 
-    // Tell the system the tunnel is up, moving the tunnel manager status to
-    // `connected`.
-    completionHandler(nil)
+      Log.error(error)
+      completionHandler(error)
+    }
   }
 
   // This can be called by the system, or initiated by connlib.
