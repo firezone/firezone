@@ -269,10 +269,17 @@ public class VPNProfileManager {
   }
 
   func start(token: String? = nil) {
-    var options: [String: NSObject]?
+    var options: [String: NSObject] = [:]
 
+    // Pass token if provided
     if let token = token {
-      options = ["token": token as NSObject]
+      options.merge(["token": token as NSObject]) { _, n in n }
+    }
+
+    // Pass pre-1.4.0 Firezone ID if it exists. Pre 1.4.0 clients will have this
+    // persisted to the app side container URL.
+    if let id = FirezoneId.load(.Pre_1_4_0) {
+      options.merge(["id": id as NSObject]) { _, n in n }
     }
 
     do {

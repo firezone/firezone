@@ -39,90 +39,87 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Log.log("\(#function)")
 
     Task {
-      do {
-        // Can be removed after all clients >= 1.4.0
-        try FirezoneId.migrate()
+      // If we don't have a token, we can't continue.
+      guard let token = loadAndSaveToken(from: options)
+      else {
+        completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
 
-        // The tunnel can come up without the app having been launched first, so
-        // initialize the id here too.
-        let id = try FirezoneId.createIfMissing()
+        return
+      }
 
-        // Hydrate the telemetry userId with our firezone id
-        Telemetry.firezoneId = id.uuid.uuidString
+      // Try to save the token back to the Keychain but continue if we can't
+      do { try token.save() } catch { Log.error(error) }
 
-        let passedToken = options?["token"] as? String
-        let keychainToken = try Token.load()
+      // Use and persist the provided ID or try loading it from disk,
+      // generating a new one if both of those are nil.
+      let id = loadAndSaveFirezoneId(from: options)
 
-        // Use the provided token or try loading one from the Keychain
-        guard let token = Token(passedToken) ?? keychainToken
-        else {
-          completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
+      // Now we should have a token, so continue connecting
+      guard let apiURL = protocolConfiguration.serverAddress
+      else {
+        completionHandler(
+          PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
+        return
+      }
 
-          return
-        }
+      // Reconfigure our Telemetry environment now that we know the API URL
+      Telemetry.setEnvironmentOrClose(apiURL)
 
-        // Save the token back to the Keychain
-        try token.save()
+      guard
+        let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?
+          .providerConfiguration as? [String: String],
+        let logFilter = providerConfiguration[VPNProfileManagerKeys.logFilter]
+      else {
+        completionHandler(
+          PacketTunnelProviderError.savedProtocolConfigurationIsInvalid(
+            "providerConfiguration.logFilter"))
+        return
+      }
 
-        // Now we should have a token, so continue connecting
-        guard let apiURL = protocolConfiguration.serverAddress
-        else {
-          completionHandler(
-            PacketTunnelProviderError.savedProtocolConfigurationIsInvalid("serverAddress"))
-          return
-        }
-
-        // Reconfigure our Telemetry environment now that we know the API URL
-        Telemetry.setEnvironmentOrClose(apiURL)
-
-        guard
-          let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?
-            .providerConfiguration as? [String: String],
-          let logFilter = providerConfiguration[VPNProfileManagerKeys.logFilter]
-        else {
-          completionHandler(
-            PacketTunnelProviderError.savedProtocolConfigurationIsInvalid(
-              "providerConfiguration.logFilter"))
-          return
-        }
-
-        // Hydrate telemetry account slug
-        guard let accountSlug = providerConfiguration[VPNProfileManagerKeys.accountSlug]
-        else {
-          // This can happen if the user deletes the VPN profile while it's
-          // connected. The system will try to restart us with a fresh config
-          // once the user fixes the problem, but we'd rather not connect
-          // without a slug.
-          completionHandler(
-            PacketTunnelProviderError.savedProtocolConfigurationIsInvalid(
-              "providerConfiguration.accountSlug"
-            )
+      // Hydrate telemetry account slug
+      guard let accountSlug = providerConfiguration[VPNProfileManagerKeys.accountSlug]
+      else {
+        // This can happen if the user deletes the VPN profile while it's
+        // connected. The system will try to restart us with a fresh config
+        // once the user fixes the problem, but we'd rather not connect
+        // without a slug.
+        completionHandler(
+          PacketTunnelProviderError.savedProtocolConfigurationIsInvalid(
+            "providerConfiguration.accountSlug"
           )
-          return
-        }
+        )
+        return
+      }
 
-        Telemetry.accountSlug = accountSlug
+      Telemetry.accountSlug = accountSlug
 
-        let internetResourceEnabled: Bool = if let internetResourceEnabledJSON = providerConfiguration[VPNProfileManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
-          (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabledJSON )) ?? false
-        } else {
-          false
-        }
+      let internetResourceEnabled: Bool = if let internetResourceEnabledJSON = providerConfiguration[VPNProfileManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
+        (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabledJSON )) ?? false
+      } else {
+        false
+      }
 
-        let adapter = Adapter(
-          apiURL: apiURL, token: token, logFilter: logFilter, internetResourceEnabled: internetResourceEnabled, packetTunnelProvider: self)
-        self.adapter = adapter
+      let adapter = Adapter(
+        apiURL: apiURL,
+        token: token,
+        id: id,
+        logFilter: logFilter,
+        internetResourceEnabled: internetResourceEnabled,
+        packetTunnelProvider: self
+      )
+      self.adapter = adapter
 
-
-        try await adapter.start()
-
-        // Tell the system the tunnel is up, moving the tunnel manager status to
-        // `connected`.
-        completionHandler(nil)
-      } catch {
+      do { try await adapter.start() }
+      catch {
         Log.error(error)
         completionHandler(error)
+
+        return
       }
+
+      // Tell the system the tunnel is up, moving the tunnel manager status to
+      // `connected`.
+      completionHandler(nil)
     }
   }
 
@@ -197,6 +194,34 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     case .consumeStopReason:
       consumeStopReason(completionHandler!)
     }
+  }
+
+  func loadAndSaveToken(from options: [String: NSObject]?) -> Token? {
+    let passedToken = options?["token"] as? String
+
+    // Try to load saved token from Keychain, continuing if Keychain is
+    // unavailable.
+    let keychainToken = {
+      do { return try Token.load() } catch { Log.error(error) }
+
+      return nil
+    }()
+
+    return Token(passedToken) ?? keychainToken
+  }
+
+  func loadAndSaveFirezoneId(from options: [String: NSObject]?) -> String {
+    let passedId = options?["id"] as? String
+    let persistedId = FirezoneId.load(.Post_1_4_0)
+
+    let id = passedId ?? persistedId ?? UUID().uuidString
+
+    FirezoneId.save(id)
+
+    // Hydrate the telemetry userId with our firezone id
+    Telemetry.firezoneId = id
+
+    return id
   }
 
   func clearLogs(_ completionHandler: ((Data?) -> Void)? = nil) {
