@@ -274,7 +274,7 @@ public final class MenuBar: NSObject, ObservableObject {
     Task {
       do {
         // If we get here, it means either system extension got disabled or
-        // our VPN profile got removed. Since we don't know which, reinstall
+        // our VPN configuration got removed. Since we don't know which, reinstall
         // the system extension here too just in case. It's a no-op if already
         // installed.
         try await model.store.installSystemExtension()
@@ -382,7 +382,7 @@ public final class MenuBar: NSObject, ObservableObject {
     // Update "Sign In" / "Sign Out" menu items
     switch status {
     case nil:
-      signInMenuItem.title = "Loading VPN profiles from system settings…"
+      signInMenuItem.title = "Loading VPN configurations from system settings…"
       signInMenuItem.action = nil
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = nil

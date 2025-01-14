@@ -1,17 +1,17 @@
 //
-//  VPNProfileManager.swift
+//  VPNConfigurationManager.swift
 //
 //
 //  Created by Jamil Bou Kheir on 4/2/24.
 //
 //  Abstracts the nitty gritty of loading and saving to our
-//  VPN profile in system preferences.
+//  VPN configuration in system preferences.
 
 import CryptoKit
 import Foundation
 import NetworkExtension
 
-enum VPNProfileManagerError: Error {
+enum VPNConfigurationManagerError: Error {
   case managerNotInitialized
   case cannotLoad
   case decodeIPCDataFailed
@@ -31,7 +31,7 @@ enum VPNProfileManagerError: Error {
   }
 }
 
-public enum VPNProfileManagerKeys {
+public enum VPNConfigurationManagerKeys {
   static let actorName = "actorName"
   static let authBaseURL = "authBaseURL"
   static let apiURL = "apiURL"
@@ -109,7 +109,7 @@ public enum TunnelMessage: Codable {
   }
 }
 
-public class VPNProfileManager {
+public class VPNConfigurationManager {
 
   // Connect status updates with our listeners
   private var tunnelObservingTasks: [Task<Void, Never>] = []
@@ -139,19 +139,19 @@ public class VPNProfileManager {
   public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
   private let bundleDescription = "Firezone"
 
-  // Initialize and save a new VPN profile in system Preferences
+  // Initialize and save a new VPN configuration in system Preferences
   func create() async throws {
     let protocolConfiguration = NETunnelProviderProtocol()
     let manager = NETunnelProviderManager()
     let settings = Settings.defaultValue
 
     protocolConfiguration.providerConfiguration = settings.toProviderConfiguration()
-    protocolConfiguration.providerBundleIdentifier = VPNProfileManager.bundleIdentifier
+    protocolConfiguration.providerBundleIdentifier = VPNConfigurationManager.bundleIdentifier
     protocolConfiguration.serverAddress = settings.apiURL
     manager.localizedDescription = bundleDescription
     manager.protocolConfiguration = protocolConfiguration
 
-    // Save the new VPN profile to System Preferences and reload it,
+    // Save the new VPN configuration to System Preferences and reload it,
     // which should update our status from nil -> disconnected.
     // If the user denied the operation, the status will be .invalid
     do {
@@ -172,7 +172,7 @@ public class VPNProfileManager {
   }
 
   func loadFromPreferences(vpnStateUpdateHandler: @escaping (NEVPNStatus, Settings?, String?) -> Void) async throws {
-    // loadAllFromPreferences() returns list of VPN profiles created by our main app's bundle ID.
+    // loadAllFromPreferences() returns list of VPN configurations created by our main app's bundle ID.
     // Since our bundle ID can change (by us), find the one that's current and ignore the others.
     let managers = try await NETunnelProviderManager.loadAllFromPreferences()
 
@@ -183,15 +183,15 @@ public class VPNProfileManager {
         guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
               let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
         else {
-          throw VPNProfileManagerError.cannotLoad
+          throw VPNConfigurationManagerError.cannotLoad
         }
 
         // Update our state
         self.manager = manager
 
         let settings = Settings.fromProviderConfiguration(providerConfiguration)
-        let actorName = providerConfiguration[VPNProfileManagerKeys.actorName]
-        if let internetResourceEnabled = providerConfiguration[VPNProfileManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
+        let actorName = providerConfiguration[VPNConfigurationManagerKeys.actorName]
+        if let internetResourceEnabled = providerConfiguration[VPNConfigurationManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
 
           self.internetResourceEnabled = (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabled)) ?? false
 
@@ -200,7 +200,7 @@ public class VPNProfileManager {
 
         // Configure our Telemetry environment
         Telemetry.setEnvironmentOrClose(settings.apiURL)
-        Telemetry.accountSlug = providerConfiguration[VPNProfileManagerKeys.accountSlug]
+        Telemetry.accountSlug = providerConfiguration[VPNConfigurationManagerKeys.accountSlug]
 
         // Share what we found with our caller
         vpnStateUpdateHandler(status, settings, actorName)
@@ -225,11 +225,11 @@ public class VPNProfileManager {
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           var providerConfiguration = protocolConfiguration.providerConfiguration
     else {
-      throw VPNProfileManagerError.managerNotInitialized
+      throw VPNConfigurationManagerError.managerNotInitialized
     }
 
-    providerConfiguration[VPNProfileManagerKeys.actorName] = authResponse.actorName
-    providerConfiguration[VPNProfileManagerKeys.accountSlug] = authResponse.accountSlug
+    providerConfiguration[VPNConfigurationManagerKeys.actorName] = authResponse.actorName
+    providerConfiguration[VPNConfigurationManagerKeys.accountSlug] = authResponse.accountSlug
     protocolConfiguration.providerConfiguration = providerConfiguration
     manager.protocolConfiguration = protocolConfiguration
 
@@ -246,13 +246,13 @@ public class VPNProfileManager {
           let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {
-      throw VPNProfileManagerError.managerNotInitialized
+      throw VPNConfigurationManagerError.managerNotInitialized
     }
 
     var newProviderConfiguration = settings.toProviderConfiguration()
 
     // Don't clobber existing actorName
-    newProviderConfiguration[VPNProfileManagerKeys.actorName] = providerConfiguration[VPNProfileManagerKeys.actorName]
+    newProviderConfiguration[VPNConfigurationManagerKeys.actorName] = providerConfiguration[VPNConfigurationManagerKeys.actorName]
     protocolConfiguration.providerConfiguration = newProviderConfiguration
     protocolConfiguration.serverAddress = settings.apiURL
     manager.protocolConfiguration = protocolConfiguration
@@ -337,7 +337,7 @@ public class VPNProfileManager {
     return try await withCheckedThrowingContinuation { continuation in
       guard let session = session()
       else {
-        continuation.resume(throwing: VPNProfileManagerError.managerNotInitialized)
+        continuation.resume(throwing: VPNConfigurationManagerError.managerNotInitialized)
 
         return
       }
@@ -356,7 +356,7 @@ public class VPNProfileManager {
     return try await withCheckedThrowingContinuation { continuation in
       guard let session = session()
       else {
-        continuation.resume(throwing: VPNProfileManagerError.managerNotInitialized)
+        continuation.resume(throwing: VPNConfigurationManagerError.managerNotInitialized)
 
         return
       }
@@ -369,7 +369,7 @@ public class VPNProfileManager {
           guard let data = data
           else {
             continuation
-              .resume(throwing: VPNProfileManagerError.decodeIPCDataFailed)
+              .resume(throwing: VPNConfigurationManagerError.decodeIPCDataFailed)
 
             return
           }
@@ -388,7 +388,7 @@ public class VPNProfileManager {
   // in AAR format.
   func exportLogs(
     appender: @escaping (LogChunk) -> Void,
-    errorHandler: @escaping (VPNProfileManagerError) -> Void
+    errorHandler: @escaping (VPNConfigurationManagerError) -> Void
   ) {
     let decoder = PropertyListDecoder()
 
@@ -399,7 +399,7 @@ public class VPNProfileManager {
         ) { data in
           guard let data = data
           else {
-            errorHandler(VPNProfileManagerError.decodeIPCDataFailed)
+            errorHandler(VPNConfigurationManagerError.decodeIPCDataFailed)
 
             return
           }
@@ -408,7 +408,7 @@ public class VPNProfileManager {
             LogChunk.self, from: data
           )
           else {
-            errorHandler(VPNProfileManagerError.decodeIPCDataFailed)
+            errorHandler(VPNConfigurationManagerError.decodeIPCDataFailed)
 
             return
           }
@@ -433,7 +433,7 @@ public class VPNProfileManager {
     return try await withCheckedThrowingContinuation { continuation in
       guard let session = session()
       else {
-        continuation.resume(throwing: VPNProfileManagerError.managerNotInitialized)
+        continuation.resume(throwing: VPNConfigurationManagerError.managerNotInitialized)
 
         return
       }
@@ -453,7 +453,7 @@ public class VPNProfileManager {
           guard let reason = String(data: data, encoding: .utf8)
           else {
             continuation
-              .resume(throwing: VPNProfileManagerError.decodeIPCDataFailed)
+              .resume(throwing: VPNConfigurationManagerError.decodeIPCDataFailed)
 
             return
           }
@@ -487,7 +487,7 @@ public class VPNProfileManager {
         ) {
           guard let session = notification.object as? NETunnelProviderSession
           else {
-            Log.error(VPNProfileManagerError.invalidStatusChange)
+            Log.error(VPNConfigurationManagerError.invalidStatusChange)
             return
           }
 
