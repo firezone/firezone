@@ -66,7 +66,7 @@
 											<%= @provider.name %> Sync Error!
 										</h1>
 										<p style="margin: 0; line-height: 24px">
-											<%= @provider.name %> has failed to sync <%= @provider.last_syncs_failed %> times.
+											<%= @provider.name %> has failed to sync <%= @provider.last_syncs_failed %> time(s).
 										</p>
 										<div role="separator" style="line-height: 16px">&zwj;</div>
 										<p style="margin: 0; line-height: 24px;">

@@ -25,7 +25,7 @@ defmodule Domain.Mailer.SyncErrorEmailTest do
 
       email_body = sync_error_email(provider, admin_email)
 
-      assert email_body.text_body =~ "2 times"
+      assert email_body.text_body =~ "2 time(s)"
       assert email_body.text_body =~ expected_msg
     end
   end

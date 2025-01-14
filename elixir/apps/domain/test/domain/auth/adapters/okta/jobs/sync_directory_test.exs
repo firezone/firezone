@@ -819,7 +819,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
 
       assert_email_sent(fn email ->
         assert email.subject == "Firezone Identity Provider Sync Error"
-        assert email.text_body =~ "failed to sync 10 times"
+        assert email.text_body =~ "failed to sync 10 time(s)"
       end)
 
       cancel_bypass_expectations_check(bypass)
