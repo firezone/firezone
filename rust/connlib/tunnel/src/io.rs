@@ -153,14 +153,21 @@ impl Io {
 
         if let Some(timeout) = self.timeout.as_mut() {
             if timeout.poll_unpin(cx).is_ready() {
-                let deadline = timeout.deadline().into();
+                // Always emit `now` as the timeout value.
+                // This ensures that time within our state machine is always monotonic.
+                // If we were to use the `deadline` of the timer instead, time may go backwards.
+                // That is because it is valid to set a `Sleep` to a timestamp in the past.
+                // It will resolve immediately but it will still report the old timestamp as its deadline.
+                // To guard against this case, specifically call `Instant::now` here.
+                let now = Instant::now();
+
                 self.timeout = None; // Clear the timeout.
 
                 // Piggy back onto the timeout we already have.
                 // It is not important when we call this, just needs to be called occasionally.
-                self.gso_queue.handle_timeout(deadline);
+                self.gso_queue.handle_timeout(now);
 
-                return Poll::Ready(Ok(Input::Timeout(deadline)));
+                return Poll::Ready(Ok(Input::Timeout(now)));
             }
         }
 
