@@ -377,6 +377,35 @@ mod tests {
         assert!(io.timeout.is_none());
     }
 
+    #[tokio::test]
+    async fn emits_now_in_case_timeout_is_in_the_past() {
+        let now = Instant::now();
+
+        let mut io = Io::new(
+            Arc::new(|_| Err(io::Error::other("not implemented"))),
+            Arc::new(|_| Err(io::Error::other("not implemented"))),
+        );
+        io.set_tun(Box::new(DummyTun));
+
+        io.reset_timeout(now - Duration::from_secs(10));
+
+        let poll_fn = poll_fn(|cx| {
+            io.poll(
+                cx,
+                // SAFETY: This is a test and we never receive packets here.
+                unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
+            )
+        })
+        .await
+        .unwrap();
+
+        let Input::Timeout(timeout) = poll_fn else {
+            panic!("Unexpected result");
+        };
+
+        assert!(timeout.duration_since(now) < Duration::from_millis(1));
+    }
+
     static mut DUMMY_BUF: Buffers = Buffers {
         ip: Vec::new(),
         udp4: Vec::new(),
