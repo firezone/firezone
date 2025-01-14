@@ -342,36 +342,17 @@ mod tests {
     #[tokio::test]
     async fn timer_is_reset_after_it_fires() {
         let now = Instant::now();
-
-        let mut io = Io::new(
-            Arc::new(|_| Err(io::Error::other("not implemented"))),
-            Arc::new(|_| Err(io::Error::other("not implemented"))),
-        );
-        io.set_tun(Box::new(DummyTun));
+        let mut io = Io::for_test();
 
         io.reset_timeout(now + Duration::from_secs(1));
 
-        let poll_fn = poll_fn(|cx| {
-            io.poll(
-                cx,
-                // SAFETY: This is a test and we never receive packets here.
-                unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
-            )
-        })
-        .await
-        .unwrap();
-
-        let Input::Timeout(timeout) = poll_fn else {
+        let Input::Timeout(timeout) = io.next().await else {
             panic!("Unexpected result");
         };
 
         assert_eq!(timeout, now + Duration::from_secs(1));
 
-        let poll = io.poll(
-            &mut Context::from_waker(noop_waker_ref()),
-            // SAFETY: This is a test and we never receive packets here.
-            unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
-        );
+        let poll = io.poll_test();
 
         assert!(poll.is_pending());
         assert!(io.timeout.is_none());
@@ -380,26 +361,11 @@ mod tests {
     #[tokio::test]
     async fn emits_now_in_case_timeout_is_in_the_past() {
         let now = Instant::now();
-
-        let mut io = Io::new(
-            Arc::new(|_| Err(io::Error::other("not implemented"))),
-            Arc::new(|_| Err(io::Error::other("not implemented"))),
-        );
-        io.set_tun(Box::new(DummyTun));
+        let mut io = Io::for_test();
 
         io.reset_timeout(now - Duration::from_secs(10));
 
-        let poll_fn = poll_fn(|cx| {
-            io.poll(
-                cx,
-                // SAFETY: This is a test and we never receive packets here.
-                unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
-            )
-        })
-        .await
-        .unwrap();
-
-        let Input::Timeout(timeout) = poll_fn else {
+        let Input::Timeout(timeout) = io.next().await else {
             panic!("Unexpected result");
         };
 
@@ -411,6 +377,48 @@ mod tests {
         udp4: Vec::new(),
         udp6: Vec::new(),
     };
+
+    /// Helper functions to make the test more concise.
+    impl Io {
+        fn for_test() -> Io {
+            let mut io = Io::new(
+                Arc::new(|_| Err(io::Error::other("not implemented"))),
+                Arc::new(|_| Err(io::Error::other("not implemented"))),
+            );
+            io.set_tun(Box::new(DummyTun));
+
+            io
+        }
+
+        async fn next(
+            &mut self,
+        ) -> Input<impl Iterator<Item = IpPacket>, impl Iterator<Item = DatagramIn<'static>>>
+        {
+            poll_fn(|cx| {
+                self.poll(
+                    cx,
+                    // SAFETY: This is a test and we never receive packets here.
+                    unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
+                )
+            })
+            .await
+            .unwrap()
+        }
+
+        fn poll_test(
+            &mut self,
+        ) -> Poll<
+            io::Result<
+                Input<impl Iterator<Item = IpPacket>, impl Iterator<Item = DatagramIn<'static>>>,
+            >,
+        > {
+            self.poll(
+                &mut Context::from_waker(noop_waker_ref()),
+                // SAFETY: This is a test and we never receive packets here.
+                unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
+            )
+        }
+    }
 
     struct DummyTun;
 
