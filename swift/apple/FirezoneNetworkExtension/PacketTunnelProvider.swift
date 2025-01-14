@@ -65,16 +65,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       guard
         let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?
           .providerConfiguration as? [String: String],
-        let logFilter = providerConfiguration[VPNProfileManagerKeys.logFilter]
+        let logFilter = providerConfiguration[VPNConfigurationManagerKeys.logFilter]
       else {
         throw PacketTunnelProviderError
           .savedProtocolConfigurationIsInvalid("providerConfiguration.logFilter")
       }
 
       // Hydrate telemetry account slug
-      guard let accountSlug = providerConfiguration[VPNProfileManagerKeys.accountSlug]
+      guard let accountSlug = providerConfiguration[VPNConfigurationManagerKeys.accountSlug]
       else {
-        // This can happen if the user deletes the VPN profile while it's
+        // This can happen if the user deletes the VPN configuration while it's
         // connected. The system will try to restart us with a fresh config
         // once the user fixes the problem, but we'd rather not connect
         // without a slug.
@@ -84,7 +84,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       Telemetry.accountSlug = accountSlug
 
-      let internetResourceEnabled: Bool = if let internetResourceEnabledJSON = providerConfiguration[VPNProfileManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
+      let internetResourceEnabled: Bool = if let internetResourceEnabledJSON = providerConfiguration[VPNConfigurationManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
         (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabledJSON )) ?? false
       } else {
         false

@@ -35,7 +35,7 @@ public final class SettingsViewModel: ObservableObject {
   }
 
   func setupObservers() {
-    // Load settings from saved VPN Profile
+    // Load settings from saved VPN Configuration
     store.$settings
       .receive(on: DispatchQueue.main)
       .sink { [weak self] settings in
@@ -81,7 +81,7 @@ public final class SettingsViewModel: ObservableObject {
 
     do {
 #if os(macOS)
-      let providerLogFolderSize = try await store.vpnProfileManager.getLogFolderSize()
+      let providerLogFolderSize = try await store.vpnConfigurationManager.getLogFolderSize()
       let totalSize = logFolderSize + providerLogFolderSize
 #else
       let totalSize = logFolderSize
@@ -110,7 +110,7 @@ public final class SettingsViewModel: ObservableObject {
     try Log.clear(in: SharedAccess.logFolderURL)
 
 #if os(macOS)
-    try await store.vpnProfileManager.clearLogs()
+    try await store.vpnConfigurationManager.clearLogs()
 #endif
   }
 }
@@ -610,7 +610,7 @@ public struct SettingsView: View {
           do {
             try await LogExporter.export(
               to: destinationURL,
-              with: model.store.vpnProfileManager
+              with: model.store.vpnConfigurationManager
             )
 
             await MainActor.run {

@@ -31,7 +31,7 @@ public final class Store: ObservableObject {
   // we could periodically update it if we need to.
   @Published private(set) var decision: UNAuthorizationStatus
 
-  let vpnProfileManager: VPNProfileManager
+  let vpnConfigurationManager: VPNConfigurationManager
   private var sessionNotification: SessionNotification
   private var cancellables: Set<AnyCancellable> = []
   private var resourcesTimer: Timer?
@@ -41,13 +41,13 @@ public final class Store: ObservableObject {
     self.decision = .authorized
     self.settings = Settings.defaultValue
     self.sessionNotification = SessionNotification()
-    self.vpnProfileManager = VPNProfileManager()
+    self.vpnConfigurationManager = VPNConfigurationManager()
 
     initNotifications()
   }
 
   public func internetResourceEnabled() -> Bool {
-    self.vpnProfileManager.internetResourceEnabled
+    self.vpnConfigurationManager.internetResourceEnabled
   }
 
   private func initNotifications() {
@@ -65,9 +65,9 @@ public final class Store: ObservableObject {
       .store(in: &cancellables)
   }
 
-  func bindToVPNProfileUpdates() async throws {
-    // Load our existing VPN profile and set an update handler
-    try await self.vpnProfileManager.loadFromPreferences(
+  func bindToVPNConfigurationUpdates() async throws {
+    // Load our existing VPN configuration and set an update handler
+    try await self.vpnConfigurationManager.loadFromPreferences(
       vpnStateUpdateHandler: { [weak self] status, settings, actorName in
         guard let self else { return }
 
@@ -98,7 +98,7 @@ public final class Store: ObservableObject {
   private func maybeShowSignedOutAlert() {
     Task {
       do {
-        if let savedValue = try await self.vpnProfileManager.consumeStopReason(),
+        if let savedValue = try await self.vpnConfigurationManager.consumeStopReason(),
            let rawValue = Int(savedValue),
            let reason = NEProviderStopReason(rawValue: rawValue),
            case .authenticationCanceled = reason
@@ -121,7 +121,7 @@ public final class Store: ObservableObject {
       (continuation: CheckedContinuation<Bool, Error>) in
 
       checker.isInstalled(
-        identifier: VPNProfileManager.bundleIdentifier,
+        identifier: VPNConfigurationManager.bundleIdentifier,
         continuation: continuation
       )
     }
@@ -138,7 +138,7 @@ public final class Store: ObservableObject {
       (continuation: CheckedContinuation<Bool, Error>) in
 
       installer.installSystemExtension(
-        identifier: VPNProfileManager.bundleIdentifier,
+        identifier: VPNConfigurationManager.bundleIdentifier,
         continuation: continuation
       )
     }
@@ -146,11 +146,11 @@ public final class Store: ObservableObject {
   }
 
   func grantVPNPermission() async throws {
-    // Create a new VPN profile in system settings.
-    try await self.vpnProfileManager.create()
+    // Create a new VPN configuration in system settings.
+    try await self.vpnConfigurationManager.create()
 
     // Reload our state
-    try await bindToVPNProfileUpdates()
+    try await bindToVPNConfigurationUpdates()
   }
 
   func requestNotifications() {
@@ -170,25 +170,25 @@ public final class Store: ObservableObject {
       return
     }
 
-    self.vpnProfileManager.start(token: token)
+    self.vpnConfigurationManager.start(token: token)
   }
 
   func stop(clearToken: Bool = false) {
     guard [.connected, .connecting, .reasserting].contains(status)
     else { return }
 
-    self.vpnProfileManager.stop(clearToken: clearToken)
+    self.vpnConfigurationManager.stop(clearToken: clearToken)
   }
 
   func signIn(authResponse: AuthResponse) async throws {
     // Save actorName
     DispatchQueue.main.async { self.actorName = authResponse.actorName }
 
-    try await self.vpnProfileManager.saveSettings(settings)
-    try await self.vpnProfileManager.saveAuthResponse(authResponse)
+    try await self.vpnConfigurationManager.saveSettings(settings)
+    try await self.vpnConfigurationManager.saveAuthResponse(authResponse)
 
     // Bring the tunnel up and send it a token to start
-    self.vpnProfileManager.start(token: authResponse.token)
+    self.vpnConfigurationManager.start(token: authResponse.token)
   }
 
   func signOut() async throws {
@@ -201,12 +201,12 @@ public final class Store: ObservableObject {
   func beginUpdatingResources(callback: @escaping (ResourceList) -> Void) {
     Log.log("\(#function)")
 
-    self.vpnProfileManager.fetchResources(callback: callback)
+    self.vpnConfigurationManager.fetchResources(callback: callback)
     let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
       Task { @MainActor in
         guard let self else { return }
-        self.vpnProfileManager.fetchResources(callback: callback)
+        self.vpnConfigurationManager.fetchResources(callback: callback)
       }
     }
     RunLoop.main.add(timer, forMode: .common)
@@ -221,7 +221,7 @@ public final class Store: ObservableObject {
   func save(_ newSettings: Settings) async throws {
     Task {
       do {
-        try await self.vpnProfileManager.saveSettings(newSettings)
+        try await self.vpnConfigurationManager.saveSettings(newSettings)
         DispatchQueue.main.async { self.settings = newSettings }
       } catch {
         Log.error(error)
@@ -230,9 +230,9 @@ public final class Store: ObservableObject {
   }
 
   func toggleInternetResource(enabled: Bool) {
-    self.vpnProfileManager.toggleInternetResource(enabled: enabled)
+    self.vpnConfigurationManager.toggleInternetResource(enabled: enabled)
     var newSettings = settings
-    newSettings.internetResourceEnabled = self.vpnProfileManager.internetResourceEnabled
+    newSettings.internetResourceEnabled = self.vpnConfigurationManager.internetResourceEnabled
     Task {
       try await save(newSettings)
     }
