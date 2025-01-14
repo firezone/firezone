@@ -88,18 +88,21 @@ class Adapter {
   /// Starting parameters
   private var apiURL: String
   private var token: Token
+  private let id: String
   private let logFilter: String
   private let connlibLogFolderPath: String
 
   init(
     apiURL: String,
     token: Token,
+    id: String,
     logFilter: String,
     internetResourceEnabled: Bool,
     packetTunnelProvider: PacketTunnelProvider
   ) {
     self.apiURL = apiURL
     self.token = token
+    self.id = id
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler()
     self.state = .tunnelStopped
@@ -142,7 +145,7 @@ class Adapter {
         try WrappedSession.connect(
           apiURL,
           "\(token)",
-          "\(Telemetry.firezoneId!)",
+          "\(id)",
           "\(Telemetry.accountSlug!)",
           DeviceMetadata.getDeviceName(),
           DeviceMetadata.getOSVersion(),
