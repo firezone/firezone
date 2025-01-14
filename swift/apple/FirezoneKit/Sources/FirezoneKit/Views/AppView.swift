@@ -34,7 +34,7 @@ public class AppViewModel: ObservableObject {
 
     Task {
       do {
-        try await self.store.bindToVPNProfileUpdates()
+        try await self.store.bindToVPNConfigurationUpdates()
 
 #if os(macOS)
         try await self.store.checkedIfInstalled()
@@ -51,7 +51,7 @@ public class AppViewModel: ObservableObject {
         if self.store.status == .disconnected {
 
           // Try to connect on start
-          self.store.vpnProfileManager.start()
+          self.store.vpnConfigurationManager.start()
         }
       } catch {
         Log.error(error)

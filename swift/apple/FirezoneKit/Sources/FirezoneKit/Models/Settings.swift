@@ -32,13 +32,13 @@ struct Settings: Equatable {
   static func fromProviderConfiguration(_ providerConfiguration: [String: Any]?) -> Settings {
     if let providerConfiguration = providerConfiguration as? [String: String] {
       return Settings(
-        authBaseURL: providerConfiguration[VPNProfileManagerKeys.authBaseURL]
+        authBaseURL: providerConfiguration[VPNConfigurationManagerKeys.authBaseURL]
           ?? Settings.defaultValue.authBaseURL,
-        apiURL: providerConfiguration[VPNProfileManagerKeys.apiURL]
+        apiURL: providerConfiguration[VPNConfigurationManagerKeys.apiURL]
           ?? Settings.defaultValue.apiURL,
-        logFilter: providerConfiguration[VPNProfileManagerKeys.logFilter]
+        logFilter: providerConfiguration[VPNConfigurationManagerKeys.logFilter]
           ?? Settings.defaultValue.logFilter,
-        internetResourceEnabled: getInternetResourceEnabled(internetResourceEnabled:  providerConfiguration[VPNProfileManagerKeys.internetResourceEnabled])
+        internetResourceEnabled: getInternetResourceEnabled(internetResourceEnabled:  providerConfiguration[VPNConfigurationManagerKeys.internetResourceEnabled])
       )
     } else {
       return Settings.defaultValue
@@ -54,10 +54,10 @@ struct Settings: Equatable {
   // Used for initializing a new providerConfiguration from Settings
   func toProviderConfiguration() -> [String: String] {
     return [
-      VPNProfileManagerKeys.authBaseURL: authBaseURL,
-      VPNProfileManagerKeys.apiURL: apiURL,
-      VPNProfileManagerKeys.logFilter: logFilter,
-      VPNProfileManagerKeys.internetResourceEnabled: String(data: try! JSONEncoder().encode(internetResourceEnabled) , encoding: .utf8)!,
+      VPNConfigurationManagerKeys.authBaseURL: authBaseURL,
+      VPNConfigurationManagerKeys.apiURL: apiURL,
+      VPNConfigurationManagerKeys.logFilter: logFilter,
+      VPNConfigurationManagerKeys.internetResourceEnabled: String(data: try! JSONEncoder().encode(internetResourceEnabled) , encoding: .utf8)!,
     ]
   }
 

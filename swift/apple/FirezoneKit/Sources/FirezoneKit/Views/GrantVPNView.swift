@@ -49,7 +49,7 @@ final class GrantVPNViewModel: ObservableObject {
 
 #if os(macOS)
         // The window has a tendency to go to the background after allowing the
-        // VPN profile
+        // VPN configuration
         NSApp.activate(ignoringOtherApps: true)
 #endif
       } catch {
@@ -75,7 +75,7 @@ struct GrantVPNView: View {
           .padding(.horizontal, 10)
         Spacer()
         Text(
-          "Firezone requires your permission to create VPN profiles. Until it has that permission, all functionality will be disabled."
+          "Firezone requires your permission to create VPN configurations. Until it has that permission, all functionality will be disabled."
         )
         .font(.body)
         .multilineTextAlignment(.center)
@@ -109,7 +109,7 @@ struct GrantVPNView: View {
         Spacer()
         Spacer()
         Text("""
-        Firezone needs you to enable a System Extension and allow a VPN profile in order to function.
+        Firezone needs you to enable a System Extension and allow a VPN configuration in order to function.
         """)
         .font(.title2)
         .multilineTextAlignment(.center)
@@ -143,7 +143,7 @@ struct GrantVPNView: View {
           }
           Spacer()
           VStack(alignment: .center) {
-            Text("Step 2: Allow the VPN profile")
+            Text("Step 2: Allow the VPN configuration")
               .font(.title)
             Text("""
             1. Click the "Grant VPN Permission" button below.

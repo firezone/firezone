@@ -108,7 +108,7 @@ struct SessionView: View {
         Text("Loading Resources...")
       }
     case nil:
-      Text("Loading VPN profiles from system settings…")
+      Text("Loading VPN configurations from system settings…")
     case .connecting:
       Text("Connecting...")
     case .disconnecting:
