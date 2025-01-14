@@ -21,10 +21,6 @@ public struct FirezoneId {
     case Post_1_4_0
   }
 
-  private enum Error: Swift.Error {
-    case SharedFolderNotAvailable
-  }
-
   public static func save(_ id: String) {
     guard let fileURL = FileManager.default.containerURL(
       forSecurityApplicationGroupIdentifier: BundleHelper.appGroupId)?
