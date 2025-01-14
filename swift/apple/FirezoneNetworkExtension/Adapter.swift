@@ -86,8 +86,8 @@ class Adapter {
   private var resourceListJSON: String?
 
   /// Starting parameters
-  private var apiURL: String
-  private var token: Token
+  private let apiURL: String
+  private let token: Token
   private let id: String
   private let logFilter: String
   private let connlibLogFolderPath: String
