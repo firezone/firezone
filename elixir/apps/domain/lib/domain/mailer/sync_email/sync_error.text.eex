@@ -1,6 +1,6 @@
 Identity Provider Sync Error!
 
-An Identity Provider in your Firezone Account has failed to sync <%= @provider.last_syncs_failed%> times.
+An Identity Provider in your Firezone Account has failed to sync <%= @provider.last_syncs_failed%> time(s).
 
 The following is the last sync error message:
 <%= @provider.last_sync_error %>
