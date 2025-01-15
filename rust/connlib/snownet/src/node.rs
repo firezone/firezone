@@ -21,10 +21,10 @@ use std::borrow::Cow;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
-use std::mem;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
+use std::{iter, mem};
 use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
 use str0m::net::Protocol;
 use str0m::{Candidate, CandidateKind, IceConnectionState};
@@ -1769,15 +1769,12 @@ where
 
     #[must_use]
     fn poll_timeout(&mut self) -> Option<Instant> {
-        let agent_timeout = self.agent.poll_timeout();
-        let next_wg_timer = Some(self.next_wg_timer_update);
-        let candidate_timeout = self.candidate_timeout();
-        let idle_timeout = self.state.poll_timeout();
-
-        earliest(
-            idle_timeout,
-            earliest(agent_timeout, earliest(next_wg_timer, candidate_timeout)),
-        )
+        iter::empty()
+            .chain(self.agent.poll_timeout())
+            .chain(Some(self.next_wg_timer_update))
+            .chain(self.candidate_timeout())
+            .chain(self.state.poll_timeout())
+            .min()
     }
 
     fn candidate_timeout(&self) -> Option<Instant> {
