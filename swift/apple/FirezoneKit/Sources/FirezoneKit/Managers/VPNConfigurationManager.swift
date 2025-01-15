@@ -16,6 +16,7 @@ enum VPNConfigurationManagerError: Error {
   case cannotLoad
   case decodeIPCDataFailed
   case invalidStatusChange
+  case noIPCData
 
   var localizedDescription: String {
     switch self {
@@ -27,6 +28,8 @@ enum VPNConfigurationManagerError: Error {
       return "NEVPNStatusDidChange notification doesn't seem to be valid."
     case .cannotLoad:
       return "Could not load VPN configurations!"
+    case .noIPCData:
+      return "No IPC data returned from the XPC connection!"
     }
   }
 }
@@ -369,7 +372,7 @@ public class VPNConfigurationManager {
           guard let data = data
           else {
             continuation
-              .resume(throwing: VPNConfigurationManagerError.decodeIPCDataFailed)
+              .resume(throwing: VPNConfigurationManagerError.noIPCData)
 
             return
           }
@@ -399,7 +402,7 @@ public class VPNConfigurationManager {
         ) { data in
           guard let data = data
           else {
-            errorHandler(VPNConfigurationManagerError.decodeIPCDataFailed)
+            errorHandler(VPNConfigurationManagerError.noIPCData)
 
             return
           }
