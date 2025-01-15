@@ -1,7 +1,6 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
     node::{SessionId, Transmit},
-    utils::earliest,
 };
 use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
@@ -11,6 +10,7 @@ use rand::random;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use std::{
     collections::{BTreeMap, VecDeque},
+    iter,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
@@ -709,17 +709,20 @@ impl Allocation {
     }
 
     pub fn poll_timeout(&self) -> Option<Instant> {
-        let mut earliest_timeout = if !self.refresh_in_flight() {
+        let refresh_timeout = if !self.refresh_in_flight() {
             self.refresh_allocation_at()
         } else {
             None
         };
+        let request_timeout = self
+            .sent_requests
+            .iter()
+            .map(|(_, (_, _, sent_at, backoff, _))| *sent_at + *backoff);
 
-        for (_, (_, _, sent_at, backoff, _)) in self.sent_requests.iter() {
-            earliest_timeout = earliest(earliest_timeout, Some(*sent_at + *backoff));
-        }
-
-        earliest_timeout
+        iter::empty()
+            .chain(refresh_timeout)
+            .chain(request_timeout)
+            .min()
     }
 
     #[tracing::instrument(level = "debug", skip(self, now), fields(active_socket = ?self.active_socket))]

@@ -2,7 +2,7 @@ use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::candidate_set::CandidateSet;
 use crate::index::IndexLfsr;
 use crate::stats::{ConnectionStats, NodeStats};
-use crate::utils::{channel_data_packet_buffer, earliest};
+use crate::utils::channel_data_packet_buffer;
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
