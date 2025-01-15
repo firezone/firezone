@@ -389,13 +389,21 @@ impl TunnelTest {
         let cut_off = self.flux_capacitor.now::<Instant>() + Duration::from_secs(10);
 
         'outer: while self.flux_capacitor.now::<Instant>() < cut_off {
+            let now = self.flux_capacitor.now();
+
             // `handle_timeout` needs to be called at the very top to advance state after we have made other modifications.
             self.handle_timeout(
                 &ref_state.global_dns_records,
                 &ref_state.unreachable_hosts,
                 buffered_transmits,
+                now,
             );
-            let now = self.flux_capacitor.now();
+
+            if let Some(next) = self.poll_timeout() {
+                if next < now {
+                    tracing::error!(?next, ?now, "State machine requested time in the past");
+                }
+            }
 
             for (id, gateway) in self.gateways.iter_mut() {
                 let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) else {
@@ -524,9 +532,8 @@ impl TunnelTest {
         global_dns_records: &DnsRecords,
         unreachable_hosts: &UnreachableHosts,
         buffered_transmits: &mut BufferedTransmits,
+        now: Instant,
     ) {
-        let now = self.flux_capacitor.now();
-
         // Handle the TCP DNS client, i.e. simulate applications making TCP DNS queries.
         self.client.exec_mut(|c| {
             c.tcp_dns_client.handle_timeout(now);
