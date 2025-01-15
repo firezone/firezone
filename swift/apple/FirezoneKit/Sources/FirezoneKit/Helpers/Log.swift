@@ -113,7 +113,7 @@ public final class Log {
       return false
     }
 #endif
-    
+
     return true
   }
 }
