@@ -49,17 +49,13 @@ public struct Token: CustomStringConvertible {
 
       return try Keychain.update(
         query: query,
-        attributesToUpdate: [
-          kSecValueData: data,
-          kSecUseDataProtectionKeychain: true
-        ]
+        attributesToUpdate: [kSecValueData: data]
       )
     }
 
     let query = Token.query.merging([
       kSecClass: kSecClassGenericPassword,
-      kSecValueData: data,
-      kSecUseDataProtectionKeychain: true
+      kSecValueData: data
     ]) { (_, new) in new }
 
     try Keychain.add(query: query)
