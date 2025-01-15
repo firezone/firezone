@@ -107,9 +107,17 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
 
     notificationCenter.delegate = self
     notificationCenter.requestAuthorization(options: [.sound, .badge, .alert]) { _, error in
-      if let error = error {
-        Log.error(error)
+      guard let error = error else { return }
+
+      // If the user hasn't enabled notifications for Firezone, we may receive
+      // a notificationsNotAllowed error here. Don't log it.
+      if let unError = error as? UNError,
+         unError.code == .notificationsNotAllowed {
+        return
       }
+
+      // Log all other errors
+      Log.error(error)
     }
 
   }
