@@ -18,11 +18,13 @@ final class GrantVPNViewModel: ObservableObject {
   init(store: Store) {
     self.store = store
 
-    store.$isInstalled
+#if os(macOS)
+    store.$systemExtensionStatus
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] isInstalled in
-        self?.isInstalled = isInstalled
+      .sink(receiveValue: { [weak self] status in
+        self?.isInstalled = status == .installed
       }).store(in: &cancellables)
+#endif
   }
 
   func installSystemExtensionButtonTapped() {
