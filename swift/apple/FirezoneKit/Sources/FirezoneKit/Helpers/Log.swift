@@ -53,7 +53,10 @@ public final class Log {
   public static func error(_ err: Error) {
     self.logger.error("\(err.localizedDescription, privacy: .public)")
     logWriter?.write(severity: .error, message: err.localizedDescription)
-    Telemetry.capture(err)
+
+    if shouldCaptureError(err) {
+      Telemetry.capture(err)
+    }
   }
 
   // Returns the size in bytes of the provided directory, calculated by summing
@@ -96,6 +99,19 @@ public final class Log {
     else { return }
 
     try FileManager.default.removeItem(at: directory)
+  }
+
+  // Don't capture certain kinds of IPC and security errors in DEBUG builds
+  // because these happen often due to code signing requirements.
+  private static func shouldCaptureError(_ err: Error) -> Bool {
+#if DEBUG
+    if let err = err as? VPNConfigurationManagerError,
+       case VPNConfigurationManagerError.noIPCData = err {
+      return false
+    }
+#endif
+
+    return true
   }
 }
 
