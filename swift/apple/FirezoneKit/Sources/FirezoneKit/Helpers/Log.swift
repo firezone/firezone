@@ -105,9 +105,6 @@ public final class Log {
   // because these happen often due to code signing requirements.
   private static func shouldCaptureError(_ err: Error) -> Bool {
 #if DEBUG
-    if let _ = err as? FirezoneKit.KeychainError {
-      return false
-    }
     if let err = err as? VPNConfigurationManagerError,
        case VPNConfigurationManagerError.noIPCData = err {
       return false
