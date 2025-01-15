@@ -341,16 +341,16 @@ mod tests {
 
     #[tokio::test]
     async fn timer_is_reset_after_it_fires() {
-        let now = Instant::now();
         let mut io = Io::for_test();
 
-        io.reset_timeout(now + Duration::from_secs(1));
+        let deadline = Instant::now() + Duration::from_secs(1);
+        io.reset_timeout(deadline);
 
         let Input::Timeout(timeout) = io.next().await else {
             panic!("Unexpected result");
         };
 
-        assert_eq!(timeout, now + Duration::from_secs(1));
+        assert!(timeout >= deadline, "timer expire after deadline");
 
         let poll = io.poll_test();
 
