@@ -25,7 +25,6 @@ use ip_packet::{IpPacket, UdpSlice, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::earliest;
 use crate::ClientEvent;
 use domain::base::Message;
 use lru::LruCache;
@@ -1028,17 +1027,13 @@ impl ClientState {
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        // The number of mangled DNS queries is expected to be fairly small because we only track them whilst connecting to a CIDR resource that is a DNS server.
-        // Thus, sorting these values on-demand even within `poll_timeout` is expected to be performant enough.
-        let next_dns_query_expiry = self.mangled_dns_queries.values().min().copied();
-
-        earliest(
-            earliest(
-                self.tcp_dns_client.poll_timeout(),
-                self.tcp_dns_server.poll_timeout(),
-            ),
-            earliest(self.node.poll_timeout(), next_dns_query_expiry),
-        )
+        self.mangled_dns_queries
+            .values()
+            .copied()
+            .chain(self.tcp_dns_client.poll_timeout())
+            .chain(self.tcp_dns_server.poll_timeout())
+            .chain(self.node.poll_timeout())
+            .min()
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {

@@ -14,7 +14,6 @@ use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
-use crate::utils::earliest;
 use crate::{dns, messages::Interface, ClientEvent, GatewayEvent};
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
 use domain::base::iana::{Class, Rcode};
@@ -612,19 +611,17 @@ impl TunnelTest {
     }
 
     fn poll_timeout(&mut self) -> Option<Instant> {
-        let client = self.client.exec_mut(|c| c.sut.poll_timeout());
+        let client = self.client.exec_mut(|c| c.sut.poll_timeout()).into_iter();
         let gateway = self
             .gateways
             .values_mut()
-            .flat_map(|g| g.exec_mut(|g| g.sut.poll_timeout()))
-            .min();
+            .flat_map(|g| g.exec_mut(|g| g.sut.poll_timeout()));
         let relay = self
             .relays
             .values_mut()
-            .flat_map(|r| r.exec_mut(|r| r.sut.poll_timeout()))
-            .min();
+            .flat_map(|r| r.exec_mut(|r| r.sut.poll_timeout()));
 
-        earliest(client, earliest(gateway, relay))
+        client.chain(gateway).chain(relay).min()
     }
 
     /// Dispatches a [`Transmit`] to the correct host.

@@ -1,6 +1,5 @@
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
-use crate::utils::earliest;
 use crate::{p2p_control, GatewayEvent};
 use crate::{peer::ClientOnGateway, peer_store::PeerStore};
 use anyhow::{Context, Result};
@@ -329,7 +328,11 @@ impl GatewayState {
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         // TODO: This should check when the next resource actually expires instead of doing it at a fixed interval.
-        earliest(self.next_expiry_resources_check, self.node.poll_timeout())
+
+        self.next_expiry_resources_check
+            .into_iter()
+            .chain(self.node.poll_timeout())
+            .min()
     }
 
     pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {

@@ -3,7 +3,7 @@ use connlib_model::RelayId;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools as _;
 use snownet::RelaySocket;
-use std::{collections::BTreeSet, net::SocketAddr, time::Instant};
+use std::{collections::BTreeSet, net::SocketAddr};
 
 pub fn turn(relays: &[Relay]) -> BTreeSet<(RelayId, RelaySocket, String, String, String)> {
     relays
@@ -55,15 +55,6 @@ pub fn turn(relays: &[Relay]) -> BTreeSet<(RelayId, RelaySocket, String, String,
             )
         })
         .collect()
-}
-
-pub fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant> {
-    match (left, right) {
-        (None, None) => None,
-        (Some(left), Some(right)) => Some(std::cmp::min(left, right)),
-        (Some(left), None) => Some(left),
-        (None, Some(right)) => Some(right),
-    }
 }
 
 pub(crate) fn network_contains_network(ip_a: IpNetwork, ip_b: IpNetwork) -> bool {
