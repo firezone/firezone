@@ -523,19 +523,23 @@ where
     /// The returned timestamp will **not** change unless other state is modified.
     #[must_use]
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        let mut connection_timeout = None;
+        let initial_connections = self
+            .connections
+            .initial
+            .values_mut()
+            .flat_map(|c| c.poll_timeout());
+        let established_connections = self
+            .connections
+            .established
+            .values_mut()
+            .flat_map(|c| c.poll_timeout());
+        let allocations = self.allocations.values_mut().flat_map(|a| a.poll_timeout());
 
-        for (_, c) in self.connections.iter_initial_mut() {
-            connection_timeout = earliest(connection_timeout, c.poll_timeout());
-        }
-        for (_, c) in self.connections.iter_established_mut() {
-            connection_timeout = earliest(connection_timeout, c.poll_timeout());
-        }
-        for a in self.allocations.values_mut() {
-            connection_timeout = earliest(connection_timeout, a.poll_timeout());
-        }
-
-        earliest(connection_timeout, self.next_rate_limiter_reset)
+        initial_connections
+            .chain(established_connections)
+            .chain(allocations)
+            .chain(self.next_rate_limiter_reset)
+            .min()
     }
 
     /// Advances time within the [`Node`].
