@@ -405,9 +405,7 @@ where
         });
         let allocation_expiries = self.allocations.values().map(|a| a.expires_at);
 
-        channel_expiries
-            .chain(allocation_expiries)
-            .fold(None, |current, next| earliest(current, Some(next)))
+        channel_expiries.chain(allocation_expiries).min()
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -1353,15 +1351,6 @@ stun_codec::define_attribute_enums!(
         Software
     ]
 );
-
-fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant> {
-    match (left, right) {
-        (None, None) => None,
-        (Some(left), Some(right)) => Some(std::cmp::min(left, right)),
-        (Some(left), None) => Some(left),
-        (None, Some(right)) => Some(right),
-    }
-}
 
 #[cfg(test)]
 mod tests {
