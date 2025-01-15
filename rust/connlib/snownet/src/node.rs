@@ -1566,10 +1566,10 @@ impl<RId> InitialConnection<RId> {
     }
 
     fn poll_timeout(&mut self) -> Option<Instant> {
-        earliest(
-            self.agent.poll_timeout(),
-            Some(self.no_answer_received_timeout()),
-        )
+        iter::empty()
+            .chain(self.agent.poll_timeout())
+            .chain(Some(self.no_answer_received_timeout()))
+            .min()
     }
 
     fn no_answer_received_timeout(&self) -> Instant {
