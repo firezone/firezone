@@ -18,13 +18,25 @@ public enum SystemExtensionError: Error {
   }
 }
 
+public enum SystemExtensionStatus {
+  // Not installed or enabled at all
+  case needsInstall
+
+  // Version of the extension is installed that differs from our bundle version.
+  // "Installing" it will replace it without prompting the user.
+  case needsReplacement
+
+  // Installed and version is current with our app bundle
+  case installed
+}
+
 public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
   // Delegate methods complete with either a true or false outcome or an Error
-  private var continuation: CheckedContinuation<Bool, Error>?
+  private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
 
   public func installSystemExtension(
     identifier: String,
-    continuation: CheckedContinuation<Bool, Error>
+    continuation: CheckedContinuation<SystemExtensionStatus, Error>
   ) {
     self.continuation = continuation
 
@@ -35,9 +47,9 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate,
     OSSystemExtensionManager.shared.submitRequest(request)
   }
 
-  public func isInstalled(
+  public func checkStatus(
     identifier: String,
-    continuation: CheckedContinuation<Bool, Error>
+    continuation: CheckedContinuation<SystemExtensionStatus, Error>
   ) {
     self.continuation = continuation
 
@@ -62,7 +74,7 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate,
     }
 
     // Installation succeeded
-    resume(returning: true)
+    resume(returning: .installed)
   }
 
   // Result of properties request
@@ -70,9 +82,36 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate,
     _ request: OSSystemExtensionRequest,
     foundProperties properties: [OSSystemExtensionProperties]
   ) {
-    // Returns true if we find any extension installed matching the bundle id
-    // Otherwise false
-    continuation?.resume(returning: properties.contains { $0.isEnabled })
+    // Standard keys in any bundle. If missing, we've got bigger issues.
+    let ourBundleVersion = Bundle.main.object(
+      forInfoDictionaryKey: "CFBundleVersion"
+    ) as! String
+    let ourBundleShortVersion = Bundle.main.object(
+      forInfoDictionaryKey: "CFBundleShortVersionString"
+    ) as! String
+
+    // Up to date if version and build number match
+    let isCurrentVersionInstalled = properties.contains { sysex in
+      sysex.isEnabled
+      && sysex.bundleVersion == ourBundleVersion
+      && sysex.bundleShortVersion == ourBundleShortVersion
+    }
+    if isCurrentVersionInstalled {
+      resume(returning: .installed)
+
+      return
+    }
+
+    // Needs replacement if we found our extension, but its version doesn't match
+    // Note this can happen for upgrades _or_ downgrades
+    let isAnyVersionInstalled = properties.contains { $0.isEnabled }
+    if isAnyVersionInstalled {
+      resume(returning: .needsReplacement)
+
+      return
+    }
+
+    resume(returning: .needsInstall)
   }
 
   public func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
@@ -92,7 +131,7 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate,
     self.continuation = nil
   }
 
-  private func resume(returning val: Bool) {
+  private func resume(returning val: SystemExtensionStatus) {
     self.continuation?.resume(returning: val)
     self.continuation = nil
   }

@@ -38,8 +38,9 @@ public class AppViewModel: ObservableObject {
 
 #if os(macOS)
         try await self.store.checkedIfInstalled()
+        let isInstalled = self.store.systemExtensionStatus == .installed
 
-        if !self.store.isInstalled || self.store.status == .invalid {
+        if !isInstalled || self.store.status == .invalid {
 
           // Show the main Window if VPN permission needs to be granted
           AppViewModel.WindowDefinition.main.openWindow()
@@ -106,10 +107,10 @@ public struct AppView: View {
       }
     }
 #elseif os(macOS)
-    switch (model.store.isInstalled, model.status) {
-    case (_, nil):
+    switch (model.store.systemExtensionStatus, model.status) {
+    case (nil, nil):
       ProgressView()
-    case (false, _), (_, .invalid):
+    case (.needsInstall, _), (_, .invalid):
       GrantVPNView(model: GrantVPNViewModel(store: model.store))
     default:
       FirstTimeView()

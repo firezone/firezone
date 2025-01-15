@@ -24,8 +24,10 @@ public final class Store: ObservableObject {
   // to observe
   @Published private(set) var status: NEVPNStatus?
 
+#if os(macOS)
   // Track whether our system extension has been installed (macOS)
-  @Published private(set) var isInstalled: Bool = false
+  @Published private(set) var systemExtensionStatus: SystemExtensionStatus?
+#endif
 
   // This is not currently updated after it is initialized, but
   // we could periodically update it if we need to.
@@ -117,13 +119,19 @@ public final class Store: ObservableObject {
 #if os(macOS)
     let checker = SystemExtensionManager()
 
-    self.isInstalled = try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<Bool, Error>) in
+    self.systemExtensionStatus = try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
 
-      checker.isInstalled(
+      checker.checkStatus(
         identifier: VPNConfigurationManager.bundleIdentifier,
         continuation: continuation
       )
+    }
+
+    // If already installed but the wrong version, go ahead and install.
+    // This shouldn't prompt the user.
+    if self.systemExtensionStatus == .needsReplacement {
+      try await installSystemExtension()
     }
 #endif
   }
@@ -134,8 +142,8 @@ public final class Store: ObservableObject {
 
     // Apple recommends installing the system extension as early as possible after app launch.
     // See https://developer.apple.com/documentation/systemextensions/installing-system-extensions-and-drivers
-    self.isInstalled = try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<Bool, Error>) in
+    self.systemExtensionStatus = try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
 
       installer.installSystemExtension(
         identifier: VPNConfigurationManager.bundleIdentifier,
