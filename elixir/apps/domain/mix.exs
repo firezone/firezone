@@ -59,7 +59,7 @@ defmodule Domain.MixProject do
       {:openid_connect,
        github: "firezone/openid_connect", ref: "e4d9dca8ae43c765c00a7d3dfa12d6f24f5b3418"},
       {:argon2_elixir, "~> 4.0"},
-      {:workos, git: "https://github.com/firezone/workos-elixir.git", branch: "main"},
+      {:workos, "~> 1.1"},
 
       # Erlang Clustering
       {:libcluster, "~> 3.3"},
