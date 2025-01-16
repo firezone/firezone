@@ -98,7 +98,9 @@ public final class Store: ObservableObject {
   /// reason and alert the user if it was due to receiving a 401 from the
   /// portal.
   private func maybeShowSignedOutAlert() {
-    Task {
+    Task.detached { [weak self] in
+      guard let self else { return }
+
       do {
         if let savedValue = try await self.vpnConfigurationManager.consumeStopReason(),
            let rawValue = Int(savedValue),
@@ -106,7 +108,7 @@ public final class Store: ObservableObject {
            case .authenticationCanceled = reason
         {
 #if os(macOS)
-          self.sessionNotification.showSignedOutAlertmacOS()
+          await self.sessionNotification.showSignedOutAlertmacOS()
 #endif
         }
       } catch {
@@ -212,9 +214,8 @@ public final class Store: ObservableObject {
     self.vpnConfigurationManager.fetchResources(callback: callback)
     let intervalInSeconds: TimeInterval = 1
     let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
-      Task { @MainActor in
-        guard let self else { return }
-        self.vpnConfigurationManager.fetchResources(callback: callback)
+      Task.detached {
+        await self?.vpnConfigurationManager.fetchResources(callback: callback)
       }
     }
     RunLoop.main.add(timer, forMode: .common)
@@ -226,11 +227,13 @@ public final class Store: ObservableObject {
     resourcesTimer = nil
   }
 
-  func save(_ newSettings: Settings) async throws {
-    Task {
+  func save(_ newSettings: Settings) {
+    Task.detached { [weak self] in
+      guard let self else { return }
+
       do {
         try await self.vpnConfigurationManager.saveSettings(newSettings)
-        DispatchQueue.main.async { self.settings = newSettings }
+        await MainActor.run { self.settings = newSettings }
       } catch {
         Log.error(error)
       }
@@ -241,8 +244,6 @@ public final class Store: ObservableObject {
     self.vpnConfigurationManager.toggleInternetResource(enabled: enabled)
     var newSettings = settings
     newSettings.internetResourceEnabled = self.vpnConfigurationManager.internetResourceEnabled
-    Task {
-      try await save(newSettings)
-    }
+    save(newSettings)
   }
 }
