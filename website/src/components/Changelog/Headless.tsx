@@ -27,6 +27,10 @@ export default function Headless() {
         <ChangeItem pull="7551">
           Fixes an issue where large DNS responses were incorrectly discarded.
         </ChangeItem>
+        <ChangeItem pull="7770">
+          Disallows passing `FIREZONE_TOKEN` as a positional parameter.
+          Use the `FIREZONE_TOKEN` or `FIREZONE_TOKEN_PATH` env variables.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.0" date={new Date("2024-12-13")}>
         <ChangeItem pull="7350">
