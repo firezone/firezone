@@ -36,6 +36,13 @@ defmodule API.FallbackController do
     |> render(:error, reason: "Seat Limit Reached")
   end
 
+  def call(conn, {:error, :service_accounts_limit_reached}) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> put_view(json: API.ErrorJSON)
+    |> render(:error, reason: "Service Accounts Limit Reached")
+  end
+
   def call(conn, {:error, %Ecto.Changeset{} = changeset}) do
     conn
     |> put_status(:unprocessable_entity)
