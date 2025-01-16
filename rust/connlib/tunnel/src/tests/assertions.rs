@@ -104,6 +104,31 @@ pub(crate) fn assert_tcp_packets_properties(
     );
 }
 
+pub(crate) fn assert_resource_status(ref_client: &RefClient, sim_client: &SimClient) {
+    let expected_status_map = &ref_client.expected_resource_status();
+    let actual_status_map = &sim_client.resource_status;
+
+    if expected_status_map != actual_status_map {
+        for (resource, expected_status) in expected_status_map {
+            match actual_status_map.get(resource) {
+                Some(actual_status) if actual_status != expected_status => {
+                    tracing::error!(target: "assertions", %expected_status, %actual_status, %resource, "Resource status doesn't match");
+                }
+                Some(_) => {}
+                None => {
+                    tracing::error!(target: "assertions", %expected_status, %resource, "Missing resource status");
+                }
+            }
+        }
+
+        for (resource, actual_status) in actual_status_map {
+            if expected_status_map.get(resource).is_none() {
+                tracing::error!(target: "assertions", %actual_status, %resource, "Unexpected resource status");
+            }
+        }
+    }
+}
+
 #[expect(clippy::too_many_arguments)]
 fn assert_packets_properties<T, U>(
     ref_client: &RefClient,
