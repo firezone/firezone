@@ -51,8 +51,8 @@ defmodule API.MixProject do
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:opentelemetry_telemetry, "~> 1.1.1", override: true},
-      {:opentelemetry_cowboy, "~> 0.3"},
-      {:opentelemetry_phoenix, "~> 1.1"},
+      {:opentelemetry_cowboy, "~> 1.0"},
+      {:opentelemetry_phoenix, "~> 2.0"},
 
       # Other deps
       {:jason, "~> 1.2"},
