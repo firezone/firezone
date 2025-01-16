@@ -690,11 +690,11 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn is_connected_to_internet_or_cidr(&self, resource: ResourceId) -> bool {
+    fn is_connected_to_internet_or_cidr(&self, resource: ResourceId) -> bool {
         self.is_connected_to_cidr(resource) || self.is_connected_to_internet(resource)
     }
 
-    pub(crate) fn connect_to_internet_or_cidr_resource(&mut self, resource: ResourceId) {
+    fn connect_to_internet_or_cidr_resource(&mut self, resource: ResourceId) {
         if self.internet_resource.is_some_and(|r| r == resource) {
             self.connected_internet_resource = true;
             return;
@@ -725,6 +725,10 @@ impl RefClient {
                     .push_back((query.dns_server, query.query_id));
             }
         }
+
+        if let Some(resource) = self.dns_query_via_resource(query) {
+            self.connect_to_internet_or_cidr_resource(resource);
+        }
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Network> {
@@ -745,7 +749,7 @@ impl RefClient {
         self.active_internet_resource() == Some(id) && self.connected_internet_resource
     }
 
-    pub(crate) fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
+    fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
         self.connected_cidr_resources.contains(&id)
     }
 
