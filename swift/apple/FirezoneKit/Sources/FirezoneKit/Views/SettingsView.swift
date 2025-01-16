@@ -47,16 +47,13 @@ public final class SettingsViewModel: ObservableObject {
   }
 
   func saveSettings() {
-    Task {
       if [.connected, .connecting, .reasserting].contains(store.status) {
-        _ = try await store.signOut()
+        Task.detached { [weak self] in
+          do { try await self?.store.signOut() } catch { Log.error(error) }
+        }
       }
-      do {
-        try await store.save(settings)
-      } catch {
-        Log.error(error)
-      }
-    }
+
+      store.save(settings)
   }
 
   // Calculates the total size of our logs by summing the size of the
@@ -493,11 +490,13 @@ public struct SettingsView: View {
                 isProcessing: $isExportingLogs,
                 action: {
                   self.isExportingLogs = true
-                  Task {
+                  Task.detached {
                     let archiveURL = LogExporter.tempFile()
                     try await LogExporter.export(to: archiveURL)
-                    self.logTempZipFileURL = archiveURL
-                    self.isPresentingExportLogShareSheet = true
+                    await MainActor.run {
+                      self.logTempZipFileURL = archiveURL
+                      self.isPresentingExportLogShareSheet = true
+                    }
                   }
                 }
               )
@@ -606,7 +605,7 @@ public struct SettingsView: View {
           return
         }
 
-        Task {
+        Task.detached {
           do {
             try await LogExporter.export(
               to: destinationURL,
@@ -619,15 +618,15 @@ public struct SettingsView: View {
           } catch {
             Log.error(error)
 
-            let alert = NSAlert()
-            alert.messageText = "Error exporting logs: \(error.localizedDescription)"
-            alert.alertStyle = .critical
+            let alert = await NSAlert()
             await MainActor.run {
+              alert.messageText = "Error exporting logs: \(error.localizedDescription)"
+              alert.alertStyle = .critical
               let _ = alert.runModal()
             }
           }
 
-          self.isExportingLogs = false
+          await MainActor.run { self.isExportingLogs = false }
         }
       }
     }
