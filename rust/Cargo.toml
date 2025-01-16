@@ -55,7 +55,7 @@ etherparse = "0.16"
 futures = { version = "0.3.31", default-features = false }
 futures-bounded = "0.2.1"
 futures-util = { version = "0.3", default-features = false }
-glob = "0.3.1"
+glob = "0.3.2"
 hex = "0.4.3"
 hex-display = "0.3.0"
 hex-literal = "0.4.1"
