@@ -49,7 +49,7 @@ public final class SettingsViewModel: ObservableObject {
   func saveSettings() {
       if [.connected, .connecting, .reasserting].contains(store.status) {
         Task.detached { [weak self] in
-          try await self?.store.signOut()
+          do { try await self?.store.signOut() } catch { Log.error(error) }
         }
       }
 

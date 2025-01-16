@@ -70,19 +70,17 @@ public final class Store: ObservableObject {
   func bindToVPNConfigurationUpdates() async throws {
     // Load our existing VPN configuration and set an update handler
     try await self.vpnConfigurationManager.loadFromPreferences(
-      vpnStateUpdateHandler: { [weak self] status, settings, actorName in
+      vpnStateUpdateHandler: { @MainActor [weak self] status, settings, actorName in
         guard let self else { return }
 
-        DispatchQueue.main.async {
-          self.status = status
+        self.status = status
 
-          if let settings {
-            self.settings = settings
-          }
+        if let settings {
+          self.settings = settings
+        }
 
-          if let actorName {
-            self.actorName = actorName
-          }
+        if let actorName {
+          self.actorName = actorName
         }
 
         if status == .disconnected {
@@ -192,7 +190,7 @@ public final class Store: ObservableObject {
 
   func signIn(authResponse: AuthResponse) async throws {
     // Save actorName
-    DispatchQueue.main.async { self.actorName = authResponse.actorName }
+    await MainActor.run { self.actorName = authResponse.actorName }
 
     try await self.vpnConfigurationManager.saveSettings(settings)
     try await self.vpnConfigurationManager.saveAuthResponse(authResponse)

@@ -36,9 +36,7 @@ struct FirstTimeView: View {
           .buttonStyle(.borderedProminent)
           .controlSize(.large)
           Button("Open menu") {
-            DispatchQueue.main.async {
-              menuBar.showMenu()
-            }
+            menuBar.showMenu()
             AppViewModel.WindowDefinition.main.window()?.close()
           }
           .buttonStyle(.borderedProminent)

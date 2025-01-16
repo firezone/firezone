@@ -174,7 +174,7 @@ public class VPNConfigurationManager {
     }
   }
 
-  func loadFromPreferences(vpnStateUpdateHandler: @escaping (NEVPNStatus, Settings?, String?) -> Void) async throws {
+  func loadFromPreferences(vpnStateUpdateHandler: @escaping @MainActor (NEVPNStatus, Settings?, String?) -> Void) async throws {
     // loadAllFromPreferences() returns list of VPN configurations created by our main app's bundle ID.
     // Since our bundle ID can change (by us), find the one that's current and ignore the others.
     let managers = try await NETunnelProviderManager.loadAllFromPreferences()
@@ -206,7 +206,7 @@ public class VPNConfigurationManager {
         Telemetry.accountSlug = providerConfiguration[VPNConfigurationManagerKeys.accountSlug]
 
         // Share what we found with our caller
-        vpnStateUpdateHandler(status, settings, actorName)
+        await vpnStateUpdateHandler(status, settings, actorName)
 
         // Stop looking for our tunnel
         break
@@ -216,7 +216,7 @@ public class VPNConfigurationManager {
     // If no tunnel configuration was found, update state to
     // prompt user to create one.
     if manager == nil {
-      vpnStateUpdateHandler(.invalid, nil, nil)
+      await vpnStateUpdateHandler(.invalid, nil, nil)
     }
 
     // Hook up status updates
@@ -475,7 +475,7 @@ public class VPNConfigurationManager {
 
   // Subscribe to system notifications about our VPN status changing
   // and let our handler know about them.
-  private func subscribeToVPNStatusUpdates(handler: @escaping (NEVPNStatus, Settings?, String?) -> Void) {
+  private func subscribeToVPNStatusUpdates(handler: @escaping @MainActor (NEVPNStatus, Settings?, String?) -> Void) {
     Log.log("\(#function)")
 
     for task in tunnelObservingTasks {
@@ -500,7 +500,7 @@ public class VPNConfigurationManager {
             resourcesListCache = ResourceList.loading
           }
 
-          handler(session.status, nil, nil)
+          await handler(session.status, nil, nil)
         }
       }
     )
