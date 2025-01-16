@@ -251,7 +251,9 @@ RUN cd apps/web \
     && mix assets.deploy
 
 # Copy the rest of the application files and compile them
-RUN mix compile
+# mix doesn't know when GIT_SHA changes, so --force is needed to avoid
+# pulling in a cached version.
+RUN mix compile --force
 
 FROM elixir as builder
 

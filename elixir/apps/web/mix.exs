@@ -104,11 +104,7 @@ defmodule Web.MixProject do
   end
 
   defp version do
-    if Mix.env() == :prod do
-      sha = System.fetch_env!("GIT_SHA")
-      "0.1.0+#{sha}"
-    else
-      "0.1.0+dev"
-    end
+    sha = System.get_env("GIT_SHA", "dev")
+    "0.1.0+#{sha}"
   end
 end
