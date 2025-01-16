@@ -2,12 +2,10 @@ defmodule Firezone.MixProject do
   use Mix.Project
 
   def project do
-    {sha, _} = Code.eval_file(Path.join([__DIR__, "sha.exs"]))
-
     [
       name: :firezone,
       apps_path: "apps",
-      version: "0.1.0+#{sha}",
+      version: version(),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
@@ -94,5 +92,10 @@ defmodule Firezone.MixProject do
         ]
       ]
     ]
+  end
+
+  defp version do
+    sha = System.get_env("GIT_SHA", "deadbeef") |> String.trim()
+    "0.1.0+#{sha}"
   end
 end

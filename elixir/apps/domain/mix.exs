@@ -2,11 +2,9 @@ defmodule Domain.MixProject do
   use Mix.Project
 
   def project do
-    {sha, _} = Code.eval_file(Path.join([__DIR__, "..", "..", "sha.exs"]))
-
     [
       app: :domain,
-      version: "0.1.0+#{sha}",
+      version: version(),
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -111,5 +109,10 @@ defmodule Domain.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate", "test"]
     ]
+  end
+
+  defp version do
+    sha = System.get_env("GIT_SHA", "deadbeef") |> String.trim()
+    "0.1.0+#{sha}"
   end
 end
