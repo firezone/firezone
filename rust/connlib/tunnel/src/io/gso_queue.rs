@@ -149,5 +149,22 @@ mod tests {
         assert_eq!(send_queue.inner.len(), 1);
     }
 
+    #[test]
+    fn dropping_datagram_iterator_does_not_drop_items() {
+        let now = Instant::now();
+        let mut send_queue = GsoQueue::new();
+
+        send_queue.enqueue(None, DST, b"foobar", now);
+
+        let datagrams = send_queue.datagrams();
+        drop(datagrams);
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 1);
+        assert_eq!(datagrams[0].dst, DST);
+        assert_eq!(datagrams[0].packet.as_ref(), b"foobar");
+    }
+
     const DST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1234));
 }
