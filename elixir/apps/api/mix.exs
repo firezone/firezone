@@ -79,7 +79,7 @@ defmodule API.MixProject do
   end
 
   defp version do
-    sha = System.get_env("GIT_SHA", "deadbeef") |> String.trim()
+    sha = System.get_env("GIT_SHA", "dev") |> String.trim()
     "0.1.0+#{sha}"
   end
 end
