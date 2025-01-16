@@ -7,15 +7,15 @@ import Unreleased from "./Unreleased";
 export default function Gateway() {
   const downloadLinks = [
     {
-      href: "https://www.firezone.dev/dl/firezone-gateway/:version/x86_64",
+      href: "/dl/firezone-gateway/:version/x86_64",
       title: "Download for x86_64",
     },
     {
-      href: "https://www.firezone.dev/dl/firezone-gateway/:version/aarch64",
+      href: "/dl/firezone-gateway/:version/aarch64",
       title: "Download for aarch64",
     },
     {
-      href: "https://www.firezone.dev/dl/firezone-gateway/:version/armv7",
+      href: "/dl/firezone-gateway/:version/armv7",
       title: "Download for armv7",
     },
   ];
