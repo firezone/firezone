@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    mem,
     net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
@@ -80,12 +81,12 @@ impl GsoQueue {
     ) -> impl Iterator<Item = DatagramOut<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>> + '_
     {
         self.inner
-            .drain()
+            .iter_mut()
             .filter(|(_, b)| !b.is_empty())
             .map(|(key, buffer)| DatagramOut {
                 src: key.src,
                 dst: key.dst,
-                packet: buffer.inner,
+                packet: mem::replace(&mut buffer.inner, self.buffer_pool.pull_owned()),
                 segment_size: Some(key.segment_size),
             })
     }
