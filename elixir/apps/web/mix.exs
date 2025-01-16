@@ -73,7 +73,7 @@ defmodule Web.MixProject do
       {:nimble_csv, "~> 1.2"},
 
       # Test deps
-      {:floki, "~> 0.36.3", only: :test},
+      {:floki, "~> 0.37.0", only: :test},
       {:bypass, "~> 2.1", only: :test},
       {:bureaucrat, "~> 0.2.9", only: :test},
       {:wallaby, "~> 0.30.0", only: :test},
