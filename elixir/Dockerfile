@@ -226,10 +226,10 @@ COPY apps/domain/mix.exs ./apps/domain/mix.exs
 COPY apps/web/mix.exs ./apps/web/mix.exs
 COPY apps/api/mix.exs ./apps/api/mix.exs
 COPY config config
-COPY sha.exs .
 
 # Fetch and compile the dependencies
 ARG MIX_ENV="prod"
+ARG GIT_SHA
 RUN mix deps.get --only ${MIX_ENV}
 RUN mix deps.compile --skip-umbrella-children
 
@@ -269,6 +269,7 @@ COPY rel rel
 
 ARG APPLICATION_NAME
 ARG MIX_ENV="prod"
+ARG GIT_SHA
 RUN mix release ${APPLICATION_NAME}
 
 # start a new build stage so that the final image will only contain
@@ -300,10 +301,6 @@ COPY --from=builder /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
 
 # Allow the default user to write to the priv directory of some libraries
 RUN chmod -R ugo+rw /app/lib/tzdata-*/priv
-
-# Populate the SHA pointing to this build
-ARG GIT_SHA
-RUN echo ${GIT_SHA} > ./GIT_SHA
 
 # Change user to "default" to limit runtime privileges
 USER default

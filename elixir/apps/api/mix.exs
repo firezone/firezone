@@ -2,11 +2,9 @@ defmodule API.MixProject do
   use Mix.Project
 
   def project do
-    {sha, _} = Code.eval_file(Path.join([__DIR__, "..", "..", "sha.exs"]))
-
     [
       app: :api,
-      version: "0.1.0+#{sha}",
+      version: version(),
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -78,5 +76,14 @@ defmodule API.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate", "test"]
     ]
+  end
+
+  defp version do
+    if Mix.env() == :prod do
+      sha = System.fetch_env!("GIT_SHA")
+      "0.1.0+#{sha}"
+    else
+      "0.1.0+deadbeef"
+    end
   end
 end
