@@ -62,6 +62,8 @@ const versionedRedirects = [
 
 export const config = {
   matcher: [
+    "/dl/firezone-client-macos/(\\d+).(\\d+).(\\d+)",
+    "/dl/firezone-client-android/(\\d+).(\\d+).(\\d+)",
     "/dl/firezone-client-gui-windows/(\\d+).(\\d+).(\\d+)/x86_64",
     "/dl/firezone-client-gui-linux/(\\d+).(\\d+).(\\d+)/x86_64",
     "/dl/firezone-client-gui-linux/(\\d+).(\\d+).(\\d+)/aarch64",

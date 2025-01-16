@@ -7,15 +7,15 @@ import Unreleased from "./Unreleased";
 export default function Headless() {
   const downloadLinks = [
     {
-      href: "https://www.firezone.dev/dl/firezone-client-headless-linux/:version/x86_64",
+      href: "/dl/firezone-client-headless-linux/:version/x86_64",
       title: "Download for x86_64",
     },
     {
-      href: "https://www.firezone.dev/dl/firezone-client-headless-linux/:version/aarch64",
+      href: "/dl/firezone-client-headless-linux/:version/aarch64",
       title: "Download for aarch64",
     },
     {
-      href: "https://www.firezone.dev/dl/firezone-client-headless-linux/:version/armv7",
+      href: "/dl/firezone-client-headless-linux/:version/armv7",
       title: "Download for armv7",
     },
   ];

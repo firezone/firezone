@@ -10,17 +10,17 @@ export default function GUI({ title }: { title: string }) {
       ? [
           {
             title: "Download for x86_64",
-            href: "https://www.firezone.dev/dl/firezone-client-gui-windows/:version/x86_64",
+            href: "/dl/firezone-client-gui-windows/:version/x86_64",
           },
         ]
       : [
           {
             title: "Download for x86_64",
-            href: "https://www.firezone.dev/dl/firezone-client-gui-linux/:version/x86_64",
+            href: "/dl/firezone-client-gui-linux/:version/x86_64",
           },
           {
             title: "Download for aarch64",
-            href: "https://www.firezone.dev/dl/firezone-client-gui-linux/:version/aarch64",
+            href: "/dl/firezone-client-gui-linux/:version/aarch64",
           },
         ];
 
