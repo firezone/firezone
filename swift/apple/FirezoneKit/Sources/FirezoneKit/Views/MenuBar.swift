@@ -265,13 +265,15 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func signOutButtonTapped() {
-    Task {
-      try await model.store.signOut()
+    Task.detached { [weak self] in
+      try await self?.model.store.signOut()
     }
   }
 
   @objc private func grantPermissionMenuItemTapped() {
-    Task {
+    Task.detached { [weak self] in
+      guard let self else { return }
+
       do {
         // If we get here, it means either system extension got disabled or
         // our VPN configuration got removed. Since we don't know which, reinstall
@@ -314,9 +316,11 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func quitButtonTapped() {
-    Task {
-      model.store.stop()
-      NSApp.terminate(self)
+    Task.detached { [weak self] in
+      guard let self else { return }
+
+      await self.model.store.stop()
+      await NSApp.terminate(self)
     }
   }
 
@@ -357,8 +361,8 @@ public final class MenuBar: NSObject, ObservableObject {
     guard connectingAnimationTimer == nil else { return }
     let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
       guard let self = self else { return }
-      Task {
-        await self.connectingAnimationShowNextFrame()
+      Task.detached { [weak self] in
+        await self?.connectingAnimationShowNextFrame()
       }
     }
     RunLoop.main.add(timer, forMode: .common)
