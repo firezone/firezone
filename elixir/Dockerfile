@@ -4,7 +4,7 @@ ARG ERLANG_DOWNLOAD_SHA256="26d894e2f0dda9d13560af08ea589afc01569df6b5486e565beb
 ARG ELIXIR_VERSION="1.17.2"
 ARG ELIXIR_DOWNLOAD_SHA256="7bb8e6414b77c1707f39f620a2ad54f68d64846d663ec78069536854247fb1ab"
 
-FROM alpine:${ALPINE_VERSION} as base
+FROM alpine:${ALPINE_VERSION} AS base
 
 # Important!  Update this no-op ENV variable when this Dockerfile
 # is updated with the current date. It will force refresh of all
@@ -253,7 +253,7 @@ RUN cd apps/web \
 # Copy the rest of the application files and compile them
 RUN mix compile
 
-FROM elixir as builder
+FROM elixir AS builder
 
 # Install build deps
 RUN apk add --update --no-cache \
