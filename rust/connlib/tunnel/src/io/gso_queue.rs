@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    mem,
     net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
@@ -80,12 +81,12 @@ impl GsoQueue {
     ) -> impl Iterator<Item = DatagramOut<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>> + '_
     {
         self.inner
-            .drain()
+            .iter_mut()
             .filter(|(_, b)| !b.is_empty())
             .map(|(key, buffer)| DatagramOut {
                 src: key.src,
                 dst: key.dst,
-                packet: buffer.inner,
+                packet: mem::replace(&mut buffer.inner, self.buffer_pool.pull_owned()),
                 segment_size: Some(key.segment_size),
             })
     }
@@ -147,6 +148,23 @@ mod tests {
         send_queue.handle_timeout(now + Duration::from_secs(60));
 
         assert_eq!(send_queue.inner.len(), 1);
+    }
+
+    #[test]
+    fn dropping_datagram_iterator_does_not_drop_items() {
+        let now = Instant::now();
+        let mut send_queue = GsoQueue::new();
+
+        send_queue.enqueue(None, DST, b"foobar", now);
+
+        let datagrams = send_queue.datagrams();
+        drop(datagrams);
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 1);
+        assert_eq!(datagrams[0].dst, DST);
+        assert_eq!(datagrams[0].packet.as_ref(), b"foobar");
     }
 
     const DST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1234));
