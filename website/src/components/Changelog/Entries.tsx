@@ -47,7 +47,7 @@ function Latest({
           {downloadLinks.map((link) => (
             <Link
               key={link.href}
-              href={new URL(link.href.replace(":version", version))}
+              href={{ pathname: link.href.replace(":version", version) }}
               className="hover:no-underline underline text-accent-500 mr-2"
             >
               {link.title}

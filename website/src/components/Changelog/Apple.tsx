@@ -11,7 +11,7 @@ export default function Apple() {
       title: "Download on App Store for macOS and iOS",
     },
     {
-      href: "https://www.firezone.dev/dl/firezone-client-macos/latest",
+      href: "/dl/firezone-client-macos/:version",
       title: "Download standalone package for macOS",
     },
   ];

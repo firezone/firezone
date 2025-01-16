@@ -11,7 +11,7 @@ export default function Android() {
       title: "Download on Google Play",
     },
     {
-      href: "https://www.firezone.dev/dl/firezone-client-android/:version",
+      href: "/dl/firezone-client-android/:version",
       title: "Download APK",
     },
   ];
