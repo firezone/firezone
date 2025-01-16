@@ -233,7 +233,7 @@ public final class Store: ObservableObject {
 
       do {
         try await self.vpnConfigurationManager.saveSettings(newSettings)
-        await MainActor.run { self.settings = newSettings }
+        await DispatchQueue.main.async { self.settings = newSettings }
       } catch {
         Log.error(error)
       }
