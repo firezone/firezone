@@ -50,7 +50,7 @@ divan = "0.1.17"
 dns-lookup = "2.0"
 domain = { version = "0.10", features = ["serde"] }
 either = "1"
-env_logger = "0.11.3"
+env_logger = "0.11.6"
 etherparse = "0.16"
 futures = { version = "0.3.31", default-features = false }
 futures-bounded = "0.2.1"
