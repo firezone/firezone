@@ -28,8 +28,8 @@ export default function Headless() {
           Fixes an issue where large DNS responses were incorrectly discarded.
         </ChangeItem>
         <ChangeItem pull="7770">
-          Disallows passing `FIREZONE_TOKEN` as a positional parameter.
-          Use the `FIREZONE_TOKEN` or `FIREZONE_TOKEN_PATH` env variables.
+          Replaces the positional token argument on the CLI with a named one: `--token`.
+          The `FIREZONE_TOKEN` or `FIREZONE_TOKEN_PATH` env variables are unchanged.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.4.0" date={new Date("2024-12-13")}>
