@@ -83,9 +83,9 @@ defmodule Domain.MixProject do
       {:logger_json, "~> 6.0"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
-      {:opentelemetry, "~> 1.3"},
+      {:opentelemetry, "~> 1.5"},
       {:opentelemetry_logger_metadata, "~> 0.1.0"},
-      {:opentelemetry_exporter, "~> 1.5"},
+      {:opentelemetry_exporter, "~> 1.8"},
       {:opentelemetry_ecto, "~> 1.2"},
       {:opentelemetry_finch, "~> 0.2.0"},
 
