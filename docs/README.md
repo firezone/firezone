@@ -177,6 +177,8 @@ If you need help deploying or maintaining Firezone for your business, consider
 [contacting our sales team](https://www.firezone.dev/contact/sales?utm_source=readme)
 to speak with a Firezone expert.
 
+See all support options on our [main support page](https://www.firezone.dev/support).
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=firezone/firezone&type=Date)](https://star-history.com/#firezone/firezone&Date)
