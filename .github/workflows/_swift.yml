@@ -66,7 +66,7 @@ jobs:
           STANDALONE_BUILD_CERT: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64 }}"
           STANDALONE_BUILD_CERT_PASS: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD }}"
           ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
-          NOTARIZE: "${{ (github.event_name == 'workflow_dispatch' }}"
+          NOTARIZE: "${{ github.event_name == 'workflow_dispatch' }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
