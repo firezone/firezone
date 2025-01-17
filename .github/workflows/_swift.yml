@@ -35,9 +35,9 @@ jobs:
             build-script: scripts/build/macos-standalone.sh
             upload-script: scripts/upload/github-release.sh
             # mark:next-apple-version
-            artifact-file: "firezone-macos-client-1.4.0.dmg"
+            artifact-file: "firezone-macos-client-1.4.1.dmg"
             # mark:next-apple-version
-            release-name: macos-client-1.4.0
+            release-name: macos-client-1.4.1
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:

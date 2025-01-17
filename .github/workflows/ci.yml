@@ -56,7 +56,7 @@ jobs:
           - release_name: gui-client-1.4.1
             config_name: release-drafter-gui-client.yml
           # mark:next-apple-version
-          - release_name: macos-client-1.4.0
+          - release_name: macos-client-1.4.1
             config_name: release-drafter-macos-client.yml
           # mark:next-android-version
           - release_name: android-client-1.4.1
