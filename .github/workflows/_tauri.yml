@@ -1,16 +1,7 @@
 name: Tauri
 on:
   workflow_call:
-    inputs:
-      release_tag:
-        required: false
-        type: string
   workflow_dispatch:
-
-permissions:
-  # For saving to release
-  contents: write
-  id-token: write
 
 defaults:
   run:
@@ -25,6 +16,9 @@ jobs:
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
     runs-on: ${{ matrix.runs-on }}
+    permissions:
+      contents: write # for attaching the build artifacts to the release
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
@@ -105,7 +99,6 @@ jobs:
         shell: bash
         run: ${{ env.RENAME_SCRIPT }}
       - name: Upload debug symbols to Sentry
-        if: ${{ github.ref_name == 'main' }}
         run: |
           sentry-cli debug-files upload --log-level info --project gui-client-gui --include-sources ../target
           sentry-cli debug-files upload --log-level info --project gui-client-ipc-service --include-sources ../target
@@ -123,8 +116,6 @@ jobs:
           path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
       - name: Upload Release Assets
-        # Only upload the GUI Client build to the drafted release on main builds
-        if: ${{ github.ref_name == 'main' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
