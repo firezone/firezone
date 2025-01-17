@@ -145,6 +145,58 @@ defmodule API.ActorControllerTest do
                }
     end
 
+    test "returns error when user seat limit hit", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      Domain.Accounts.update_account(account, %{
+        limits: %{users_count: 1}
+      })
+
+      Fixtures.Actors.create_actor(type: :account_user, account: account)
+
+      attrs = %{
+        "name" => "Test User",
+        "type" => "account_user"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors", actor: attrs)
+
+      assert resp = json_response(conn, 422)
+      assert resp == %{"error" => %{"reason" => "Seat Limit Reached"}}
+    end
+
+    test "returns error when service account seat limit hit", %{
+      conn: conn,
+      account: account,
+      actor: api_actor
+    } do
+      Domain.Accounts.update_account(account, %{
+        limits: %{service_accounts_count: 1}
+      })
+
+      Fixtures.Actors.create_actor(type: :service_account, account: account)
+
+      attrs = %{
+        "name" => "Test Service Account",
+        "type" => "service_account"
+      }
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> post("/actors", actor: attrs)
+
+      assert resp = json_response(conn, 422)
+      assert resp == %{"error" => %{"reason" => "Service Accounts Limit Reached"}}
+    end
+
     test "creates a actor with valid attrs", %{conn: conn, actor: api_actor} do
       # TODO: At the moment, API clients aren't allowed to create admin users
       attrs = %{
