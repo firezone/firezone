@@ -19,7 +19,8 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.0" date={new Date("2025-01-16")}>
         <ChangeItem pull="7581">
           Adds download links and CI configuration to publish the macOS app as a
           standalone package.
@@ -52,7 +53,7 @@ export default function Apple() {
         <ChangeItem pull="7551">
           Fixes an issue where large DNS responses were incorrectly discarded.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.3.9" date={new Date("2024-11-08")}>
         <ChangeItem pull="7288">
           Fixes an issue where network roaming would cause Firezone to become
