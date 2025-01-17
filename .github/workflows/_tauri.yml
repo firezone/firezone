@@ -102,20 +102,23 @@ jobs:
         shell: bash
         run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.FIREZONE_GUI_VERSION }}_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
+        if: "${{ github.event_name == 'workflow_dispatch' }}"
         shell: bash
         run: ${{ env.RENAME_SCRIPT }}
       - name: Upload debug symbols to Sentry
-        if: ${{ github.ref_name == 'main' }}
+        if: "${{ github.event_name == 'workflow_dispatch' }}"
         run: |
           sentry-cli debug-files upload --log-level info --project gui-client-gui --include-sources ../target
           sentry-cli debug-files upload --log-level info --project gui-client-ipc-service --include-sources ../target
       - name: Upload package
+        if: "${{ github.event_name == 'workflow_dispatch' }}"
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: ${{ env.ARTIFACT_DST }}-pkg
           path: ${{ env.ARTIFACT_SRC }}.${{ matrix.pkg-extension }}
           if-no-files-found: error
       - name: Upload rpm package
+        if: "${{ github.event_name == 'workflow_dispatch' }}"
         if: ${{ runner.os == 'Linux' }}
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
@@ -123,8 +126,7 @@ jobs:
           path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
       - name: Upload Release Assets
-        # Only upload the GUI Client build to the drafted release on main builds
-        if: ${{ github.ref_name == 'main' }}
+        if: "${{ github.event_name == 'workflow_dispatch' }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
