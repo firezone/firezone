@@ -154,7 +154,9 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
         return
       }
 
+    Task.detached {
       NSWorkspace.shared.open(UpdateChecker.downloadURL())
+    }
 
       completionHandler()
   }

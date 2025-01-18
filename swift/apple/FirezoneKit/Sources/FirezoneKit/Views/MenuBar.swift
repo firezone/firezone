@@ -292,22 +292,34 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func adminPortalButtonTapped() {
-    let url = URL(string: model.store.settings.authBaseURL)!
-    NSWorkspace.shared.open(url)
+    guard let url = URL(string: model.store.settings.authBaseURL)
+    else { return }
+
+    Task.detached {
+      NSWorkspace.shared.open(url)
+    }
   }
 
   @objc private func updateAvailableButtonTapped() {
-    NSWorkspace.shared.open(UpdateChecker.downloadURL())
+    Task.detached {
+      NSWorkspace.shared.open(UpdateChecker.downloadURL())
+    }
   }
 
   @objc private func documentationButtonTapped() {
     let url = URL(string: "https://www.firezone.dev/kb?utm_source=macos-client")!
-    NSWorkspace.shared.open(url)
+
+    Task.detached {
+      NSWorkspace.shared.open(url)
+    }
   }
 
   @objc private func supportButtonTapped() {
     let url = URL(string: "https://www.firezone.dev/support?utm_source=macos-client")!
-    NSWorkspace.shared.open(url)
+
+    Task.detached {
+      NSWorkspace.shared.open(url)
+    }
   }
 
   @objc private func aboutButtonTapped() {
@@ -777,9 +789,11 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func resourceURLTapped(_ sender: AnyObject?) {
-    if let value = (sender as? NSMenuItem)?.title {
-      // URL has already been validated
-      NSWorkspace.shared.open(URL(string: value)!)
+    if let value = (sender as? NSMenuItem)?.title,
+       let url = URL(string: value) {
+      Task.detached {
+        NSWorkspace.shared.open(url)
+      }
     }
   }
 
