@@ -75,6 +75,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  tauri:
+    uses: ./.github/workflows/_tauri.yml
+    secrets: inherit
+
   build-artifacts:
     needs: update-release-draft
     uses: ./.github/workflows/_build_artifacts.yml
