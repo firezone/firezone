@@ -138,7 +138,9 @@ public extension AppViewModel {
         window.makeKeyAndOrderFront(self)
       } else {
         // Open new window
-        NSWorkspace.shared.open(externalEventOpenURL)
+        Task.detached {
+          NSWorkspace.shared.open(externalEventOpenURL)
+        }
       }
     }
 
