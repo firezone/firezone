@@ -113,6 +113,11 @@ impl Resource {
         }
     }
 
+    /// Returns the [`Site`] of a [`Resource`] if there is exactly one site.
+    pub fn site(&self) -> Result<&Site, itertools::ExactlyOneError<impl Iterator<Item = &Site>>> {
+        self.sites().into_iter().exactly_one()
+    }
+
     /// What the GUI clients should show as the user-friendly display name, e.g. `Firezone GitHub`
     pub fn name(&self) -> &str {
         match self {

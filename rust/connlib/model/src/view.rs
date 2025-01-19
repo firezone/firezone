@@ -1,3 +1,4 @@
+use core::fmt;
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::borrow::Cow;
@@ -11,6 +12,16 @@ pub enum ResourceStatus {
     Unknown,
     Online,
     Offline,
+}
+
+impl fmt::Display for ResourceStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResourceStatus::Unknown => write!(f, "unknown"),
+            ResourceStatus::Online => write!(f, "online"),
+            ResourceStatus::Offline => write!(f, "offline"),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]

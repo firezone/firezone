@@ -1462,6 +1462,7 @@ impl ClientState {
             .insert(new_resource.id(), new_resource.clone());
 
         if !self.is_resource_enabled(&(new_resource.id())) {
+            self.emit_resources_changed(); // We still have a new resource but it is disabled, let the client know.
             return;
         }
 
@@ -1553,7 +1554,6 @@ impl ClientState {
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, id) else {
             return;
         };
-        let gateway_id = peer.id();
 
         // First we remove the id from all allowed ips
         for (_, resources) in peer
@@ -1570,13 +1570,6 @@ impl ClientState {
 
         // We remove all empty allowed ips entry since there's no resource that corresponds to it
         peer.allowed_ips.retain(|_, r| !r.is_empty());
-
-        // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
-        if peer.allowed_ips.is_empty() {
-            self.peers.remove(&gateway_id);
-            self.update_site_status_by_gateway(&gateway_id, ResourceStatus::Unknown);
-            // TODO: should we have a Node::remove_connection?
-        }
 
         self.resources_gateways.remove(&id);
     }

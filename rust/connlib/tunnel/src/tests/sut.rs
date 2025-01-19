@@ -372,6 +372,7 @@ impl TunnelTest {
         assert_tcp_dns(ref_client, sim_client);
         assert_dns_servers_are_valid(ref_client, sim_client);
         assert_routes_are_valid(ref_client, sim_client);
+        assert_resource_status(ref_client, sim_client);
     }
 }
 
@@ -754,8 +755,13 @@ impl TunnelTest {
                 };
             }
 
-            ClientEvent::ResourcesChanged { .. } => {
-                tracing::warn!("Unimplemented");
+            ClientEvent::ResourcesChanged { resources } => {
+                self.client.exec_mut(|c| {
+                    c.resource_status = resources
+                        .into_iter()
+                        .map(|r| (r.id(), r.status()))
+                        .collect();
+                });
             }
             ClientEvent::TunInterfaceUpdated(config) => {
                 if self.client.inner().dns_mapping() == &config.dns_by_sentinel
