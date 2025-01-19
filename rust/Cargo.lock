@@ -608,7 +608,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.6.0"
-source = "git+https://github.com/firezone/boringtun?branch=master#b07513176da0fb30781c77070d7c54af5bf65bbd"
+source = "git+https://github.com/firezone/boringtun?branch=fix%2Ftrack-missing-response-from-last-unreplied-packet#ef7f15e21f4e55d2d16a6e0eb92e7b4664d1ec52"
 dependencies = [
  "aead",
  "base64 0.22.1",
