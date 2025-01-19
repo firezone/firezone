@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, DomainName, GatewayId, ResourceId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 use rangemap::RangeInclusiveSet;
 
 use crate::utils::network_contains_network;
@@ -35,10 +35,10 @@ struct AllowRules {
 }
 
 impl FilterEngine {
-    fn is_allowed(&self, packet: &IpPacket) -> bool {
+    fn is_allowed(&self, protocol: Result<Protocol, UnsupportedProtocol>) -> bool {
         match self {
             FilterEngine::PermitAll => true,
-            FilterEngine::PermitSome(filter_engine) => filter_engine.is_allowed(packet),
+            FilterEngine::PermitSome(filter_engine) => filter_engine.is_allowed(protocol),
         }
     }
 
@@ -64,20 +64,13 @@ impl AllowRules {
         }
     }
 
-    fn is_allowed(&self, packet: &IpPacket) -> bool {
-        if let Some(tcp) = packet.as_tcp() {
-            return self.tcp.contains(&tcp.destination_port());
+    fn is_allowed(&self, proto: Result<Protocol, UnsupportedProtocol>) -> bool {
+        match proto {
+            Ok(Protocol::Tcp(port)) => self.tcp.contains(&port),
+            Ok(Protocol::Udp(port)) => self.udp.contains(&port),
+            Ok(Protocol::Icmp(_)) => self.icmp,
+            Err(_) => false,
         }
-
-        if let Some(udp) = packet.as_udp() {
-            return self.udp.contains(&udp.destination_port());
-        }
-
-        if packet.is_icmp() || packet.is_icmpv6() {
-            return self.icmp;
-        }
-
-        false
     }
 
     fn add_filters<'a>(&mut self, filters: impl IntoIterator<Item = &'a Filter>) {
@@ -343,20 +336,7 @@ impl ClientOnGateway {
         Ok(packet)
     }
 
-    pub fn translate_outbound(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> anyhow::Result<IpPacket> {
-        self.ensure_allowed_src(&packet)?;
-        self.ensure_allowed_dst(&packet)?;
-
-        let packet = self.transform_network_to_tun(packet, now)?;
-
-        Ok(packet)
-    }
-
-    pub fn translate_inbound(
+    fn transform_tun_to_network(
         &mut self,
         packet: IpPacket,
         now: Instant,
@@ -383,35 +363,68 @@ impl ClientOnGateway {
         Ok(packet)
     }
 
+    pub fn translate_outbound(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> anyhow::Result<IpPacket> {
+        self.ensure_client_ip(packet.source())?;
+        self.ensure_allowed_resource(packet.destination(), packet.destination_protocol())?;
+
+        let packet = self.transform_network_to_tun(packet, now)?;
+
+        Ok(packet)
+    }
+
+    pub fn translate_inbound(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> anyhow::Result<Option<IpPacket>> {
+        let packet = self.transform_tun_to_network(packet, now)?;
+
+        self.ensure_client_ip(packet.destination())?;
+
+        if let Err(e) = self.ensure_allowed_resource(packet.source(), packet.source_protocol()) {
+            tracing::debug!(
+                "Inbound packet is not allowed, perhaps from an old client session? error = {e:#}"
+            );
+
+            return Ok(None);
+        }
+
+        Ok(Some(packet))
+    }
+
     pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
         self.resources.contains_key(&resource)
     }
 
-    fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
-        let src = packet.source();
-
-        if !self.allowed_ips().contains(&src) {
-            return Err(anyhow::Error::new(SrcNotAllowed(src)));
+    fn ensure_client_ip(&self, ip: IpAddr) -> anyhow::Result<()> {
+        if !self.allowed_ips().contains(&ip) {
+            return Err(anyhow::Error::new(NotClientIp(ip)));
         }
 
         Ok(())
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    fn ensure_allowed_dst(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
-        let dst = packet.destination();
-
+    fn ensure_allowed_resource(
+        &mut self,
+        ip: IpAddr,
+        protocol: Result<Protocol, UnsupportedProtocol>,
+    ) -> anyhow::Result<()> {
         // Note a Gateway with Internet resource should never get packets for other resources
-        if self.internet_resource_enabled && !is_dns_addr(packet.destination()) {
+        if self.internet_resource_enabled && !is_dns_addr(ip) {
             return Ok(());
         }
 
         if !self
             .filters
-            .longest_match(dst)
-            .is_some_and(|(_, filter)| filter.is_allowed(packet))
+            .longest_match(ip)
+            .is_some_and(|(_, filter)| filter.is_allowed(protocol))
         {
-            return Err(anyhow::Error::new(DstNotAllowed(dst)));
+            return Err(anyhow::Error::new(NotAllowedResource(ip)));
         };
 
         Ok(())
@@ -427,7 +440,7 @@ impl GatewayOnClient {
         let src = packet.source();
 
         if self.allowed_ips.longest_match(src).is_none() {
-            return Err(anyhow::Error::new(SrcNotAllowed(src)));
+            return Err(anyhow::Error::new(NotClientIp(src)));
         }
 
         Ok(())
@@ -439,12 +452,12 @@ impl GatewayOnClient {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("Source not allowed: {0}")]
-pub(crate) struct SrcNotAllowed(IpAddr);
+#[error("Not a client IP: {0}")]
+pub(crate) struct NotClientIp(IpAddr);
 
 #[derive(Debug, thiserror::Error)]
-#[error("Destination not allowed: {0}")]
-pub(crate) struct DstNotAllowed(IpAddr);
+#[error("Accessing this resource IP is not allowed: {0}")]
+pub(crate) struct NotAllowedResource(IpAddr);
 
 #[derive(Debug)]
 enum ResourceOnGateway {
@@ -680,18 +693,30 @@ mod tests {
 
         peer.expire_resources(now);
 
-        assert!(peer.ensure_allowed_dst(&tcp_packet).is_ok());
-        assert!(peer.ensure_allowed_dst(&udp_packet).is_ok());
+        assert!(peer
+            .ensure_allowed_resource(tcp_packet.destination(), tcp_packet.destination_protocol())
+            .is_ok());
+        assert!(peer
+            .ensure_allowed_resource(udp_packet.destination(), udp_packet.destination_protocol())
+            .is_ok());
 
         peer.expire_resources(then);
 
-        assert!(peer.ensure_allowed_dst(&tcp_packet).is_err());
-        assert!(peer.ensure_allowed_dst(&udp_packet).is_ok());
+        assert!(peer
+            .ensure_allowed_resource(tcp_packet.destination(), tcp_packet.destination_protocol())
+            .is_err());
+        assert!(peer
+            .ensure_allowed_resource(udp_packet.destination(), udp_packet.destination_protocol())
+            .is_ok());
 
         peer.expire_resources(after_then);
 
-        assert!(peer.ensure_allowed_dst(&tcp_packet).is_err());
-        assert!(peer.ensure_allowed_dst(&udp_packet).is_err());
+        assert!(peer
+            .ensure_allowed_resource(tcp_packet.destination(), tcp_packet.destination_protocol())
+            .is_err());
+        assert!(peer
+            .ensure_allowed_resource(udp_packet.destination(), udp_packet.destination_protocol())
+            .is_err());
     }
 
     #[test]
@@ -938,7 +963,9 @@ mod proptests {
                 Protocol::Icmp => icmp_request_packet(src, *dest, 1, 0, &[]),
             }
             .unwrap();
-            assert!(peer.ensure_allowed_dst(&packet).is_ok());
+            assert!(peer
+                .ensure_allowed_resource(packet.destination(), packet.destination_protocol())
+                .is_ok());
         }
     }
 
@@ -984,7 +1011,9 @@ mod proptests {
             }
             .unwrap();
 
-            assert!(peer.ensure_allowed_dst(&packet).is_ok());
+            assert!(peer
+                .ensure_allowed_resource(packet.destination(), packet.destination_protocol())
+                .is_ok());
         }
     }
 
@@ -1025,7 +1054,9 @@ mod proptests {
             None,
         );
 
-        assert!(peer.ensure_allowed_dst(&packet).is_err());
+        assert!(peer
+            .ensure_allowed_resource(packet.destination(), packet.destination_protocol())
+            .is_err());
     }
 
     #[test_strategy::proptest()]
@@ -1089,8 +1120,18 @@ mod proptests {
         );
         peer.remove_resource(&resource_id_removed);
 
-        assert!(peer.ensure_allowed_dst(&packet_allowed).is_ok());
-        assert!(peer.ensure_allowed_dst(&packet_rejected).is_err());
+        assert!(peer
+            .ensure_allowed_resource(
+                packet_allowed.destination(),
+                packet_allowed.destination_protocol()
+            )
+            .is_ok());
+        assert!(peer
+            .ensure_allowed_resource(
+                packet_rejected.destination(),
+                packet_rejected.destination_protocol()
+            )
+            .is_err());
     }
 
     fn cidr_resources(
