@@ -23,18 +23,6 @@ variable "network" {
   description = "ID of a Google Cloud Network"
 }
 
-variable "base_cidr_block" {
-  type        = string
-  default     = "10.128.0.0/9"
-  description = "The base CIDR block for subnets. Must not overlap with existing subnet."
-}
-
-variable "extension_bits" {
-  type        = number
-  default     = 15
-  description = "Number of bits to extend the base CIDR block by."
-}
-
 ################################################################################
 ## Container Registry
 ################################################################################
