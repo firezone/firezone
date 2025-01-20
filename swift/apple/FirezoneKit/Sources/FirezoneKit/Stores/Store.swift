@@ -115,11 +115,11 @@ public final class Store: ObservableObject {
     }
   }
 
-  func checkedIfInstalled() async throws {
 #if os(macOS)
+  func checkedSystemExtensionStatus() async throws -> SystemExtensionStatus {
     let checker = SystemExtensionManager()
 
-    self.systemExtensionStatus = try await withCheckedThrowingContinuation {
+    let status = try await withCheckedThrowingContinuation {
       (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
 
       checker.checkStatus(
@@ -130,14 +130,16 @@ public final class Store: ObservableObject {
 
     // If already installed but the wrong version, go ahead and install.
     // This shouldn't prompt the user.
-    if self.systemExtensionStatus == .needsReplacement {
+    if status == .needsReplacement {
       try await installSystemExtension()
     }
-#endif
+
+    self.systemExtensionStatus = status
+
+    return status
   }
 
   func installSystemExtension() async throws {
-#if os(macOS)
     let installer = SystemExtensionManager()
 
     // Apple recommends installing the system extension as early as possible after app launch.
@@ -150,8 +152,8 @@ public final class Store: ObservableObject {
         continuation: continuation
       )
     }
-#endif
   }
+#endif
 
   func grantVPNPermission() async throws {
     // Create a new VPN configuration in system settings.

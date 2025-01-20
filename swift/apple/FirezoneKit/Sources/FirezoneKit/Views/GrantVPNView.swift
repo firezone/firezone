@@ -27,21 +27,23 @@ final class GrantVPNViewModel: ObservableObject {
 #endif
   }
 
+#if os(macOS)
   func installSystemExtensionButtonTapped() {
     Task {
       do {
         try await store.installSystemExtension()
 
-#if os(macOS)
+
         // The window has a tendency to go to the background after installing
         // the system extension
         NSApp.activate(ignoringOtherApps: true)
-#endif
+
       } catch {
         Log.error(error)
       }
     }
   }
+#endif
 
   func grantPermissionButtonTapped() {
     Log.log("\(#function)")
