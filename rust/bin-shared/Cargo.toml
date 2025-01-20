@@ -28,7 +28,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 flume = { workspace = true }
 libc = { workspace = true }
 netlink-packet-core = { version = "0.7" }
-netlink-packet-route = { version = "0.19" }
+netlink-packet-route = { version = "0.21" }
 nix = { workspace = true, features = ["socket"] }
 rtnetlink = { workspace = true }
 zbus = "4.4" # Can't use `zbus`'s `tokio` feature here, or it will break toast popups all the way over in `gui-client`.
