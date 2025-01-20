@@ -114,7 +114,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     } catch {
 
-      Log.error(error)
+      let capture =
+      if let error = error as? AdapterError,
+         case AdapterError.connlibConnectError(let string) = error,
+         string.contains("nodename nor servname provided") {
+        // User likely tried to start the tunnel while offline
+        false
+      } else {
+        true
+      }
+
+      Log.error(error, capture: capture)
       completionHandler(error)
     }
   }
