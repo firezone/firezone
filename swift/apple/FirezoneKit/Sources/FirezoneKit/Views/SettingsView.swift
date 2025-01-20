@@ -92,7 +92,13 @@ public final class SettingsViewModel: ObservableObject {
       return byteCountFormatter.string(fromByteCount: Int64(totalSize))
 
     } catch {
-      Log.error(error)
+      if let error = error as? VPNConfigurationManagerError,
+         case VPNConfigurationManagerError.noIPCData = error {
+        // Will happen if the extension is not enabled
+        Log.error(error, capture: false)
+      } else {
+        Log.error(error)
+      }
 
       return "Unknown"
     }
