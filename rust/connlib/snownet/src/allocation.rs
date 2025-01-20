@@ -37,6 +37,14 @@ use tracing::{field, Span};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 
+/// How often to send a STUN binding request after the initial connection to the relay.
+///
+/// Most NATs keep _confirmed_ UDP bindings around for 120s.
+/// Unconfirmed UDP bindings are usually kept around for 30s.
+/// The binding interval here is chosen very conservatively to reflect these.
+/// It ain't much traffic and with a lower interval, these checks can also help in disconnecting from an unresponsive relay.
+const BINDING_INTERVAL: Duration = Duration::from_secs(25);
+
 /// Represents a TURN allocation that refreshes itself.
 ///
 /// Allocations have a lifetime and need to be continuously refreshed to stay active.
@@ -51,7 +59,10 @@ pub struct Allocation {
     ///
     /// To figure out, how to communicate with the relay, we start by sending a BINDING request on all known sockets.
     /// Whatever comes back first, wins.
-    active_socket: Option<SocketAddr>,
+    ///
+    /// Once set, we send STUN binding requests at an interval of [`BINDING_INTERVAL`].
+    /// This ensures any NAT bindings stay alive even if the allocation is completely idle.
+    active_socket: Option<ActiveSocket>,
 
     software: Software,
 
@@ -89,6 +100,13 @@ pub struct Allocation {
     credentials: Option<Credentials>,
 
     explicit_failure: Option<FreeReason>,
+}
+
+#[derive(derive_more::Debug, Clone, Copy)]
+#[debug("{addr}")]
+struct ActiveSocket {
+    addr: SocketAddr,
+    next_binding: Instant,
 }
 
 #[derive(Debug, PartialEq)]
@@ -503,14 +521,14 @@ impl Allocation {
                 // We send 2 BINDING requests to start with (one for each IP version) and the first one coming back wins.
                 // Thus, if we already have a socket set, we are done with processing this binding request.
 
-                if let Some(active_socket) = self.active_socket {
-                    tracing::debug!(%active_socket, additional_socket = %original_dst, "Relay supports dual-stack but we've already picked a socket");
+                if let Some(active_socket) = self.active_socket.as_ref() {
+                    tracing::debug!(active_socket = %active_socket.addr, additional_socket = %original_dst, "Relay supports dual-stack but we've already picked a socket");
 
                     return true;
                 }
 
                 // If the socket isn't set yet, use the `original_dst` as the primary socket.
-                self.active_socket = Some(original_dst);
+                self.active_socket = Some(ActiveSocket::new(original_dst, now));
 
                 tracing::debug!(active_socket = %original_dst, "Updating active socket");
 
@@ -641,6 +659,14 @@ impl Allocation {
             tracing::debug!("Allocation is expired");
 
             self.invalidate_allocation();
+        }
+
+        if let Some(addr) = self
+            .active_socket
+            .as_mut()
+            .and_then(|a| a.handle_timeout(now))
+        {
+            self.queue(addr, make_binding_request(self.software.clone()), None);
         }
 
         while let Some(timed_out_request) =
@@ -774,7 +800,7 @@ impl Allocation {
         buffer: &mut [u8],
         now: Instant,
     ) -> Option<EncodeOk> {
-        let active_socket = self.active_socket?;
+        let active_socket = self.active_socket?.addr;
         let payload_length = buffer.len() - 4;
 
         let channel_number = match self.channel_bindings.connected_channel_to_peer(peer, now) {
@@ -991,7 +1017,7 @@ impl Allocation {
         message: Message<Attribute>,
         backoff: Option<ExponentialBackoff>,
     ) -> bool {
-        let Some(dst) = self.active_socket else {
+        let Some(active_socket) = self.active_socket else {
             tracing::debug!(
                 "Unable to queue {} because we haven't nominated a socket yet",
                 message.method()
@@ -1008,7 +1034,7 @@ impl Allocation {
         };
 
         let authenticated_message = authenticate(message, credentials);
-        self.queue(dst, authenticated_message, backoff)
+        self.queue(active_socket.addr, authenticated_message, backoff)
     }
 
     fn queue(
@@ -1082,6 +1108,25 @@ impl Allocation {
 
 pub struct EncodeOk {
     pub socket: SocketAddr,
+}
+
+impl ActiveSocket {
+    fn new(addr: SocketAddr, now: Instant) -> Self {
+        Self {
+            addr,
+            next_binding: now + BINDING_INTERVAL,
+        }
+    }
+
+    fn handle_timeout(&mut self, now: Instant) -> Option<SocketAddr> {
+        if now < self.next_binding {
+            return None;
+        }
+
+        self.next_binding = now + BINDING_INTERVAL;
+
+        Some(self.addr)
+    }
 }
 
 fn authenticate(message: Message<Attribute>, credentials: &Credentials) -> Message<Attribute> {
@@ -2613,6 +2658,25 @@ mod tests {
         assert_eq!(
             allocation.can_be_freed(),
             Some(FreeReason::NoResponseReceived)
+        );
+    }
+
+    #[test]
+    fn sends_binding_request_on_nominated_socket() {
+        let mut now = Instant::now();
+
+        let mut allocation = Allocation::for_test_ip4(now)
+            .with_binding_response(PEER1)
+            .with_allocate_response(&[RELAY_ADDR_IP4]);
+
+        now += BINDING_INTERVAL;
+        allocation.handle_timeout(now);
+
+        let transmit = allocation.poll_transmit().unwrap();
+        assert_eq!(transmit.dst, RELAY_V4.into());
+        assert_eq!(
+            decode(&transmit.payload).unwrap().unwrap().method(),
+            BINDING
         );
     }
 
