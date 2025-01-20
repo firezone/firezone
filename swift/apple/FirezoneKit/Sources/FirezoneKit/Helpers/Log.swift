@@ -54,7 +54,7 @@ public final class Log {
     self.logger.error("\(err.localizedDescription, privacy: .public)")
     logWriter?.write(severity: .error, message: err.localizedDescription)
 
-    if capture && errorNotIgnored(err) {
+    if capture && errorNotGloballyIgnored(err) {
       Telemetry.capture(err)
     }
   }
@@ -103,7 +103,7 @@ public final class Log {
 
   // Don't capture certain kinds of IPC and security errors in DEBUG builds
   // because these happen often due to code signing requirements.
-  private static func errorNotIgnored(_ err: Error) -> Bool {
+  private static func errorNotGloballyIgnored(_ err: Error) -> Bool {
 #if DEBUG
     if let err = err as? VPNConfigurationManagerError,
        case VPNConfigurationManagerError.noIPCData = err {
