@@ -90,7 +90,7 @@ rand_core = "0.6.4"
 rangemap = "1.5.1"
 reqwest = { version = "0.12.9", default-features = false }
 rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
-rustls = { version = "0.23.10", default-features = false, features = ["ring"] }
+rustls = { version = "0.23.21", default-features = false, features = ["ring"] }
 sadness-generator = "0.6.0"
 secrecy = "0.8"
 semver = "1.0.22"
