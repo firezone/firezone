@@ -145,7 +145,7 @@ Categories=Network;
         }
         Err(e) if e.kind() == ErrorKind::NotFound => {
             // This is not an Ubuntu machine, so this executable won't exist.
-            tracing::debug!("Could not find update-desktop-database command, ignoring");
+            tracing::debug!("Could not find {update_desktop_database} command, ignoring");
         }
         Err(e) => {
             return Err(e).with_context(|| format!("failed to run `{update_desktop_database}`"));
