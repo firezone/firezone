@@ -14,7 +14,7 @@ use crate::{
 };
 use crate::{proptest::*, ClientState};
 use bimap::BiMap;
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, SiteId};
 use domain::{
     base::{iana::Opcode, Message, MessageBuilder, Question, Rtype, ToName},
     rdata::AllRecordData,
@@ -48,6 +48,8 @@ pub(crate) struct SimClient {
 
     pub(crate) ipv4_routes: BTreeSet<Ipv4Network>,
     pub(crate) ipv6_routes: BTreeSet<Ipv6Network>,
+
+    pub(crate) resource_status: BTreeMap<ResourceId, ResourceStatus>,
 
     pub(crate) sent_udp_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket>,
     pub(crate) received_udp_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket>,
@@ -89,6 +91,7 @@ impl SimClient {
             received_udp_replies: Default::default(),
             ipv4_routes: Default::default(),
             ipv6_routes: Default::default(),
+            resource_status: Default::default(),
             tcp_dns_client,
         }
     }
@@ -433,6 +436,10 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) disabled_resources: BTreeSet<ResourceId>,
 
+    /// The [`ResourceStatus`] of each site.
+    #[debug(skip)]
+    site_status: BTreeMap<SiteId, ResourceStatus>,
+
     /// The expected ICMP handshakes.
     #[debug(skip)]
     pub(crate) expected_icmp_handshakes:
@@ -525,6 +532,10 @@ impl RefClient {
     pub(crate) fn reset_connections(&mut self) {
         self.connected_cidr_resources.clear();
         self.connected_internet_resource = false;
+
+        for status in self.site_status.values_mut() {
+            *status = ResourceStatus::Unknown;
+        }
     }
 
     pub(crate) fn add_internet_resource(&mut self, r: InternetResource) {
@@ -573,6 +584,21 @@ impl RefClient {
                 Resource::Internet(i) => self.add_internet_resource(i),
             }
         }
+    }
+
+    pub(crate) fn expected_resource_status(&self) -> BTreeMap<ResourceId, ResourceStatus> {
+        self.resources
+            .iter()
+            .filter_map(|r| {
+                let status = self
+                    .site_status
+                    .get(&r.site().ok()?.id)
+                    .copied()
+                    .unwrap_or(ResourceStatus::Unknown);
+
+                Some((r.id(), status))
+            })
+            .collect()
     }
 
     pub(crate) fn is_tunnel_ip(&self, ip: IpAddr) -> bool {
@@ -657,6 +683,7 @@ impl RefClient {
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
     ) {
         let Some(resource) = self.resource_by_dst(&dst) else {
+            tracing::warn!("Unknown resource");
             return;
         };
 
@@ -670,6 +697,7 @@ impl RefClient {
         tracing::Span::current().record("gateway", tracing::field::display(gateway));
 
         self.connect_to_resource(resource, dst);
+        self.set_resource_online(resource);
 
         if !self.is_tunnel_ip(src) {
             return;
@@ -690,11 +718,24 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn is_connected_to_internet_or_cidr(&self, resource: ResourceId) -> bool {
+    fn set_resource_online(&mut self, resource: ResourceId) {
+        let Some(Ok(site)) = self
+            .resources
+            .iter()
+            .find_map(|r| (r.id() == resource).then_some(r.site()))
+        else {
+            tracing::error!(%resource, "Unknown resource or multi-site resource");
+            return;
+        };
+
+        self.site_status.insert(site.id, ResourceStatus::Online);
+    }
+
+    fn is_connected_to_internet_or_cidr(&self, resource: ResourceId) -> bool {
         self.is_connected_to_cidr(resource) || self.is_connected_to_internet(resource)
     }
 
-    pub(crate) fn connect_to_internet_or_cidr_resource(&mut self, resource: ResourceId) {
+    fn connect_to_internet_or_cidr_resource(&mut self, resource: ResourceId) {
         if self.internet_resource.is_some_and(|r| r == resource) {
             self.connected_internet_resource = true;
             return;
@@ -725,6 +766,11 @@ impl RefClient {
                     .push_back((query.dns_server, query.query_id));
             }
         }
+
+        if let Some(resource) = self.dns_query_via_resource(query) {
+            self.connect_to_internet_or_cidr_resource(resource);
+            self.set_resource_online(resource);
+        }
     }
 
     pub(crate) fn ipv4_cidr_resource_dsts(&self) -> Vec<Ipv4Network> {
@@ -745,7 +791,7 @@ impl RefClient {
         self.active_internet_resource() == Some(id) && self.connected_internet_resource
     }
 
-    pub(crate) fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
+    fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
         self.connected_cidr_resources.contains(&id)
     }
 
@@ -1056,6 +1102,7 @@ fn ref_client(
                     resources: Default::default(),
                     ipv4_routes: Default::default(),
                     ipv6_routes: Default::default(),
+                    site_status: Default::default(),
                 }
             },
         )
