@@ -156,8 +156,8 @@ impl ThreadedUdpSocket {
     fn new(sf: &dyn SocketFactory<UdpSocket>, addr: SocketAddr) -> io::Result<Self> {
         let mut socket = sf(&addr)?;
 
-        let (outbound_tx, outbound_rx) = flume::bounded(100);
-        let (inbound_tx, inbound_rx) = flume::bounded(100);
+        let (outbound_tx, outbound_rx) = flume::bounded(10);
+        let (inbound_tx, inbound_rx) = flume::bounded(10);
 
         std::thread::Builder::new()
             .name(
