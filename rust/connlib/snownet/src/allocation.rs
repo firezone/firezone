@@ -681,10 +681,12 @@ impl Allocation {
                 .remove(&timed_out_request)
                 .expect("ID is from list");
 
-            tracing::debug!(id = ?request.transaction_id(), method = %request.method(), %dst, "Request timed out after {backoff_duration:?}, re-sending");
+            let method = request.method();
 
-            let needs_auth = request.method() != BINDING;
-            let is_refresh = request.method() == REFRESH;
+            tracing::debug!(id = ?request.transaction_id(), %method, %dst, "Request timed out after {backoff_duration:?}, re-sending");
+
+            let needs_auth = method != BINDING;
+            let is_refresh = method == REFRESH;
 
             if needs_auth {
                 let queued = self.authenticate_and_queue(request, Some(backoff));
@@ -698,7 +700,19 @@ impl Allocation {
                 continue;
             }
 
-            self.queue(dst, request, Some(backoff));
+            // We define keep-alives as binding requests that are being sent _after_ we have nominated a socket for communication with the relay.
+            let is_keepalive = self.active_socket.is_some();
+            debug_assert_eq!(
+                method, BINDING,
+                "Non-binding requests are handled further up"
+            );
+
+            let queued = self.queue(dst, request, Some(backoff));
+
+            if !queued && is_keepalive {
+                self.active_socket = None; // The socket seems to no longer be reachable.
+                self.invalidate_allocation();
+            }
         }
 
         if let Some(refresh_at) = self.refresh_allocation_at() {
@@ -745,7 +759,7 @@ impl Allocation {
             earliest_timeout = earliest(earliest_timeout, Some(*sent_at + *backoff));
         }
 
-        earliest_timeout
+        earliest(earliest_timeout, self.active_socket.map(|a| a.next_binding))
     }
 
     #[tracing::instrument(level = "debug", skip(self, now), fields(active_socket = ?self.active_socket))]
@@ -2218,8 +2232,9 @@ mod tests {
         assert_eq!(refresh_at, received_at + (ALLOCATION_LIFETIME / 2));
 
         allocation.handle_timeout(refresh_at);
-        let next_msg = allocation.next_message().unwrap();
-        assert_eq!(next_msg.method(), REFRESH)
+
+        let refresh = iter::from_fn(|| allocation.next_message()).find(|m| m.method() == REFRESH);
+        assert!(refresh.is_some());
     }
 
     #[test]
@@ -2422,33 +2437,33 @@ mod tests {
     }
 
     #[test]
-    fn timed_out_refresh_requests_invalid_candidates() {
+    fn timed_out_binding_requests_invalid_candidates() {
         let _guard = firezone_logging::test("trace");
 
-        let start = Instant::now();
-        let mut allocation = Allocation::for_test_ip4(start).with_binding_response(PEER1);
+        let mut now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1);
 
         // Make an allocation
         {
             let allocate = allocation.next_message().unwrap();
             allocation.handle_test_input_ip4(
                 &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-                start,
+                now,
             );
             let _drained_events = iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>();
         }
 
-        // Test that we refresh it.
+        // Test that we send binding requests it.
         {
-            let refresh_at = allocation.poll_timeout().unwrap();
-            allocation.handle_timeout(refresh_at);
+            now = allocation.poll_timeout().unwrap();
+            allocation.handle_timeout(now);
 
-            let refresh = allocation.next_message().unwrap();
-            assert_eq!(refresh.method(), REFRESH);
+            let binding = allocation.next_message().unwrap();
+            assert_eq!(binding.method(), BINDING);
         }
 
-        // Simulate refresh timing out
-        for _ in backoff::steps(start) {
+        // Simulate bindings timing out
+        for _ in backoff::steps(now) {
             allocation.handle_timeout(allocation.poll_timeout().unwrap());
         }
 
