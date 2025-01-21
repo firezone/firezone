@@ -697,7 +697,11 @@ impl Allocation {
 
             // If we have an active socket (i.e. successfully sent at least 1 BINDING request)
             // and we just timed out a message, invalidate the allocation.
-            if !queued && self.active_socket.is_some() {
+            if !queued
+                && self
+                    .active_socket
+                    .is_some_and(|s| s.same_ip_version_as(dst))
+            {
                 self.active_socket = None; // The socket seems to no longer be reachable.
                 self.invalidate_allocation();
             }
@@ -1124,6 +1128,10 @@ impl ActiveSocket {
             addr,
             next_binding: now + BINDING_INTERVAL,
         }
+    }
+
+    fn same_ip_version_as(&self, dst: SocketAddr) -> bool {
+        self.addr.is_ipv4() == dst.is_ipv4()
     }
 
     fn handle_timeout(&mut self, now: Instant) -> Option<SocketAddr> {
