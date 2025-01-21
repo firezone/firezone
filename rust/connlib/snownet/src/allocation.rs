@@ -686,30 +686,16 @@ impl Allocation {
             tracing::debug!(id = ?request.transaction_id(), %method, %dst, "Request timed out after {backoff_duration:?}, re-sending");
 
             let needs_auth = method != BINDING;
-            let is_refresh = method == REFRESH;
 
-            if needs_auth {
-                let queued = self.authenticate_and_queue(request, Some(backoff));
+            let queued = if needs_auth {
+                self.authenticate_and_queue(request, Some(backoff))
+            } else {
+                self.queue(dst, request, Some(backoff))
+            };
 
-                // If we fail to queue the refresh message because we've exceeded our backoff, give up.
-                if !queued && is_refresh {
-                    self.active_socket = None; // The socket seems to no longer be reachable.
-                    self.invalidate_allocation();
-                }
-
-                continue;
-            }
-
-            // We define keep-alives as binding requests that are being sent _after_ we have nominated a socket for communication with the relay.
-            let is_keepalive = self.active_socket.is_some();
-            debug_assert_eq!(
-                method, BINDING,
-                "Non-binding requests are handled further up"
-            );
-
-            let queued = self.queue(dst, request, Some(backoff));
-
-            if !queued && is_keepalive {
+            // If we have an active socket (i.e. successfully sent at least 1 BINDING request)
+            // and we just timed out a message, invalidate the allocation.
+            if !queued && self.active_socket.is_some() {
                 self.active_socket = None; // The socket seems to no longer be reachable.
                 self.invalidate_allocation();
             }
