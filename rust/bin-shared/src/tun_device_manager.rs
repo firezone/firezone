@@ -91,10 +91,6 @@ mod tests {
         )))
         .unwrap();
 
-        std::future::poll_fn(|cx| socket.poll_send_ready(cx))
-            .await
-            .unwrap();
-
         // Send a STUN request.
         socket
             .send(DatagramOut {
@@ -103,19 +99,12 @@ mod tests {
                 packet: &hex_literal::hex!("000100002112A4420123456789abcdef01234567").as_ref(),
                 segment_size: None,
             })
+            .await
             .unwrap();
 
-        let task = std::future::poll_fn(|cx| {
-            let mut buf = [0u8; 1000];
-            let result = std::task::ready!(socket.poll_recv_from(&mut buf, cx));
-
-            let _response = result.unwrap().next().unwrap();
-
-            std::task::Poll::Ready(())
-        });
-
-        tokio::time::timeout(Duration::from_secs(10), task)
+        tokio::time::timeout(Duration::from_secs(10), socket.recv_from())
             .await
+            .unwrap()
             .unwrap();
     }
 
