@@ -661,12 +661,14 @@ impl Allocation {
             self.invalidate_allocation();
         }
 
-        if let Some(addr) = self
-            .active_socket
-            .as_mut()
-            .and_then(|a| a.handle_timeout(now))
-        {
-            self.queue(addr, make_binding_request(self.software.clone()), None);
+        if self.has_allocation() {
+            if let Some(addr) = self
+                .active_socket
+                .as_mut()
+                .and_then(|a| a.handle_timeout(now))
+            {
+                self.queue(addr, make_binding_request(self.software.clone()), None);
+            }
         }
 
         while let Some(timed_out_request) =
@@ -745,7 +747,13 @@ impl Allocation {
             earliest_timeout = earliest(earliest_timeout, Some(*sent_at + *backoff));
         }
 
-        earliest(earliest_timeout, self.active_socket.map(|a| a.next_binding))
+        let next_keepalive = if self.has_allocation() {
+            self.active_socket.map(|a| a.next_binding)
+        } else {
+            None
+        };
+
+        earliest(earliest_timeout, next_keepalive)
     }
 
     #[tracing::instrument(level = "debug", skip(self, now), fields(active_socket = ?self.active_socket))]
