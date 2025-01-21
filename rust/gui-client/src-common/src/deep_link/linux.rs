@@ -1,7 +1,7 @@
 use anyhow::{bail, Context, Result};
 use firezone_headless_client::known_dirs;
 use secrecy::{ExposeSecret, Secret};
-use std::{path::PathBuf, process::Command};
+use std::{io::ErrorKind, path::PathBuf, process::Command};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
@@ -137,12 +137,19 @@ Categories=Network;
 
     // Needed for Ubuntu 22.04, see issue #4880
     let update_desktop_database = "update-desktop-database";
-    let status = Command::new(update_desktop_database)
-        .arg(&dir)
-        .status()
-        .with_context(|| format!("failed to run `{update_desktop_database}`"))?;
-    if !status.success() {
-        bail!("{update_desktop_database} returned failure exit code");
+    match Command::new(update_desktop_database).arg(&dir).status() {
+        Ok(status) => {
+            if !status.success() {
+                bail!("{update_desktop_database} returned failure exit code");
+            }
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            // This is not an Ubuntu machine, so this executable won't exist.
+            tracing::debug!("Could not find update-desktop-database command, ignoring");
+        }
+        Err(e) => {
+            return Err(e).with_context(|| format!("failed to run `{update_desktop_database}`"));
+        }
     }
 
     Ok(())
