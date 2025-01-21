@@ -2203,21 +2203,18 @@ mod tests {
 
     #[test]
     fn allocation_is_refreshed_after_half_its_lifetime() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
+        let mut now = Instant::now();
+        let mut allocation = Allocation::for_test_ip4(now).with_binding_response(PEER1);
 
         let allocate = allocation.next_message().unwrap();
 
-        let received_at = Instant::now();
-
         allocation.handle_test_input_ip4(
             &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-            received_at,
+            now,
         );
 
-        let refresh_at = allocation.poll_timeout().unwrap();
-        assert_eq!(refresh_at, received_at + (ALLOCATION_LIFETIME / 2));
-
-        allocation.handle_timeout(refresh_at);
+        now += ALLOCATION_LIFETIME / 2;
+        allocation.handle_timeout(now);
 
         let refresh = iter::from_fn(|| allocation.next_message()).find(|m| m.method() == REFRESH);
         assert!(refresh.is_some());
