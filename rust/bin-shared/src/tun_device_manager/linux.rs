@@ -318,7 +318,7 @@ impl Tun {
             let outbound_capacity_waker = outbound_capacity_waker.clone();
 
             std::thread::Builder::new()
-                .name(format!("TUN send/recv {n}/{num_threads}"))
+                .name(format!("TUN {n}/{num_threads}"))
                 .spawn(move || {
                     firezone_logging::unwrap_or_warn!(
                         tun::unix::send_recv_tun(

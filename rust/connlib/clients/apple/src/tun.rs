@@ -28,7 +28,7 @@ impl Tun {
         let outbound_capacity_waker = Arc::new(AtomicWaker::new());
 
         std::thread::Builder::new()
-            .name("TUN send/recv".to_owned())
+            .name("TUN".to_owned())
             .spawn({
                 let outbound_capacity_waker = outbound_capacity_waker.clone();
                 move || {

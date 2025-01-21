@@ -45,6 +45,7 @@ pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
     }
 
     socket.set_nonblocking(true)?;
+    socket.set_reuse_port(true)?;
     socket.bind(&addr)?;
 
     let send_buf_size = socket.send_buffer_size()?;
@@ -168,6 +169,10 @@ impl UdpSocket {
                 |b| b.fill(0),
             )),
         })
+    }
+
+    pub fn local_port(&self) -> u16 {
+        self.port
     }
 
     /// Configures a new source IP resolver for this UDP socket.
