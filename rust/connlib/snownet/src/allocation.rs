@@ -885,7 +885,7 @@ impl Allocation {
     }
 
     fn log_update(&self, now: Instant) {
-        tracing::info!(
+        tracing::debug!(
             srflx_ip4 = ?self.ip4_srflx_candidate.as_ref().map(|c| c.addr()),
             srflx_ip6 = ?self.ip6_srflx_candidate.as_ref().map(|c| c.addr()),
             relay_ip4 = ?self.ip4_allocation.as_ref().map(|c| c.addr()),
