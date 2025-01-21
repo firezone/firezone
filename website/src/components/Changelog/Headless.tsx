@@ -28,9 +28,8 @@ export default function Headless() {
           Fixes an issue where large DNS responses were incorrectly discarded.
         </ChangeItem>
         <ChangeItem pull="7770">
-          Replaces the positional token argument on the CLI with a named one:
-          `--token`. The `FIREZONE_TOKEN` or `FIREZONE_TOKEN_PATH` env variables
-          are unchanged.
+          Removes the positional token argument on the CLI. Use `FIREZONE_TOKEN`
+          or `FIREZONE_TOKEN_PATH` env variables instead.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.4.0" date={new Date("2024-12-13")}>
