@@ -6044,6 +6044,7 @@ dependencies = [
  "boringtun",
  "bytecodec",
  "bytes",
+ "derive_more 1.0.0",
  "firezone-logging",
  "hex",
  "hex-display",
