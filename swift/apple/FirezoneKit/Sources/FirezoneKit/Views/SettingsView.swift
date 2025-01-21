@@ -95,7 +95,7 @@ public final class SettingsViewModel: ObservableObject {
       if let error = error as? VPNConfigurationManagerError,
          case VPNConfigurationManagerError.noIPCData = error {
         // Will happen if the extension is not enabled
-        Log.error(error, capture: false)
+        Log.warning("\(#function): Unable to count logs: \(error). Is the XPC service running?")
       } else {
         Log.error(error)
       }
