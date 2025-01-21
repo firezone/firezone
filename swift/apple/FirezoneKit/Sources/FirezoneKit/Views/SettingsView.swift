@@ -622,7 +622,12 @@ public struct SettingsView: View {
               window.contentViewController?.presentingViewController?.dismiss(self)
             }
           } catch {
-            Log.error(error)
+            if let error = error as? VPNConfigurationManagerError,
+               case VPNConfigurationManagerError.noIPCData = error {
+              Log.warning("\(#function): Error exporting logs: \(error). Is the XPC service running?")
+            } else {
+              Log.error(error)
+            }
 
             let alert = await NSAlert()
             await MainActor.run {
