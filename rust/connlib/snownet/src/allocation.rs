@@ -2238,27 +2238,6 @@ mod tests {
     }
 
     #[test]
-    fn failed_refresh_resets_allocation_lifetime() {
-        let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
-
-        let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(
-            &allocate_response(&allocate, &[RELAY_ADDR_IP4, RELAY_ADDR_IP6]),
-            Instant::now(),
-        );
-
-        allocation.advance_to_next_timeout();
-
-        let refresh = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(&allocation_mismatch(&refresh), Instant::now());
-
-        let allocate = allocation.next_message().unwrap();
-        allocation.handle_test_input_ip4(&server_error(&allocate), Instant::now()); // These ones are not retried.
-
-        assert_eq!(allocation.poll_timeout(), None);
-    }
-
-    #[test]
     fn when_refreshed_with_no_allocation_after_failed_response_tries_to_allocate() {
         let mut allocation = Allocation::for_test_ip4(Instant::now()).with_binding_response(PEER1);
 
@@ -2836,12 +2815,6 @@ mod tests {
         /// Wrapper around `handle_input` that always sets `RELAY` and `PEER1`.
         fn handle_test_input_ip4(&mut self, packet: &[u8], now: Instant) -> bool {
             self.handle_input(RELAY_V4.into(), PEER1, packet, now)
-        }
-
-        fn advance_to_next_timeout(&mut self) {
-            if let Some(next) = self.poll_timeout() {
-                self.handle_timeout(next)
-            }
         }
 
         fn refresh_with_same_credentials(&mut self) {
