@@ -32,27 +32,30 @@ public class AppViewModel: ObservableObject {
     self.favorites = favorites
     self.store = store
 
-    Task {
+    Task.detached { [weak self] in
+      guard let self else { return }
+
       do {
         try await self.store.bindToVPNConfigurationUpdates()
+        let vpnConfigurationStatus = await self.store.status
 
 #if os(macOS)
-        try await self.store.checkedIfInstalled()
-        let isInstalled = self.store.systemExtensionStatus == .installed
+        let systemExtensionStatus = try await self.store.checkedSystemExtensionStatus()
 
-        if !isInstalled || self.store.status == .invalid {
+        if systemExtensionStatus != .installed
+          || vpnConfigurationStatus == .invalid {
 
           // Show the main Window if VPN permission needs to be granted
-          AppViewModel.WindowDefinition.main.openWindow()
+          await AppViewModel.WindowDefinition.main.openWindow()
         } else {
-          AppViewModel.WindowDefinition.main.window()?.close()
+          await AppViewModel.WindowDefinition.main.window()?.close()
         }
 #endif
 
-        if self.store.status == .disconnected {
+        if vpnConfigurationStatus == .disconnected {
 
           // Try to connect on start
-          self.store.vpnConfigurationManager.start()
+          await self.store.vpnConfigurationManager.start()
         }
       } catch {
         Log.error(error)
