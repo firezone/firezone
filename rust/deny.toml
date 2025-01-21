@@ -234,6 +234,8 @@ skip = [
   "core-graphics",
   "core-graphics-types",
   "derive_more",
+  "foreign-types",
+  "foreign-types-shared",
   "getrandom",
   "hashbrown",
   "heck",
