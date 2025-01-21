@@ -189,7 +189,7 @@ WORKDIR ${HOME}
 
 CMD ["iex"]
 
-FROM base as elixir
+FROM base AS elixir
 
 WORKDIR ${HOME}
 
@@ -204,7 +204,7 @@ RUN set -xe \
 
 CMD ["bash"]
 
-FROM elixir as compiler
+FROM elixir AS compiler
 
 WORKDIR /app
 
