@@ -38,6 +38,7 @@ defmodule Web.Actors.Show do
         |> assign_live_table("flows",
           query_module: Flows.Flow.Query,
           sortable_fields: [],
+          hide_filters: [:expiration],
           callback: &handle_flows_update!/2
         )
         |> assign_live_table("groups",
@@ -510,9 +511,9 @@ defmodule Web.Actors.Show do
     </.section>
 
     <.section>
-      <:title>Authorized Sessions</:title>
+      <:title>Recent Connections</:title>
       <:help>
-        Authorized sessions opened by this Actor to access a Resource.
+        Recent connections opened by this Actor to access a Resource.
       </:help>
       <:content>
         <.live_table
@@ -526,9 +527,6 @@ defmodule Web.Actors.Show do
         >
           <:col :let={flow} label="authorized" class="xl:w-1/12">
             <.relative_datetime datetime={flow.inserted_at} />
-          </:col>
-          <:col :let={flow} label="expires" class="xl:w-1/12">
-            <.relative_datetime datetime={flow.expires_at} />
           </:col>
           <:col :let={flow} label="policy" class="w-3/12">
             <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>

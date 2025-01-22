@@ -29,6 +29,7 @@ defmodule Web.Clients.Show do
         |> assign_live_table("flows",
           query_module: Flows.Flow.Query,
           sortable_fields: [],
+          hide_filters: [:expiration],
           callback: &handle_flows_update!/2
         )
 
@@ -288,9 +289,9 @@ defmodule Web.Clients.Show do
     </.section>
 
     <.section>
-      <:title>Authorized Sessions</:title>
+      <:title>Recent Connections</:title>
       <:help>
-        Authorized sessions opened by this Client to access a Resource.
+        Recent connections opened by this Client to access a Resource.
       </:help>
       <:content>
         <.live_table
@@ -304,9 +305,6 @@ defmodule Web.Clients.Show do
         >
           <:col :let={flow} label="authorized">
             <.relative_datetime datetime={flow.inserted_at} />
-          </:col>
-          <:col :let={flow} label="expires">
-            <.relative_datetime datetime={flow.expires_at} />
           </:col>
           <:col :let={flow} label="remote ip" class="w-3/12">
             <%= flow.client_remote_ip %>

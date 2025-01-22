@@ -281,7 +281,6 @@ defmodule Web.Live.Policies.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["expires"]
     assert row["client, actor"] =~ flow.client.name
     assert row["client, actor"] =~ "owned by #{flow.client.actor.name}"
     assert row["client, actor"] =~ to_string(flow.client_remote_ip)
