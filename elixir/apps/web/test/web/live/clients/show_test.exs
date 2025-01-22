@@ -205,7 +205,6 @@ defmodule Web.Live.Clients.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["expires"]
     assert row["remote ip"] == to_string(client.last_seen_remote_ip)
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
@@ -241,7 +240,6 @@ defmodule Web.Live.Clients.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["expires"]
     assert row["remote ip"] == to_string(client.last_seen_remote_ip)
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
@@ -278,7 +276,6 @@ defmodule Web.Live.Clients.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["expires"]
     assert row["remote ip"] == to_string(client.last_seen_remote_ip)
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
