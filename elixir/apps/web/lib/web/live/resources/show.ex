@@ -33,6 +33,7 @@ defmodule Web.Resources.Show do
         |> assign_live_table("flows",
           query_module: Flows.Flow.Query,
           sortable_fields: [],
+          hide_filters: [:expiration],
           callback: &handle_flows_update!/2
         )
         |> assign_live_table("policies",
@@ -325,9 +326,9 @@ defmodule Web.Resources.Show do
     </.section>
 
     <.section>
-      <:title>Authorized Sessions</:title>
+      <:title>Recent Connections</:title>
       <:help>
-        Authorized sessions opened by Actors to access this Resource.
+        Recent connections opened by Actors to access this Resource.
       </:help>
       <:content>
         <.live_table
@@ -341,9 +342,6 @@ defmodule Web.Resources.Show do
         >
           <:col :let={flow} label="authorized">
             <.relative_datetime datetime={flow.inserted_at} />
-          </:col>
-          <:col :let={flow} label="expires">
-            <.relative_datetime datetime={flow.expires_at} />
           </:col>
           <:col :let={flow} label="policy">
             <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>

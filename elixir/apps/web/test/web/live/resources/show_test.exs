@@ -294,7 +294,6 @@ defmodule Web.Live.Resources.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["expires"]
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 
