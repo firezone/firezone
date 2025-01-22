@@ -522,7 +522,12 @@ impl Allocation {
                 // Thus, if we already have a socket set, we are done with processing this binding request.
 
                 if let Some(active_socket) = self.active_socket.as_ref() {
-                    tracing::debug!(active_socket = %active_socket.addr, additional_socket = %original_dst, "Relay supports dual-stack but we've already picked a socket");
+                    // We also use binding requests to keep NAT bindings alive. For those
+                    // replies, these sockets will always be the same. Only log if we
+                    // actually have two different sockets to choose from.
+                    if active_socket.addr != original_dst {
+                        tracing::debug!(active_socket = %active_socket.addr, additional_socket = %original_dst, "Relay supports dual-stack but we've already picked a socket");
+                    }
 
                     return true;
                 }
