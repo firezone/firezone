@@ -103,7 +103,7 @@ impl Io {
         nameservers: BTreeSet<IpAddr>,
     ) -> Self {
         let mut sockets = Sockets::default();
-        sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
+        sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         let mut nameservers = NameserverSet::new(
             nameservers,
@@ -325,7 +325,7 @@ impl Io {
     }
 
     pub fn reset(&mut self) {
-        self.sockets.rebind(self.udp_socket_factory.as_ref());
+        self.sockets.rebind(self.udp_socket_factory.clone());
         self.gso_queue.clear();
         self.dns_queries = FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000);
         self.nameservers.evaluate();

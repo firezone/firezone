@@ -6,6 +6,7 @@ use socket_factory::{DatagramIn, DatagramSegmentIter, SocketFactory, UdpSocket};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    sync::Arc,
     task::{Context, Poll, Waker},
 };
 
@@ -24,11 +25,13 @@ pub(crate) struct Sockets {
 }
 
 impl Sockets {
-    pub fn rebind(&mut self, socket_factory: &dyn SocketFactory<UdpSocket>) {
-        self.socket_v4 =
-            ThreadedUdpSocket::new(socket_factory, SocketAddr::V4(UNSPECIFIED_V4_SOCKET))
-                .inspect_err(|e| tracing::info!("Failed to bind IPv4 socket: {e}"))
-                .ok();
+    pub fn rebind(&mut self, socket_factory: Arc<dyn SocketFactory<UdpSocket>>) {
+        self.socket_v4 = ThreadedUdpSocket::new(
+            socket_factory.clone(),
+            SocketAddr::V4(UNSPECIFIED_V4_SOCKET),
+        )
+        .inspect_err(|e| tracing::info!("Failed to bind IPv4 socket: {e}"))
+        .ok();
         self.socket_v6 =
             ThreadedUdpSocket::new(socket_factory, SocketAddr::V6(UNSPECIFIED_V6_SOCKET))
                 .inspect_err(|e| tracing::info!("Failed to bind IPv6 socket: {e}"))
@@ -153,11 +156,10 @@ struct ThreadedUdpSocket {
 
 impl ThreadedUdpSocket {
     #[expect(clippy::unwrap_in_result, reason = "We unwrap in the new thread.")]
-    fn new(sf: &dyn SocketFactory<UdpSocket>, addr: SocketAddr) -> io::Result<Self> {
-        let mut socket = sf(&addr)?;
-
+    fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, addr: SocketAddr) -> io::Result<Self> {
         let (outbound_tx, outbound_rx) = flume::bounded(10);
         let (inbound_tx, inbound_rx) = flume::bounded(10);
+        let (error_tx, error_rx) = flume::bounded(0);
 
         std::thread::Builder::new()
             .name(
@@ -167,12 +169,24 @@ impl ThreadedUdpSocket {
                 }
                 .to_owned(),
             )
-            .spawn(|| {
+            .spawn(move || {
                 tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()
                     .expect("Failed to spawn tokio runtime on UDP thread")
                     .block_on(async move {
+                        let mut socket = match sf(&addr) {
+                            Ok(s) => {
+                                let _ = error_tx.send(Ok(()));
+
+                                s
+                            }
+                            Err(e) => {
+                                let _ = error_tx.send(Err(e));
+                                return;
+                            }
+                        };
+
                         loop {
                             match futures::future::select(
                                 outbound_rx.recv_async(),
@@ -209,6 +223,8 @@ impl ThreadedUdpSocket {
                         }
                     })
             })?;
+
+        error_rx.recv().map_err(io::Error::other)??;
 
         Ok(Self {
             outbound_tx: outbound_tx.into_sink(),
