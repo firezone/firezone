@@ -357,7 +357,7 @@ resource "google_compute_region_instance_group_manager" "application" {
 
 # TODO: Rate limit requests to the relays by source IP address
 
-# Open ports for the web
+# Open ports for STUN and TURN
 resource "google_compute_firewall" "stun-turn-ipv4" {
   project = var.project_id
 

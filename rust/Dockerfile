@@ -10,8 +10,9 @@ ARG PACKAGE
 FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION} AS chef
 
 ARG CARGO_CHEF_VERSION
+# openssl-dev can be removed after https://github.com/tauri-apps/tauri/pull/12445 is shipped
 RUN set -xe \
-    && apk add --no-cache musl-dev  \
+    && apk add --no-cache musl-dev openssl-dev \
     && cargo install cargo-chef --locked --version=${CARGO_CHEF_VERSION} \
     && rm -rf $CARGO_HOME/registry/
 
