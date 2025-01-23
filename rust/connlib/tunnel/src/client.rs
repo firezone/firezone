@@ -449,10 +449,21 @@ impl ClientState {
         };
         let domain = question.into_qname();
 
-        tracing::debug!(%domain, "Clearing DNS resource NAT");
+        let mut any_deleted = false;
 
         self.dns_resource_nat_by_gateway
-            .retain(|(_, candidate), _| candidate != &domain);
+            .retain(|(_, candidate), _| {
+                if candidate == &domain {
+                    any_deleted = true;
+                    return false;
+                }
+
+                true
+            });
+
+        if any_deleted {
+            tracing::debug!(%domain, "Cleared DNS resource NAT");
+        }
     }
 
     fn is_cidr_resource_connected(&self, resource: &ResourceId) -> bool {
