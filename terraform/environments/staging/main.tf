@@ -49,6 +49,8 @@ module "google-cloud-project" {
   organization_id       = "335836213177"
   billing_account_id    = "01DFC9-3D6951-579BE1"
   billing_budget_amount = var.billing_budget_amount
+
+  auto_create_network = false
 }
 
 # Grant owner access to the project
