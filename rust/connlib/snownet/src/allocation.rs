@@ -563,20 +563,18 @@ impl Allocation {
                 }
 
                 self.allocation_lifetime = Some((now, lifetime));
-                let updated_ip4 = update_candidate(
+                update_candidate(
                     maybe_ip4_relay_candidate,
                     &mut self.ip4_allocation,
                     &mut self.events,
                 );
-                let updated_ip6 = update_candidate(
+                update_candidate(
                     maybe_ip6_relay_candidate,
                     &mut self.ip6_allocation,
                     &mut self.events,
                 );
 
-                if updated_ip4 || updated_ip6 {
-                    self.log_update(now);
-                }
+                self.log_update(now);
 
                 while let Some(peer) = self.buffered_channel_bindings.dequeue() {
                     debug_assert!(
