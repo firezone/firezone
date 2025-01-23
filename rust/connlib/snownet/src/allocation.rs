@@ -513,15 +513,7 @@ impl Allocation {
                 };
 
                 let maybe_candidate = message.attributes().find_map(|a| srflx_candidate(local, a));
-                update_candidate(
-                    maybe_candidate.clone(),
-                    current_srflx_candidate,
-                    &mut self.events,
-                );
-
-                // Since we use binding requests to keep NAT bindings alive, we don't want to log
-                // every time we receive a binding response. Only log if the candidate has changed.
-                if maybe_candidate != current_srflx_candidate.as_ref().cloned() {
+                if update_candidate(maybe_candidate, current_srflx_candidate, &mut self.events) {
                     self.log_update(now);
                 }
 
@@ -571,18 +563,20 @@ impl Allocation {
                 }
 
                 self.allocation_lifetime = Some((now, lifetime));
-                update_candidate(
+                let updated_ip4 = update_candidate(
                     maybe_ip4_relay_candidate,
                     &mut self.ip4_allocation,
                     &mut self.events,
                 );
-                update_candidate(
+                let updated_ip6 = update_candidate(
                     maybe_ip6_relay_candidate,
                     &mut self.ip6_allocation,
                     &mut self.events,
                 );
 
-                self.log_update(now);
+                if updated_ip4 || updated_ip6 {
+                    self.log_update(now);
+                }
 
                 while let Some(peer) = self.buffered_channel_bindings.dequeue() {
                     debug_assert!(
@@ -1192,22 +1186,29 @@ fn authenticate(message: Message<Attribute>, credentials: &Credentials) -> Messa
     message
 }
 
+/// Updates the current candidate to the new one if it differs.
+///
+/// Returns whether the candidate got updated.
 fn update_candidate(
     maybe_new: Option<Candidate>,
     maybe_current: &mut Option<Candidate>,
     events: &mut VecDeque<Event>,
-) {
+) -> bool {
     match (maybe_new, &maybe_current) {
         (Some(new), Some(current)) if &new != current => {
             events.push_back(Event::New(new.clone()));
             events.push_back(Event::Invalid(current.clone()));
             *maybe_current = Some(new);
+
+            true
         }
         (Some(new), None) => {
             *maybe_current = Some(new.clone());
             events.push_back(Event::New(new));
+
+            true
         }
-        _ => {}
+        _ => false,
     }
 }
 
