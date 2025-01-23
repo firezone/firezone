@@ -173,14 +173,14 @@ public final class Store: ObservableObject {
     return URL(string: settings.authBaseURL)
   }
 
-  func start(token: String? = nil) async throws {
+  private func start(token: String? = nil) throws {
     guard status == .disconnected
     else {
       Log.log("\(#function): Already connected")
       return
     }
 
-    self.vpnConfigurationManager.start(token: token)
+    try self.vpnConfigurationManager.start(token: token)
   }
 
   func stop(clearToken: Bool = false) {
@@ -198,7 +198,7 @@ public final class Store: ObservableObject {
     try await self.vpnConfigurationManager.saveAuthResponse(authResponse)
 
     // Bring the tunnel up and send it a token to start
-    self.vpnConfigurationManager.start(token: authResponse.token)
+    try self.vpnConfigurationManager.start(token: authResponse.token)
   }
 
   func signOut() async throws {

@@ -36,6 +36,11 @@ struct WebAuthSession {
         do {
           try await store.signIn(authResponse: authResponse)
         } catch {
+          let alert = NSAlert()
+          alert.messageText = error.localizedDescription
+          alert.alertStyle = .warning
+          let _ = alert.runModal()
+
           Log.error(error)
         }
       }
