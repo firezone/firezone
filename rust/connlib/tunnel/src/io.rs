@@ -94,7 +94,7 @@ impl Io {
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
-            outbound_packet_buffer: VecDeque::with_capacity(10), // It is unlikely that we process more than 10 packets after 1 GRO call.
+            outbound_packet_buffer: VecDeque::default(),
             timeout: None,
             sockets,
             tcp_socket_factory,
