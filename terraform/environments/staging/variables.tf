@@ -75,3 +75,8 @@ variable "workos_client_id" {
 variable "workos_base_url" {
   type = string
 }
+
+variable "billing_budget_amount" {
+  type        = number
+  description = "Monthly budget in USD for billing alerts"
+}
