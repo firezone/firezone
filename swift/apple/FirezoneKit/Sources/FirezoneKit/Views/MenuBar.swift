@@ -261,7 +261,21 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func signInButtonTapped() {
-    WebAuthSession.signIn(store: model.store)
+    Task.detached {
+      do {
+        try await WebAuthSession.signIn(store: self.model.store)
+      } catch {
+        Log.error(error)
+
+        let alert = await NSAlert()
+        await MainActor.run {
+          alert.messageText = "Error signing in"
+          alert.informativeText = error.localizedDescription
+          alert.alertStyle = .warning
+          let _ = alert.runModal()
+        }
+      }
+    }
   }
 
   @objc private func signOutButtonTapped() {

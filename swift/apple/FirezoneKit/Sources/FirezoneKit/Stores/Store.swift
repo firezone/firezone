@@ -55,7 +55,10 @@ public final class Store: ObservableObject {
   private func initNotifications() {
     // Finish initializing notification binding
     sessionNotification.signInHandler = {
-      WebAuthSession.signIn(store: self)
+      Task.detached {
+        do { try await WebAuthSession.signIn(store: self) }
+        catch { Log.error(error) }
+      }
     }
 
     sessionNotification.$decision
