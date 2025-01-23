@@ -513,9 +513,17 @@ impl Allocation {
                 };
 
                 let maybe_candidate = message.attributes().find_map(|a| srflx_candidate(local, a));
-                update_candidate(maybe_candidate, current_srflx_candidate, &mut self.events);
+                update_candidate(
+                    maybe_candidate.clone(),
+                    current_srflx_candidate,
+                    &mut self.events,
+                );
 
-                self.log_update(now);
+                // Since we use binding requests to keep NAT bindings alive, we don't want to log
+                // every time we receive a binding response. Only log if the candidate has changed.
+                if maybe_candidate != current_srflx_candidate.as_ref().cloned() {
+                    self.log_update(now);
+                }
 
                 // Second, check if we have already determined which socket to use for this relay.
                 // We send 2 BINDING requests to start with (one for each IP version) and the first one coming back wins.
@@ -885,7 +893,7 @@ impl Allocation {
     }
 
     fn log_update(&self, now: Instant) {
-        tracing::debug!(
+        tracing::info!(
             srflx_ip4 = ?self.ip4_srflx_candidate.as_ref().map(|c| c.addr()),
             srflx_ip6 = ?self.ip6_srflx_candidate.as_ref().map(|c| c.addr()),
             relay_ip4 = ?self.ip4_allocation.as_ref().map(|c| c.addr()),
