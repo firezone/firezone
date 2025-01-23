@@ -80,7 +80,7 @@ class UpdateChecker {
                ].contains(error.code) // Don't capture transient errors
             {
               Log.warning("\(#function): Update check failed: \(error)")
-              
+
               return
             }
 
