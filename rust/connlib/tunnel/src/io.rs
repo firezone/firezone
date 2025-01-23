@@ -91,7 +91,7 @@ impl Io {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> Self {
         let mut sockets = Sockets::default();
-        sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
+        sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         Self {
             outbound_packet_buffer: VecDeque::with_capacity(10), // It is unlikely that we process more than 10 packets after 1 GRO call.
@@ -217,7 +217,7 @@ impl Io {
     }
 
     pub fn reset(&mut self) {
-        self.sockets.rebind(self.udp_socket_factory.as_ref());
+        self.sockets.rebind(self.udp_socket_factory.clone());
         self.gso_queue.clear();
         self.dns_queries = FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000);
     }
