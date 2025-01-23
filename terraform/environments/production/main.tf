@@ -38,10 +38,11 @@ provider "google-beta" {}
 module "google-cloud-project" {
   source = "../../modules/google-cloud/project"
 
-  id                 = "firezone-prod"
-  name               = "Production Environment"
-  organization_id    = "335836213177"
-  billing_account_id = "0199BA-489CDD-F385C8"
+  id                    = "firezone-prod"
+  name                  = "Production Environment"
+  organization_id       = "335836213177"
+  billing_account_id    = "0199BA-489CDD-F385C8"
+  billing_budget_amount = var.billing_budget_amount
 
   auto_create_network = false
 }

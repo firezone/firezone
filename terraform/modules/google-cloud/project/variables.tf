@@ -6,6 +6,11 @@ variable "billing_account_id" {
   description = "ID of a Google Cloud Billing Account which will be used to pay for resources"
 }
 
+variable "billing_budget_amount" {
+  type        = number
+  description = "Monthly budget for the billing account in USD"
+}
+
 variable "name" {
   description = "Name of a Google Cloud Project"
 }

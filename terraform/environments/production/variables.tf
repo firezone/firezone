@@ -97,3 +97,8 @@ variable "portal_image_tag" {
   type    = string
   default = null
 }
+
+variable "billing_budget_amount" {
+  type        = number
+  description = "Monthly budget in USD for billing alerts"
+}
