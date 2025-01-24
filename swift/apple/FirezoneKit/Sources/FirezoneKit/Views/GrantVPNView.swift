@@ -46,28 +46,54 @@ final class GrantVPNViewModel: ObservableObject {
       }
     }
   }
-#endif
 
   func grantPermissionButtonTapped() {
     Log.log("\(#function)")
-    Task {
+    Task.detached { [weak self] in
+      guard let self else { return }
+
       do {
         try await store.grantVPNPermission()
 
-#if os(macOS)
         // The window has a tendency to go to the background after allowing the
         // VPN configuration
-        NSApp.activate(ignoringOtherApps: true)
-#endif
+        await NSApp.activate(ignoringOtherApps: true)
       } catch {
         Log.error(error)
+        await macOSAlert.show(for: error)
       }
     }
   }
+#endif
+
+#if os(iOS)
+  func grantPermissionButtonTapped(errorHandler: GlobalErrorHandler) {
+    Log.log("\(#function)")
+    Task.detached { [weak self] in
+      guard let self else { return }
+
+      do {
+        try await store.grantVPNPermission()
+      } catch {
+        Log.error(error)
+
+        await MainActor.run {
+          errorHandler.handle(
+            ErrorAlert(
+              title: "Error installing VPN configuration",
+              error: error
+            )
+          )
+        }
+      }
+    }
+  }
+#endif
 }
 
 struct GrantVPNView: View {
   @ObservedObject var model: GrantVPNViewModel
+  @EnvironmentObject var errorHandler: GlobalErrorHandler
 
   var body: some View {
 #if os(iOS)
@@ -92,7 +118,7 @@ struct GrantVPNView: View {
           .imageScale(.large)
         Spacer()
         Button("Grant VPN Permission") {
-          model.grantPermissionButtonTapped()
+          model.grantPermissionButtonTapped(errorHandler: errorHandler)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
