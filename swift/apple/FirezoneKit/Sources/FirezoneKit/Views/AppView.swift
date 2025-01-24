@@ -55,7 +55,7 @@ public class AppViewModel: ObservableObject {
         if vpnConfigurationStatus == .disconnected {
 
           // Try to connect on start
-          await self.store.vpnConfigurationManager.start()
+          try await self.store.vpnConfigurationManager.start()
         }
       } catch {
         Log.error(error)

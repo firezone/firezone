@@ -13,6 +13,7 @@ struct iOSNavigationView<Content: View>: View {
   @State private var isSettingsPresented = false
   @ObservedObject var model: AppViewModel
   @Environment(\.openURL) var openURL
+  @EnvironmentObject var errorHandler: GlobalErrorHandler
 
   let content: Content
 
@@ -25,8 +26,19 @@ struct iOSNavigationView<Content: View>: View {
     NavigationView {
       content
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarItems(leading: AuthMenu)
-        .navigationBarItems(trailing: SettingsButton)
+        .navigationBarItems(leading: AuthMenu, trailing: SettingsButton)
+        .alert(
+          item: $errorHandler.currentAlert,
+          content: { alert in
+            Alert(
+              title: Text(alert.title),
+              message: Text(alert.error.localizedDescription),
+              dismissButton: .default(Text("OK")) {
+                errorHandler.clear()
+              }
+            )
+          }
+        )
     }
     .sheet(isPresented: $isSettingsPresented) {
       SettingsView(favorites: model.favorites, model: SettingsViewModel(store: model.store))
@@ -54,7 +66,22 @@ struct iOSNavigationView<Content: View>: View {
         }
       } else {
         Button(action: {
-          WebAuthSession.signIn(store: model.store)
+          Task.detached {
+            do {
+              try await WebAuthSession.signIn(store: model.store)
+            } catch {
+              Log.error(error)
+
+              await MainActor.run {
+                self.errorHandler.handle(
+                  ErrorAlert(
+                    title: "Error signing in",
+                    error: error
+                  )
+                )
+              }
+            }
+          }
         }) {
           Label("Sign in", systemImage: "person.crop.circle.fill.badge.plus")
         }

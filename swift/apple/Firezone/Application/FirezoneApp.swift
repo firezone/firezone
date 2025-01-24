@@ -16,6 +16,7 @@ struct FirezoneApp: App {
   @StateObject var favorites: Favorites
   @StateObject var appViewModel: AppViewModel
   @StateObject var store: Store
+  @StateObject private var errorHandler = GlobalErrorHandler()
 
   init() {
     // Initialize Telemetry as early as possible
@@ -35,7 +36,7 @@ struct FirezoneApp: App {
   var body: some Scene {
 #if os(iOS)
     WindowGroup {
-      AppView(model: appViewModel)
+      AppView(model: appViewModel).environmentObject(errorHandler)
     }
 #elseif os(macOS)
     WindowGroup(

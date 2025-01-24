@@ -271,7 +271,7 @@ public class VPNConfigurationManager {
     Telemetry.setEnvironmentOrClose(settings.apiURL)
   }
 
-  func start(token: String? = nil) {
+  func start(token: String? = nil) throws {
     var options: [String: NSObject] = [:]
 
     // Pass token if provided
@@ -285,11 +285,7 @@ public class VPNConfigurationManager {
       options.merge(["id": id as NSObject]) { _, n in n }
     }
 
-    do {
-      try session()?.startTunnel(options: options)
-    } catch {
-      Log.error(error)
-    }
+    try session()?.startTunnel(options: options)
   }
 
   func stop(clearToken: Bool = false) {

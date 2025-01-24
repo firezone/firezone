@@ -9,10 +9,24 @@ import Foundation
 
 enum AuthClientError: Error {
   case invalidCallbackURL
-  case invalidStateReturnedInCallback(expected: String, got: String)
-  case authResponseError(Error)
-  case sessionFailure(Error)
   case randomNumberGenerationFailure(errorStatus: Int32)
+
+  var description: String {
+    switch self {
+    case .invalidCallbackURL:
+      return """
+      Invalid callback URL. Please try signing in again.
+      If this issue persists, contact your administrator.
+      """
+    case .randomNumberGenerationFailure(let errorStatus):
+      return """
+      Could not generate secure sign in params. Please try signing in again.
+      If this issue persists, contact your administrator.
+
+      Code: \(errorStatus)
+      """
+    }
+  }
 }
 
 struct AuthClient {
