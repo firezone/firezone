@@ -16,13 +16,29 @@ public final class GrantNotificationsViewModel: ObservableObject {
     self.store = store
   }
 
-  func grantNotificationButtonTapped() {
-    store.requestNotifications()
+  func grantNotificationButtonTapped(errorHandler: GlobalErrorHandler) {
+    Task.detached { [weak self] in
+      guard let self else { return }
+
+      do { try await store.requestNotifications() }
+      catch {
+        Log.error(error)
+
+        await MainActor.run {
+          errorHandler.handle(ErrorAlert(
+            title: "Error granting notifications",
+            error: error
+          ))
+        }
+      }
+    }
+
   }
 }
 
 struct GrantNotificationsView: View {
   @ObservedObject var model: GrantNotificationsViewModel
+  @EnvironmentObject var errorHandler: GlobalErrorHandler
 
   public var body: some View {
     VStack(
@@ -46,7 +62,7 @@ struct GrantNotificationsView: View {
           .imageScale(.large)
         Spacer()
         Button("Grant Notification Permission") {
-          model.grantNotificationButtonTapped()
+          model.grantNotificationButtonTapped(errorHandler: errorHandler)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)

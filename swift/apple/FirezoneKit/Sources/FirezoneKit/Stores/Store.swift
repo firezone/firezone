@@ -29,9 +29,7 @@ public final class Store: ObservableObject {
   @Published private(set) var systemExtensionStatus: SystemExtensionStatus?
 #endif
 
-  // This is not currently updated after it is initialized, but
-  // we could periodically update it if we need to.
-  @Published private(set) var decision: UNAuthorizationStatus
+  @Published private(set) var canShowNotifications: Bool?
 
   let vpnConfigurationManager: VPNConfigurationManager
   private var sessionNotification: SessionNotification
@@ -40,7 +38,6 @@ public final class Store: ObservableObject {
 
   public init() {
     // Initialize all stored properties
-    self.decision = .authorized
     self.settings = Settings.defaultValue
     self.sessionNotification = SessionNotification()
     self.vpnConfigurationManager = VPNConfigurationManager()
@@ -61,11 +58,11 @@ public final class Store: ObservableObject {
       }
     }
 
-    sessionNotification.$decision
+    sessionNotification.$canShowNotifications
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] decision in
+      .sink(receiveValue: { [weak self] canShowNotifications in
         guard let self = self else { return }
-        self.decision = decision
+        self.canShowNotifications = canShowNotifications
       })
       .store(in: &cancellables)
   }
@@ -166,9 +163,9 @@ public final class Store: ObservableObject {
     try await bindToVPNConfigurationUpdates()
   }
 
-  func requestNotifications() {
+  func requestNotifications() async throws {
     #if os(iOS)
-    sessionNotification.askUserForNotificationPermissions()
+    try await sessionNotification.askUserForNotificationPermissions()
     #endif
   }
 

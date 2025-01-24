@@ -23,11 +23,9 @@ public enum NotificationIndentifier: String {
 
 public class SessionNotification: NSObject {
   public var signInHandler: (() -> Void)? = nil
-  @Published private(set) var decision: UNAuthorizationStatus
+  @Published private(set) var canShowNotifications: Bool?
 
   public override init() {
-    self.decision = .notDetermined
-
     super.init()
 
 #if os(iOS)
@@ -55,24 +53,21 @@ public class SessionNotification: NSObject {
     notificationCenter.setNotificationCategories([certificateExpiryCategory])
 
     notificationCenter.getNotificationSettings { notificationSettings in
-      self.decision = notificationSettings.authorizationStatus
+      self.canShowNotifications = notificationSettings.authorizationStatus == .authorized
     }
 #endif
   }
 
 #if os(iOS)
-  func askUserForNotificationPermissions() {
-    guard case .notDetermined = self.decision else {
-      Log.log("Already determined!")
+  func askUserForNotificationPermissions() async throws {
+    guard !(self.canShowNotifications == true) else {
+      Log.log("Already authorized!")
       return
     }
 
     let notificationCenter = UNUserNotificationCenter.current()
-    notificationCenter.requestAuthorization(options: [.sound, .alert]) { _, _ in
-      notificationCenter.getNotificationSettings { notificationSettings in
-        self.decision = notificationSettings.authorizationStatus
-      }
-    }
+    self.canShowNotifications = try await notificationCenter
+      .requestAuthorization(options: [.sound, .alert])
   }
 
   func loadAuthorizationStatus(handler: (UNAuthorizationStatus) -> Void) {

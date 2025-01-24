@@ -24,7 +24,7 @@ public class AppViewModel: ObservableObject {
   let store: Store
 
   @Published private(set) var status: NEVPNStatus?
-  @Published private(set) var decision: UNAuthorizationStatus?
+  @Published private(set) var canShowNotifications: Bool?
 
   private var cancellables = Set<AnyCancellable>()
 
@@ -71,13 +71,11 @@ public class AppViewModel: ObservableObject {
       })
       .store(in: &cancellables)
 
-    store.$decision
+    store.$canShowNotifications
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] decision in
+      .sink(receiveValue: { [weak self] canShowNotifications in
         guard let self = self else { return }
-
-        Log.log("Decision: \(decision)")
-        self.decision = decision
+        self.canShowNotifications = canShowNotifications
       })
       .store(in: &cancellables)
   }
@@ -93,12 +91,12 @@ public struct AppView: View {
   @ViewBuilder
   public var body: some View {
 #if os(iOS)
-    switch (model.status, model.decision) {
-    case (nil, _), (_, nil):
+    switch (model.status, model.canShowNotifications) {
+    case (nil, _):
       ProgressView()
     case (.invalid, _):
       GrantVPNView(model: GrantVPNViewModel(store: model.store))
-    case (.disconnected, .notDetermined):
+    case (_, nil):
       GrantNotificationsView(model: GrantNotificationsViewModel(store: model.store))
     case (.disconnected, _):
       iOSNavigationView(model: model) {
