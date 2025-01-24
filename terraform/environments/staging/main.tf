@@ -44,11 +44,10 @@ provider "google-beta" {}
 module "google-cloud-project" {
   source = "../../modules/google-cloud/project"
 
-  id                    = "firezone-staging"
-  name                  = "Staging Environment"
-  organization_id       = "335836213177"
-  billing_account_id    = "01DFC9-3D6951-579BE1"
-  billing_budget_amount = var.billing_budget_amount
+  id                 = "firezone-staging"
+  name               = "Staging Environment"
+  organization_id    = "335836213177"
+  billing_account_id = "01DFC9-3D6951-579BE1"
 
   auto_create_network = false
 }
