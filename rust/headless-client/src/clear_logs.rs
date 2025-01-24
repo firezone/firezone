@@ -66,10 +66,7 @@ fn choose_logs_to_delete(paths: &[PathBuf]) -> Vec<&Path> {
         .filter_map(|path| {
             // Don't delete files if we can't parse their stems as UTF-8.
             let stem = path.file_stem()?.to_str()?;
-            if !stem.starts_with("connlib.") {
-                // Delete any non-log files like crash dumps.
-                return Some(path.as_path());
-            }
+
             (stem < most_recent_stem).then_some(path.as_path())
         })
         .collect()
