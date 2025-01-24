@@ -388,7 +388,8 @@ extension Adapter: CallbackHandlerDelegate {
 
         networkSettings.apply()
       case .tunnelStopped:
-        Log.error(AdapterError.invalidState(self.state))
+        // Callback was processed after tunnel stopped; nothing to do
+        Log.debug("\(AdapterError.invalidState(self.state))")
       }
     }
   }
