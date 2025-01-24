@@ -452,7 +452,7 @@ where
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
-            .encapsulate(packet.packet(), &mut buffer[4..], now)?
+            .encapsulate(packet, &mut buffer[4..], now)?
             .map(|p| p.len())
         // Mapping to len() here terminate the mutable borrow of buffer, allowing re-borrowing further down.
         else {
@@ -1666,7 +1666,7 @@ where
         self.transition_to_idle(peer_socket, agent);
     }
 
-    fn on_outgoing(&mut self, agent: &mut IceAgent, now: Instant) {
+    fn on_outgoing(&mut self, agent: &mut IceAgent, packet: &IpPacket, now: Instant) {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
             Self::Connected { last_outgoing, .. } => {
@@ -1676,10 +1676,10 @@ where
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(peer_socket, agent, now);
+        self.transition_to_connected(peer_socket, agent, packet, now);
     }
 
-    fn on_incoming(&mut self, agent: &mut IceAgent, now: Instant) {
+    fn on_incoming(&mut self, agent: &mut IceAgent, packet: &IpPacket, now: Instant) {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
             Self::Connected { last_incoming, .. } => {
@@ -1689,7 +1689,7 @@ where
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(peer_socket, agent, now);
+        self.transition_to_connected(peer_socket, agent, packet, now);
     }
 
     fn transition_to_idle(&mut self, peer_socket: PeerSocket<RId>, agent: &mut IceAgent) {
@@ -1702,9 +1702,10 @@ where
         &mut self,
         peer_socket: PeerSocket<RId>,
         agent: &mut IceAgent,
+        packet: &IpPacket,
         now: Instant,
     ) {
-        tracing::debug!("Connection resumed");
+        tracing::debug!(?packet, "Connection resumed");
         *self = Self::Connected {
             peer_socket,
             last_outgoing: now,
@@ -1991,13 +1992,15 @@ where
 
     fn encapsulate<'b>(
         &mut self,
-        packet: &[u8],
+        packet: IpPacket,
         buffer: &'b mut [u8],
         now: Instant,
     ) -> Result<Option<&'b [u8]>, Error> {
         let _guard = self.span.enter();
 
-        let len = match self.tunnel.encapsulate_at(packet, buffer, now) {
+        self.state.on_outgoing(&mut self.agent, &packet, now);
+
+        let len = match self.tunnel.encapsulate_at(packet.packet(), buffer, now) {
             TunnResult::Done => return Ok(None),
             TunnResult::Err(e) => return Err(Error::Encapsulate(e)),
             TunnResult::WriteToNetwork(packet) => packet.len(),
@@ -2005,8 +2008,6 @@ where
                 unreachable!("never returned from encapsulate")
             }
         };
-
-        self.state.on_outgoing(&mut self.agent, now);
 
         Ok(Some(&buffer[..len]))
     }
@@ -2098,8 +2099,8 @@ where
             }
         };
 
-        if control_flow.is_continue() {
-            self.state.on_incoming(&mut self.agent, now);
+        if let ControlFlow::Continue(packet) = &control_flow {
+            self.state.on_incoming(&mut self.agent, packet, now);
         }
 
         control_flow
