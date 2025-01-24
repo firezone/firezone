@@ -513,9 +513,9 @@ impl Allocation {
                 };
 
                 let maybe_candidate = message.attributes().find_map(|a| srflx_candidate(local, a));
-                update_candidate(maybe_candidate, current_srflx_candidate, &mut self.events);
-
-                self.log_update(now);
+                if update_candidate(maybe_candidate, current_srflx_candidate, &mut self.events) {
+                    self.log_update(now);
+                }
 
                 // Second, check if we have already determined which socket to use for this relay.
                 // We send 2 BINDING requests to start with (one for each IP version) and the first one coming back wins.
@@ -1184,22 +1184,29 @@ fn authenticate(message: Message<Attribute>, credentials: &Credentials) -> Messa
     message
 }
 
+/// Updates the current candidate to the new one if it differs.
+///
+/// Returns whether the candidate got updated.
 fn update_candidate(
     maybe_new: Option<Candidate>,
     maybe_current: &mut Option<Candidate>,
     events: &mut VecDeque<Event>,
-) {
+) -> bool {
     match (maybe_new, &maybe_current) {
         (Some(new), Some(current)) if &new != current => {
             events.push_back(Event::New(new.clone()));
             events.push_back(Event::Invalid(current.clone()));
             *maybe_current = Some(new);
+
+            true
         }
         (Some(new), None) => {
             *maybe_current = Some(new.clone());
             events.push_back(Event::New(new));
+
+            true
         }
-        _ => {}
+        _ => false,
     }
 }
 
