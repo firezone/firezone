@@ -51,6 +51,7 @@ jobs:
       # mark:next-gui-version
       FIREZONE_GUI_VERSION: 1.4.1
       RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
+      TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}.sh
       TARGET_DIR: ../target
       UPLOAD_SCRIPT: ../../scripts/build/tauri-upload-${{ matrix.os }}.sh
     steps:
@@ -90,28 +91,32 @@ jobs:
         shell: bash
         run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.FIREZONE_GUI_VERSION }}_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
         shell: bash
         run: ${{ env.RENAME_SCRIPT }}
-      - name: Upload debug symbols to Sentry
-        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
-        run: |
-          sentry-cli debug-files upload --log-level info --project gui-client-gui --include-sources ../target
-          sentry-cli debug-files upload --log-level info --project gui-client-ipc-service --include-sources ../target
-      - name: Upload package
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
+      - name: Upload deb / msi package
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: ${{ env.ARTIFACT_DST }}-pkg
           path: ${{ env.ARTIFACT_SRC }}.${{ matrix.pkg-extension }}
           if-no-files-found: error
       - name: Upload rpm package
-        if: "${{ runner.os == 'Linux' && github.event_name == 'workflow_dispatch' }}"
+        if: "${{ runner.os == 'Linux' }}"
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: ${{ env.ARTIFACT_DST }}-rpm
           path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
+      - name: Test installation
+        # if: "${{ github.event_name == 'workflow_dispatch' }}"
+        shell: bash
+        run: ${{ env.TEST_INSTALL_SCRIPT }}
+
+      - name: Upload debug symbols to Sentry
+        if: "${{ github.event_name == 'workflow_dispatch' }}"
+        run: |
+          sentry-cli debug-files upload --log-level info --project gui-client-gui --include-sources ../target
+          sentry-cli debug-files upload --log-level info --project gui-client-ipc-service --include-sources ../target
+
       - name: Upload Release Assets
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         env:
