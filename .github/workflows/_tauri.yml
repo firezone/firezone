@@ -107,7 +107,7 @@ jobs:
           path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
       - name: Test installation
-        # if: "${{ github.event_name == 'workflow_dispatch' }}"
+        if: "${{ github.event_name == 'workflow_dispatch' }}"
         shell: bash
         run: ${{ env.TEST_INSTALL_SCRIPT }}
 
