@@ -46,50 +46,48 @@ class UpdateChecker {
         let task = URLSession.shared.dataTask(with: versionCheckUrl) { [weak self] data, response, error in
           guard let self = self else { return }
 
-          do {
-            if let error = error {
-              throw error
-            }
+          if let error = error as NSError?,
+             error.domain == NSURLErrorDomain,
+             [
+              NSURLErrorTimedOut,
+              NSURLErrorCannotFindHost,
+              NSURLErrorCannotConnectToHost,
+              NSURLErrorNetworkConnectionLost,
+              NSURLErrorDNSLookupFailed,
+              NSURLErrorNotConnectedToInternet
+             ].contains(error.code) // Don't capture transient errors
+          {
+            Log.warning("\(#function): Update check failed: \(error)")
 
-            guard let versionInfo = VersionInfo.from(data: data)  else {
-              let attemptedVersion = String(data: data ?? Data(), encoding: .utf8) ?? ""
-              throw UpdateError.invalidVersion(attemptedVersion)
-            }
+            return
+          } else if let error = error {
+            Log.error(error)
 
-            let latestVersion = versionInfo.apple
+            return
+          }
 
-            if latestVersion > marketingVersion {
-              self.updateAvailable = true
+          guard let versionInfo = VersionInfo.from(data: data)  else {
+            let attemptedVersion = String(data: data ?? Data(), encoding: .utf8) ?? ""
+            Log.error(UpdateError.invalidVersion(attemptedVersion))
 
-              if let lastDismissedVersion = getLastDismissedVersion(), lastDismissedVersion >= latestVersion {
-                return
-              }
+            return
+          }
 
-              self.notificationAdapter.showUpdateNotification(version: latestVersion)
-            }
-          } catch {
-            if let error = error as NSError?,
-               error.domain == NSURLErrorDomain,
-               [
-                NSURLErrorTimedOut,
-                NSURLErrorCannotFindHost,
-                NSURLErrorCannotConnectToHost,
-                NSURLErrorNetworkConnectionLost,
-                NSURLErrorDNSLookupFailed,
-                NSURLErrorNotConnectedToInternet
-               ].contains(error.code) // Don't capture transient errors
-            {
-              Log.warning("\(#function): Update check failed: \(error)")
+          let latestVersion = versionInfo.apple
 
+          if latestVersion > marketingVersion {
+            self.updateAvailable = true
+
+            if let lastDismissedVersion = getLastDismissedVersion(), lastDismissedVersion >= latestVersion {
               return
             }
 
-            Log.error(error)
+            self.notificationAdapter.showUpdateNotification(version: latestVersion)
           }
         }
 
-        task.resume()
-    }
+  task.resume()
+}
 
   static func downloadURL() -> URL {
     if BundleHelper.isAppStore() {
