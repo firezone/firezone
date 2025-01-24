@@ -608,7 +608,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.6.0"
-source = "git+https://github.com/firezone/boringtun?branch=fix%2Fno-use-almost-expired-session#d28ffc547dcf58cfe1b2973c50e5514bb87d4dd2"
+source = "git+https://github.com/firezone/boringtun?branch=master#935d9ec7f96d9602d8e4b76721dfc8dc1bec863c"
 dependencies = [
  "aead",
  "base64 0.22.1",
