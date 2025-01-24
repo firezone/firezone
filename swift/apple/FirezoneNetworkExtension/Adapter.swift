@@ -199,7 +199,9 @@ class Adapter {
   ) {
     // This is async to avoid blocking the main UI thread
     workQueue.async { [weak self] in
-      guard let self = self else { return }
+      guard let self = self,
+            case .tunnelStarted(let _session) = self.state
+      else { return }
 
       if hash == Data(SHA256.hash(data: Data((resourceListJSON ?? "").utf8))) {
         // nothing changed
@@ -219,7 +221,10 @@ class Adapter {
 
   public func setInternetResourceEnabled(_ enabled: Bool) {
     workQueue.async { [weak self] in
-      guard let self = self else { return }
+      guard let self = self,
+            case .tunnelStarted(let _session) = self.state
+      else { return }
+
       self.internetResourceEnabled = enabled
       self.resourcesUpdated()
     }
@@ -363,40 +368,36 @@ extension Adapter: CallbackHandlerDelegate {
   ) {
     // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
-      guard let self = self else { return }
-      if networkSettings == nil {
-        // First time receiving this callback, so initialize our network settings
-        networkSettings = NetworkSettings(
-          packetTunnelProvider: packetTunnelProvider)
-      }
+      guard let self = self,
+            case .tunnelStarted(let session) = self.state
+      else { return }
+
+      let networkSettings = self.networkSettings
+      ?? NetworkSettings(packetTunnelProvider: packetTunnelProvider)
 
       Log.log(
         "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses) \(routeListv4) \(routeListv6)")
 
-      switch state {
-      case .tunnelStarted(session: _):
-        guard let networkSettings = networkSettings else { return }
-        networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
-        networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
-        networkSettings.dnsAddresses = dnsAddresses
-        networkSettings.routes4 = try! JSONDecoder().decode(
-        [NetworkSettings.Cidr].self, from: routeListv4.data(using: .utf8)!
-        ).compactMap { $0.asNEIPv4Route }
-        networkSettings.routes6 = try! JSONDecoder().decode(
-        [NetworkSettings.Cidr].self, from: routeListv6.data(using: .utf8)!
-        ).compactMap { $0.asNEIPv6Route }
+      networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
+      networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
+      networkSettings.dnsAddresses = dnsAddresses
+      networkSettings.routes4 = try! JSONDecoder().decode(
+      [NetworkSettings.Cidr].self, from: routeListv4.data(using: .utf8)!
+      ).compactMap { $0.asNEIPv4Route }
+      networkSettings.routes6 = try! JSONDecoder().decode(
+      [NetworkSettings.Cidr].self, from: routeListv6.data(using: .utf8)!
+      ).compactMap { $0.asNEIPv6Route }
 
-        networkSettings.apply()
-      case .tunnelStopped:
-        Log.error(AdapterError.invalidState(self.state))
-      }
+      networkSettings.apply()
     }
   }
 
   public func onUpdateResources(resourceList: String) {
     // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
-      guard let self = self else { return }
+      guard let self = self,
+            case .tunnelStarted(let _session) = self.state
+      else { return }
 
       Log.log("\(#function)")
 
@@ -411,7 +412,9 @@ extension Adapter: CallbackHandlerDelegate {
     // Since connlib has already shutdown by this point, we queue this callback
     // to ensure that we can clean up even if connlib exits before we are done.
     workQueue.async { [weak self] in
-      guard let self = self else { return }
+      guard let self = self,
+            case .tunnelStarted(let _session) = self.state
+      else { return }
       Log.log("\(#function)")
 
       // Set a default stop reason. In the future, we may have more to act upon in
