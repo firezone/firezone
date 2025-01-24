@@ -8,9 +8,6 @@
 import SwiftUI
 import Combine
 
-#if os(macOS)
-import SystemExtensions
-#endif
 
 @MainActor
 final class GrantVPNViewModel: ObservableObject {
@@ -33,23 +30,19 @@ final class GrantVPNViewModel: ObservableObject {
 
 #if os(macOS)
   func installSystemExtensionButtonTapped() {
-    Task {
+    Task.detached { [weak self] in
+      guard let self else { return }
+
       do {
         try await store.installSystemExtension()
 
         // The window has a tendency to go to the background after installing
         // the system extension
-        NSApp.activate(ignoringOtherApps: true)
+        await NSApp.activate(ignoringOtherApps: true)
 
       } catch {
-        if let error = error as? OSSystemExtensionError,
-           case OSSystemExtensionError.requestSuperseded = error { // Code 12
-          // This will happen if the user repeatedly clicks the `Enable` button
-          // before actually enabling it in system settings.
-          Log.info("\(#function): Request superseded: \(error)")
-        } else {
-          Log.error(error)
-        }
+        Log.error(error)
+        await macOSAlert.show(for: error)
       }
     }
   }
