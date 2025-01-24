@@ -94,7 +94,7 @@ jobs:
         shell: bash
         run: ${{ env.RENAME_SCRIPT }}
       - name: Upload debug symbols to Sentry
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         run: |
           sentry-cli debug-files upload --log-level info --project gui-client-gui --include-sources ../target
           sentry-cli debug-files upload --log-level info --project gui-client-ipc-service --include-sources ../target
@@ -113,7 +113,7 @@ jobs:
           path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
       - name: Upload Release Assets
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
