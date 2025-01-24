@@ -15,13 +15,10 @@ final class WelcomeViewModel: ObservableObject {
   init(store: Store) {
     self.store = store
   }
-
-  func signInButtonTapped() {
-    WebAuthSession.signIn(store: store)
-  }
 }
 
 struct WelcomeView: View {
+  @EnvironmentObject var errorHandler: GlobalErrorHandler
   @ObservedObject var model: WelcomeViewModel
 
   var body: some View {
@@ -41,11 +38,25 @@ struct WelcomeView: View {
         """).multilineTextAlignment(.center)
           .padding(.bottom, 10)
         Button("Sign in") {
-          model.signInButtonTapped()
+          Task.detached {
+            do {
+              try await WebAuthSession.signIn(store: model.store)
+            } catch {
+              Log.error(error)
+
+              await MainActor.run {
+                self.errorHandler.handle(ErrorAlert(
+                  title: "Error signing in",
+                  error: error
+                ))
+              }
+            }
+          }
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         Spacer()
-      })
+      }
+    )
   }
 }
