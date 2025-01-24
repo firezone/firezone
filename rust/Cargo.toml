@@ -111,7 +111,7 @@ subtle = "2.5.0"
 swift-bridge = "0.1.57"
 swift-bridge-build = "0.1.57"
 lockfree-object-pool = "0.1.6"
-tauri = { version = "2.2.3", features = [ "native-tls" ] }
+tauri = { version = "2.2.3", features = ["native-tls"] }
 tauri-build = "2.0.1"
 tauri-plugin-dialog = "2.2.0"
 tauri-plugin-notification = "2.2.0"
