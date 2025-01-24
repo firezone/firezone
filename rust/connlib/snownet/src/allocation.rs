@@ -1103,7 +1103,9 @@ impl Allocation {
     #[cfg(not(test))]
     fn check_message_integrity(&self, message: &Message<Attribute>) -> bool {
         let Some(mi) = message.get_attribute::<MessageIntegrity>() else {
-            tracing::debug!("Message does not have a `MessageIntegrity` attribute");
+            if message.method() != BINDING {
+                tracing::debug!("Message does not have a `MessageIntegrity` attribute");
+            }
 
             return false;
         };
