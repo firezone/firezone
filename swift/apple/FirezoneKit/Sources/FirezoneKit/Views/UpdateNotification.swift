@@ -46,14 +46,30 @@ class UpdateChecker {
         let task = URLSession.shared.dataTask(with: versionCheckUrl) { [weak self] data, response, error in
           guard let self = self else { return }
 
-          if let error = error {
+          if let error = error as NSError?,
+             error.domain == NSURLErrorDomain,
+             [
+              NSURLErrorTimedOut,
+              NSURLErrorCannotFindHost,
+              NSURLErrorCannotConnectToHost,
+              NSURLErrorNetworkConnectionLost,
+              NSURLErrorDNSLookupFailed,
+              NSURLErrorNotConnectedToInternet
+             ].contains(error.code) // Don't capture transient errors
+          {
+            Log.warning("\(#function): Update check failed: \(error)")
+
+            return
+          } else if let error = error {
             Log.error(error)
+
             return
           }
 
           guard let versionInfo = VersionInfo.from(data: data)  else {
             let attemptedVersion = String(data: data ?? Data(), encoding: .utf8) ?? ""
             Log.error(UpdateError.invalidVersion(attemptedVersion))
+
             return
           }
 
@@ -68,11 +84,10 @@ class UpdateChecker {
 
             self.notificationAdapter.showUpdateNotification(version: latestVersion)
           }
-
         }
 
-        task.resume()
-    }
+  task.resume()
+}
 
   static func downloadURL() -> URL {
     if BundleHelper.isAppStore() {
