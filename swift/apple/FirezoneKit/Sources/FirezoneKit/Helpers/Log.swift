@@ -196,6 +196,8 @@ private final class LogWriter {
 
     jsonData.append(newLineData)
 
-    workQueue.async { self.handle.write(jsonData) }
+    workQueue.async { [weak self] in
+      self?.handle.write(jsonData)
+    }
   }
 }
