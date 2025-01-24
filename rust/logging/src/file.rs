@@ -43,11 +43,6 @@ pub fn layer<T>(log_dir: &Path) -> (Box<dyn Layer<T> + Send + Sync + 'static>, H
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
-    let (appender_json, handle_json) = new_appender(log_dir.to_path_buf(), "jsonl");
-    let layer_json = tracing_stackdriver::layer()
-        .with_writer(appender_json)
-        .boxed();
-
     let (appender_fmt, handle_fmt) = new_appender(log_dir.to_path_buf(), "log");
     let layer_fmt = tracing_subscriber::fmt::layer()
         .with_ansi(false)
@@ -56,14 +51,13 @@ where
         .boxed();
 
     let handle = Handle {
-        _guard_json: Arc::new(handle_json),
         _guard_fmt: Arc::new(handle_fmt),
     };
 
     // Return the guard so that the caller maintains a handle to it. Otherwise,
     // we have to wait for tracing_appender to flush the logs before exiting.
     // See https://docs.rs/tracing-appender/latest/tracing_appender/non_blocking/struct.WorkerGuard.html
-    (vec![layer_json, layer_fmt].boxed(), handle)
+    (layer_fmt, handle)
 }
 
 fn new_appender(directory: PathBuf, file_extension: &'static str) -> (NonBlocking, WorkerGuard) {
@@ -87,7 +81,6 @@ fn new_appender(directory: PathBuf, file_extension: &'static str) -> (NonBlockin
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct Handle {
-    _guard_json: Arc<WorkerGuard>,
     _guard_fmt: Arc<WorkerGuard>,
 }
 
