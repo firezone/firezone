@@ -36,6 +36,12 @@ export default function GUI({ title }: { title: string }) {
             Disables URO/GRO due to hardware / driver bugs.
           </ChangeItem>
         )}
+        {title == "Linux GUI" && (
+          <ChangeItem pull="7822">
+            Makes the runtime dependency on `update-desktop-database` optional,
+            thus improving compatibility on non-Ubuntu systems.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.4.0" date={new Date("2024-12-13")}>
         <ChangeItem pull="7210">
