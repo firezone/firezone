@@ -138,7 +138,7 @@ struct macOSAlert {
       case .unknownExtensionCategory:
         return """
         The system extension doesn't belong to any recognizable category.
-        Please contact your adminstrator for assistance.
+        Please contact your administrator for assistance.
         """
 
         // Code 8
@@ -163,7 +163,7 @@ struct macOSAlert {
         The FirezoneNetworkExtension was blocked from loading by a system policy.
         This will prevent Firezone from functioning. Please contact your
         administrator for assistance.
-        
+
         Team ID: 47R2M6779T
         Extension Identifier: dev.firezone.firezone.network-extension
         """
