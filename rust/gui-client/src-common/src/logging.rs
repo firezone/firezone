@@ -52,7 +52,7 @@ pub fn setup(directives: &str) -> Result<Handles> {
     let log_path = known_dirs::logs().context("Can't compute app log dir")?;
 
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
-    let (layer, logger) = firezone_logging::file::layer(&log_path);
+    let (layer, logger) = firezone_logging::file::layer(&log_path, "gui-client");
     let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(directives)?);
     let subscriber = Registry::default()
         .with(layer.with_filter(filter))
