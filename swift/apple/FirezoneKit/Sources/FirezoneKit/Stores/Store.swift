@@ -29,8 +29,6 @@ public final class Store: ObservableObject {
   @Published private(set) var systemExtensionStatus: SystemExtensionStatus?
 #endif
 
-  @Published private(set) var canShowNotifications: Bool?
-
   let vpnConfigurationManager: VPNConfigurationManager
   private var sessionNotification: SessionNotification
   private var cancellables: Set<AnyCancellable> = []
@@ -41,30 +39,10 @@ public final class Store: ObservableObject {
     self.settings = Settings.defaultValue
     self.sessionNotification = SessionNotification()
     self.vpnConfigurationManager = VPNConfigurationManager()
-
-    initNotifications()
   }
 
   public func internetResourceEnabled() -> Bool {
     self.vpnConfigurationManager.internetResourceEnabled
-  }
-
-  private func initNotifications() {
-    // Finish initializing notification binding
-    sessionNotification.signInHandler = {
-      Task.detached {
-        do { try await WebAuthSession.signIn(store: self) }
-        catch { Log.error(error) }
-      }
-    }
-
-    sessionNotification.$canShowNotifications
-      .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] canShowNotifications in
-        guard let self = self else { return }
-        self.canShowNotifications = canShowNotifications
-      })
-      .store(in: &cancellables)
   }
 
   func bindToVPNConfigurationUpdates() async throws {
@@ -161,12 +139,6 @@ public final class Store: ObservableObject {
 
     // Reload our state
     try await bindToVPNConfigurationUpdates()
-  }
-
-  func requestNotifications() async throws {
-    #if os(iOS)
-    try await sessionNotification.askUserForNotificationPermissions()
-    #endif
   }
 
   func authURL() -> URL? {

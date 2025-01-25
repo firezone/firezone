@@ -22,19 +22,35 @@ import UserNotifications
 public class AppViewModel: ObservableObject {
   let favorites: Favorites
   let store: Store
+  let sessionNotification: SessionNotification
 
   @Published private(set) var status: NEVPNStatus?
-  @Published private(set) var canShowNotifications: Bool?
+  @Published private(set) var decision: UNAuthorizationStatus?
 
   private var cancellables = Set<AnyCancellable>()
 
   public init(favorites: Favorites, store: Store) {
     self.favorites = favorites
     self.store = store
+    self.sessionNotification = SessionNotification()
+
+    self.sessionNotification.signInHandler = {
+      Task.detached { [weak self] in
+        guard let self else { return }
+
+        do { try await WebAuthSession.signIn(store: self.store) }
+        catch { Log.error(error) }
+      }
+    }
 
     Task.detached { [weak self] in
       guard let self else { return }
 
+      // Load user's decision whether to allow / disallow notifications
+      let decision = await self.sessionNotification.loadAuthorizationStatus()
+      await updateNotificationDecision(to: decision)
+
+      // Load VPN configuration and system extension status
       do {
         try await self.store.bindToVPNConfigurationUpdates()
         let vpnConfigurationStatus = await self.store.status
@@ -70,14 +86,10 @@ public class AppViewModel: ObservableObject {
         self.status = status
       })
       .store(in: &cancellables)
+  }
 
-    store.$canShowNotifications
-      .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] canShowNotifications in
-        guard let self = self else { return }
-        self.canShowNotifications = canShowNotifications
-      })
-      .store(in: &cancellables)
+  func updateNotificationDecision(to newStatus: UNAuthorizationStatus) async {
+    await MainActor.run { self.decision = newStatus }
   }
 }
 
@@ -91,13 +103,18 @@ public struct AppView: View {
   @ViewBuilder
   public var body: some View {
 #if os(iOS)
-    switch (model.status, model.canShowNotifications) {
-    case (nil, _):
+    switch (model.status, model.decision) {
+    case (nil, _), (_, nil):
       ProgressView()
     case (.invalid, _):
       GrantVPNView(model: GrantVPNViewModel(store: model.store))
-    case (_, nil):
-      GrantNotificationsView(model: GrantNotificationsViewModel(store: model.store))
+    case (_, .notDetermined):
+      GrantNotificationsView(model: GrantNotificationsViewModel(
+        sessionNotification: model.sessionNotification,
+        onDecisionChanged: { decision in
+          await model.updateNotificationDecision(to: decision)
+        }
+      ))
     case (.disconnected, _):
       iOSNavigationView(model: model) {
         WelcomeView(model: WelcomeViewModel(store: model.store))
