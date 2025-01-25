@@ -297,6 +297,7 @@ public final class MenuBar: NSObject, ObservableObject {
         try await model.store.grantVPNPermission()
       } catch {
         Log.error(error)
+        await macOSAlert.show(for: error)
       }
     }
   }

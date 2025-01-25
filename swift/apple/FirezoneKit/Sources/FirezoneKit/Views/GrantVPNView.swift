@@ -8,9 +8,6 @@
 import SwiftUI
 import Combine
 
-#if os(macOS)
-import SystemExtensions
-#endif
 
 @MainActor
 final class GrantVPNViewModel: ObservableObject {
@@ -33,48 +30,70 @@ final class GrantVPNViewModel: ObservableObject {
 
 #if os(macOS)
   func installSystemExtensionButtonTapped() {
-    Task {
+    Task.detached { [weak self] in
+      guard let self else { return }
+
       do {
         try await store.installSystemExtension()
 
         // The window has a tendency to go to the background after installing
         // the system extension
-        NSApp.activate(ignoringOtherApps: true)
+        await NSApp.activate(ignoringOtherApps: true)
 
       } catch {
-        if let error = error as? OSSystemExtensionError,
-           case OSSystemExtensionError.requestSuperseded = error { // Code 12
-          // This will happen if the user repeatedly clicks the `Enable` button
-          // before actually enabling it in system settings.
-          Log.info("\(#function): Request superseded: \(error)")
-        } else {
-          Log.error(error)
+        Log.error(error)
+        await macOSAlert.show(for: error)
+      }
+    }
+  }
+
+  func grantPermissionButtonTapped() {
+    Log.log("\(#function)")
+    Task.detached { [weak self] in
+      guard let self else { return }
+
+      do {
+        try await store.grantVPNPermission()
+
+        // The window has a tendency to go to the background after allowing the
+        // VPN configuration
+        await NSApp.activate(ignoringOtherApps: true)
+      } catch {
+        Log.error(error)
+        await macOSAlert.show(for: error)
+      }
+    }
+  }
+#endif
+
+#if os(iOS)
+  func grantPermissionButtonTapped(errorHandler: GlobalErrorHandler) {
+    Log.log("\(#function)")
+    Task.detached { [weak self] in
+      guard let self else { return }
+
+      do {
+        try await store.grantVPNPermission()
+      } catch {
+        Log.error(error)
+
+        await MainActor.run {
+          errorHandler.handle(
+            ErrorAlert(
+              title: "Error installing VPN configuration",
+              error: error
+            )
+          )
         }
       }
     }
   }
 #endif
-
-  func grantPermissionButtonTapped() {
-    Log.log("\(#function)")
-    Task {
-      do {
-        try await store.grantVPNPermission()
-
-#if os(macOS)
-        // The window has a tendency to go to the background after allowing the
-        // VPN configuration
-        NSApp.activate(ignoringOtherApps: true)
-#endif
-      } catch {
-        Log.error(error)
-      }
-    }
-  }
 }
 
 struct GrantVPNView: View {
   @ObservedObject var model: GrantVPNViewModel
+  @EnvironmentObject var errorHandler: GlobalErrorHandler
 
   var body: some View {
 #if os(iOS)
@@ -99,7 +118,7 @@ struct GrantVPNView: View {
           .imageScale(.large)
         Spacer()
         Button("Grant VPN Permission") {
-          model.grantPermissionButtonTapped()
+          model.grantPermissionButtonTapped(errorHandler: errorHandler)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
