@@ -11,15 +11,18 @@ import SystemConfiguration
 
 class SystemConfigurationResolvers {
   enum SystemConfigurationError: Error {
-    case failedToCreateDynamicStore
-    case unableToRetrieveNetworkServices
+    case failedToCreateDynamicStore(code: Int32)
+    case unableToRetrieveNetworkServices(code: Int32)
+    case unableToCopyValue(path: String, code: Int32)
 
     var localizedDescription: String {
       switch self {
-      case .failedToCreateDynamicStore:
-        return "Failed to create dynamic store"
-      case .unableToRetrieveNetworkServices:
-        return "Unable to retrieve network services"
+      case .failedToCreateDynamicStore(let code):
+        return "Failed to create dynamic store. Code: \(code)"
+      case .unableToRetrieveNetworkServices(let code):
+        return "Unable to retrieve network services. Code: \(code)"
+      case .unableToCopyValue(let path, let code):
+        return "Unable to copy value from path \(path). Code: \(code)"
       }
     }
   }
@@ -31,7 +34,8 @@ class SystemConfigurationResolvers {
   init() {
     guard let dynamicStore = SCDynamicStoreCreate(nil, storeName, nil, nil)
     else {
-      Log.error(SystemConfigurationError.failedToCreateDynamicStore)
+      let code = SCError()
+      Log.error(SystemConfigurationError.failedToCreateDynamicStore(code: code))
       self.dynamicStore = nil
       return
     }
@@ -60,7 +64,8 @@ class SystemConfigurationResolvers {
     let interfaceSearchKey = "Setup:/Network/Service/.*/Interface" as CFString
     guard let services = SCDynamicStoreCopyKeyList(dynamicStore, interfaceSearchKey) as? [String]
     else {
-      Log.error(SystemConfigurationError.unableToRetrieveNetworkServices)
+      let code = SCError()
+      Log.error(SystemConfigurationError.unableToRetrieveNetworkServices(code: code))
       return []
     }
 
@@ -91,9 +96,17 @@ class SystemConfigurationResolvers {
   }
 
   private func fetch(path: String, key: String) -> Any? {
-    guard let dynamicStore = dynamicStore,
-          let result = SCDynamicStoreCopyValue(dynamicStore, path as CFString),
-          let value = result[key]
+    guard let dynamicStore = dynamicStore
+    else { return nil }
+
+    guard let result = SCDynamicStoreCopyValue(dynamicStore, path as CFString)
+    else {
+      let code = SCError()
+      Log.error(SystemConfigurationError.unableToCopyValue(path: path, code: code))
+      return nil
+    }
+
+    guard let value = result[key]
     else { return nil }
 
     return value
