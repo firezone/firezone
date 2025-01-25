@@ -108,6 +108,7 @@ public class SessionNotification: NSObject {
 #elseif os(macOS)
   // In macOS, use a Cocoa alert.
   // This gets called from the app side.
+  @MainActor
   func showSignedOutAlertmacOS() {
     let alert = NSAlert()
     alert.messageText = "Your Firezone session has ended"
