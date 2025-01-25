@@ -214,15 +214,23 @@ public final class Store: ObservableObject {
   func beginUpdatingResources(callback: @escaping (ResourceList) -> Void) {
     Log.log("\(#function)")
 
-    self.vpnConfigurationManager.fetchResources(callback: callback)
-    let intervalInSeconds: TimeInterval = 1
-    let timer = Timer(timeInterval: intervalInSeconds, repeats: true) { [weak self] _ in
-      Task.detached {
+    // Define the Timer's closure
+    let updateResources: @Sendable (Timer) -> Void = { _timer in
+      Task.detached { [weak self] in
         await self?.vpnConfigurationManager.fetchResources(callback: callback)
       }
     }
+
+    // Configure the timer
+    let intervalInSeconds: TimeInterval = 1
+    let timer = Timer(timeInterval: intervalInSeconds, repeats: true, block: updateResources)
+
+    // Schedule the timer on the main runloop
     RunLoop.main.add(timer, forMode: .common)
     resourcesTimer = timer
+
+    // We're impatient, make one call now
+    updateResources(timer)
   }
 
   func endUpdatingResources() {
