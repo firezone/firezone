@@ -199,9 +199,12 @@ class Adapter {
   ) {
     // This is async to avoid blocking the main UI thread
     workQueue.async { [weak self] in
-      guard let self = self,
-            case .tunnelStarted(let _session) = self.state
-      else { return }
+      guard let self = self else { return }
+      guard case .tunnelStarted(let _session) = self.state
+      else {
+        Log.debug("\(#function): Invalid state \(self.state)")
+        return
+      }
 
       if hash == Data(SHA256.hash(data: Data((resourceListJSON ?? "").utf8))) {
         // nothing changed
@@ -221,9 +224,12 @@ class Adapter {
 
   public func setInternetResourceEnabled(_ enabled: Bool) {
     workQueue.async { [weak self] in
-      guard let self = self,
-            case .tunnelStarted(let _session) = self.state
-      else { return }
+      guard let self = self else { return }
+      guard case .tunnelStarted(let _session) = self.state
+      else {
+        Log.debug("\(#function): Invalid state \(self.state)")
+        return
+      }
 
       self.internetResourceEnabled = enabled
       self.resourcesUpdated()
@@ -368,9 +374,12 @@ extension Adapter: CallbackHandlerDelegate {
   ) {
     // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
-      guard let self = self,
-            case .tunnelStarted(let session) = self.state
-      else { return }
+      guard let self = self else { return }
+      guard case .tunnelStarted(let _session) = self.state
+      else {
+        Log.debug("\(#function): Invalid state \(self.state)")
+        return
+      }
 
       let networkSettings = self.networkSettings
       ?? NetworkSettings(packetTunnelProvider: packetTunnelProvider)
@@ -395,9 +404,12 @@ extension Adapter: CallbackHandlerDelegate {
   public func onUpdateResources(resourceList: String) {
     // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
-      guard let self = self,
-            case .tunnelStarted(let _session) = self.state
-      else { return }
+      guard let self = self else { return }
+      guard case .tunnelStarted(let _session) = self.state
+      else {
+        Log.debug("Tried to call \(#function) while state is \(self.state)")
+        return
+      }
 
       Log.log("\(#function)")
 
@@ -412,9 +424,12 @@ extension Adapter: CallbackHandlerDelegate {
     // Since connlib has already shutdown by this point, we queue this callback
     // to ensure that we can clean up even if connlib exits before we are done.
     workQueue.async { [weak self] in
-      guard let self = self,
-            case .tunnelStarted(let _session) = self.state
-      else { return }
+      guard let self = self else { return }
+      guard case .tunnelStarted(let _session) = self.state
+      else {
+        Log.debug("\(#function): Invalid state \(self.state)")
+        return
+      }
       Log.log("\(#function)")
 
       // Set a default stop reason. In the future, we may have more to act upon in
