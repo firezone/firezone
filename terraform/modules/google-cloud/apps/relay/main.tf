@@ -121,6 +121,40 @@ resource "google_project_iam_member" "cloudtrace" {
   member = "serviceAccount:${google_service_account.application.email}"
 }
 
+# Create network
+resource "google_compute_network" "network" {
+  project = var.project_id
+  name    = "relays"
+
+  routing_mode = "GLOBAL"
+
+  auto_create_subnetworks = false
+
+  depends_on = [
+    google_project_service.compute
+  ]
+}
+
+resource "google_compute_subnetwork" "subnetwork" {
+  for_each = var.instances
+
+  project = var.project_id
+
+  name   = "relays-${each.key}"
+  region = each.key
+
+  network = google_compute_network.network.self_link
+
+  log_config {
+    aggregation_interval = "INTERVAL_10_MIN"
+    metadata             = "INCLUDE_ALL_METADATA"
+  }
+
+  stack_type               = "IPV4_IPV6"
+  ip_cidr_range            = each.value.cidr_range
+  ipv6_access_type         = "EXTERNAL"
+  private_ip_google_access = true
+}
 
 resource "google_compute_reservation" "relay_reservation" {
   for_each = var.instances
@@ -147,7 +181,7 @@ resource "google_compute_instance_template" "application" {
 
   project = var.project_id
 
-  name_prefix = "${local.application_name}-${each.key}-${var.naming_suffix}-"
+  name_prefix = "${local.application_name}-${each.key}-"
 
   description = "This template is used to create ${local.application_name} instances using Terraform."
 
@@ -184,7 +218,7 @@ resource "google_compute_instance_template" "application" {
   }
 
   network_interface {
-    subnetwork = var.instances[each.key].subnet
+    subnetwork = google_compute_subnetwork.subnetwork[each.key].self_link
 
     stack_type = "IPV4_IPV6"
 
@@ -302,7 +336,7 @@ resource "google_compute_region_instance_group_manager" "application" {
 
   project = var.project_id
 
-  name = "${local.application_name}-group-${each.key}-${var.naming_suffix}"
+  name = "${local.application_name}-group-${each.key}"
 
   base_instance_name = local.application_name
 
@@ -362,7 +396,7 @@ resource "google_compute_firewall" "stun-turn-ipv4" {
   project = var.project_id
 
   name    = "${local.application_name}-firewall-lb-to-instances-ipv4"
-  network = var.network
+  network = google_compute_network.network.self_link
 
   source_ranges = ["0.0.0.0/0"]
   target_tags   = ["app-${local.application_name}"]
@@ -377,7 +411,7 @@ resource "google_compute_firewall" "stun-turn-ipv6" {
   project = var.project_id
 
   name    = "${local.application_name}-firewall-lb-to-instances-ipv6"
-  network = var.network
+  network = google_compute_network.network.self_link
 
   source_ranges = ["::/0"]
   target_tags   = ["app-${local.application_name}"]
@@ -393,7 +427,7 @@ resource "google_compute_firewall" "http-health-checks" {
   project = var.project_id
 
   name    = "${local.application_name}-healthcheck"
-  network = var.network
+  network = google_compute_network.network.self_link
 
   source_ranges = local.google_health_check_ip_ranges
   target_tags   = ["app-${local.application_name}"]
@@ -409,7 +443,7 @@ resource "google_compute_firewall" "ingress-ipv4" {
   project = var.project_id
 
   name      = "${local.application_name}-ingress-ipv4"
-  network   = var.network
+  network   = google_compute_network.network.self_link
   direction = "INGRESS"
 
   target_tags   = ["app-${local.application_name}"]
@@ -424,7 +458,7 @@ resource "google_compute_firewall" "ingress-ipv6" {
   project = var.project_id
 
   name      = "${local.application_name}-ingress-ipv6"
-  network   = var.network
+  network   = google_compute_network.network.self_link
   direction = "INGRESS"
 
   target_tags   = ["app-${local.application_name}"]
@@ -440,7 +474,7 @@ resource "google_compute_firewall" "egress-ipv4" {
   project = var.project_id
 
   name      = "${local.application_name}-egress-ipv4"
-  network   = var.network
+  network   = google_compute_network.network.self_link
   direction = "EGRESS"
 
   target_tags        = ["app-${local.application_name}"]
@@ -455,7 +489,7 @@ resource "google_compute_firewall" "egress-ipv6" {
   project = var.project_id
 
   name      = "${local.application_name}-egress-ipv6"
-  network   = var.network
+  network   = google_compute_network.network.self_link
   direction = "EGRESS"
 
   target_tags        = ["app-${local.application_name}"]
