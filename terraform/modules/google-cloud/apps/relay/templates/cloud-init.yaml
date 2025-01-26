@@ -56,9 +56,6 @@ write_files:
             - set(attributes["exported_instrumentation_version"], attributes["instrumentation_version"])
             - delete_key(attributes, "instrumentation_version")
       service:
-        telemetry:
-          logs:
-            level: "debug"
         pipelines:
           traces:
             receivers: [otlp]
