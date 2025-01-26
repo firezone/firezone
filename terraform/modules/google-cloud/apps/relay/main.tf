@@ -147,7 +147,7 @@ resource "google_compute_instance_template" "application" {
 
   project = var.project_id
 
-  name_prefix = "${local.application_name}-${each.key}-${var.instance_template_naming_suffix}-"
+  name_prefix = "${local.application_name}-${each.key}-${var.naming_suffix}-"
 
   description = "This template is used to create ${local.application_name} instances using Terraform."
 
@@ -302,7 +302,7 @@ resource "google_compute_region_instance_group_manager" "application" {
 
   project = var.project_id
 
-  name = "${local.application_name}-group-${each.key}"
+  name = "${local.application_name}-group-${each.key}-${var.naming_suffix}"
 
   base_instance_name = local.application_name
 
