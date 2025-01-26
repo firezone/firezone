@@ -43,10 +43,28 @@ locals {
   }
 }
 
+# GCP requires networks and subnets to have globally unique names.
+# This causes an issue if their configuration changes because we
+# use create_before_destroy to avoid downtime on deploys.
+#
+# To work around this, we use a random suffix in the name and rotate
+# it whenever the subnet IP CIDR ranges change. It's not a perfect
+# solution, but it should cover most cases.
+resource "random_string" "naming_suffix" {
+  length  = 8
+  special = false
+  upper   = false
+
+  keepers = {
+    # must be a string
+    subnet_ip_cidr_ranges = jsonencode(local.subnet_ip_cidr_ranges)
+  }
+}
+
 # Create networks
 resource "google_compute_network" "network" {
   project = module.google-cloud-project.project.project_id
-  name    = "relays-network"
+  name    = "relays-network-${random_string.naming_suffix.result}"
 
   routing_mode = "GLOBAL"
 
@@ -60,7 +78,7 @@ resource "google_compute_network" "network" {
 resource "google_compute_subnetwork" "subnetwork" {
   for_each = local.subnet_ip_cidr_ranges
   project  = module.google-cloud-project.project.project_id
-  name     = "relays-${each.key}"
+  name     = "relays-subnet-${each.key}-${random_string.naming_suffix.result}"
   region   = each.key
   network  = google_compute_network.network.self_link
 
@@ -330,14 +348,15 @@ module "relays" {
       zones    = ["us-west4-a"]
     }
   }
-  network                 = google_compute_network.network.self_link
-  container_registry      = module.google-artifact-registry.url
-  image_repo              = module.google-artifact-registry.repo
-  image                   = "relay"
-  image_tag               = var.image_tag
-  observability_log_level = "info,hyper=off,h2=warn,tower=warn"
-  application_name        = "relay"
-  application_version     = replace(var.image_tag, ".", "-")
+  network                         = google_compute_network.network.self_link
+  instance_template_naming_suffix = random_string.naming_suffix.result
+  container_registry              = module.google-artifact-registry.url
+  image_repo                      = module.google-artifact-registry.repo
+  image                           = "relay"
+  image_tag                       = var.image_tag
+  observability_log_level         = "info,hyper=off,h2=warn,tower=warn"
+  application_name                = "relay"
+  application_version             = replace(var.image_tag, ".", "-")
   application_environment_variables = [
     {
       name  = "FIREZONE_TELEMETRY"
