@@ -348,15 +348,15 @@ module "relays" {
       zones    = ["us-west4-a"]
     }
   }
-  network                         = google_compute_network.network.self_link
-  instance_template_naming_suffix = random_string.naming_suffix.result
-  container_registry              = module.google-artifact-registry.url
-  image_repo                      = module.google-artifact-registry.repo
-  image                           = "relay"
-  image_tag                       = var.image_tag
-  observability_log_level         = "info,hyper=off,h2=warn,tower=warn"
-  application_name                = "relay"
-  application_version             = replace(var.image_tag, ".", "-")
+  network                 = google_compute_network.network.self_link
+  naming_suffix           = random_string.naming_suffix.result
+  container_registry      = module.google-artifact-registry.url
+  image_repo              = module.google-artifact-registry.repo
+  image                   = "relay"
+  image_tag               = var.image_tag
+  observability_log_level = "info,hyper=off,h2=warn,tower=warn"
+  application_name        = "relay"
+  application_version     = replace(var.image_tag, ".", "-")
   application_environment_variables = [
     {
       name  = "FIREZONE_TELEMETRY"
