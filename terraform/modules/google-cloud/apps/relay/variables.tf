@@ -9,13 +9,24 @@ variable "project_id" {
 
 variable "instances" {
   type = map(object({
-    cidr_range = string
-    type       = string
-    replicas   = number
-    zones      = list(string)
+    subnet   = string
+    type     = string
+    replicas = number
+    zones    = list(string)
   }))
 
   description = "List deployment locations for the application."
+}
+
+variable "network" {
+  type        = string
+  description = "ID of a Google Cloud Network"
+}
+
+# Ensure instances are recreated when this is changed.
+variable "naming_suffix" {
+  type        = string
+  description = "Suffix to append to the name of resources."
 }
 
 ################################################################################
