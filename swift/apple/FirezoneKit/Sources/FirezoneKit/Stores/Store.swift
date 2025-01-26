@@ -29,10 +29,6 @@ public final class Store: ObservableObject {
   @Published private(set) var systemExtensionStatus: SystemExtensionStatus?
 #endif
 
-  // This is not currently updated after it is initialized, but
-  // we could periodically update it if we need to.
-  @Published private(set) var decision: UNAuthorizationStatus
-
   let vpnConfigurationManager: VPNConfigurationManager
   private var sessionNotification: SessionNotification
   private var cancellables: Set<AnyCancellable> = []
@@ -40,34 +36,13 @@ public final class Store: ObservableObject {
 
   public init() {
     // Initialize all stored properties
-    self.decision = .authorized
     self.settings = Settings.defaultValue
     self.sessionNotification = SessionNotification()
     self.vpnConfigurationManager = VPNConfigurationManager()
-
-    initNotifications()
   }
 
   public func internetResourceEnabled() -> Bool {
     self.vpnConfigurationManager.internetResourceEnabled
-  }
-
-  private func initNotifications() {
-    // Finish initializing notification binding
-    sessionNotification.signInHandler = {
-      Task.detached {
-        do { try await WebAuthSession.signIn(store: self) }
-        catch { Log.error(error) }
-      }
-    }
-
-    sessionNotification.$decision
-      .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] decision in
-        guard let self = self else { return }
-        self.decision = decision
-      })
-      .store(in: &cancellables)
   }
 
   func bindToVPNConfigurationUpdates() async throws {
@@ -164,12 +139,6 @@ public final class Store: ObservableObject {
 
     // Reload our state
     try await bindToVPNConfigurationUpdates()
-  }
-
-  func requestNotifications() {
-    #if os(iOS)
-    sessionNotification.askUserForNotificationPermissions()
-    #endif
   }
 
   func authURL() -> URL? {
