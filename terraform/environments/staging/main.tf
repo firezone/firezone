@@ -48,6 +48,8 @@ module "google-cloud-project" {
   name               = "Staging Environment"
   organization_id    = "335836213177"
   billing_account_id = "01DFC9-3D6951-579BE1"
+
+  auto_create_network = false
 }
 
 # Grant owner access to the project
