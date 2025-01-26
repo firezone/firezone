@@ -23,10 +23,10 @@ variable "network" {
   description = "ID of a Google Cloud Network"
 }
 
-# Ensure instance group template is recreated when this value is changed.
-variable "instance_template_naming_suffix" {
+# Ensure instances are recreated when this is changed.
+variable "naming_suffix" {
   type        = string
-  description = "Suffix to append to the name of the instance group template."
+  description = "Suffix to append to the name of resources."
 }
 
 ################################################################################
