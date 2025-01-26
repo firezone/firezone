@@ -9,7 +9,3 @@ output "target_tags" {
 output "instances" {
   value = var.instances
 }
-
-output "network" {
-  value = google_compute_network.network.self_link
-}
