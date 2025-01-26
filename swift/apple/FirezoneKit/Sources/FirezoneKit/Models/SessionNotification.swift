@@ -22,17 +22,13 @@ public enum NotificationIndentifier: String {
 }
 
 public class SessionNotification: NSObject {
-  public var signInHandler: (() -> Void)? = nil
-  @Published private(set) var decision: UNAuthorizationStatus
+  public var signInHandler = {}
+  private let notificationCenter = UNUserNotificationCenter.current()
 
   public override init() {
-    self.decision = .notDetermined
-
     super.init()
 
 #if os(iOS)
-    let notificationCenter = UNUserNotificationCenter.current()
-
     notificationCenter.delegate = self
 
     let signInAction = UNNotificationAction(
@@ -53,32 +49,23 @@ public class SessionNotification: NSObject {
       options: [])
 
     notificationCenter.setNotificationCategories([certificateExpiryCategory])
-
-    notificationCenter.getNotificationSettings { notificationSettings in
-      self.decision = notificationSettings.authorizationStatus
-    }
 #endif
   }
 
+  func askUserForNotificationPermissions() async throws -> UNAuthorizationStatus {
+    // Ask the user for permission.
+    try await notificationCenter.requestAuthorization(options: [.sound, .alert])
+
+    // Retrieve the result
+    return await loadAuthorizationStatus()
+  }
+
+  func loadAuthorizationStatus() async -> UNAuthorizationStatus {
+    let settings = await notificationCenter.notificationSettings()
+
+    return settings.authorizationStatus
+  }
 #if os(iOS)
-  func askUserForNotificationPermissions() {
-    guard case .notDetermined = self.decision else {
-      Log.log("Already determined!")
-      return
-    }
-
-    let notificationCenter = UNUserNotificationCenter.current()
-    notificationCenter.requestAuthorization(options: [.sound, .alert]) { _, _ in
-      notificationCenter.getNotificationSettings { notificationSettings in
-        self.decision = notificationSettings.authorizationStatus
-      }
-    }
-  }
-
-  func loadAuthorizationStatus(handler: (UNAuthorizationStatus) -> Void) {
-
-  }
-
   // In iOS, use User Notifications.
   // This gets called from the tunnel side.
   public static func showSignedOutNotificationiOS() {
@@ -119,7 +106,7 @@ public class SessionNotification: NSObject {
     let response = alert.runModal()
     if response == NSApplication.ModalResponse.alertFirstButtonReturn {
       Log.log("\(#function): 'Sign In' clicked in notification")
-      signInHandler?()
+      signInHandler()
     }
   }
 #endif
@@ -134,7 +121,7 @@ extension SessionNotification: UNUserNotificationCenterDelegate {
     if categoryId == NotificationIndentifier.sessionEndedNotificationCategory.rawValue,
        actionId == NotificationIndentifier.signInNotificationAction.rawValue {
       // User clicked on 'Sign In' in the notification
-      signInHandler?()
+      signInHandler()
     }
 
     DispatchQueue.main.async {
