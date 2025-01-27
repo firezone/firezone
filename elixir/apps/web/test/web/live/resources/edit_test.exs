@@ -426,4 +426,57 @@ defmodule Web.Live.Resources.EditTest do
     assert saved_resource.name == resource.name
     assert saved_resource.filters == resource.filters
   end
+
+  test "redirects to resources page when resource type is edited", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    attrs = %{
+      "resource[type]" => "ip",
+      "resource[address]" => "1.2.3.4"
+    }
+
+    form = form(lv, "form")
+
+    form
+    |> render_change(attrs)
+
+    form
+    |> render_submit()
+
+    assert_redirect(lv, ~p"/#{account}/resources")
+  end
+
+  test "redirects to resources page when resource address is edited", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    attrs = %{
+      "resource[address]" => "foo.bar.com"
+    }
+
+    form = form(lv, "form")
+
+    form
+    |> render_change(attrs)
+
+    form
+    |> render_submit()
+
+    assert_redirected(lv, ~p"/#{account}/resources")
+  end
 end
