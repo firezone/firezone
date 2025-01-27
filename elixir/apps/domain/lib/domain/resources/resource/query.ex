@@ -142,6 +142,7 @@ defmodule Domain.Resources.Resource.Query do
   @impl Domain.Repo.Query
   def cursor_fields,
     do: [
+      {:resources, :asc, :name},
       {:resources, :asc, :inserted_at},
       {:resources, :asc, :id}
     ]
