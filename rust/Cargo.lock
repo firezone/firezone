@@ -2146,7 +2146,6 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-log",
- "tracing-stackdriver",
  "tracing-subscriber",
 ]
 
