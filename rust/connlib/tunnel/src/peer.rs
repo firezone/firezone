@@ -329,13 +329,13 @@ impl ClientOnGateway {
             return Ok(());
         }
 
-        if !self
+        let (_, filter) = self
             .filters
             .longest_match(dst)
-            .is_some_and(|(_, filter)| filter.is_allowed(packet))
-        {
-            return Err(anyhow::Error::new(DstNotAllowed(dst)));
-        };
+            .context("No filter")
+            .context(DstNotAllowed(dst))?;
+
+        filter.apply(packet).context(DstNotAllowed(dst))?;
 
         Ok(())
     }
