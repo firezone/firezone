@@ -4,14 +4,14 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::Instant;
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::messages::gateway::Filters;
 use crate::messages::gateway::ResourceDescription;
-use crate::messages::{gateway::Filter, gateway::Filters};
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, DomainName, GatewayId, ResourceId};
+use filter_engine::FilterEngine;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
-use rangemap::RangeInclusiveSet;
 
 use crate::utils::network_contains_network;
 use crate::GatewayEvent;
@@ -19,85 +19,8 @@ use crate::GatewayEvent;
 use anyhow::{bail, Context, Result};
 use nat_table::{NatTable, TranslateIncomingResult};
 
+mod filter_engine;
 mod nat_table;
-
-#[derive(Debug)]
-enum FilterEngine {
-    PermitAll,
-    PermitSome(AllowRules),
-}
-
-#[derive(Debug)]
-struct AllowRules {
-    udp: RangeInclusiveSet<u16>,
-    tcp: RangeInclusiveSet<u16>,
-    icmp: bool,
-}
-
-impl FilterEngine {
-    fn is_allowed(&self, packet: &IpPacket) -> bool {
-        match self {
-            FilterEngine::PermitAll => true,
-            FilterEngine::PermitSome(filter_engine) => filter_engine.is_allowed(packet),
-        }
-    }
-
-    fn with_filters<'a>(filters: impl Iterator<Item = &'a Filters> + Clone) -> FilterEngine {
-        // Empty filters means permit all
-        if filters.clone().any(|f| f.is_empty()) {
-            return Self::PermitAll;
-        }
-
-        let mut allow_rules = AllowRules::new();
-        allow_rules.add_filters(filters.flatten());
-
-        Self::PermitSome(allow_rules)
-    }
-}
-
-impl AllowRules {
-    fn new() -> AllowRules {
-        AllowRules {
-            udp: RangeInclusiveSet::new(),
-            tcp: RangeInclusiveSet::new(),
-            icmp: false,
-        }
-    }
-
-    fn is_allowed(&self, packet: &IpPacket) -> bool {
-        if let Some(tcp) = packet.as_tcp() {
-            return self.tcp.contains(&tcp.destination_port());
-        }
-
-        if let Some(udp) = packet.as_udp() {
-            return self.udp.contains(&udp.destination_port());
-        }
-
-        if packet.is_icmp() || packet.is_icmpv6() {
-            return self.icmp;
-        }
-
-        false
-    }
-
-    fn add_filters<'a>(&mut self, filters: impl IntoIterator<Item = &'a Filter>) {
-        for filter in filters {
-            match filter {
-                Filter::Udp(range) => {
-                    self.udp
-                        .insert(range.port_range_start..=range.port_range_end);
-                }
-                Filter::Tcp(range) => {
-                    self.tcp
-                        .insert(range.port_range_start..=range.port_range_end);
-                }
-                Filter::Icmp => {
-                    self.icmp = true;
-                }
-            }
-        }
-    }
-}
 
 /// The state of one gateway on a client.
 pub(crate) struct GatewayOnClient {
@@ -406,13 +329,13 @@ impl ClientOnGateway {
             return Ok(());
         }
 
-        if !self
+        let (_, filter) = self
             .filters
             .longest_match(dst)
-            .is_some_and(|(_, filter)| filter.is_allowed(packet))
-        {
-            return Err(anyhow::Error::new(DstNotAllowed(dst)));
-        };
+            .context("No filter")
+            .context(DstNotAllowed(dst))?;
+
+        filter.apply(packet).context(DstNotAllowed(dst))?;
 
         Ok(())
     }
@@ -893,7 +816,9 @@ mod tests {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
-    use crate::messages::gateway::{PortRange, ResourceDescription, ResourceDescriptionCidr};
+    use crate::messages::gateway::{
+        Filter, PortRange, ResourceDescription, ResourceDescriptionCidr,
+    };
     use crate::proptest::*;
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
     use itertools::Itertools as _;
@@ -903,6 +828,7 @@ mod proptests {
         sample::select,
         strategy::{Just, Strategy},
     };
+    use rangemap::RangeInclusiveSet;
     use std::{collections::BTreeSet, ops::RangeInclusive};
     use test_strategy::Arbitrary;
 
