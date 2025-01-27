@@ -99,6 +99,10 @@ module "relays" {
   count      = var.relay_token != null ? 1 : 0
   source     = "../../modules/google-cloud/apps/relay"
   project_id = module.google-cloud-project.project.project_id
+
+  # Remember to update the following published documentation when this changes:
+  #  - /website/src/app/kb/deploy/gateways/readme.mdx
+  #  - /website/src/app/kb/architecture/tech-stack/readme.mdx
   instances = {
     "africa-south1" = {
       subnet   = google_compute_subnetwork.subnetwork["africa-south1"].self_link
@@ -353,10 +357,10 @@ module "relays" {
   container_registry      = module.google-artifact-registry.url
   image_repo              = module.google-artifact-registry.repo
   image                   = "relay"
-  image_tag               = var.image_tag
+  image_tag               = local.relay_image_tag
   observability_log_level = "info,hyper=off,h2=warn,tower=warn"
   application_name        = "relay"
-  application_version     = replace(var.image_tag, ".", "-")
+  application_version     = replace(local.relay_image_tag, ".", "-")
   application_environment_variables = [
     {
       name  = "FIREZONE_TELEMETRY"
@@ -398,7 +402,49 @@ resource "google_compute_firewall" "relays-ssh-ipv4" {
     protocol = "sctp"
     ports    = [22]
   }
+
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
+  }
+
   # Only allows connections using IAP
   source_ranges = local.iap_ipv4_ranges
   target_tags   = module.relays[0].target_tags
+}
+
+# Trigger an alert when there is at least one region without a healthy relay
+resource "google_monitoring_alert_policy" "connected_relays_count" {
+  project = module.google-cloud-project.project.project_id
+
+  display_name = "Relays are down"
+  combiner     = "OR"
+
+  notification_channels = module.ops.notification_channels
+
+  conditions {
+    display_name = "Relay Instances"
+
+    condition_threshold {
+      filter     = "resource.type = \"gce_instance\" AND metric.type = \"custom.googleapis.com/elixir/domain/relays/online_relays_count/last_value\""
+      comparison = "COMPARISON_LT"
+
+      # at least one relay per region must be always online
+      threshold_value = length(module.relays[0].instances)
+      duration        = "0s"
+
+      trigger {
+        count = 1
+      }
+
+      aggregations {
+        alignment_period     = "60s"
+        cross_series_reducer = "REDUCE_MAX"
+        per_series_aligner   = "ALIGN_MEAN"
+      }
+    }
+  }
+
+  alert_strategy {
+    auto_close = "172800s"
+  }
 }
