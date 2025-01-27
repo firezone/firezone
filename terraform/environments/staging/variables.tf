@@ -75,3 +75,27 @@ variable "workos_client_id" {
 variable "workos_base_url" {
   type = string
 }
+
+# Version overrides
+#
+#
+# This section should be used to bind a specific version of the Firezone component
+# (eg. during rollback) to ensure it's not replaced by a new one until a manual action
+#
+# To update them go to Terraform Cloud and change/delete the following variables,
+# if they are unset `var.image_tag` will be used.
+
+variable "relay_image_tag" {
+  type    = string
+  default = null
+}
+
+variable "gateway_image_tag" {
+  type    = string
+  default = null
+}
+
+variable "portal_image_tag" {
+  type    = string
+  default = null
+}
