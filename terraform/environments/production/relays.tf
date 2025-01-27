@@ -96,8 +96,7 @@ resource "google_compute_subnetwork" "subnetwork" {
 }
 
 module "relays" {
-  count = var.relay_token != null ? 1 : 0
-
+  count      = var.relay_token != null ? 1 : 0
   source     = "../../modules/google-cloud/apps/relay"
   project_id = module.google-cloud-project.project.project_id
 
@@ -387,23 +386,18 @@ module "relays" {
 
 # Allow SSH access using IAP for relays
 resource "google_compute_firewall" "relays-ssh-ipv4" {
-  count = length(module.relays) > 0 ? 1 : 0
-
+  count   = length(module.relays) > 0 ? 1 : 0
   project = module.google-cloud-project.project.project_id
-
   name    = "relays-ssh-ipv4"
   network = google_compute_network.network.self_link
-
   allow {
     protocol = "tcp"
     ports    = [22]
   }
-
   allow {
     protocol = "udp"
     ports    = [22]
   }
-
   allow {
     protocol = "sctp"
     ports    = [22]
