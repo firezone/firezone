@@ -18,16 +18,10 @@ pub(crate) struct AllowRules {
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Filtered {
-    #[error("TCP port {offending_port} not in allowed range {allowed_ports:?}")]
-    Tcp {
-        allowed_ports: RangeInclusiveSet<u16>,
-        offending_port: u16,
-    },
-    #[error("UDP port {offending_port} not in allowed range {allowed_ports:?}")]
-    Udp {
-        allowed_ports: RangeInclusiveSet<u16>,
-        offending_port: u16,
-    },
+    #[error("TCP port is not in allowed range")]
+    Tcp,
+    #[error("UDP port is not in allowed range")]
+    Udp,
     #[error("ICMP not allowed")]
     Icmp,
 }
@@ -70,10 +64,7 @@ impl AllowRules {
                 return Ok(());
             }
 
-            return Err(Filtered::Tcp {
-                allowed_ports: self.tcp.clone(),
-                offending_port: dest_port,
-            });
+            return Err(Filtered::Tcp);
         }
 
         if let Some(dest_port) = packet.as_udp().map(|udp| udp.destination_port()) {
@@ -81,10 +72,7 @@ impl AllowRules {
                 return Ok(());
             }
 
-            return Err(Filtered::Udp {
-                allowed_ports: self.udp.clone(),
-                offending_port: dest_port,
-            });
+            return Err(Filtered::Udp);
         }
 
         if packet.is_icmp() || packet.is_icmpv6() {
@@ -114,29 +102,5 @@ impl AllowRules {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn print_filtered() {
-        let mut allowed_ports = RangeInclusiveSet::new();
-        allowed_ports.insert(10..=150);
-        allowed_ports.insert(1024..=30000);
-        allowed_ports.insert(45231..=50100);
-
-        assert_eq!(
-            format!(
-                "{}",
-                Filtered::Tcp {
-                    allowed_ports,
-                    offending_port: 443
-                }
-            ),
-            "TCP port 443 not in allowed range {10..=150, 1024..=30000, 45231..=50100}"
-        );
     }
 }
