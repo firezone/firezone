@@ -100,7 +100,7 @@ struct FirezoneApp: App {
       alert.informativeText =
       """
       macOS 15.0 contains a known issue that can prevent Firezone and other VPN
-      apps from functioning correctly. It's highly recommended you ugrade to
+      apps from functioning correctly. It's highly recommended you upgrade to
       macOS 15.1 or higher.
       """
       alert.addButton(withTitle: "Open System Preferences")
