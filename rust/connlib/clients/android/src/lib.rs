@@ -139,7 +139,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
     }
 
     let (log_filter, reload_handle) = reload::Layer::new(log_filter);
-    let (file_layer, handle) = firezone_logging::file::layer(log_dir);
+    let (file_layer, handle) = firezone_logging::file::layer(log_dir, "connlib");
 
     let subscriber = tracing_subscriber::registry()
         .with(log_filter)

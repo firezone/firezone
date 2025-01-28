@@ -193,7 +193,7 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<()> {
 
     let (env_filter, reload_handle) = tracing_subscriber::reload::Layer::new(env_filter);
 
-    let (file_layer, handle) = firezone_logging::file::layer(&log_dir);
+    let (file_layer, handle) = firezone_logging::file::layer(&log_dir, "connlib");
 
     let subscriber = tracing_subscriber::registry()
         .with(env_filter)
