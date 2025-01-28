@@ -102,7 +102,13 @@ class SystemConfigurationResolvers {
     guard let result = SCDynamicStoreCopyValue(dynamicStore, path as CFString)
     else {
       let code = SCError()
-      Log.error(SystemConfigurationError.unableToCopyValue(path: path, code: code))
+
+      // kSCStatusNoKey indicates the key is missing, which is expected if the
+      // interface has no DNS configuration.
+      if code != kSCStatusNoKey {
+        Log.error(SystemConfigurationError.unableToCopyValue(path: path, code: code))
+      }
+
       return nil
     }
 
