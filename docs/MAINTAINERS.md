@@ -11,7 +11,7 @@ Table of Contents:
 
 ## Releasing
 
-**Note**: The version for all published components is set from [scripts/Makefile](../scripts/Makefile).
+**Note**: The version for all published components is set from [scripts/bump-versions.sh](../scripts/bump-versions.sh).
 
 ### App Store clients (Apple/Android)
 
@@ -31,7 +31,7 @@ Given that `main` is tested:
    correct changes.
 1. Publish the release. Tags and release name should be auto generated. This will trigger pushing Docker images to `ghcr.io`.
 1. Open a PR and make the following changes:
-1. Update [scripts/Makefile](../scripts/Makefile) with the new version number(s). Run `make -f scripts/Makefile version` to propagate the versions in the Makefile to all components.
+1. Update [scripts/bump-versions.sh](../scripts/bump-versions.sh) with the new version number(s). Run `scripts/bump-versions.sh` to propagate the versions all components.
 1. Update the Changelog (e.g. `../website/src/components/Changelog/GUI.tsx`) with:
    1. New version numbers
    1. Release notes
