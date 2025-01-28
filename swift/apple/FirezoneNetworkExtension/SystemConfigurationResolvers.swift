@@ -28,7 +28,7 @@ class SystemConfigurationResolvers {
   }
 
   /// We use a computed property to memoize the creation of SC Dynamic Store, since this
-  /// can fail in some circumstances to initalize, like because of allocation failures.
+  /// can fail in some circumstances to initialize, like because of allocation failures.
   private var _dynamicStore: SCDynamicStore?
   private var dynamicStore: SCDynamicStore? {
     get {
