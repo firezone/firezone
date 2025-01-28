@@ -72,6 +72,7 @@ jobs:
           tag: ${{ matrix.release_name }}
           version: ${{ matrix.release_name }}
           name: ${{ matrix.release_name }}
+          commitish: ${{ github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
