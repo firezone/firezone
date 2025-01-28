@@ -26,22 +26,29 @@ class SystemConfigurationResolvers {
       }
     }
   }
-  private var dynamicStore: SCDynamicStore?
+
+  /// We use a computed property to memoize the creation of SC Dynamic Store, since this
+  /// can fail in some circumstances to initalize, like because of allocation failures.
+  private var _dynamicStore: SCDynamicStore?
+  private var dynamicStore: SCDynamicStore? {
+    get {
+      if self._dynamicStore == nil {
+        guard let dynamicStore = SCDynamicStoreCreate(nil, storeName, nil, nil)
+        else {
+          let code = SCError()
+          Log.error(SystemConfigurationError.failedToCreateDynamicStore(code: code))
+          return nil
+        }
+
+        self._dynamicStore = dynamicStore
+      }
+
+      return self._dynamicStore
+    }
+  }
 
   // Arbitrary name for the connection to the store
   private let storeName = "dev.firezone.firezone.dns" as CFString
-
-  init() {
-    guard let dynamicStore = SCDynamicStoreCreate(nil, storeName, nil, nil)
-    else {
-      let code = SCError()
-      Log.error(SystemConfigurationError.failedToCreateDynamicStore(code: code))
-      self.dynamicStore = nil
-      return
-    }
-
-    self.dynamicStore = dynamicStore
-  }
 
   /// 1. First, find the service ID that corresponds to the interface we're interested in.
   ///    We do this by searching the configuration store at "Setup:/Network/Service/<service-id>/Interface"
