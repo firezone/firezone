@@ -69,6 +69,91 @@ class Adapter {
   /// This is the primary async primitive used in this class.
   private let workQueue = DispatchQueue(label: "FirezoneAdapterWorkQueue")
 
+  /// Primary callback we receive whenever:
+  /// - Network connectivity changes
+  /// - System DNS servers change, including when we set them
+  /// - Routes change, including when we set them
+  ///
+  /// Apple doesn't give us very much info in this callback, so we don't know which of the
+  /// events above triggered the callback.
+  ///
+  /// On iOS this creates a problem:
+  ///
+  /// We have no good way to get the System's default resolvers. We use a workaround which
+  /// involves reading the resolvers from Bind (i.e. /etc/resolv.conf) but this will be set to connlib's
+  /// DNS sentinel while the tunnel is active, which isn't helpful to us. To get around this, we can
+  /// very briefly update the Tunnel's matchDomains config to *not* be the catch-all [""], which
+  /// causes iOS to write the actual system resolvers into /etc/resolv.conf, which we can then read.
+  /// The issue is that this in itself causes a path update callback, which makes it hard to
+  /// differentiate between us changing the DNS configuration and the system actually receiving new
+  /// default resolvers.
+  ///
+  /// So we solve this problem by only doing this DNS dance if the gateways available to the path have
+  /// changed. This means we only call setDns when the physical network has changed, and therefore
+  /// we're blind to path updates where only the DNS resolvers have changed. That will happen in two
+  /// cases most commonly:
+  /// - New DNS servers were set by DHCP
+  /// - The user manually changed the DNS servers in the system settings
+  ///
+  /// For now, this will break DNS if the old servers connlib is using are no longer valid, and
+  /// can only be fixed with a sign out and sign back in which restarts the NetworkExtension.
+  ///
+  /// On macOS, Apple has exposed the SystemConfiguration framework which makes this easy and
+  /// doesn't suffer from this issue.
+  ///
+  /// See the following issues for discussion around the above issue:
+  /// - https://github.com/firezone/firezone/issues/3302
+  /// - https://github.com/firezone/firezone/issues/3343
+  /// - https://github.com/firezone/firezone/issues/3235
+  /// - https://github.com/firezone/firezone/issues/3175
+  private lazy var pathUpdateHandler: (Network.NWPath) -> Void = { [weak self] path in
+    guard let self else { return }
+
+    // Ignore path updates if we're not started. Prevents responding to path updates
+    // we may receive when shutting down.
+    guard case .tunnelStarted(let session) = self.state else { return }
+
+    if path.status == .unsatisfied {
+      // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
+      if self.packetTunnelProvider?.reasserting == false {
+        // Tell the UI we're not connected
+        self.packetTunnelProvider?.reasserting = true
+      }
+    } else {
+      // Tell connlib to reset network state, but only do so if our connectivity has
+      // meaningfully changed. On darwin, this is needed to send packets
+      // out of a different interface even when 0.0.0.0 is used as the source.
+      // If our primary interface changes, we can be certain the old socket shouldn't be
+      // used anymore.
+      if lastRelevantPath?.connectivityDifferentFrom(path: path) != false {
+        lastRelevantPath = path
+        session.reset()
+      }
+
+      if shouldFetchSystemResolvers(path: path) {
+        let resolvers = getSystemDefaultResolvers(
+          interfaceName: path.availableInterfaces.first?.name)
+
+        if self.lastFetchedResolvers != resolvers,
+           let jsonResolvers = try? String(
+            decoding: JSONEncoder().encode(resolvers), as: UTF8.self
+           ).intoRustString()
+        {
+
+          // Update connlib DNS
+          session.setDns(jsonResolvers)
+
+          // Update our state tracker
+          self.lastFetchedResolvers = resolvers
+        }
+      }
+
+      if self.packetTunnelProvider?.reasserting == true {
+        self.packetTunnelProvider?.reasserting = false
+      }
+    }
+  }
+
   /// Currently disabled resources
   private var internetResourceEnabled: Bool = false
 
@@ -261,93 +346,8 @@ extension Adapter {
   private func beginPathMonitoring() {
     Log.log("Beginning path monitoring")
     let networkMonitor = NWPathMonitor()
-    networkMonitor.pathUpdateHandler = { [weak self] path in
-      self?.didReceivePathUpdate(path: path)
-    }
+    networkMonitor.pathUpdateHandler = self.pathUpdateHandler
     networkMonitor.start(queue: self.workQueue)
-  }
-
-  /// Primary callback we receive whenever:
-  /// - Network connectivity changes
-  /// - System DNS servers change, including when we set them
-  /// - Routes change, including when we set them
-  ///
-  /// Apple doesn't give us very much info in this callback, so we don't know which of the
-  /// events above triggered the callback.
-  ///
-  /// On iOS this creates a problem:
-  ///
-  /// We have no good way to get the System's default resolvers. We use a workaround which
-  /// involves reading the resolvers from Bind (i.e. /etc/resolv.conf) but this will be set to connlib's
-  /// DNS sentinel while the tunnel is active, which isn't helpful to us. To get around this, we can
-  /// very briefly update the Tunnel's matchDomains config to *not* be the catch-all [""], which
-  /// causes iOS to write the actual system resolvers into /etc/resolv.conf, which we can then read.
-  /// The issue is that this in itself causes a didReceivePathUpdate callback, which makes it hard to
-  /// differentiate between us changing the DNS configuration and the system actually receiving new
-  /// default resolvers.
-  ///
-  /// So we solve this problem by only doing this DNS dance if the gateways available to the path have
-  /// changed. This means we only call setDns when the physical network has changed, and therefore
-  /// we're blind to path updates where only the DNS resolvers have changed. That will happen in two
-  /// cases most commonly:
-  /// - New DNS servers were set by DHCP
-  /// - The user manually changed the DNS servers in the system settings
-  ///
-  /// For now, this will break DNS if the old servers connlib is using are no longer valid, and
-  /// can only be fixed with a sign out and sign back in which restarts the NetworkExtension.
-  ///
-  /// On macOS, Apple has exposed the SystemConfiguration framework which makes this easy and
-  /// doesn't suffer from this issue.
-  ///
-  /// See the following issues for discussion around the above issue:
-  /// - https://github.com/firezone/firezone/issues/3302
-  /// - https://github.com/firezone/firezone/issues/3343
-  /// - https://github.com/firezone/firezone/issues/3235
-  /// - https://github.com/firezone/firezone/issues/3175
-  private func didReceivePathUpdate(path: Network.NWPath) {
-    // Ignore path updates if we're not started. Prevents responding to path updates
-    // we may receive when shutting down.
-    guard case .tunnelStarted(let session) = state else { return }
-
-    if path.status == .unsatisfied {
-      // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
-      if packetTunnelProvider?.reasserting == false {
-        // Tell the UI we're not connected
-        packetTunnelProvider?.reasserting = true
-      }
-    } else {
-      // Tell connlib to reset network state, but only do so if our connectivity has
-      // meaningfully changed. On darwin, this is needed to send packets
-      // out of a different interface even when 0.0.0.0 is used as the source.
-      // If our primary interface changes, we can be certain the old socket shouldn't be
-      // used anymore.
-      if lastRelevantPath?.connectivityDifferentFrom(path: path) != false {
-        lastRelevantPath = path
-        session.reset()
-      }
-
-      if shouldFetchSystemResolvers(path: path) {
-        let resolvers = getSystemDefaultResolvers(
-          interfaceName: path.availableInterfaces.first?.name)
-
-        if lastFetchedResolvers != resolvers,
-           let jsonResolvers = try? String(
-            decoding: JSONEncoder().encode(resolvers), as: UTF8.self
-           ).intoRustString()
-        {
-
-          // Update connlib DNS
-          session.setDns(jsonResolvers)
-
-          // Update our state tracker
-          lastFetchedResolvers = resolvers
-        }
-      }
-
-      if packetTunnelProvider?.reasserting == true {
-        packetTunnelProvider?.reasserting = false
-      }
-    }
   }
 
   #if os(iOS)
