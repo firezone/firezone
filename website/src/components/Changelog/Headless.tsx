@@ -23,7 +23,8 @@ export default function Headless() {
   return (
     <Entries downloadLinks={downloadLinks} title="Linux headless">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.1" date={new Date("2025-01-28")}>
         <ChangeItem pull="7551">
           Fixes an issue where large DNS responses were incorrectly discarded.
         </ChangeItem>
@@ -31,7 +32,7 @@ export default function Headless() {
           BREAKING: Removes the positional token argument on the CLI. Use
           `FIREZONE_TOKEN` or `FIREZONE_TOKEN_PATH` env variables instead.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.0" date={new Date("2024-12-13")}>
         <ChangeItem pull="7350">
           Allows disabling telemetry by setting `FIREZONE_NO_TELEMETRY=true`.
