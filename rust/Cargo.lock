@@ -619,7 +619,7 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "libc",
- "nix",
+ "nix 0.29.0",
  "parking_lot",
  "rand 0.8.5",
  "ring",
@@ -1941,7 +1941,7 @@ dependencies = [
  "libc",
  "netlink-packet-core",
  "netlink-packet-route",
- "nix",
+ "nix 0.29.0",
  "ring",
  "rtnetlink",
  "socket-factory",
@@ -1982,7 +1982,7 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "libc",
- "nix",
+ "nix 0.29.0",
  "phoenix-channel",
  "rustls",
  "secrecy",
@@ -2017,7 +2017,7 @@ dependencies = [
  "firezone-telemetry",
  "futures",
  "native-dialog",
- "nix",
+ "nix 0.29.0",
  "rand 0.8.5",
  "rustls",
  "sadness-generator",
@@ -2108,7 +2108,7 @@ dependencies = [
  "known-folders",
  "libc",
  "mutants",
- "nix",
+ "nix 0.29.0",
  "phoenix-channel",
  "resolv-conf",
  "rtnetlink",
@@ -3818,12 +3818,11 @@ dependencies = [
 
 [[package]]
 name = "netlink-packet-route"
-version = "0.21.0"
+version = "0.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "483325d4bfef65699214858f097d504eb812c38ce7077d165f301ec406c3066e"
+checksum = "74c171cd77b4ee8c7708da746ce392440cb7bcf618d122ec9ecc607b12938bf4"
 dependencies = [
  "anyhow",
- "bitflags 2.6.0",
  "byteorder",
  "libc",
  "log",
@@ -3876,6 +3875,17 @@ name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
+
+[[package]]
+name = "nix"
+version = "0.27.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
+dependencies = [
+ "bitflags 2.6.0",
+ "cfg-if",
+ "libc",
+]
 
 [[package]]
 name = "nix"
@@ -5344,7 +5354,8 @@ checksum = "3df6368f71f205ff9c33c076d170dd56ebf68e8161c733c0caa07a7a5509ed53"
 [[package]]
 name = "rtnetlink"
 version = "0.14.1"
-source = "git+https://github.com/rust-netlink/rtnetlink?branch=main#515471fa0d759316ab249b7c265f3073b3dc1ffb"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b684475344d8df1859ddb2d395dd3dac4f8f3422a1aa0725993cb375fc5caba5"
 dependencies = [
  "futures",
  "log",
@@ -5353,7 +5364,7 @@ dependencies = [
  "netlink-packet-utils",
  "netlink-proto",
  "netlink-sys",
- "nix",
+ "nix 0.27.1",
  "thiserror 1.0.69",
  "tokio",
 ]
@@ -8551,7 +8562,7 @@ dependencies = [
  "futures-sink",
  "futures-util",
  "hex",
- "nix",
+ "nix 0.29.0",
  "ordered-stream",
  "rand 0.8.5",
  "serde",

@@ -11,10 +11,9 @@ use libc::{
     fcntl, makedev, mknod, open, EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR,
     S_IFCHR,
 };
-use netlink_packet_route::route::{RouteMessage, RouteProtocol, RouteScope};
+use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
-use rtnetlink::{new_connection, Error::NetlinkError, Handle, RuleAddRequest};
-use rtnetlink::{LinkUnspec, RouteMessageBuilder};
+use rtnetlink::{new_connection, Error::NetlinkError, Handle, RouteAddRequest, RuleAddRequest};
 use std::path::Path;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -109,7 +108,8 @@ impl TunDeviceManager {
 
         handle
             .link()
-            .set(LinkUnspec::new_with_index(index).mtu(self.mtu).build())
+            .set(index)
+            .mtu(self.mtu)
             .execute()
             .await
             .context("Failed to set default MTU")?;
@@ -123,7 +123,8 @@ impl TunDeviceManager {
 
         handle
             .link()
-            .set(LinkUnspec::new_with_index(index).up().build())
+            .set(index)
+            .up()
             .execute()
             .await
             .context("Failed to bring up interface")?;
@@ -209,7 +210,7 @@ fn make_rule(handle: &Handle) -> RuleAddRequest {
     rule.message_mut()
         .header
         .flags
-        .insert(netlink_packet_route::rule::RuleFlags::Invert);
+        .push(netlink_packet_route::rule::RuleFlag::Invert);
 
     rule.message_mut()
         .attributes
@@ -220,33 +221,35 @@ fn make_rule(handle: &Handle) -> RuleAddRequest {
     rule
 }
 
-fn make_route_v4(idx: u32, route: Ipv4Network) -> RouteMessage {
-    RouteMessageBuilder::<Ipv4Addr>::new()
+fn make_route(idx: u32, handle: &Handle) -> RouteAddRequest {
+    handle
+        .route()
+        .add()
         .output_interface(idx)
         .protocol(RouteProtocol::Static)
         .scope(RouteScope::Universe)
         .table_id(FIREZONE_TABLE)
-        .destination_prefix(route.network_address(), route.netmask())
-        .build()
 }
 
-fn make_route_v6(idx: u32, route: Ipv6Network) -> RouteMessage {
-    RouteMessageBuilder::<Ipv6Addr>::new()
-        .output_interface(idx)
-        .protocol(RouteProtocol::Static)
-        .scope(RouteScope::Universe)
-        .table_id(FIREZONE_TABLE)
+fn make_route_v4(idx: u32, handle: &Handle, route: Ipv4Network) -> RouteAddRequest<Ipv4Addr> {
+    make_route(idx, handle)
+        .v4()
         .destination_prefix(route.network_address(), route.netmask())
-        .build()
+}
+
+fn make_route_v6(idx: u32, handle: &Handle, route: Ipv6Network) -> RouteAddRequest<Ipv6Addr> {
+    make_route(idx, handle)
+        .v6()
+        .destination_prefix(route.network_address(), route.netmask())
 }
 
 async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
-    let message = match route {
-        IpNetwork::V4(ipnet) => make_route_v4(idx, *ipnet),
-        IpNetwork::V6(ipnet) => make_route_v6(idx, *ipnet),
+    let res = match route {
+        IpNetwork::V4(ipnet) => make_route_v4(idx, handle, *ipnet).execute().await,
+        IpNetwork::V6(ipnet) => make_route_v6(idx, handle, *ipnet).execute().await,
     };
 
-    let Err(err) = handle.route().add(message).execute().await else {
+    let Err(err) = res else {
         tracing::debug!(%route, iface_idx = %idx, "Created new route");
 
         return;
@@ -267,8 +270,8 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
 
 async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
     let message = match route {
-        IpNetwork::V4(ipnet) => make_route_v4(idx, *ipnet),
-        IpNetwork::V6(ipnet) => make_route_v6(idx, *ipnet),
+        IpNetwork::V4(ipnet) => make_route_v4(idx, handle, *ipnet).message_mut().clone(),
+        IpNetwork::V6(ipnet) => make_route_v6(idx, handle, *ipnet).message_mut().clone(),
     };
 
     let res = handle.route().del(message).execute().await;
