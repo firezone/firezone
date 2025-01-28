@@ -22,7 +22,8 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.3" date={new Date("2025-01-28")}>
         <ChangeItem pull="7567">
           Fixes an issue where ICMPv6's `PacketTooBig' errors were not correctly
           translated by the NAT64 module.
@@ -32,7 +33,7 @@ export default function Gateway() {
           `CAP_NET_ADMIN` capability. The check can be skipped with
           `--no-check`.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.2" date={new Date("2024-12-13")}>
         <ChangeItem pull="7210">
           Adds support for GSO (Generic Segmentation Offload), delivering
