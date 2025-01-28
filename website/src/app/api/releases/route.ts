@@ -9,11 +9,11 @@ export async function GET(_req: NextRequest) {
     // mark:current-android-version
     android: "1.4.0",
     // mark:current-gui-version
-    gui: "1.4.0",
+    gui: "1.4.1",
     // mark:current-headless-version
-    headless: "1.4.0",
+    headless: "1.4.1",
     // mark:current-gateway-version
-    gateway: "1.4.2",
+    gateway: "1.4.3",
   };
 
   return NextResponse.json(versions, {
