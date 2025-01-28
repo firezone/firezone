@@ -105,9 +105,11 @@ class SystemConfigurationResolvers {
 
       // kSCStatusNoKey indicates the key is missing, which is expected if the
       // interface has no DNS configuration.
-      if code != kSCStatusNoKey {
-        Log.error(SystemConfigurationError.unableToCopyValue(path: path, code: code))
+      if code == kSCStatusNoKey {
+        return nil
       }
+
+      Log.error(SystemConfigurationError.unableToCopyValue(path: path, code: code))
 
       return nil
     }
