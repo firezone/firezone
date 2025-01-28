@@ -55,7 +55,6 @@ impl GsoQueue {
         payload: &[u8],
         now: Instant,
     ) {
-        let buffer = self.buffer_pool.pull_owned();
         let segment_size = payload.len();
 
         debug_assert!(
@@ -70,7 +69,7 @@ impl GsoQueue {
                 segment_size,
             })
             .or_insert_with(|| DatagramBuffer {
-                inner: buffer,
+                inner: self.buffer_pool.pull_owned(),
                 last_access: now,
             })
             .extend(payload, now);
