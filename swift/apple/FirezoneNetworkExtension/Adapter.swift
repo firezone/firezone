@@ -343,7 +343,7 @@ class Adapter {
 // MARK: Responding to path updates
 
 extension Adapter {
-  
+
   private func beginPathMonitoring() {
     Log.log("Beginning path monitoring")
     let networkMonitor = NWPathMonitor()
