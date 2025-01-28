@@ -84,7 +84,7 @@ class Adapter {
   /// DNS sentinel while the tunnel is active, which isn't helpful to us. To get around this, we can
   /// very briefly update the Tunnel's matchDomains config to *not* be the catch-all [""], which
   /// causes iOS to write the actual system resolvers into /etc/resolv.conf, which we can then read.
-  /// The issue is that this in itself causes a didReceivePathUpdate callback, which makes it hard to
+  /// The issue is that this in itself causes a path update callback, which makes it hard to
   /// differentiate between us changing the DNS configuration and the system actually receiving new
   /// default resolvers.
   ///
@@ -343,16 +343,11 @@ class Adapter {
 // MARK: Responding to path updates
 
 extension Adapter {
-
   private func beginPathMonitoring() {
     Log.log("Beginning path monitoring")
     let networkMonitor = NWPathMonitor()
     networkMonitor.pathUpdateHandler = self.pathUpdateHandler
     networkMonitor.start(queue: self.workQueue)
-  }
-
-  private func didReceivePathUpdate(path: Network.NWPath) {
-
   }
 
   #if os(iOS)
