@@ -53,7 +53,7 @@ jobs:
           - release_name: headless-client-1.4.1
             config_name: release-drafter-headless-client.yml
           # mark:next-gui-version
-          - release_name: gui-client-1.4.1
+          - release_name: gui-client-1.4.2
             config_name: release-drafter-gui-client.yml
           # mark:next-apple-version
           - release_name: macos-client-1.4.1
