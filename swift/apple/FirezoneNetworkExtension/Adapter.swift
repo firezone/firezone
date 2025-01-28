@@ -58,6 +58,11 @@ class Adapter {
     private var gateways: [Network.NWEndpoint] = []
   #endif
 
+#if os(macOS)
+  /// Used for finding system DNS resolvers on macOS when network conditions have changed.
+  private let systemConfigurationResolvers = SystemConfigurationResolvers()
+#endif
+
   /// Track our last fetched DNS resolvers to know whether to tell connlib they've updated
   private var lastFetchedResolvers: [String] = []
 
@@ -453,7 +458,7 @@ extension Adapter: CallbackHandlerDelegate {
 
   private func getSystemDefaultResolvers(interfaceName: String?) -> [String] {
     #if os(macOS)
-      let resolvers = SystemConfigurationResolvers().getDefaultDNSServers(
+      let resolvers = self.systemConfigurationResolvers.getDefaultDNSServers(
         interfaceName: interfaceName)
     #elseif os(iOS)
       let resolvers = resetToSystemDNSGettingBindResolvers()
