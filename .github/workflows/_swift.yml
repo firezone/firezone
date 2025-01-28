@@ -104,3 +104,23 @@ jobs:
           # Swift benefits heavily from build cache, so aggressively write a new one
           # on each build on `main` and attempt to restore it in PR builds with broader restore-key.
           key: ${{ steps.cache.outputs.cache-primary-key }}
+
+  update-release-draft:
+    name: update-release-draft
+    needs: build
+    runs-on: ubuntu-22.04
+    env:
+      # mark:next-apple-version
+      RELEASE_NAME: macos-client-1.4.1
+    steps:
+      - uses: release-drafter/release-drafter@3f0f87098bd6b5c5b9a36d49c41d998ea58f9348 # v6.0.0
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        id: update-release-draft
+        with:
+          config-name: release-drafter-macos-client.yml
+          tag: ${{ env.RELEASE_NAME}}
+          version: ${{ env.RELEASE_NAME}}
+          name: ${{ env.RELEASE_NAME}}
+          commitish: ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
