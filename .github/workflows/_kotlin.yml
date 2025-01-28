@@ -82,6 +82,26 @@ jobs:
           echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_CREDENTIALS_PATH
           ./gradlew appDistributionUploadRelease uploadCrashlyticsSymbolFileRelease
 
+  update-release-draft:
+    name: update-release-draft
+    needs: build_release
+    runs-on: ubuntu-22.04
+    env:
+      # mark:next-android-version
+      RELEASE_NAME: android-client-1.4.1
+    steps:
+      - uses: release-drafter/release-drafter@3f0f87098bd6b5c5b9a36d49c41d998ea58f9348 # v6.0.0
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        id: update-release-draft
+        with:
+          config-name: release-drafter-android-client.yml
+          tag: ${{ env.RELEASE_NAME }}
+          version: ${{ env.RELEASE_NAME }}
+          name: ${{ env.RELEASE_NAME }}
+          commitish: ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build_debug:
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-22.04

@@ -125,3 +125,23 @@ jobs:
           TAG_NAME: gui-client-${{ env.FIREZONE_GUI_VERSION }}
         shell: bash
         run: ${{ env.UPLOAD_SCRIPT }}
+
+  update-release-draft:
+    name: update-release-draft
+    needs: build-gui
+    runs-on: ubuntu-22.04
+    env:
+      # mark:next-gui-version
+      RELEASE_NAME: gui-client-1.4.2
+    steps:
+      - uses: release-drafter/release-drafter@3f0f87098bd6b5c5b9a36d49c41d998ea58f9348 # v6.0.0
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        id: update-release-draft
+        with:
+          config-name: release-drafter-gui-client.yml
+          tag: ${{ env.RELEASE_NAME }}
+          version: ${{ env.RELEASE_NAME }}
+          name: ${{ env.RELEASE_NAME }}
+          commitish: ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
