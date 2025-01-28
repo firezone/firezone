@@ -30,13 +30,13 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Check version is up to date
         run: |
-          make -f scripts/Makefile version
+          ./scripts/bump-versions.sh
           if [ -z "$(git status --porcelain)" ]; then
             # Working directory clean
             echo "Version manifests up to date"
           else
             # Uncommitted changes
-            echo '`make version` found outdated files! Showing diff'
+            echo '`scripts/bump-versions.sh` found outdated files! Showing diff'
             git diff
             exit 1
           fi

@@ -11,7 +11,7 @@ Table of Contents:
 
 ## Releasing
 
-**Note**: The version for all published components is set from [scripts/Makefile](../scripts/Makefile).
+**Note**: The version for all published components is set from [scripts/bump-versions.sh](../scripts/bump-versions.sh).
 
 ### App Store clients (Apple/Android)
 
