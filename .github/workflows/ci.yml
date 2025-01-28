@@ -52,15 +52,6 @@ jobs:
           # mark:next-headless-version
           - release_name: headless-client-1.4.2
             config_name: release-drafter-headless-client.yml
-          # mark:next-gui-version
-          - release_name: gui-client-1.4.2
-            config_name: release-drafter-gui-client.yml
-          # mark:next-apple-version
-          - release_name: macos-client-1.4.1
-            config_name: release-drafter-macos-client.yml
-          # mark:next-android-version
-          - release_name: android-client-1.4.1
-            config_name: release-drafter-android-client.yml
 
     steps:
       - uses: release-drafter/release-drafter@3f0f87098bd6b5c5b9a36d49c41d998ea58f9348 # v6.0.0
@@ -72,6 +63,7 @@ jobs:
           tag: ${{ matrix.release_name }}
           version: ${{ matrix.release_name }}
           name: ${{ matrix.release_name }}
+          commitish: ${{ github.sha }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
