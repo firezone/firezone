@@ -38,7 +38,7 @@ jobs:
           if [[ "${{ github.event.release.name }}" =~ gateway* ]]; then
             ARTIFACT=gateway
             # mark:next-gateway-version
-            VERSION="1.4.3"
+            VERSION="1.4.4"
           elif [[ "${{ github.event.release.name }}" =~ headless* ]]; then
             ARTIFACT=client
             # mark:next-headless-version

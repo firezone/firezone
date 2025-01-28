@@ -164,9 +164,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.4.3
+            release_name: gateway-1.4.4
             # mark:next-gateway-version
-            version: 1.4.3
+            version: 1.4.4
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -346,7 +346,7 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.4.3
+            version: 1.4.4
           - name: client
             # mark:next-client-version
             version: 1.0.6
