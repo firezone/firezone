@@ -22,11 +22,14 @@ use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use std::{
+    alloc::System,
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 use tokio::{sync::mpsc, time::Instant};
 use tokio_stream::wrappers::ReceiverStream;
+use tracking_allocator::TrackingAllocator;
 
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
@@ -37,6 +40,9 @@ mod platform;
 mod platform;
 
 use platform::default_token_path;
+
+#[global_allocator]
+static ALLOCATOR: TrackingAllocator<System> = TrackingAllocator::new(System);
 
 /// Command-line args for the headless Client
 #[derive(Parser)]
@@ -198,6 +204,14 @@ fn main() -> Result<()> {
 
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());
+
+    rt.spawn(async move {
+        loop {
+            tracing::debug!(current_memory_usage = %ALLOCATOR.get());
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    });
 
     rt.block_on(async {
         let connect_span = telemetry_span!("connect_to_firezone").entered();

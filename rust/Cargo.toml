@@ -21,6 +21,7 @@ members = [
   "tests/gui-smoke-test",
   "tests/http-test-server",
   "tun",
+  "tracking-allocator",
 ]
 
 resolver = "2"
@@ -160,6 +161,7 @@ firezone-tunnel = { path = "connlib/tunnel" }
 phoenix-channel = { path = "phoenix-channel" }
 ip-packet = { path = "ip-packet" }
 socket-factory = { path = "socket-factory" }
+tracking-allocator = { path = "tracking-allocator" }
 tun = { path = "tun" }
 socket2 = { version = "0.5" }
 

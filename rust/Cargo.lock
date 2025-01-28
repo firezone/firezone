@@ -2126,6 +2126,7 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
+ "tracking-allocator",
  "url",
  "uuid",
  "windows 0.58.0",
@@ -7332,6 +7333,13 @@ checksum = "ebeb235c5847e2f82cfe0f07eb971d1e5f6804b18dac2ae16349cc604380f82f"
 dependencies = [
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "tracking-allocator"
+version = "0.1.0"
+dependencies = [
+ "tracing",
 ]
 
 [[package]]
