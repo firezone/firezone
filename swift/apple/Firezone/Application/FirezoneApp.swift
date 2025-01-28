@@ -81,6 +81,40 @@ struct FirezoneApp: App {
 
       // SwiftUI will show the first window group, so close it on launch
       _ = AppViewModel.WindowDefinition.allCases.map { $0.window()?.close() }
+
+      // Show alert for macOS 15.0.x which has issues with Network Extensions.
+      maybeShowOutdatedAlert()
+    }
+
+    private func maybeShowOutdatedAlert() {
+      let osVersion = ProcessInfo.processInfo.operatingSystemVersion
+
+      guard osVersion.majorVersion == 15,
+            osVersion.minorVersion == 0
+      else {
+        return
+      }
+
+      let alert = NSAlert()
+      alert.messageText = "macOS Update Required"
+      alert.informativeText =
+      """
+      macOS 15.0 contains a known issue that can prevent Firezone and other VPN
+      apps from functioning correctly. It's highly recommended you ugrade to
+      macOS 15.1 or higher.
+      """
+      alert.addButton(withTitle: "Open System Preferences")
+      alert.addButton(withTitle: "OK")
+
+      let response = alert.runModal()
+
+      if response == .alertFirstButtonReturn {
+        let softwareUpdateURL = URL(
+          string: "x-apple.systempreferences:com.apple.preferences.softwareupdate"
+        )
+
+        NSWorkspace.shared.open(softwareUpdateURL!)
+      }
     }
   }
 #endif
