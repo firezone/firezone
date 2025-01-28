@@ -114,7 +114,11 @@ public class SessionNotification: NSObject {
 
 #if os(iOS)
 extension SessionNotification: UNUserNotificationCenterDelegate {
-  public func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+  public func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+  ) {
     Log.log("\(#function): 'Sign In' clicked in notification")
     let actionId = response.actionIdentifier
     let categoryId = response.notification.request.content.categoryIdentifier

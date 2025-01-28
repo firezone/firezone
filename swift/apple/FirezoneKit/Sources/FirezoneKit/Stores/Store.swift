@@ -10,7 +10,7 @@ import UserNotifications
 import OSLog
 
 #if os(macOS)
-  import AppKit
+import AppKit
 #endif
 
 @MainActor
@@ -81,8 +81,7 @@ public final class Store: ObservableObject {
         if let savedValue = try await self.vpnConfigurationManager.consumeStopReason(),
            let rawValue = Int(savedValue),
            let reason = NEProviderStopReason(rawValue: rawValue),
-           case .authenticationCanceled = reason
-        {
+           case .authenticationCanceled = reason {
 #if os(macOS)
           await self.sessionNotification.showSignedOutAlertmacOS()
 #endif
@@ -97,8 +96,8 @@ public final class Store: ObservableObject {
   func checkedSystemExtensionStatus() async throws -> SystemExtensionStatus {
     let checker = SystemExtensionManager()
 
-    let status = try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
+    let status =
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
 
       checker.checkStatus(
         identifier: VPNConfigurationManager.bundleIdentifier,
@@ -122,8 +121,8 @@ public final class Store: ObservableObject {
 
     // Apple recommends installing the system extension as early as possible after app launch.
     // See https://developer.apple.com/documentation/systemextensions/installing-system-extensions-and-drivers
-    self.systemExtensionStatus = try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
+    self.systemExtensionStatus =
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
 
       installer.installSystemExtension(
         identifier: VPNConfigurationManager.bundleIdentifier,
@@ -184,7 +183,7 @@ public final class Store: ObservableObject {
     Log.log("\(#function)")
 
     // Define the Timer's closure
-    let updateResources: @Sendable (Timer) -> Void = { _timer in
+    let updateResources: @Sendable (Timer) -> Void = { _ in
       Task.detached { [weak self] in
         await self?.vpnConfigurationManager.fetchResources(callback: callback)
       }

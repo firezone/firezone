@@ -31,20 +31,18 @@ class SystemConfigurationResolvers {
   /// can fail in some circumstances to initialize, like because of allocation failures.
   private var _dynamicStore: SCDynamicStore?
   private var dynamicStore: SCDynamicStore? {
-    get {
-      if self._dynamicStore == nil {
-        guard let dynamicStore = SCDynamicStoreCreate(nil, storeName, nil, nil)
-        else {
-          let code = SCError()
-          Log.error(SystemConfigurationError.failedToCreateDynamicStore(code: code))
-          return nil
-        }
-
-        self._dynamicStore = dynamicStore
+    if self._dynamicStore == nil {
+      guard let dynamicStore = SCDynamicStoreCreate(nil, storeName, nil, nil)
+      else {
+        let code = SCError()
+        Log.error(SystemConfigurationError.failedToCreateDynamicStore(code: code))
+        return nil
       }
 
-      return self._dynamicStore
+      self._dynamicStore = dynamicStore
     }
+
+    return self._dynamicStore
   }
 
   // Arbitrary name for the connection to the store

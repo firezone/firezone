@@ -24,70 +24,86 @@ class UpdateChecker {
 
   private var timer: Timer?
   private let notificationAdapter: NotificationAdapter = NotificationAdapter()
-  private let versionCheckUrl: URL = URL(string: "https://www.firezone.dev/api/releases")!
-  private let marketingVersion = SemVerString.from(string: Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String)!
+  private let versionCheckUrl: URL
+  private let marketingVersion: SemanticVersion
 
   @Published public var updateAvailable: Bool = false
 
   init() {
-      startCheckingForUpdates()
+    guard let versionCheckUrl = URL(string: "https://www.firezone.dev/api/releases"),
+          let versionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+          let marketingVersion = try? SemanticVersion(versionString)
+    else {
+      fatalError("Should be able to initialize the UpdateChecker")
+    }
+
+    self.versionCheckUrl = versionCheckUrl
+    self.marketingVersion = marketingVersion
+
+    startCheckingForUpdates()
   }
 
-    private func startCheckingForUpdates() {
-        timer = Timer.scheduledTimer(timeInterval: 6 * 60 * 60, target: self, selector: #selector(checkForUpdates), userInfo: nil, repeats: true)
-        checkForUpdates()
-    }
+  private func startCheckingForUpdates() {
+    timer = Timer.scheduledTimer(
+      timeInterval: 6 * 60 * 60,
+      target: self,
+      selector: #selector(checkForUpdates),
+      userInfo: nil,
+      repeats: true
+    )
+    checkForUpdates()
+  }
 
-    deinit {
-        timer?.invalidate()
-    }
+  deinit {
+    timer?.invalidate()
+  }
 
-    @objc private func checkForUpdates() {
-        let task = URLSession.shared.dataTask(with: versionCheckUrl) { [weak self] data, response, error in
-          guard let self = self else { return }
+  @objc private func checkForUpdates() {
+    let task = URLSession.shared.dataTask(with: versionCheckUrl) { [weak self] data, _, error in
+      guard let self = self else { return }
 
-          if let error = error as NSError?,
-             error.domain == NSURLErrorDomain,
-             [
-              NSURLErrorTimedOut,
-              NSURLErrorCannotFindHost,
-              NSURLErrorCannotConnectToHost,
-              NSURLErrorNetworkConnectionLost,
-              NSURLErrorDNSLookupFailed,
-              NSURLErrorNotConnectedToInternet
-             ].contains(error.code) // Don't capture transient errors
-          {
-            Log.warning("\(#function): Update check failed: \(error)")
+      if let error = error as NSError?,
+         error.domain == NSURLErrorDomain,
+         [
+          NSURLErrorTimedOut,
+          NSURLErrorCannotFindHost,
+          NSURLErrorCannotConnectToHost,
+          NSURLErrorNetworkConnectionLost,
+          NSURLErrorDNSLookupFailed,
+          NSURLErrorNotConnectedToInternet
+         ].contains(error.code) { // Don't capture transient errors
+        Log.warning("\(#function): Update check failed: \(error)")
 
-            return
-          } else if let error = error {
-            Log.error(error)
+        return
+      } else if let error = error {
+        Log.error(error)
 
-            return
-          }
+        return
+      }
 
-          guard let versionInfo = VersionInfo.from(data: data)  else {
-            let attemptedVersion = String(data: data ?? Data(), encoding: .utf8) ?? ""
-            Log.error(UpdateError.invalidVersion(attemptedVersion))
+      guard let data = data,
+            let versions = try? JSONDecoder().decode([String: String].self, from: data),
+            let versionString = versions["apple"],
+            let latestVersion = try? SemanticVersion(versionString)
+      else {
+        Log.error(UpdateError.invalidVersion("data was invalid or 'apple' key not found"))
 
-            return
-          }
+        return
+      }
 
-          let latestVersion = versionInfo.apple
+      if latestVersion > marketingVersion {
+        self.updateAvailable = true
 
-          if latestVersion > marketingVersion {
-            self.updateAvailable = true
-
-            if let lastDismissedVersion = getLastDismissedVersion(), lastDismissedVersion >= latestVersion {
-              return
-            }
-
-            self.notificationAdapter.showUpdateNotification(version: latestVersion)
-          }
+        if let lastDismissedVersion = getLastDismissedVersion(), lastDismissedVersion >= latestVersion {
+          return
         }
 
-  task.resume()
-}
+        self.notificationAdapter.showUpdateNotification(version: latestVersion)
+      }
+    }
+
+    task.resume()
+  }
 
   static func downloadURL() -> URL {
     if BundleHelper.isAppStore() {
@@ -99,8 +115,8 @@ class UpdateChecker {
 }
 
 private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
-  private var lastNotifiedVersion: SemVerString?
-  private var lastDismissedVersion: SemVerString?
+  private var lastNotifiedVersion: SemanticVersion?
+  private var lastDismissedVersion: SemanticVersion?
   static let notificationIdentifier = "UPDATE_CATEGORY"
   static let dismissIdentifier = "DISMISS_ACTION"
 
@@ -114,9 +130,9 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
                                              options: [])
 
     let notificationCategory = UNNotificationCategory(identifier: NotificationAdapter.notificationIdentifier,
-                                                       actions: [dismissAction],
-                                                       intentIdentifiers: [],
-                                                       options: [])
+                                                      actions: [dismissAction],
+                                                      intentIdentifiers: [],
+                                                      options: [])
 
     notificationCenter.setNotificationCategories([notificationCategory])
 
@@ -137,8 +153,7 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
 
   }
 
-
-  func showUpdateNotification(version: SemVerString) {
+  func showUpdateNotification(version: SemanticVersion) {
     let content = UNMutableNotificationContent()
     lastNotifiedVersion = version
     content.title = "Update Firezone"
@@ -146,58 +161,57 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
     content.sound = .default
     content.categoryIdentifier = NotificationAdapter.notificationIdentifier
 
-
     let request = UNNotificationRequest(
       identifier: UUID().uuidString,
-	  content: content,
-	  trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
-	)
+      content: content,
+      trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+    )
 
     UNUserNotificationCenter.current().add(request) { error in
       if let error = error {
         Log.error(error)
       }
     }
-
   }
 
   func userNotificationCenter(_ center: UNUserNotificationCenter,
                               didReceive response: UNNotificationResponse,
                               withCompletionHandler completionHandler: @escaping () -> Void) {
-      if response.actionIdentifier == NotificationAdapter.dismissIdentifier {
-        try? setLastDismissedVersion(version: lastNotifiedVersion!)
-        return
-      }
+    if response.actionIdentifier == NotificationAdapter.dismissIdentifier {
+      setLastDismissedVersion(version: lastNotifiedVersion!)
+      return
+    }
 
     Task.detached {
       NSWorkspace.shared.open(UpdateChecker.downloadURL())
     }
 
-      completionHandler()
+    completionHandler()
   }
 
   func applicationDidFinishLaunching(_ notification: Notification) {
-      UNUserNotificationCenter.current().delegate = self
+    UNUserNotificationCenter.current().delegate = self
   }
 
-  func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
-      // Show the notification even when the app is in the foreground
+  func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    willPresent notification: UNNotification,
+    withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions
+    ) -> Void) {
+    // Show the notification even when the app is in the foreground
     completionHandler([.badge, .banner, .sound])
   }
 
 }
 
-let lastDismissedVersionKey = "lastDismissedVersion"
+private let lastDismissedVersionKey = "lastDismissedVersion"
 
-private func setLastDismissedVersion(version: SemVerString) throws {
-  guard let data = version.versionString().data(using: .utf8) else { return }
-  UserDefaults.standard.setValue(String(data: data, encoding: .utf8), forKey: lastDismissedVersionKey)
+private func setLastDismissedVersion(version: SemanticVersion) {
+  UserDefaults.standard.setValue(version, forKey: lastDismissedVersionKey)
 }
 
-private func getLastDismissedVersion() -> SemVerString? {
-  guard let versionString = UserDefaults.standard.string(forKey: lastDismissedVersionKey) else { return nil }
-  return SemVerString.from(string: versionString)
+private func getLastDismissedVersion() -> SemanticVersion? {
+  return UserDefaults.standard.object(forKey: lastDismissedVersionKey) as? SemanticVersion
 }
-
 
 #endif

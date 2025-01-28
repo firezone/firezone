@@ -14,21 +14,21 @@ public enum Telemetry {
   private static var _firezoneId: String?
   private static var _accountSlug: String?
   public static var firezoneId: String? {
+    get {
+      return self._firezoneId
+    }
     set {
       self._firezoneId = newValue
       updateUser(id: self._firezoneId, slug: self._accountSlug)
     }
-    get {
-      return self._firezoneId
-    }
   }
   public static var accountSlug: String? {
+    get {
+      return self._accountSlug
+    }
     set {
       self._accountSlug = newValue
       updateUser(id: self._firezoneId, slug: self._accountSlug)
-    }
-    get {
-      return self._accountSlug
     }
   }
 

@@ -27,9 +27,9 @@ public class DeviceMetadata {
     // Returns the OS version. Must be valid ASCII.
     // See https://github.com/firezone/firezone/issues/3034
     // See https://github.com/firezone/firezone/issues/5467
-    let os = ProcessInfo.processInfo.operatingSystemVersion
+    let osVersion = ProcessInfo.processInfo.operatingSystemVersion
 
-    return "\(os.majorVersion).\(os.minorVersion).\(os.patchVersion)"
+    return "\(osVersion.majorVersion).\(osVersion.minorVersion).\(osVersion.patchVersion)"
   }
 
 #if os(iOS)
@@ -71,7 +71,12 @@ func getDeviceInfo(key: CFString) -> String? {
   let platformExpert = IOServiceGetMatchingService(kIOMainPortDefault, matchingDict)
   defer { IOObjectRelease(platformExpert) }
 
-  if let serial = IORegistryEntryCreateCFProperty(platformExpert, key, kCFAllocatorDefault, 0)?.takeUnretainedValue() as? String {
+  if let serial = IORegistryEntryCreateCFProperty(
+    platformExpert,
+    key,
+    kCFAllocatorDefault,
+    0
+  )?.takeUnretainedValue() as? String {
       return serial
   }
 

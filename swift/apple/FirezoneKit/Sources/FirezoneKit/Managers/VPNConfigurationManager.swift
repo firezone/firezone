@@ -7,6 +7,9 @@
 //  Abstracts the nitty gritty of loading and saving to our
 //  VPN configuration in system preferences.
 
+// TODO: Refactor to fix file length
+// swiftlint:disable file_length
+
 import CryptoKit
 import Foundation
 import NetworkExtension
@@ -68,17 +71,17 @@ public enum TunnelMessage: Codable {
   }
 
   public init(from decoder: Decoder) throws {
-      let container = try decoder.container(keyedBy: CodingKeys.self)
-      let type = try container.decode(MessageType.self, forKey: .type)
-      switch type {
-      case .internetResourceEnabled:
-          let value = try container.decode(Bool.self, forKey: .value)
-          self = .internetResourceEnabled(value)
-      case .getResourceList:
-          let value = try container.decode(Data.self, forKey: .value)
-          self = .getResourceList(value)
-      case .signOut:
-          self = .signOut
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    let type = try container.decode(MessageType.self, forKey: .type)
+    switch type {
+    case .internetResourceEnabled:
+      let value = try container.decode(Bool.self, forKey: .value)
+      self = .internetResourceEnabled(value)
+    case .getResourceList:
+      let value = try container.decode(Data.self, forKey: .value)
+      self = .getResourceList(value)
+    case .signOut:
+      self = .signOut
     case .clearLogs:
       self = .clearLogs
     case .getLogFolderSize:
@@ -87,19 +90,19 @@ public enum TunnelMessage: Codable {
       self = .exportLogs
     case .consumeStopReason:
       self = .consumeStopReason
-      }
+    }
   }
   public func encode(to encoder: Encoder) throws {
-      var container = encoder.container(keyedBy: CodingKeys.self)
-      switch self {
-      case .internetResourceEnabled(let value):
-        try container.encode(MessageType.internetResourceEnabled, forKey: .type)
-        try container.encode(value, forKey: .value)
-      case .getResourceList(let value):
-          try container.encode(MessageType.getResourceList, forKey: .type)
-          try container.encode(value, forKey: .value)
-      case .signOut:
-        try container.encode(MessageType.signOut, forKey: .type)
+    var container = encoder.container(keyedBy: CodingKeys.self)
+    switch self {
+    case .internetResourceEnabled(let value):
+      try container.encode(MessageType.internetResourceEnabled, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .getResourceList(let value):
+      try container.encode(MessageType.getResourceList, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .signOut:
+      try container.encode(MessageType.signOut, forKey: .type)
     case .clearLogs:
       try container.encode(MessageType.clearLogs, forKey: .type)
     case .getLogFolderSize:
@@ -108,10 +111,12 @@ public enum TunnelMessage: Codable {
       try container.encode(MessageType.exportLogs, forKey: .type)
     case .consumeStopReason:
       try container.encode(MessageType.consumeStopReason, forKey: .type)
-      }
+    }
   }
 }
 
+// TODO: Refactor this to remove the lint ignore
+// swiftlint:disable:next type_body_length
 public class VPNConfigurationManager {
 
   // Connect status updates with our listeners
@@ -133,10 +138,10 @@ public class VPNConfigurationManager {
 
   // Encoder used to send messages to the tunnel
   private let encoder = {
-    let _encoder = PropertyListEncoder()
-    _encoder.outputFormat = .binary
+    let encoder = PropertyListEncoder()
+    encoder.outputFormat = .binary
 
-    return _encoder
+    return encoder
   }()
 
   public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
@@ -174,43 +179,44 @@ public class VPNConfigurationManager {
     }
   }
 
-  func loadFromPreferences(vpnStateUpdateHandler: @escaping @MainActor (NEVPNStatus, Settings?, String?) -> Void) async throws {
+  func loadFromPreferences(
+    vpnStateUpdateHandler: @escaping @MainActor (NEVPNStatus, Settings?, String?) -> Void
+  ) async throws {
     // loadAllFromPreferences() returns list of VPN configurations created by our main app's bundle ID.
     // Since our bundle ID can change (by us), find the one that's current and ignore the others.
     let managers = try await NETunnelProviderManager.loadAllFromPreferences()
 
     Log.log("\(#function): \(managers.count) tunnel managers found")
-    for manager in managers {
-      if manager.localizedDescription == bundleDescription { // Found it
-
-        guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-              let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
-        else {
-          throw VPNConfigurationManagerError.cannotLoad
-        }
-
-        // Update our state
-        self.manager = manager
-
-        let settings = Settings.fromProviderConfiguration(providerConfiguration)
-        let actorName = providerConfiguration[VPNConfigurationManagerKeys.actorName]
-        if let internetResourceEnabled = providerConfiguration[VPNConfigurationManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
-
-          self.internetResourceEnabled = (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabled)) ?? false
-
-        }
-        let status = manager.connection.status
-
-        // Configure our Telemetry environment
-        Telemetry.setEnvironmentOrClose(settings.apiURL)
-        Telemetry.accountSlug = providerConfiguration[VPNConfigurationManagerKeys.accountSlug]
-
-        // Share what we found with our caller
-        await vpnStateUpdateHandler(status, settings, actorName)
-
-        // Stop looking for our tunnel
-        break
+    for manager in managers where manager.localizedDescription == bundleDescription {
+      guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+            let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
+      else {
+        throw VPNConfigurationManagerError.cannotLoad
       }
+
+      // Update our state
+      self.manager = manager
+
+      let settings = Settings.fromProviderConfiguration(providerConfiguration)
+      let actorName = providerConfiguration[VPNConfigurationManagerKeys.actorName]
+      if let internetResourceEnabled = providerConfiguration[
+        VPNConfigurationManagerKeys.internetResourceEnabled
+      ]?.data(using: .utf8) {
+
+        self.internetResourceEnabled = (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabled)) ?? false
+
+      }
+      let status = manager.connection.status
+
+      // Configure our Telemetry environment
+      Telemetry.setEnvironmentOrClose(settings.apiURL)
+      Telemetry.accountSlug = providerConfiguration[VPNConfigurationManagerKeys.accountSlug]
+
+      // Share what we found with our caller
+      await vpnStateUpdateHandler(status, settings, actorName)
+
+      // Stop looking for our tunnel
+      break
     }
 
     // If no tunnel configuration was found, update state to
@@ -255,7 +261,8 @@ public class VPNConfigurationManager {
     var newProviderConfiguration = settings.toProviderConfiguration()
 
     // Don't clobber existing actorName
-    newProviderConfiguration[VPNConfigurationManagerKeys.actorName] = providerConfiguration[VPNConfigurationManagerKeys.actorName]
+    newProviderConfiguration[VPNConfigurationManagerKeys.actorName] =
+    providerConfiguration[VPNConfigurationManagerKeys.actorName]
     protocolConfiguration.providerConfiguration = newProviderConfiguration
     protocolConfiguration.serverAddress = settings.apiURL
     manager.protocolConfiguration = protocolConfiguration
@@ -276,13 +283,13 @@ public class VPNConfigurationManager {
 
     // Pass token if provided
     if let token = token {
-      options.merge(["token": token as NSObject]) { _, n in n }
+      options.merge(["token": token as NSObject]) { _, new in new }
     }
 
     // Pass pre-1.4.0 Firezone ID if it exists. Pre 1.4.0 clients will have this
     // persisted to the app side container URL.
-    if let id = FirezoneId.load(.Pre_1_4_0) {
-      options.merge(["id": id as NSObject]) { _, n in n }
+    if let id = FirezoneId.load(.pre140) {
+      options.merge(["id": id as NSObject]) { _, new in new }
     }
 
     try session()?.startTunnel(options: options)
@@ -322,7 +329,13 @@ public class VPNConfigurationManager {
           self.resourceListHash = Data(SHA256.hash(data: data))
           let decoder = JSONDecoder()
           decoder.keyDecodingStrategy = .convertFromSnakeCase
-          self.resourcesListCache = ResourceList.loaded(try! decoder.decode([Resource].self, from: data))
+
+          guard let decoded = try? decoder.decode([Resource].self, from: data)
+          else {
+            fatalError("Should be able to decode ResourceList")
+          }
+
+          self.resourcesListCache = ResourceList.loaded(decoded)
         }
 
         callback(self.resourcesListCache)

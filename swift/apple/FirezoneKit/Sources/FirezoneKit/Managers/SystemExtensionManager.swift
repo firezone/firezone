@@ -66,7 +66,10 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate,
   // MARK: - OSSystemExtensionRequestDelegate
 
   // Result of system extension installation
-  public func request(_ request: OSSystemExtensionRequest, didFinishWithResult result: OSSystemExtensionRequest.Result) {
+  public func request(
+    _ request: OSSystemExtensionRequest,
+    didFinishWithResult result: OSSystemExtensionRequest.Result
+  ) {
     guard result == .completed else {
       resume(throwing: SystemExtensionError.unknownResult(result))
 
@@ -83,12 +86,11 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate,
     foundProperties properties: [OSSystemExtensionProperties]
   ) {
     // Standard keys in any bundle. If missing, we've got bigger issues.
-    let ourBundleVersion = Bundle.main.object(
-      forInfoDictionaryKey: "CFBundleVersion"
-    ) as! String
-    let ourBundleShortVersion = Bundle.main.object(
-      forInfoDictionaryKey: "CFBundleShortVersionString"
-    ) as! String
+    guard let ourBundleVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+          let ourBundleShortVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    else {
+      fatalError("Version should exist in bundle")
+    }
 
     // Up to date if version and build number match
     let isCurrentVersionInstalled = properties.contains { sysex in
@@ -122,7 +124,11 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate,
     // We assume this state until we receive a success response.
   }
 
-  public func request(_ request: OSSystemExtensionRequest, actionForReplacingExtension existing: OSSystemExtensionProperties, withExtension ext: OSSystemExtensionProperties) -> OSSystemExtensionRequest.ReplacementAction {
+  public func request(
+    _ request: OSSystemExtensionRequest,
+    actionForReplacingExtension existing: OSSystemExtensionProperties,
+    withExtension ext: OSSystemExtensionProperties
+  ) -> OSSystemExtensionRequest.ReplacementAction {
     return .replace
   }
 

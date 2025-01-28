@@ -31,6 +31,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     super.init()
   }
 
+  // TODO: Refactor this to shorten function body
+  // swiftlint:disable:next function_body_length
   override func startTunnel(
     options: [String: NSObject]?,
     completionHandler: @escaping (Error?) -> Void
@@ -84,7 +86,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       Telemetry.accountSlug = accountSlug
 
-      let internetResourceEnabled: Bool = if let internetResourceEnabledJSON = providerConfiguration[VPNConfigurationManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
+      let internetResourceEnabled: Bool =
+      if let internetResourceEnabledJSON = providerConfiguration[
+        VPNConfigurationManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
         (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabledJSON )) ?? false
       } else {
         false
@@ -147,10 +151,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           )
         }
       }
-      #if os(iOS)
-        // iOS notifications should be shown from the tunnel process
-        SessionNotification.showSignedOutNotificationiOS()
-      #endif
+#if os(iOS)
+      // iOS notifications should be shown from the tunnel process
+      SessionNotification.showSignedOutNotificationiOS()
+#endif
     }
 
     // handles both connlib-initiated and user-initiated stops
@@ -161,7 +165,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler()
   }
 
-  // TODO: It would be helpful to be able to encapsulate Errors here. To do that
+  // It would be helpful to be able to encapsulate Errors here. To do that
   // we need to update TunnelMessage to encode/decode Result to and from Data.
   override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
     guard let tunnelMessage =  try? PropertyListDecoder().decode(TunnelMessage.self, from: message) else { return }
@@ -176,8 +180,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         Log.error(error)
       }
     case .getResourceList(let value):
-      adapter?.getResourcesIfVersionDifferentFrom(hash: value) {
-        resourceListJSON in
+      adapter?.getResourcesIfVersionDifferentFrom(hash: value) { resourceListJSON in
         completionHandler?(resourceListJSON?.data(using: .utf8))
       }
     case .clearLogs:
@@ -208,7 +211,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   func loadAndSaveFirezoneId(from options: [String: NSObject]?) -> String {
     let passedId = options?["id"] as? String
-    let persistedId = FirezoneId.load(.Post_1_4_0)
+    let persistedId = FirezoneId.load(.post140)
 
     let id = passedId ?? persistedId ?? UUID().uuidString
 
