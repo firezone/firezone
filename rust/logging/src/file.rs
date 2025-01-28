@@ -24,7 +24,6 @@ use tracing::Subscriber;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::Layer;
 
-const LOG_FILE_BASE_NAME: &str = "connlib";
 pub const TIME_FORMAT: &str = "[year]-[month]-[day]-[hour]-[minute]-[second]";
 
 /// How many lines we will at most buffer in the channel with the background thread that writes to disk.
@@ -39,11 +38,14 @@ pub const TIME_FORMAT: &str = "[year]-[month]-[day]-[hour]-[minute]-[second]";
 const MAX_BUFFERED_LINES: usize = 1024;
 
 /// Create a new file logger layer.
-pub fn layer<T>(log_dir: &Path) -> (Box<dyn Layer<T> + Send + Sync + 'static>, Handle)
+pub fn layer<T>(
+    log_dir: &Path,
+    file_base_name: &'static str,
+) -> (Box<dyn Layer<T> + Send + Sync + 'static>, Handle)
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
-    let (appender_fmt, handle_fmt) = new_appender(log_dir.to_path_buf(), "log");
+    let (appender_fmt, handle_fmt) = new_appender(log_dir.to_path_buf(), file_base_name, "log");
     let layer_fmt = tracing_subscriber::fmt::layer()
         .with_ansi(false)
         .with_writer(appender_fmt)
@@ -60,11 +62,16 @@ where
     (layer_fmt, handle)
 }
 
-fn new_appender(directory: PathBuf, file_extension: &'static str) -> (NonBlocking, WorkerGuard) {
+fn new_appender(
+    directory: PathBuf,
+    file_base_name: &'static str,
+    file_extension: &'static str,
+) -> (NonBlocking, WorkerGuard) {
     let appender = Appender {
         directory,
         current: None,
         file_extension,
+        file_base_name,
     };
 
     let (non_blocking, guard) = tracing_appender::non_blocking::NonBlockingBuilder::default()
@@ -87,6 +94,7 @@ pub struct Handle {
 #[derive(Debug)]
 struct Appender {
     directory: PathBuf,
+    file_base_name: &'static str,
     file_extension: &'static str,
     // Leaving this so that I/O errors come up through `write` instead of panicking
     // in `layer`
@@ -119,7 +127,7 @@ impl Appender {
             .format(&format)
             .map_err(|_| io::Error::other("Failed to format timestamp"))?;
 
-        let filename = format!("{LOG_FILE_BASE_NAME}.{date}.{}", self.file_extension);
+        let filename = format!("{}.{date}.{}", self.file_base_name, self.file_extension);
 
         let path = self.directory.join(&filename);
         let mut open_options = fs::OpenOptions::new();

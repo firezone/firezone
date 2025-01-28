@@ -666,7 +666,7 @@ fn setup_logging(
     std::fs::create_dir_all(&log_dir)
         .context("We should have permissions to create our log dir")?;
 
-    let (layer, handle) = firezone_logging::file::layer(&log_dir);
+    let (layer, handle) = firezone_logging::file::layer(&log_dir, "ipc-service");
 
     let directives = get_log_filter().context("Couldn't read log filter")?;
     let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(&directives)?);

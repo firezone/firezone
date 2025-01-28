@@ -137,7 +137,7 @@ fn main() -> Result<()> {
         .common
         .log_dir
         .as_deref()
-        .map(firezone_logging::file::layer)
+        .map(|dir| firezone_logging::file::layer(dir, "firezone-headless-client"))
         .unzip();
     firezone_logging::setup_global_subscriber(layer).context("Failed to set up logging")?;
 
