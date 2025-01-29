@@ -352,7 +352,7 @@ where
         };
 
         let Some((agent, relay)) = self.connections.connecting_agent_mut(cid) else {
-            tracing::debug!("Unknown connection or socket has already been nominated");
+            tracing::debug!(ignored_candidate = %candidate, "Unknown connection or socket has already been nominated");
             return;
         };
 
