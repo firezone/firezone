@@ -20,6 +20,11 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased></Unreleased>
+      <Entry version="1.4.1" date={new Date("2025-01-28")}>
+        <ChangeItem pull="7891">
+          Substantially reduces memory usage when sending large amounts of data.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.4.0" date={new Date("2025-01-02")}>
         <ChangeItem pull="7599">
           The Android app is now distributed{" "}
