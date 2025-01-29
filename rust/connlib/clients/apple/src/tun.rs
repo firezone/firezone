@@ -1,7 +1,6 @@
-use futures::task::AtomicWaker;
+use futures::SinkExt as _;
 use ip_packet::{IpPacket, IpPacketBuf};
 use libc::{fcntl, iovec, msghdr, recvmsg, AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK};
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{
     io,
@@ -12,8 +11,7 @@ use tokio::sync::mpsc;
 #[derive(Debug)]
 pub struct Tun {
     name: String,
-    outbound_capacity_waker: Arc<AtomicWaker>,
-    outbound_tx: flume::Sender<IpPacket>,
+    outbound_tx: flume::r#async::SendSink<'static, IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
@@ -25,33 +23,27 @@ impl Tun {
 
         let (inbound_tx, inbound_rx) = mpsc::channel(1000);
         let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
-        let outbound_capacity_waker = Arc::new(AtomicWaker::new());
 
         std::thread::Builder::new()
             .name("TUN send/recv".to_owned())
-            .spawn({
-                let outbound_capacity_waker = outbound_capacity_waker.clone();
-                move || {
-                    firezone_logging::unwrap_or_warn!(
-                        tun::unix::send_recv_tun(
-                            fd,
-                            inbound_tx,
-                            outbound_rx.into_stream(),
-                            outbound_capacity_waker,
-                            read,
-                            write,
-                        ),
-                        "Failed to send / recv from TUN device"
-                    )
-                }
+            .spawn(move || {
+                firezone_logging::unwrap_or_warn!(
+                    tun::unix::send_recv_tun(
+                        fd,
+                        inbound_tx,
+                        outbound_rx.into_stream(),
+                        read,
+                        write,
+                    ),
+                    "Failed to send / recv from TUN device"
+                )
             })
             .map_err(io::Error::other)?;
 
         Ok(Tun {
             name,
-            outbound_tx,
+            outbound_tx: outbound_tx.into_sink(),
             inbound_rx,
-            outbound_capacity_waker,
         })
     }
 }
@@ -62,17 +54,14 @@ impl tun::Tun for Tun {
     }
 
     fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        if self.outbound_tx.is_full() {
-            self.outbound_capacity_waker.register(cx.waker());
-            return Poll::Pending;
-        }
-
-        Poll::Ready(Ok(()))
+        self.outbound_tx
+            .poll_ready_unpin(cx)
+            .map_err(io::Error::other)
     }
 
     fn send(&mut self, packet: IpPacket) -> io::Result<()> {
         self.outbound_tx
-            .try_send(packet)
+            .start_send_unpin(packet)
             .map_err(io::Error::other)?;
 
         Ok(())
