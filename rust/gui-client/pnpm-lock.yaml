@@ -19,8 +19,8 @@ importers:
         specifier: ^2.2.1
         version: 2.2.1
       '@types/node':
-        specifier: ^22.10.5
-        version: 22.10.5
+        specifier: ^22.12.0
+        version: 22.12.0
       http-server:
         specifier: ^14.1.1
         version: 14.1.1
@@ -35,7 +35,7 @@ importers:
         version: 5.7.2
       vite:
         specifier: ^6.0.9
-        version: 6.0.9(@types/node@22.10.5)(jiti@1.21.6)(yaml@2.6.0)
+        version: 6.0.9(@types/node@22.12.0)(jiti@1.21.6)(yaml@2.6.0)
 
 packages:
 
@@ -418,8 +418,8 @@ packages:
   '@types/estree@1.0.6':
     resolution: {integrity: sha512-AYnb1nQyY49te+VRAVgmzfcgjYS91mY5P0TKUDCLEM+gNnA+3T6rWITXRLYCpahpqSQbN5cE+gHpnPyXjHWxcw==}
 
-  '@types/node@22.10.5':
-    resolution: {integrity: sha512-F8Q+SeGimwOo86fiovQh8qiXfFEh2/ocYv7tU5pJ3EXMSSxk1Joj5wefpFK2fHTf/N6HKGSxIDBT9f3gCxXPkQ==}
+  '@types/node@22.12.0':
+    resolution: {integrity: sha512-Fll2FZ1riMjNmlmJOdAyY5pUbkftXslB5DgEzlIuNaiWhXd00FhWxVC/r4yV/4wBb9JfImTu+jiSvXTkJ7F/gA==}
 
   '@types/resolve@1.20.2':
     resolution: {integrity: sha512-60BCwRFOZCQhDncwQdxxeOEEkbc5dIMccYLwbxsS4TUNeVECQ/pBJ0j09mrHOl/JJvpRPGwO9SvE4nR2Nb/a4Q==}
@@ -1291,7 +1291,7 @@ snapshots:
 
   '@types/estree@1.0.6': {}
 
-  '@types/node@22.10.5':
+  '@types/node@22.12.0':
     dependencies:
       undici-types: 6.20.0
 
@@ -1891,13 +1891,13 @@ snapshots:
 
   util-deprecate@1.0.2: {}
 
-  vite@6.0.9(@types/node@22.10.5)(jiti@1.21.6)(yaml@2.6.0):
+  vite@6.0.9(@types/node@22.12.0)(jiti@1.21.6)(yaml@2.6.0):
     dependencies:
       esbuild: 0.24.2
       postcss: 8.5.1
       rollup: 4.31.0
     optionalDependencies:
-      '@types/node': 22.10.5
+      '@types/node': 22.12.0
       fsevents: 2.3.3
       jiti: 1.21.6
       yaml: 2.6.0
