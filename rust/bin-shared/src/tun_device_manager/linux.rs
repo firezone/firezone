@@ -316,13 +316,7 @@ impl Tun {
                 .name(format!("TUN send/recv {n}/{num_threads}"))
                 .spawn(move || {
                     firezone_logging::unwrap_or_warn!(
-                        tun::unix::send_recv_tun(
-                            fd,
-                            inbound_tx,
-                            outbound_rx,
-                            read,
-                            write,
-                        ),
+                        tun::unix::send_recv_tun(fd, inbound_tx, outbound_rx, read, write),
                         "Failed to send / recv from TUN device"
                     )
                 })
