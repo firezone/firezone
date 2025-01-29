@@ -189,7 +189,7 @@ jobs:
           cache_backend: github
           # Cache needs to be scoped per OS version and target since cross seems to clobber the cache
           key: ubuntu-22.04-${{ matrix.arch.target }}
-      - uses: taiki-e/install-action@c87777c3160ce0cfd8fc286df47224d2449cb76b # v2.47.11
+      - uses: taiki-e/install-action@afbe5c171504ec183ad2e090b35cac157c65592e # v2.47.30
         with:
           tool: cross
         env:
