@@ -37,7 +37,8 @@ internal object NetworkModule {
     fun provideOkHttpClient(
         baseUrlInterceptor: BaseUrlInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
-    ) = OkHttpClient.Builder()
+    ) = OkHttpClient
+        .Builder()
         .followRedirects(true)
         .followSslRedirects(true)
         .readTimeout(NETWORK_TIMEOUT, TimeUnit.SECONDS)
@@ -53,7 +54,8 @@ internal object NetworkModule {
         okHttpClient: OkHttpClient,
         moshi: Moshi,
     ): Retrofit =
-        Retrofit.Builder()
+        Retrofit
+            .Builder()
             .baseUrl("http://localhost.com/")
             .client(okHttpClient)
             .addConverterFactory(MoshiConverterFactory.create(moshi))

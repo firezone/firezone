@@ -34,7 +34,8 @@ object CustomUriNotification {
         manager.createNotificationChannel(chan)
 
         val notificationBuilder =
-            NotificationCompat.Builder(context, CHANNEL_ID)
+            NotificationCompat
+                .Builder(context, CHANNEL_ID)
                 .setContentIntent(configIntent(context))
         return status.applySettings(notificationBuilder)
     }
@@ -50,7 +51,9 @@ object CustomUriNotification {
         )
     }
 
-    data class Error(val message: String) : StatusType() {
+    data class Error(
+        val message: String,
+    ) : StatusType() {
         override fun applySettings(builder: NotificationCompat.Builder) =
             builder.apply {
                 setSmallIcon(R.drawable.ic_firezone_logo)

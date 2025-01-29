@@ -15,7 +15,8 @@ internal class BaseUrlInterceptor(
         val newUrl = BuildConfig.AUTH_BASE_URL.toHttpUrlOrNull()
 
         val newRequest =
-            originalRequest.newBuilder()
+            originalRequest
+                .newBuilder()
                 .url(newUrl!!)
                 .build()
         return chain.proceed(newRequest)

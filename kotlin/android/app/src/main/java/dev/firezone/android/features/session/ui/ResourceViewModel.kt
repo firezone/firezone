@@ -9,7 +9,10 @@ import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.StatusEnum
 import dev.firezone.android.tunnel.model.isInternetResource
 
-class ResourceViewModel(resource: Resource, resourceState: ResourceState) {
+class ResourceViewModel(
+    resource: Resource,
+    resourceState: ResourceState,
+) {
     val id: String = resource.id
     val type: ResourceType = resource.type
     val address: String? = resource.address
@@ -24,21 +27,16 @@ class ResourceViewModel(resource: Resource, resourceState: ResourceState) {
 fun displayName(
     resource: Resource,
     state: ResourceState,
-): String {
-    return if (resource.isInternetResource()) {
+): String =
+    if (resource.isInternetResource()) {
         internetResourceDisplayName(resource, state)
     } else {
         resource.name
     }
-}
 
 fun internetResourceDisplayName(
     resource: Resource,
     state: ResourceState,
-): String {
-    return "${state.stateSymbol()} ${resource.name}"
-}
+): String = "${state.stateSymbol()} ${resource.name}"
 
-fun ResourceViewModel.isInternetResource(): Boolean {
-    return this.type == ResourceType.Internet
-}
+fun ResourceViewModel.isInternetResource(): Boolean = this.type == ResourceType.Internet

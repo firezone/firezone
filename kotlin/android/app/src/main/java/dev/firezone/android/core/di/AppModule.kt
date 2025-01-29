@@ -28,7 +28,8 @@ object AppModule {
         EncryptedSharedPreferences.create(
             app.applicationContext,
             ENCRYPTED_SHARED_PREFERENCES,
-            MasterKey.Builder(app.applicationContext)
+            MasterKey
+                .Builder(app.applicationContext)
                 .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
                 .build(),
             EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,

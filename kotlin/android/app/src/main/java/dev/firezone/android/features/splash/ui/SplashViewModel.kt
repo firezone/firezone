@@ -48,9 +48,7 @@ internal class SplashViewModel
             }
         }
 
-        private fun hasVpnPermissions(context: Context): Boolean {
-            return android.net.VpnService.prepare(context) == null
-        }
+        private fun hasVpnPermissions(context: Context): Boolean = android.net.VpnService.prepare(context) == null
 
         internal sealed class ViewAction {
             object NavigateToVpnPermission : ViewAction()
