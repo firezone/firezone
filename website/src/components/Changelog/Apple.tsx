@@ -20,6 +20,21 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased></Unreleased>
+      <Entry version="1.4.1" date={new Date("2025-01-29")}>
+        <ChangeItem>Fixes a few minor UI hangs.</ChangeItem>
+        <ChangeItem pull="7890">
+          Fixes a minor memory leak that occurred when roaming networks.
+        </ChangeItem>
+        <ChangeItem pull="7891">
+          Substantially reduces the amount of memory usage when sending large
+          amount of data to many different Gateways.
+        </ChangeItem>
+        <ChangeItem>
+          Improves UX around installing the system extension, VPN confiugration,
+          and granting notifications by showing the user actionable alerts if
+          errors occur.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.4.0" date={new Date("2025-01-16")}>
         <ChangeItem pull="7581">
           Adds download links and CI configuration to publish the macOS app as a
