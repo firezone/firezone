@@ -10,7 +10,9 @@ import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.TunnelStatusNotification
 import java.net.InetAddress
 
-class NetworkMonitor(private val tunnelService: TunnelService) : ConnectivityManager.NetworkCallback() {
+class NetworkMonitor(
+    private val tunnelService: TunnelService,
+) : ConnectivityManager.NetworkCallback() {
     private var lastNetwork: Network? = null
     private var lastDns: List<InetAddress>? = null
 

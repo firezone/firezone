@@ -49,7 +49,9 @@ internal class AuthViewModel
         }
 
         internal sealed class ViewAction {
-            data class LaunchAuthFlow(val url: String) : ViewAction()
+            data class LaunchAuthFlow(
+                val url: String,
+            ) : ViewAction()
 
             object NavigateToSignIn : ViewAction()
 

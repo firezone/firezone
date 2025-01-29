@@ -108,16 +108,16 @@ internal class SettingsActivity : AppCompatActivity() {
         }
     }
 
-    private inner class SettingsPagerAdapter(activity: FragmentActivity) :
-        FragmentStateAdapter(activity) {
+    private inner class SettingsPagerAdapter(
+        activity: FragmentActivity,
+    ) : FragmentStateAdapter(activity) {
         override fun getItemCount(): Int = 2 // Two tabs
 
-        override fun createFragment(position: Int): Fragment {
-            return when (position) {
+        override fun createFragment(position: Int): Fragment =
+            when (position) {
                 0 -> AdvancedSettingsFragment()
                 1 -> LogSettingsFragment()
                 else -> throw IllegalArgumentException("Invalid tab position: $position")
             }
-        }
     }
 }

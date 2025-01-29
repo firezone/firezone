@@ -59,15 +59,15 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     }
 
     private fun showError() {
-        AlertDialog.Builder(this)
+        AlertDialog
+            .Builder(this)
             .setTitle(R.string.error_dialog_title)
             .setMessage(R.string.error_dialog_message)
             .setPositiveButton(
                 R.string.error_dialog_button_text,
             ) { _, _ ->
                 this@AuthActivity.finish()
-            }
-            .setIcon(R.drawable.ic_firezone_logo)
+            }.setIcon(R.drawable.ic_firezone_logo)
             .show()
     }
 }

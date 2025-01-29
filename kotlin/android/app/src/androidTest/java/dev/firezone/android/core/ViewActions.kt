@@ -46,7 +46,8 @@ fun waitForView(
                 uiController.loopMainThreadForAtLeast(100)
             } while (System.currentTimeMillis() < endTime)
 
-            throw PerformException.Builder()
+            throw PerformException
+                .Builder()
                 .withCause(TimeoutException())
                 .withActionDescription(this.description)
                 .withViewDescription(HumanReadables.describe(rootView))

@@ -78,7 +78,9 @@ internal class CustomUriViewModel
         internal sealed class ViewAction {
             data object AuthFlowComplete : ViewAction()
 
-            data class AuthFlowError(val errors: Iterable<String>) : ViewAction() {
+            data class AuthFlowError(
+                val errors: Iterable<String>,
+            ) : ViewAction() {
                 constructor(vararg errors: String) : this(errors.toList())
             }
         }

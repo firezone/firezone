@@ -18,9 +18,7 @@ data class Resource(
     val status: StatusEnum,
 ) : Parcelable
 
-fun Resource.isInternetResource(): Boolean {
-    return this.type == ResourceType.Internet
-}
+fun Resource.isInternetResource(): Boolean = this.type == ResourceType.Internet
 
 enum class ResourceType {
     @Json(name = "dns")

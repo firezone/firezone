@@ -36,7 +36,8 @@ object TunnelStatusNotification {
         manager.createNotificationChannel(chan)
 
         val notificationBuilder =
-            NotificationCompat.Builder(context, CHANNEL_ID)
+            NotificationCompat
+                .Builder(context, CHANNEL_ID)
                 .setContentIntent(configIntent(context))
         return status.applySettings(notificationBuilder)
     }

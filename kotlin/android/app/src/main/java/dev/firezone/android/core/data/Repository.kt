@@ -31,29 +31,27 @@ enum class ResourceState {
     UNSET,
 }
 
-fun ResourceState.isEnabled(): Boolean {
-    return this == ResourceState.ENABLED
-}
+fun ResourceState.isEnabled(): Boolean = this == ResourceState.ENABLED
 
-fun ResourceState.stateSymbol(): String {
-    return if (this.isEnabled()) {
+fun ResourceState.stateSymbol(): String =
+    if (this.isEnabled()) {
         ON_SYMBOL
     } else {
         OFF_SYMBOL
     }
-}
 
-fun ResourceState.toggle(): ResourceState {
-    return if (this.isEnabled()) {
+fun ResourceState.toggle(): ResourceState =
+    if (this.isEnabled()) {
         ResourceState.DISABLED
     } else {
         ResourceState.ENABLED
     }
-}
 
 // Wrapper class used because `MutableStateFlow` will not
 // notify subscribers if you submit the same object that's already in it.
-class Favorites(val inner: HashSet<String>)
+class Favorites(
+    val inner: HashSet<String>,
+)
 
 internal class Repository
     @Inject
@@ -69,8 +67,8 @@ internal class Repository
             MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
         val favorites = _favorites.asStateFlow()
 
-        fun getConfigSync(): Config {
-            return Config(
+        fun getConfigSync(): Config =
+            Config(
                 sharedPreferences.getString(AUTH_BASE_URL_KEY, null)
                     ?: BuildConfig.AUTH_BASE_URL,
                 sharedPreferences.getString(API_URL_KEY, null)
@@ -78,7 +76,6 @@ internal class Repository
                 sharedPreferences.getString(LOG_FILTER_KEY, null)
                     ?: BuildConfig.LOG_FILTER,
             )
-        }
 
         fun getConfig(): Flow<Config> =
             flow {
@@ -165,7 +162,9 @@ internal class Repository
         }
 
         fun saveInternetResourceStateSync(value: ResourceState): Unit =
-            sharedPreferences.edit().putString(ENABLED_INTERNET_RESOURCE_KEY, Gson().toJson(value))
+            sharedPreferences
+                .edit()
+                .putString(ENABLED_INTERNET_RESOURCE_KEY, Gson().toJson(value))
                 .apply()
 
         fun saveNonce(value: String): Flow<Unit> =
