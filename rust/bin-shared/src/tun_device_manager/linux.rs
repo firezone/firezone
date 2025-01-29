@@ -3,8 +3,7 @@
 use crate::FIREZONE_MARK;
 use anyhow::{anyhow, Context as _, Result};
 use firezone_logging::std_dyn_err;
-use futures::task::AtomicWaker;
-use futures::TryStreamExt;
+use futures::{SinkExt, TryStreamExt};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use libc::{
@@ -15,7 +14,6 @@ use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle, RouteAddRequest, RuleAddRequest};
 use std::path::Path;
-use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{
     collections::HashSet,
@@ -298,8 +296,7 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
 
 #[derive(Debug)]
 pub struct Tun {
-    outbound_tx: flume::Sender<IpPacket>,
-    outbound_capacity_waker: Arc<AtomicWaker>,
+    outbound_tx: flume::r#async::SendSink<'static, IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
@@ -309,26 +306,17 @@ impl Tun {
 
         let (inbound_tx, inbound_rx) = mpsc::channel(1000);
         let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
-        let outbound_capacity_waker = Arc::new(AtomicWaker::new());
 
         for n in 0..num_threads {
             let fd = open_tun()?;
             let outbound_rx = outbound_rx.clone().into_stream();
             let inbound_tx = inbound_tx.clone();
-            let outbound_capacity_waker = outbound_capacity_waker.clone();
 
             std::thread::Builder::new()
                 .name(format!("TUN send/recv {n}/{num_threads}"))
                 .spawn(move || {
                     firezone_logging::unwrap_or_warn!(
-                        tun::unix::send_recv_tun(
-                            fd,
-                            inbound_tx,
-                            outbound_rx,
-                            outbound_capacity_waker,
-                            read,
-                            write,
-                        ),
+                        tun::unix::send_recv_tun(fd, inbound_tx, outbound_rx, read, write),
                         "Failed to send / recv from TUN device"
                     )
                 })
@@ -336,8 +324,7 @@ impl Tun {
         }
 
         Ok(Self {
-            outbound_tx,
-            outbound_capacity_waker,
+            outbound_tx: outbound_tx.into_sink(),
             inbound_rx,
         })
     }
@@ -367,17 +354,14 @@ fn open_tun() -> Result<TunFd, io::Error> {
 
 impl tun::Tun for Tun {
     fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        if self.outbound_tx.is_full() {
-            self.outbound_capacity_waker.register(cx.waker());
-            return Poll::Pending;
-        }
-
-        Poll::Ready(Ok(()))
+        self.outbound_tx
+            .poll_ready_unpin(cx)
+            .map_err(io::Error::other)
     }
 
     fn send(&mut self, packet: IpPacket) -> io::Result<()> {
         self.outbound_tx
-            .try_send(packet)
+            .start_send_unpin(packet)
             .map_err(io::Error::other)?;
 
         Ok(())

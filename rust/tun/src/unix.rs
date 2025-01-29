@@ -1,12 +1,10 @@
 use anyhow::{Context as _, Result};
 use futures::future::Either;
-use futures::task::AtomicWaker;
 use futures::StreamExt as _;
 use ip_packet::{IpPacket, IpPacketBuf};
 use std::io;
 use std::os::fd::{AsRawFd, RawFd};
 use std::pin::pin;
-use std::sync::Arc;
 use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc;
 
@@ -50,7 +48,6 @@ pub fn send_recv_tun<T>(
     fd: T,
     inbound_tx: mpsc::Sender<IpPacket>,
     mut outbound_rx: flume::r#async::RecvStream<'static, IpPacket>,
-    outbound_capacity_waker: Arc<AtomicWaker>,
     read: impl Fn(RawFd, &mut IpPacketBuf) -> io::Result<usize>,
     write: impl Fn(RawFd, &IpPacket) -> io::Result<usize>,
 ) -> Result<()>
@@ -108,8 +105,6 @@ where
                         {
                             tracing::warn!("Failed to write to TUN FD: {e}");
                         };
-
-                        outbound_capacity_waker.wake(); // We wrote a packet, notify about the new capacity.
                     }
                     Either::Left((None, _)) => {
                         tracing::debug!("Outbound packet sender gone, shutting down task");
