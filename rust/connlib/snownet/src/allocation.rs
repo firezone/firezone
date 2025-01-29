@@ -1025,6 +1025,8 @@ impl Allocation {
     }
 
     fn send_binding_requests(&mut self, now: Instant) {
+        tracing::debug!(relay_socket = ?self.server, "Sending BINDING requests to pick active socket");
+
         if let Some(v4) = self.server.as_v4() {
             self.queue(
                 (*v4).into(),
