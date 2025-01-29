@@ -30,7 +30,7 @@ export default function Apple() {
           amount of data to many different Gateways.
         </ChangeItem>
         <ChangeItem>
-          Improves UX around installing the system extension, VPN confiugration,
+          Improves UX around installing the system extension, VPN configuration,
           and granting notifications by showing the user actionable alerts if
           errors occur.
         </ChangeItem>
