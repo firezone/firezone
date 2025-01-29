@@ -75,9 +75,7 @@ class SessionActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
-    fun internetState(): ResourceState {
-        return tunnelService?.internetState() ?: ResourceState.UNSET
-    }
+    fun internetState(): ResourceState = tunnelService?.internetState() ?: ResourceState.UNSET
 
     private fun onInternetResourceToggled(): ResourceState {
         tunnelService?.let {

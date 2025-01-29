@@ -36,9 +36,7 @@ class ResourceDetailsBottomSheet(
         inflater: LayoutInflater,
         container: ViewGroup?,
         savedInstanceState: Bundle?,
-    ): View? {
-        return inflater.inflate(R.layout.fragment_resource_details, container, false)
-    }
+    ): View? = inflater.inflate(R.layout.fragment_resource_details, container, false)
 
     override fun onViewCreated(
         view: View,
@@ -92,13 +90,12 @@ class ResourceDetailsBottomSheet(
         }
     }
 
-    private fun resourceToggleText(resource: ResourceViewModel): String {
-        return if (resource.state.isEnabled()) {
+    private fun resourceToggleText(resource: ResourceViewModel): String =
+        if (resource.state.isEnabled()) {
             "Disable this resource"
         } else {
             "Enable this resource"
         }
-    }
 
     private fun resourceHeader() {
         if (resource.isInternetResource()) {

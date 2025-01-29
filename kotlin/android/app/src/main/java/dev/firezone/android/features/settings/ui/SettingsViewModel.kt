@@ -56,7 +56,12 @@ internal class SettingsViewModel
 
         fun onViewResume(context: Context) {
             val directory = File(context.cacheDir.absolutePath + "/logs")
-            val totalSize = directory.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
+            val totalSize =
+                directory
+                    .walkTopDown()
+                    .filter { it.isFile }
+                    .map { it.length() }
+                    .sum()
 
             _uiState.value =
                 _uiState.value.copy(
@@ -198,14 +203,13 @@ internal class SettingsViewModel
                 config.logFilter.isNotBlank()
         }
 
-        private fun isUriValid(uri: String): Boolean {
-            return try {
+        private fun isUriValid(uri: String): Boolean =
+            try {
                 URI(uri)
                 true
             } catch (e: URISyntaxException) {
                 false
             }
-        }
 
         internal data class UiState(
             val isSaveButtonEnabled: Boolean = false,
