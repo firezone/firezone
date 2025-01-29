@@ -1,9 +1,7 @@
 use crate::{
     backoff::{self, ExponentialBackoff},
     node::{SessionId, Transmit},
-    utils::earliest,
 };
-use ::backoff::backoff::Backoff;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use firezone_logging::{err_with_src, std_dyn_err};
 use hex_display::HexDisplayExt as _;
@@ -11,6 +9,7 @@ use rand::random;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use std::{
     collections::{BTreeMap, VecDeque},
+    iter,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
@@ -81,16 +80,7 @@ pub struct Allocation {
     buffered_transmits: VecDeque<Transmit<'static>>,
     events: VecDeque<Event>,
 
-    sent_requests: BTreeMap<
-        TransactionId,
-        (
-            SocketAddr,
-            Message<Attribute>,
-            Instant,
-            Duration,
-            ExponentialBackoff,
-        ),
-    >,
+    sent_requests: BTreeMap<TransactionId, (SocketAddr, Message<Attribute>, ExponentialBackoff)>,
 
     channel_bindings: ChannelBindings,
     buffered_channel_bindings: AllocRingBuffer<SocketAddr>,
@@ -263,8 +253,6 @@ impl Allocation {
     /// In case refreshing the allocation fails, we will attempt to make a new one.
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn refresh(&mut self, now: Instant) {
-        self.update_now(now);
-
         if !self.has_allocation() && self.allocate_in_flight() {
             tracing::debug!("Not refreshing allocation because we are already making one");
             return;
@@ -297,8 +285,6 @@ impl Allocation {
             "`from` and `local` to have the same IP version"
         );
 
-        self.update_now(now);
-
         if !self.server.matches(from) {
             return false;
         }
@@ -328,20 +314,20 @@ impl Allocation {
             let request = self
                 .sent_requests
                 .get(&transaction_id)
-                .map(|(_, r, _, _, _)| r.attributes().map(display_attr).collect::<Vec<_>>());
+                .map(|(_, r, _)| r.attributes().map(display_attr).collect::<Vec<_>>());
             let response = message.attributes().map(display_attr).collect::<Vec<_>>();
 
             tracing::warn!(?request, ?response, "Message integrity check failed");
             return true; // The message still indicated that it was for this `Allocation`.
         }
 
-        let Some((original_dst, original_request, sent_at, _, _)) =
+        let Some((original_dst, original_request, backoff)) =
             self.sent_requests.remove(&transaction_id)
         else {
             return false;
         };
 
-        let rtt = now.duration_since(sent_at);
+        let rtt = now.duration_since(backoff.start_time());
         Span::current().record("rtt", field::debug(rtt));
 
         if tracing::enabled!(tracing::Level::DEBUG) {
@@ -667,8 +653,6 @@ impl Allocation {
 
     #[tracing::instrument(level = "debug", skip_all, fields(active_socket = ?self.active_socket))]
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.update_now(now);
-
         if self
             .allocation_expires_at()
             .is_some_and(|expires_at| now >= expires_at)
@@ -688,18 +672,19 @@ impl Allocation {
             }
         }
 
-        while let Some(timed_out_request) =
-            self.sent_requests
-                .iter()
-                .find_map(|(id, (_, _, sent_at, backoff, _))| {
-                    (now.duration_since(*sent_at) >= *backoff).then_some(*id)
-                })
+        while let Some(timed_out_request) = self
+            .sent_requests
+            .iter()
+            .find_map(|(id, (_, _, backoff))| (now >= backoff.next_trigger()).then_some(*id))
         {
-            let (dst, request, _, backoff_duration, backoff) = self
+            let (dst, request, mut backoff) = self
                 .sent_requests
                 .remove(&timed_out_request)
                 .expect("ID is from list");
 
+            backoff.handle_timeout(now); // Must update timeout here to avoid an endless loop.
+
+            let backoff_duration = backoff.interval();
             let method = request.method();
 
             tracing::debug!(id = ?request.transaction_id(), %method, %dst, "Request timed out after {backoff_duration:?}, re-sending");
@@ -722,6 +707,10 @@ impl Allocation {
                 self.active_socket = None; // The socket seems to no longer be reachable.
                 self.invalidate_allocation();
             }
+        }
+
+        for (_, _, backoff) in self.sent_requests.values_mut() {
+            backoff.handle_timeout(now);
         }
 
         if let Some(refresh_at) = self.refresh_allocation_at() {
@@ -758,15 +747,16 @@ impl Allocation {
     }
 
     pub fn poll_timeout(&self) -> Option<Instant> {
-        let mut earliest_timeout = if !self.refresh_in_flight() {
+        let next_refresh = if !self.refresh_in_flight() {
             self.refresh_allocation_at()
         } else {
             None
         };
 
-        for (_, (_, _, sent_at, backoff, _)) in self.sent_requests.iter() {
-            earliest_timeout = earliest(earliest_timeout, Some(*sent_at + *backoff));
-        }
+        let next_timeout = self
+            .sent_requests
+            .values()
+            .map(|(_, _, b)| b.next_trigger());
 
         let next_keepalive = if self.has_allocation() {
             self.active_socket.map(|a| a.next_binding)
@@ -774,7 +764,11 @@ impl Allocation {
             None
         };
 
-        earliest(earliest_timeout, next_keepalive)
+        iter::empty()
+            .chain(next_refresh)
+            .chain(next_keepalive)
+            .chain(next_timeout)
+            .min()
     }
 
     #[tracing::instrument(level = "debug", skip(self, now), fields(active_socket = ?self.active_socket))]
@@ -783,8 +777,6 @@ impl Allocation {
             tracing::debug!("Allocation is suspended");
             return;
         }
-
-        self.update_now(now);
 
         if self
             .channel_bindings
@@ -978,7 +970,7 @@ impl Allocation {
     }
 
     fn channel_binding_in_flight_by_number(&self, channel: u16) -> bool {
-        self.sent_requests.values().any(|(_, r, _, _, _)| {
+        self.sent_requests.values().any(|(_, r, _)| {
             r.method() == CHANNEL_BIND
                 && r.get_attribute::<ChannelNumber>()
                     .is_some_and(|n| n.value() == channel)
@@ -989,7 +981,7 @@ impl Allocation {
         let sent_requests = self
             .sent_requests
             .values()
-            .map(|(_, r, _, _, _)| r)
+            .map(|(_, r, _)| r)
             .filter(|message| message.method() == CHANNEL_BIND)
             .filter_map(|message| message.get_attribute::<XorPeerAddress>())
             .map(|a| a.address());
@@ -1003,13 +995,13 @@ impl Allocation {
     fn allocate_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(_, r, _, _, _)| r.method() == ALLOCATE)
+            .any(|(_, r, _)| r.method() == ALLOCATE)
     }
 
     fn refresh_in_flight(&self) -> bool {
         self.sent_requests
             .values()
-            .any(|(_, r, _, _, _)| r.method() == REFRESH)
+            .any(|(_, r, _)| r.method() == REFRESH)
     }
 
     /// Check whether this allocation is suspended.
@@ -1079,20 +1071,17 @@ impl Allocation {
         backoff: Option<ExponentialBackoff>,
         now: Instant,
     ) -> bool {
-        let mut backoff = backoff.unwrap_or(backoff::new(now, REQUEST_TIMEOUT));
-
-        let Some(duration) = backoff.next_backoff() else {
-            tracing::debug!(
-                "Unable to queue {} because we've exceeded its backoffs",
-                message.method()
-            );
-            return false;
-        };
-
+        let backoff = backoff.unwrap_or(backoff::new(now, REQUEST_TIMEOUT));
         let id = message.transaction_id();
 
+        if backoff.is_expired(now) {
+            tracing::debug!(?id, method = %message.method(), %dst, "Backoff expired, giving up");
+
+            return false;
+        }
+
         self.sent_requests
-            .insert(id, (dst, message.clone(), now, duration, backoff));
+            .insert(id, (dst, message.clone(), backoff));
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst,
@@ -1100,12 +1089,6 @@ impl Allocation {
         });
 
         true
-    }
-
-    fn update_now(&mut self, now: Instant) {
-        for (_, _, _, _, backoff) in self.sent_requests.values_mut() {
-            backoff.clock.now = now;
-        }
     }
 
     #[cfg(test)]
@@ -2683,7 +2666,6 @@ mod tests {
             let Some(timeout) = allocation.poll_timeout() else {
                 break;
             };
-
             allocation.handle_timeout(timeout);
 
             // We expect two transmits.

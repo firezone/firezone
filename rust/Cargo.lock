@@ -6039,7 +6039,6 @@ dependencies = [
 name = "snownet"
 version = "0.1.0"
 dependencies = [
- "backoff",
  "boringtun",
  "bytecodec",
  "bytes",
