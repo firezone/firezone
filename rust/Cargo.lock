@@ -8426,8 +8426,9 @@ dependencies = [
 
 [[package]]
 name = "wintun"
-version = "0.5.0"
-source = "git+https://github.com/nulldotblack/wintun?branch=main#f196da9f72b9450de5b8d5462f444f25c2480d38"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da99be64b5aa3de869c16977994314d0759a698d9a73ab0a5b1d52e2282033ae"
 dependencies = [
  "c2rust-bitfields",
  "libloading 0.8.5",
