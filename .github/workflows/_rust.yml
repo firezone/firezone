@@ -50,7 +50,7 @@ jobs:
         id: setup-rust
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 5
-      - uses: taiki-e/install-action@c87777c3160ce0cfd8fc286df47224d2449cb76b # v2.47.11
+      - uses: taiki-e/install-action@afbe5c171504ec183ad2e090b35cac157c65592e # v2.47.30
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -90,7 +90,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         id: setup-rust
       - uses: ./.github/actions/setup-tauri-v2
-      - uses: taiki-e/install-action@c87777c3160ce0cfd8fc286df47224d2449cb76b # v2.47.11
+      - uses: taiki-e/install-action@afbe5c171504ec183ad2e090b35cac157c65592e # v2.47.30
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -159,7 +159,7 @@ jobs:
         run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
-      - uses: taiki-e/install-action@c87777c3160ce0cfd8fc286df47224d2449cb76b # v2.47.11
+      - uses: taiki-e/install-action@afbe5c171504ec183ad2e090b35cac157c65592e # v2.47.30
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
