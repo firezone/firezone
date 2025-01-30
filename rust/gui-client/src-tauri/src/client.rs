@@ -131,7 +131,7 @@ fn run_gui(cli: Cli) -> Result<()> {
             }
 
             common::errors::show_error_dialog(anyhow.to_string())?;
-            tracing::error!(error = anyhow_dyn_err(&anyhow), "{anyhow:#}");
+            tracing::error!(error = anyhow_dyn_err(&anyhow), "GUI failed");
 
             Err(anyhow)
         }
