@@ -245,21 +245,14 @@ pub(crate) fn run(
         telemetry.set_account_slug(account_slug.to_owned());
     }
 
-    let tray =
-        system_tray::Tray::new(
-            app.handle().clone(),
-            |app, event| match handle_system_tray_event(app, event) {
-                Ok(_) => {}
-                Err(e) => tracing::error!("{e}"),
-            },
-        )?;
+    let tray = system_tray::Tray::new(app.handle().clone())?;
     let integration = TauriIntegration {
         app: app.handle().clone(),
         tray,
     };
     let controller = Controller::start(
         auth,
-        ctlr_tx,
+        ctlr_tx.clone(),
         integration,
         ctlr_rx,
         advanced_settings,
@@ -271,12 +264,32 @@ pub(crate) fn run(
 
     // While our controller task is running, tick the eventloop of Tauri.
     while !ctrl_task.is_finished() {
-        app.run_iteration(|_app_handle, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
-                // Don't exit if we close our main window
-                // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
+        let ctlr_tx = ctlr_tx.clone();
 
-                api.prevent_exit();
+        app.run_iteration(move |_, event| {
+            #[allow(clippy::wildcard_enum_match_arm)]
+            match event {
+                tauri::RunEvent::ExitRequested { api, .. } => {
+                    // Don't exit if we close our main window
+                    // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
+
+                    api.prevent_exit();
+                }
+                tauri::RunEvent::MenuEvent(event) => {
+                    let id = &event.id.0;
+                    tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
+
+                    let event = match serde_json::from_str::<TrayMenuEvent>(id) {
+                        Ok(x) => x,
+                        Err(e) => {
+                            tracing::error!("{e}");
+                            return;
+                        }
+                    };
+
+                    let _ = ctlr_tx.blocking_send(ControllerRequest::SystemTrayMenu(event));
+                }
+                _ => {}
             }
         });
     }
@@ -408,12 +421,4 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
         server = deep_link::Server::new().await?;
     }
-}
-
-fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Result<()> {
-    app.try_state::<Managed>()
-        .context("can't get Managed struct from Tauri")?
-        .ctlr_tx
-        .blocking_send(ControllerRequest::SystemTrayMenu(event))?;
-    Ok(())
 }
