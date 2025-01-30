@@ -158,7 +158,7 @@ impl GatewayState {
             .translate_outbound(packet, now)
             .context("Failed to translate outbound packet")?;
 
-        Ok(Some(packet))
+        Ok(packet)
     }
 
     pub fn cleanup_connection(&mut self, id: &ClientId) {

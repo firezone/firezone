@@ -270,12 +270,15 @@ impl ClientOnGateway {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<IpPacket> {
-        self.ensure_allowed(&packet)?;
+    ) -> anyhow::Result<Option<IpPacket>> {
+        if let Err(e) = self.ensure_allowed(&packet) {
+            tracing::debug!(filtered_packet = ?packet, "{e:#}");
+            return Ok(None);
+        }
 
         let packet = self.transform_network_to_tun(packet, now)?;
 
-        Ok(packet)
+        Ok(Some(packet))
     }
 
     pub fn translate_inbound(
