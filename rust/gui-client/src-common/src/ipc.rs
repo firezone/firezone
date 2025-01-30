@@ -7,11 +7,6 @@ use futures::{SinkExt, StreamExt};
 use secrecy::{ExposeSecret, SecretString};
 use std::net::IpAddr;
 
-pub enum Event {
-    Message(IpcServerMsg),
-    ReadFailed(anyhow::Error),
-}
-
 pub struct Client {
     task: tokio::task::JoinHandle<Result<()>>,
     // Needed temporarily to avoid a big refactor. We can remove this in the future.
@@ -26,7 +21,9 @@ impl Drop for Client {
 }
 
 impl Client {
-    pub async fn new(ctlr_tx: tokio::sync::mpsc::Sender<Event>) -> Result<Self, ipc::Error> {
+    pub async fn new(
+        ctlr_tx: tokio::sync::mpsc::Sender<Result<IpcServerMsg>>,
+    ) -> Result<Self, ipc::Error> {
         tracing::debug!(
             client_pid = std::process::id(),
             "Connecting to IPC service..."
@@ -34,11 +31,7 @@ impl Client {
         let (mut rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod).await?;
         let task = tokio::task::spawn(async move {
             while let Some(result) = rx.next().await {
-                let event = match result {
-                    Ok(msg) => Event::Message(msg),
-                    Err(e) => Event::ReadFailed(e),
-                };
-                ctlr_tx.send(event).await?;
+                ctlr_tx.send(result).await?;
             }
             Ok(())
         });
