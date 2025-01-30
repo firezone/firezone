@@ -271,8 +271,7 @@ impl ClientOnGateway {
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<IpPacket> {
-        self.ensure_allowed_src(&packet)?;
-        self.ensure_allowed_dst(&packet)?;
+        self.ensure_allowed(&packet)?;
 
         let packet = self.transform_network_to_tun(packet, now)?;
 
@@ -308,6 +307,13 @@ impl ClientOnGateway {
 
     pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
         self.resources.contains_key(&resource)
+    }
+
+    fn ensure_allowed(&self, packet: &IpPacket) -> anyhow::Result<()> {
+        self.ensure_allowed_src(packet)?;
+        self.ensure_allowed_dst(packet)?;
+
+        Ok(())
     }
 
     fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
