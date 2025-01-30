@@ -124,7 +124,7 @@ test-case = "3.3.1"
 test-strategy = "0.4.0"
 thiserror = "1.0.68"
 time = "0.3.37"
-tokio = "1.42"
+tokio = "1.43"
 tokio-stream = "0.1.17"
 flume = { version = "0.11.1", features = ["async"] }
 tokio-tungstenite = "0.23.1"
