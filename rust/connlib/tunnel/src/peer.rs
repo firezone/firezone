@@ -663,7 +663,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_err());
+        assert!(peer
+            .translate_outbound(pkt, Instant::now())
+            .unwrap()
+            .is_none());
 
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
@@ -674,7 +677,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_err());
+        assert!(peer
+            .translate_outbound(pkt, Instant::now())
+            .unwrap()
+            .is_none());
 
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
@@ -721,7 +727,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_err());
+        assert!(peer
+            .translate_outbound(pkt, Instant::now())
+            .unwrap()
+            .is_none());
 
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
