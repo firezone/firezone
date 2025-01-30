@@ -540,12 +540,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
                 }
                 Err(error) => Err(error),
             },
-            Err(error) => {
-                // IPC errors are always fatal
-                tracing::error!(error = anyhow_dyn_err(&error), "IPC read failure");
-
-                Err(Error::IpcRead)
-            }
+            Err(error) => Err(Error::IpcRead(error)),
         }
     }
 

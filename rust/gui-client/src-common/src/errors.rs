@@ -16,7 +16,7 @@ pub enum Error {
     #[error("IPC closed")]
     IpcClosed,
     #[error("IPC read failed")]
-    IpcRead,
+    IpcRead(#[source] anyhow::Error),
     #[error("IPC service terminating")]
     IpcServiceTerminating,
     #[error("Failed to connect to portal")]
@@ -48,7 +48,7 @@ impl Error {
             Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),
             Error::IpcNotFound => "Couldn't find Firezone IPC service. Is the service running?".to_string(),
             Error::IpcClosed => "IPC connection closed".to_string(),
-            Error::IpcRead => "IPC read failure".to_string(),
+            Error::IpcRead(_) => "IPC read failure".to_string(),
             Error::IpcServiceTerminating => "The Firezone IPC service is terminating. Please restart the GUI Client.".to_string(),
             Error::Logging(_) => "Logging error".to_string(),
             Error::PortalConnection(_) => "Couldn't connect to the Firezone Portal. Are you connected to the Internet?".to_string(),
