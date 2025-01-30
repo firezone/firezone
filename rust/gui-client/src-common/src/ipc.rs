@@ -3,43 +3,29 @@ use firezone_headless_client::{
     ipc::{self, Error},
     IpcClientMsg, IpcServerMsg,
 };
-use futures::{SinkExt, StreamExt};
+use futures::{SinkExt, Stream};
 use secrecy::{ExposeSecret, SecretString};
 use std::net::IpAddr;
 
+pub type MsgStream = Box<dyn Stream<Item = Result<IpcServerMsg>> + Send + 'static + Unpin>;
+
 pub struct Client {
-    task: tokio::task::JoinHandle<Result<()>>,
     // Needed temporarily to avoid a big refactor. We can remove this in the future.
     tx: ipc::ClientWrite,
 }
 
-impl Drop for Client {
-    // Might drop in-flight IPC messages
-    fn drop(&mut self) {
-        self.task.abort();
-    }
-}
-
 impl Client {
-    pub async fn new(
-        ctlr_tx: tokio::sync::mpsc::Sender<Result<IpcServerMsg>>,
-    ) -> Result<Self, ipc::Error> {
+    pub async fn new() -> Result<(Self, MsgStream), ipc::Error> {
         tracing::debug!(
             client_pid = std::process::id(),
             "Connecting to IPC service..."
         );
-        let (mut rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod).await?;
-        let task = tokio::task::spawn(async move {
-            while let Some(result) = rx.next().await {
-                ctlr_tx.send(result).await?;
-            }
-            Ok(())
-        });
-        Ok(Self { task, tx })
+        let (rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod).await?;
+
+        Ok((Self { tx }, Box::new(rx)))
     }
 
     pub async fn disconnect_from_ipc(mut self) -> Result<()> {
-        self.task.abort();
         self.tx.close().await?;
         Ok(())
     }

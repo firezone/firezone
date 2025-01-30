@@ -39,7 +39,7 @@ pub struct Controller<'a, I: GuiIntegration> {
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
-    ipc_rx: ReceiverStream<Result<IpcServerMsg>>,
+    ipc_rx: ipc::MsgStream,
     integration: I,
     log_filter_reloader: LogFilterReloader,
     /// A release that's ready to download
@@ -191,8 +191,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
     ) -> Result<(), Error> {
         tracing::debug!("Starting new instance of `Controller`");
 
-        let (ipc_tx, ipc_rx) = mpsc::channel(1);
-        let ipc_client = ipc::Client::new(ipc_tx).await?;
+        let (ipc_client, ipc_rx) = ipc::Client::new().await?;
 
         let dns_notifier = new_dns_notifier().await?.boxed();
         let network_notifier = new_network_notifier().await?.boxed();
@@ -203,7 +202,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
             clear_logs_callback: None,
             ctlr_tx,
             ipc_client,
-            ipc_rx: ReceiverStream::new(ipc_rx),
+            ipc_rx,
             integration,
             log_filter_reloader,
             release: None,
