@@ -1,54 +1,31 @@
 use anyhow::{Context as _, Result};
 use firezone_headless_client::{
     ipc::{self, Error},
-    IpcClientMsg, IpcServerMsg,
+    IpcClientMsg,
 };
-use futures::{SinkExt, StreamExt};
+use futures::SinkExt;
 use secrecy::{ExposeSecret, SecretString};
 use std::net::IpAddr;
 
-pub enum Event {
-    Closed,
-    Message(IpcServerMsg),
-    ReadFailed(anyhow::Error),
-}
+pub use firezone_headless_client::ipc::ClientRead;
 
 pub struct Client {
-    task: tokio::task::JoinHandle<Result<()>>,
     // Needed temporarily to avoid a big refactor. We can remove this in the future.
     tx: ipc::ClientWrite,
 }
 
-impl Drop for Client {
-    // Might drop in-flight IPC messages
-    fn drop(&mut self) {
-        self.task.abort();
-    }
-}
-
 impl Client {
-    pub async fn new(ctlr_tx: tokio::sync::mpsc::Sender<Event>) -> Result<Self, ipc::Error> {
+    pub async fn new() -> Result<(Self, ipc::ClientRead), ipc::Error> {
         tracing::debug!(
             client_pid = std::process::id(),
             "Connecting to IPC service..."
         );
-        let (mut rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod).await?;
-        let task = tokio::task::spawn(async move {
-            while let Some(result) = rx.next().await {
-                let event = match result {
-                    Ok(msg) => Event::Message(msg),
-                    Err(e) => Event::ReadFailed(e),
-                };
-                ctlr_tx.send(event).await?;
-            }
-            ctlr_tx.send(Event::Closed).await?;
-            Ok(())
-        });
-        Ok(Self { task, tx })
+        let (rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod).await?;
+
+        Ok((Self { tx }, rx))
     }
 
     pub async fn disconnect_from_ipc(mut self) -> Result<()> {
-        self.task.abort();
         self.tx.close().await?;
         Ok(())
     }
