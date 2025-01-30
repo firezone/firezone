@@ -270,13 +270,17 @@ impl ClientOnGateway {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<IpPacket> {
-        self.ensure_allowed_src(&packet)?;
-        self.ensure_allowed_dst(&packet)?;
+    ) -> anyhow::Result<Option<IpPacket>> {
+        // Filtering a packet is not an error.
+        if let Err(e) = self.ensure_allowed(&packet) {
+            tracing::debug!(filtered_packet = ?packet, "{e:#}");
+            return Ok(None);
+        }
 
+        // Failing to transform is an error we want to know about further up.
         let packet = self.transform_network_to_tun(packet, now)?;
 
-        Ok(packet)
+        Ok(Some(packet))
     }
 
     pub fn translate_inbound(
@@ -310,6 +314,13 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
+    fn ensure_allowed(&self, packet: &IpPacket) -> anyhow::Result<()> {
+        self.ensure_allowed_src(packet)?;
+        self.ensure_allowed_dst(packet)?;
+
+        Ok(())
+    }
+
     fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
         let src = packet.source();
 
@@ -321,7 +332,7 @@ impl ClientOnGateway {
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    fn ensure_allowed_dst(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
+    fn ensure_allowed_dst(&self, packet: &IpPacket) -> anyhow::Result<()> {
         let dst = packet.destination();
 
         // Note a Gateway with Internet resource should never get packets for other resources
@@ -652,7 +663,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_err());
+        assert!(peer
+            .translate_outbound(pkt, Instant::now())
+            .unwrap()
+            .is_none());
 
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
@@ -663,7 +677,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_err());
+        assert!(peer
+            .translate_outbound(pkt, Instant::now())
+            .unwrap()
+            .is_none());
 
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
@@ -710,7 +727,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer.translate_outbound(pkt, Instant::now()).is_err());
+        assert!(peer
+            .translate_outbound(pkt, Instant::now())
+            .unwrap()
+            .is_none());
 
         let pkt = ip_packet::make::udp_packet(
             source_v4_addr(),
