@@ -23,7 +23,7 @@ use futures::FutureExt;
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{panic::AssertUnwindSafe, str::FromStr, time::Duration};
 use tauri::Manager;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc;
 use tracing::instrument;
 
 pub(crate) mod system_tray;
