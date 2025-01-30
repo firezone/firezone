@@ -19,7 +19,7 @@ pub mod platform;
 pub(crate) use platform::Server;
 use platform::{ClientStream, ServerStream};
 
-pub(crate) type ClientRead = FramedRead<ReadHalf<ClientStream>, Decoder<IpcServerMsg>>;
+pub type ClientRead = FramedRead<ReadHalf<ClientStream>, Decoder<IpcServerMsg>>;
 pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, Encoder<IpcClientMsg>>;
 pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, Decoder<IpcClientMsg>>;
 pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, Encoder<IpcServerMsg>>;

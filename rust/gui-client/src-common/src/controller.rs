@@ -39,7 +39,7 @@ pub struct Controller<'a, I: GuiIntegration> {
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
-    ipc_rx: ReceiverStream<ipc::Event>,
+    ipc_rx: ipc::ClientRead,
     integration: I,
     log_filter_reloader: LogFilterReloader,
     /// A release that's ready to download
@@ -174,7 +174,7 @@ impl Status {
 enum EventloopTick {
     NetworkChanged(Result<()>),
     DnsChanged(Result<()>),
-    IpcEvent(ipc::Event),
+    IpcMsg(Option<Result<IpcServerMsg>>),
     ControllerRequest(Option<ControllerRequest>),
     UpdateNotification(Option<Option<updates::Notification>>),
 }
@@ -191,8 +191,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
     ) -> Result<(), Error> {
         tracing::debug!("Starting new instance of `Controller`");
 
-        let (ipc_tx, ipc_rx) = mpsc::channel(1);
-        let ipc_client = ipc::Client::new(ipc_tx).await?;
+        let (ipc_client, ipc_rx) = ipc::Client::new().await?;
 
         let dns_notifier = new_dns_notifier().await?.boxed();
         let network_notifier = new_network_notifier().await?.boxed();
@@ -203,7 +202,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
             clear_logs_callback: None,
             ctlr_tx,
             ipc_client,
-            ipc_rx: ReceiverStream::new(ipc_rx),
+            ipc_rx,
             integration,
             log_filter_reloader,
             release: None,
@@ -281,11 +280,16 @@ impl<I: GuiIntegration> Controller<'_, I> {
                 EventloopTick::NetworkChanged(Err(e)) | EventloopTick::DnsChanged(Err(e)) => {
                     return Err(Error::Other(e))
                 }
-                EventloopTick::IpcEvent(event) => {
-                    if let ControlFlow::Break(()) = self.handle_ipc_event(event).await? {
-                        break;
-                    }
+
+                EventloopTick::IpcMsg(Some(Ok(msg))) => {
+                    match self.handle_ipc_msg(msg).await? {
+                        ControlFlow::Break(()) => break,
+                        ControlFlow::Continue(()) => continue,
+                    };
                 }
+                EventloopTick::IpcMsg(Some(Err(e))) => return Err(Error::IpcRead(e)),
+                EventloopTick::IpcMsg(None) => return Err(Error::IpcClosed),
+
                 EventloopTick::ControllerRequest(Some(req)) => self.handle_request(req).await?,
                 EventloopTick::ControllerRequest(None) => {
                     tracing::warn!("Controller channel closed, breaking main loop");
@@ -322,9 +326,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
             }
 
             if let Poll::Ready(maybe_ipc) = self.ipc_rx.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::IpcEvent(
-                    maybe_ipc.unwrap_or(ipc::Event::Closed),
-                )));
+                return Poll::Ready(Some(EventloopTick::IpcMsg(maybe_ipc)));
             }
 
             if let Poll::Ready(maybe_req) = self.rx.poll_next_unpin(cx) {
@@ -525,29 +527,6 @@ impl<I: GuiIntegration> Controller<'_, I> {
         Ok(())
     }
 
-    async fn handle_ipc_event(&mut self, event: ipc::Event) -> Result<ControlFlow<()>, Error> {
-        match event {
-            ipc::Event::Message(msg) => match self.handle_ipc_msg(msg).await {
-                Ok(flow) => Ok(flow),
-                // Handles <https://github.com/firezone/firezone/issues/6547> more gracefully so we can still export logs even if we crashed right after sign-in
-                Err(Error::ConnectToFirezoneFailed(error)) => {
-                    tracing::error!("Failed to connect to Firezone: {error}");
-                    self.sign_out().await?;
-
-                    Ok(ControlFlow::Continue(()))
-                }
-                Err(error) => Err(error),
-            },
-            ipc::Event::ReadFailed(error) => {
-                // IPC errors are always fatal
-                tracing::error!(error = anyhow_dyn_err(&error), "IPC read failure");
-
-                Err(Error::IpcRead)
-            }
-            ipc::Event::Closed => Err(Error::IpcClosed),
-        }
-    }
-
     async fn handle_ipc_msg(&mut self, msg: IpcServerMsg) -> Result<ControlFlow<()>, Error> {
         match msg {
             IpcServerMsg::ClearedLogs(result) => {
@@ -559,10 +538,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
                 })?;
             }
             IpcServerMsg::ConnectResult(result) => {
-                return self
-                    .handle_connect_result(result)
-                    .await
-                    .map(|_| ControlFlow::Continue(()))
+                self.handle_connect_result(result).await?;
             }
             IpcServerMsg::DisconnectedGracefully => {
                 if let Status::Quitting = self.status {
@@ -660,7 +636,14 @@ impl<I: GuiIntegration> Controller<'_, I> {
                 self.refresh_system_tray_menu();
                 Ok(())
             }
-            Err(IpcServiceError::Other(error)) => Err(Error::ConnectToFirezoneFailed(error)),
+            Err(IpcServiceError::Other(error)) => {
+                // We log this here directly instead of forwarding it because errors hard-abort the event-loop and we still want to be able to export logs and stuff.
+                // See <https://github.com/firezone/firezone/issues/6547>.
+                tracing::error!("Failed to connect to Firezone: {error}");
+                self.sign_out().await?;
+
+                Ok(())
+            }
         }
     }
 
