@@ -12,7 +12,7 @@ import OSLog
 // shall get updated.
 // This is so that the app stays buildable even when the FFI changes.
 
-// TODO: https://github.com/chinedufn/swift-bridge/issues/150
+// See https://github.com/chinedufn/swift-bridge/issues/150
 extension RustString: @unchecked Sendable {}
 extension RustString: Error {}
 
@@ -48,8 +48,11 @@ public class CallbackHandler {
           IPv6 routes: \(routeListv6.toString())
       """)
 
-    let dnsData = dnsAddresses.toString().data(using: .utf8)!
-    let dnsArray = try! JSONDecoder().decode([String].self, from: dnsData)
+    guard let dnsData = dnsAddresses.toString().data(using: .utf8),
+          let dnsArray = try? JSONDecoder().decode([String].self, from: dnsData)
+    else {
+      fatalError("Should be able to decode DNS Addresses from connlib")
+    }
 
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),

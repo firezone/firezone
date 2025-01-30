@@ -5,6 +5,9 @@
 //  Created by Jamil Bou Kheir on 4/2/24.
 //
 
+// TODO: Refactor to fix file length
+// swiftlint:disable file_length
+
 import Foundation
 import Combine
 import NetworkExtension
@@ -15,6 +18,7 @@ import SwiftUI
 @MainActor
 // TODO: Refactor to MenuBarExtra for macOS 13+
 // https://developer.apple.com/documentation/swiftui/menubarextra
+// swiftlint:disable:next type_body_length
 public final class MenuBar: NSObject, ObservableObject {
   private var statusItem: NSStatusItem
 
@@ -41,7 +45,7 @@ public final class MenuBar: NSObject, ObservableObject {
   private lazy var connectingAnimationImages = [
     NSImage(named: "MenuBarIconConnecting1"),
     NSImage(named: "MenuBarIconConnecting2"),
-    NSImage(named: "MenuBarIconConnecting3"),
+    NSImage(named: "MenuBarIconConnecting3")
   ]
   private var connectingAnimationImageIndex: Int = 0
   private var connectingAnimationTimer: Timer?
@@ -65,17 +69,17 @@ public final class MenuBar: NSObject, ObservableObject {
   private func setupObservers() {
     model.favorites.$ids
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] ids in
+      .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
-        // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole menu.
-        // This avoids complex logic when changing in and out of the "nothing is favorited" special case
+        // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole
+        // menu. This avoids complex logic when changing in and out of the "nothing is favorited" special case.
         self.populateResourceMenus([])
         self.populateResourceMenus(model.resources.asArray())
       }).store(in: &cancellables)
 
     model.$resources
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] resources in
+      .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
         self.populateResourceMenus(model.resources.asArray())
         self.handleTunnelStatusOrResourcesChanged()
@@ -83,7 +87,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
     model.$status
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] status in
+      .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
         self.vpnStatus = model.status
         self.updateStatusItemIcon()
@@ -227,7 +231,7 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.addItem(resourcesUnavailableReasonMenuItem)
     menu.addItem(resourcesSeparatorMenuItem)
 
-    if (!model.favorites.ids.isEmpty) {
+    if !model.favorites.ids.isEmpty {
       menu.addItem(otherResourcesMenuItem)
       menu.addItem(otherResourcesSeparatorMenuItem)
     }
@@ -272,7 +276,7 @@ public final class MenuBar: NSObject, ObservableObject {
           alert.messageText = "Error signing in"
           alert.informativeText = error.localizedDescription
           alert.alertStyle = .warning
-          let _ = alert.runModal()
+          _ = alert.runModal()
         }
       }
     }
@@ -407,9 +411,7 @@ public final class MenuBar: NSObject, ObservableObject {
     (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
   }
 
-  private func handleTunnelStatusOrResourcesChanged() {
-    let resources = model.resources
-    let status = model.status
+  private func updateSignInMenuItems(status: NEVPNStatus?) {
     // Update "Sign In" / "Sign Out" menu items
     switch status {
     case nil:
@@ -446,6 +448,9 @@ public final class MenuBar: NSObject, ObservableObject {
     @unknown default:
       break
     }
+  }
+
+  private func updateResourcesMenuItems(status: NEVPNStatus?, resources: ResourceList) {
     // Update resources "header" menu items
     switch status {
     case .connecting:
@@ -487,6 +492,15 @@ public final class MenuBar: NSObject, ObservableObject {
     @unknown default:
       break
     }
+  }
+
+  private func handleTunnelStatusOrResourcesChanged() {
+    let resources = model.resources
+    let status = model.status
+
+    updateSignInMenuItems(status: status)
+    updateResourcesMenuItems(status: status, resources: resources)
+
     quitMenuItem.title = {
       switch status {
       case .connected, .connecting:
@@ -501,8 +515,8 @@ public final class MenuBar: NSObject, ObservableObject {
     switch resources {
     case .loading:
       return "Loading Resources..."
-    case .loaded(let x):
-      if x.isEmpty {
+    case .loaded(let list):
+      if list.isEmpty {
         return "No Resources"
       } else {
         return "Resources"
@@ -513,7 +527,7 @@ public final class MenuBar: NSObject, ObservableObject {
   private func populateResourceMenus(_ newResources: [Resource]) {
     // If we have no favorites, then everything is a favorite
     let hasAnyFavorites = newResources.contains { model.favorites.contains($0.id) }
-    let newFavorites = if (hasAnyFavorites) {
+    let newFavorites = if hasAnyFavorites {
       newResources.filter { model.favorites.contains($0.id) || $0.isInternetResource() }
     } else {
       newResources
@@ -540,7 +554,7 @@ public final class MenuBar: NSObject, ObservableObject {
       // We don't ever need to remove this as the whole menu will be recreated
       // if the user updates, and there's no reason for the update to no longer be available
       // versions should be monotonically increased.
-      if (updateChecker.updateAvailable && !updateMenuDisplayed) {
+      if updateChecker.updateAvailable && !updateMenuDisplayed {
         updateMenuDisplayed = true
         let index = menu.index(of: settingsMenuItem) + 1
         menu.insertItem(NSMenuItem.separator(), at: index)
@@ -570,13 +584,13 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func populateOtherResourcesMenu(_ newOthers: [Resource]) {
-    if (newOthers.isEmpty) {
+    if newOthers.isEmpty {
       removeItemFromMenu(menu: menu, item: otherResourcesMenuItem)
       removeItemFromMenu(menu: menu, item: otherResourcesSeparatorMenuItem)
     } else {
-      let i = menu.index(of: aboutMenuItem)
-      addItemToMenu(menu: menu, item: otherResourcesMenuItem, at: i)
-      addItemToMenu(menu: menu, item: otherResourcesSeparatorMenuItem, at: i + 1)
+      let idx = menu.index(of: aboutMenuItem)
+      addItemToMenu(menu: menu, item: otherResourcesMenuItem, location: idx)
+      addItemToMenu(menu: menu, item: otherResourcesSeparatorMenuItem, location: idx + 1)
     }
 
     // Update the menu in place so everything won't vanish if it's open when it updates
@@ -598,20 +612,20 @@ public final class MenuBar: NSObject, ObservableObject {
 
   }
 
-  private func addItemToMenu(menu: NSMenu, item: NSMenuItem, at: Int) {
+  private func addItemToMenu(menu: NSMenu, item: NSMenuItem, location: Int) {
     // Adding an item that already exists will crash the process, so check for it first.
-    let i = menu.index(of: otherResourcesMenuItem)
-    if (i != -1) {
+    let idx = menu.index(of: otherResourcesMenuItem)
+    if idx != -1 {
       // Item's already in the menu, do nothing
       return
     }
-    menu.insertItem(otherResourcesMenuItem, at: at)
+    menu.insertItem(otherResourcesMenuItem, at: location)
   }
 
   private func removeItemFromMenu(menu: NSMenu, item: NSMenuItem) {
     // Removing an item that doesn't exist will crash the process, so check for it first.
-    let i = menu.index(of: item)
-    if (i == -1) {
+    let idx = menu.index(of: item)
+    if idx == -1 {
       // Item's already not in the menu, do nothing
       return
     }
@@ -619,7 +633,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func internetResourceTitle(resource: Resource) -> String {
-    let status = model.store.internetResourceEnabled() ? StatusSymbol.on : StatusSymbol.off
+    let status = model.store.internetResourceEnabled() ? StatusSymbol.enabled : StatusSymbol.disabled
 
     return status + " " + resource.name
   }
@@ -645,6 +659,8 @@ public final class MenuBar: NSObject, ObservableObject {
     model.isInternetResourceEnabled() ? "Disable this resource" : "Enable this resource"
   }
 
+  // TODO: Refactor this when refactoring for macOS 13
+  // swiftlint:disable:next function_body_length
   private func nonInternetResourceHeader(resource: Resource) -> NSMenu {
     let subMenu = NSMenu()
 
@@ -654,13 +670,14 @@ public final class MenuBar: NSObject, ObservableObject {
       resourceAddressDescriptionItem.title = addressDescription
 
       if let url = URL(string: addressDescription),
-         let _ = url.host {
+         url.host != nil {
         // Looks like a URL, so allow opening it
         resourceAddressDescriptionItem.action = #selector(resourceURLTapped(_:))
         resourceAddressDescriptionItem.toolTip = "Click to open"
 
         // Using Markdown here only to highlight the URL
-        resourceAddressDescriptionItem.attributedTitle = try? NSAttributedString(markdown: "[\(addressDescription)](\(addressDescription))")
+        resourceAddressDescriptionItem.attributedTitle =
+        try? NSAttributedString(markdown: "[\(addressDescription)](\(addressDescription))")
       } else {
         resourceAddressDescriptionItem.title = addressDescription
         resourceAddressDescriptionItem.action = #selector(resourceValueTapped(_:))
@@ -813,12 +830,16 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func addFavoriteTapped(_ sender: NSMenuItem) {
-    let id = sender.representedObject as! String
+    guard let id = sender.representedObject as? String
+    else { fatalError("Expected to receive a String") }
+
     setFavorited(id: id, favorited: true)
   }
 
   @objc private func removeFavoriteTapped(_ sender: NSMenuItem) {
-    let id = sender.representedObject as! String
+    guard let id = sender.representedObject as? String
+    else { fatalError("Expected to receive a String") }
+
     setFavorited(id: id, favorited: false)
   }
 
@@ -855,7 +876,11 @@ extension NSImage {
   func resized(to newSize: NSSize) -> NSImage {
     let newImage = NSImage(size: newSize)
     newImage.lockFocus()
-    self.draw(in: NSRect(origin: .zero, size: newSize), from: NSRect(origin: .zero, size: self.size), operation: .copy, fraction: 1.0)
+    self.draw(
+      in: NSRect(origin: .zero, size: newSize),
+      from: NSRect(origin: .zero, size: self.size),
+      operation: .copy, fraction: 1.0
+    )
     newImage.unlockFocus()
     newImage.size = newSize
     return newImage

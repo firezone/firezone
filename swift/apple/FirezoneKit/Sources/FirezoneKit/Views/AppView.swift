@@ -38,8 +38,7 @@ public class AppViewModel: ObservableObject {
       Task.detached { [weak self] in
         guard let self else { return }
 
-        do { try await WebAuthSession.signIn(store: self.store) }
-        catch { Log.error(error) }
+        do { try await WebAuthSession.signIn(store: self.store) } catch { Log.error(error) }
       }
     }
 

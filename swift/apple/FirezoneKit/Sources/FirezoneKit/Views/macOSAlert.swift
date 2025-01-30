@@ -11,14 +11,13 @@ import AppKit
 import NetworkExtension
 
 @MainActor
-struct macOSAlert {
+struct macOSAlert { // swiftlint:disable:this type_name
   static func show(for error: Error) {
     if let error = error as? OSSystemExtensionError,
        // Expected in normal operation
        error.code != .requestCanceled,
        error.code != .requestSuperseded,
-       error.code != .authorizationRequired
-    {
+       error.code != .authorizationRequired {
       alert(message(for: error))
     }
 
@@ -31,7 +30,7 @@ struct macOSAlert {
     let alert = NSAlert()
     alert.messageText = messageText
     alert.alertStyle = .critical
-    let _ = alert.runModal()
+    _ = alert.runModal()
   }
 
   // NEVPNError
@@ -87,6 +86,7 @@ struct macOSAlert {
   }
 
   // OSSystemExtensionError
+  // swiftlint:disable:next cyclomatic_complexity function_body_length
   private static func message(for error: OSSystemExtensionError) -> String {
     return {
       switch error.code {
@@ -171,18 +171,18 @@ struct macOSAlert {
         // Code 11
       case .requestCanceled:
         // This will happen if the user cancels
-        fallthrough
+        return "\(error)"
 
         // Code 12
       case .requestSuperseded:
         // This will happen if the user repeatedly clicks "Enable ..."
-        fallthrough
+        return "\(error)"
 
         // Code 13
       case .authorizationRequired:
         // This happens the first time we try to install the system extension.
         // The user is prompted but we still get this.
-        fallthrough
+        return "\(error)"
 
       @unknown default:
         return "\(error)"

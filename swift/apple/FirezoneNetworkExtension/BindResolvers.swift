@@ -28,12 +28,12 @@ public class BindResolvers {
 }
 
 extension BindResolvers {
-  public static func getnameinfo(_ s: res_9_sockaddr_union) -> String {
-    var s = s
+  public static func getnameinfo(_ sock: res_9_sockaddr_union) -> String {
+    var sockUnion = sock
     var hostBuffer = [CChar](repeating: 0, count: Int(NI_MAXHOST))
 
-    let sinlen = socklen_t(s.sin.sin_len)
-    let _ = withUnsafePointer(to: &s) {
+    let sinlen = socklen_t(sockUnion.sin.sin_len)
+    _ = withUnsafePointer(to: &sockUnion) {
       $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
         Darwin.getnameinfo(
           $0, sinlen,

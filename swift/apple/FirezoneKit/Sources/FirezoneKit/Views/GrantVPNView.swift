@@ -8,7 +8,6 @@
 import SwiftUI
 import Combine
 
-
 @MainActor
 final class GrantVPNViewModel: ObservableObject {
   @Published var isInstalled: Bool = false
@@ -107,9 +106,10 @@ struct GrantVPNView: View {
           .frame(maxWidth: 320)
           .padding(.horizontal, 10)
         Spacer()
-        Text(
-          "Firezone requires your permission to create VPN configurations. Until it has that permission, all functionality will be disabled."
-        )
+        Text("""
+        Firezone requires your permission to create VPN configurations.
+        Until it has that permission, all functionality will be disabled.
+        """)
         .font(.body)
         .multilineTextAlignment(.center)
         .padding(EdgeInsets(top: 0, leading: 5, bottom: 0, trailing: 5))
@@ -165,11 +165,14 @@ struct GrantVPNView: View {
             .padding(.vertical, 10)
             .opacity(model.isInstalled ? 0.5 : 1.0)
             Spacer()
-            Button(action: {
-              model.installSystemExtensionButtonTapped()
-            }) {
-              Label("Enable System Extension", systemImage: "gearshape")
-            }
+            Button(
+              action: {
+                model.installSystemExtensionButtonTapped()
+              },
+              label: {
+                Label("Enable System Extension", systemImage: "gearshape")
+              }
+            )
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(model.isInstalled)
@@ -185,11 +188,14 @@ struct GrantVPNView: View {
             .font(.body)
             .padding(.vertical, 10)
             Spacer()
-            Button(action: {
-              model.grantPermissionButtonTapped()
-            }) {
-              Label("Grant VPN Permission", systemImage: "network.badge.shield.half.filled")
-            }
+            Button(
+              action: {
+                model.grantPermissionButtonTapped()
+              },
+              label: {
+                Label("Grant VPN Permission", systemImage: "network.badge.shield.half.filled")
+              }
+            )
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(!model.isInstalled)
