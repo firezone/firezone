@@ -239,6 +239,12 @@ pub(crate) fn run(
         "BUNDLE_ID should match bundle ID in tauri.conf.json"
     );
 
+    let auth = common::auth::Auth::new()?;
+    if let Some(account_slug) = auth.session().map(|a| a.account_slug()) {
+        // TODO: We also need to set this whenever the user signs in otherwise it will only be in effect on next startup.
+        telemetry.set_account_slug(account_slug.to_owned());
+    }
+
     let tray =
         system_tray::Tray::new(
             app.handle().clone(),
@@ -255,12 +261,12 @@ pub(crate) fn run(
     let app_handle = app.handle().clone();
     let _ctlr_task = rt.spawn(async move {
         let result = AssertUnwindSafe(Controller::start(
+            auth,
             ctlr_tx,
             integration,
             ctlr_rx,
             advanced_settings,
             reloader,
-            &mut telemetry,
             updates_rx,
         ))
         .catch_unwind()

@@ -14,7 +14,6 @@ use firezone_headless_client::{
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
 use firezone_logging::{anyhow_dyn_err, std_dyn_err};
-use firezone_telemetry::Telemetry;
 use futures::{
     stream::{self, BoxStream},
     Stream, StreamExt,
@@ -31,7 +30,7 @@ mod ran_before;
 
 pub type CtlrTx = mpsc::Sender<ControllerRequest>;
 
-pub struct Controller<'a, I: GuiIntegration> {
+pub struct Controller<I: GuiIntegration> {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
     // Sign-in state with the portal / deep links
@@ -46,7 +45,6 @@ pub struct Controller<'a, I: GuiIntegration> {
     release: Option<updates::Release>,
     rx: ReceiverStream<ControllerRequest>,
     status: Status,
-    telemetry: &'a mut Telemetry,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: crate::uptime::Tracker,
 
@@ -179,14 +177,14 @@ enum EventloopTick {
     UpdateNotification(Option<Option<updates::Notification>>),
 }
 
-impl<I: GuiIntegration> Controller<'_, I> {
+impl<I: GuiIntegration> Controller<I> {
     pub async fn start(
+        auth: auth::Auth,
         ctlr_tx: CtlrTx,
         integration: I,
         rx: mpsc::Receiver<ControllerRequest>,
         advanced_settings: AdvancedSettings,
         log_filter_reloader: LogFilterReloader,
-        telemetry: &mut Telemetry,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
     ) -> Result<(), Error> {
         tracing::debug!("Starting new instance of `Controller`");
@@ -198,7 +196,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
 
         let controller = Controller {
             advanced_settings,
-            auth: auth::Auth::new()?,
+            auth,
             clear_logs_callback: None,
             ctlr_tx,
             ipc_client,
@@ -208,7 +206,6 @@ impl<I: GuiIntegration> Controller<'_, I> {
             release: None,
             rx: ReceiverStream::new(rx),
             status: Default::default(),
-            telemetry,
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
             dns_notifier,
@@ -226,9 +223,6 @@ impl<I: GuiIntegration> Controller<'_, I> {
         // Tell IPC service to start telemetry.
         {
             let environment = self.advanced_settings.api_url.to_string();
-            if let Some(account_slug) = account_slug.clone() {
-                self.telemetry.set_account_slug(account_slug);
-            }
 
             self.ipc_client
                 .send_msg(&IpcClientMsg::StartTelemetry {
