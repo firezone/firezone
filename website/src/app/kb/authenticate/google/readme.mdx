@@ -30,6 +30,11 @@ minutes to ensure that your Firezone account remains up-to-date with the latest
 identity data from Google Workspace.
 [Read more](/kb/authenticate/directory-sync) about how sync works.
 
+If using directory sync with this provider, please note the setup will require a
+Google Workspace Super Admin due to the need to manage domain wide delegation.
+The need for domain wide delegation is due to the use of a service account, rather
+than using a user account for accessing the Google Admin SDK API.
+
 ## Setup
 
 Setting up the Google Workspace connector is similar to the process of setting

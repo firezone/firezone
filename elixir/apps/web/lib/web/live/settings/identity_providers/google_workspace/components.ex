@@ -18,6 +18,11 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
   def provider_form(assigns) do
     ~H"""
     <div class="max-w-2xl px-4 py-8 mx-auto lg:py-12">
+      <.flash kind={:info} style="wide" class="mb-4">
+        Please note that a Google Workspace Super Admin is <b>required</b>
+        to setup this Identity Provider. <br />For more information please see our
+        <.website_link path="/kb/authenticate/google">docs</.website_link>
+      </.flash>
       <.form for={@form} phx-change={:change} phx-submit={:submit}>
         <.step>
           <:title>Step 1. Create a new project in Google Cloud</:title>
