@@ -140,10 +140,8 @@ pub enum Error {
     Decapsulate(boringtun::noise::errors::WireGuardError),
     #[error("Failed to encapsulate: {0:?}")]
     Encapsulate(boringtun::noise::errors::WireGuardError),
-    #[error("Packet is a STUN message but no agent handled it; num_agents = {num_agents}")]
-    UnhandledStunMessage { num_agents: usize },
-    #[error("Packet was not accepted by any wireguard tunnel; num_tunnels = {num_tunnels}")]
-    UnhandledPacket { num_tunnels: usize },
+    #[error("Packet has unknown format")]
+    UnknownPacketFormat,
     #[error("Not connected")]
     NotConnected,
     #[error("Invalid local address: {0}")]
@@ -866,9 +864,9 @@ where
             }
         }
 
-        ControlFlow::Break(Err(Error::UnhandledStunMessage {
-            num_agents: self.connections.len(),
-        }))
+        tracing::trace!("Packet was a STUN message but no agent handled it. Already disconnected?");
+
+        ControlFlow::Break(Ok(()))
     }
 
     #[must_use]
@@ -908,9 +906,14 @@ where
             };
         }
 
-        ControlFlow::Break(Err(Error::UnhandledPacket {
-            num_tunnels: self.connections.iter_established_mut().count(),
-        }))
+        match Tunn::parse_incoming_packet(packet) {
+            Ok(_) => tracing::trace!(
+                "Packet was a WireGuard packet but no connection handled it. Already disconnected?"
+            ),
+            Err(_) => return ControlFlow::Break(Err(Error::UnknownPacketFormat)),
+        };
+
+        ControlFlow::Break(Ok(()))
     }
 
     fn allocations_drain_events(&mut self) {
