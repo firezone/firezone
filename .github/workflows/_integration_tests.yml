@@ -143,25 +143,25 @@ jobs:
       - run: ./scripts/tests/${{ matrix.test.name }}.sh
 
       - name: Ensure Client emitted no warnings
-        run: docker compose logs client | grep "WARN" && exit 1
+        run: docker compose logs client | grep --quiet --invert "WARN"
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
 
       - name: Ensure Relay-1 emitted no warnings
-        run: docker compose logs relay-1 | grep "WARN" && exit 1
+        run: docker compose logs relay-1 | grep --quiet --invert "WARN"
       - name: Show Relay-1 logs
         if: "!cancelled()"
         run: docker compose logs relay-1
 
       - name: Ensure Relay-2 emitted no warnings
-        run: docker compose logs relay-2 | grep "WARN" && exit 1
+        run: docker compose logs relay-2 | grep --quiet --invert "WARN"
       - name: Show Relay-2 logs
         if: "!cancelled()"
         run: docker compose logs relay-2
 
       - name: Ensure Gateway emitted no warnings
-        run: docker compose logs gateway | grep "WARN" && exit 1
+        run: docker compose logs gateway | grep --quiet --invert "WARN"
       - name: Show Gateway logs
         if: "!cancelled()"
         run: docker compose logs gateway
