@@ -281,12 +281,24 @@ impl<I: GuiIntegration> Controller<'_, I> {
                 EventloopTick::NetworkChanged(Err(e)) | EventloopTick::DnsChanged(Err(e)) => {
                     return Err(Error::Other(e))
                 }
-                EventloopTick::IpcMsg(Some(event)) => {
-                    if let ControlFlow::Break(()) = self.handle_ipc_result(event).await? {
-                        break;
-                    }
+
+                EventloopTick::IpcMsg(Some(Ok(msg))) => {
+                    match self.handle_ipc_msg(msg).await {
+                        Ok(ControlFlow::Break(())) => break,
+                        Ok(ControlFlow::Continue(())) => continue,
+                        // Handles <https://github.com/firezone/firezone/issues/6547> more gracefully so we can still export logs even if we crashed right after sign-in
+                        Err(Error::ConnectToFirezoneFailed(error)) => {
+                            tracing::error!("Failed to connect to Firezone: {error}");
+                            self.sign_out().await?;
+
+                            continue;
+                        }
+                        Err(error) => return Err(error),
+                    };
                 }
+                EventloopTick::IpcMsg(Some(Err(e))) => return Err(Error::IpcRead(e)),
                 EventloopTick::IpcMsg(None) => return Err(Error::IpcClosed),
+
                 EventloopTick::ControllerRequest(Some(req)) => self.handle_request(req).await?,
                 EventloopTick::ControllerRequest(None) => {
                     tracing::warn!("Controller channel closed, breaking main loop");
@@ -522,26 +534,6 @@ impl<I: GuiIntegration> Controller<'_, I> {
             }
         }
         Ok(())
-    }
-
-    async fn handle_ipc_result(
-        &mut self,
-        event: Result<IpcServerMsg>,
-    ) -> Result<ControlFlow<()>, Error> {
-        match event {
-            Ok(msg) => match self.handle_ipc_msg(msg).await {
-                Ok(flow) => Ok(flow),
-                // Handles <https://github.com/firezone/firezone/issues/6547> more gracefully so we can still export logs even if we crashed right after sign-in
-                Err(Error::ConnectToFirezoneFailed(error)) => {
-                    tracing::error!("Failed to connect to Firezone: {error}");
-                    self.sign_out().await?;
-
-                    Ok(ControlFlow::Continue(()))
-                }
-                Err(error) => Err(error),
-            },
-            Err(error) => Err(Error::IpcRead(error)),
-        }
     }
 
     async fn handle_ipc_msg(&mut self, msg: IpcServerMsg) -> Result<ControlFlow<()>, Error> {
