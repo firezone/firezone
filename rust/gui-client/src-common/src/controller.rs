@@ -174,7 +174,7 @@ impl Status {
 enum EventloopTick {
     NetworkChanged(Result<()>),
     DnsChanged(Result<()>),
-    IpcEvent(ipc::Event),
+    IpcEvent(Option<ipc::Event>),
     ControllerRequest(Option<ControllerRequest>),
     UpdateNotification(Option<Option<updates::Notification>>),
 }
@@ -281,11 +281,12 @@ impl<I: GuiIntegration> Controller<'_, I> {
                 EventloopTick::NetworkChanged(Err(e)) | EventloopTick::DnsChanged(Err(e)) => {
                     return Err(Error::Other(e))
                 }
-                EventloopTick::IpcEvent(event) => {
+                EventloopTick::IpcEvent(Some(event)) => {
                     if let ControlFlow::Break(()) = self.handle_ipc_event(event).await? {
                         break;
                     }
                 }
+                EventloopTick::IpcEvent(None) => return Err(Error::IpcClosed),
                 EventloopTick::ControllerRequest(Some(req)) => self.handle_request(req).await?,
                 EventloopTick::ControllerRequest(None) => {
                     tracing::warn!("Controller channel closed, breaking main loop");
@@ -322,9 +323,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
             }
 
             if let Poll::Ready(maybe_ipc) = self.ipc_rx.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::IpcEvent(
-                    maybe_ipc.unwrap_or(ipc::Event::Closed),
-                )));
+                return Poll::Ready(Some(EventloopTick::IpcEvent(maybe_ipc)));
             }
 
             if let Poll::Ready(maybe_req) = self.rx.poll_next_unpin(cx) {
@@ -544,7 +543,6 @@ impl<I: GuiIntegration> Controller<'_, I> {
 
                 Err(Error::IpcRead)
             }
-            ipc::Event::Closed => Err(Error::IpcClosed),
         }
     }
 

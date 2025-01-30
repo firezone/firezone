@@ -8,7 +8,6 @@ use secrecy::{ExposeSecret, SecretString};
 use std::net::IpAddr;
 
 pub enum Event {
-    Closed,
     Message(IpcServerMsg),
     ReadFailed(anyhow::Error),
 }
@@ -41,7 +40,6 @@ impl Client {
                 };
                 ctlr_tx.send(event).await?;
             }
-            ctlr_tx.send(Event::Closed).await?;
             Ok(())
         });
         Ok(Self { task, tx })
