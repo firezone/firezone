@@ -142,7 +142,7 @@ pub(crate) fn run(
         ctlr_tx: ctlr_tx.clone(),
         inject_faults: cli.inject_faults,
     };
-    let (tray_tx, tray_rx) = oneshot::channel();
+
     let app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|window, event| {
@@ -232,8 +232,10 @@ pub(crate) fn run(
                     "BUNDLE_ID should match bundle ID in tauri.conf.json"
                 );
 
-                let tray = tray_rx.blocking_recv().expect("tray_rx failed");
-                let tray = system_tray::Tray::new(app.handle().clone(), tray);
+                let tray = system_tray::Tray::new(app.handle().clone(), |app, event| match handle_system_tray_event(app, event) {
+                    Ok(_) => {}
+                    Err(e) => tracing::error!("{e}"),
+                })?;
                 let integration = TauriIntegration { app: app.handle().clone(), tray };
 
                 let app_handle = app.handle().clone();
@@ -314,36 +316,6 @@ pub(crate) fn run(
             }
         }
     };
-
-    let tray = tauri::tray::TrayIconBuilder::new()
-        .icon(system_tray::icon_to_tauri_icon(
-            &firezone_gui_client_common::system_tray::Icon::default(),
-        ))
-        .menu(&system_tray::build_app_state(
-            app.handle(),
-            &firezone_gui_client_common::system_tray::AppState::default().into_menu(),
-        )?)
-        .on_menu_event(|app, event| {
-            let id = &event.id.0;
-            tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
-            let event = match serde_json::from_str::<TrayMenuEvent>(id) {
-                Ok(x) => x,
-                Err(e) => {
-                    tracing::error!("{e}");
-                    return;
-                }
-            };
-            match handle_system_tray_event(app, event) {
-                Ok(_) => {}
-                Err(e) => tracing::error!("{e}"),
-            }
-        })
-        .tooltip("Firezone")
-        .build(&app)
-        .context("Cannot build Tauri tray icon")?;
-    if tray_tx.send(tray).is_err() {
-        panic!("Couldn't send tray through the channel");
-    }
 
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
