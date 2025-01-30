@@ -321,7 +321,7 @@ impl ClientOnGateway {
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    fn ensure_allowed_dst(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
+    fn ensure_allowed_dst(&self, packet: &IpPacket) -> anyhow::Result<()> {
         let dst = packet.destination();
 
         // Note a Gateway with Internet resource should never get packets for other resources
