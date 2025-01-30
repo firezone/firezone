@@ -16,11 +16,11 @@ use firezone_tunnel::{
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
 use std::convert::Infallible;
-use std::io;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
+use std::{io, mem};
 use tokio::sync::Mutex;
 use tracing::Instrument;
 
@@ -49,6 +49,8 @@ pub struct Eventloop {
 
     resolve_tasks: futures_bounded::FuturesTupleSet<Result<Vec<IpAddr>>, ResolveTrigger>,
     set_interface_tasks: futures_bounded::FuturesSet<Result<()>>,
+
+    logged_permission_denied: bool,
 }
 
 impl Eventloop {
@@ -65,6 +67,7 @@ impl Eventloop {
             tun_device_manager: Arc::new(Mutex::new(tun_device_manager)),
             resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 1000),
             set_interface_tasks: futures_bounded::FuturesSet::new(Duration::from_secs(5), 10),
+            logged_permission_denied: false,
         }
     }
 }
@@ -82,6 +85,13 @@ impl Eventloop {
                         || e.kind() == io::ErrorKind::HostUnreachable =>
                 {
                     // Network unreachable most likely means we don't have IPv4 or IPv6 connectivity.
+                    continue;
+                }
+                Poll::Ready(Err(e)) if e.kind() == io::ErrorKind::PermissionDenied => {
+                    if !mem::replace(&mut self.logged_permission_denied, true) {
+                        tracing::info!("Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic.")
+                    }
+
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
