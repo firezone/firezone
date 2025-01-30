@@ -5,8 +5,6 @@ use firezone_headless_client::ipc;
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("Failed to connect to Firezone")]
-    ConnectToFirezoneFailed(String),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
     #[error("Logging module error: {0}")]
@@ -42,7 +40,6 @@ impl Error {
     // messages in the log which only need to be used for `git grep`.
     pub fn user_friendly_msg(&self) -> String {
         match self {
-            Error::ConnectToFirezoneFailed(_) => self.to_string(),
             Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-client>.".to_string(),
             Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
             Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),

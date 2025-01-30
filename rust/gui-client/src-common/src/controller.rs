@@ -283,17 +283,9 @@ impl<I: GuiIntegration> Controller<'_, I> {
                 }
 
                 EventloopTick::IpcMsg(Some(Ok(msg))) => {
-                    match self.handle_ipc_msg(msg).await {
-                        Ok(ControlFlow::Break(())) => break,
-                        Ok(ControlFlow::Continue(())) => continue,
-                        // Handles <https://github.com/firezone/firezone/issues/6547> more gracefully so we can still export logs even if we crashed right after sign-in
-                        Err(Error::ConnectToFirezoneFailed(error)) => {
-                            tracing::error!("Failed to connect to Firezone: {error}");
-                            self.sign_out().await?;
-
-                            continue;
-                        }
-                        Err(error) => return Err(error),
+                    match self.handle_ipc_msg(msg).await? {
+                        ControlFlow::Break(()) => break,
+                        ControlFlow::Continue(()) => continue,
                     };
                 }
                 EventloopTick::IpcMsg(Some(Err(e))) => return Err(Error::IpcRead(e)),
@@ -648,7 +640,14 @@ impl<I: GuiIntegration> Controller<'_, I> {
                 self.refresh_system_tray_menu();
                 Ok(())
             }
-            Err(IpcServiceError::Other(error)) => Err(Error::ConnectToFirezoneFailed(error)),
+            Err(IpcServiceError::Other(error)) => {
+                // We log this here directly instead of forwarding it because errors hard-abort the event-loop and we still want to be able to export logs and stuff.
+                // See <https://github.com/firezone/firezone/issues/6547>.
+                tracing::error!("Failed to connect to Firezone: {error}");
+                self.sign_out().await?;
+
+                Ok(())
+            }
         }
     }
 
