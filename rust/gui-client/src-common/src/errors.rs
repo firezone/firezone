@@ -17,8 +17,6 @@ pub enum Error {
     IpcRead,
     #[error("IPC service terminating")]
     IpcServiceTerminating,
-    #[error("Failed to connect to portal")]
-    PortalConnection(String),
     #[error("WebViewNotInstalled")]
     WebViewNotInstalled,
     #[error(transparent)]
@@ -48,7 +46,6 @@ impl Error {
             Error::IpcClosed => "IPC connection closed".to_string(),
             Error::IpcRead => "IPC read failure".to_string(),
             Error::IpcServiceTerminating => "The Firezone IPC service is terminating. Please restart the GUI Client.".to_string(),
-            Error::PortalConnection(_) => "Couldn't connect to the Firezone Portal. Are you connected to the Internet?".to_string(),
             Error::Other(error) => error.to_string(),
         }
     }
