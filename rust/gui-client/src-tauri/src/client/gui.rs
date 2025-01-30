@@ -289,25 +289,9 @@ pub(crate) fn run(
             });
 
             Ok(())
-        });
-    let app = app.build(tauri::generate_context!());
-
-    let app = match app {
-        Ok(x) => x,
-        Err(error) => {
-            tracing::error!(
-                error = std_dyn_err(&error),
-                "Failed to build Tauri app instance"
-            );
-            #[expect(clippy::wildcard_enum_match_arm)]
-            match error {
-                tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(_)) => {
-                    return Err(Error::WebViewNotInstalled);
-                }
-                error => Err(anyhow::Error::from(error).context("Tauri error"))?,
-            }
-        }
-    };
+        })
+        .build(tauri::generate_context!())
+        .context("Failed to build Tauri app instance")?;
 
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {

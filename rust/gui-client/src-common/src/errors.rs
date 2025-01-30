@@ -15,8 +15,6 @@ pub enum Error {
     IpcRead(#[source] anyhow::Error),
     #[error("IPC service terminating")]
     IpcServiceTerminating,
-    #[error("WebViewNotInstalled")]
-    WebViewNotInstalled,
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -36,13 +34,19 @@ impl Error {
     // messages in the log which only need to be used for `git grep`.
     pub fn user_friendly_msg(&self) -> String {
         match self {
-            Error::WebViewNotInstalled => "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-client>.".to_string(),
-            Error::DeepLink(deep_link::Error::CantListen) => "Firezone is already running. If it's not responding, force-stop it.".to_string(),
+            Error::DeepLink(deep_link::Error::CantListen) => {
+                "Firezone is already running. If it's not responding, force-stop it.".to_string()
+            }
             Error::DeepLink(deep_link::Error::Other(error)) => error.to_string(),
-            Error::IpcNotFound => "Couldn't find Firezone IPC service. Is the service running?".to_string(),
+            Error::IpcNotFound => {
+                "Couldn't find Firezone IPC service. Is the service running?".to_string()
+            }
             Error::IpcClosed => "IPC connection closed".to_string(),
             Error::IpcRead(_) => "IPC read failure".to_string(),
-            Error::IpcServiceTerminating => "The Firezone IPC service is terminating. Please restart the GUI Client.".to_string(),
+            Error::IpcServiceTerminating => {
+                "The Firezone IPC service is terminating. Please restart the GUI Client."
+                    .to_string()
+            }
             Error::Other(error) => error.to_string(),
         }
     }
