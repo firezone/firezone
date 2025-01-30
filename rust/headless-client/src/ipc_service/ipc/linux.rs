@@ -1,5 +1,5 @@
 use super::{Error, ServiceId};
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{Context as _, Result};
 use firezone_bin_shared::BUNDLE_ID;
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
@@ -23,12 +23,9 @@ pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
     let stream = UnixStream::connect(&path)
         .await
         .map_err(|error| match error.kind() {
-            ErrorKind::ConnectionRefused => {
-                Error::Other(anyhow!("ConnectionRefused by Unix domain socket"))
-            }
             ErrorKind::NotFound => Error::NotFound(path.display().to_string()),
             _ => Error::Other(
-                anyhow!(error.to_string()).context("Couldn't connect to Unix domain socket"),
+                anyhow::Error::new(error).context("Couldn't connect to Unix domain socket"),
             ),
         })?;
     let cred = stream
