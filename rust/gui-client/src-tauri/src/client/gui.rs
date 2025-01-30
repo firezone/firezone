@@ -173,7 +173,7 @@ pub(crate) fn run(
         .context("Failed to build Tauri app instance")?;
 
     // Check for updates
-    tokio::spawn(async move {
+    rt.spawn(async move {
         if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await {
             tracing::error!("Error in updates::checker_task: {error:#}");
         }
@@ -181,7 +181,7 @@ pub(crate) fn run(
 
     if let Some(client::Cmd::SmokeTest) = &cli.command {
         let ctlr_tx = ctlr_tx.clone();
-        tokio::spawn(async move {
+        rt.spawn(async move {
             if let Err(error) = smoke_test(ctlr_tx).await {
                 tracing::error!(
                     "Error during smoke test, crashing on purpose so a dev can see our stacktraces: {error:#}"
@@ -197,12 +197,12 @@ pub(crate) fn run(
         // to handle deep links
         let exe = tauri_utils::platform::current_exe().context("Can't find our own exe path")?;
         deep_link::register(exe).context("Failed to register deep link handler")?;
-        tokio::spawn(accept_deep_links(deep_link_server, ctlr_tx.clone()));
+        rt.spawn(accept_deep_links(deep_link_server, ctlr_tx.clone()));
     }
 
     if let Some(failure) = cli.fail_on_purpose() {
         let ctlr_tx = ctlr_tx.clone();
-        tokio::spawn(async move {
+        rt.spawn(async move {
             let delay = 5;
             tracing::warn!(
                 "Will crash / error / panic on purpose in {delay} seconds to test error handling."
@@ -216,7 +216,7 @@ pub(crate) fn run(
 
     if let Some(delay) = cli.quit_after {
         let ctlr_tx = ctlr_tx.clone();
-        tokio::spawn(async move {
+        rt.spawn(async move {
             tracing::warn!("Will quit gracefully in {delay} seconds.");
             tokio::time::sleep(Duration::from_secs(delay)).await;
             tracing::warn!("Quitting gracefully due to `--quit-after`");
@@ -249,7 +249,7 @@ pub(crate) fn run(
     };
 
     let app_handle = app.handle().clone();
-    let _ctlr_task = tokio::spawn(async move {
+    let _ctlr_task = rt.spawn(async move {
         let result = AssertUnwindSafe(Controller::start(
             ctlr_tx,
             integration,
