@@ -39,7 +39,7 @@ pub struct Controller<'a, I: GuiIntegration> {
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
-    ipc_rx: ipc::MsgStream,
+    ipc_rx: ipc::ClientRead,
     integration: I,
     log_filter_reloader: LogFilterReloader,
     /// A release that's ready to download

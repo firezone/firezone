@@ -1,13 +1,13 @@
 use anyhow::{Context as _, Result};
 use firezone_headless_client::{
     ipc::{self, Error},
-    IpcClientMsg, IpcServerMsg,
+    IpcClientMsg,
 };
-use futures::{SinkExt, Stream};
+use futures::SinkExt;
 use secrecy::{ExposeSecret, SecretString};
 use std::net::IpAddr;
 
-pub type MsgStream = Box<dyn Stream<Item = Result<IpcServerMsg>> + Send + 'static + Unpin>;
+pub use firezone_headless_client::ipc::ClientRead;
 
 pub struct Client {
     // Needed temporarily to avoid a big refactor. We can remove this in the future.
@@ -15,14 +15,14 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn new() -> Result<(Self, MsgStream), ipc::Error> {
+    pub async fn new() -> Result<(Self, ipc::ClientRead), ipc::Error> {
         tracing::debug!(
             client_pid = std::process::id(),
             "Connecting to IPC service..."
         );
         let (rx, tx) = ipc::connect_to_service(ipc::ServiceId::Prod).await?;
 
-        Ok((Self { tx }, Box::new(rx)))
+        Ok((Self { tx }, rx))
     }
 
     pub async fn disconnect_from_ipc(mut self) -> Result<()> {
