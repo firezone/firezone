@@ -12,8 +12,7 @@ use common::system_tray::Event as TrayMenuEvent;
 use firezone_gui_client_common::{
     self as common,
     controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
-    deep_link,
-    errors::{self, Error},
+    deep_link, errors,
     settings::AdvancedSettings,
     updates,
 };
@@ -117,15 +116,13 @@ impl GuiIntegration for TauriIntegration {
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
-///
-/// Still uses `thiserror` so we can catch the deep_link `CantListen` error
 #[instrument(skip_all)]
 pub(crate) fn run(
     cli: client::Cli,
     advanced_settings: AdvancedSettings,
     reloader: LogFilterReloader,
     mut telemetry: telemetry::Telemetry,
-) -> Result<(), Error> {
+) -> Result<()> {
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
     let _guard = rt.enter();

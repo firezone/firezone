@@ -1,9 +1,9 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
 use firezone_gui_client_common::{
-    self as common, controller::Failure, deep_link, errors, settings::AdvancedSettings,
+    self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
-use firezone_logging::{anyhow_dyn_err, std_dyn_err};
+use firezone_logging::anyhow_dyn_err;
 use firezone_telemetry as telemetry;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
@@ -79,7 +79,7 @@ pub(crate) fn run() -> Result<()> {
 
                 // Because of <https://github.com/firezone/firezone/issues/3567>,
                 // errors returned from `gui::run` may not be logged correctly
-                tracing::error!(error = std_dyn_err(error));
+                tracing::error!(error = anyhow_dyn_err(error));
             }
             Ok(result?)
         }
@@ -112,7 +112,7 @@ fn run_gui(cli: Cli) -> Result<()> {
 
     match gui::run(cli, settings, reloader, telemetry) {
         Ok(()) => Ok(()),
-        Err(errors::Error::Other(anyhow)) => {
+        Err(anyhow) => {
             if anyhow
                 .chain()
                 .find_map(|e| e.downcast_ref::<tauri_runtime::Error>())
@@ -122,16 +122,18 @@ fn run_gui(cli: Cli) -> Result<()> {
                 return Err(anyhow);
             }
 
+            if anyhow.root_cause().is::<deep_link::CantListen>() {
+                common::errors::show_error_dialog(
+                    "Firezone is already running. If it's not responding, force-stop it."
+                        .to_string(),
+                )?;
+                return Err(anyhow);
+            }
+
             common::errors::show_error_dialog(anyhow.to_string())?;
             tracing::error!(error = anyhow_dyn_err(&anyhow), "{anyhow:#}");
 
             Err(anyhow)
-        }
-        Err(error) => {
-            common::errors::show_error_dialog(error.user_friendly_msg())?;
-            tracing::error!(error = std_dyn_err(&error), error_msg = %error);
-
-            Err(anyhow::Error::new(error))
         }
     }
 }
