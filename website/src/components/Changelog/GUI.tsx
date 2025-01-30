@@ -27,14 +27,20 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries downloadLinks={downloadLinks} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.2" date={new Date("2025-01-30")}>
+        {title == "Linux GUI" && (
+          <ChangeItem>
+            This is a maintenance with no user-facing changes.
+          </ChangeItem>
+        )}
         {title == "Windows" && (
           <ChangeItem pull="7912">
             Fixes an issue where the tunnel device could not be created,
             resulting in an immediate sign-out after signing-in.
           </ChangeItem>
         )}
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.1" date={new Date("2025-01-28")}>
         <ChangeItem pull="7551">
           Fixes an issue where large DNS responses were incorrectly discarded.
