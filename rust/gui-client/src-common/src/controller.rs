@@ -539,10 +539,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
                 })?;
             }
             IpcServerMsg::ConnectResult(result) => {
-                return self
-                    .handle_connect_result(result)
-                    .await
-                    .map(|_| ControlFlow::Continue(()))
+                self.handle_connect_result(result).await?;
             }
             IpcServerMsg::DisconnectedGracefully => {
                 if let Status::Quitting = self.status {
