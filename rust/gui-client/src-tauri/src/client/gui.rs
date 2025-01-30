@@ -336,7 +336,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         })
         .await
         .context("Failed to send `ExportLogs` request")?;
-    let (tx, rx) = oneshot::channel();
+    let (tx, rx) = tokio::sync::oneshot::channel();
     ctlr_tx
         .send(ControllerRequest::ClearLogs(tx))
         .await
