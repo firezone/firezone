@@ -1,0 +1,7 @@
+disabled_rules:
+  # We use the TODO convention throughout the Firezone codebase. It doesn't
+  # necessarily imply immediate action needs to be taken.
+  - todo
+excluded:
+  - FirezoneNetworkExtension/Connlib/Generated/connlib-client-apple/connlib-client-apple.swift
+  - FirezoneNetworkExtension/Connlib/Generated/SwiftBridgeCore.swift

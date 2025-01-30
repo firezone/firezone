@@ -303,8 +303,8 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8DCC024328D512AE007E12D2 /* Build configuration list for PBXNativeTarget "Firezone" */;
 			buildPhases = (
-				8DE721892ACA295200E395D5 /* swift-format */,
 				8DCC021528D512AC007E12D2 /* Sources */,
+				8D70FAE62D4971E900216473 /* SwiftLint */,
 				8DCC021628D512AC007E12D2 /* Frameworks */,
 				8DCC021728D512AC007E12D2 /* Resources */,
 				8DC169A32CFF77D1006801B5 /* Embed Foundation Extensions */,
@@ -359,6 +359,7 @@
 			mainGroup = 8DCC021028D512AC007E12D2;
 			packageReferences = (
 				8D4087C72D2464D6005B2BAF /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+				8D70FAE52D49714500216473 /* XCRemoteSwiftPackageReference "SwiftLintPlugins" */,
 			);
 			productRefGroup = 8DCC021A28D512AC007E12D2 /* Products */;
 			projectDirPath = "";
@@ -399,6 +400,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		8D70FAE62D4971E900216473 /* SwiftLint */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = SwiftLint;
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if [[ \"$(uname -m)\" == arm64 ]]\nthen\n    export PATH=\"/opt/homebrew/bin:$PATH\"\nfi\n\nif command -v swiftlint >/dev/null 2>&1\nthen\n    swiftlint --autocorrect\n    swiftlint --strict\nelse\n    echo \"warning: `swiftlint` command not found - See https://github.com/realm/SwiftLint#installation for installation instructions.\"\nfi\n";
+		};
 		8D8555822D0A796100A1EA09 /* Build Connlib */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -438,25 +458,6 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "cd ../../rust/connlib/clients/apple\n./build-rust.sh\n";
-		};
-		8DE721892ACA295200E395D5 /* swift-format */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "swift-format";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "./lint.sh\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -949,6 +950,14 @@
 			requirement = {
 				kind = upToNextMajorVersion;
 				minimumVersion = 8.42.1;
+			};
+		};
+		8D70FAE52D49714500216473 /* XCRemoteSwiftPackageReference "SwiftLintPlugins" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/SimplyDanny/SwiftLintPlugins";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.58.2;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */

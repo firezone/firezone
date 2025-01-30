@@ -17,8 +17,8 @@ import Foundation
 /// Can be refactored to remove the Version enum all clients >= 1.4.0
 public struct FirezoneId {
   public enum Version {
-    case Pre_1_4_0
-    case Post_1_4_0
+    case pre140
+    case post140
   }
 
   public static func save(_ id: String) {
@@ -39,9 +39,9 @@ public struct FirezoneId {
 
   public static func load(_ version: Version) -> String? {
     let appGroupId = switch version {
-    case .Post_1_4_0:
+    case .post140:
       BundleHelper.appGroupId
-    case .Pre_1_4_0:
+    case .pre140:
 #if os(macOS)
       "47R2M6779T.group.dev.firezone.firezone"
 #elseif os(iOS)

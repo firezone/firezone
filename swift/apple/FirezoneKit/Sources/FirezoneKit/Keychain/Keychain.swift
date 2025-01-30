@@ -7,8 +7,8 @@
 import Foundation
 
 public enum KeychainError: Error {
-  case securityError(KeychainStatus)
-  case appleSecError(call: String, status: Keychain.SecStatus)
+  case securityError(OSStatus)
+  case appleSecError(call: String, status: OSStatus)
   case nilResultFromAppleSecCall(call: String)
   case resultFromAppleSecCallIsInvalid(call: String)
   case unableToFindSavedItem
@@ -20,28 +20,18 @@ public enum KeychainError: Error {
 public enum Keychain {
   public typealias PersistentRef = Data
 
-  public enum SecStatus: Equatable {
-    case status(KeychainStatus)
-    case unknownStatus(OSStatus)
-
-    init(_ osStatus: OSStatus) {
-      if let status = KeychainStatus(rawValue: osStatus) {
-        self = .status(status)
-      } else {
-        self = .unknownStatus(osStatus)
-      }
-    }
-
-    var isSuccess: Bool {
-      return self == .status(.success)
-    }
+  enum Result: Int32 {
+    case success = 0
+    case itemNotFound = -25300
   }
 
   public static func add(query: [CFString: Any]) throws {
     var ref: CFTypeRef?
-    let ret = SecStatus(SecItemAdd(query as CFDictionary, &ref))
-    guard ret.isSuccess else {
-      throw KeychainError.appleSecError(call: "SecItemAdd", status: ret)
+    let status = SecItemAdd(query as CFDictionary, &ref)
+
+    guard status == Result.success.rawValue
+    else {
+      throw KeychainError.appleSecError(call: "SecItemAdd", status: status)
     }
 
     return
@@ -52,11 +42,11 @@ public enum Keychain {
     attributesToUpdate: [CFString: Any]
   ) throws {
 
-    let ret = SecStatus(
-      SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary))
+    let status = SecItemUpdate(query as CFDictionary, attributesToUpdate as CFDictionary)
 
-    guard ret.isSuccess else {
-      throw KeychainError.appleSecError(call: "SecItemUpdate", status: ret)
+    guard status == Result.success.rawValue
+    else {
+      throw KeychainError.appleSecError(call: "SecItemUpdate", status: status)
     }
   }
 
@@ -64,13 +54,13 @@ public enum Keychain {
     let query = [
       kSecClass: kSecClassGenericPassword,
       kSecValuePersistentRef: persistentRef,
-      kSecReturnData: true,
+      kSecReturnData: true
     ] as [CFString: Any]
 
     var result: CFTypeRef?
-    let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
 
-    guard ret.isSuccess,
+    guard status == Result.success.rawValue,
           let resultData = result as? Data
     else {
       return nil
@@ -82,13 +72,13 @@ public enum Keychain {
   public static func search(query: [CFString: Any]) -> PersistentRef? {
     let query = query.merging([
       kSecClass: kSecClassGenericPassword,
-      kSecReturnPersistentRef: true,
+      kSecReturnPersistentRef: true
     ]) { (_, new) in new }
 
     var result: CFTypeRef?
-    let ret = SecStatus(SecItemCopyMatching(query as CFDictionary, &result))
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
 
-    guard ret.isSuccess,
+    guard status == Result.success.rawValue,
           let persistentRef = result as? Data
     else {
       return nil
@@ -99,11 +89,11 @@ public enum Keychain {
 
   public static func delete(persistentRef: PersistentRef) throws {
     let query = [kSecValuePersistentRef: persistentRef] as [CFString: Any]
-    let ret = SecStatus(SecItemDelete(query as CFDictionary))
+    let status = SecItemDelete(query as CFDictionary)
 
-    guard ret.isSuccess || ret == .status(.itemNotFound)
+    guard status == Result.success.rawValue || status == Result.itemNotFound.rawValue
     else {
-      throw KeychainError.appleSecError(call: "SecItemDelete", status: ret)
+      throw KeychainError.appleSecError(call: "SecItemDelete", status: status)
     }
   }
 }

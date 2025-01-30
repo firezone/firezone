@@ -27,7 +27,6 @@ struct Settings: Equatable {
       && !logFilter.isEmpty
   }
 
-
   // Convert provider configuration (which may have empty fields if it was tampered with) to Settings
   static func fromProviderConfiguration(_ providerConfiguration: [String: Any]?) -> Settings {
     if let providerConfiguration = providerConfiguration as? [String: String] {
@@ -38,7 +37,8 @@ struct Settings: Equatable {
           ?? Settings.defaultValue.apiURL,
         logFilter: providerConfiguration[VPNConfigurationManagerKeys.logFilter]
           ?? Settings.defaultValue.logFilter,
-        internetResourceEnabled: getInternetResourceEnabled(internetResourceEnabled:  providerConfiguration[VPNConfigurationManagerKeys.internetResourceEnabled])
+        internetResourceEnabled: getInternetResourceEnabled(
+          internetResourceEnabled: providerConfiguration[VPNConfigurationManagerKeys.internetResourceEnabled])
       )
     } else {
       return Settings.defaultValue
@@ -46,18 +46,26 @@ struct Settings: Equatable {
   }
 
   static private func getInternetResourceEnabled(internetResourceEnabled: String?) -> Bool? {
-    guard let internetResourceEnabled = internetResourceEnabled, let jsonData = internetResourceEnabled.data(using: .utf8) else { return nil }
+    guard let internetResourceEnabled = internetResourceEnabled,
+          let jsonData = internetResourceEnabled.data(using: .utf8)
+    else { return nil }
 
     return try? JSONDecoder().decode(Bool?.self, from: jsonData)
   }
 
   // Used for initializing a new providerConfiguration from Settings
   func toProviderConfiguration() -> [String: String] {
+    guard let data = try? JSONEncoder().encode(internetResourceEnabled),
+          let string = String(data: data, encoding: .utf8)
+    else {
+      fatalError("internetResourceEnabled should be encodable")
+    }
+
     return [
       VPNConfigurationManagerKeys.authBaseURL: authBaseURL,
       VPNConfigurationManagerKeys.apiURL: apiURL,
       VPNConfigurationManagerKeys.logFilter: logFilter,
-      VPNConfigurationManagerKeys.internetResourceEnabled: String(data: try! JSONEncoder().encode(internetResourceEnabled) , encoding: .utf8)!,
+      VPNConfigurationManagerKeys.internetResourceEnabled: string
     ]
   }
 

@@ -9,7 +9,7 @@
 import SwiftUI
 
 #if os(iOS)
-struct iOSNavigationView<Content: View>: View {
+struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_name
   @State private var isSettingsPresented = false
   @ObservedObject var model: AppViewModel
   @Environment(\.openURL) var openURL
@@ -26,7 +26,7 @@ struct iOSNavigationView<Content: View>: View {
     NavigationView {
       content
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarItems(leading: AuthMenu, trailing: SettingsButton)
+        .navigationBarItems(leading: authMenu, trailing: settingsButton)
         .alert(
           item: $errorHandler.currentAlert,
           content: { alert in
@@ -46,57 +46,72 @@ struct iOSNavigationView<Content: View>: View {
     .navigationViewStyle(StackNavigationViewStyle())
   }
 
-  private var SettingsButton: some View {
-    Button(action: {
-      isSettingsPresented = true
-    }) {
-      Label("Settings", systemImage: "gear")
-    }
+  private var settingsButton: some View {
+    Button(
+      action: {
+        isSettingsPresented = true
+      },
+      label: {
+        Label("Settings", systemImage: "gear")
+      }
+    )
     .disabled(model.status == .invalid)
   }
 
-  private var AuthMenu: some View {
+  private var authMenu: some View {
     Menu {
       if model.status == .connected {
         Text("Signed in as \(model.store.actorName ?? "Unknown user")")
-        Button(action: {
-          signOutButtonTapped()
-        }) {
-          Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
-        }
+        Button(
+          action: {
+            signOutButtonTapped()
+          },
+          label: {
+            Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+          }
+        )
       } else {
-        Button(action: {
-          Task.detached {
-            do {
-              try await WebAuthSession.signIn(store: model.store)
-            } catch {
-              Log.error(error)
+        Button(
+          action: {
+            Task.detached {
+              do {
+                try await WebAuthSession.signIn(store: model.store)
+              } catch {
+                Log.error(error)
 
-              await MainActor.run {
-                self.errorHandler.handle(
-                  ErrorAlert(
-                    title: "Error signing in",
-                    error: error
+                await MainActor.run {
+                  self.errorHandler.handle(
+                    ErrorAlert(
+                      title: "Error signing in",
+                      error: error
+                    )
                   )
-                )
+                }
               }
             }
+          },
+          label: {
+            Label("Sign in", systemImage: "person.crop.circle.fill.badge.plus")
           }
-        }) {
-          Label("Sign in", systemImage: "person.crop.circle.fill.badge.plus")
-        }
+        )
       }
       Divider()
-      Button(action: {
-        openURL(URL(string: "https://www.firezone.dev/support?utm_source=ios-client")!)
-      }) {
-        Label("Support...", systemImage: "safari")
-      }
-      Button(action: {
-        openURL(URL(string: "https://www.firezone.dev/kb?utm_source=ios=client")!)
-      }) {
-        Label("Documentation...", systemImage: "safari")
-      }
+      Button(
+        action: {
+          openURL(URL(string: "https://www.firezone.dev/support?utm_source=ios-client")!)
+        },
+        label: {
+          Label("Support...", systemImage: "safari")
+        }
+      )
+      Button(
+        action: {
+          openURL(URL(string: "https://www.firezone.dev/kb?utm_source=ios=client")!)
+        },
+        label: {
+          Label("Documentation...", systemImage: "safari")
+        }
+      )
     } label: {
       Image(systemName: "person.circle")
     }

@@ -4,6 +4,9 @@
 //  LICENSE: Apache-2.0
 //
 
+// TODO: Refactor to fix file length
+// swiftlint:disable file_length
+
 import Combine
 import OSLog
 import SwiftUI
@@ -160,6 +163,8 @@ extension FileManager {
   }
 }
 
+// TODO: Refactor body length
+// swiftlint:disable:next type_body_length
 public struct SettingsView: View {
   @ObservedObject var favorites: Favorites
   @ObservedObject var model: SettingsViewModel
@@ -203,11 +208,12 @@ public struct SettingsView: View {
   }
 
   struct FootnoteText {
-    static let forAdvanced = try! AttributedString(
+    static let forAdvanced = try? AttributedString(
       markdown: """
         **WARNING:** These settings are intended for internal debug purposes **only**. \
         Changing these will disrupt access to your Firezone resources.
-        """)
+        """
+    )
   }
 
   public init(favorites: Favorites, model: SettingsViewModel) {
@@ -342,7 +348,7 @@ public struct SettingsView: View {
               prompt: Text(PlaceholderText.logFilter)
             )
 
-            Text(FootnoteText.forAdvanced)
+            Text(FootnoteText.forAdvanced ?? "")
               .foregroundStyle(.secondary)
 
             HStack(spacing: 30) {
@@ -445,7 +451,7 @@ public struct SettingsView: View {
               }
             },
             header: { Text("Advanced Settings") },
-            footer: { Text(FootnoteText.forAdvanced) }
+            footer: { Text(FootnoteText.forAdvanced ?? "") }
           )
         }
         Spacer()
@@ -633,7 +639,7 @@ public struct SettingsView: View {
             await MainActor.run {
               alert.messageText = "Error exporting logs: \(error.localizedDescription)"
               alert.alertStyle = .critical
-              let _ = alert.runModal()
+              _ = alert.runModal()
             }
           }
 

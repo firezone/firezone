@@ -22,10 +22,8 @@ struct WebAuthSession {
 
     let anchor = PresentationAnchor()
 
-    let authResponse = try await withCheckedThrowingContinuation() { continuation in
-      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) {
- returnedURL,
- error in
+    let authResponse = try await withCheckedThrowingContinuation { continuation in
+      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { returnedURL, error in
         do {
           if let error = error as? ASWebAuthenticationSessionError,
              error.code == .canceledLogin {

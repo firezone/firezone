@@ -37,12 +37,15 @@ struct ResourceView: View {
             Text(site.name)
           }
           .contextMenu {
-            Button(action: {
-              copyToClipboard(site.name)
-            }) {
-              Text("Copy name")
-              Image(systemName: "doc.on.doc")
-            }
+            Button(
+              action: {
+                copyToClipboard(site.name)
+              },
+              label: {
+                Text("Copy name")
+                Image(systemName: "doc.on.doc")
+              }
+            )
           }
 
           HStack {
@@ -56,12 +59,15 @@ struct ResourceView: View {
               .padding(.leading, 5)
           }
           .contextMenu {
-            Button(action: {
-              copyToClipboard(resource.status.toSiteStatus())
-            }) {
-              Text("Copy status")
-              Image(systemName: "doc.on.doc")
-            }
+            Button(
+              action: {
+                copyToClipboard(resource.status.toSiteStatus())
+              },
+              label: {
+                Text("Copy status")
+                Image(systemName: "doc.on.doc")
+              }
+            )
           }
         }
       }
@@ -107,12 +113,15 @@ struct NonInternetResourceHeader: View {
         Text(resource.name)
       }
       .contextMenu {
-        Button(action: {
-          copyToClipboard(resource.name)
-        }) {
-          Text("Copy name")
-          Image(systemName: "doc.on.doc")
-        }
+        Button(
+          action: {
+            copyToClipboard(resource.name)
+          },
+          label: {
+            Text("Copy name")
+            Image(systemName: "doc.on.doc")
+          }
+        )
       }
 
       HStack {
@@ -122,56 +131,70 @@ struct NonInternetResourceHeader: View {
           .foregroundColor(.secondary)
           .frame(width: 80, alignment: .leading)
         if let url = URL(string: resource.addressDescription ?? resource.address!),
-           let _ = url.host {
-          Button(action: {
-            openURL(url)
-          }) {
-            Text(resource.addressDescription ?? resource.address!)
-              .foregroundColor(.blue)
-              .underline()
-              .font(.system(size: 16))
-              .contextMenu {
-                Button(action: {
-                  copyToClipboard(resource.addressDescription ?? resource.address!)
-                }) {
-                  Text("Copy address")
-                  Image(systemName: "doc.on.doc")
+           url.host != nil {
+          Button(
+            action: {
+              openURL(url)
+            },
+            label: {
+              Text(resource.addressDescription ?? resource.address!)
+                .foregroundColor(.blue)
+                .underline()
+                .font(.system(size: 16))
+                .contextMenu {
+                  Button(
+                    action: {
+                      copyToClipboard(resource.addressDescription ?? resource.address!)
+                    },
+                    label: {
+                      Text("Copy address")
+                      Image(systemName: "doc.on.doc")
+                    }
+                  )
                 }
-              }
-          }
+            }
+          )
         } else {
           Text(resource.addressDescription ?? resource.address!)
             .contextMenu {
-              Button(action: {
-                copyToClipboard(resource.addressDescription ?? resource.address!)
-              }) {
-                Text("Copy address")
-                Image(systemName: "doc.on.doc")
-              }
+              Button(
+                action: {
+                  copyToClipboard(resource.addressDescription ?? resource.address!)
+                },
+                label: {
+                  Text("Copy address")
+                  Image(systemName: "doc.on.doc")
+                }
+              )
             }
         }
       }
 
-      if(model.favorites.ids.contains(resource.id)) {
-        Button(action: {
-          model.favorites.remove(resource.id)
-        }) {
-          HStack {
-            Image(systemName: "star")
-            Text("Remove from favorites")
-            Spacer()
+      if model.favorites.ids.contains(resource.id) {
+        Button(
+          action: {
+            model.favorites.remove(resource.id)
+          },
+          label: {
+            HStack {
+              Image(systemName: "star")
+              Text("Remove from favorites")
+              Spacer()
+            }
           }
-        }
+        )
       } else {
-        Button(action: {
-          model.favorites.add(resource.id)
-        }) {
-          HStack {
-            Image(systemName: "star.fill")
-            Text("Add to favorites")
-            Spacer()
+        Button(
+          action: {
+            model.favorites.add(resource.id)
+          }, label: {
+            HStack {
+              Image(systemName: "star.fill")
+              Text("Add to favorites")
+              Spacer()
+            }
           }
-        }
+        )
       }
     }
   }
@@ -220,14 +243,17 @@ struct ToggleInternetResourceButton: View {
   }
 
   var body: some View {
-    Button(action: {
-      model.store.toggleInternetResource(enabled: !model.isInternetResourceEnabled())
-    }) {
-      HStack {
-        Text(toggleResourceEnabledText())
-        Spacer()
+    Button(
+      action: {
+        model.store.toggleInternetResource(enabled: !model.isInternetResourceEnabled())
+      },
+      label: {
+        HStack {
+          Text(toggleResourceEnabledText())
+          Spacer()
+        }
       }
-    }
+    )
   }
 }
 

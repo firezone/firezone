@@ -11,7 +11,7 @@ import SwiftUI
 
 @MainActor
 public final class SessionViewModel: ObservableObject {
-  @Published private(set) var actorName: String? = nil
+  @Published private(set) var actorName: String?
   @Published private(set) var favorites: Favorites
   @Published private(set) var resources: ResourceList = ResourceList.loading
   @Published private(set) var status: NEVPNStatus?
@@ -26,7 +26,7 @@ public final class SessionViewModel: ObservableObject {
 
     favorites.$ids
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] ids in
+      .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
         self.objectWillChange.send()
       })
@@ -48,7 +48,7 @@ public final class SessionViewModel: ObservableObject {
         self.status = status
 
         if status == .connected {
-          store.beginUpdatingResources() { resources in
+          store.beginUpdatingResources { resources in
             self.resources = resources
           }
         } else {
@@ -130,7 +130,7 @@ struct ResourceSection: View {
   @ObservedObject var model: SessionViewModel
 
   private func internetResourceTitle(resource: Resource) -> String {
-    let status = model.store.internetResourceEnabled() ? StatusSymbol.on : StatusSymbol.off
+    let status = model.store.internetResourceEnabled() ? StatusSymbol.enabled : StatusSymbol.disabled
 
     return status + " " + resource.name
   }

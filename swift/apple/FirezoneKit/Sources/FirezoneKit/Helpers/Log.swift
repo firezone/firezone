@@ -77,7 +77,7 @@ public final class Log {
         including: [
           .totalFileAllocatedSizeKey,
           .totalFileSizeKey,
-          .isRegularFileKey,
+          .isRegularFileKey
         ]
       ) { url, resourceValues in
         taskGroup.addTask {
@@ -161,9 +161,9 @@ private final class LogWriter {
       .appendingPathExtension("jsonl")
 
     // Create log file
-    guard fileManager.createFile(atPath: logFileURL.path, contents: "".data(using: .utf8)),
+    guard fileManager.createFile(atPath: logFileURL.path, contents: Data()),
           let handle = try? FileHandle(forWritingTo: logFileURL),
-          let _ = try? handle.seekToEnd()
+          (try? handle.seekToEnd()) != nil
     else {
       logger.error("Could not create log file: \(logFileURL.path)")
       return nil
@@ -187,14 +187,13 @@ private final class LogWriter {
       severity: severity,
       message: message)
 
-    guard var jsonData = try? jsonEncoder.encode(logEntry),
-          let newLineData = "\n".data(using: .utf8)
-        else {
+    guard var jsonData = try? jsonEncoder.encode(logEntry)
+    else {
       logger.error("Could not encode log message to JSON!")
       return
     }
 
-    jsonData.append(newLineData)
+    jsonData.append(Data("\n".utf8))
 
     workQueue.async { [weak self] in
       self?.handle.write(jsonData)

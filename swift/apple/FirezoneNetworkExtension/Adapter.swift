@@ -1,8 +1,13 @@
-import CryptoKit
+//
 //  Adapter.swift
 //  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
+
+// TODO: Refactor to fix file length
+// swiftlint:disable file_length
+
+import CryptoKit
 import FirezoneKit
 import Foundation
 import NetworkExtension
@@ -54,9 +59,9 @@ class Adapter {
   private var networkMonitor: NWPathMonitor?
 
   /// Used to avoid path update callback cycles on iOS
-  #if os(iOS)
-    private var gateways: [Network.NWEndpoint] = []
-  #endif
+#if os(iOS)
+  private var gateways: [Network.NWEndpoint] = []
+#endif
 
 #if os(macOS)
   /// Used for finding system DNS resolvers on macOS when network conditions have changed.
@@ -67,7 +72,8 @@ class Adapter {
   private var lastFetchedResolvers: [String] = []
 
   /// Remembers the last _relevant_ path update.
-  /// A path update is considered relevant if certain properties change that require us to reset connlib's network state.
+  /// A path update is considered relevant if certain properties change that require us to reset connlib's
+  /// network state.
   private var lastRelevantPath: Network.NWPath?
 
   /// Private queue used to ensure consistent ordering among path update and connlib callbacks
@@ -140,10 +146,8 @@ class Adapter {
           interfaceName: path.availableInterfaces.first?.name)
 
         if self.lastFetchedResolvers != resolvers,
-           let jsonResolvers = try? String(
-            decoding: JSONEncoder().encode(resolvers), as: UTF8.self
-           ).intoRustString()
-        {
+           let encoded = try? JSONEncoder().encode(resolvers),
+           let jsonResolvers = String(data: encoded, encoding: .utf8)?.intoRustString() {
 
           // Update connlib DNS
           session.setDns(jsonResolvers)
@@ -232,18 +236,18 @@ class Adapter {
 
       // Grab a session pointer
       let session =
-        try WrappedSession.connect(
-          apiURL,
-          "\(token)",
-          "\(id)",
-          "\(Telemetry.accountSlug!)",
-          DeviceMetadata.getDeviceName(),
-          DeviceMetadata.getOSVersion(),
-          connlibLogFolderPath,
-          logFilter,
-          callbackHandler,
-          String(data: jsonEncoder.encode(DeviceMetadata.deviceInfo()), encoding: .utf8)!
-        )
+      try WrappedSession.connect(
+        apiURL,
+        "\(token)",
+        "\(id)",
+        "\(Telemetry.accountSlug!)",
+        DeviceMetadata.getDeviceName(),
+        DeviceMetadata.getOSVersion(),
+        connlibLogFolderPath,
+        logFilter,
+        callbackHandler,
+        String(data: jsonEncoder.encode(DeviceMetadata.deviceInfo()), encoding: .utf8)!
+      )
 
       // Start listening for network change events. The first few will be our
       // tunnel interface coming up, but that's ok -- it will trigger a `set_dns`
@@ -253,9 +257,9 @@ class Adapter {
       // Update state in case everything succeeded
       self.state = .tunnelStarted(session: session)
     } catch let error {
-      let msg = error as! RustString
       // `toString` needed to deep copy the string and avoid a possible dangling pointer
-      throw AdapterError.connlibConnectError(msg.toString())
+      let msg = (error as? RustString)?.toString() ?? "Unknown error"
+      throw AdapterError.connlibConnectError(msg)
     }
   }
 
@@ -290,7 +294,7 @@ class Adapter {
     // This is async to avoid blocking the main UI thread
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      guard case .tunnelStarted(_) = self.state
+      guard case .tunnelStarted = self.state
       else {
         Log.debug("\(#function): Invalid state \(self.state)")
         return
@@ -315,7 +319,7 @@ class Adapter {
   public func setInternetResourceEnabled(_ enabled: Bool) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      guard case .tunnelStarted(_) = self.state
+      guard case .tunnelStarted = self.state
       else {
         Log.debug("\(#function): Invalid state \(self.state)")
         return
@@ -332,16 +336,20 @@ class Adapter {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-    internetResource = resources().filter{ $0.isInternetResource() }.first
+    internetResource = resources().filter { $0.isInternetResource() }.first
 
     var disablingResources: Set<String> = []
     if let internetResource = internetResource, !internetResourceEnabled {
       disablingResources.insert(internetResource.id)
     }
 
+    guard let currentlyDisabled = try? JSONEncoder().encode(disablingResources),
+          let toSet = String(data: currentlyDisabled, encoding: .utf8)
+    else {
+      fatalError("Should be able to encode 'disablingResources'")
+    }
 
-    let currentlyDisabled = try! JSONEncoder().encode(disablingResources)
-    session.setDisabledResources(String(data: currentlyDisabled, encoding: .utf8)!)
+    session.setDisabledResources(toSet)
   }
 }
 
@@ -355,32 +363,36 @@ extension Adapter {
     networkMonitor.start(queue: self.workQueue)
   }
 
-  #if os(iOS)
-    private func shouldFetchSystemResolvers(path: Network.NWPath) -> Bool {
-      if path.gateways != gateways {
-        gateways = path.gateways
-        return true
-      }
-
-      return false
-    }
-  #else
-    private func shouldFetchSystemResolvers(path _: Network.NWPath) -> Bool {
+#if os(iOS)
+  private func shouldFetchSystemResolvers(path: Network.NWPath) -> Bool {
+    if path.gateways != gateways {
+      gateways = path.gateways
       return true
     }
-  #endif
+
+    return false
+  }
+#else
+  private func shouldFetchSystemResolvers(path _: Network.NWPath) -> Bool {
+    return true
+  }
+#endif
 }
 
 // MARK: Implementing CallbackHandlerDelegate
 
 extension Adapter: CallbackHandlerDelegate {
   public func onSetInterfaceConfig(
-    tunnelAddressIPv4: String, tunnelAddressIPv6: String, dnsAddresses: [String], routeListv4: String, routeListv6: String
+    tunnelAddressIPv4: String,
+    tunnelAddressIPv6: String,
+    dnsAddresses: [String],
+    routeListv4: String,
+    routeListv6: String
   ) {
     // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      guard case .tunnelStarted(_) = self.state
+      guard case .tunnelStarted = self.state
       else {
         Log.debug("\(#function): Invalid state \(self.state)")
         return
@@ -392,15 +404,22 @@ extension Adapter: CallbackHandlerDelegate {
       Log.log(
         "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses) \(routeListv4) \(routeListv6)")
 
+      guard let data4 = routeListv4.data(using: .utf8),
+            let data6 = routeListv6.data(using: .utf8),
+            let decoded4 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data4),
+            let decoded6 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data6)
+      else {
+        fatalError("Could not decode route list from connlib")
+      }
+
+      let routes4 = decoded4.compactMap({ $0.asNEIPv4Route })
+      let routes6 = decoded6.compactMap({ $0.asNEIPv6Route })
+
       networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
       networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
       networkSettings.dnsAddresses = dnsAddresses
-      networkSettings.routes4 = try! JSONDecoder().decode(
-      [NetworkSettings.Cidr].self, from: routeListv4.data(using: .utf8)!
-      ).compactMap { $0.asNEIPv4Route }
-      networkSettings.routes6 = try! JSONDecoder().decode(
-      [NetworkSettings.Cidr].self, from: routeListv6.data(using: .utf8)!
-      ).compactMap { $0.asNEIPv6Route }
+      networkSettings.routes4 = routes4
+      networkSettings.routes6 = routes6
 
       networkSettings.apply()
     }
@@ -410,7 +429,7 @@ extension Adapter: CallbackHandlerDelegate {
     // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      guard case .tunnelStarted(_) = self.state
+      guard case .tunnelStarted = self.state
       else {
         Log.debug("Tried to call \(#function) while state is \(self.state)")
         return
@@ -430,7 +449,7 @@ extension Adapter: CallbackHandlerDelegate {
     // to ensure that we can clean up even if connlib exits before we are done.
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      guard case .tunnelStarted(_) = self.state
+      guard case .tunnelStarted = self.state
       else {
         Log.debug("\(#function): Invalid state \(self.state)")
         return
@@ -457,12 +476,12 @@ extension Adapter: CallbackHandlerDelegate {
   }
 
   private func getSystemDefaultResolvers(interfaceName: String?) -> [String] {
-    #if os(macOS)
-      let resolvers = self.systemConfigurationResolvers.getDefaultDNSServers(
-        interfaceName: interfaceName)
-    #elseif os(iOS)
-      let resolvers = resetToSystemDNSGettingBindResolvers()
-    #endif
+#if os(macOS)
+    let resolvers = self.systemConfigurationResolvers.getDefaultDNSServers(
+      interfaceName: interfaceName)
+#elseif os(iOS)
+    let resolvers = resetToSystemDNSGettingBindResolvers()
+#endif
 
     return resolvers
   }
@@ -470,54 +489,54 @@ extension Adapter: CallbackHandlerDelegate {
 
 // MARK: Getting System Resolvers on iOS
 #if os(iOS)
-  extension Adapter {
-    // When the tunnel is up, we can only get the system's default resolvers
-    // by reading /etc/resolv.conf when matchDomains is set to a non-empty string.
-    // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
-    // sentinel, which isn't helpful to us.
-    private func resetToSystemDNSGettingBindResolvers() -> [String] {
-      guard let networkSettings = networkSettings
-      else {
-        // Network Settings hasn't been applied yet, so our sentinel isn't
-        // the system's resolver and we can grab the system resolvers directly.
-        // If we try to continue below without valid tunnel addresses assigned
-        // to the interface, we'll crash.
-        return BindResolvers().getservers().map(BindResolvers.getnameinfo)
-      }
-
-      var resolvers: [String] = []
-
-      // The caller is in an async context, so it's ok to block this thread here.
-      let semaphore = DispatchSemaphore(value: 0)
-
-      // Set tunnel's matchDomains to a dummy string that will never match any name
-      networkSettings.matchDomains = ["firezone-fd0020211111"]
-
-      // Call apply to populate /etc/resolv.conf with the system's default resolvers
-      networkSettings.apply {
-        guard let networkSettings = self.networkSettings else { return }
-
-        // Only now can we get the system resolvers
-        resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
-
-        // Restore connlib's DNS resolvers
-        networkSettings.matchDomains = [""]
-        networkSettings.apply { semaphore.signal() }
-      }
-
-      semaphore.wait()
-      return resolvers
+extension Adapter {
+  // When the tunnel is up, we can only get the system's default resolvers
+  // by reading /etc/resolv.conf when matchDomains is set to a non-empty string.
+  // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
+  // sentinel, which isn't helpful to us.
+  private func resetToSystemDNSGettingBindResolvers() -> [String] {
+    guard let networkSettings = networkSettings
+    else {
+      // Network Settings hasn't been applied yet, so our sentinel isn't
+      // the system's resolver and we can grab the system resolvers directly.
+      // If we try to continue below without valid tunnel addresses assigned
+      // to the interface, we'll crash.
+      return BindResolvers().getservers().map(BindResolvers.getnameinfo)
     }
+
+    var resolvers: [String] = []
+
+    // The caller is in an async context, so it's ok to block this thread here.
+    let semaphore = DispatchSemaphore(value: 0)
+
+    // Set tunnel's matchDomains to a dummy string that will never match any name
+    networkSettings.matchDomains = ["firezone-fd0020211111"]
+
+    // Call apply to populate /etc/resolv.conf with the system's default resolvers
+    networkSettings.apply {
+      guard let networkSettings = self.networkSettings else { return }
+
+      // Only now can we get the system resolvers
+      resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
+
+      // Restore connlib's DNS resolvers
+      networkSettings.matchDomains = [""]
+      networkSettings.apply { semaphore.signal() }
+    }
+
+    semaphore.wait()
+    return resolvers
   }
+}
 #endif
 
 extension Network.NWPath {
   func connectivityDifferentFrom(path: Network.NWPath) -> Bool {
     // We define a path as different from another if the following properties change
     return path.supportsIPv4 != self.supportsIPv4 ||
-      path.supportsIPv6 != self.supportsIPv6 ||
-      path.availableInterfaces.first?.name != self.availableInterfaces.first?.name ||
-      // Apple provides no documentation on whether order is meaningful, so assume it isn't.
-      Set(self.gateways) != Set(path.gateways)
+    path.supportsIPv6 != self.supportsIPv6 ||
+    path.availableInterfaces.first?.name != self.availableInterfaces.first?.name ||
+    // Apple provides no documentation on whether order is meaningful, so assume it isn't.
+    Set(self.gateways) != Set(path.gateways)
   }
 }

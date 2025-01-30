@@ -80,7 +80,6 @@ struct AuthClient {
     return bytes.map { String(format: "%02hhx", $0) }.joined()
   }
 
-  // TODO: Use a cryptography lib that the compiler can't optimize out
   private func areStringsEqualConstantTime(_ string1: String, _ string2: String) -> Bool {
     let charArray1 = string1.utf8CString
     let charArray2 = string2.utf8CString

@@ -12,7 +12,7 @@ public struct Token: CustomStringConvertible {
     kSecAttrLabel: "Firezone token",
     kSecAttrAccount: "1",
     kSecAttrService: BundleHelper.appGroupId,
-    kSecAttrDescription: "Firezone access token",
+    kSecAttrDescription: "Firezone access token"
   ]
 
   private var data: Data
