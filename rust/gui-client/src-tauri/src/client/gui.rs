@@ -12,7 +12,7 @@ use common::system_tray::Event as TrayMenuEvent;
 use firezone_gui_client_common::{
     self as common,
     controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
-    deep_link, errors,
+    deep_link,
     settings::AdvancedSettings,
     updates,
 };
@@ -21,7 +21,7 @@ use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use firezone_telemetry as telemetry;
 use futures::FutureExt;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{panic::AssertUnwindSafe, str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration};
 use tauri::Manager;
 use tokio::sync::mpsc;
 use tracing::instrument;
@@ -140,7 +140,7 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    let app = tauri::Builder::default()
+    let mut app = tauri::Builder::default()
         .manage(managed)
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -257,73 +257,50 @@ pub(crate) fn run(
         app: app.handle().clone(),
         tray,
     };
+    let controller = Controller::start(
+        auth,
+        ctlr_tx,
+        integration,
+        ctlr_rx,
+        advanced_settings,
+        reloader,
+        updates_rx,
+    );
 
-    let app_handle = app.handle().clone();
-    let _ctlr_task = rt.spawn(async move {
-        let result = AssertUnwindSafe(Controller::start(
-            auth,
-            ctlr_tx,
-            integration,
-            ctlr_rx,
-            advanced_settings,
-            reloader,
-            updates_rx,
-        ))
-        .catch_unwind()
-        .await;
+    let ctrl_task = rt.spawn(controller);
 
-        // See <https://github.com/tauri-apps/tauri/issues/8631>
-        // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
-        // because it exits the entire process without dropping anything.
-        //
-        // This seems to be a platform limitation that Tauri is unable to hide
-        // from us. It was the source of much consternation at time of writing.
+    // While our controller task is running, tick the eventloop of Tauri.
+    while !ctrl_task.is_finished() {
+        app.run_iteration(|_app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                // Don't exit if we close our main window
+                // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
 
-        let exit_code = match result {
-            Err(_panic) => {
-                // The panic will have been recorded already by Sentry's panic hook.
-                telemetry.stop_on_crash().await;
-
-                1
+                api.prevent_exit();
             }
-            Ok(Err(error)) => {
-                tracing::error!(
-                    error = std_dyn_err(&error),
-                    "run_controller returned an error"
-                );
-                if let Err(e) = errors::show_error_dialog(error.user_friendly_msg()) {
-                    tracing::error!(error = anyhow_dyn_err(&e), "Failed to show error dialog");
-                }
-                telemetry.stop_on_crash().await;
-                1
-            }
-            Ok(Ok(_)) => {
-                telemetry.stop().await;
+        });
+    }
 
-                0
-            }
-        };
+    app.cleanup_before_exit();
 
-        // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
-        // TODO: This limit may not exist in Tauri v2
+    match ctrl_task.now_or_never().expect("task is finished; qed") {
+        Err(panic) => {
+            // The panic will have been recorded already by Sentry's panic hook.
+            rt.block_on(telemetry.stop_on_crash());
 
-        tracing::info!(?exit_code);
-        app_handle.exit(exit_code);
-        // In Tauri v1, calling `App::exit` internally exited the process.
-        // In Tauri v2, that doesn't happen, but `App::run` still doesn't return, so we have to bail out of the process manually.
-        std::process::exit(exit_code);
-    });
-
-    app.run(|_app_handle, event| {
-        if let tauri::RunEvent::ExitRequested { api, .. } = event {
-            // Don't exit if we close our main window
-            // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
-
-            api.prevent_exit();
+            bail!("Controller panicked: {panic}")
         }
-    });
-    tracing::warn!("app.run returned, this is normally unreachable even in Tauri v2");
-    Ok(())
+        Ok(Err(error)) => {
+            rt.block_on(telemetry.stop_on_crash());
+
+            return Err(anyhow::Error::new(error));
+        }
+        Ok(Ok(_)) => {
+            rt.block_on(telemetry.stop());
+
+            return Ok(());
+        }
+    }
 }
 
 #[cfg(not(debug_assertions))]
