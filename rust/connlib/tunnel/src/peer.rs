@@ -271,11 +271,13 @@ impl ClientOnGateway {
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<IpPacket>> {
+        // Filtering a packet is not an error.
         if let Err(e) = self.ensure_allowed(&packet) {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
             return Ok(None);
         }
 
+        // Failing to transform is an error we want to know about further up.
         let packet = self.transform_network_to_tun(packet, now)?;
 
         Ok(Some(packet))
