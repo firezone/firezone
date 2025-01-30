@@ -1,4 +1,4 @@
-use crate::{self as common, deep_link};
+use crate::deep_link;
 use anyhow::Result;
 use firezone_headless_client::ipc;
 
@@ -9,8 +9,6 @@ pub enum Error {
     ConnectToFirezoneFailed(String),
     #[error("Deep-link module error: {0}")]
     DeepLink(#[from] deep_link::Error),
-    #[error("Logging module error: {0}")]
-    Logging(#[from] common::logging::Error),
     #[error("IPC service not found")]
     IpcNotFound,
     #[error("IPC closed")]
@@ -50,7 +48,6 @@ impl Error {
             Error::IpcClosed => "IPC connection closed".to_string(),
             Error::IpcRead => "IPC read failure".to_string(),
             Error::IpcServiceTerminating => "The Firezone IPC service is terminating. Please restart the GUI Client.".to_string(),
-            Error::Logging(_) => "Logging error".to_string(),
             Error::PortalConnection(_) => "Couldn't connect to the Firezone Portal. Are you connected to the Internet?".to_string(),
             Error::Other(error) => error.to_string(),
         }
