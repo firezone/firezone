@@ -56,6 +56,11 @@ pub fn setup(directives: &str) -> Result<Handles> {
     let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(directives)?);
     let subscriber = Registry::default()
         .with(layer.with_filter(filter))
+        .with(
+            tracing_subscriber::fmt::layer()
+                .event_format(firezone_logging::Format::new())
+                .with_filter(firezone_logging::try_filter(directives)?),
+        )
         .with(firezone_logging::sentry_layer());
     firezone_logging::init(subscriber)?;
 
