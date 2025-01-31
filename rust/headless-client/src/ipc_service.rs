@@ -15,7 +15,7 @@ use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
     task::{Context, Poll},
-    Future as _, SinkExt as _, Stream as _, TryFutureExt,
+    Future as _, SinkExt as _, Stream as _,
 };
 use phoenix_channel::LoginUrl;
 use secrecy::SecretString;
