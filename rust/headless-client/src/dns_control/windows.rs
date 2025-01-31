@@ -121,7 +121,7 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
     // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
     // again unless you let that connection time out:
     // <https://github.com/firezone/firezone/issues/3113#issuecomment-1882096111>
-    tracing::info!("Activating DNS control...");
+    tracing::info!(nameservers = ?dns_config, "Activating DNS control...");
 
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
