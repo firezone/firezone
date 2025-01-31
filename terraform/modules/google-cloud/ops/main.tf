@@ -212,7 +212,7 @@ resource "google_monitoring_alert_policy" "instances_high_cpu_policy" {
       filter     = "resource.type = \"gce_instance\" AND metric.type = \"compute.googleapis.com/instance/cpu/utilization\" AND metadata.user_labels.managed_by = \"terraform\""
       comparison = "COMPARISON_GT"
 
-      threshold_value = 0.8
+      threshold_value = 0.9
       duration        = "60s"
 
       trigger {
