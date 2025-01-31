@@ -125,23 +125,28 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
 
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
-    set_nameservers_on_interface(dns_config)?;
+    set_nameservers_on_interface(dns_config).context("Failed to set nameservers")?;
 
     // e.g. [100.100.111.1, 100.100.111.2] -> "100.100.111.1;100.100.111.2"
     let dns_config_string = itertools::join(dns_config, ";");
 
     // It's safe to always set the local rule.
-    let (key, _) = hklm.create_subkey(local_nrpt_path().join(NRPT_REG_KEY))?;
-    set_nrpt_rule(&key, &dns_config_string)?;
+    let (key, _) = hklm
+        .create_subkey(local_nrpt_path().join(NRPT_REG_KEY))
+        .context("Failed to create local NRPT registry key")?;
+    set_nrpt_rule(&key, &dns_config_string).context("Failed to set local NRPT rule")?;
 
     // If this key exists, our local NRPT rules are ignored and we have to stick
     // them in with group policies for some reason.
     let group_policy_key_exists = hklm.open_subkey(group_nrpt_path()).is_ok();
     tracing::debug!(?group_policy_key_exists);
+
     if group_policy_key_exists {
         // TODO: Possible TOCTOU problem - We check whether the key exists, then create a subkey if it does. If Group Policy is disabled between those two steps, and something else removes that parent key, we'll re-create it, which might be bad. We can set up unit tests to see if it's possible to avoid this in the registry, but for now it's not a huge deal.
-        let (key, _) = hklm.create_subkey(group_nrpt_path().join(NRPT_REG_KEY))?;
-        set_nrpt_rule(&key, &dns_config_string)?;
+        let (key, _) = hklm
+            .create_subkey(group_nrpt_path().join(NRPT_REG_KEY))
+            .context("Failed to create group NRPT registry key")?;
+        set_nrpt_rule(&key, &dns_config_string).context("Failed to set group NRPT rule")?;
         refresh_group_policy()?;
     }
 
