@@ -159,6 +159,10 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
 /// Fixes #6777
 fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+    let ipv4_nameservers = itertools::join(dns_config.iter().filter(|addr| addr.is_ipv4()), ";");
+    let ipv6_nameservers = itertools::join(dns_config.iter().filter(|addr| addr.is_ipv6()), ";");
+
+    tracing::debug!(ipv4_nameservers);
 
     let key = hklm.open_subkey_with_flags(
         Path::new(&format!(
@@ -166,10 +170,9 @@ fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
         )),
         winreg::enums::KEY_WRITE,
     )?;
-    key.set_value(
-        "NameServer",
-        &itertools::join(dns_config.iter().filter(|addr| addr.is_ipv4()), ";"),
-    )?;
+    key.set_value("NameServer", &ipv4_nameservers)?;
+
+    tracing::debug!(ipv6_nameservers);
 
     let key = hklm.open_subkey_with_flags(
         Path::new(&format!(
@@ -177,10 +180,7 @@ fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
         )),
         winreg::enums::KEY_WRITE,
     )?;
-    key.set_value(
-        "NameServer",
-        &itertools::join(dns_config.iter().filter(|addr| addr.is_ipv6()), ";"),
-    )?;
+    key.set_value("NameServer", &ipv6_nameservers)?;
 
     Ok(())
 }
