@@ -15,7 +15,7 @@ use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
     task::{Context, Poll},
-    Future as _, SinkExt as _, Stream as _,
+    Future as _, SinkExt as _, Stream as _, TryFutureExt,
 };
 use phoenix_channel::LoginUrl;
 use secrecy::SecretString;
@@ -34,7 +34,7 @@ use tracing_subscriber::{layer::SubscriberExt, reload, EnvFilter, Layer, Registr
 use url::Url;
 
 pub mod ipc;
-use backoff::ExponentialBackoffBuilder;
+use backoff::{backoff::Backoff, ExponentialBackoffBuilder};
 use connlib_model::ResourceId;
 use ipc::{Server as IpcServer, ServiceId};
 use phoenix_channel::{get_user_agent, PhoenixChannel};
@@ -359,13 +359,32 @@ impl<'a> Handler<'a> {
     async fn run(&mut self, signals: &mut signals::Terminate) -> HandlerOk {
         loop {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
-                Event::Callback(x) => {
-                    if let Err(error) = self.handle_connlib_cb(x).await {
-                        tracing::error!(
-                            error = anyhow_dyn_err(&error),
-                            "Error while handling connlib callback"
-                        );
-                        continue;
+                Event::Callback(msg) => {
+                    let mut backoff = backoff::ExponentialBackoffBuilder::new()
+                        .with_initial_interval(Duration::from_millis(100))
+                        .with_max_elapsed_time(Some(Duration::from_secs(10)))
+                        .build();
+
+                    loop {
+                        let error = match self.handle_connlib_msg(msg.clone()).await {
+                            Ok(()) => {
+                                tracing::info!(?msg, "Successfully handled msg from connlib");
+                                break;
+                            }
+                            Err(e) => e,
+                        };
+
+                        let Some(retry_in) = backoff.next_backoff() else {
+                            tracing::error!(
+                                error = anyhow_dyn_err(&error),
+                                ?msg,
+                                "Error while handling connlib msg"
+                            );
+                            break;
+                        };
+
+                        tracing::debug!(?retry_in, ?msg, "Failed to handle connlib msg: {error:#}");
+                        tokio::time::sleep(retry_in).await;
                     }
                 }
                 Event::CallbackChannelClosed => {
@@ -437,7 +456,7 @@ impl<'a> Handler<'a> {
         Poll::Pending
     }
 
-    async fn handle_connlib_cb(&mut self, msg: ConnlibMsg) -> Result<()> {
+    async fn handle_connlib_msg(&mut self, msg: ConnlibMsg) -> Result<()> {
         match msg {
             ConnlibMsg::OnDisconnect {
                 error_msg,
