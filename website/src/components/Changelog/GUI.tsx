@@ -27,7 +27,12 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries downloadLinks={downloadLinks} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="7971">
+          Introduces a retry mechanism in case routing rules or DNS settings
+          fail to apply.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.2" date={new Date("2025-01-30")}>
         {title == "Linux GUI" && (
           <ChangeItem>
