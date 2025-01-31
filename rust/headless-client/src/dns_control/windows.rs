@@ -16,7 +16,7 @@
 use super::DnsController;
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
-use firezone_logging::std_dyn_err;
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 use windows::Win32::System::GroupPolicy::{RefreshPolicyEx, RP_FORCE};
 
