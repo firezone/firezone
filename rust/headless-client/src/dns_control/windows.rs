@@ -126,7 +126,7 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
     if let Err(e) = set_nameservers_on_interface(dns_config) {
-        tracing::info!("Failed to explicitly set nameservers on tunnel interface; DNS resources in WSL may not work: {e:#}")
+        tracing::warn!(error = anyhow_dyn_err(&e), "Failed to explicitly set nameservers on tunnel interface; DNS resources in WSL may not work");
     }
 
     // e.g. [100.100.111.1, 100.100.111.2] -> "100.100.111.1;100.100.111.2"
