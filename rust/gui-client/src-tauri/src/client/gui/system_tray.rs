@@ -8,7 +8,7 @@
 use anyhow::{Context as _, Result};
 use firezone_gui_client_common::{
     compositor::{self, Image},
-    system_tray::{AppState, ConnlibState, Entry, Icon, IconBase, Item, Menu},
+    system_tray::{AppState, ConnlibState, Entry, Event, Icon, IconBase, Item, Menu},
 };
 use tauri::AppHandle;
 
@@ -33,7 +33,7 @@ pub(crate) struct Tray {
     last_menu_set: Option<Menu>,
 }
 
-pub(crate) fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
+fn icon_to_tauri_icon(that: &Icon) -> tauri::image::Image<'static> {
     let layers = match that.base {
         IconBase::Busy => &[LOGO_GREY_BASE, BUSY_LAYER][..],
         IconBase::SignedIn => &[LOGO_BASE][..],
@@ -52,13 +52,41 @@ fn image_to_tauri_icon(val: Image) -> tauri::image::Image<'static> {
 }
 
 impl Tray {
-    pub(crate) fn new(app: AppHandle, handle: tauri::tray::TrayIcon) -> Self {
-        Self {
+    pub(crate) fn new(
+        app: AppHandle,
+        on_event: impl Fn(&AppHandle, Event) + Send + Sync + 'static,
+    ) -> Result<Self> {
+        let tray = tauri::tray::TrayIconBuilder::new()
+            .icon(icon_to_tauri_icon(
+                &firezone_gui_client_common::system_tray::Icon::default(),
+            ))
+            .menu(&build_app_state(
+                &app,
+                &firezone_gui_client_common::system_tray::AppState::default().into_menu(),
+            )?)
+            .on_menu_event(move |app, event| {
+                let id = &event.id.0;
+                tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
+                let event = match serde_json::from_str::<Event>(id) {
+                    Ok(x) => x,
+                    Err(e) => {
+                        tracing::error!("{e}");
+                        return;
+                    }
+                };
+
+                on_event(app, event);
+            })
+            .tooltip("Firezone")
+            .build(&app)
+            .context("Cannot build Tauri tray icon")?;
+
+        Ok(Self {
             app,
-            handle,
+            handle: tray,
             last_icon_set: Default::default(),
             last_menu_set: None,
-        }
+        })
     }
 
     pub(crate) fn update(&mut self, state: AppState) {
@@ -141,7 +169,7 @@ fn update(handle: tauri::tray::TrayIcon, app: &AppHandle, menu: &Menu) -> Result
     Ok(())
 }
 
-pub(crate) fn build_app_state(app: &AppHandle, menu: &Menu) -> Result<TauriMenu> {
+fn build_app_state(app: &AppHandle, menu: &Menu) -> Result<TauriMenu> {
     build_menu(app, menu)
 }
 
@@ -151,7 +179,7 @@ pub(crate) fn build_app_state(app: &AppHandle, menu: &Menu) -> Result<TauriMenu>
 ///
 /// Note that Menus and Submenus are different in Tauri. Using a Submenu as a Menu
 /// may crash on Windows. <https://github.com/tauri-apps/tauri/issues/11363>
-pub(crate) fn build_menu(app: &AppHandle, that: &Menu) -> Result<TauriMenu> {
+fn build_menu(app: &AppHandle, that: &Menu) -> Result<TauriMenu> {
     let mut menu = tauri::menu::MenuBuilder::new(app);
     for entry in &that.entries {
         menu = menu.item(&*build_entry(app, entry)?);
@@ -159,7 +187,7 @@ pub(crate) fn build_menu(app: &AppHandle, that: &Menu) -> Result<TauriMenu> {
     Ok(menu.build()?)
 }
 
-pub(crate) fn build_submenu(app: &AppHandle, title: &str, that: &Menu) -> Result<TauriSubmenu> {
+fn build_submenu(app: &AppHandle, title: &str, that: &Menu) -> Result<TauriSubmenu> {
     let mut menu = tauri::menu::SubmenuBuilder::new(app, title);
     for entry in &that.entries {
         menu = menu.item(&*build_entry(app, entry)?);

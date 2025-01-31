@@ -23,16 +23,9 @@ mod imp;
 #[path = "deep_link/windows.rs"]
 mod imp;
 
-#[cfg_attr(target_os = "linux", allow(dead_code))]
-#[cfg_attr(target_os = "macos", allow(dead_code))]
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
-    // This one is not `anyhow` since we catch it in the caller
-    #[error("named pipe server couldn't start listening, we are probably the second instance")]
-    CantListen,
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-}
+#[error("named pipe server couldn't start listening, we are probably the second instance")]
+pub struct CantListen;
 
 pub use imp::{open, register, Server};
 
