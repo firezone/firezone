@@ -360,6 +360,11 @@ impl<'a> Handler<'a> {
         loop {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Callback(msg) => {
+                    // Attempt to change the system's state as per the message from connlib.
+                    // We can safely retry these because they are by design idempotent:
+                    // There is no difference between us attempting to apply the same message multiple times
+                    // and connlib sending us the same message multiple times.
+
                     let mut backoff = backoff::ExponentialBackoffBuilder::new()
                         .with_initial_interval(Duration::from_millis(100))
                         .with_max_elapsed_time(Some(Duration::from_secs(10)))
