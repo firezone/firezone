@@ -51,11 +51,19 @@ pub enum Error {
 pub fn setup(directives: &str) -> Result<Handles> {
     let log_path = known_dirs::logs().context("Can't compute app log dir")?;
 
+    // Logfilter for stderr cannot be reloaded. This is okay because we are using it only for local dev and debugging anyway.
+    // Having multiple reload handles makes their type-signature quite complex so we don't bother with that.
+    let stderr = tracing_subscriber::fmt::layer()
+        .event_format(firezone_logging::Format::new())
+        .with_filter(firezone_logging::try_filter(directives)?);
+
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
     let (layer, logger) = firezone_logging::file::layer(&log_path, "gui-client");
     let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(directives)?);
+
     let subscriber = Registry::default()
         .with(layer.with_filter(filter))
+        .with(stderr)
         .with(firezone_logging::sentry_layer());
     firezone_logging::init(subscriber)?;
 
