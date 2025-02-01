@@ -131,26 +131,25 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   ) {
     Log.log("stopTunnel: Reason: \(reason)")
 
-    if case .authenticationCanceled = reason {
-      Task {
-        do {
-          // This was triggered from onDisconnect, so clear our token
-          try Token.delete()
+    do {
+      // There's no good way to send data like this from the
+      // Network Extension to the GUI, so save it to a file for the GUI to read upon
+      // either status change or the next launch.
+      try String(reason.rawValue).write(
+        to: SharedAccess.providerStopReasonURL, atomically: true, encoding: .utf8)
+    } catch {
+      Log.error(
+        SharedAccess.Error.unableToWriteToFile(
+          SharedAccess.providerStopReasonURL,
+          error
+        )
+      )
+    }
 
-          // There's no good way to send data like this from the
-          // Network Extension to the GUI, so save it to a file for the GUI to read upon
-          // either status change or the next launch.
-          try String(reason.rawValue).write(
-            to: SharedAccess.providerStopReasonURL, atomically: true, encoding: .utf8)
-        } catch {
-          Log.error(
-            SharedAccess.Error.unableToWriteToFile(
-              SharedAccess.providerStopReasonURL,
-              error
-            )
-          )
-        }
-      }
+    if case .authenticationCanceled = reason {
+      // This was triggered from onDisconnect, so try to clear our token
+      do { try Token.delete() } catch { Log.error(error) }
+
 #if os(iOS)
       // iOS notifications should be shown from the tunnel process
       SessionNotification.showSignedOutNotificationiOS()
@@ -303,31 +302,5 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       .removeItem(at: SharedAccess.providerStopReasonURL)
 
     completionHandler(data)
-  }
-}
-
-extension NEProviderStopReason: @retroactive CustomStringConvertible {
-  public var description: String {
-    switch self {
-    case .none: return "None"
-    case .userInitiated: return "User-initiated"
-    case .providerFailed: return "Provider failed"
-    case .noNetworkAvailable: return "No network available"
-    case .unrecoverableNetworkChange: return "Unrecoverable network change"
-    case .providerDisabled: return "Provider disabled"
-    case .authenticationCanceled: return "Authentication canceled"
-    case .configurationFailed: return "Configuration failed"
-    case .idleTimeout: return "Idle timeout"
-    case .configurationDisabled: return "Configuration disabled"
-    case .configurationRemoved: return "Configuration removed"
-    case .superceded: return "Superceded"
-    case .userLogout: return "User logged out"
-    case .userSwitch: return "User switched"
-    case .connectionFailed: return "Connection failed"
-    case .sleep: return "Sleep"
-    case .appUpdate: return "App update"
-    case .internalError: return "Internal error"
-    @unknown default: return "Unknown"
-    }
   }
 }
