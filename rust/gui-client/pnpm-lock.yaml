@@ -12,8 +12,8 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
       flowbite:
-        specifier: ^3.0.0
-        version: 3.0.0(rollup@4.32.1)
+        specifier: ^3.1.1
+        version: 3.1.1(rollup@4.32.1)
     devDependencies:
       '@tauri-apps/cli':
         specifier: ^2.2.7
@@ -578,8 +578,8 @@ packages:
   flowbite@2.5.2:
     resolution: {integrity: sha512-kwFD3n8/YW4EG8GlY3Od9IoKND97kitO+/ejISHSqpn3vw2i5K/+ZI8Jm2V+KC4fGdnfi0XZ+TzYqQb4Q1LshA==}
 
-  flowbite@3.0.0:
-    resolution: {integrity: sha512-5FyZOzsD6iER+iEm+NnqtzTdBVXOjG2HhuuAjOWmqTlz4GK/tVkXHJoY41lnHBMSHlFPM4aPcppnXrzPYL3vYA==}
+  flowbite@3.1.1:
+    resolution: {integrity: sha512-ZYj519lS7Ls+ek6jOi12JRJytDtwekJdnwSjDXhiS8G+k2j3X8HfFOGtbdrYey6h2+z/seEDSqsSjDca/wClxw==}
 
   follow-redirects@1.15.9:
     resolution: {integrity: sha512-gew4GsXizNgdoRyqmyfMHyAmXsZDk6mHkSxZFCzW9gwlbtOW44CDtYavM+y+72qD/Vq2l550kMF52DT8fOLJqQ==}
@@ -1488,11 +1488,12 @@ snapshots:
     transitivePeerDependencies:
       - rollup
 
-  flowbite@3.0.0(rollup@4.32.1):
+  flowbite@3.1.1(rollup@4.32.1):
     dependencies:
       '@popperjs/core': 2.11.8
       flowbite-datepicker: 1.3.2(rollup@4.32.1)
       mini-svg-data-uri: 1.4.4
+      postcss: 8.5.1
     transitivePeerDependencies:
       - rollup
 
