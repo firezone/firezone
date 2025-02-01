@@ -13,7 +13,7 @@ buildscript {
 }
 
 plugins {
-    id("org.mozilla.rust-android-gradle.rust-android") version "0.9.5" apply false
+    id("org.mozilla.rust-android-gradle.rust-android") version "0.9.6" apply false
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
     id("com.android.application") version "8.8.0" apply false
     id("com.google.firebase.appdistribution") version "5.1.0" apply false
