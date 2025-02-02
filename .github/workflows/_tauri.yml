@@ -13,8 +13,28 @@ env:
   RUSTDOCFLAGS: "-D warnings"
 
 jobs:
+  update-release-draft:
+    name: update-release-draft
+    runs-on: ubuntu-22.04
+    env:
+      # mark:next-gui-version
+      RELEASE_NAME: gui-client-1.4.3
+    steps:
+      - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        id: update-release-draft
+        with:
+          config-name: release-drafter-gui-client.yml
+          tag: ${{ env.RELEASE_NAME }}
+          version: ${{ env.RELEASE_NAME }}
+          name: ${{ env.RELEASE_NAME }}
+          commitish: ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
+    needs: update-release-draft
     runs-on: ${{ matrix.runs-on }}
     permissions:
       contents: write # for attaching the build artifacts to the release
@@ -124,23 +144,3 @@ jobs:
           TAG_NAME: gui-client-${{ env.FIREZONE_GUI_VERSION }}
         shell: bash
         run: ${{ env.UPLOAD_SCRIPT }}
-
-  update-release-draft:
-    name: update-release-draft
-    needs: build-gui
-    runs-on: ubuntu-22.04
-    env:
-      # mark:next-gui-version
-      RELEASE_NAME: gui-client-1.4.3
-    steps:
-      - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
-        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
-        id: update-release-draft
-        with:
-          config-name: release-drafter-gui-client.yml
-          tag: ${{ env.RELEASE_NAME }}
-          version: ${{ env.RELEASE_NAME }}
-          name: ${{ env.RELEASE_NAME }}
-          commitish: ${{ github.sha }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
