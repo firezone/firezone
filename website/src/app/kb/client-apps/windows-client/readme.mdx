@@ -152,6 +152,35 @@ Go to:
 - Switch to the tab `Log On`
 - Select `Local System Account`
 
+### Check if necessary registry keys have the right permissions
+
+In the Start Menu, search for "Windows Powershell". Open it and run this
+command:
+
+```pwsh
+@("HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip", "HKLM:\SYSTEM\CurrentControlSet\Services\Tcpip6") | ForEach-Object { Get-Acl $_ | Select-Object -ExpandProperty Access | Where-Object IdentityReference -match "SYSTEM" }
+```
+
+Good output:
+
+```text
+RegistryRights    : FullControl
+AccessControlType : Allow
+IdentityReference : NT AUTHORITY\SYSTEM
+IsInherited       : False
+InheritanceFlags  : ContainerInherit
+PropagationFlags  : None
+
+RegistryRights    : FullControl
+AccessControlType : Allow
+IdentityReference : NT AUTHORITY\SYSTEM
+IsInherited       : False
+InheritanceFlags  : ContainerInherit
+PropagationFlags  : None
+```
+
+The "RegistryRights" must be `FullControl`.
+
 ### Check if Firezone is controlling DNS
 
 In the Start Menu, search for "Windows Powershell". Open it and run this
