@@ -15,6 +15,7 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@tailwindcss/cli": "^4.0.3",
     "@tauri-apps/api": "^2.2.0",
     "flowbite": "^3.1.1"
   },
