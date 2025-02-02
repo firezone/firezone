@@ -4,8 +4,28 @@ on:
   workflow_dispatch:
 
 jobs:
+  update-release-draft:
+    name: update-release-draft
+    runs-on: ubuntu-22.04
+    env:
+      # mark:next-apple-version
+      RELEASE_NAME: macos-client-1.4.2
+    steps:
+      - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        id: update-release-draft
+        with:
+          config-name: release-drafter-macos-client.yml
+          tag: ${{ env.RELEASE_NAME}}
+          version: ${{ env.RELEASE_NAME}}
+          name: ${{ env.RELEASE_NAME}}
+          commitish: ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
     name: ${{ matrix.job_name }}
+    needs: update-release-draft
     runs-on: macos-15
     permissions:
       contents: write # for attaching the build artifacts to the release
@@ -104,23 +124,3 @@ jobs:
           # Swift benefits heavily from build cache, so aggressively write a new one
           # on each build on `main` and attempt to restore it in PR builds with broader restore-key.
           key: ${{ steps.cache.outputs.cache-primary-key }}
-
-  update-release-draft:
-    name: update-release-draft
-    needs: build
-    runs-on: ubuntu-22.04
-    env:
-      # mark:next-apple-version
-      RELEASE_NAME: macos-client-1.4.2
-    steps:
-      - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
-        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
-        id: update-release-draft
-        with:
-          config-name: release-drafter-macos-client.yml
-          tag: ${{ env.RELEASE_NAME}}
-          version: ${{ env.RELEASE_NAME}}
-          name: ${{ env.RELEASE_NAME}}
-          commitish: ${{ github.sha }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
