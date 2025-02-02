@@ -111,24 +111,46 @@ In the Start Menu, search for "Windows Powershell". Open it and run this
 command:
 
 ```pwsh
-Get-Service -Name FirezoneClientIpcService
+Get-CIMInstance -Class Win32_Service -Filter "name ='FirezoneClientIpcService' " | Format-Table Name,State,StartName
 ```
 
-Good output
+#### Good output
 
 ```text
-Status   Name               DisplayName
-------   ----               -----------
-Running  FirezoneClientI... Firezone Client IPC
+Name                     State   StartName
+----                     -----   ---------
+FirezoneClientIpcService Running LocalSystem
 ```
 
-Bad output
+#### Bad output (not running)
 
 ```text
-Status   Name               DisplayName
-------   ----               -----------
-Stopped  FirezoneClientI... Firezone Client IPC
+Name                     State   StartName
+----                     -----   ---------
+FirezoneClientIpcService Stopped LocalSystem
 ```
+
+Solution: Start the Firezone IPC service.
+Go to:
+
+- `services.msc`
+- Right-click on `Firzone Client IPC`, select `Start`
+
+#### Bad output (wrong user)
+
+```text
+Name                     State   StartName
+----                     -----   ---------
+FirezoneClientIpcService Stopped NT AUTHORITY\NetworkService
+```
+
+Solution: Configure the Firezone IPC service to run as the "LocalSystem" user.
+Go to:
+
+- `services.msc`
+- Right-click on `Firzone Client IPC`, select `Permissions`
+- Switch to the tab `Log On`
+- Select `Local System Account`
 
 ### Check if Firezone is controlling DNS
 
