@@ -7,6 +7,8 @@ defmodule Web.Application do
     _ = :opentelemetry_cowboy.setup()
     _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
+    Logger.add_handlers(:web)
+
     children = [
       Web.Endpoint
     ]

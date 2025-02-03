@@ -6,6 +6,8 @@ defmodule API.Application do
     _ = :opentelemetry_cowboy.setup()
     _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
+    Logger.add_handlers(:api)
+
     children = [
       API.Endpoint
     ]

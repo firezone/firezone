@@ -12,6 +12,18 @@ import Config
 ##### Domain ##################
 ###############################
 
+config :domain, :logger, [
+  {:handler, :domain, Sentry.LoggerHandler,
+    %{
+      config: %{
+        level: :warning,
+        metadata: :all,
+        capture_log_messages: true
+      }
+    }
+  }
+]
+
 config :domain, ecto_repos: [Domain.Repo]
 config :domain, generators: [binary_id: true, context_app: :domain]
 
@@ -117,6 +129,19 @@ config :domain, web_external_url: "http://localhost:13000"
 ##### Web #####################
 ###############################
 
+config :web, :logger, [
+  {:handler, :web, Sentry.LoggerHandler,
+    %{
+      config: %{
+        level: :warning,
+        metadata: :all,
+        capture_log_messages: true
+      }
+    }
+  }
+]
+
+
 config :web, ecto_repos: [Domain.Repo]
 config :web, generators: [binary_id: true, context_app: :domain]
 config :web, client_handler: "firezone-fd0020211111://"
@@ -167,6 +192,18 @@ config :web, api_url_override: "ws://localhost:13001/"
 ###############################
 ##### API #####################
 ###############################
+
+config :api, :logger, [
+  {:handler, :api, Sentry.LoggerHandler,
+    %{
+      config: %{
+        level: :warning,
+        metadata: :all,
+        capture_log_messages: true
+      }
+    }
+  }
+]
 
 config :api, ecto_repos: [Domain.Repo]
 config :api, generators: [binary_id: true, context_app: :domain]
@@ -266,6 +303,12 @@ config :workos, WorkOS.Client,
   api_key: "sk_example_123456789",
   client_id: "client_123456789",
   baseurl: "https://api.workos.com"
+
+config :sentry,
+  dsn: "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152",
+  enable_source_code_context: true,
+  root_source_code_path: [File.cwd!()],
+  environment_name: config_env()
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
