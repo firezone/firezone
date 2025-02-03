@@ -228,7 +228,9 @@ mod tests {
     fn dns_control() {
         let _guard = firezone_logging::test("debug");
 
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
 
         let mut tun_dev_manager = firezone_bin_shared::TunDeviceManager::new(1280, 1).unwrap(); // Note: num_threads (`1`) is unused on windows.
         let _tun = tun_dev_manager.make_tun().unwrap();
