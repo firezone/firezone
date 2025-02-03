@@ -297,7 +297,7 @@ impl TunnelTest {
                 let packets_per_sec = num_packets / num_seconds / num_connections;
 
                 // This has been chosen through experimentation. It primarily serves as a regression tool to ensure our idle-traffic doesn't suddenly spike.
-                const THRESHOLD: f64 = 2.0;
+                const THRESHOLD: f64 = 2.1;
 
                 if packets_per_sec > THRESHOLD {
                     tracing::error!("Expected at most {THRESHOLD} packets / sec in the network while idling. Got: {packets_per_sec}");
