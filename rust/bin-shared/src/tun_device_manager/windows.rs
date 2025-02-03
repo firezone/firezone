@@ -89,7 +89,7 @@ impl TunDeviceManager {
         };
 
         try_set_ip(luid, IpAddr::V4(ipv4)).context("Failed to set IPv4 address")?;
-        try_set_ip(luid, IpAddr::V6(ipv6)).context("Failed to set IPv4 address")?;
+        try_set_ip(luid, IpAddr::V6(ipv6)).context("Failed to set IPv6 address")?;
 
         Ok(())
     }
