@@ -1,17 +1,18 @@
-use crate::windows::{CREATE_NO_WINDOW, TUNNEL_UUID};
+use crate::windows::TUNNEL_UUID;
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
 use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
+use windows::Win32::NetworkManagement::IpHelper::{CreateUnicastIpAddressEntry, InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW};
+use windows_core::HRESULT;
+use std::net::IpAddr;
 use std::{
     collections::HashSet,
     io::{self, Read as _},
     net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
-    os::windows::process::CommandExt,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
     sync::Arc,
     task::{Context, Poll},
 };
@@ -41,7 +42,11 @@ const RING_BUFFER_SIZE: u32 = 0x10_0000;
 
 pub struct TunDeviceManager {
     mtu: u32,
+
+    /// Interface index of the last created adapter.
     iface_idx: Option<u32>,
+    /// ID of the last created adapter.
+    luid: Option<wintun::NET_LUID_LH>,
 
     routes: HashSet<IpNetwork>,
 }
@@ -51,6 +56,7 @@ impl TunDeviceManager {
     pub fn new(mtu: usize, _num_threads: usize) -> Result<Self> {
         Ok(Self {
             iface_idx: None,
+            luid: None,
             routes: HashSet::default(),
             mtu: mtu as u32,
         })
@@ -59,40 +65,27 @@ impl TunDeviceManager {
     pub fn make_tun(&mut self) -> Result<Tun> {
         let tun = Tun::new(self.mtu)?;
         self.iface_idx = Some(tun.iface_idx());
+        self.luid = Some(tun.luid);
 
         Ok(tun)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
+        let luid = self.luid.context("Cannot set IPs prior to creating an adapter")?; 
+
         tracing::debug!("Setting our IPv4 = {}", ipv4);
         tracing::debug!("Setting our IPv6 = {}", ipv6);
 
-        // TODO: See if there's a good Win32 API for this
-        // Using netsh directly instead of wintun's `set_network_addresses_tuple` because their code doesn't work for IPv6
-        Command::new("netsh")
-            .creation_flags(CREATE_NO_WINDOW)
-            .arg("interface")
-            .arg("ipv4")
-            .arg("set")
-            .arg("address")
-            .arg(format!("name=\"{TUNNEL_NAME}\""))
-            .arg("source=static")
-            .arg(format!("address={}", ipv4))
-            .arg("mask=255.255.255.255")
-            .stdout(Stdio::null())
-            .status()?;
+        // SAFETY: Both NET_LUID_LH unions should be the same. We're just copying out
+        // the u64 value and re-wrapping it, since wintun doesn't refer to the windows
+        // crate's version of NET_LUID_LH.
+        let luid = NET_LUID_LH {
+            Value: unsafe { luid.Value },
+        };
 
-        Command::new("netsh")
-            .creation_flags(CREATE_NO_WINDOW)
-            .arg("interface")
-            .arg("ipv6")
-            .arg("set")
-            .arg("address")
-            .arg(format!("interface=\"{TUNNEL_NAME}\""))
-            .arg(format!("address={}", ipv6))
-            .stdout(Stdio::null())
-            .status()?;
+        try_set_ip(luid, IpAddr::V4(ipv4)).context("Failed to set IPv4 address")?;
+        try_set_ip(luid, IpAddr::V6(ipv6)).context("Failed to set IPv4 address")?;
 
         Ok(())
     }
@@ -194,6 +187,7 @@ pub struct Tun {
     inbound_rx: mpsc::Receiver<IpPacket>,
     recv_thread: Option<std::thread::JoinHandle<()>>,
     session: Arc<wintun::Session>,
+    luid: wintun::NET_LUID_LH,
 }
 
 impl Drop for Tun {
@@ -234,8 +228,9 @@ impl Tun {
         let iface_idx = adapter
             .get_adapter_index()
             .context("Failed to get adapter index")?;
+        let luid = adapter.get_luid();
 
-        set_iface_config(adapter.get_luid(), mtu).context("Failed to set interface config")?;
+        set_iface_config(luid, mtu).context("Failed to set interface config")?;
 
         let session = Arc::new(
             adapter
@@ -248,6 +243,7 @@ impl Tun {
 
         Ok(Self {
             iface_idx,
+            luid,
             recv_thread: Some(recv_thread),
             inbound_rx,
             session: Arc::clone(&session),
@@ -402,6 +398,44 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
 
     // SAFETY: TODO
     unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
+    Ok(())
+}
+
+fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
+    const ERROR_OBJECT_ALREADY_EXISTS: HRESULT = HRESULT::from_win32(0x80071392);
+
+    // Safety: Docs mention anything in regards to safety of this function.
+    let mut row = unsafe {
+        let mut row: MIB_UNICASTIPADDRESS_ROW = std::mem::zeroed();
+        InitializeUnicastIpAddressEntry(&mut row);  
+
+        row
+    };
+
+    row.InterfaceLuid = luid; // Target our tunnel interface.
+    row.ValidLifetime = 0xffffffff; // Infinite
+
+    match ip {
+        IpAddr::V4(ipv4) => {
+
+            row.Address.si_family = AF_INET;
+            row.Address.Ipv4 = SocketAddrV4::new(ipv4, 0).into();
+            row.OnLinkPrefixLength = 32;
+        }
+        IpAddr::V6(ipv6) => {
+            row.Address.si_family = AF_INET6;
+            row.Address.Ipv6 = SocketAddrV6::new(ipv6, 0, 0, 0).into();
+            row.OnLinkPrefixLength = 128;
+        }
+    }
+
+    // Safety: Docs don't mention anything about safety other than having to use `InitializeUnicastIpAddressEntry` and we did that.
+    match unsafe { CreateUnicastIpAddressEntry(&row) }.ok() {
+        Ok(()) => {},
+        Err(e) if e.code() == ERROR_OBJECT_ALREADY_EXISTS => {},
+        Err(e) => return Err(anyhow::Error::new(e).context("Failed to create `UnicastIpAddressEntry`"))
+    }
+
     Ok(())
 }
 
