@@ -408,7 +408,7 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
 fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
     const ERROR_OBJECT_ALREADY_EXISTS: HRESULT = HRESULT::from_win32(0x80071392);
 
-    // Safety: Docs mention anything in regards to safety of this function.
+    // Safety: Docs don't mention anything in regards to safety of this function.
     let mut row = unsafe {
         let mut row: MIB_UNICASTIPADDRESS_ROW = std::mem::zeroed();
         InitializeUnicastIpAddressEntry(&mut row);
