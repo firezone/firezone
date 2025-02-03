@@ -14,14 +14,13 @@ import Config
 
 config :domain, :logger, [
   {:handler, :domain, Sentry.LoggerHandler,
-    %{
-      config: %{
-        level: :warning,
-        metadata: :all,
-        capture_log_messages: true
-      }
-    }
-  }
+   %{
+     config: %{
+       level: :warning,
+       metadata: :all,
+       capture_log_messages: true
+     }
+   }}
 ]
 
 config :domain, ecto_repos: [Domain.Repo]
@@ -131,16 +130,14 @@ config :domain, web_external_url: "http://localhost:13000"
 
 config :web, :logger, [
   {:handler, :web, Sentry.LoggerHandler,
-    %{
-      config: %{
-        level: :warning,
-        metadata: :all,
-        capture_log_messages: true
-      }
-    }
-  }
+   %{
+     config: %{
+       level: :warning,
+       metadata: :all,
+       capture_log_messages: true
+     }
+   }}
 ]
-
 
 config :web, ecto_repos: [Domain.Repo]
 config :web, generators: [binary_id: true, context_app: :domain]
@@ -195,14 +192,13 @@ config :web, api_url_override: "ws://localhost:13001/"
 
 config :api, :logger, [
   {:handler, :api, Sentry.LoggerHandler,
-    %{
-      config: %{
-        level: :warning,
-        metadata: :all,
-        capture_log_messages: true
-      }
-    }
-  }
+   %{
+     config: %{
+       level: :warning,
+       metadata: :all,
+       capture_log_messages: true
+     }
+   }}
 ]
 
 config :api, ecto_repos: [Domain.Repo]
@@ -305,9 +301,15 @@ config :workos, WorkOS.Client,
   baseurl: "https://api.workos.com"
 
 config :sentry,
-  dsn: "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152",
+  # Setting this to nil will disable reporting
+  dsn:
+    "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152",
   enable_source_code_context: true,
-  root_source_code_path: [File.cwd!()],
+  root_source_code_paths: [
+    Path.join(File.cwd!(), "apps/domain"),
+    Path.join(File.cwd!(), "apps/web"),
+    Path.join(File.cwd!(), "apps/api")
+  ],
   environment_name: config_env()
 
 # Import environment specific config. This must remain at the bottom

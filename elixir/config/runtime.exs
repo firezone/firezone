@@ -234,12 +234,10 @@ if config_env() == :prod do
     api_key: compile_config!(:workos_api_key),
     client_id: compile_config!(:workos_client_id)
 
-
-  # Sentry configuration
+  # Sentry
   case URI.parse(compile_config!(:api_external_url)) do
     %{host: "api.firezone.dev"} -> config :sentry, environment_name: :production
     %{host: "api.firez.one"} -> config :sentry, environment_name: :staging
-
     # Disable Sentry for unknown environments
     _ -> config :sentry, dsn: nil
   end
