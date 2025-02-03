@@ -30,7 +30,7 @@ export default function GUI({ title }: { title: string }) {
       <Unreleased>
         {title == "Linux GUI" && (
           <ChangeItem>
-            This is a maintenance with no user-facing changes.
+            This is a maintenance release with no user-facing changes.
           </ChangeItem>
         )}
         {title == "Windows" && (
