@@ -180,7 +180,7 @@ public class VPNConfigurationManager {
   }
 
   func loadFromPreferences(
-    vpnStateUpdateHandler: @escaping @MainActor (NEVPNStatus, Settings?, String?) -> Void
+    vpnStateUpdateHandler: @escaping @MainActor (NEVPNStatus, Settings?, String?, NEProviderStopReason?) async -> Void
   ) async throws {
     // loadAllFromPreferences() returns list of VPN configurations created by our main app's bundle ID.
     // Since our bundle ID can change (by us), find the one that's current and ignore the others.
@@ -213,7 +213,7 @@ public class VPNConfigurationManager {
       Telemetry.accountSlug = providerConfiguration[VPNConfigurationManagerKeys.accountSlug]
 
       // Share what we found with our caller
-      await vpnStateUpdateHandler(status, settings, actorName)
+      await vpnStateUpdateHandler(status, settings, actorName, nil)
 
       // Stop looking for our tunnel
       break
@@ -222,7 +222,7 @@ public class VPNConfigurationManager {
     // If no tunnel configuration was found, update state to
     // prompt user to create one.
     if manager == nil {
-      await vpnStateUpdateHandler(.invalid, nil, nil)
+      await vpnStateUpdateHandler(.invalid, nil, nil, nil)
     }
 
     // Hook up status updates
@@ -441,7 +441,7 @@ public class VPNConfigurationManager {
     loop()
   }
 
-  func consumeStopReason() async throws -> String? {
+  func consumeStopReason() async throws -> NEProviderStopReason? {
     return try await withCheckedThrowingContinuation { continuation in
       guard let session = session()
       else {
@@ -455,22 +455,16 @@ public class VPNConfigurationManager {
           encoder.encode(TunnelMessage.consumeStopReason)
         ) { data in
 
-          guard let data = data
+          guard let data = data,
+                let reason = String(data: data, encoding: .utf8),
+                let rawValue = Int(reason)
           else {
             continuation.resume(returning: nil)
 
             return
           }
 
-          guard let reason = String(data: data, encoding: .utf8)
-          else {
-            continuation
-              .resume(throwing: VPNConfigurationManagerError.decodeIPCDataFailed)
-
-            return
-          }
-
-          continuation.resume(returning: reason)
+          continuation.resume(returning: NEProviderStopReason(rawValue: rawValue))
         }
       } catch {
         continuation.resume(throwing: error)
@@ -484,7 +478,9 @@ public class VPNConfigurationManager {
 
   // Subscribe to system notifications about our VPN status changing
   // and let our handler know about them.
-  private func subscribeToVPNStatusUpdates(handler: @escaping @MainActor (NEVPNStatus, Settings?, String?) -> Void) {
+  private func subscribeToVPNStatusUpdates(
+    handler: @escaping @MainActor (NEVPNStatus, Settings?, String?, NEProviderStopReason?
+    ) async -> Void) {
     Log.log("\(#function)")
 
     for task in tunnelObservingTasks {
@@ -503,13 +499,18 @@ public class VPNConfigurationManager {
             return
           }
 
+          var reason: NEProviderStopReason?
+
           if session.status == .disconnected {
-            // Reset resource list on disconnect
+            // Reset resource list
             resourceListHash = Data()
             resourcesListCache = ResourceList.loading
+
+            // Attempt to consume the last stopped reason
+            do { reason = try await consumeStopReason() } catch { Log.error(error) }
           }
 
-          await handler(session.status, nil, nil)
+          await handler(session.status, nil, nil, reason)
         }
       }
     )

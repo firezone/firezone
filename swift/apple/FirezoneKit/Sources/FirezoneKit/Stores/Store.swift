@@ -48,7 +48,7 @@ public final class Store: ObservableObject {
   func bindToVPNConfigurationUpdates() async throws {
     // Load our existing VPN configuration and set an update handler
     try await self.vpnConfigurationManager.loadFromPreferences(
-      vpnStateUpdateHandler: { @MainActor [weak self] status, settings, actorName in
+      vpnStateUpdateHandler: { @MainActor [weak self] status, settings, actorName, stopReason in
         guard let self else { return }
 
         self.status = status
@@ -61,35 +61,16 @@ public final class Store: ObservableObject {
           self.actorName = actorName
         }
 
-        if status == .disconnected {
-          maybeShowSignedOutAlert()
+#if os(macOS)
+        // On macOS we must show notifications from the UI process. On iOS, we've already initiated the notification
+        // from the tunnel process, because the UI process is not guaranteed to be alive.
+        if status == .disconnected,
+           stopReason == .authenticationCanceled {
+          await self.sessionNotification.showSignedOutAlertmacOS()
         }
+#endif
       }
     )
-  }
-
-  /// On iOS, we can initiate notifications directly from the tunnel process.
-  /// On macOS, however, the system extension runs as root which doesn't
-  /// support showing User notifications. Instead, we read the last stopped
-  /// reason and alert the user if it was due to receiving a 401 from the
-  /// portal.
-  private func maybeShowSignedOutAlert() {
-    Task.detached { [weak self] in
-      guard let self else { return }
-
-      do {
-        if let savedValue = try await self.vpnConfigurationManager.consumeStopReason(),
-           let rawValue = Int(savedValue),
-           let reason = NEProviderStopReason(rawValue: rawValue),
-           case .authenticationCanceled = reason {
-#if os(macOS)
-          await self.sessionNotification.showSignedOutAlertmacOS()
-#endif
-        }
-      } catch {
-        Log.error(error)
-      }
-    }
   }
 
 #if os(macOS)
