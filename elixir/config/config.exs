@@ -234,7 +234,7 @@ config :domain, Domain.Mailer,
 # Failed to load resource: the server responded with a status of 404 ()
 # source-sans-pro-all-400-normal.woff:1     Failed to load resource: the server responded with a status of 404 ()
 config :esbuild,
-  version: "0.17.19",
+  version: "0.24.2",
   web: [
     args: [
       "js/app.js",
