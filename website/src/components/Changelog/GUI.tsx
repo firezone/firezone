@@ -28,6 +28,11 @@ export default function GUI({ title }: { title: string }) {
     <Entries downloadLinks={downloadLinks} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        {title == "Linux GUI" && (
+          <ChangeItem>
+            This is a maintenance with no user-facing changes.
+          </ChangeItem>
+        )}
         {title == "Windows" && (
           <ChangeItem pull="8003">
             Removes dependency on `netsh`, making sign-in faster.
