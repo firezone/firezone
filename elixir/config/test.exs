@@ -107,4 +107,4 @@ config :workos, WorkOS.Client,
   api_key: "sk_example_123456789",
   client_id: "client_123456789"
 
-config :sentry, test_mode: true,
+config :sentry, test_mode: true
