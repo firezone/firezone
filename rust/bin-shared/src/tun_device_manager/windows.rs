@@ -5,8 +5,6 @@ use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
-use windows::Win32::NetworkManagement::IpHelper::{CreateUnicastIpAddressEntry, InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW};
-use windows_core::HRESULT;
 use std::net::IpAddr;
 use std::{
     collections::HashSet,
@@ -17,6 +15,9 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::sync::mpsc;
+use windows::Win32::NetworkManagement::IpHelper::{
+    CreateUnicastIpAddressEntry, InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW,
+};
 use windows::Win32::{
     NetworkManagement::{
         IpHelper::{
@@ -27,6 +28,7 @@ use windows::Win32::{
     },
     Networking::WinSock::{ADDRESS_FAMILY, AF_INET, AF_INET6},
 };
+use windows_core::HRESULT;
 use wintun::Adapter;
 
 /// The ring buffer size used for Wintun.
@@ -72,7 +74,9 @@ impl TunDeviceManager {
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
-        let luid = self.luid.context("Cannot set IPs prior to creating an adapter")?; 
+        let luid = self
+            .luid
+            .context("Cannot set IPs prior to creating an adapter")?;
 
         tracing::debug!("Setting our IPv4 = {}", ipv4);
         tracing::debug!("Setting our IPv6 = {}", ipv6);
@@ -407,7 +411,7 @@ fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
     // Safety: Docs mention anything in regards to safety of this function.
     let mut row = unsafe {
         let mut row: MIB_UNICASTIPADDRESS_ROW = std::mem::zeroed();
-        InitializeUnicastIpAddressEntry(&mut row);  
+        InitializeUnicastIpAddressEntry(&mut row);
 
         row
     };
@@ -417,7 +421,6 @@ fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
 
     match ip {
         IpAddr::V4(ipv4) => {
-
             row.Address.si_family = AF_INET;
             row.Address.Ipv4 = SocketAddrV4::new(ipv4, 0).into();
             row.OnLinkPrefixLength = 32;
@@ -431,9 +434,11 @@ fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
 
     // Safety: Docs don't mention anything about safety other than having to use `InitializeUnicastIpAddressEntry` and we did that.
     match unsafe { CreateUnicastIpAddressEntry(&row) }.ok() {
-        Ok(()) => {},
-        Err(e) if e.code() == ERROR_OBJECT_ALREADY_EXISTS => {},
-        Err(e) => return Err(anyhow::Error::new(e).context("Failed to create `UnicastIpAddressEntry`"))
+        Ok(()) => {}
+        Err(e) if e.code() == ERROR_OBJECT_ALREADY_EXISTS => {}
+        Err(e) => {
+            return Err(anyhow::Error::new(e).context("Failed to create `UnicastIpAddressEntry`"))
+        }
     }
 
     Ok(())
