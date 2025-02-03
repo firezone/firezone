@@ -16,7 +16,7 @@
 use super::DnsController;
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
-use firezone_logging::std_dyn_err;
+use firezone_logging::{anyhow_dyn_err, std_dyn_err};
 use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 use windows::Win32::System::GroupPolicy::{RefreshPolicyEx, RP_FORCE};
 
@@ -125,7 +125,9 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
 
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
-    set_nameservers_on_interface(dns_config).context("Failed to set nameservers")?;
+    if let Err(e) = set_nameservers_on_interface(dns_config) {
+        tracing::warn!(error = anyhow_dyn_err(&e), "Failed to explicitly set nameservers on tunnel interface; DNS resources in WSL may not work");
+    }
 
     // e.g. [100.100.111.1, 100.100.111.2] -> "100.100.111.1;100.100.111.2"
     let dns_config_string = itertools::join(dns_config, ";");
