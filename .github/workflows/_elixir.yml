@@ -75,10 +75,10 @@ jobs:
         id: plt_cache
         with:
           path: elixir/priv/plts
-          key: dialyzer-ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
+          key: dialyzer-ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.erlang-version }}-${{ hashFiles('elixir/mix.lock') }}
           # This will make sure that we can incrementally build the PLT from older cache and save it under a new key
           restore-keys: |
-            dialyzer-ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-
+            dialyzer-ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.erlang-version }}-
       - name: Create PLTs
         if: ${{ steps.plt_cache.outputs.cache-hit != 'true' }}
         run: mix dialyzer --plt
