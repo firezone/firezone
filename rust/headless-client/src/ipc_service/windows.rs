@@ -11,11 +11,17 @@ use std::{
     time::Duration,
 };
 use tokio::sync::mpsc;
-use windows::{core::PWSTR, Win32::{
-    Foundation::{CloseHandle, HANDLE},
-    Security::{GetTokenInformation, LookupAccountSidW, TokenElevation, TokenUser, SID_NAME_USE, TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_USER},
-    System::Threading::{GetCurrentProcess, OpenProcessToken},
-}};
+use windows::{
+    core::PWSTR,
+    Win32::{
+        Foundation::{CloseHandle, HANDLE},
+        Security::{
+            GetTokenInformation, LookupAccountSidW, TokenElevation, TokenUser, SID_NAME_USE,
+            TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_USER,
+        },
+        System::Threading::{GetCurrentProcess, OpenProcessToken},
+    },
+};
 use windows_service::{
     service::{
         ServiceAccess, ServiceControl, ServiceControlAccept, ServiceErrorControl, ServiceExitCode,
@@ -31,7 +37,9 @@ const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 /// Returns true if the IPC service can run properly
 pub(crate) fn elevation_check() -> Result<bool> {
     let token = ProcessToken::our_process().context("Failed to get process token")?;
-    let elevated = token.is_elevated().context("Failed to get elevation status")?;
+    let elevated = token
+        .is_elevated()
+        .context("Failed to get elevation status")?;
     let username = token.username().context("Failed to get username")?;
 
     tracing::debug!(%username, %elevated);
@@ -91,7 +99,13 @@ impl ProcessToken {
         // Fetch the actual user information.
         // SAFETY: Docs say nothing about threads or safety <https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation>
         unsafe {
-            GetTokenInformation(self.inner, TokenUser, Some(token_user as *mut c_void), token_user_sz, &mut return_sz) 
+            GetTokenInformation(
+                self.inner,
+                TokenUser,
+                Some(token_user as *mut c_void),
+                token_user_sz,
+                &mut return_sz,
+            )
         }?;
 
         let mut name = vec![0u16; 256];
@@ -103,13 +117,19 @@ impl ProcessToken {
         // Convert account ID to human-friendly name.
 
         // SAFETY: We allocated the buffer.
-        let sid = unsafe {
-            (*token_user).User.Sid
-        };
+        let sid = unsafe { (*token_user).User.Sid };
 
         // SAFETY: Docs say nothing about threads or safety <https://learn.microsoft.com/en-us/windows/win32/api/securitybaseapi/nf-securitybaseapi-gettokeninformation>
         unsafe {
-            LookupAccountSidW(None, sid, PWSTR::from_raw(name.as_mut_ptr()), &mut name_size, PWSTR::from_raw(domain.as_mut_ptr()), &mut domain_size, &mut sid_type)
+            LookupAccountSidW(
+                None,
+                sid,
+                PWSTR::from_raw(name.as_mut_ptr()),
+                &mut name_size,
+                PWSTR::from_raw(domain.as_mut_ptr()),
+                &mut domain_size,
+                &mut sid_type,
+            )
         }?;
 
         let name = String::from_utf16_lossy(&name[..name_size as usize]);
