@@ -358,6 +358,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[expect(clippy::print_stdout, reason = "We want to see the output in the test")]
     fn get_username_of_current_process() {
         let process_token = ProcessToken::our_process().unwrap();
         let username = process_token.username().unwrap(); // If this doesn't panic, we are good.
