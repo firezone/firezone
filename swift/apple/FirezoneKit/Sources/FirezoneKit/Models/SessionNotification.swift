@@ -96,17 +96,21 @@ public class SessionNotification: NSObject {
   // In macOS, use a Cocoa alert.
   // This gets called from the app side.
   @MainActor
-  func showSignedOutAlertmacOS() {
+  func showSignedOutAlertmacOS() async {
     let alert = NSAlert()
     alert.messageText = "Your Firezone session has ended"
     alert.informativeText = "Please sign in again to reconnect"
     alert.addButton(withTitle: "Sign In")
     alert.addButton(withTitle: "Cancel")
     NSApp.activate(ignoringOtherApps: true)
-    let response = alert.runModal()
-    if response == NSApplication.ModalResponse.alertFirstButtonReturn {
-      Log.log("\(#function): 'Sign In' clicked in notification")
-      signInHandler()
+
+    await withCheckedContinuation { continuation in
+      let response = alert.runModal()
+      if response == NSApplication.ModalResponse.alertFirstButtonReturn {
+        Log.log("\(#function): 'Sign In' clicked in notification")
+        signInHandler()
+      }
+      continuation.resume()
     }
   }
 #endif
