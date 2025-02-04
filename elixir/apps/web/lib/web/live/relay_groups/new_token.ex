@@ -38,7 +38,7 @@ defmodule Web.RelayGroups.NewToken do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/relay_groups"}>Relays</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/relay_groups/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/relay_groups/#{@group}/new_token"}>Deploy</.breadcrumb>
     </.breadcrumbs>

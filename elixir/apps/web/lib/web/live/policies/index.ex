@@ -45,11 +45,11 @@ defmodule Web.Policies.Index do
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/policies"}><%= @page_title %></.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/policies"}>{@page_title}</.breadcrumb>
     </.breadcrumbs>
 
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:action>
         <.docs_action path="/deploy/policies" />
       </:action>
@@ -75,7 +75,7 @@ defmodule Web.Policies.Index do
           <:col :let={policy} label="id" class="w-3/12">
             <.link class={link_style()} navigate={~p"/#{@account}/policies/#{policy}"}>
               <span class="block truncate">
-                <%= policy.id %>
+                {policy.id}
               </span>
             </.link>
           </:col>
@@ -86,7 +86,7 @@ defmodule Web.Policies.Index do
           </:col>
           <:col :let={policy} label="resource" class="w-2/12">
             <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>
-              <%= policy.resource.name %>
+              {policy.resource.name}
             </.link>
           </:col>
           <:col :let={policy} label="status">

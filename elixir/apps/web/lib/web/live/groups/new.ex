@@ -21,7 +21,7 @@ defmodule Web.Groups.New do
       <.breadcrumb path={~p"/#{@account}/groups/new"}>Add</.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">
           <.form for={@form} phx-change={:change} phx-submit={:submit}>

@@ -62,7 +62,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Components do
               </div>
 
               <.inputs_for :let={adapter_config_form} field={@form[:adapter_config]}>
-                <%= # TODO: Can these be removed? %>
+                {# TODO: Can these be removed?}
                 <.input type="hidden" field={adapter_config_form[:response_type]} value="code" />
                 <.input type="hidden" field={adapter_config_form[:scope]} />
 

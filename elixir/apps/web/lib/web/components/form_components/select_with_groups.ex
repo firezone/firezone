@@ -148,7 +148,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
         |> JS.set_attribute({"aria-expanded", "false"}, to: "##{@id}-input")
       }
     >
-      <.label :if={@label} for={"#{@id}-input"}><%= @label %></.label>
+      <.label :if={@label} for={"#{@id}-input"}>{@label}</.label>
 
       <div class="relative group">
         <input type="text" name={@name} value={@value} class="hidden" />
@@ -240,7 +240,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
                 <%= if @no_search_results == [] do %>
                   Nothing has been found.
                 <% else %>
-                  <%= render_slot(@no_search_results, @search_query) %>
+                  {render_slot(@no_search_results, @search_query)}
                 <% end %>
               </div>
               <div
@@ -252,7 +252,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
                 ]}
               >
                 <div>
-                  <%= render_slot(@options_group, group) %>
+                  {render_slot(@options_group, group)}
                 </div>
                 <div :for={{value, _name, slot_assigns} <- group_options}>
                   <label
@@ -289,7 +289,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
                       class={["flex items-center"]}
                     >
                       <div class={["text-gray-800"]}>
-                        <%= render_slot(@option, slot_assigns) %>
+                        {render_slot(@option, slot_assigns)}
                       </div>
                       <div :if={value == @value} class="ml-auto">
                         <.icon name="hero-check" class="w-4 h-4" />
@@ -306,7 +306,7 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
                 "py-2 px-4 text-sm text-neutral-400"
               ]}
             >
-              <span class="font-semibold"><%= @metadata.count - @metadata.limit %></span>
+              <span class="font-semibold">{@metadata.count - @metadata.limit}</span>
               more options available. Use the search to refine the list.
             </div>
           </div>
@@ -314,11 +314,11 @@ defmodule Web.Components.FormComponents.SelectWithGroups do
       </div>
 
       <.error :for={message <- @errors} data-validation-error-for={@name <> "_name"}>
-        <%= message %>
+        {message}
       </.error>
 
       <%= if @options == [] and is_nil(@value) and @no_options != [] and @search_query in [nil, ""] do %>
-        <%= render_slot(@no_options, @name <> "_name") %>
+        {render_slot(@no_options, @name <> "_name")}
       <% end %>
     </div>
     """

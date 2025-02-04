@@ -31,16 +31,16 @@ defmodule Web.Settings.Account do
         <.vertical_table id="account">
           <.vertical_table_row>
             <:label>Account Name</:label>
-            <:value><%= @account.name %></:value>
+            <:value>{@account.name}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Account ID</:label>
-            <:value><%= @account.id %></:value>
+            <:value>{@account.id}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Account Slug</:label>
             <:value>
-              <.copy id="account-slug"><%= @account.slug %></.copy>
+              <.copy id="account-slug">{@account.slug}</.copy>
             </:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -128,7 +128,7 @@ defmodule Web.Settings.Account do
   defp notification_badge(assigns) do
     ~H"""
     <.badge type={if @notification.enabled, do: "success", else: "neutral"}>
-      <%= if @notification.enabled, do: "Enabled", else: "Disabled" %>
+      {if @notification.enabled, do: "Enabled", else: "Disabled"}
     </.badge>
     """
   end

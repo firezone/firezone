@@ -35,13 +35,13 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
       </.breadcrumb>
 
       <.breadcrumb path={~p"/#{@account}/settings/identity_providers/microsoft_entra/#{@provider}"}>
-        <%= @provider.name %>
+        {@provider.name}
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Identity Provider: <code><%= @provider.name %></code>
+        Identity Provider: <code>{@provider.name}</code>
         <span :if={not is_nil(@provider.disabled_at)} class="text-primary-600">(disabled)</span>
         <span :if={not is_nil(@provider.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
@@ -128,7 +128,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
         <.flash_group flash={@flash} />
 
         <.flash :if={@safe_to_delete_actors_count > 0} kind={:warning}>
-          You have <%= @safe_to_delete_actors_count %> Actor(s) that were synced from this provider and do not have any other identities.
+          You have {@safe_to_delete_actors_count} Actor(s) that were synced from this provider and do not have any other identities.
           <.button_with_confirmation
             id="delete_stale_actors"
             style="danger"
@@ -154,7 +154,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
           <.vertical_table id="provider">
             <.vertical_table_row>
               <:label>Name</:label>
-              <:value><%= @provider.name %></:value>
+              <:value>{@provider.name}</:value>
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Status</:label>
@@ -184,7 +184,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
                     IdP provider reported an error during the last sync:
                   </p>
                   <div class="flex items-center mt-1">
-                    <span class="text-red-500 font-mono"><%= @provider.last_sync_error %></span>
+                    <span class="text-red-500 font-mono">{@provider.last_sync_error}</span>
                   </div>
                 </div>
               </:value>
@@ -192,7 +192,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
 
             <.vertical_table_row>
               <:label>Client ID</:label>
-              <:value><%= @provider.adapter_config["client_id"] %></:value>
+              <:value>{@provider.adapter_config["client_id"]}</:value>
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Created</:label>

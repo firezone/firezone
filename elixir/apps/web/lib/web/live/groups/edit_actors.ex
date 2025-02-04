@@ -60,7 +60,7 @@ defmodule Web.Groups.EditActors do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/groups"}>Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/groups/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/groups/#{@group}/edit_actors"}>
         Edit Actors
@@ -69,7 +69,7 @@ defmodule Web.Groups.EditActors do
 
     <.section>
       <:title>
-        Edit Actors in Group: <code><%= @group.name %></code>
+        Edit Actors in Group: <code>{@group.name}</code>
       </:title>
       <:content>
         <.live_table
@@ -153,7 +153,7 @@ defmodule Web.Groups.EditActors do
             <:dialog_content>
               <div class="mb-2">
                 You're about to apply the following membership changes for the
-                <strong><%= @group.name %></strong>
+                <strong>{@group.name}</strong>
                 group:
               </div>
 
@@ -252,12 +252,12 @@ defmodule Web.Groups.EditActors do
     <ul>
       <li :for={{_id, name} <- @added} class="mb-2">
         <.icon name="hero-plus" class="h-3.5 w-3.5 mr-2 text-green-500" />
-        <%= name %>
+        {name}
       </li>
 
       <li :for={{_id, name} <- @removed} class="mb-2">
         <.icon name="hero-minus" class="h-3.5 w-3.5 mr-2 text-red-500" />
-        <%= name %>
+        {name}
       </li>
     </ul>
     """

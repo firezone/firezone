@@ -30,14 +30,14 @@ defmodule Web.RelayGroups.Edit do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/relay_groups"}>Relay Instance Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/relay_groups/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/relay_groups/#{@group}/edit"}>Edit</.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Edit Relay Instance Group <code><%= @group.name %></code>
+        Edit Relay Instance Group <code>{@group.name}</code>
       </:title>
       <:content>
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">

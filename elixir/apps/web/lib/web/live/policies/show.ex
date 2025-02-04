@@ -144,7 +144,7 @@ defmodule Web.Policies.Show do
               ID
             </:label>
             <:value>
-              <%= @policy.id %>
+              {@policy.id}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row :if={not is_nil(@policy.deleted_at)}>
@@ -152,7 +152,7 @@ defmodule Web.Policies.Show do
               Persistent ID
             </:label>
             <:value>
-              <%= @policy.persistent_id %>
+              {@policy.persistent_id}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row :if={
@@ -202,7 +202,7 @@ defmodule Web.Policies.Show do
             </:label>
             <:value>
               <.link navigate={~p"/#{@account}/resources/#{@policy.resource_id}"} class={link_style()}>
-                <%= @policy.resource.name %>
+                {@policy.resource.name}
               </.link>
               <span :if={not is_nil(@policy.resource.deleted_at)} class="text-red-600">
                 (deleted)
@@ -257,20 +257,20 @@ defmodule Web.Policies.Show do
           </:col>
           <:col :let={flow} label="client, actor" class="w-3/12">
             <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={link_style()}>
-              <%= flow.client.name %>
+              {flow.client.name}
             </.link>
             owned by
             <.link navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"} class={link_style()}>
-              <%= flow.client.actor.name %>
+              {flow.client.actor.name}
             </.link>
-            <%= flow.client_remote_ip %>
+            {flow.client_remote_ip}
           </:col>
           <:col :let={flow} label="gateway" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={link_style()}>
-              <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
+              {flow.gateway.group.name}-{flow.gateway.name}
             </.link>
             <br />
-            <code class="text-xs"><%= flow.gateway_remote_ip %></code>
+            <code class="text-xs">{flow.gateway_remote_ip}</code>
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="activity">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={link_style()}>

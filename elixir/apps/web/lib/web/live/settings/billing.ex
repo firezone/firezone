@@ -54,7 +54,7 @@ defmodule Web.Settings.Billing do
       </:action>
       <:content>
         <.flash :if={@error} kind={:error}>
-          <p><%= @error %></p>
+          <p>{@error}</p>
 
           <p>
             If you need assistance, please <.link
@@ -74,21 +74,21 @@ defmodule Web.Settings.Billing do
           <.vertical_table_row>
             <:label>Current Plan</:label>
             <:value>
-              <%= @account.metadata.stripe.product_name %>
+              {@account.metadata.stripe.product_name}
             </:value>
           </.vertical_table_row>
 
           <.vertical_table_row>
             <:label>Billing Email</:label>
             <:value>
-              <%= @account.metadata.stripe.billing_email %>
+              {@account.metadata.stripe.billing_email}
             </:value>
           </.vertical_table_row>
 
           <.vertical_table_row>
             <:label>Billing Name</:label>
             <:value>
-              <%= @account.legal_name %>
+              {@account.legal_name}
             </:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -115,9 +115,9 @@ defmodule Web.Settings.Billing do
                 not is_nil(@users_count) and
                   @users_count > @account.limits.users_count && "text-red-500"
               ]}>
-                <%= @users_count %> used
+                {@users_count} used
               </span>
-              / <%= @account.limits.users_count %> allowed
+              / {@account.limits.users_count} allowed
             </:value>
           </.vertical_table_row>
 
@@ -130,9 +130,9 @@ defmodule Web.Settings.Billing do
                 not is_nil(@active_users_count) and
                   @active_users_count > @account.limits.monthly_active_users_count && "text-red-500"
               ]}>
-                <%= @active_users_count %> used
+                {@active_users_count} used
               </span>
-              / <%= @account.limits.monthly_active_users_count %> allowed
+              / {@account.limits.monthly_active_users_count} allowed
               <p class="text-xs">Users that have signed in from a device within the last month</p>
             </:value>
           </.vertical_table_row>
@@ -146,9 +146,9 @@ defmodule Web.Settings.Billing do
                 not is_nil(@service_accounts_count) and
                   @service_accounts_count > @account.limits.service_accounts_count && "text-red-500"
               ]}>
-                <%= @service_accounts_count %> used
+                {@service_accounts_count} used
               </span>
-              / <%= @account.limits.service_accounts_count %> allowed
+              / {@account.limits.service_accounts_count} allowed
             </:value>
           </.vertical_table_row>
 
@@ -161,9 +161,9 @@ defmodule Web.Settings.Billing do
                 not is_nil(@admins_count) and
                   @admins_count > @account.limits.account_admin_users_count && "text-red-500"
               ]}>
-                <%= @admins_count %> used
+                {@admins_count} used
               </span>
-              / <%= @account.limits.account_admin_users_count %> allowed
+              / {@account.limits.account_admin_users_count} allowed
             </:value>
           </.vertical_table_row>
 
@@ -176,9 +176,9 @@ defmodule Web.Settings.Billing do
                 not is_nil(@gateway_groups_count) and
                   @gateway_groups_count > @account.limits.gateway_groups_count && "text-red-500"
               ]}>
-                <%= @gateway_groups_count %> used
+                {@gateway_groups_count} used
               </span>
-              / <%= @account.limits.gateway_groups_count %> allowed
+              / {@account.limits.gateway_groups_count} allowed
             </:value>
           </.vertical_table_row>
         </.vertical_table>

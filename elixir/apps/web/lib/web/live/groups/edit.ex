@@ -31,7 +31,7 @@ defmodule Web.Groups.Edit do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/groups"}>Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/groups/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/groups/#{@group}/edit"}>
         Edit
@@ -39,7 +39,7 @@ defmodule Web.Groups.Edit do
     </.breadcrumbs>
     <.section>
       <:title>
-        Edit Group: <code><%= @group.name %></code>
+        Edit Group: <code>{@group.name}</code>
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">

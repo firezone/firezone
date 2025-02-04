@@ -85,7 +85,7 @@ defmodule Web.Clients.Index do
           <:col :let={client} field={{:clients, :name}} label="name">
             <div class="flex items-center space-x-1">
               <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
-                <%= client.name %>
+                {client.name}
               </.link>
               <.icon
                 :if={not is_nil(client.verified_at)}

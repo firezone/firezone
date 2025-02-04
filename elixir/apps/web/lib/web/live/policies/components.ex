@@ -34,7 +34,7 @@ defmodule Web.Policies.Components do
   attr(:policy, :map, required: true)
 
   def policy_name(assigns) do
-    ~H"<%= @policy.actor_group.name %> → <%= @policy.resource.name %>"
+    ~H"{@policy.actor_group.name} → {@policy.resource.name}"
   end
 
   def maybe_drop_unsupported_conditions(attrs, socket) do
@@ -154,7 +154,7 @@ defmodule Web.Policies.Components do
       <span :if={@operator == :is_in}>from</span>
       <span :if={@operator == :is_not_in}>from any counties except</span>
       <span class="font-medium">
-        <%= @values |> Enum.map(&Domain.Geo.country_common_name!/1) |> Enum.join(", ") %>
+        {@values |> Enum.map(&Domain.Geo.country_common_name!/1) |> Enum.join(", ")}
       </span>
     </span>
     """
@@ -165,7 +165,7 @@ defmodule Web.Policies.Components do
     <span :if={@values != []} class="mr-1">
       <span>from IP addresses that are</span> <span :if={@operator == :is_in_cidr}>in</span>
       <span :if={@operator == :is_not_in_cidr}>not in</span>
-      <span class="font-medium"><%= Enum.join(@values, ", ") %></span>
+      <span class="font-medium">{Enum.join(@values, ", ")}</span>
     </span>
     """
   end
@@ -194,7 +194,7 @@ defmodule Web.Policies.Components do
 
         <:item :for={provider <- @providers}>
           <.link navigate={"/providers/#{provider.id}"} class={[link_style(), "font-medium"]}>
-            <%= provider.name %>
+            {provider.name}
           </.link>
         </:item>
       </.intersperse_blocks>
@@ -241,12 +241,12 @@ defmodule Web.Policies.Components do
 
         <:item :for={{day_of_week, tz_time_ranges} <- @tz_time_ranges_by_dow}>
           <span class="ml-1 font-medium">
-            <%= day_of_week_name(day_of_week) <> "s" %>
+            {day_of_week_name(day_of_week) <> "s"}
             <span :for={{timezone, time_ranges} <- tz_time_ranges}>
-              <%= "(" <>
+              {"(" <>
                 Enum.map_join(time_ranges, ", ", fn {from, to} ->
                   "#{from} - #{to}"
-                end) <> " #{timezone})" %>
+                end) <> " #{timezone})"}
             </span>
           </span>
         </:item>
@@ -814,7 +814,7 @@ defmodule Web.Policies.Components do
       <:separator>
         <span class="mr-1">,</span>
       </:separator>
-      <span><%= gateway_group.name %></span>
+      <span>{gateway_group.name}</span>
     </.intersperse>
     """
   end

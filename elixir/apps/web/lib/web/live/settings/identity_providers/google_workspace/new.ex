@@ -37,7 +37,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.New do
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:help>
         For a more detailed guide on setting up Firezone with Google Workspace, please <.link
           href="https://www.firezone.dev/kb/authenticate/google"

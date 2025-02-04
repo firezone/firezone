@@ -48,11 +48,11 @@ defmodule Web.Actors.Index do
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/actors"}><%= @page_title %></.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/actors"}>{@page_title}</.breadcrumb>
     </.breadcrumbs>
 
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
 
       <:action>
         <.docs_action path="/deploy/users" />
@@ -106,7 +106,7 @@ defmodule Web.Actors.Index do
                     link_style()
                   ]}
                 >
-                  <%= @actor_groups[actor.id].count %>
+                  {@actor_groups[actor.id].count}
                 </.link>
               </:target>
               <:content>
@@ -123,7 +123,7 @@ defmodule Web.Actors.Index do
 
                   <:tail :let={count}>
                     <span class="inline-block whitespace-nowrap">
-                      and <%= count %> more.
+                      and {count} more.
                     </span>
                   </:tail>
                 </.peek>
@@ -155,7 +155,7 @@ defmodule Web.Actors.Index do
                     navigate={~p"/#{@account}/actors/#{actor}?#clients"}
                     class={["inline-flex ml-1", link_style()]}
                   >
-                    <%= count %> more
+                    {count} more
                   </.link>
                   <span>.</span>
                 </span>

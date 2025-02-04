@@ -241,7 +241,7 @@ defmodule Web.SignIn do
       href={~p"/#{@account}/sign_in/providers/#{@provider}/redirect?#{@params}"}
     >
       <.provider_icon adapter={@provider.adapter} class="w-5 h-5 mr-2" /> Sign in with
-      <strong><%= @provider.name %></strong>
+      <strong>{@provider.name}</strong>
     </a>
     """
   end

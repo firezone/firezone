@@ -6,7 +6,7 @@ defmodule Web.Clients.Components do
     ~H"""
     <div class="flex items-center">
       <span class="mr-1 mb-1"><.client_os_icon client={@client} /></span>
-      <%= get_client_os_name_and_version(@client.last_seen_user_agent) %>
+      {get_client_os_name_and_version(@client.last_seen_user_agent)}
     </div>
     """
   end
@@ -24,7 +24,7 @@ defmodule Web.Clients.Components do
   def client_os_name_and_version(assigns) do
     ~H"""
     <span>
-      <%= get_client_os_name_and_version(@client.last_seen_user_agent) %>
+      {get_client_os_name_and_version(@client.last_seen_user_agent)}
     </span>
     """
   end
@@ -37,7 +37,7 @@ defmodule Web.Clients.Components do
       </:target>
       <:content>
         <div>
-          <%= @client.name %>
+          {@client.name}
           <.icon
             :if={not is_nil(@client.verified_at)}
             name="hero-shield-check"

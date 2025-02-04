@@ -48,7 +48,7 @@ defmodule Web.Actors.Components do
       navigate={actor_show_url(@account, @actor)}
       class={["text-accent-500 hover:underline", @class]}
     >
-      <%= @actor.name %>
+      {@actor.name}
     </.link>
     <span :if={@actor.type == :account_admin_user} class={["text-xs", @class]}>
       (admin)

@@ -27,13 +27,13 @@ defmodule Web.Settings.IdentityProviders.System.Show do
       <.breadcrumb path={
         ~p"/#{@account}/settings/identity_providers/google_workspace//DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
       }>
-        <%= @provider.name %>
+        {@provider.name}
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Identity Provider: <code><%= @provider.name %></code>
+        Identity Provider: <code>{@provider.name}</code>
         <span :if={not is_nil(@provider.disabled_at)} class="text-primary-600">(disabled)</span>
         <span :if={not is_nil(@provider.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
@@ -91,7 +91,7 @@ defmodule Web.Settings.IdentityProviders.System.Show do
           <.vertical_table id="provider">
             <.vertical_table_row>
               <:label>Name</:label>
-              <:value><%= @provider.name %></:value>
+              <:value>{@provider.name}</:value>
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Status</:label>

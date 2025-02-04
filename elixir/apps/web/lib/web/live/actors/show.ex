@@ -139,20 +139,20 @@ defmodule Web.Actors.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
-        <%= @actor.name %>
+        {@actor.name}
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        <%= actor_type(@actor.type) %>: <span class="font-medium"><%= @actor.name %></span>
+        {actor_type(@actor.type)}: <span class="font-medium">{@actor.name}</span>
         <span :if={@actor.id == @subject.actor.id} class="text-sm text-neutral-400">(you)</span>
         <span :if={Actors.actor_deleted?(@actor)} class="text-red-600">(deleted)</span>
         <span :if={Actors.actor_disabled?(@actor)} class="text-red-600">(disabled)</span>
       </:title>
       <:action :if={is_nil(@actor.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/actors/#{@actor}/edit"}>
-          Edit <%= actor_type(@actor.type) %>
+          Edit {actor_type(@actor.type)}
         </.edit_button>
       </:action>
       <:action :if={is_nil(@actor.deleted_at) and not Actors.actor_disabled?(@actor)}>
@@ -165,15 +165,15 @@ defmodule Web.Actors.Show do
         >
           <:dialog_title>Confirm disabling the Actor</:dialog_title>
           <:dialog_content>
-            Are you sure you want to disable this <%= String.downcase(actor_type(@actor.type)) %> and revoke all its tokens?
+            Are you sure you want to disable this {String.downcase(actor_type(@actor.type))} and revoke all its tokens?
           </:dialog_content>
           <:dialog_confirm_button>
-            Disable <%= actor_type(@actor.type) %>
+            Disable {actor_type(@actor.type)}
           </:dialog_confirm_button>
           <:dialog_cancel_button>
             Cancel
           </:dialog_cancel_button>
-          Disable <%= actor_type(@actor.type) %>
+          Disable {actor_type(@actor.type)}
         </.button_with_confirmation>
       </:action>
       <:action :if={is_nil(@actor.deleted_at) and Actors.actor_disabled?(@actor)}>
@@ -186,15 +186,15 @@ defmodule Web.Actors.Show do
         >
           <:dialog_title>Confirm enabling the Actor</:dialog_title>
           <:dialog_content>
-            Are you sure you want to enable this <%= String.downcase(actor_type(@actor.type)) %>?
+            Are you sure you want to enable this {String.downcase(actor_type(@actor.type))}?
           </:dialog_content>
           <:dialog_confirm_button>
-            Enable <%= actor_type(@actor.type) %>
+            Enable {actor_type(@actor.type)}
           </:dialog_confirm_button>
           <:dialog_cancel_button>
             Cancel
           </:dialog_cancel_button>
-          Enable <%= actor_type(@actor.type) %>
+          Enable {actor_type(@actor.type)}
         </.button_with_confirmation>
       </:action>
       <:content flash={@flash}>
@@ -202,14 +202,14 @@ defmodule Web.Actors.Show do
           <.vertical_table_row>
             <:label>Name</:label>
             <:value>
-              <%= @actor.name %>
+              {@actor.name}
             </:value>
           </.vertical_table_row>
 
           <.vertical_table_row>
             <:label>Role</:label>
             <:value>
-              <%= actor_role(@actor.type) %>
+              {actor_role(@actor.type)}
             </:value>
           </.vertical_table_row>
 
@@ -378,7 +378,7 @@ defmodule Web.Actors.Show do
           metadata={@tokens_metadata}
         >
           <:col :let={token} label="type" class="w-1/12">
-            <%= token.type %>
+            {token.type}
           </:col>
           <:col :let={token} :if={@actor.type != :service_account} label="identity" class="w-3/12">
             <.identity_identifier account={@account} identity={token.identity} />
@@ -391,14 +391,14 @@ defmodule Web.Actors.Show do
 
               <:item :for={client <- token.clients}>
                 <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
-                  <%= client.name %>
+                  {client.name}
                 </.link>
               </:item>
             </.intersperse_blocks>
             <span :if={token.type != :client}>N/A</span>
           </:col>
           <:col :let={token} :if={@actor.type == :service_account} label="name" class="w-2/12">
-            <%= token.name %>
+            {token.name}
           </:col>
           <:col :let={token} label="created" class="w-2/12">
             <.created_by account={@account} schema={token} />
@@ -482,7 +482,7 @@ defmodule Web.Actors.Show do
           <:col :let={client} field={{:clients, :name}} label="name">
             <div class="flex items-center space-x-1">
               <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
-                <%= client.name %>
+                {client.name}
               </.link>
               <.icon
                 :if={not is_nil(client.verified_at)}
@@ -535,17 +535,17 @@ defmodule Web.Actors.Show do
           </:col>
           <:col :let={flow} label="client">
             <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={link_style()}>
-              <%= flow.client.name %>
+              {flow.client.name}
             </.link>
             <br />
-            <code class="text-xs"><%= flow.client_remote_ip %></code>
+            <code class="text-xs">{flow.client_remote_ip}</code>
           </:col>
           <:col :let={flow} label="gateway">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
-              <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
+              {flow.gateway.group.name}-{flow.gateway.name}
             </.link>
             <br />
-            <code class="text-xs"><%= flow.gateway_remote_ip %></code>
+            <code class="text-xs">{flow.gateway_remote_ip}</code>
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="activity" class="w-1/12">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
@@ -596,17 +596,17 @@ defmodule Web.Actors.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Confirm <%= actor_type(@actor.type) %> deletion</:dialog_title>
+          <:dialog_title>Confirm {actor_type(@actor.type)} deletion</:dialog_title>
           <:dialog_content>
-            Are you sure you want to delete this <%= String.downcase(actor_type(@actor.type)) %> along with all associated identities?
+            Are you sure you want to delete this {String.downcase(actor_type(@actor.type))} along with all associated identities?
           </:dialog_content>
           <:dialog_confirm_button>
-            Delete <%= actor_type(@actor.type) %>
+            Delete {actor_type(@actor.type)}
           </:dialog_confirm_button>
           <:dialog_cancel_button>
             Cancel
           </:dialog_cancel_button>
-          Delete <%= actor_type(@actor.type) %>
+          Delete {actor_type(@actor.type)}
         </.button_with_confirmation>
       </:action>
     </.danger_zone>

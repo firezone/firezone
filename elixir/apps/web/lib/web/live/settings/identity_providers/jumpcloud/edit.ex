@@ -27,7 +27,7 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Edit do
         Identity Providers Settings
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/settings/identity_providers/jumpcloud/#{@provider}"}>
-        <%= @provider.name %>
+        {@provider.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/settings/identity_providers/jumpcloud/#{@form.data}/edit"}>
         Edit
@@ -35,7 +35,7 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Edit do
     </.breadcrumbs>
     <.section>
       <:title>
-        Edit Identity Provider <%= @form.data.name %>
+        Edit Identity Provider {@form.data.name}
       </:title>
       <:content>
         <.provider_form account={@account} id={@form.data.id} form={@form} />

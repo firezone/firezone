@@ -25,7 +25,7 @@ defmodule Web.Clients.Edit do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/clients"}>Clients</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/clients/#{@client}"}>
-        <%= @client.name %>
+        {@client.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/clients/#{@client}/edit"}>
         Edit
@@ -34,7 +34,7 @@ defmodule Web.Clients.Edit do
 
     <.section>
       <:title>
-        Editing client: <code><%= @client.name %></code>
+        Editing client: <code>{@client.name}</code>
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">

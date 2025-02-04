@@ -54,7 +54,7 @@ defmodule Web.Sites.Gateways.Index do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}/gateways"}>
         Gateways
@@ -63,7 +63,7 @@ defmodule Web.Sites.Gateways.Index do
 
     <.section>
       <:title>
-        Site <code><%= @group.name %></code> Gateways
+        Site <code>{@group.name}</code> Gateways
       </:title>
       <:help>
         Deploy gateways to terminate connections to your site's resources. All
@@ -81,16 +81,16 @@ defmodule Web.Sites.Gateways.Index do
         >
           <:col :let={gateway} field={{:gateways, :name}} label="instance">
             <.link navigate={~p"/#{@account}/gateways/#{gateway.id}"} class={[link_style()]}>
-              <%= gateway.name %>
+              {gateway.name}
             </.link>
           </:col>
           <:col :let={gateway} label="remote ip">
             <code>
-              <%= gateway.last_seen_remote_ip %>
+              {gateway.last_seen_remote_ip}
             </code>
           </:col>
           <:col :let={gateway} label="version">
-            <%= gateway.last_seen_version %>
+            {gateway.last_seen_version}
           </:col>
           <:col :let={gateway} label="status">
             <.connection_status schema={gateway} />

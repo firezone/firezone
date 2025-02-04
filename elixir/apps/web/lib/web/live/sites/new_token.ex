@@ -44,7 +44,7 @@ defmodule Web.Sites.NewToken do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}/new_token"}>Deploy</.breadcrumb>
     </.breadcrumbs>

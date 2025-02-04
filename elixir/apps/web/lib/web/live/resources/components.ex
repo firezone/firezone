@@ -226,7 +226,7 @@ defmodule Web.Resources.Components do
 
   def filter_description(assigns) do
     ~H"""
-    <code><%= pretty_print_filter(@filter) %></code>
+    <code>{pretty_print_filter(@filter)}</code>
     """
   end
 
@@ -294,7 +294,7 @@ defmodule Web.Resources.Components do
       </p>
 
       <.error :for={error <- @errors} data-validation-error-for="connections">
-        <%= error %>
+        {error}
       </.error>
       <div :for={gateway_group <- @gateway_groups}>
         <% connected_gateway_group_ids = connected_gateway_group_ids(@form) %>
@@ -327,7 +327,7 @@ defmodule Web.Resources.Components do
               class="font-medium text-accent-500 hover:underline"
               target="_blank"
             >
-              <%= gateway_group.name %>
+              {gateway_group.name}
             </.link>
           </div>
         </div>

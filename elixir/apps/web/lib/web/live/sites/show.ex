@@ -91,13 +91,13 @@ defmodule Web.Sites.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Site: <code><%= @group.name %></code>
+        Site: <code>{@group.name}</code>
         <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@group.deleted_at)}>
@@ -110,7 +110,7 @@ defmodule Web.Sites.Show do
         <.vertical_table id="group">
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @group.name %></:value>
+            <:value>{@group.name}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
@@ -184,17 +184,17 @@ defmodule Web.Sites.Show do
           >
             <:col :let={gateway} label="instance">
               <.link navigate={~p"/#{@account}/gateways/#{gateway.id}"} class={[link_style()]}>
-                <%= gateway.name %>
+                {gateway.name}
               </.link>
             </:col>
             <:col :let={gateway} label="remote ip">
               <code>
-                <%= gateway.last_seen_remote_ip %>
+                {gateway.last_seen_remote_ip}
               </code>
             </:col>
             <:col :let={gateway} label="version">
               <.version_status outdated={Gateways.gateway_outdated?(gateway)} />
-              <%= gateway.last_seen_version %>
+              {gateway.last_seen_version}
             </:col>
             <:col :let={gateway} label="status">
               <.connection_status schema={gateway} />
@@ -246,12 +246,12 @@ defmodule Web.Sites.Show do
                 navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
                 class={[link_style()]}
               >
-                <%= resource.name %>
+                {resource.name}
               </.link>
             </:col>
             <:col :let={resource} label="address" field={{:resources, :address}}>
               <code class="block text-xs">
-                <%= resource.address %>
+                {resource.address}
               </code>
             </:col>
             <:col :let={resource} label="Authorized groups">
@@ -278,7 +278,7 @@ defmodule Web.Sites.Show do
 
                 <:tail :let={count}>
                   <span class="inline-block whitespace-nowrap">
-                    and <%= count %> more.
+                    and {count} more.
                   </span>
                 </:tail>
               </.peek>

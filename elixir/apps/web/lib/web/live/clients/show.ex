@@ -67,7 +67,7 @@ defmodule Web.Clients.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/clients"}>Clients</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/clients/#{@client.id}"}>
-        <%= @client.name %>
+        {@client.name}
       </.breadcrumb>
     </.breadcrumbs>
 
@@ -96,11 +96,11 @@ defmodule Web.Clients.Show do
                 </:content>
               </.popover>
             </:label>
-            <:value><%= @client.id %></:value>
+            <:value>{@client.id}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @client.name %></:value>
+            <:value>{@client.name}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Status</:label>
@@ -110,7 +110,7 @@ defmodule Web.Clients.Show do
             <:label>Owner</:label>
             <:value>
               <.link navigate={~p"/#{@account}/actors/#{@client.actor.id}"} class={[link_style()]}>
-                <%= @client.actor.name %>
+                {@client.actor.name}
               </.link>
             </:value>
           </.vertical_table_row>
@@ -136,7 +136,7 @@ defmodule Web.Clients.Show do
                   }
                   class={[link_style()]}
                 >
-                  <%= @client.last_used_token.name %>
+                  {@client.last_used_token.name}
                 </.link>
                 <span :if={not is_nil(@client.last_used_token.deleted_at)}>
                   (deleted)
@@ -146,12 +146,12 @@ defmodule Web.Clients.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Version</:label>
-            <:value><%= @client.last_seen_version %></:value>
+            <:value>{@client.last_seen_version}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>User agent</:label>
             <:value>
-              <%= @client.last_seen_user_agent %>
+              {@client.last_seen_user_agent}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -236,22 +236,22 @@ defmodule Web.Clients.Show do
                 </:content>
               </.popover>
             </:label>
-            <:value><%= @client.external_id %></:value>
+            <:value>{@client.external_id}</:value>
           </.vertical_table_row>
           <.vertical_table_row :for={{{title, helptext}, value} <- hardware_ids(@client)}>
             <:label>
               <.popover :if={not is_nil(helptext)}>
                 <:target>
-                  <%= title %>
+                  {title}
                   <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
                 </:target>
                 <:content>
-                  <%= helptext %>
+                  {helptext}
                 </:content>
               </.popover>
-              <span :if={is_nil(helptext)}><%= title %></span>
+              <span :if={is_nil(helptext)}>{title}</span>
             </:label>
-            <:value><%= value %></:value>
+            <:value>{value}</:value>
           </.vertical_table_row>
 
           <.vertical_table_row>
@@ -307,7 +307,7 @@ defmodule Web.Clients.Show do
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
           <:col :let={flow} label="remote ip" class="w-3/12">
-            <%= flow.client_remote_ip %>
+            {flow.client_remote_ip}
           </:col>
           <:col :let={flow} label="policy">
             <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
@@ -316,10 +316,10 @@ defmodule Web.Clients.Show do
           </:col>
           <:col :let={flow} label="gateway" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
-              <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
+              {flow.gateway.group.name}-{flow.gateway.name}
             </.link>
             <br />
-            <code class="text-xs"><%= flow.gateway_remote_ip %></code>
+            <code class="text-xs">{flow.gateway_remote_ip}</code>
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="activity">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>

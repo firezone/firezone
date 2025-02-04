@@ -65,7 +65,7 @@ defmodule Web.SignIn.Email do
 
             <div>
               <p>
-                If <strong><%= @provider_identifier %></strong>
+                If <strong>{@provider_identifier}</strong>
                 is registered, a sign-in token has been sent.
               </p>
               <form
@@ -184,7 +184,7 @@ defmodule Web.SignIn.Email do
         "hover:text-neutral-900 hover:bg-neutral-100"
       ]}
     >
-      Open <%= @name %>
+      Open {@name}
     </a>
     """
   end

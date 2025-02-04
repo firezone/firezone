@@ -122,7 +122,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               Click <strong>ADD OR REMOVE SCOPES</strong> and ensure the following scopes are added:
             </p>
             <.code_block
-              id="oauth-scopes"
+              id="oauth-scopes-2"
               class="w-full text-xs mb-4 whitespace-pre-line rounded"
               phx-no-format
             ><%= Enum.join(GoogleWorkspace.Settings.scope(), "\n") %></.code_block>
@@ -232,7 +232,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
               and paste the <strong>Unique ID</strong>
               from the previous step to the <strong>Client ID</strong>
               field and add the following scopes: <.code_block
-                id="oauth-scopes"
+                id="oauth-scopes-1"
                 class="w-full text-xs mb-4 whitespace-pre-line rounded"
                 phx-no-format
               ><%= Enum.join(GoogleWorkspace.Settings.scope(), ",\n") %></.code_block>

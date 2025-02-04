@@ -145,7 +145,7 @@ defmodule Web.SignUp do
                   Account Name:
                 </td>
                 <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
-                  <%= @account.name %>
+                  {@account.name}
                 </td>
               </tr>
               <tr>
@@ -153,7 +153,7 @@ defmodule Web.SignUp do
                   Account Slug:
                 </td>
                 <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
-                  <%= @account.slug %>
+                  {@account.slug}
                 </td>
               </tr>
               <tr>
@@ -162,7 +162,7 @@ defmodule Web.SignUp do
                 </td>
                 <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
                   <.link class={[link_style()]} navigate={~p"/#{@account}"}>
-                    <%= url(~p"/#{@account}") %>
+                    {url(~p"/#{@account}")}
                   </.link>
                 </td>
               </tr>

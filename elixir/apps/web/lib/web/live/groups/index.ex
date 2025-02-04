@@ -40,7 +40,7 @@ defmodule Web.Groups.Index do
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/groups"}><%= @page_title %></.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/groups"}>{@page_title}</.breadcrumb>
     </.breadcrumbs>
 
     <.section>
@@ -92,7 +92,7 @@ defmodule Web.Groups.Index do
 
               <:item :let={actor}>
                 <.link navigate={~p"/#{@account}/actors/#{actor}"} class={[link_style()]}>
-                  <%= actor.name %>
+                  {actor.name}
                 </.link>
               </:item>
 
@@ -103,7 +103,7 @@ defmodule Web.Groups.Index do
                     navigate={~p"/#{@account}/groups/#{group}?#actors"}
                     class={["inline-flex ml-1", link_style()]}
                   >
-                    <%= count %> more
+                    {count} more
                   </.link>
                   <span>.</span>
                 </span>

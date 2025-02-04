@@ -16,7 +16,7 @@ defmodule Web.Sites.New do
     </.breadcrumbs>
 
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:content>
         <.flash kind={:error} flash={@flash} />
         <div class="py-8 px-4 mx-auto max-w-2xl lg:py-16">

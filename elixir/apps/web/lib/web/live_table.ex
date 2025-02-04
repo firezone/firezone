@@ -60,7 +60,7 @@ defmodule Web.LiveTable do
         </tbody>
       </table>
       <div :if={Enum.empty?(@rows) and not has_filter?(@filter, @filters)} id={"#{@id}-empty"}>
-        <%= render_slot(@empty) %>
+        {render_slot(@empty)}
       </div>
       <div :if={Enum.empty?(@rows) and has_filter?(@filter, @filters)} id={"#{@id}-empty"}>
         <div class="flex justify-center text-center text-neutral-500 p-4">
@@ -125,7 +125,7 @@ defmodule Web.LiveTable do
         ]}
       />
       <.error :for={msg <- @field.errors} data-validation-error-for={@field.name}>
-        <%= msg %>
+        {msg}
       </.error>
     </div>
     """
@@ -210,7 +210,7 @@ defmodule Web.LiveTable do
           :for={msg <- @form[@filter.name].errors}
           data-validation-error-for={@form[@filter.name].name}
         >
-          <%= msg %>
+          {msg}
         </.error>
       </div>
     </div>
@@ -243,7 +243,7 @@ defmodule Web.LiveTable do
           :for={msg <- @form[@filter.name].errors}
           data-validation-error-for={@form[@filter.name].name}
         >
-          <%= msg %>
+          {msg}
         </.error>
       </div>
     </div>
@@ -318,7 +318,7 @@ defmodule Web.LiveTable do
                 checked={@form[@filter.name].value == value}
                 class="hidden"
               />
-              <%= label %>
+              {label}
             </label>
           </:item>
         </.intersperse_blocks>
@@ -378,7 +378,7 @@ defmodule Web.LiveTable do
                 checked={@form[@filter.name].value && value in @form[@filter.name].value}
                 class="hidden"
               />
-              <%= label %>
+              {label}
             </label>
           </:item>
         </.intersperse_blocks>
@@ -411,8 +411,8 @@ defmodule Web.LiveTable do
       aria-label="Table navigation"
     >
       <span class="text-sm text-neutral-500">
-        Showing <span class="font-medium text-neutral-900"><%= @rows_count %></span>
-        of <span class="font-medium text-neutral-900"><%= @metadata.count %></span>
+        Showing <span class="font-medium text-neutral-900">{@rows_count}</span>
+        of <span class="font-medium text-neutral-900">{@metadata.count}</span>
       </span>
       <ul class="inline-flex items-stretch -space-x-px">
         <li>
