@@ -80,11 +80,11 @@ defmodule Web.Settings.IdentityProviders.Index do
         >
           <:col :let={provider} field={{:providers, :name}} label="Name" class="w-2/12">
             <.link navigate={view_provider(@account, provider)} class={[link_style()]}>
-              <%= provider.name %>
+              {provider.name}
             </.link>
           </:col>
           <:col :let={provider} label="Type" class="w-2/12">
-            <%= adapter_name(provider.adapter) %>
+            {adapter_name(provider.adapter)}
           </:col>
           <:col :let={provider} label="Status" class="w-2/12">
             <.status provider={provider} />

@@ -44,14 +44,14 @@ defmodule Web.Actors.Users.NewIdentity do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
-        <%= @actor.name %>
+        {@actor.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/users/#{@actor}/new_identity"}>
         Add Identity
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <.flash kind={:error} flash={@flash} />

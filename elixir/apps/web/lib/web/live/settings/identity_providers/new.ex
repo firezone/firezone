@@ -33,7 +33,7 @@ defmodule Web.Settings.IdentityProviders.New do
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:help>
         Set up SSO authentication using your own identity provider. Directory sync
         also available for certain providers. <br /> Learn more about
@@ -79,7 +79,7 @@ defmodule Web.Settings.IdentityProviders.New do
     >
       <div class="w-full">
         <.provider_icon adapter={@adapter} class="w-10 h-10 inline-block mr-2" />
-        <span class="inline-block"><%= pretty_print_provider(@adapter) %></span>
+        <span class="inline-block">{pretty_print_provider(@adapter)}</span>
       </div>
 
       <div :if={@opts[:sync] == true} class="w-1/2 flex justify-end">

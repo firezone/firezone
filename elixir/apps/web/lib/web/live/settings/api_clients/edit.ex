@@ -30,13 +30,13 @@ defmodule Web.Settings.ApiClients.Edit do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/settings/api_clients"}>API Clients</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/settings/api_clients/#{@actor}"}>
-        <%= @actor.name %>
+        {@actor.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/settings/api_clients/#{@actor}/edit"}>Edit</.breadcrumb>
     </.breadcrumbs>
 
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <h2 class="mb-4 text-xl text-neutral-900">

@@ -303,7 +303,7 @@ defmodule Web.Settings.IdentityProviders.Components do
           class={link_style()}
         >
           <% identities_count_by_provider_id = @identities_count_by_provider_id[@provider.id] || 0 %>
-          <%= identities_count_by_provider_id %>
+          {identities_count_by_provider_id}
           <.cardinal_number
             number={identities_count_by_provider_id}
             one="identity"
@@ -316,7 +316,7 @@ defmodule Web.Settings.IdentityProviders.Components do
           class={link_style()}
         >
           <% groups_count_by_provider_id = @groups_count_by_provider_id[@provider.id] || 0 %>
-          <%= groups_count_by_provider_id %>
+          {groups_count_by_provider_id}
           <.cardinal_number number={groups_count_by_provider_id} one="group" other="groups" />
         </.link>
 
@@ -344,7 +344,7 @@ defmodule Web.Settings.IdentityProviders.Components do
           class={link_style()}
         >
           <% identities_count_by_provider_id = @identities_count_by_provider_id[@provider.id] || 0 %>
-          <%= identities_count_by_provider_id %>
+          {identities_count_by_provider_id}
           <.cardinal_number
             number={identities_count_by_provider_id}
             one="identity"
@@ -357,7 +357,7 @@ defmodule Web.Settings.IdentityProviders.Components do
           class={link_style()}
         >
           <% groups_count_by_provider_id = @groups_count_by_provider_id[@provider.id] || 0 %>
-          <%= groups_count_by_provider_id %>
+          {groups_count_by_provider_id}
           <.cardinal_number number={groups_count_by_provider_id} one="group" other="groups" />
         </.link>
       </span>

@@ -21,7 +21,7 @@ defmodule Web.CoreComponents do
     <div class="mb-6">
       <img src={~p"/images/logo.svg"} class="mx-auto pr-10 h-24" alt="Firezone Logo" />
       <p class="text-center mt-4 text-3xl">
-        <%= @text %>
+        {@text}
       </p>
     </div>
     """
@@ -49,7 +49,7 @@ defmodule Web.CoreComponents do
   """
   def p(assigns) do
     ~H"""
-    <p class="text-neutral-700"><%= render_slot(@inner_block) %></p>
+    <p class="text-neutral-700">{render_slot(@inner_block)}</p>
     """
   end
 
@@ -207,7 +207,7 @@ defmodule Web.CoreComponents do
                   <%= if tab.icon do %>
                     <.icon name={tab.icon} class="h-4 w-4 mr-2" />
                   <% end %>
-                  <%= tab.label %>
+                  {tab.label}
                 </span>
               </button>
             </li>
@@ -222,7 +222,7 @@ defmodule Web.CoreComponents do
             role="tabpanel"
             aria-labelledby={"#{tab.id}-tab"}
           >
-            <%= render_slot(tab) %>
+            {render_slot(tab)}
           </div>
         <% end %>
       </div>
@@ -258,16 +258,16 @@ defmodule Web.CoreComponents do
         <div class="col-span-full">
           <div class="flex justify-between items-center">
             <h2 class="text-2xl leading-none tracking-tight text-neutral-900">
-              <%= render_slot(@title) %>
+              {render_slot(@title)}
             </h2>
             <div class="inline-flex justify-between items-center space-x-2">
-              <%= render_slot(@actions) %>
+              {render_slot(@actions)}
             </div>
           </div>
         </div>
       </div>
       <div :for={help <- @help} class="pt-3 text-neutral-400">
-        <%= render_slot(help) %>
+        {render_slot(help)}
       </div>
     </div>
     """
@@ -281,7 +281,7 @@ defmodule Web.CoreComponents do
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:info} phx-mounted={show("#flash")}>Welcome Back!</.flash>
   """
-  attr :id, :string, default: "flash", doc: "the optional id of flash container"
+  attr :id, :string, default: nil, doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
 
@@ -315,9 +315,9 @@ defmodule Web.CoreComponents do
       <p :if={@title} class="flex items-center gap-1.5 text-sm font-semibold leading-6">
         <.icon :if={@kind == :info} name="hero-information-circle-mini" class="h-4 w-4" />
         <.icon :if={@kind == :error} name="hero-exclamation-circle-mini" class="h-4 w-4" />
-        <%= @title %>
+        {@title}
       </p>
-      <%= maybe_render_changeset_as_flash(msg) %>
+      {maybe_render_changeset_as_flash(msg)}
     </div>
     """
   end
@@ -326,10 +326,10 @@ defmodule Web.CoreComponents do
     assigns = %{message: message, errors: errors}
 
     ~H"""
-    <%= @message %>:
+    {@message}:
     <ul>
       <li :for={{field, field_errors} <- @errors}>
-        <%= field %>: <%= Enum.join(field_errors, ", ") %>
+        {field}: {Enum.join(field_errors, ", ")}
       </li>
     </ul>
     """
@@ -375,7 +375,7 @@ defmodule Web.CoreComponents do
   def label(assigns) do
     ~H"""
     <label for={@for} class={["block text-sm text-neutral-900 mb-2", @class]}>
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </label>
     """
   end
@@ -400,7 +400,7 @@ defmodule Web.CoreComponents do
       {@rest}
     >
       <.icon name="hero-exclamation-circle-mini" class="h-4 w-4 flex-none" />
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </p>
     """
   end
@@ -428,7 +428,7 @@ defmodule Web.CoreComponents do
       {@rest}
     >
       <.icon name="hero-exclamation-circle-mini" class="mt-0.5 h-5 w-5 flex-none" />
-      <%= translate_error(@error) %>
+      {translate_error(@error)}
     </p>
     """
   end
@@ -452,8 +452,8 @@ defmodule Web.CoreComponents do
     <div class="mt-14">
       <dl class="-my-4 divide-y divide-neutral-100">
         <div :for={item <- @item} class="flex gap-4 py-4 text-sm leading-6 sm:gap-8">
-          <dt class="w-1/4 flex-none text-neutral-500"><%= item.title %></dt>
-          <dd class="text-neutral-700"><%= render_slot(item) %></dd>
+          <dt class="w-1/4 flex-none text-neutral-500">{item.title}</dt>
+          <dd class="text-neutral-700">{render_slot(item)}</dd>
         </div>
       </dl>
     </div>
@@ -770,20 +770,20 @@ defmodule Web.CoreComponents do
   def intersperse_blocks(assigns) do
     ~H"""
     <%= if Enum.empty?(@item) do %>
-      <%= render_slot(@empty) %>
+      {render_slot(@empty)}
     <% else %>
       <%= for item <- Enum.intersperse(@item, :separator) do %>
         <%= if item == :separator do %>
-          <%= render_slot(@separator) %>
+          {render_slot(@separator)}
         <% else %>
-          <%= render_slot(
+          {render_slot(
             item,
             cond do
               item == List.first(@item) -> :first
               item == List.last(@item) -> :last
               true -> :middle
             end
-          ) %>
+          )}
         <% end %>
       <% end %>
     <% end %>
@@ -834,22 +834,22 @@ defmodule Web.CoreComponents do
     ~H"""
     <div class="flex flex-wrap gap-y-2">
       <%= if Enum.empty?(@peek.items) do %>
-        <%= render_slot(@empty) %>
+        {render_slot(@empty)}
       <% else %>
         <% items = if @separator, do: Enum.intersperse(@peek.items, :separator), else: @peek.items %>
         <%= for item <- items do %>
           <%= if item == :separator do %>
-            <%= render_slot(@separator) %>
+            {render_slot(@separator)}
           <% else %>
-            <%= render_slot(@item, item) %>
+            {render_slot(@item, item)}
           <% end %>
         <% end %>
 
         <%= if @peek.count > length(@peek.items) do %>
-          <%= render_slot(@tail, @peek.count - length(@peek.items)) %>
+          {render_slot(@tail, @peek.count - length(@peek.items))}
         <% end %>
 
-        <%= render_slot(@call_to_action) %>
+        {render_slot(@call_to_action)}
       <% end %>
     </div>
     """
@@ -882,7 +882,7 @@ defmodule Web.CoreComponents do
       ]}
       {@rest}
     >
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </span>
     """
   end
@@ -932,7 +932,7 @@ defmodule Web.CoreComponents do
         "text-xs rounded-l py-0.5 pl-2.5 pr-1.5",
         @colors[@type]["dark"]
       ]}>
-        <%= render_slot(@left) %>
+        {render_slot(@left)}
       </div>
       <span class={[
         "text-xs",
@@ -940,7 +940,7 @@ defmodule Web.CoreComponents do
         "mr-2 py-0.5 pl-1.5 pr-2.5",
         @colors[@type]["light"]
       ]}>
-        <%= render_slot(@right) %>
+        {render_slot(@right)}
       </span>
     </span>
     """
@@ -955,7 +955,7 @@ defmodule Web.CoreComponents do
   def datetime(assigns) do
     ~H"""
     <span title={@datetime}>
-      <%= Cldr.DateTime.to_string!(@datetime, Web.CLDR, format: @format) %>
+      {Cldr.DateTime.to_string!(@datetime, Web.CLDR, format: @format)}
     </span>
     """
   end
@@ -980,17 +980,17 @@ defmodule Web.CoreComponents do
           "underline underline-offset-2 decoration-1 decoration-dotted",
           DateTime.compare(@datetime, @relative_to) == :lt && @negative_class
         ]}>
-          <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to)
-          |> String.capitalize() %>
+          {Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to)
+          |> String.capitalize()}
         </span>
       </:target>
       <:content>
-        <%= @datetime %>
+        {@datetime}
       </:content>
     </.popover>
     <span :if={not @popover}>
-      <%= Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to)
-      |> String.capitalize() %>
+      {Cldr.DateTime.Relative.to_string!(@datetime, Web.CLDR, relative_to: @relative_to)
+      |> String.capitalize()}
     </span>
     <span :if={is_nil(@datetime)}>
       Never
@@ -1017,7 +1017,7 @@ defmodule Web.CoreComponents do
       data-popover-target-id={@target_id}
       data-popover-placement={@placement}
     >
-      <%= render_slot(@target) %>
+      {render_slot(@target)}
     </span>
 
     <div data-popover id={@target_id} role="tooltip" class={~w[
@@ -1027,7 +1027,7 @@ defmodule Web.CoreComponents do
       rounded shadow-sm opacity-0
       ]}>
       <div class="px-3 py-2">
-        <%= render_slot(@content) %>
+        {render_slot(@content)}
       </div>
       <div data-popper-arrow></div>
     </div>
@@ -1055,7 +1055,7 @@ defmodule Web.CoreComponents do
             else: "Never connected"
         }
       >
-        <%= if @schema.online?, do: "Online", else: "Offline" %>
+        {if @schema.online?, do: "Online", else: "Offline"}
       </span>
     </span>
     """
@@ -1184,7 +1184,7 @@ defmodule Web.CoreComponents do
         class="text-accent-500 hover:underline"
         navigate={~p"/#{@schema.account_id}/actors/#{@schema.verified_by_identity.actor_id}"}
       >
-        <%= assigns.schema.verified_by_actor.name %>
+        {assigns.schema.verified_by_actor.name}
       </.link>
     </div>
     """
@@ -1202,7 +1202,7 @@ defmodule Web.CoreComponents do
   def actor_link(%{actor: %Domain.Actors.Actor{type: :api_client}} = assigns) do
     ~H"""
     <.link class={link_style()} navigate={~p"/#{@account}/settings/api_clients/#{@actor}"}>
-      <%= assigns.actor.name %>
+      {assigns.actor.name}
     </.link>
     """
   end
@@ -1210,7 +1210,7 @@ defmodule Web.CoreComponents do
   def actor_link(assigns) do
     ~H"""
     <.link class={link_style()} navigate={~p"/#{@account}/actors/#{@actor}"}>
-      <%= assigns.actor.name %>
+      {assigns.actor.name}
     </.link>
     """
   end
@@ -1248,7 +1248,7 @@ defmodule Web.CoreComponents do
         bg-neutral-50
       ]}>
         <span class="block truncate" title={get_identity_email(@identity)}>
-          <%= get_identity_email(@identity) %>
+          {get_identity_email(@identity)}
         </span>
       </span>
     </span>
@@ -1310,7 +1310,7 @@ defmodule Web.CoreComponents do
           bg-neutral-50
         ]}
       >
-        <%= @group.name %>
+        {@group.name}
       </.link>
     </span>
     """
@@ -1324,15 +1324,15 @@ defmodule Web.CoreComponents do
   def last_seen(assigns) do
     ~H"""
     <span class="inline-block">
-      <%= @schema.last_seen_remote_ip %>
+      {@schema.last_seen_remote_ip}
     </span>
     <span class="inline-block">
-      <%= [
+      {[
         Domain.Geo.country_common_name!(@schema.last_seen_remote_ip_location_region),
         @schema.last_seen_remote_ip_location_city
       ]
       |> Enum.reject(&is_nil/1)
-      |> Enum.join(", ") %>
+      |> Enum.join(", ")}
 
       <a
         :if={
@@ -1375,7 +1375,7 @@ defmodule Web.CoreComponents do
 
     ~H"""
     <span data-value={@number} {@rest}>
-      <%= Web.CLDR.Number.Cardinal.pluralize(@number, :en, @opts) %>
+      {Web.CLDR.Number.Cardinal.pluralize(@number, :en, @opts)}
     </span>
     """
   end
@@ -1461,10 +1461,10 @@ defmodule Web.CoreComponents do
     ~H"""
     <div class="mb-6">
       <h2 class="mb-2 text-2xl tracking-tight font-medium text-neutral-900">
-        <%= render_slot(@title) %>
+        {render_slot(@title)}
       </h2>
       <div class="px-4">
-        <%= render_slot(@content) %>
+        {render_slot(@content)}
       </div>
     </div>
     """

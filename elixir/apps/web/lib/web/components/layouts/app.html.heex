@@ -100,7 +100,7 @@
 
 <main class="lg:ml-64 h-auto pt-14">
   <.flash :if={@account.warning} kind={:warning} class="m-1">
-    <%= @account.warning %>.
+    {@account.warning}.
     <span :if={Domain.Billing.account_provisioned?(@account)}>
       Please
       <.link navigate={~p"/#{@account}/settings/billing"} class={link_style()}>
@@ -128,8 +128,8 @@
     <% trial_ends_in_days = DateTime.diff(trial_ends_at, DateTime.utc_now(), :day) %>
 
     <.flash :if={5 > trial_ends_in_days and trial_ends_in_days > 0} kind={:info} class="m-1">
-      Your Enterprise pilot period will expire in <%= trial_ends_in_days %>
-      <%= if trial_ends_in_days == 1, do: "day", else: "days" %>.
+      Your Enterprise pilot period will expire in {trial_ends_in_days}
+      {if trial_ends_in_days == 1, do: "day", else: "days"}.
       Please contact your sales representative to extend it.
     </.flash>
 
@@ -139,5 +139,5 @@
     </.flash>
   <% end %>
 
-  <%= @inner_content %>
+  {@inner_content}
 </main>

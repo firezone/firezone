@@ -27,18 +27,18 @@ defmodule Web.Gateways.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}"}>
-        <%= @gateway.group.name %>
+        {@gateway.group.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}/gateways"}>
         Gateways
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/gateways/#{@gateway}"}>
-        <%= @gateway.name %>
+        {@gateway.name}
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
       <:title>
-        Gateway: <code><%= @gateway.name %></code>
+        Gateway: <code>{@gateway.name}</code>
         <span :if={not is_nil(@gateway.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:content>
@@ -50,13 +50,13 @@ defmodule Web.Gateways.Show do
                 navigate={~p"/#{@account}/sites/#{@gateway.group}"}
                 class={["font-medium", link_style()]}
               >
-                <%= @gateway.group.name %>
+                {@gateway.group.name}
               </.link>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @gateway.name %></:value>
+            <:value>{@gateway.name}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Status</:label>
@@ -87,13 +87,13 @@ defmodule Web.Gateways.Show do
           <.vertical_table_row>
             <:label>Version</:label>
             <:value>
-              <%= @gateway.last_seen_version %>
+              {@gateway.last_seen_version}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>User agent</:label>
             <:value>
-              <%= @gateway.last_seen_user_agent %>
+              {@gateway.last_seen_user_agent}
             </:value>
           </.vertical_table_row>
           <!--

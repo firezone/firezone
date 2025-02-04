@@ -35,7 +35,7 @@ defmodule Web.Resources.Edit do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/resources"}>Resources</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/resources/#{@resource.id}"}>
-        <%= @resource.name %>
+        {@resource.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/resources/#{@resource.id}/edit"}>
         Edit

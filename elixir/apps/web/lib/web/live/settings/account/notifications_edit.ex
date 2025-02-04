@@ -55,6 +55,7 @@ defmodule Web.Settings.Account.Notifications.Edit do
                           </td>
                           <td class="px-6 py-4 text-center">
                             <.input
+                              id="outdated_gateway_enabled_true"
                               class="mx-auto"
                               type="radio"
                               field={outdated_gateway[:enabled]}
@@ -64,6 +65,7 @@ defmodule Web.Settings.Account.Notifications.Edit do
                           </td>
                           <td class="px-6 py-4 text-center">
                             <.input
+                              id="outdated_gateway_enabled_false"
                               class="mx-auto"
                               type="radio"
                               field={outdated_gateway[:enabled]}

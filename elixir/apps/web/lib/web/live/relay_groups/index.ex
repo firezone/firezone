@@ -67,10 +67,10 @@ defmodule Web.RelayGroups.Index do
                 navigate={~p"/#{@account}/relay_groups/#{group.id}"}
                 class={["font-medium", link_style()]}
               >
-                <%= group.name %>
+                {group.name}
               </.link>
               <span :if={is_nil(group.account_id)}>
-                <%= group.name %>
+                {group.name}
               </span>
             </:group>
 
@@ -81,27 +81,27 @@ defmodule Web.RelayGroups.Index do
                 class={[link_style()]}
               >
                 <code :if={relay.name} class="block text-xs">
-                  <%= relay.name %>
+                  {relay.name}
                 </code>
                 <code :if={relay.ipv4} class="block text-xs">
-                  <%= relay.ipv4 %>
+                  {relay.ipv4}
                 </code>
                 <code :if={relay.ipv6} class="block text-xs">
-                  <%= relay.ipv6 %>
+                  {relay.ipv6}
                 </code>
               </.link>
               <div :if={is_nil(relay.account_id)}>
                 <code :if={relay.ipv4} class="block text-xs">
-                  <%= relay.ipv4 %>
+                  {relay.ipv4}
                 </code>
                 <code :if={relay.ipv6} class="block text-xs">
-                  <%= relay.ipv6 %>
+                  {relay.ipv6}
                 </code>
               </div>
             </:col>
 
             <:col :let={relay} label="type">
-              <%= if relay.account_id, do: "self-hosted", else: "firezone-owned" %>
+              {if relay.account_id, do: "self-hosted", else: "firezone-owned"}
             </:col>
 
             <:col :let={relay} label="status">

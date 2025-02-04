@@ -63,13 +63,13 @@ defmodule Web.Flows.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb>Flows</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/flows/#{@flow.id}"}>
-        <%= @flow.client.name %> flow
+        {@flow.client.name} flow
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Flow for: <code><%= @flow.client.name %></code>
+        Flow for: <code>{@flow.client.name}</code>
       </:title>
       <:action>
         <.button
@@ -105,20 +105,20 @@ defmodule Web.Flows.Show do
             <:label>Client</:label>
             <:value>
               <.link navigate={~p"/#{@account}/clients/#{@flow.client_id}"} class={link_style()}>
-                <%= @flow.client.name %>
+                {@flow.client.name}
               </.link>
-              <div>Remote IP: <%= @flow.client_remote_ip %></div>
-              <div>User Agent: <%= @flow.client_user_agent %></div>
+              <div>Remote IP: {@flow.client_remote_ip}</div>
+              <div>User Agent: {@flow.client_user_agent}</div>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Gateway</:label>
             <:value>
               <.link navigate={~p"/#{@account}/gateways/#{@flow.gateway_id}"} class={link_style()}>
-                <%= @flow.gateway.group.name %>-<%= @flow.gateway.name %>
+                {@flow.gateway.group.name}-{@flow.gateway.name}
               </.link>
               <div>
-                Remote IP: <%= @flow.gateway_remote_ip %>
+                Remote IP: {@flow.gateway_remote_ip}
               </div>
             </:value>
           </.vertical_table_row>
@@ -126,14 +126,14 @@ defmodule Web.Flows.Show do
             <:label>Resource</:label>
             <:value>
               <.link navigate={~p"/#{@account}/resources/#{@flow.resource_id}"} class={link_style()}>
-                <%= @flow.resource.name %>
+                {@flow.resource.name}
               </.link>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Connectivity Type</:label>
             <:value>
-              <%= @last_used_connectivity_type %>
+              {@last_used_connectivity_type}
             </:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -162,19 +162,19 @@ defmodule Web.Flows.Show do
             <.relative_datetime datetime={activity.window_ended_at} />
           </:col>
           <:col :let={activity} label="destination">
-            <%= activity.destination %>
+            {activity.destination}
           </:col>
           <:col :let={activity} label="connectivity type">
-            <%= activity.connectivity_type %>
+            {activity.connectivity_type}
           </:col>
           <:col :let={activity} label="rx">
-            <%= Sizeable.filesize(activity.rx_bytes) %>
+            {Sizeable.filesize(activity.rx_bytes)}
           </:col>
           <:col :let={activity} label="tx">
-            <%= Sizeable.filesize(activity.tx_bytes) %>
+            {Sizeable.filesize(activity.tx_bytes)}
           </:col>
           <:col :let={activity} label="blocked tx">
-            <%= Sizeable.filesize(activity.blocked_tx_bytes) %>
+            {Sizeable.filesize(activity.blocked_tx_bytes)}
           </:col>
           <:empty>
             <div class="text-center text-neutral-500 p-4">No metrics to display.</div>
