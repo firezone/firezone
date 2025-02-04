@@ -228,7 +228,21 @@ if config_env() == :prod do
          [
            adapter: compile_config!(:outbound_email_adapter),
            from_email: compile_config!(:outbound_email_from)
-         ] ++ compile_config!(:outbound_email_adapter_opts)
+         ] ++
+           (if compile_config!(:outbound_email_adapter) == "Elixir.Swoosh.Adapters.Mua" do
+              [
+                protocol: String.to_atom(System.get_env("OUTBOUND_EMAIL_SMTP_PROTOCOL")),
+                relay: System.get_env("OUTBOUND_EMAIL_SMTP_HOST"),
+                port: String.to_integer(System.get_env("OUTBOUND_EMAIL_SMTP_PORT")),
+                auth: [
+                  username: System.get_env("OUTBOUND_EMAIL_SMTP_USERNAME"),
+                  password: System.get_env("OUTBOUND_EMAIL_SMTP_PASSWORD")
+                ]
+              ]
+            else
+              []
+            end) ++
+           compile_config!(:outbound_email_adapter_opts)
 
   config :workos, WorkOS.Client,
     api_key: compile_config!(:workos_api_key),

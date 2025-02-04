@@ -584,6 +584,7 @@ defmodule Domain.Config.Definitions do
           Swoosh.Adapters.Mailgun,
           Swoosh.Adapters.Mailjet,
           Swoosh.Adapters.Mandrill,
+          Swoosh.Adapters.Mua,
           Swoosh.Adapters.Postmark,
           Swoosh.Adapters.ProtonBridge,
           Swoosh.Adapters.SMTP,
