@@ -66,6 +66,8 @@ defmodule Web.MixProject do
       {:opentelemetry_liveview, "~> 1.0.0-rc.4"},
       {:opentelemetry_phoenix, "~> 2.0"},
       {:nimble_options, "~> 1.0", override: true},
+      {:sentry, "~> 10.0"},
+      {:hackney, "~> 1.19"},
 
       # Other deps
       {:jason, "~> 1.2"},
