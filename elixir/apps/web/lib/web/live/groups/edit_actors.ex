@@ -143,7 +143,7 @@ defmodule Web.Groups.EditActors do
         <div class="flex justify-end">
           <.button_with_confirmation
             id="save_changes"
-            style={(@added == %{} and @removed == %{} && "disabled") || "primary"}
+            style={((@added == %{} and @removed == %{}) && "disabled") || "primary"}
             confirm_style="primary"
             class="m-4"
             on_confirm="submit"

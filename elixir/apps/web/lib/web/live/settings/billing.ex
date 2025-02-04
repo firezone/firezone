@@ -112,8 +112,8 @@ defmodule Web.Settings.Billing do
             </:label>
             <:value>
               <span class={[
-                not is_nil(@users_count) and
-                  @users_count > @account.limits.users_count && "text-red-500"
+                (not is_nil(@users_count) and
+                   @users_count > @account.limits.users_count) && "text-red-500"
               ]}>
                 {@users_count} used
               </span>
@@ -127,8 +127,8 @@ defmodule Web.Settings.Billing do
             </:label>
             <:value>
               <span class={[
-                not is_nil(@active_users_count) and
-                  @active_users_count > @account.limits.monthly_active_users_count && "text-red-500"
+                (not is_nil(@active_users_count) and
+                   @active_users_count > @account.limits.monthly_active_users_count) && "text-red-500"
               ]}>
                 {@active_users_count} used
               </span>
@@ -143,8 +143,8 @@ defmodule Web.Settings.Billing do
             </:label>
             <:value>
               <span class={[
-                not is_nil(@service_accounts_count) and
-                  @service_accounts_count > @account.limits.service_accounts_count && "text-red-500"
+                (not is_nil(@service_accounts_count) and
+                   @service_accounts_count > @account.limits.service_accounts_count) && "text-red-500"
               ]}>
                 {@service_accounts_count} used
               </span>
@@ -158,8 +158,8 @@ defmodule Web.Settings.Billing do
             </:label>
             <:value>
               <span class={[
-                not is_nil(@admins_count) and
-                  @admins_count > @account.limits.account_admin_users_count && "text-red-500"
+                (not is_nil(@admins_count) and
+                   @admins_count > @account.limits.account_admin_users_count) && "text-red-500"
               ]}>
                 {@admins_count} used
               </span>
@@ -173,8 +173,8 @@ defmodule Web.Settings.Billing do
             </:label>
             <:value>
               <span class={[
-                not is_nil(@gateway_groups_count) and
-                  @gateway_groups_count > @account.limits.gateway_groups_count && "text-red-500"
+                (not is_nil(@gateway_groups_count) and
+                   @gateway_groups_count > @account.limits.gateway_groups_count) && "text-red-500"
               ]}>
                 {@gateway_groups_count} used
               </span>
