@@ -61,6 +61,7 @@ defmodule Domain.Config.Definitions do
       {"Database",
        [
          :database_host,
+         :database_socket_dir,
          :database_port,
          :database_name,
          :database_user,
@@ -254,6 +255,11 @@ defmodule Domain.Config.Definitions do
   PostgreSQL host.
   """
   defconfig(:database_host, :string, default: "postgres")
+
+  @doc """
+  PostgreSQL socket directory (takes precedence over hostname).
+  """
+  defconfig(:database_socket_dir, :string, default: nil)
 
   @doc """
   PostgreSQL port.

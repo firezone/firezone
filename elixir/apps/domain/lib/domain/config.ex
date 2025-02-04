@@ -42,6 +42,24 @@ defmodule Domain.Config do
     end
   end
 
+  @doc """
+  Similar to `compile_config/2` but returns nil if the configuration is invalid.
+
+  This function does not resolve values from the database because it's intended use is during
+  compilation and before application boot (in `config/runtime.exs`).
+
+  If you need to resolve values from the database, use `fetch_config/1` or `fetch_config!/1`.
+  """
+  def compile_config(module \\ Definitions, key, env_config \\ System.get_env()) do
+    case Fetcher.fetch_source_and_config(module, key, %{}, env_config) do
+      {:ok, _source, value} ->
+        value
+
+      {:error, reason} ->
+        nil
+    end
+  end
+
   def config_changeset(changeset, schema_key, config_key \\ nil) do
     config_key = config_key || schema_key
 
