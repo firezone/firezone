@@ -82,13 +82,13 @@ defmodule Web.Groups.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/groups"}>Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/groups/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Group: <code><%= @group.name %></code>
+        Group: <code>{@group.name}</code>
         <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@group.deleted_at)}>
@@ -125,7 +125,7 @@ defmodule Web.Groups.Show do
         <.vertical_table id="group">
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @group.name %></:value>
+            <:value>{@group.name}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
@@ -206,12 +206,12 @@ defmodule Web.Groups.Show do
         >
           <:col :let={policy} label="id">
             <.link class={link_style()} navigate={~p"/#{@account}/policies/#{policy}"}>
-              <%= policy.id %>
+              {policy.id}
             </.link>
           </:col>
           <:col :let={policy} label="resource">
             <.link class={link_style()} navigate={~p"/#{@account}/resources/#{policy.resource_id}"}>
-              <%= policy.resource.name %>
+              {policy.resource.name}
             </.link>
           </:col>
           <:col :let={policy} label="status">

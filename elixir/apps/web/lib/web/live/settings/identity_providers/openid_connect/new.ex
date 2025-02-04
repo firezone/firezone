@@ -38,7 +38,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.New do
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:content>
         <.provider_form account={@account} id={@id} form={@form} show_sync_msg={!!@provider} />
       </:content>

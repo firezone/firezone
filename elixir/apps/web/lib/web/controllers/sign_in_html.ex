@@ -17,7 +17,7 @@ defmodule Web.SignInHTML do
         <meta name="theme-color" content="#331700" />
         <meta name="csrf-token" content={get_csrf_token()} />
         <.live_title suffix=" · Firezone">
-          <%= assigns[:page_title] || "Firezone" %>
+          {assigns[:page_title] || "Firezone"}
         </.live_title>
         <link
           phx-track-static

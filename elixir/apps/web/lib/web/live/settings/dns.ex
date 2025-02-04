@@ -120,7 +120,7 @@ defmodule Web.Settings.DNS do
                     :for={error <- dns_config_errors(@form.source.changes)}
                     data-validation-error-for="clients_upstream_dns"
                   >
-                    <%= error %>
+                    {error}
                   </.error>
                 </.inputs_for>
               </div>

@@ -32,7 +32,7 @@ defmodule Web.Policies.New do
       <.breadcrumb path={~p"/#{@account}/policies/new"}>Add Policy</.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <legend class="mb-4 text-xl text-neutral-900">Details</legend>
@@ -55,11 +55,11 @@ defmodule Web.Policies.New do
                   required
                 >
                   <:options_group :let={options_group}>
-                    <%= options_group %>
+                    {options_group}
                   </:options_group>
 
                   <:option :let={group}>
-                    <%= group.name %>
+                    {group.name}
                   </:option>
 
                   <:no_options :let={name}>
@@ -99,7 +99,7 @@ defmodule Web.Policies.New do
                   required
                 >
                   <:options_group :let={group}>
-                    <%= group %>
+                    {group}
                   </:options_group>
 
                   <:option :let={resource}>
@@ -109,7 +109,7 @@ defmodule Web.Policies.New do
                         - <span class="text-red-800">upgrade to unlock</span>
                       </span>
                     <% else %>
-                      <%= resource.name %>
+                      {resource.name}
                     <% end %>
 
                     <span :if={resource.gateway_groups == []} class="text-red-800">

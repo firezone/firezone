@@ -77,7 +77,7 @@ defmodule Web.Sites.Index do
         >
           <:col :let={group} field={{:groups, :name}} label="site" class="w-1/6">
             <.link navigate={~p"/#{@account}/sites/#{group}"} class={[link_style()]}>
-              <%= group.name %>
+              {group.name}
             </.link>
           </:col>
 
@@ -110,7 +110,7 @@ defmodule Web.Sites.Index do
                     navigate={~p"/#{@account}/sites/#{group}?#resources"}
                     class={["font-medium", link_style()]}
                   >
-                    <%= count %> more.
+                    {count} more.
                   </.link>
                 </span>
               </:tail>
@@ -149,7 +149,7 @@ defmodule Web.Sites.Index do
                     navigate={~p"/#{@account}/sites/#{group}?#gateways"}
                     class={["font-medium", link_style()]}
                   >
-                    <%= count %> more.
+                    {count} more.
                   </.link>
                 </span>
               </:tail>

@@ -48,13 +48,13 @@ defmodule Web.Settings.ApiClients.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/settings/api_clients"}>API Clients</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/settings/api_clients/#{@actor}"}>
-        <%= @actor.name %>
+        {@actor.name}
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        API Client: <span class="font-medium"><%= @actor.name %></span>
+        API Client: <span class="font-medium">{@actor.name}</span>
         <span :if={Actors.actor_deleted?(@actor)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@actor.deleted_at)}>
@@ -107,13 +107,13 @@ defmodule Web.Settings.ApiClients.Show do
         <.vertical_table id="api-client">
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @actor.name %></:value>
+            <:value>{@actor.name}</:value>
           </.vertical_table_row>
 
           <.vertical_table_row>
             <:label>Created</:label>
             <:value>
-              <%= Cldr.DateTime.Formatter.date(@actor.inserted_at, 1, "en", Web.CLDR, []) %>
+              {Cldr.DateTime.Formatter.date(@actor.inserted_at, 1, "en", Web.CLDR, [])}
             </:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -164,24 +164,24 @@ defmodule Web.Settings.ApiClients.Show do
           metadata={@tokens_metadata}
         >
           <:col :let={token} label="name">
-            <%= token.name %>
+            {token.name}
           </:col>
           <:col :let={token} label="expires at">
-            <%= Cldr.DateTime.Formatter.date(token.expires_at, 1, "en", Web.CLDR, []) %>
+            {Cldr.DateTime.Formatter.date(token.expires_at, 1, "en", Web.CLDR, [])}
           </:col>
           <:col :let={token} label="created by">
             <.link
               class={[link_style()]}
               navigate={~p"/#{@account}/actors/#{token.created_by_actor_id}"}
             >
-              <%= get_identity_email(token.created_by_identity) %>
+              {get_identity_email(token.created_by_identity)}
             </.link>
           </:col>
           <:col :let={token} label="last used">
             <.relative_datetime datetime={token.last_seen_at} />
           </:col>
           <:col :let={token} label="last used IP">
-            <%= token.last_seen_remote_ip %>
+            {token.last_seen_remote_ip}
           </:col>
           <:action :let={token}>
             <.button_with_confirmation

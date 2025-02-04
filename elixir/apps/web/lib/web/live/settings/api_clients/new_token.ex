@@ -30,7 +30,7 @@ defmodule Web.Settings.ApiClients.NewToken do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/settings/api_clients"}>API Clients</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/settings/api_clients/#{@actor}"}>
-        <%= @actor.name %>
+        {@actor.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/settings/api_clients/#{@actor}/new_token"}>
         Add Token
@@ -38,7 +38,7 @@ defmodule Web.Settings.ApiClients.NewToken do
     </.breadcrumbs>
 
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
           <div :if={is_nil(@encoded_token)}>

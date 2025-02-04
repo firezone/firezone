@@ -54,7 +54,7 @@ defmodule Web.Actors.EditGroups do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
-        <%= @actor.name %>
+        {@actor.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/#{@actor}/edit_groups"}>
         Group Memberships
@@ -62,7 +62,7 @@ defmodule Web.Actors.EditGroups do
     </.breadcrumbs>
     <.section>
       <:title>
-        Group Memberships: <%= @actor.name %>
+        Group Memberships: {@actor.name}
       </:title>
       <:help>
         Add or remove Groups for a given Actor.
@@ -100,7 +100,7 @@ defmodule Web.Actors.EditGroups do
                 end ++ ["text-accent-500", "hover:underline"]
               }
             >
-              <%= group.name %>
+              {group.name}
             </.link>
           </:col>
           <:col :let={group}>
@@ -149,7 +149,7 @@ defmodule Web.Actors.EditGroups do
           >
             <:dialog_title>Confirm changes to Actor Groups</:dialog_title>
             <:dialog_content>
-              <%= confirm_message(@added, @removed) %>
+              {confirm_message(@added, @removed)}
             </:dialog_content>
             <:dialog_confirm_button>
               Save

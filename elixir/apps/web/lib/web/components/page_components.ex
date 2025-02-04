@@ -20,15 +20,15 @@ defmodule Web.PageComponents do
     ]}>
       <.header>
         <:title>
-          <%= render_slot(@title) %>
+          {render_slot(@title)}
         </:title>
 
         <:actions :for={action <- @action} :if={not Enum.empty?(@action)}>
-          <%= render_slot(action) %>
+          {render_slot(action)}
         </:actions>
 
         <:help :for={help <- @help} :if={not Enum.empty?(@help)}>
-          <%= render_slot(help) %>
+          {render_slot(help)}
         </:help>
       </.header>
 
@@ -37,7 +37,7 @@ defmodule Web.PageComponents do
           <.flash kind={:info} flash={Map.get(content, :flash)} style="wide" />
           <.flash kind={:error} flash={Map.get(content, :flash)} style="wide" />
         </div>
-        <%= render_slot(content) %>
+        {render_slot(content)}
       </section>
     </div>
     """
@@ -55,11 +55,11 @@ defmodule Web.PageComponents do
       <:title>Danger Zone</:title>
 
       <:action :for={action <- @action} :if={not Enum.empty?(@action)}>
-        <%= render_slot(action) %>
+        {render_slot(action)}
       </:action>
 
       <:content :for={content <- @content}>
-        <%= render_slot(content) %>
+        {render_slot(content)}
       </:content>
     </.section>
     """
