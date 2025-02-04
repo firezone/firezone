@@ -266,11 +266,4 @@ if config_env() == :prod do
       Path.join(File.cwd!(), "apps/web"),
       Path.join(File.cwd!(), "apps/api")
     ]
-
-  case URI.parse(compile_config!(:api_external_url)) do
-    %{host: "api.firezone.dev"} -> config :sentry, environment_name: :production
-    %{host: "api.firez.one"} -> config :sentry, environment_name: :staging
-    # Disable Sentry for unknown environments
-    _ -> config :sentry, dsn: nil
-  end
 end
