@@ -1122,7 +1122,7 @@ defmodule Web.AuthTest do
       assert is_nil(updated_socket.assigns.subject)
 
       assert updated_socket.redirected ==
-               {:redirect, %{to: ~p"/#{subject.account.slug}"}, status: 302}
+               {:redirect, %{to: ~p"/#{subject.account.slug}"}, [status: 302]}
     end
 
     test "redirects to login page if there isn't a session_token", %{
@@ -1138,7 +1138,7 @@ defmodule Web.AuthTest do
       assert is_nil(updated_socket.assigns.subject)
 
       assert updated_socket.redirected ==
-               {:redirect, %{to: ~p"/#{subject.account.slug}"}, status: 302}
+               {:redirect, %{to: ~p"/#{subject.account.slug}"}, [status: 302]}
     end
   end
 
@@ -1177,7 +1177,7 @@ defmodule Web.AuthTest do
       assert {:halt, updated_socket} =
                on_mount(:redirect_if_user_is_authenticated, params, session, socket)
 
-      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{account}/sites"}, status: 302}
+      assert updated_socket.redirected == {:redirect, %{to: ~p"/#{account}/sites"}, [status: 302]}
     end
 
     test "doesn't redirect if there is no authenticated user", %{
