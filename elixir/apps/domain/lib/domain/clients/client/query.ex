@@ -143,6 +143,17 @@ defmodule Domain.Clients.Client.Query do
         fun: &filter_by_presence/2
       },
       %Domain.Repo.Filter{
+        name: :actor_type,
+        title: "Actor Type",
+        type: :string,
+        values: [
+          {"User", "account_user"},
+          {"Admin", "account_admin_user"},
+          {"Service Account", "service_account"}
+        ],
+        fun: &filter_by_actor_type/2
+      },
+      %Domain.Repo.Filter{
         name: :client_or_actor_name,
         title: "Client Name or Actor Name",
         type: {:string, :websearch},
@@ -208,6 +219,21 @@ defmodule Domain.Clients.Client.Query do
      dynamic(
        [clients: clients, actor: actor],
        fulltext_search(clients.name, ^name) or fulltext_search(actor.name, ^name)
+     )}
+  end
+
+  def filter_by_actor_type(queryable, actor_type) do
+    queryable =
+      with_named_binding(queryable, :actor, fn queryable, binding ->
+        join(queryable, :inner, [clients: clients], actor in assoc(clients, ^binding),
+          as: ^binding
+        )
+      end)
+
+    {queryable,
+     dynamic(
+       [clients: clients, actor: actor],
+       actor.type == ^actor_type
      )}
   end
 end
