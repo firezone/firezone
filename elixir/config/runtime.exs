@@ -238,17 +238,24 @@ if config_env() == :prod do
 
   api_external_url_host = URI.parse(compile_config!(:api_external_url)).host
 
-  sentry_environment_name = case api_external_url_host do
-    "api.firezone.dev" -> :production
-    "api.firez.one" -> :staging
-    _ -> :unknown
-  end
+  sentry_environment_name =
+    case api_external_url_host do
+      "api.firezone.dev" -> :production
+      "api.firez.one" -> :staging
+      _ -> :unknown
+    end
 
-  sentry_dsn = case api_external_url_host do
-    "api.firezone.dev" -> "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
-    "api.firez.one" ->  "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
-    _ -> nil
-  end
+  sentry_dsn =
+    case api_external_url_host do
+      "api.firezone.dev" ->
+        "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
+
+      "api.firez.one" ->
+        "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
+
+      _ ->
+        nil
+    end
 
   config :sentry,
     dsn: sentry_dsn,
