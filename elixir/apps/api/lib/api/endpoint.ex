@@ -1,4 +1,5 @@
 defmodule API.Endpoint do
+  use Sentry.PlugCapture
   use Phoenix.Endpoint, otp_app: :api
 
   if Application.compile_env(:domain, :sql_sandbox) do
@@ -30,6 +31,8 @@ defmodule API.Endpoint do
 
   plug :fetch_user_agent
   plug API.Router
+
+  plug Sentry.PlugContext
 
   def fetch_user_agent(%Plug.Conn{} = conn, _opts) do
     case Plug.Conn.get_req_header(conn, "user-agent") do

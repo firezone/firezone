@@ -8,6 +8,8 @@ defmodule Domain.Application do
     _ = OpentelemetryLoggerMetadata.setup()
     _ = OpentelemetryEcto.setup([:domain, :repo])
 
+    Logger.add_handlers(:domain)
+
     # Can be uncommented when this bug is fixed: https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/327
     # _ = OpentelemetryFinch.setup()
 

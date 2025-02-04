@@ -1,4 +1,5 @@
 defmodule Web.Endpoint do
+  use Sentry.PlugCapture
   use Phoenix.Endpoint, otp_app: :web
   import Web.Auth
 
@@ -62,6 +63,8 @@ defmodule Web.Endpoint do
   plug Web.Session
 
   plug Web.Router
+
+  plug Sentry.PlugContext
 
   def put_hsts_header(conn, _opts) do
     scheme =

@@ -12,6 +12,17 @@ import Config
 ##### Domain ##################
 ###############################
 
+config :domain, :logger, [
+  {:handler, :domain, Sentry.LoggerHandler,
+   %{
+     config: %{
+       level: :warning,
+       metadata: :all,
+       capture_log_messages: true
+     }
+   }}
+]
+
 config :domain, ecto_repos: [Domain.Repo]
 config :domain, generators: [binary_id: true, context_app: :domain]
 
@@ -117,6 +128,17 @@ config :domain, web_external_url: "http://localhost:13000"
 ##### Web #####################
 ###############################
 
+config :web, :logger, [
+  {:handler, :web, Sentry.LoggerHandler,
+   %{
+     config: %{
+       level: :warning,
+       metadata: :all,
+       capture_log_messages: true
+     }
+   }}
+]
+
 config :web, ecto_repos: [Domain.Repo]
 config :web, generators: [binary_id: true, context_app: :domain]
 config :web, client_handler: "firezone-fd0020211111://"
@@ -167,6 +189,17 @@ config :web, api_url_override: "ws://localhost:13001/"
 ###############################
 ##### API #####################
 ###############################
+
+config :api, :logger, [
+  {:handler, :api, Sentry.LoggerHandler,
+   %{
+     config: %{
+       level: :warning,
+       metadata: :all,
+       capture_log_messages: true
+     }
+   }}
+]
 
 config :api, ecto_repos: [Domain.Repo]
 config :api, generators: [binary_id: true, context_app: :domain]

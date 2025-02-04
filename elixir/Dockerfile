@@ -273,6 +273,7 @@ ARG APPLICATION_NAME
 ARG MIX_ENV="prod"
 ARG GIT_SHA
 RUN mix release ${APPLICATION_NAME}
+RUN mix sentry.package_source_code
 
 # start a new build stage so that the final image will only contain
 # the compiled release and other runtime necessities
