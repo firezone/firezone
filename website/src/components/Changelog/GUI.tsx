@@ -27,7 +27,8 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries downloadLinks={downloadLinks} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.3" date={new Date("2025-02-05")}>
         {title == "Linux GUI" && (
           <ChangeItem>
             This is a maintenance release with no user-facing changes.
@@ -43,7 +44,7 @@ export default function GUI({ title }: { title: string }) {
             Makes DNS configuration more resilient.
           </ChangeItem>
         )}
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.2" date={new Date("2025-01-30")}>
         {title == "Linux GUI" && (
           <ChangeItem>
