@@ -300,18 +300,6 @@ config :workos, WorkOS.Client,
   client_id: "client_123456789",
   baseurl: "https://api.workos.com"
 
-config :sentry,
-  # Setting this to nil will disable reporting
-  dsn:
-    "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152",
-  enable_source_code_context: true,
-  root_source_code_paths: [
-    Path.join(File.cwd!(), "apps/domain"),
-    Path.join(File.cwd!(), "apps/web"),
-    Path.join(File.cwd!(), "apps/api")
-  ],
-  environment_name: config_env()
-
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{Mix.env()}.exs"

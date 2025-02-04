@@ -235,6 +235,31 @@ if config_env() == :prod do
     client_id: compile_config!(:workos_client_id)
 
   # Sentry
+
+  api_external_url_host = URI.parse(compile_config!(:api_external_url)).host
+
+  sentry_environment_name = case api_external_url_host do
+    "api.firezone.dev" -> :production
+    "api.firez.one" -> :staging
+    _ -> :unknown
+  end
+
+  sentry_dsn = case api_external_url_host do
+    "api.firezone.dev" -> "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
+    "api.firez.one" ->  "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
+    _ -> nil
+  end
+
+  config :sentry,
+    dsn: sentry_dsn,
+    environment_name: sentry_environment_name,
+    enable_source_code_context: true,
+    root_source_code_paths: [
+      Path.join(File.cwd!(), "apps/domain"),
+      Path.join(File.cwd!(), "apps/web"),
+      Path.join(File.cwd!(), "apps/api")
+    ]
+
   case URI.parse(compile_config!(:api_external_url)) do
     %{host: "api.firezone.dev"} -> config :sentry, environment_name: :production
     %{host: "api.firez.one"} -> config :sentry, environment_name: :staging
