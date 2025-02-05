@@ -104,7 +104,7 @@ defmodule Web.AcceptanceCase.Auth do
   def mock_client_sign_in_callback do
     test_pid = self()
     bypass = Bypass.open()
-    Domain.Config.put_env_override(:web, :client_handler, "http://localhost:#{bypass.port()}/")
+    Domain.Config.put_env_override(:web, :client_handler, "http://localhost:#{bypass.port}/")
 
     Bypass.expect_once(bypass, "GET", "/handle_client_sign_in_callback", fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
