@@ -232,17 +232,6 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: :all
 
-config :logger, :logger, [
-  {:handler, :sentry, Sentry.LoggerHandler,
-   %{
-     config: %{
-       level: :warning,
-       metadata: :all,
-       capture_log_messages: true
-     }
-   }}
-]
-
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
