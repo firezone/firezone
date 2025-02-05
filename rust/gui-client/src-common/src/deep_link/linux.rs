@@ -7,6 +7,8 @@ use tokio::{
     net::{UnixListener, UnixStream},
 };
 
+use super::CantListen;
+
 const SOCK_NAME: &str = "deep_link.sock";
 
 pub struct Server {
@@ -25,7 +27,7 @@ impl Server {
     /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
     /// On Windows this uses async because of #5143 and #5566.
     #[expect(clippy::unused_async)]
-    pub async fn new() -> Result<Self, super::Error> {
+    pub async fn new() -> Result<Self> {
         let path = sock_path()?;
         let dir = path
             .parent()
@@ -38,7 +40,7 @@ impl Server {
         // socket does not exist, in which case we are the only instance
         // and should proceed.
         if std::os::unix::net::UnixStream::connect(&path).is_ok() {
-            return Err(super::Error::CantListen);
+            return Err(anyhow::Error::new(CantListen));
         }
         std::fs::remove_file(&path).ok();
         std::fs::create_dir_all(dir).context("Can't create dir for deep link socket")?;
