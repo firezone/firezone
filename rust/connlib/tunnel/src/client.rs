@@ -584,7 +584,7 @@ impl ClientState {
 
                 unwrap_or_warn!(
                     self.try_queue_udp_dns_response(server, source, message),
-                    "Failed to queue UDP DNS response"
+                    "Failed to queue UDP DNS response: {}"
                 );
             }
             (dns::Transport::Tcp { source }, result) => {
@@ -600,7 +600,7 @@ impl ClientState {
 
                 unwrap_or_warn!(
                     self.tcp_dns_server.send_message(source, message),
-                    "Failed to send TCP DNS response"
+                    "Failed to send TCP DNS response: {}"
                 );
             }
         }

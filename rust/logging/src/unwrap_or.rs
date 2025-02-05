@@ -9,7 +9,7 @@ macro_rules! unwrap_or_warn {
             Err(e) => {
                 let error: &dyn ::std::error::Error = e.as_ref();
 
-                ::tracing::warn!(error, $($arg)*)
+                ::tracing::debug!($($arg)*, $crate::err_with_src(error))
             }
         }
     };

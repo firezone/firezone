@@ -317,7 +317,7 @@ impl Tun {
                 .spawn(move || {
                     firezone_logging::unwrap_or_warn!(
                         tun::unix::send_recv_tun(fd, inbound_tx, outbound_rx, read, write),
-                        "Failed to send / recv from TUN device"
+                        "Failed to send / recv from TUN device: {}"
                     )
                 })
                 .map_err(io::Error::other)?;
