@@ -236,34 +236,36 @@ if config_env() == :prod do
 
   # Sentry
 
-  api_external_url_host = URI.parse(compile_config!(:api_external_url)).host
-
-  sentry_environment_name =
-    case api_external_url_host do
-      "api.firezone.dev" -> :production
-      "api.firez.one" -> :staging
-      _ -> :unknown
-    end
-
-  sentry_dsn =
-    case api_external_url_host do
-      "api.firezone.dev" ->
-        "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
-
-      "api.firez.one" ->
-        "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
-
-      _ ->
-        nil
-    end
-
+  # Base Sentry config
   config :sentry,
-    dsn: sentry_dsn,
-    environment_name: sentry_environment_name,
+    dsn:
+      "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152",
+    environment_name: :unknown,
     enable_source_code_context: true,
     root_source_code_paths: [
       Path.join(File.cwd!(), "apps/domain"),
       Path.join(File.cwd!(), "apps/web"),
       Path.join(File.cwd!(), "apps/api")
     ]
+
+  # Environment-specific Sentry overrides
+  if api_external_url = compile_config!(:api_external_url) do
+    api_external_url_host = URI.parse(api_external_url).host
+
+    # Set environment_name based on which API URL we're using
+    sentry_environment_name =
+      case api_external_url_host do
+        "api.firezone.dev" -> :production
+        "api.firez.one" -> :staging
+        _ -> :unknown
+      end
+
+    config :sentry, :environment_name, sentry_environment_name
+
+    # Disable Sentry for unknown environments
+    # Comment this out to enable Sentry in development and test environments
+    if sentry_environment_name == :unknown do
+      config :sentry, :dsn, nil
+    end
+  end
 end
