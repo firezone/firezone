@@ -376,7 +376,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
       },
       %{
         metric: %{
-          type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/min",
+          type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/min_val",
           labels: labels
         },
         resource: resource,
@@ -392,7 +392,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
       },
       %{
         metric: %{
-          type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/max",
+          type: "custom.googleapis.com/elixir/#{Enum.join(name, "/")}/max_val",
           labels: labels
         },
         resource: resource,
