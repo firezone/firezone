@@ -8,7 +8,14 @@ defmodule Domain.Application do
     _ = OpentelemetryLoggerMetadata.setup()
     _ = OpentelemetryEcto.setup([:domain, :repo])
 
-    Logger.add_handlers(:logger)
+    # Configure Sentry to capture Logger messages
+    :logger.add_handler(:sentry, Sentry.LoggerHandler, %{
+      config: %{
+        level: :warning,
+        metadata: :all,
+        capture_log_messages: true
+      }
+    })
 
     # Can be uncommented when this bug is fixed: https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/327
     # _ = OpentelemetryFinch.setup()
