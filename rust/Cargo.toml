@@ -93,7 +93,7 @@ rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_s
 rustls = { version = "0.23.21", default-features = false, features = ["ring"] }
 sadness-generator = "0.6.0"
 secrecy = "0.8"
-semver = "1.0.22"
+semver = "1.0.25"
 sentry = { version = "0.36.0", default-features = false }
 sentry-tracing = "0.36.0"
 serde = "1.0.217"
