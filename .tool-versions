@@ -1,7 +1,7 @@
 # These are used for the dev environment.
 # This should match the versions used in the built product.
 nodejs 20.14.0
-elixir 1.17.2-otp-27
+elixir 1.18.2-otp-27
 erlang 27.2.1
 terraform 1.10.4
 

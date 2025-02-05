@@ -58,7 +58,7 @@ defmodule Domain.Types.CIDR do
   end
 
   defp reset_right_bits(number, shift) do
-    number >>> shift <<< shift
+    (number >>> shift) <<< shift
   end
 
   defp fill_right_bits(number, shift) do

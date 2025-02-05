@@ -293,7 +293,7 @@ defmodule Web.Settings.IdentityProviders.Components do
     ~H"""
     <div :if={not is_nil(@provider.last_synced_at)} class="flex items-center">
       <.ping_icon color={
-        @provider.last_syncs_failed > 3 or (not is_nil(@provider.sync_disabled_at) && "danger") ||
+        (@provider.last_syncs_failed > 3 or (not is_nil(@provider.sync_disabled_at) && "danger")) ||
           "success"
       } />
       <span class="ml-2.5">
