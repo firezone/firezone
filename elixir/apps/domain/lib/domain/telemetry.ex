@@ -13,7 +13,8 @@ defmodule Domain.Telemetry do
 
     children = [
       # We start a /healthz endpoint that is used for liveness probes
-      {Bandit, plug: Telemetry.HealthzPlug, scheme: :http, port: Keyword.get(config, :healthz_port)},
+      {Bandit,
+       plug: Telemetry.HealthzPlug, scheme: :http, port: Keyword.get(config, :healthz_port)},
 
       # Telemetry poller will execute the given period measurements
       # every 10_000ms. Learn more here: https://hexdocs.pm/telemetry_metrics
