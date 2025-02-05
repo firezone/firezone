@@ -15,7 +15,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
 
   # Maximum time in seconds to wait before flushing the buffer
   # in case it did not reach the @buffer_size limit within the flush interval
-  @flush_interval :timer.seconds(15)
+  @flush_interval :timer.seconds(30)
 
   def start_link(opts) do
     project_id =
