@@ -347,7 +347,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporterTest do
                  %{
                    "metric" => %{
                      "labels" => %{"app" => "myapp", "foo" => "bar"},
-                     "type" => "custom.googleapis.com/elixir/foo/min"
+                     "type" => "custom.googleapis.com/elixir/foo/min_val"
                    },
                    "metricKind" => "GAUGE",
                    "points" => [
@@ -365,7 +365,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporterTest do
                  %{
                    "metric" => %{
                      "labels" => %{"app" => "myapp", "foo" => "bar"},
-                     "type" => "custom.googleapis.com/elixir/foo/max"
+                     "type" => "custom.googleapis.com/elixir/foo/max_val"
                    },
                    "metricKind" => "GAUGE",
                    "points" => [
