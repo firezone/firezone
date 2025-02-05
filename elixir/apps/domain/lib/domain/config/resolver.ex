@@ -23,9 +23,13 @@ defmodule Domain.Config.Resolver do
     defp resolve_process_env_value(key) do
       pdict_key = {__MODULE__, key}
 
-      {:ok, {:env, value}} = fetch_process_env(pdict_key)
+      case fetch_process_env(pdict_key) do
+        {:ok, {:env, value}} ->
+          {:ok, {{:env, key}, value}}
 
-      {:ok, {{:env, key}, value}}
+        :error ->
+          :error
+      end
     end
 
     def fetch_process_env(pdict_key) do
