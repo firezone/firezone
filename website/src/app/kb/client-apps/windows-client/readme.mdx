@@ -105,6 +105,20 @@ To export or clear your logs:
 
 ## Troubleshooting
 
+### Firezone is signed in, but I can't access Resources
+
+If the Firezone client shows that you are signed in, but you can't access
+Resources, it's possible that the WinTUN driver is corrupted or in a failed
+state.
+
+To fix, perform these steps:
+
+1. Uninstall Firezone and any other WireGuard-based VPN software from your
+   computer.
+2. Reset your network settings by going to
+   `Settings -> Network and Internet -> Additional network settings -> Network Reset -> Reset now`.
+3. Reinstall Firezone and any other software you previously uninstalled.
+
 ### Check if Firezone Client IPC service is running
 
 In the Start Menu, search for "Windows Powershell". Open it and run this
