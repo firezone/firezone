@@ -43,7 +43,7 @@ defmodule Domain.Config do
   end
 
   @doc """
-  Similar to `compile_config/2` but returns nil if the configuration is invalid.
+  Similar to `compile_config!/3` but returns nil if the configuration is invalid.
 
   This function does not resolve values from the database because it's intended use is during
   compilation and before application boot (in `config/runtime.exs`).
@@ -55,7 +55,7 @@ defmodule Domain.Config do
       {:ok, _source, value} ->
         value
 
-      {:error, reason} ->
+      {:error, _reason} ->
         nil
     end
   end
