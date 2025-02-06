@@ -1,7 +1,6 @@
 use crate::CliCommon;
 use anyhow::{bail, Context as _, Result};
 use firezone_bin_shared::platform::DnsControlMethod;
-use firezone_logging::anyhow_dyn_err;
 use firezone_telemetry::Telemetry;
 use futures::future::{self, Either};
 use std::{
@@ -197,10 +196,7 @@ fn service_run(arguments: Vec<OsString>) {
     let (handle, log_filter_reloader) =
         super::setup_logging(None).expect("Should be able to set up logging");
     if let Err(error) = fallible_service_run(arguments, handle, log_filter_reloader) {
-        tracing::error!(
-            error = anyhow_dyn_err(&error),
-            "`fallible_windows_service_run` returned an error"
-        );
+        tracing::error!("`fallible_windows_service_run` returned an error: {error:#}");
     }
 }
 
