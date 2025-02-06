@@ -188,5 +188,5 @@ jobs:
         timeout-minutes: 5
       - run: scripts/tests/${{ matrix.test }}
         name: "test script"
-        shell: ${{ matrix.test | replace: ".*\\.ps1$", "pwsh" | replace: ".*\\.sh$", "bash" }}
+        shell: ${{ endsWith(matrix.test, 'ps1') && 'powershell' || 'bash' }}
         working-directory: ./
