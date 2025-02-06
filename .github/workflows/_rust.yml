@@ -174,18 +174,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runs-on: windows-2019, test: token-path-windows.ps1 }
-          - { runs-on: windows-2022, test: token-path-windows.ps1 }
-          - { runs-on: ubuntu-22.04, test: linux-group.sh }
-          - { runs-on: ubuntu-24.04, test: linux-group.sh }
-          - { runs-on: ubuntu-22.04, test: token-path-linux.sh }
-          - { runs-on: ubuntu-24.04, test: token-path-linux.sh }
+          - { runs-on: windows-2019, test: scripts\tests\token-path-windows.ps1 }
+          - { runs-on: windows-2022, test: scripts\tests\token-path-windows.ps1 }
+          - { runs-on: ubuntu-22.04, test: scripts/tests/linux-group.sh }
+          - { runs-on: ubuntu-24.04, test: scripts/tests/linux-group.sh }
+          - { runs-on: ubuntu-22.04, test: scripts/tests/token-path-linux.sh }
+          - { runs-on: ubuntu-24.04, test: scripts/tests/token-path-linux.sh }
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 5
-      - run: scripts/tests/${{ matrix.test }}
+      - run: "${{ matrix.test }}"
         name: "test script"
         working-directory: ./
