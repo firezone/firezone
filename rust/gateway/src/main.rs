@@ -87,8 +87,12 @@ fn main() -> ExitCode {
 #[cfg(target_os = "linux")]
 fn has_necessary_permissions() -> bool {
     let is_root = nix::unistd::Uid::current().is_root();
-    let has_net_admin =
-        caps::has_cap(None, caps::CapSet::Effective, caps::Capability::CAP_NET_ADMIN).is_ok_and(|b| b);
+    let has_net_admin = caps::has_cap(
+        None,
+        caps::CapSet::Effective,
+        caps::Capability::CAP_NET_ADMIN,
+    )
+    .is_ok_and(|b| b);
 
     is_root || has_net_admin
 }
