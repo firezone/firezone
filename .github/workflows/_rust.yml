@@ -173,8 +173,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # TODO: Add Windows as part of issue #3782
-        runs-on: [ubuntu-22.04, ubuntu-24.04]
+        runs-on: [ubuntu-22.04, ubuntu-24.04, windows-2019, windows-2022]
         test: [linux-group, token-path]
     runs-on: ${{ matrix.runs-on }}
     steps:
@@ -183,6 +182,8 @@ jobs:
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 5
       - run: scripts/tests/${{ matrix.test }}.sh
+        # TODO: Add Windows as part of issue #3782
+        if: ${{ runner.os == 'Linux' }}
         name: "test script"
         shell: bash
         working-directory: ./
