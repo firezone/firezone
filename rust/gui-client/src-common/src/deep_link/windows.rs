@@ -71,7 +71,8 @@ async fn bind_to_pipe(pipe_path: &str) -> Result<named_pipe::NamedPipeServer> {
             Ok(server) => return Ok(server),
             Err(e) => {
                 tracing::debug!(
-                    "`create_pipe_server` failed {}; sleeping... (attempt {i}/{NUM_ITERS})", err_with_src(&e)
+                    "`create_pipe_server` failed {}; sleeping... (attempt {i}/{NUM_ITERS})",
+                    err_with_src(&e)
                 );
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }

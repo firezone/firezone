@@ -259,9 +259,7 @@ impl Drop for Listener<'_> {
     // and drop the DNS listeners
     fn drop(&mut self) {
         if let Err(e) = self.close_dont_drop() {
-            tracing::error!(
-                "Failed to close `Listener` gracefully: {e:#}"
-            );
+            tracing::error!("Failed to close `Listener` gracefully: {e:#}");
         }
     }
 }
@@ -451,14 +449,10 @@ mod async_dns {
             }
 
             if let Err(e) = listener_4.close() {
-                tracing::error!(
-                    "Error while closing IPv4 DNS listener: {e:#}"
-                );
+                tracing::error!("Error while closing IPv4 DNS listener: {e:#}");
             }
             if let Err(e) = listener_6.close() {
-                tracing::error!(
-                    "Error while closing IPv6 DNS listener: {e:#}"
-                );
+                tracing::error!("Error while closing IPv6 DNS listener: {e:#}");
             }
 
             Ok(())
