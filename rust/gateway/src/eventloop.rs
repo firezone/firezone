@@ -4,7 +4,7 @@ use connlib_model::DomainName;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use firezone_bin_shared::TunDeviceManager;
-use firezone_logging::{anyhow_dyn_err, telemetry_event, telemetry_span};
+use firezone_logging::{telemetry_event, telemetry_span};
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
@@ -137,10 +137,7 @@ impl Eventloop {
                         result,
                         Instant::now(),
                     ) {
-                        tracing::warn!(
-                            error = anyhow_dyn_err(&e),
-                            "Failed to set DNS resource NAT"
-                        );
+                        tracing::warn!("Failed to set DNS resource NAT: {e:#}");
                     };
 
                     continue;
@@ -462,7 +459,7 @@ impl Eventloop {
             req.resource,
             req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),
         ) {
-            tracing::warn!(error = anyhow_dyn_err(&e), client = %req.client_id, "Allow access request failed");
+            tracing::warn!(client = %req.client_id, "Allow access request failed: {e:#}");
         };
     }
 }

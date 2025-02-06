@@ -1,6 +1,5 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-mod dyn_err;
 pub mod file;
 mod format;
 #[macro_use]
@@ -16,7 +15,6 @@ use tracing_subscriber::{
     util::SubscriberInitExt, EnvFilter, Layer, Registry,
 };
 
-pub use dyn_err::{anyhow_dyn_err, std_dyn_err};
 pub use err_with_sources::{err_with_src, ErrorWithSources};
 pub use format::Format;
 

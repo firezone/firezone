@@ -8,7 +8,7 @@ use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
-use firezone_logging::std_dyn_err;
+use firezone_logging::err_with_src;
 use firezone_telemetry::{Telemetry, ANDROID_DSN};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
@@ -267,7 +267,7 @@ impl Callbacks for CallbackHandler {
 fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {
     if let Err(err) = env.throw_new(class, msg) {
         // We can't panic, since unwinding across the FFI boundary is UB...
-        tracing::error!(error = std_dyn_err(&err), "failed to throw Java exception");
+        tracing::error!("failed to throw Java exception: {}", err_with_src(&err));
     }
 }
 

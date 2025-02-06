@@ -1,7 +1,7 @@
 use crate::{callbacks::Callbacks, PHOENIX_TOPIC};
 use anyhow::Result;
 use connlib_model::{PublicKey, ResourceId};
-use firezone_logging::{anyhow_dyn_err, err_with_src, telemetry_event};
+use firezone_logging::{err_with_src, telemetry_event};
 use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
@@ -283,10 +283,7 @@ where
                             .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
                     }
                     Err(e) => {
-                        tracing::warn!(
-                            error = anyhow_dyn_err(&e),
-                            "Failed to request new connection"
-                        );
+                        tracing::warn!("Failed to request new connection: {e:#}");
                     }
                 };
             }

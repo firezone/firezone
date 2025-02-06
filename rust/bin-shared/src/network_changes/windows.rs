@@ -64,7 +64,6 @@
 
 use crate::platform::DnsControlMethod;
 use anyhow::{anyhow, Context as _, Result};
-use firezone_logging::anyhow_dyn_err;
 use std::thread;
 use tokio::sync::{
     mpsc::{self, error::TrySendError},
@@ -118,7 +117,7 @@ pub struct Worker {
 impl Drop for Worker {
     fn drop(&mut self) {
         if let Err(e) = self.close() {
-            tracing::error!(error = anyhow_dyn_err(&e), "Failed to close worker thread")
+            tracing::error!("Failed to close worker thread: {e:#}")
         }
     }
 }
@@ -260,10 +259,7 @@ impl Drop for Listener<'_> {
     // and drop the DNS listeners
     fn drop(&mut self) {
         if let Err(e) = self.close_dont_drop() {
-            tracing::error!(
-                error = anyhow_dyn_err(&e),
-                "Failed to close `Listener` gracefully"
-            );
+            tracing::error!("Failed to close `Listener` gracefully: {e:#}");
         }
     }
 }
@@ -381,7 +377,6 @@ impl Drop for Callback {
 
 mod async_dns {
     use anyhow::{Context as _, Result};
-    use firezone_logging::anyhow_dyn_err;
     use futures::FutureExt as _;
     use std::{ffi::c_void, ops::Deref, path::Path, pin::pin};
     use tokio::{
@@ -454,16 +449,10 @@ mod async_dns {
             }
 
             if let Err(e) = listener_4.close() {
-                tracing::error!(
-                    error = anyhow_dyn_err(&e),
-                    "Error while closing IPv4 DNS listener"
-                );
+                tracing::error!("Error while closing IPv4 DNS listener: {e:#}");
             }
             if let Err(e) = listener_6.close() {
-                tracing::error!(
-                    error = anyhow_dyn_err(&e),
-                    "Error while closing IPv6 DNS listener"
-                );
+                tracing::error!("Error while closing IPv6 DNS listener: {e:#}");
             }
 
             Ok(())

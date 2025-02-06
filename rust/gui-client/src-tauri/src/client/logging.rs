@@ -4,7 +4,7 @@ use firezone_gui_client_common::{
     controller::{ControllerRequest, CtlrTx},
     logging as common,
 };
-use firezone_logging::std_dyn_err;
+use firezone_logging::err_with_src;
 use std::path::PathBuf;
 use tauri_plugin_dialog::DialogExt as _;
 
@@ -14,15 +14,15 @@ pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(),
     if let Err(error) = managed.ctlr_tx.send(ControllerRequest::ClearLogs(tx)).await {
         // Tauri will only log errors to the JS console for us, so log this ourselves.
         tracing::error!(
-            error = std_dyn_err(&error),
-            "Error while asking `Controller` to clear logs"
+            "Error while asking `Controller` to clear logs: {}",
+            err_with_src(&error)
         );
         return Err(error.to_string());
     }
     if let Err(error) = rx.await {
         tracing::error!(
-            error = std_dyn_err(&error),
-            "Error while awaiting log-clearing operation"
+            "Error while awaiting log-clearing operation: {}",
+            err_with_src(&error)
         );
         return Err(error.to_string());
     }
@@ -63,7 +63,7 @@ fn show_export_dialog(app: &tauri::AppHandle, ctlr_tx: CtlrTx) -> Result<()> {
             let path = match file_path.clone().into_path() {
                 Ok(path) => path,
                 Err(e) => {
-                    tracing::warn!(error = std_dyn_err(&e), %file_path, "Invalid file path");
+                    tracing::warn!(%file_path, "Invalid file path: {}", err_with_src(&e));
                     return;
                 }
             };

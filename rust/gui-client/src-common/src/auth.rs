@@ -2,7 +2,7 @@
 
 use anyhow::Result;
 use firezone_headless_client::known_dirs;
-use firezone_logging::std_dyn_err;
+use firezone_logging::err_with_src;
 use rand::{thread_rng, RngCore};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
@@ -110,8 +110,8 @@ impl Auth {
 
         match this.get_token_from_disk() {
             Err(error) => tracing::error!(
-                error = std_dyn_err(&error),
-                "Failed to load token from disk. Will start in signed-out state"
+                "Failed to load token from disk. Will start in signed-out state: {}",
+                err_with_src(&error)
             ),
             Ok(Some(SessionAndToken { session, token: _ })) => {
                 this.state = State::SignedIn(session);
@@ -139,8 +139,8 @@ impl Auth {
             Ok(()) | Err(keyring::Error::NoEntry) => {}
             Err(error) => {
                 tracing::warn!(
-                    error = std_dyn_err(&error),
-                    "Couldn't delete token while signing out"
+                    "Couldn't delete token while signing out: {}",
+                    err_with_src(&error)
                 );
             }
         }
