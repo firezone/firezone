@@ -188,5 +188,5 @@ jobs:
         timeout-minutes: 5
       - run: scripts/tests/${{ matrix.test }}
         name: "test script"
-        shell: ${{ matrix.shell }}
+        shell: "${{ matrix.shell }}"
         working-directory: ./
