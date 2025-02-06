@@ -439,7 +439,7 @@ module "domain" {
 
   scaling_horizontal_replicas = 2
 
-  observability_log_level = "debug"
+  observability_log_level = "info"
 
   erlang_release_name   = "firezone"
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
@@ -505,7 +505,7 @@ module "web" {
   scaling_horizontal_replicas     = 2
   scaling_max_horizontal_replicas = 4
 
-  observability_log_level = "debug"
+  observability_log_level = "info"
 
   erlang_release_name   = "firezone"
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result
@@ -575,7 +575,7 @@ module "api" {
   scaling_horizontal_replicas     = 2
   scaling_max_horizontal_replicas = 4
 
-  observability_log_level = "debug"
+  observability_log_level = "info"
 
   erlang_release_name   = "firezone"
   erlang_cluster_cookie = random_password.erlang_cluster_cookie.result

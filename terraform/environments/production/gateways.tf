@@ -2,7 +2,7 @@
 locals {
   gateways_region         = local.region
   gateways_zone           = local.availability_zone
-  gateways_instance_type  = "n1-standard-1"
+  gateways_instance_type  = "e2-micro"
   gateways_instance_count = 2
 }
 
