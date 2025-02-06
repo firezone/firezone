@@ -132,7 +132,7 @@ fn run_gui(cli: Cli) -> Result<()> {
             }
 
             if let Some(error) = anyhow.root_cause().downcast_ref::<ipc::NotFound>() {
-                tracing::info!("{error}");
+                tracing::info!("{anyhow:#}");
                 common::errors::show_error_dialog(
                     "Couldn't find Firezone IPC service. Is the service running?".to_string(),
                 )?;
