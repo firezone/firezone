@@ -32,10 +32,10 @@ impl DnsController {
         let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
         if let Err(error) = delete_subkey(&hklm, local_nrpt_path().join(NRPT_REG_KEY)) {
-            tracing::error!(error = std_dyn_err(&error), "Failed to delete local NRPT");
+            tracing::error!("Failed to delete local NRPT: {error:#}");
         }
         if let Err(error) = delete_subkey(&hklm, group_nrpt_path().join(NRPT_REG_KEY)) {
-            tracing::error!(error = std_dyn_err(&error), "Failed to delete group NRPT");
+            tracing::error!("Failed to delete group NRPT: {error:#}");
         }
 
         refresh_group_policy()?;

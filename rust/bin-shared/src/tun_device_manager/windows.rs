@@ -202,7 +202,7 @@ impl Drop for Tun {
         );
         self.inbound_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
         if let Err(error) = self.session.shutdown() {
-            tracing::error!(error = std_dyn_err(&error), "wintun::Session::shutdown");
+            tracing::error!("wintun::Session::shutdown: {error:#}");
         }
         if let Err(error) = self
             .recv_thread

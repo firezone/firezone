@@ -286,7 +286,7 @@ fn fallible_service_run(
         ))
         .inspect(|_| rt.block_on(telemetry.stop()))
         .inspect_err(|e| {
-            tracing::error!(error = anyhow_dyn_err(e), "IPC service failed");
+            tracing::error!("IPC service failed: {e:#}");
 
             rt.block_on(telemetry.stop_on_crash())
         });

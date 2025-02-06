@@ -3,7 +3,7 @@ use crate::{
     node::{SessionId, Transmit},
 };
 use bytecodec::{DecodeExt as _, EncodeExt as _};
-use firezone_logging::{err_with_src, std_dyn_err};
+use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt as _;
 use rand::random;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
@@ -1278,8 +1278,8 @@ fn srflx_candidate(local: SocketAddr, attr: &Attribute) -> Option<Candidate> {
         Ok(c) => c,
         Err(e) => {
             tracing::debug!(
-                error = std_dyn_err(&e),
-                "Observed address is not a valid candidate"
+                "Observed address is not a valid candidate: {}",
+                err_with_src(&e)
             );
             return None;
         }
@@ -1305,8 +1305,8 @@ fn relay_candidate(
             Ok(c) => c,
             Err(e) => {
                 tracing::debug!(
-                    error = std_dyn_err(&e),
-                    "Acquired allocation is not a valid candidate"
+                    "Acquired allocation is not a valid candidate: {}",
+                    err_with_src(&e)
                 );
                 return None;
             }

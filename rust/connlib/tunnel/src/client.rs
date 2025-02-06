@@ -16,9 +16,7 @@ use connlib_model::{
     DomainName, GatewayId, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
 };
 use connlib_model::{Site, SiteId};
-use firezone_logging::{
-    anyhow_dyn_err, err_with_src, telemetry_event, unwrap_or_debug, unwrap_or_warn,
-};
+use firezone_logging::{err_with_src, telemetry_event, unwrap_or_debug, unwrap_or_warn};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, UdpSlice, MAX_UDP_PAYLOAD};
@@ -415,10 +413,7 @@ impl ClientState {
             ) {
                 Ok(packet) => packet,
                 Err(e) => {
-                    tracing::warn!(
-                        error = anyhow_dyn_err(&e),
-                        "Failed to create IP packet for `AssignedIp`s event"
-                    );
+                    tracing::warn!("Failed to create IP packet for `AssignedIp`s event: {e:#}");
                     continue;
                 }
             };
@@ -887,10 +882,7 @@ impl ClientState {
             .collect();
 
         if let Err(e) = self.tcp_dns_client.set_resolvers(upstream_resolvers) {
-            tracing::warn!(
-                error = anyhow_dyn_err(&e),
-                "Failed to connect to upstream DNS resolvers over TCP"
-            );
+            tracing::warn!("Failed to connect to upstream DNS resolvers over TCP: {e:#}");
         }
     }
 
@@ -1130,11 +1122,7 @@ impl ClientState {
         let message = match parse_udp_dns_message(&datagram) {
             Ok(message) => message,
             Err(e) => {
-                tracing::warn!(
-                    error = anyhow_dyn_err(&e),
-                    ?packet,
-                    "Failed to parse DNS query"
-                );
+                tracing::warn!(?packet, "Failed to parse DNS query: {e:#}");
                 return ControlFlow::Break(());
             }
         };
@@ -1203,10 +1191,7 @@ impl ClientState {
                     match self.tcp_dns_client.send_query(server, message.clone()) {
                         Ok(()) => {}
                         Err(e) => {
-                            tracing::warn!(
-                                error = anyhow_dyn_err(&e),
-                                "Failed to send recursive TCP DNS query"
-                            );
+                            tracing::warn!("Failed to send recursive TCP DNS query: {e:#}");
 
                             unwrap_or_debug!(
                                 self.tcp_dns_server.send_message(

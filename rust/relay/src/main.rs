@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::http_health_check;
-use firezone_logging::{anyhow_dyn_err, sentry_layer, std_dyn_err};
+use firezone_logging::{err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     sockets, AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack,
@@ -120,7 +120,7 @@ fn main() {
     match runtime.block_on(try_main(args)) {
         Ok(()) => runtime.block_on(telemetry.stop()),
         Err(e) => {
-            tracing::error!(error = anyhow_dyn_err(&e));
+            tracing::error!("{e:#}");
             runtime.block_on(telemetry.stop_on_crash());
 
             std::process::exit(1);
@@ -407,7 +407,7 @@ where
                             recipient.into_socket(),
                             Cow::Owned(payload),
                         ) {
-                            tracing::warn!(target: "relay", error = std_dyn_err(&e), %recipient, "Failed to send message");
+                            tracing::warn!(target: "relay", %recipient, "Failed to send message: {}", err_with_src(&e));
                         }
                     }
                     Command::CreateAllocation { port, family } => {
@@ -478,7 +478,7 @@ where
                             peer.into_socket(),
                             Cow::Borrowed(payload),
                         ) {
-                            tracing::warn!(target: "relay", error = std_dyn_err(&e), %peer, "Failed to relay data to peer");
+                            tracing::warn!(target: "relay", %peer, "Failed to relay data to peer: {}", err_with_src(&e));
                         }
                     };
                     continue;
@@ -504,13 +504,13 @@ where
                             client.into_socket(),
                             Cow::Borrowed(&self.buffer[..total_length]),
                         ) {
-                            tracing::warn!(target: "relay", error = std_dyn_err(&e), %client, "Failed to relay data to client");
+                            tracing::warn!(target: "relay", %client, "Failed to relay data to client: {}", err_with_src(&e));
                         };
                     };
                     continue;
                 }
                 Poll::Ready(Err(sockets::Error::Io(e))) => {
-                    tracing::warn!(target: "relay", error = std_dyn_err(&e), "Error while receiving message");
+                    tracing::warn!(target: "relay", "Error while receiving message: {}", err_with_src(&e));
                     continue;
                 }
                 Poll::Ready(Err(sockets::Error::MioTaskCrashed(e))) => return Poll::Ready(Err(e)), // Fail the event-loop. We can't operate without the `mio` worker-task.

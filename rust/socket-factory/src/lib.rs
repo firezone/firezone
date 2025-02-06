@@ -1,5 +1,5 @@
 use bytes::Buf as _;
-use firezone_logging::std_dyn_err;
+use firezone_logging::err_with_src;
 use quinn_udp::Transmit;
 use std::collections::HashMap;
 use std::fmt;
@@ -380,9 +380,8 @@ impl UdpSocket {
                 Ok(src_ip) => src_ip,
                 Err(e) => {
                     tracing::trace!(
-                        error = std_dyn_err(&e),
                         dst = %dst.ip(),
-                        "No available interface for packet"
+                        "No available interface for packet: {}", err_with_src(&e)
                     );
                     return Ok(None); // Not an error because we log it above already.
                 }

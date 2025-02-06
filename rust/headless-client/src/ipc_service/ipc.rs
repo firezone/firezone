@@ -167,7 +167,6 @@ impl platform::Server {
 mod tests {
     use super::{platform::Server, *};
     use anyhow::{bail, ensure, Result};
-    use firezone_logging::anyhow_dyn_err;
     use futures::{SinkExt, StreamExt};
     use std::time::Duration;
     use tokio::{task::JoinHandle, time::timeout};
@@ -238,14 +237,14 @@ mod tests {
         if let Err(panic) = &client_result {
             tracing::error!(?panic, "Client panic");
         } else if let Ok(Err(error)) = &client_result {
-            tracing::error!(error = anyhow_dyn_err(error), "Client error");
+            tracing::error!("Client error: {error:#}");
         }
 
         let server_result = server_task.await;
         if let Err(panic) = &server_result {
             tracing::error!(?panic, "Server panic");
         } else if let Ok(Err(error)) = &server_result {
-            tracing::error!(error = anyhow_dyn_err(error), "Server error");
+            tracing::error!("Server error: {error:#}");
         }
 
         if client_result.is_err() || server_result.is_err() {

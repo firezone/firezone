@@ -7,7 +7,6 @@ use anyhow::{Context, Result};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, DomainName, RelayId, ResourceId};
-use firezone_logging::anyhow_dyn_err;
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::{ExposeSecret as _, Secret};
@@ -308,10 +307,7 @@ impl GatewayState {
                 Ok(dns_resource_nat::NatStatus::Active)
             })
             .unwrap_or_else(|e| {
-                tracing::warn!(
-                    error = anyhow_dyn_err(&e),
-                    "Failed to setup DNS resource NAT"
-                );
+                tracing::warn!("Failed to setup DNS resource NAT: {e:#}");
 
                 dns_resource_nat::NatStatus::Inactive
             });
@@ -453,12 +449,7 @@ fn handle_p2p_control_packet(
                     req.domain,
                     dns_resource_nat::NatStatus::Inactive,
                 )
-                .inspect_err(|e| {
-                    tracing::warn!(
-                        error = anyhow_dyn_err(e),
-                        "Failed to create `DomainStatus` packet"
-                    )
-                })
+                .inspect_err(|e| tracing::warn!("Failed to create `DomainStatus` packet: {e:#}"))
                 .ok()?;
 
                 return Some(packet);
