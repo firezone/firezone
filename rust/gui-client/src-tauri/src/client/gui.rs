@@ -278,7 +278,7 @@ pub(crate) fn run(
                 // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
                 // TODO: This limit may not exist in Tauri v2
 
-                tracing::info!(?exit_code);
+                tracing::info!(%exit_code, "Goodbye!");
                 app_handle.exit(exit_code);
                 // In Tauri v1, calling `App::exit` internally exited the process.
                 // In Tauri v2, that doesn't happen, but `App::run` still doesn't return, so we have to bail out of the process manually.
