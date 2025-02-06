@@ -1,13 +1,14 @@
 use anyhow::Result;
 use futures::{
+    channel::mpsc,
     future::poll_fn,
+    stream::BoxStream,
     task::{Context, Poll},
+    StreamExt as _,
 };
 
-// This looks like a pointless wrapper around `CtrlC`, because it must match
-// the Linux signatures
 pub struct Terminate {
-    sigint: tokio::signal::windows::CtrlC,
+    inner: BoxStream<'static, ()>,
 }
 
 // SIGHUP is used on Linux but not on Windows
@@ -16,11 +17,22 @@ pub struct Hangup {}
 impl Terminate {
     pub fn new() -> Result<Self> {
         let sigint = tokio::signal::windows::ctrl_c()?;
-        Ok(Self { sigint })
+        let inner = futures::stream::unfold(sigint, |mut sigint| async move {
+            sigint.recv().await?;
+
+            Some(((), sigint))
+        })
+        .boxed();
+
+        Ok(Self { inner })
+    }
+
+    pub fn from_channel(rx: mpsc::Receiver<()>) -> Self {
+        Self { inner: rx.boxed() }
     }
 
     pub fn poll_recv(&mut self, cx: &mut Context<'_>) -> Poll<()> {
-        self.sigint.poll_recv(cx).map(|_| ())
+        self.inner.poll_next_unpin(cx).map(|_| ())
     }
 
     /// Waits for Ctrl+C
