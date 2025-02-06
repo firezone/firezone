@@ -4,12 +4,9 @@ use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_logging::anyhow_dyn_err;
 use firezone_telemetry::Telemetry;
 use futures::channel::mpsc;
-use futures::future::{self, Either};
-use futures::StreamExt;
 use std::{
     ffi::{c_void, OsString},
     mem::size_of,
-    pin::pin,
     time::Duration,
 };
 use windows::{
