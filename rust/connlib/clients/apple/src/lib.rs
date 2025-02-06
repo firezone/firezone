@@ -1,5 +1,6 @@
 // Swift bridge generated code triggers this below
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
+#![cfg(unix)]
 
 mod make_writer;
 mod tun;
