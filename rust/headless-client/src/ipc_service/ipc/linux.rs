@@ -1,4 +1,4 @@
-use super::{Error, ServiceId};
+use super::{NotFound, ServiceId};
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::BUNDLE_ID;
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
@@ -18,20 +18,17 @@ pub(crate) type ServerStream = UnixStream;
 
 /// Connect to the IPC service
 #[expect(clippy::wildcard_enum_match_arm)]
-pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
+pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
     let path = ipc_path(id);
     let stream = UnixStream::connect(&path)
         .await
         .map_err(|error| match error.kind() {
-            ErrorKind::NotFound => Error::NotFound(path.display().to_string()),
-            _ => Error::Other(
-                anyhow::Error::new(error).context("Couldn't connect to Unix domain socket"),
-            ),
+            ErrorKind::NotFound => anyhow::Error::new(NotFound(path.display().to_string())),
+            _ => anyhow::Error::new(error).context("Couldn't connect to Unix domain socket"),
         })?;
     let cred = stream
         .peer_cred()
-        .context("Couldn't get PID of UDS server")
-        .map_err(Error::Other)?;
+        .context("Couldn't get PID of UDS server")?;
     tracing::debug!(
         uid = cred.uid(),
         gid = cred.gid(),

@@ -1,4 +1,4 @@
-use super::{Error, ServiceId};
+use super::{NotFound, ServiceId};
 use anyhow::{bail, Context as _, Result};
 use firezone_bin_shared::BUNDLE_ID;
 use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
@@ -24,21 +24,20 @@ pub(crate) type ServerStream = named_pipe::NamedPipeServer;
 /// This is async on Linux
 #[expect(clippy::unused_async)]
 #[expect(clippy::wildcard_enum_match_arm)]
-pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream, Error> {
+pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
     let path = ipc_path(id);
     let stream = named_pipe::ClientOptions::new()
         .open(&path)
         .map_err(|error| match error.kind() {
-            ErrorKind::NotFound => Error::NotFound(path),
-            _ => Error::Other(error.into()),
+            ErrorKind::NotFound => anyhow::Error::new(NotFound(path)),
+            _ => anyhow::Error::new(error),
         })?;
     let handle = HANDLE(stream.as_raw_handle());
     let mut server_pid: u32 = 0;
     // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
     // from Tokio, so it should be valid.
     unsafe { GetNamedPipeServerProcessId(handle, &mut server_pid) }
-        .context("Couldn't get PID of named pipe server")
-        .map_err(Error::Other)?;
+        .context("Couldn't get PID of named pipe server")?;
     tracing::debug!(?server_pid, "Made IPC connection");
     Ok(stream)
 }

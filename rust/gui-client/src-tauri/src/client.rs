@@ -3,6 +3,7 @@ use clap::{Args, Parser};
 use firezone_gui_client_common::{
     self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
+use firezone_headless_client::ipc;
 use firezone_logging::anyhow_dyn_err;
 use firezone_telemetry as telemetry;
 use tracing::instrument;
@@ -126,6 +127,14 @@ fn run_gui(cli: Cli) -> Result<()> {
                 common::errors::show_error_dialog(
                     "Firezone is already running. If it's not responding, force-stop it."
                         .to_string(),
+                )?;
+                return Err(anyhow);
+            }
+
+            if let Some(error) = anyhow.root_cause().downcast_ref::<ipc::NotFound>() {
+                tracing::info!("{error}");
+                common::errors::show_error_dialog(
+                    "Couldn't find Firezone IPC service. Is the service running?".to_string(),
                 )?;
                 return Err(anyhow);
             }
