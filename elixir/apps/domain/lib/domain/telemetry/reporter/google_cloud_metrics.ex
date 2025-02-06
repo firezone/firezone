@@ -22,7 +22,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
 
   # Maximum time in seconds to wait before flushing the buffer
   # in case it did not reach the @buffer_size limit within the flush interval
-  @flush_interval 15
+  @flush_interval 5
   @flush_timer :timer.seconds(@flush_interval)
 
   def start_link(opts) do
@@ -121,7 +121,10 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
         {buffer_size, buffer}
       end
 
-    Process.send_after(self(), :flush, @flush_timer)
+    # Prevent starvation by introducing a randomized 2s jitter
+    jitter = :rand.uniform(2000)
+
+    Process.send_after(self(), :flush, @flush_timer + jitter)
     {:noreply, {events, project_id, {resource, labels}, {buffer_size, buffer}}}
   end
 
