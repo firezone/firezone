@@ -1,7 +1,7 @@
 services:
   # Dependencies
   postgres:
-    image: postgres:15.5
+    image: postgres:15
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
