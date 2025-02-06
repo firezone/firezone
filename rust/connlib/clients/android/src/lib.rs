@@ -3,6 +3,8 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
+#![cfg(unix)]
+
 use crate::tun::Tun;
 use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
