@@ -330,28 +330,21 @@ fn fallible_service_run(
 async fn service_run_async(
     log_filter_reloader: &crate::LogFilterReloader,
     telemetry: &mut Telemetry,
-    mut shutdown_rx: mpsc::Receiver<()>,
+    shutdown_rx: mpsc::Receiver<()>,
 ) -> Result<()> {
     // Useless - Windows will never send us Ctrl+C when running as a service
     // This just keeps the signatures simpler
-    let mut signals = crate::signals::Terminate::new()?;
-    let listen_fut = pin!(super::ipc_listen(
+    let mut signals = crate::signals::Terminate::from_channel(shutdown_rx);
+    super::ipc_listen(
         DnsControlMethod::Nrpt,
         log_filter_reloader,
         &mut signals,
-        telemetry
-    ));
-    match future::select(listen_fut, shutdown_rx.next()).await {
-        Either::Left((Err(error), _)) => Err(error).context("`ipc_listen` threw an error"),
-        Either::Left((Ok(()), _)) => {
-            bail!("Impossible - Shouldn't catch Ctrl+C when running as a Windows service")
-        }
-        Either::Right((None, _)) => bail!("Shutdown channel failed"),
-        Either::Right((Some(()), _)) => {
-            tracing::info!("Caught shutdown signal, stopping IPC listener");
-            Ok(())
-        }
-    }
+        telemetry,
+    )
+    .await
+    .context("`ipc_listen` threw an error")?;
+
+    Ok(())
 }
 
 #[cfg(test)]
