@@ -494,7 +494,7 @@ defmodule Domain.Config.Definitions do
     Ecto.ParameterizedType.init(Ecto.Enum,
       values: [
         Telemetry.Metrics.ConsoleReporter,
-        Elixir.Domain.Telemetry.GoogleCloudMetricsReporter
+        Elixir.Domain.Telemetry.Reporter.GoogleCloudMetrics
       ]
     ),
     default: nil

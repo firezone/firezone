@@ -36,7 +36,7 @@ config :domain, Domain.ComponentVersions,
     headless: "1.0.0"
   ]
 
-config :domain, Domain.Telemetry.GoogleCloudMetricsReporter, project_id: "fz-test"
+config :domain, Domain.Telemetry.Reporter.GoogleCloudMetrics, project_id: "fz-test"
 
 config :domain, web_external_url: "http://localhost:13100"
 

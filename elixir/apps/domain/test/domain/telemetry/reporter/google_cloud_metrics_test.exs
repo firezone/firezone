@@ -1,7 +1,100 @@
-defmodule Domain.Telemetry.GoogleCloudMetricsReporterTest do
-  use ExUnit.Case, async: true
-  import Domain.Telemetry.GoogleCloudMetricsReporter
+defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
+  use Domain.DataCase, async: true
+  import Domain.Telemetry.Reporter.GoogleCloudMetrics
   alias Domain.Mocks.GoogleCloudPlatform
+  alias Domain.Telemetry.Reporter.Log
+
+  describe "handle_info/2 for :flush" do
+    test "updates reporter_logs table with last_flushed_at" do
+      Bypass.open()
+      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
+      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
+
+      reporter_module = "Elixir.Domain.Telemetry.Reporter.GoogleCloudMetrics"
+
+      now = DateTime.utc_now()
+      one_minute_ago = DateTime.add(now, -1, :minute)
+
+      tags = {%{type: "test"}, %{app: "myapp"}}
+
+      assert {:noreply, {[], "proj", ^tags, {buffer_size, buffer}} = state} =
+               handle_info(
+                 {:compressed_metrics,
+                  [
+                    {Telemetry.Metrics.Counter, [:foo], %{"foo" => "bar"}, one_minute_ago, 1,
+                     :request}
+                  ]},
+                 {[], "proj", tags, {0, %{}}}
+               )
+
+      assert buffer_size == 1
+
+      assert buffer == %{
+               {Telemetry.Metrics.Counter, [:foo], %{"foo" => "bar"}, :request} =>
+                 {one_minute_ago, one_minute_ago, 1}
+             }
+
+      # Flush
+      assert {:noreply, {_, _, _, {0, %{}}}} = handle_info(:flush, state)
+
+      assert %Log{last_flushed_at: last_flushed_at} =
+               Log.Query.all()
+               |> Log.Query.by_reporter_module(reporter_module)
+               |> Repo.one()
+
+      assert DateTime.diff(last_flushed_at, now, :second) < 1
+
+      assert {:noreply, {[], "proj", ^tags, {buffer_size, buffer}} = state} =
+               handle_info(
+                 {:compressed_metrics,
+                  [
+                    {Telemetry.Metrics.Counter, [:foo], %{"foo" => "bar"}, one_minute_ago, 1,
+                     :request}
+                  ]},
+                 {[], "proj", tags, {0, %{}}}
+               )
+
+      assert buffer_size == 1
+
+      assert buffer == %{
+               {Telemetry.Metrics.Counter, [:foo], %{"foo" => "bar"}, :request} =>
+                 {one_minute_ago, one_minute_ago, 1}
+             }
+
+      # Flush again; assert buffer didn't change
+      assert {:noreply,
+              {_, _, _,
+               {1,
+                %{
+                  {Telemetry.Metrics.Counter, [:foo], %{"foo" => "bar"}, :request} =>
+                    {one_minute_ago, one_minute_ago, 1}
+                }}}} = handle_info(:flush, state)
+
+      # Assert last_flushed_at is not updated
+      assert %Log{last_flushed_at: last_flushed_at2} =
+               Log.Query.all()
+               |> Log.Query.by_reporter_module(reporter_module)
+               |> Repo.one()
+
+      assert last_flushed_at == last_flushed_at2
+
+      # Reset last_updated_at, flush, and assert last_flushed_at is updated
+      Log.Query.all()
+      |> Log.Query.by_reporter_module(reporter_module)
+      |> Repo.one()
+      |> Log.Changeset.changeset(%{last_flushed_at: one_minute_ago})
+      |> Repo.update()
+
+      assert {:noreply, {_, _, _, {0, %{}}}} = handle_info(:flush, state)
+
+      assert %Log{last_flushed_at: last_flushed_at3} =
+               Log.Query.all()
+               |> Log.Query.by_reporter_module(reporter_module)
+               |> Repo.one()
+
+      assert DateTime.diff(last_flushed_at3, now, :second) < 1
+    end
+  end
 
   describe "handle_info/2 for :compressed_metrics" do
     test "aggregates and delivers Metrics.Counter metrics" do

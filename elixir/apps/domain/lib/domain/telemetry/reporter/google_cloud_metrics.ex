@@ -1,12 +1,19 @@
-defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
+defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
   @doc """
   This module implement Telemetry reporter that sends metrics to Google Cloud Monitoring API,
   with a *best effort* approach. It means that if the reporter fails to send metrics to the API,
   it will not retry, but it will keep trying to send new metrics.
   """
   use GenServer
+
   alias Telemetry.Metrics
-  alias Domain.GoogleCloudPlatform
+
+  alias Domain.{
+    GoogleCloudPlatform,
+    Repo,
+    Telemetry.Reporter.Log
+  }
+
   require Logger
 
   # Maximum number of metrics a buffer can hold,
@@ -15,7 +22,8 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
 
   # Maximum time in seconds to wait before flushing the buffer
   # in case it did not reach the @buffer_size limit within the flush interval
-  @flush_interval :timer.seconds(30)
+  @flush_interval 15
+  @flush_timer :timer.seconds(@flush_interval)
 
   def start_link(opts) do
     project_id =
@@ -60,7 +68,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         event
       end
 
-    Process.send_after(self(), :flush, @flush_interval)
+    Process.send_after(self(), :flush, @flush_timer)
 
     {:ok, {events, project_id, {resource, labels}, {0, %{}}}}
   end
@@ -106,9 +114,32 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
   end
 
   def handle_info(:flush, {events, project_id, {resource, labels}, {buffer_size, buffer}}) do
-    {buffer_size, buffer} = flush(project_id, resource, labels, {buffer_size, buffer})
-    Process.send_after(self(), :flush, @flush_interval)
+    {buffer_size, buffer} =
+      if can_flush?() do
+        flush(project_id, resource, labels, {buffer_size, buffer})
+      else
+        {buffer_size, buffer}
+      end
+
+    Process.send_after(self(), :flush, @flush_timer)
     {:noreply, {events, project_id, {resource, labels}, {buffer_size, buffer}}}
+  end
+
+  defp can_flush? do
+    Log.Query.all()
+    |> Log.Query.by_reporter_module("#{__MODULE__}")
+    |> Repo.one()
+    |> case do
+      nil ->
+        true
+
+      %Log{} = log ->
+        last_flushed_at = log.last_flushed_at
+        now = DateTime.utc_now()
+        diff = DateTime.diff(now, last_flushed_at, :second)
+
+        diff >= @flush_interval
+    end
   end
 
   # counts the total number of emitted events
@@ -228,6 +259,19 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
     |> Enum.each(fn time_series ->
       case GoogleCloudPlatform.send_metrics(project_id, time_series) do
         :ok ->
+          Log.Query.all()
+          |> Log.Query.by_reporter_module("#{__MODULE__}")
+          |> Repo.one()
+          |> case do
+            nil -> %Log{}
+            log -> log
+          end
+          |> Log.Changeset.changeset(%{
+            reporter_module: "#{__MODULE__}",
+            last_flushed_at: DateTime.utc_now()
+          })
+          |> Repo.insert_or_update!()
+
           :ok
 
         {:error, reason} ->
