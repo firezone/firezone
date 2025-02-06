@@ -173,17 +173,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-22.04, ubuntu-24.04, windows-2019, windows-2022]
-        test: [linux-group, token-path]
+        include:
+          - { runs-on: windows-2019, test: token-path-windows.ps1 }
+          - { runs-on: windows-2022, test: token-path-windows.ps1 }
+          - { runs-on: ubuntu-22.04, test: linux-group.sh }
+          - { runs-on: ubuntu-24.04, test: linux-group.sh }
+          - { runs-on: ubuntu-22.04, test: token-path-linux.sh }
+          - { runs-on: ubuntu-24.04, test: token-path-linux.sh }
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 5
-      - run: scripts/tests/${{ matrix.test }}.sh
-        # TODO: Add Windows as part of issue #3782
-        if: ${{ runner.os == 'Linux' }}
+      - run: scripts/tests/${{ matrix.test }}
         name: "test script"
-        shell: bash
+        shell: ${{ matrix.test | replace: ".*\\.ps1$", "pwsh" | replace: ".*\\.sh$", "bash" }}
         working-directory: ./
