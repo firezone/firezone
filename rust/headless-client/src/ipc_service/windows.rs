@@ -3,14 +3,15 @@ use anyhow::{bail, Context as _, Result};
 use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_logging::anyhow_dyn_err;
 use firezone_telemetry::Telemetry;
+use futures::channel::mpsc;
 use futures::future::{self, Either};
+use futures::StreamExt;
 use std::{
     ffi::{c_void, OsString},
     mem::size_of,
     pin::pin,
     time::Duration,
 };
-use tokio::sync::mpsc;
 use windows::{
     core::PWSTR,
     Win32::{
@@ -222,7 +223,7 @@ fn fallible_service_run(
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+    let (mut shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         tracing::debug!(?control_event);
@@ -234,7 +235,7 @@ fn fallible_service_run(
                 ServiceControlHandlerResult::NoError
             }
             ServiceControl::Shutdown | ServiceControl::Stop => {
-                if shutdown_tx.blocking_send(()).is_err() {
+                if shutdown_tx.try_send(()).is_err() {
                     tracing::error!("Should be able to send shutdown signal");
                 }
                 ServiceControlHandlerResult::NoError
@@ -340,7 +341,7 @@ async fn service_run_async(
         &mut signals,
         telemetry
     ));
-    match future::select(listen_fut, pin!(shutdown_rx.recv())).await {
+    match future::select(listen_fut, shutdown_rx.next()).await {
         Either::Left((Err(error), _)) => Err(error).context("`ipc_listen` threw an error"),
         Either::Left((Ok(()), _)) => {
             bail!("Impossible - Shouldn't catch Ctrl+C when running as a Windows service")
