@@ -1,11 +1,10 @@
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
-use caps::{CapSet, Capability};
 use clap::Parser;
 use firezone_bin_shared::{
     http_health_check,
-    linux::{tcp_socket_factory, udp_socket_factory},
+    platform::{tcp_socket_factory, udp_socket_factory},
     TunDeviceManager,
 };
 use firezone_logging::anyhow_dyn_err;
@@ -35,6 +34,7 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     #[expect(clippy::print_stderr, reason = "No logger has been set up yet")]
+    #[cfg(target_os = "linux")]
     if !has_necessary_permissions() && !cli.no_check {
         eprintln!(
             "firezone-gateway needs to be executed as `root` or with the `CAP_NET_ADMIN` capability.\nSee https://www.firezone.dev/kb/deploy/gateways#permissions for details."
@@ -84,10 +84,11 @@ fn main() -> ExitCode {
 }
 
 #[must_use]
+#[cfg(target_os = "linux")]
 fn has_necessary_permissions() -> bool {
     let is_root = nix::unistd::Uid::current().is_root();
     let has_net_admin =
-        caps::has_cap(None, CapSet::Effective, Capability::CAP_NET_ADMIN).is_ok_and(|b| b);
+        caps::has_cap(None, caps::CapSet::Effective, caps::Capability::CAP_NET_ADMIN).is_ok_and(|b| b);
 
     is_root || has_net_admin
 }
