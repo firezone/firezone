@@ -22,7 +22,6 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{ready, Poll};
 use std::time::{Duration, Instant};
-use tokio::signal::unix;
 use tracing::{level_filters::LevelFilter, Subscriber};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
@@ -332,7 +331,8 @@ struct Eventloop<R> {
     channel: Option<PhoenixChannel<JoinMessage, IngressMessage, (), NoParams>>,
     sleep: Sleep,
 
-    sigterm: unix::Signal,
+    #[cfg(unix)]
+    sigterm: tokio::signal::unix::Signal,
     shutting_down: bool,
 
     stats_log_interval: tokio::time::Interval,
@@ -385,7 +385,8 @@ where
             sockets,
             buffer: [0u8; MAX_UDP_SIZE],
             last_heartbeat_sent,
-            sigterm: unix::signal(unix::SignalKind::terminate())?,
+            #[cfg(unix)]
+            sigterm: tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?,
             shutting_down: false,
         })
     }
@@ -540,6 +541,7 @@ where
                 Some(Poll::Pending) | None => {}
             }
 
+            #[cfg(unix)]
             match self.sigterm.poll_recv(cx) {
                 Poll::Ready(Some(())) => {
                     if self.shutting_down {
