@@ -3,7 +3,6 @@ use clap::{Args, Parser};
 use firezone_gui_client_common::{
     self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
-use firezone_logging::anyhow_dyn_err;
 use firezone_telemetry as telemetry;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
@@ -54,7 +53,7 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
-                tracing::error!(error = anyhow_dyn_err(&error), "Error in `OpenDeepLink`");
+                tracing::error!("Error in `OpenDeepLink`: {error:#}");
             }
             Ok(())
         }
@@ -79,7 +78,7 @@ pub(crate) fn run() -> Result<()> {
 
                 // Because of <https://github.com/firezone/firezone/issues/3567>,
                 // errors returned from `gui::run` may not be logged correctly
-                tracing::error!(error = anyhow_dyn_err(error));
+                tracing::error!("{error:#}");
             }
             Ok(result?)
         }
@@ -131,7 +130,7 @@ fn run_gui(cli: Cli) -> Result<()> {
             }
 
             common::errors::show_error_dialog(anyhow.to_string())?;
-            tracing::error!(error = anyhow_dyn_err(&anyhow), "GUI failed");
+            tracing::error!("GUI failed: {anyhow:#}");
 
             Err(anyhow)
         }

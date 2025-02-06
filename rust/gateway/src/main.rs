@@ -8,7 +8,7 @@ use firezone_bin_shared::{
     linux::{tcp_socket_factory, udp_socket_factory},
     TunDeviceManager,
 };
-use firezone_logging::anyhow_dyn_err;
+
 use firezone_telemetry::Telemetry;
 use firezone_tunnel::GatewayTunnel;
 use phoenix_channel::get_user_agent;
@@ -75,7 +75,7 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
         Err(e) => {
-            tracing::error!(error = anyhow_dyn_err(&e));
+            tracing::error!("{e:#}");
             runtime.block_on(telemetry.stop_on_crash());
 
             ExitCode::FAILURE

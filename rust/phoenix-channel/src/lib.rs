@@ -15,7 +15,7 @@ use std::{io, mem};
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use base64::Engine;
-use firezone_logging::{err_with_src, std_dyn_err, telemetry_span};
+use firezone_logging::{err_with_src, telemetry_span};
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use heartbeat::{Heartbeat, MissedLastHeartbeat};
@@ -384,7 +384,7 @@ where
                         return Poll::Ready(Ok(Event::Closed));
                     }
                     Poll::Ready(Err(e)) => {
-                        tracing::warn!(error = std_dyn_err(&e), "Error while closing websocket");
+                        tracing::warn!("Error while closing websocket: {}", err_with_src(&e));
 
                         return Poll::Ready(Ok(Event::Closed));
                     }
@@ -510,10 +510,7 @@ where
                             continue;
                         }
                         Err(e) => {
-                            tracing::warn!(
-                                error = std_dyn_err(&e),
-                                "Failed to deserialize message"
-                            );
+                            tracing::warn!("Failed to deserialize message: {}", err_with_src(&e));
                             continue;
                         }
                     };

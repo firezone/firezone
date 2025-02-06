@@ -10,7 +10,7 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
-use firezone_logging::{anyhow_dyn_err, sentry_layer, std_dyn_err, telemetry_span};
+use firezone_logging::{err_with_src, sentry_layer, telemetry_span};
 use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
@@ -191,7 +191,7 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     ))
     .inspect(|_| rt.block_on(telemetry.stop()))
     .inspect_err(|e| {
-        tracing::error!(error = anyhow_dyn_err(e), "IPC service failed");
+        tracing::error!("IPC service failed: {e:#}");
 
         rt.block_on(telemetry.stop_on_crash())
     })
@@ -361,10 +361,7 @@ impl<'a> Handler<'a> {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Callback(x) => {
                     if let Err(error) = self.handle_connlib_cb(x).await {
-                        tracing::error!(
-                            error = anyhow_dyn_err(&error),
-                            "Error while handling connlib callback"
-                        );
+                        tracing::error!("Error while handling connlib callback: {error:#}");
                         continue;
                     }
                 }
@@ -378,10 +375,7 @@ impl<'a> Handler<'a> {
                     let _entered =
                         tracing::error_span!("handle_ipc_msg", msg = %msg_variant).entered();
                     if let Err(error) = self.handle_ipc_msg(msg).await {
-                        tracing::error!(
-                            error = anyhow_dyn_err(&error),
-                            "Error while handling IPC message from client"
-                        );
+                        tracing::error!("Error while handling IPC message from client: {error:#}");
                         continue;
                     }
                 }
@@ -390,10 +384,7 @@ impl<'a> Handler<'a> {
                     break HandlerOk::ClientDisconnected;
                 }
                 Event::IpcError(error) => {
-                    tracing::error!(
-                        error = anyhow_dyn_err(&error),
-                        "Error while deserializing IPC message"
-                    );
+                    tracing::error!("Error while deserializing IPC message: {error:#}");
                     continue;
                 }
                 Event::Terminate => {
@@ -531,7 +522,7 @@ impl<'a> Handler<'a> {
                 if let Err(e) = AtomicFile::new(&path, OverwriteBehavior::AllowOverwrite)
                     .write(|f| f.write_all(directives.as_bytes()))
                 {
-                    tracing::warn!(path = %path.display(), %directives, error = std_dyn_err(&e), "Failed to write new log directives");
+                    tracing::warn!(path = %path.display(), %directives, "Failed to write new log directives: {}", err_with_src(&e));
                 }
             }
             ClientMsg::Reset => {

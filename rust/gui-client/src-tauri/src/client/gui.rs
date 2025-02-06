@@ -17,7 +17,7 @@ use firezone_gui_client_common::{
     updates,
 };
 use firezone_headless_client::LogFilterReloader;
-use firezone_logging::{anyhow_dyn_err, std_dyn_err};
+use firezone_logging::err_with_src;
 use firezone_telemetry as telemetry;
 use futures::FutureExt;
 use secrecy::{ExposeSecret as _, SecretString};
@@ -149,7 +149,7 @@ pub(crate) fn run(
                 // Closing the window fully seems to deallocate it or something.
 
                 if let Err(e) = window.hide() {
-                    tracing::warn!(error = std_dyn_err(&e), "Failed to hide window")
+                    tracing::warn!("Failed to hide window: {}", err_with_src(&e))
                 };
                 api.prevent_close();
             }
@@ -174,7 +174,7 @@ pub(crate) fn run(
             tokio::spawn(async move {
                 if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await
                 {
-                    tracing::error!(error = anyhow_dyn_err(&error), "Error in updates::checker_task");
+                    tracing::error!("Error in updates::checker_task: {error:#}");
                 }
             });
 
@@ -182,7 +182,7 @@ pub(crate) fn run(
                 let ctlr_tx = ctlr_tx.clone();
                 tokio::spawn(async move {
                     if let Err(error) = smoke_test(ctlr_tx).await {
-                        tracing::error!(error = anyhow_dyn_err(&error), "Error during smoke test, crashing on purpose so a dev can see our stacktraces");
+                        tracing::error!("Error during smoke test, crashing on purpose so a dev can see our stacktraces: {error:#}");
                         unsafe { sadness_generator::raise_segfault() }
                     }
                 });
@@ -261,9 +261,9 @@ pub(crate) fn run(
                         1
                     }
                     Ok(Err(error)) => {
-                        tracing::error!(error = std_dyn_err(&error), "run_controller returned an error");
+                        tracing::error!("run_controller returned an error: {}", err_with_src(&error));
                         if let Err(e) = errors::show_error_dialog(error.user_friendly_msg()) {
-                            tracing::error!(error = anyhow_dyn_err(&e), "Failed to show error dialog");
+                            tracing::error!("Failed to show error dialog: {e:#}");
                         }
                         telemetry.stop_on_crash().await;
                         1
@@ -399,7 +399,7 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
                 tracing::debug!("Accepted deep-link but read 0 bytes, trying again ...");
             }
             Err(error) => {
-                tracing::warn!(error = anyhow_dyn_err(&error), "Failed to accept deep link")
+                tracing::warn!("Failed to accept deep link: {error:#}")
             }
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.

@@ -12,7 +12,7 @@ use crate::{ClientSocket, IpStack, PeerSocket};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
-use firezone_logging::std_dyn_err;
+use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt as _;
 use opentelemetry::metrics::{Counter, UpDownCounter};
 use opentelemetry::KeyValue;
@@ -338,7 +338,7 @@ where
                 {
                     Ok(message) => message,
                     Err(e) => {
-                        tracing::warn!(target: "relay", error = std_dyn_err(&e), "Failed to create error response");
+                        tracing::warn!(target: "relay", "Failed to create error response: {}", err_with_src(&e));
                         return None;
                     }
                 }
@@ -947,7 +947,7 @@ where
             Ok(message) => message,
             Err(e) => {
                 let (error_response, msg) = make_error_response(ServerError, request);
-                tracing::warn!(target: "relay", error = std_dyn_err(&e), "{msg}: Failed to authenticate message");
+                tracing::warn!(target: "relay", "{msg}: Failed to authenticate message: {}", err_with_src(&e));
 
                 AuthenticatedMessage::new_dangerous_unauthenticated(error_response)
             }

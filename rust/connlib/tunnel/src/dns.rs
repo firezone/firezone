@@ -10,7 +10,7 @@ use domain::{
     },
     dep::octseq::OctetsInto,
 };
-use firezone_logging::{anyhow_dyn_err, std_dyn_err, telemetry_span};
+use firezone_logging::{err_with_src, telemetry_span};
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::io;
@@ -138,7 +138,7 @@ impl StubResolver {
         let parsed_pattern = match Pattern::new(&pattern) {
             Ok(p) => p,
             Err(e) => {
-                tracing::warn!(error = std_dyn_err(&e), %pattern, "Domain pattern is not valid");
+                tracing::warn!(%pattern, "Domain pattern is not valid: {}", err_with_src(&e));
                 return false;
             }
         };
@@ -231,7 +231,7 @@ impl StubResolver {
         match self.try_handle(message) {
             Ok(s) => s,
             Err(e) => {
-                tracing::warn!(error = anyhow_dyn_err(&e), "Failed to handle DNS query");
+                tracing::warn!("Failed to handle DNS query: {e:#}");
 
                 ResolveStrategy::LocalResponse(servfail(message))
             }
@@ -342,7 +342,7 @@ pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
     let pattern = match Pattern::new(resource) {
         Ok(p) => p,
         Err(e) => {
-            tracing::warn!(error = std_dyn_err(&e), %resource, "Unable to parse pattern");
+            tracing::warn!(%resource, "Unable to parse pattern: {}", err_with_src(&e));
             return false;
         }
     };

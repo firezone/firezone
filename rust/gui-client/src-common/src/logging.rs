@@ -2,7 +2,7 @@
 
 use anyhow::{bail, Context as _, Result};
 use firezone_headless_client::{known_dirs, LogFilterReloader};
-use firezone_logging::std_dyn_err;
+use firezone_logging::err_with_src;
 use serde::Serialize;
 use std::{
     fs,
@@ -69,8 +69,8 @@ pub fn setup(directives: &str) -> Result<Handles> {
 
     if let Err(error) = output_vt100::try_init() {
         tracing::debug!(
-            error = std_dyn_err(&error),
-            "Failed to init vt100 terminal colors (expected in release builds and in CI)"
+            "Failed to init vt100 terminal colors (expected in release builds and in CI): {}",
+            err_with_src(&error)
         );
     }
 

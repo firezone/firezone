@@ -7,7 +7,6 @@
 
 use anyhow::Result;
 use firezone_bin_shared::platform::DnsControlMethod;
-use firezone_logging::anyhow_dyn_err;
 use std::net::IpAddr;
 
 #[cfg(target_os = "linux")]
@@ -34,10 +33,7 @@ pub struct DnsController {
 impl Drop for DnsController {
     fn drop(&mut self) {
         if let Err(error) = self.deactivate() {
-            tracing::error!(
-                error = anyhow_dyn_err(&error),
-                "Failed to deactivate DNS control"
-            );
+            tracing::error!("Failed to deactivate DNS control: {error:#}");
         }
     }
 }

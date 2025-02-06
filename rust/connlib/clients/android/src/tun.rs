@@ -71,7 +71,7 @@ impl Tun {
                         read,
                         write,
                     ),
-                    "Failed to send / recv from TUN device"
+                    "Failed to send / recv from TUN device: {}"
                 )
             })
             .map_err(io::Error::other)?;
