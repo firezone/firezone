@@ -18,6 +18,9 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# Show the binary directory
+Get-ChildItem -Path "./target/debug"
+
 # Return to the original directory.
 Set-Location ..
 
