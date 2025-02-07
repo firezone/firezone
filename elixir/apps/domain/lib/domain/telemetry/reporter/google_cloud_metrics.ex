@@ -267,31 +267,35 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
       end)
 
     case Repo.transaction(fn ->
-      case update_last_flushed_at() do
-        {:ok, _} -> :ok
+           case update_last_flushed_at() do
+             {:ok, _} ->
+               :ok
 
-        {:error, changeset} ->
-          Logger.info(
-            "Failed to update last_flushed_at. Waiting for next flush.",
-            changeset: inspect(changeset)
-          )
-          Repo.rollback(:nolock)
-      end
+             {:error, changeset} ->
+               Logger.info(
+                 "Failed to update last_flushed_at. Waiting for next flush.",
+                 changeset: inspect(changeset)
+               )
 
-      case GoogleCloudPlatform.send_metrics(project_id, time_series) do
-        :ok ->
-          :ok
+               Repo.rollback(:nolock)
+           end
 
-        {:error, reason} ->
-          Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
-            reason: inspect(reason),
-            count: buffer_size
-          )
-          Repo.rollback(:api)
-      end
-    end) do
+           case GoogleCloudPlatform.send_metrics(project_id, time_series) do
+             :ok ->
+               :ok
+
+             {:error, reason} ->
+               Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
+                 reason: inspect(reason),
+                 count: buffer_size
+               )
+
+               Repo.rollback(:api)
+           end
+         end) do
       {:ok, _} -> {0, %{}}
-      {:error, :api} -> {0, %{}} # clear buffer in case of API errors
+      # clear buffer in case of API errors
+      {:error, :api} -> {0, %{}}
       {:error, :nolock} -> {buffer_size, buffer}
     end
   end
