@@ -108,5 +108,10 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
+# -------------------------------------------------------------------
+# Test 7: Fails because the user is not allowed to read the token
+# TODO: Implement this test. Requires implementing the check_token_permissions
+# function in rust/headless-client/src/windows.rs
+
 # Redundant exit with success.
 exit 0

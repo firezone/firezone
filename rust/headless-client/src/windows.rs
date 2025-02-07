@@ -16,10 +16,12 @@ pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn default_token_path() -> PathBuf {
-    get_known_folder_path(KnownFolder::ProgramData)?
-        .join(BUNDLE_ID)
-        .join("token.txt")
+pub(crate) fn default_token_path() -> Option<PathBuf> {
+    Some(
+        get_known_folder_path(KnownFolder::ProgramData)?
+            .join(BUNDLE_ID)
+            .join("token.txt"),
+    )
 }
 
 // Does nothing on Windows. On Linux this notifies systemd that we're ready.
