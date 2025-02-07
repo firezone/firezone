@@ -155,29 +155,13 @@ jobs:
           fi
 
           cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }}
+          mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe $ARTIFACT_PATH
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.release_name }}
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -xe
-
-          # Only clobber existing release assets if the release is a draft
-          is_draft=$(gh release view ${{ matrix.release_name }} --json isDraft --jq '.isDraft' | tr -d '\n')
-          if [[ "$is_draft" == "true" ]]; then
-            clobber="--clobber"
-          else
-            clobber=""
-          fi
-
-          # Used for release artifact
-          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.package }} $BINARY_DEST_PATH
-          sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
-          gh release upload ${{ matrix.release_name }} \
-            ${{ env.BINARY_DEST_PATH }} \
-            ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
-            $clobber \
-            --repo ${{ github.repository }}
+        run: scripts/upload/github-release.sh
 
   data-plane-linux:
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
