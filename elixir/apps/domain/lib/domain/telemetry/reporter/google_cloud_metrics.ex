@@ -120,9 +120,14 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
   end
 
   def handle_info(:flush, {events, project_id, {resource, labels}, {buffer_size, buffer}}) do
+    log =
+      Log.Query.all()
+      |> Log.Query.by_reporter_module("#{__MODULE__}")
+      |> Repo.one()
+
     {buffer_size, buffer} =
-      if can_flush?() do
-        flush(project_id, resource, labels, {buffer_size, buffer})
+      if can_flush?(log) do
+        flush(project_id, resource, labels, {buffer_size, buffer}, log)
       else
         {buffer_size, buffer}
       end
@@ -134,21 +139,14 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
     {:noreply, {events, project_id, {resource, labels}, {buffer_size, buffer}}}
   end
 
-  defp can_flush? do
-    Log.Query.all()
-    |> Log.Query.by_reporter_module("#{__MODULE__}")
-    |> Repo.one()
-    |> case do
-      nil ->
-        true
+  defp can_flush?(nil), do: true
 
-      %Log{} = log ->
-        last_flushed_at = log.last_flushed_at
-        now = DateTime.utc_now()
-        diff = DateTime.diff(now, last_flushed_at, :second)
+  defp can_flush?(log) do
+    last_flushed_at = log.last_flushed_at
+    now = DateTime.utc_now()
+    diff = DateTime.diff(now, last_flushed_at, :second)
 
-        diff >= @flush_interval
-    end
+    diff >= @flush_interval
   end
 
   # counts the total number of emitted events
@@ -258,7 +256,13 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
     value_buckets ++ [0]
   end
 
-  defp flush(project_id, resource, labels, {buffer_size, buffer}) do
+  defp flush(
+         project_id,
+         resource,
+         labels,
+         {buffer_size, buffer},
+         log \\ %Log{reporter_module: "#{__MODULE__}"}
+       ) do
     time_series =
       buffer
       |> Enum.flat_map(fn {{schema, name, tags, unit}, measurements} ->
@@ -266,48 +270,37 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
         format_time_series(schema, name, labels, resource, measurements, unit)
       end)
 
-    case Repo.transaction(fn ->
-           case update_last_flushed_at() do
-             {:ok, _} ->
-               :ok
+    case update_last_flushed_at(log) do
+      {:ok, _} ->
+        case GoogleCloudPlatform.send_metrics(project_id, time_series) do
+          :ok ->
+            :ok
 
-             {:error, changeset} ->
-               Logger.info(
-                 "Failed to update last_flushed_at. Waiting for next flush.",
-                 changeset: inspect(changeset)
-               )
+          {:error, reason} ->
+            Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
+              reason: inspect(reason),
+              count: buffer_size
+            )
+        end
 
-               Repo.rollback(:nolock)
-           end
+        {0, %{}}
 
-           case GoogleCloudPlatform.send_metrics(project_id, time_series) do
-             :ok ->
-               :ok
+      {:error, changeset} ->
+        Logger.info(
+          "Failed to update last_flushed_at. Waiting for next flush.",
+          changeset: inspect(changeset)
+        )
 
-             {:error, reason} ->
-               Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
-                 reason: inspect(reason),
-                 count: buffer_size
-               )
-
-               Repo.rollback(:api)
-           end
-         end) do
-      {:ok, _} -> {0, %{}}
-      # clear buffer in case of API errors
-      {:error, :api} -> {0, %{}}
-      {:error, :nolock} -> {buffer_size, buffer}
+        {buffer_size, buffer}
     end
   end
 
-  defp update_last_flushed_at do
-    Log.Query.all()
-    |> Log.Query.by_reporter_module("#{__MODULE__}")
-    |> Repo.one()
-    |> case do
-      nil -> %Log{reporter_module: "#{__MODULE__}"}
-      log -> log
-    end
+  defp update_last_flushed_at(nil) do
+    update_last_flushed_at(%Log{reporter_module: "#{__MODULE__}"})
+  end
+
+  defp update_last_flushed_at(log) do
+    log
     |> Log.Changeset.changeset()
     |> Log.Changeset.update_last_flushed_at_with_lock(DateTime.utc_now())
     |> Repo.insert_or_update()
