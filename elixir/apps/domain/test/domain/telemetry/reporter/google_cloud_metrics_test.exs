@@ -559,7 +559,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
       tags = {%{type: "test"}, %{app: "myapp"}}
 
       {_, _, _, {buffer_size, buffer}} =
-        Enum.reduce(1..1001, {[], "proj", tags, {0, %{}}}, fn i, state ->
+        Enum.reduce(1..201, {[], "proj", tags, {0, %{}}}, fn i, state ->
           {:noreply, state} =
             handle_info(
               {:compressed_metrics,
@@ -573,7 +573,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
       assert buffer_size == 1
 
       assert buffer == %{
-               {Telemetry.Metrics.Counter, [:foo, 1001], %{}, :request} => {now, now, 1}
+               {Telemetry.Metrics.Counter, [:foo, 201], %{}, :request} => {now, now, 1}
              }
 
       assert_receive {:bypass_request, _conn, %{"timeSeries" => time_series}}

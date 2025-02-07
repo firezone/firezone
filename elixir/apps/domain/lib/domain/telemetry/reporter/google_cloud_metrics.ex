@@ -18,10 +18,16 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
 
   # Maximum number of metrics a buffer can hold,
   # after this count they will be delivered or flushed right away.
-  @buffer_size 1000
+  # This is bounded by the maximum number of time series points we can
+  # send in a single Google Cloud Metrics API call.
+  # See https://cloud.google.com/monitoring/quotas#custom_metrics_quotas
+  @buffer_size 200
 
   # Maximum time in seconds to wait before flushing the buffer
   # in case it did not reach the @buffer_size limit within the flush interval
+  # This is bounded by the maximum rate we can send metrics to Google Cloud.
+  # A locking mechanism is used to ensure multiple nodes flushing
+  # metrics independently don't exceed this in aggregate.
   @flush_interval 5
   @flush_timer :timer.seconds(@flush_interval)
 
@@ -253,28 +259,27 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
   end
 
   defp flush(project_id, resource, labels, {buffer_size, buffer}) do
-    buffer
-    |> Enum.flat_map(fn {{schema, name, tags, unit}, measurements} ->
-      labels = Map.merge(labels, tags) |> truncate_labels()
-      format_time_series(schema, name, labels, resource, measurements, unit)
-    end)
-    |> Enum.chunk_every(200)
-    |> Enum.each(fn time_series ->
+    time_series =
+      buffer
+      |> Enum.flat_map(fn {{schema, name, tags, unit}, measurements} ->
+        labels = Map.merge(labels, tags) |> truncate_labels()
+        format_time_series(schema, name, labels, resource, measurements, unit)
+      end)
+
+    case Repo.transaction(fn ->
+      case update_last_flushed_at() do
+        {:ok, _} -> :ok
+
+        {:error, changeset} ->
+          Logger.info(
+            "Failed to update last_flushed_at. Waiting for next flush.",
+            changeset: inspect(changeset)
+          )
+          Repo.rollback(:nolock)
+      end
+
       case GoogleCloudPlatform.send_metrics(project_id, time_series) do
         :ok ->
-          Log.Query.all()
-          |> Log.Query.by_reporter_module("#{__MODULE__}")
-          |> Repo.one()
-          |> case do
-            nil -> %Log{}
-            log -> log
-          end
-          |> Log.Changeset.changeset(%{
-            reporter_module: "#{__MODULE__}",
-            last_flushed_at: DateTime.utc_now()
-          })
-          |> Repo.insert_or_update!()
-
           :ok
 
         {:error, reason} ->
@@ -282,10 +287,26 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
             reason: inspect(reason),
             count: buffer_size
           )
+          Repo.rollback(:api)
       end
-    end)
+    end) do
+      {:ok, _} -> {0, %{}}
+      {:error, :api} -> {0, %{}} # clear buffer in case of API errors
+      {:error, :nolock} -> {buffer_size, buffer}
+    end
+  end
 
-    {0, %{}}
+  defp update_last_flushed_at do
+    Log.Query.all()
+    |> Log.Query.by_reporter_module("#{__MODULE__}")
+    |> Repo.one()
+    |> case do
+      nil -> %Log{reporter_module: "#{__MODULE__}"}
+      log -> log
+    end
+    |> Log.Changeset.changeset()
+    |> Log.Changeset.update_last_flushed_at_with_lock(DateTime.utc_now())
+    |> Repo.insert_or_update()
   end
 
   defp truncate_labels(labels) do
