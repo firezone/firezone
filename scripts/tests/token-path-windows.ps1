@@ -95,7 +95,10 @@ if ($LASTEXITCODE -ne 0) {
 # Move the token file to the default path.
 $defaultTokenDir = "$env:PROGRAMDATA\dev.firezone.client"
 New-Item -ItemType Directory -Path $defaultTokenDir -Force | Out-Null
-Move-Item -Path $TOKEN_PATH -Destination "$defaultTokenDir\token" -Force
+Move-Item -Path $TOKEN_PATH -Destination "$defaultTokenDir\token.txt" -Force
+
+# Show the contents of the default token directory.
+Get-ChildItem -Path $defaultTokenDir
 
 # -------------------------------------------------------------------
 # Test 6: Now the binary should pass using the token in the default path.
