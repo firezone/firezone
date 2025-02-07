@@ -186,7 +186,6 @@ jobs:
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 5
-      - run: |
-          ./scripts/tests/${{ matrix.test }}
+      - run: scripts/tests/${{ matrix.test }}
         name: "test script"
         working-directory: ./
