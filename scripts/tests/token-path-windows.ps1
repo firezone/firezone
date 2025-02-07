@@ -54,10 +54,18 @@ Remove-Item Env:FIREZONE_TOKEN
 
 # -------------------------------------------------------------------
 # Test 3: Fails because passing tokens as CLI args is not allowed.
-& ".\$BINARY_NAME" --check --token $TOKEN standalone
+try {
+    & ".\$BINARY_NAME" --check --token $TOKEN standalone
+} catch {
+    # Suppress the exception so the script can continue.
+    Write-Verbose "Caught exception: $_"
+}
+
 if ($LASTEXITCODE -eq 0) {
     Write-Error "Test 3: Expected failure when token is passed as a CLI argument."
     exit 1
+} else {
+    Write-Host "Test 3 passed: Non-zero exit code detected."
 }
 
 # -------------------------------------------------------------------
