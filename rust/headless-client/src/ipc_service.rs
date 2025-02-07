@@ -184,6 +184,7 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     let mut telemetry = Telemetry::default();
 
     rt.block_on(ipc_listen(
+        cli.common.tun_interface,
         cli.common.dns_control,
         &log_filter_reloader,
         &mut signals,
@@ -211,11 +212,13 @@ fn run_smoke_test() -> Result<()> {
     if !platform::elevation_check()? {
         bail!("IPC service failed its elevation check, try running as admin / root");
     }
+    let iface_name = "tun-firezone".to_string();
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
     let _guard = rt.enter();
     let mut dns_controller = DnsController {
+        iface_name: iface_name.clone(),
         dns_control_method: Default::default(),
     };
     // Deactivate Firezone DNS control in case the system or IPC service crashed
@@ -229,6 +232,7 @@ fn run_smoke_test() -> Result<()> {
         device_id::get_or_create().context("Failed to read / create device ID")?;
         let mut server = IpcServer::new(ServiceId::Prod).await?;
         let _ = Handler::new(
+            iface_name,
             &mut server,
             &mut dns_controller,
             &log_filter_reloader,
@@ -246,6 +250,7 @@ fn run_smoke_test() -> Result<()> {
 /// If an IPC client is connected when we catch a terminate signal, we send the
 /// client a hint about that before we exit.
 async fn ipc_listen(
+    iface_name: String,
     dns_control_method: DnsControlMethod,
     log_filter_reloader: &LogFilterReloader,
     signals: &mut signals::Terminate,
@@ -260,9 +265,13 @@ async fn ipc_listen(
     telemetry.set_firezone_id(firezone_id);
 
     let mut server = IpcServer::new(ServiceId::Prod).await?;
-    let mut dns_controller = DnsController { dns_control_method };
+    let mut dns_controller = DnsController {
+        iface_name: iface_name.clone(),
+        dns_control_method,
+    };
     loop {
         let mut handler_fut = pin!(Handler::new(
+            iface_name.clone(),
             &mut server,
             &mut dns_controller,
             log_filter_reloader,
@@ -326,6 +335,7 @@ enum HandlerOk {
 
 impl<'a> Handler<'a> {
     async fn new(
+        iface_name: String,
         server: &mut IpcServer,
         dns_controller: &'a mut DnsController,
         log_filter_reloader: &'a LogFilterReloader,
@@ -336,7 +346,8 @@ impl<'a> Handler<'a> {
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        let tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, crate::NUM_TUN_THREADS)?;
+        let tun_device =
+            TunDeviceManager::new(iface_name, ip_packet::MAX_IP_SIZE, crate::NUM_TUN_THREADS)?;
 
         Ok(Self {
             dns_controller,

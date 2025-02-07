@@ -144,7 +144,10 @@ fn main() -> Result<()> {
     // Deactivate DNS control before starting telemetry or connecting to the portal,
     // in case a previous run of Firezone left DNS control on and messed anything up.
     let dns_control_method = cli.common.dns_control;
-    let mut dns_controller = DnsController { dns_control_method };
+    let mut dns_controller = DnsController {
+        iface_name: cli.common.tun_interface.clone(),
+        dns_control_method,
+    };
     // Deactivate Firezone DNS control in case the system or IPC service crashed
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
@@ -231,6 +234,7 @@ fn main() -> Result<()> {
         let mut hangup = signals::Hangup::new()?;
 
         let mut tun_device = TunDeviceManager::new(
+            cli.common.tun_interface,
             ip_packet::MAX_IP_SIZE,
             firezone_headless_client::NUM_TUN_THREADS,
         )?;

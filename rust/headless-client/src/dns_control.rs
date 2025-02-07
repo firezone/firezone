@@ -28,6 +28,7 @@ use platform::system_resolvers;
 ///
 /// Only one of these should exist on the entire system at a time.
 pub struct DnsController {
+    pub iface_name: String,
     pub dns_control_method: DnsControlMethod,
 }
 

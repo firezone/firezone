@@ -20,6 +20,7 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     let mut telemetry = Telemetry::default();
 
     rt.block_on(super::ipc_listen(
+        cli.tun_interface,
         cli.dns_control,
         &log_filter_reloader,
         &mut signals,

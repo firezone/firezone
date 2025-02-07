@@ -38,6 +38,7 @@ const FIREZONE_TABLE: u32 = 0x2021_fd00;
 
 /// For lack of a better name
 pub struct TunDeviceManager {
+    iface_name: String,
     mtu: u32,
     num_threads: usize,
     connection: Connection,
@@ -56,17 +57,16 @@ impl Drop for TunDeviceManager {
 }
 
 impl TunDeviceManager {
-    pub const IFACE_NAME: &'static str = "tun-firezone";
-
     /// Creates a new managed tunnel device.
     ///
     /// Panics if called without a Tokio runtime.
-    pub fn new(mtu: usize, num_threads: usize) -> Result<Self> {
+    pub fn new(iface_name: String, mtu: usize, num_threads: usize) -> Result<Self> {
         let (cxn, handle, _) = new_connection().context("Failed to create netlink connection")?;
         let task = tokio::spawn(cxn);
         let connection = Connection { handle, task };
 
         Ok(Self {
+            iface_name,
             connection,
             routes: Default::default(),
             mtu: mtu as u32,
@@ -75,22 +75,20 @@ impl TunDeviceManager {
     }
 
     pub fn make_tun(&mut self) -> Result<Tun> {
-        Ok(Tun::new(self.num_threads)?)
+        Ok(Tun::new(self.iface_name.clone(), self.num_threads)?)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
-        let name = Self::IFACE_NAME;
-
         let handle = &self.connection.handle;
         let index = handle
             .link()
             .get()
-            .match_name(name.to_string())
+            .match_name(self.iface_name.clone())
             .execute()
             .try_next()
             .await?
-            .ok_or_else(|| anyhow!("Interface '{name}' does not exist"))?
+            .ok_or_else(|| anyhow!("Interface '{}' does not exist", self.iface_name))?
             .header
             .index;
 
@@ -176,7 +174,7 @@ impl TunDeviceManager {
         let index = handle
             .link()
             .get()
-            .match_name(Self::IFACE_NAME.to_string())
+            .match_name(self.iface_name.clone())
             .execute()
             .try_next()
             .await?
@@ -296,19 +294,20 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
 
 #[derive(Debug)]
 pub struct Tun {
+    iface_name: String,
     outbound_tx: flume::r#async::SendSink<'static, IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
 impl Tun {
-    pub fn new(num_threads: usize) -> io::Result<Self> {
+    pub fn new(iface_name: String, num_threads: usize) -> io::Result<Self> {
         create_tun_device()?;
 
         let (inbound_tx, inbound_rx) = mpsc::channel(1000);
         let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
 
         for n in 0..num_threads {
-            let fd = open_tun()?;
+            let fd = open_tun(&iface_name)?;
             let outbound_rx = outbound_rx.clone().into_stream();
             let inbound_tx = inbound_tx.clone();
 
@@ -324,13 +323,14 @@ impl Tun {
         }
 
         Ok(Self {
+            iface_name,
             outbound_tx: outbound_tx.into_sink(),
             inbound_rx,
         })
     }
 }
 
-fn open_tun() -> Result<TunFd, io::Error> {
+fn open_tun(iface_name: &str) -> Result<TunFd, io::Error> {
     let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
         -1 => return Err(get_last_error()),
         fd => fd,
@@ -340,7 +340,7 @@ fn open_tun() -> Result<TunFd, io::Error> {
         ioctl::exec(
             fd,
             TUNSETIFF,
-            &mut ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME),
+            &mut ioctl::Request::<ioctl::SetTunFlagsPayload>::new(iface_name),
         )?;
     }
 
@@ -377,7 +377,7 @@ impl tun::Tun for Tun {
     }
 
     fn name(&self) -> &str {
-        TunDeviceManager::IFACE_NAME
+        &self.iface_name
     }
 }
 

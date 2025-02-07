@@ -1,6 +1,6 @@
 use super::DnsController;
 use anyhow::{bail, Context as _, Result};
-use firezone_bin_shared::{platform::DnsControlMethod, TunDeviceManager};
+use firezone_bin_shared::platform::DnsControlMethod;
 use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
@@ -29,7 +29,9 @@ impl DnsController {
                     .await
                     .context("Failed to `spawn_blocking` DNS control task")?
             }
-            DnsControlMethod::SystemdResolved => configure_systemd_resolved(&dns_config).await,
+            DnsControlMethod::SystemdResolved => {
+                configure_systemd_resolved(&self.iface_name, &dns_config).await
+            }
         }
         .context("Failed to control DNS")
     }
@@ -52,10 +54,10 @@ impl DnsController {
 ///
 /// Cancel safety: Cancelling the future may leave running subprocesses
 /// which should eventually exit on their own.
-async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
-    configure_dns_for_tun("dns", dns_config).await?;
-    configure_dns_for_tun("domain", &["~."]).await?;
-    configure_dns_for_tun("llmnr", &[false]).await?; // Must disable LLMNR to not interfere with local search domains.
+async fn configure_systemd_resolved(iface_name: &str, dns_config: &[IpAddr]) -> Result<()> {
+    configure_dns_for_tun(iface_name, "dns", dns_config).await?;
+    configure_dns_for_tun(iface_name, "domain", &["~."]).await?;
+    configure_dns_for_tun(iface_name, "llmnr", &[false]).await?; // Must disable LLMNR to not interfere with local search domains.
 
     tracing::info!(?dns_config, "Configured DNS sentinels with `resolvectl`");
 
@@ -63,10 +65,14 @@ async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
 }
 
 /// Executes the provided `resolvectl` command for our TUN device.
-async fn configure_dns_for_tun(cmd: &str, params: &[impl ToString]) -> Result<()> {
+async fn configure_dns_for_tun(
+    iface_name: &str,
+    cmd: &str,
+    params: &[impl ToString],
+) -> Result<()> {
     let status = tokio::process::Command::new("resolvectl")
         .arg(cmd)
-        .arg(TunDeviceManager::IFACE_NAME)
+        .arg(iface_name)
         .args(params.iter().map(ToString::to_string))
         .status()
         .await

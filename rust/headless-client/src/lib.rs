@@ -68,6 +68,10 @@ pub struct CliCommon {
     /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
     #[arg(short, long, env = "MAX_PARTITION_TIME")]
     pub max_partition_time: Option<humantime::Duration>,
+
+    /// Name of the TUN interface that will be created for this client
+    #[arg(long, env = "FIREZONE_TUN_INTERFACE", default_value_t = ("tun-firezone".to_string()))]
+    pub tun_interface: String,
 }
 
 /// Messages that connlib can produce and send to the headless Client, IPC service, or GUI process.
