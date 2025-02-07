@@ -1,5 +1,6 @@
 # Define variables.
-$BINARY_NAME = "firezone-headless-client.exe"
+$PACKAGE_NAME = "firezone-headless-client"
+$BINARY_NAME = "$PACKAGE_NAME.exe"
 $TOKEN = "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAGUmu74wBYgABUYA.UN3vSLLcAMkHeEh5VHumPOutkuue8JA6wlxM9JxJEPE"
 $TOKEN_PATH = "token"
 
@@ -12,7 +13,7 @@ try {
 }
 
 # Build the binary using cargo.
-cargo build -p $BINARY_NAME
+cargo build -p $PACKAGE_NAME
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Cargo build failed."
     exit 1
