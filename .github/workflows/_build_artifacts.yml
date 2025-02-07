@@ -143,10 +143,6 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.target }}
-          # Cross doesn't support scccache without a lot of work
-          cache_backend: github
-          # Cache needs to be scoped per OS version and target since cross seems to clobber the cache
-          key: windows-2019-${{ matrix.target }}
       - name: Build binaries
         shell: bash
         run: |
