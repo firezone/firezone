@@ -120,6 +120,7 @@ defmodule Domain.Config.Definitions do
        ]},
       {"Instrumentation",
        [
+         :healthz_port,
          :instrumentation_client_logs_enabled,
          :instrumentation_client_logs_bucket,
          :telemetry_metrics_reporter,
@@ -473,6 +474,19 @@ defmodule Domain.Config.Definitions do
   ##############################################
   ## Telemetry
   ##############################################
+
+  @doc """
+  The port for the internal healthz endpoint.
+  """
+  defconfig(:healthz_port, :integer,
+    default: 4000,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
 
   @doc """
   Enable or disable the Firezone telemetry collection.
