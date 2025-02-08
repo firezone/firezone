@@ -6,11 +6,11 @@ import Image from "next/image";
 
 In this guide, we'll deploy a cluster of Firezone Gateways in a private subnet
 on AWS that are configured to egress traffic to the internet through an AWS
-[NAT Gateway](https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html).
+[Internet Gateway](https://docs.aws.amazon.com/vpc/latest/userguide/VPC_Internet_Gateway.html).
 
 ## Common use cases
 
-Use this guide to give your Firezone Clients a static, public IP address for
+Use this guide to give your Firezone Clients one or more public IP addresses for
 egress traffic to particular Resource(s). Here are some common use cases for
 this example:
 
@@ -46,15 +46,7 @@ load balance for each other.
 
 Simply update the number of `desired_capacity` to deploy more or fewer Firezone
 Gateways. There's no limit to the number of Firezone Gateways you can deploy in
-a single VPC. A basic AutoScaling Group is provisioned as part of the linked
-module.
-
-<Alert color="warning">
-  If you need more than 55,000 concurrent connections, you can increase the
-  number of IP addresses associated to the AWS NAT Gateway. See [AWS's
-  documentation](https://repost.aws/knowledge-center/vpc-resolve-port-allocation-errors)
-  for more information.
-</Alert>
+a single VPC.
 
 We've tested with `t3.nano` instances which still work quite well for most
 applications. However, you may want to consider a larger instance type if you
@@ -77,17 +69,21 @@ some general guidelines depending on your expected traffic.
 <Alert color="warning">
   If your AWS VPC has restrictive Network ACLs in place, you will need to allow
   UDP inbound traffic on ports `1024-65535` to allow connectivity from Firezone
-  Clients and Relays. See our [firewall
-  recommendations](/kb/deploy/gateways#inbound-ports) for more information.
+  Clients and Relays. For security groups, **no inbound ports are required**.
+  See our [firewall recommendations](/kb/deploy/gateways#inbound-ports) for more
+  information.
 </Alert>
 
-You can see the IP addresses assigned to the NAT Gateway in the Terraform
+You can see the IP addresses assigned to the Gateway instances in the Terraform
 output. These are the IP addresses that your Firezone Gateway(s) will share to
 egress traffic.
 
+These should match the IP addresses shown in the portal for the Gateway(s) you
+just provisioned:
+
 <Image
-  src="/images/kb/automate/terraform/azure/gateways.png"
-  alt="Firezone Gateways in the Azure portal"
+  src="/images/kb/automate/terraform/aws/gateways.png"
+  alt="Firezone Gateways in the dashboard"
   width={800}
   height={600}
 />
@@ -120,9 +116,8 @@ Firezone Gateway(s) and deploys new ones in their place.
 
 ## Output
 
-`nat_public_ip` will contain the public IP address of the NAT Gateway you can
-use to whitelist your Firezone Gateway(s) in your third-party or partner
-application.
+`public_ips` will contain the public Elastic IP address(es) you can use to
+whitelist your Firezone Gateway(s) in your third-party or partner application.
 
 # Cleanup
 
