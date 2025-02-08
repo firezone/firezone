@@ -26,16 +26,16 @@ on:
     outputs:
       client_image:
         description: "The client image that was built"
-        value: ${{ jobs.data-plane.outputs.client_image }}
+        value: ${{ jobs.data-plane-linux.outputs.client_image }}
       relay_image:
         description: "The relay image that was built"
-        value: ${{ jobs.data-plane.outputs.relay_image }}
+        value: ${{ jobs.data-plane-linux.outputs.relay_image }}
       gateway_image:
         description: "The gateway image that was built"
-        value: ${{ jobs.data-plane.outputs.gateway_image }}
+        value: ${{ jobs.data-plane-linux.outputs.gateway_image }}
       http_test_server_image:
         description: "The http_test_server image that was built"
-        value: ${{ jobs.data-plane.outputs.http_test_server_image }}
+        value: ${{ jobs.data-plane-linux.outputs.http_test_server_image }}
 
 permissions:
   # write permission is required to create a github release
@@ -116,7 +116,68 @@ jobs:
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
 
-  data-plane:
+  data-plane-windows:
+    name: client-windows-${{ matrix.target }}
+    runs-on: windows-2019
+    defaults:
+      run:
+        working-directory: rust
+    strategy:
+      fail-fast: false
+      matrix:
+        # TODO: Add ARM64 support
+        artifact: [firezone-client-headless-windows]
+        arch: [x86_64]
+        target: [x86_64-pc-windows-msvc]
+        package: [firezone-headless-client]
+        # mark:next-headless-version
+        release_name: [headless-client-1.4.2]
+        # mark:next-headless-version
+        version: [1.4.2]
+    env:
+      ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
+      RELEASE_NAME: ${{ matrix.release_name }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ inputs.sha }}
+      - uses: ./.github/actions/setup-rust
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build binaries
+        shell: bash
+        run: |
+          set -xe
+
+          if [[ "${{ inputs.profile }}" == "release" ]]; then
+            PROFILE="--release"
+          else
+            PROFILE=""
+          fi
+
+          cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }}
+          mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe $ARTIFACT_PATH
+      - name: Install AzureSignTool
+        shell: bash
+        # AzureSignTool >= 5 needs .NET 8. windows-2019 runner only has .NET 7.
+        run: dotnet tool install --global AzureSignTool --version 4.0.1
+      - name: Sign the binary
+        shell: bash
+        env:
+          AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
+        run: ../scripts/build/sign.sh $ARTIFACT_PATH
+      - name: Upload Release Assets
+        if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.release_name }}
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ../scripts/upload/github-release.sh
+
+  data-plane-linux:
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
     runs-on: ubuntu-22.04
     defaults:
@@ -328,7 +389,7 @@ jobs:
 
   merge-docker-artifacts:
     name: merge-${{ matrix.image.name }}
-    needs: data-plane
+    needs: data-plane-linux
     if: ${{ always() }}
     runs-on: ubuntu-22.04
     strategy:
