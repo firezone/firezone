@@ -162,7 +162,7 @@ jobs:
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: scripts/upload/github-release.sh
+        run: ../scripts/upload/github-release.sh
 
   data-plane-linux:
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
