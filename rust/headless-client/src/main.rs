@@ -63,13 +63,13 @@ struct Cli {
     ///
     /// Returns 1 if the configuration is wrong. Mostly non-destructive but may
     /// write a device ID to disk if one is not found.
-    #[arg(long)]
+    #[arg(long, hide = true)]
     check: bool,
 
     /// Connect to the Firezone network and initialize, then exit
     ///
     /// Use this to check how fast you can connect.
-    #[arg(long)]
+    #[arg(long, hide = true)]
     exit: bool,
 
     /// Friendly name for this client to display in the UI.
@@ -102,6 +102,7 @@ impl Cli {
 }
 
 #[derive(clap::Subcommand, Clone, Copy)]
+#[clap(hide = true)]
 enum Cmd {
     Standalone,
 }
