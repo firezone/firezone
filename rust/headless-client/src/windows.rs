@@ -5,6 +5,8 @@
 //! We must tell Windows explicitly when our service is stopping.
 
 use anyhow::Result;
+use firezone_bin_shared::BUNDLE_ID;
+use known_folders::{get_known_folder_path, KnownFolder};
 use std::path::{Path, PathBuf};
 
 // The return value is useful on Linux
@@ -14,9 +16,11 @@ pub(crate) fn check_token_permissions(_path: &Path) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn default_token_path() -> std::path::PathBuf {
-    // TODO: For Headless Client, system-wide default token path for Windows
-    PathBuf::from("token.txt")
+pub(crate) fn default_token_path() -> PathBuf {
+    get_known_folder_path(KnownFolder::ProgramData)
+        .expect("ProgramData folder not found. Is %PROGRAMDATA% set?")
+        .join(BUNDLE_ID)
+        .join("token.txt")
 }
 
 // Does nothing on Windows. On Linux this notifies systemd that we're ready.
