@@ -11,19 +11,8 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 
-# Show the binary directory
-Get-ChildItem -Path "./target/debug"
-
-# Return to the original directory.
-Set-Location ..
-
 # Move the binary from rust/target/debug to the current directory.
-try {
-    Move-Item "rust/target/debug/$BINARY_NAME" $BINARY_NAME -Force
-} catch {
-    Write-Error "Failed to move the binary."
-    exit 1
-}
+Move-Item "rust/target/debug/$BINARY_NAME" $BINARY_NAME -Force
 
 # -------------------------------------------------------------------
 # Test 1: Should fail because there's no token yet.
