@@ -157,6 +157,19 @@ jobs:
 
           cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }}
           mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe $ARTIFACT_PATH
+      - name: Install AzureSignTool
+        shell: bash
+        # AzureSignTool >= 5 needs .NET 8. windows-2019 runner only has .NET 7.
+        run: dotnet tool install --global AzureSignTool --version 4.0.1
+      - name: Sign the binary
+        shell: bash
+        env:
+          AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
+        run: ../scripts/build/sign.sh $ARTIFACT_PATH
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.release_name }}
         shell: bash
