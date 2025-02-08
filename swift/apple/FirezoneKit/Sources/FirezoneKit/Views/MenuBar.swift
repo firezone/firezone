@@ -845,9 +845,9 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private func setFavorited(id: String, favorited: Bool) {
     if favorited {
-      model.favorites.add(id)
+      Task { await model.favorites.add(id) }
     } else {
-      model.favorites.remove(id)
+      Task { await model.favorites.remove(id) }
     }
   }
 

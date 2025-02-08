@@ -370,7 +370,7 @@ public struct SettingsView: View {
                 "Reset to Defaults",
                 action: {
                   model.settings = Settings.defaultValue
-                  favorites.reset()
+                  Task { await favorites.reset() }
                 }
               )
               .disabled(favorites.ids.isEmpty && model.settings == Settings.defaultValue)
