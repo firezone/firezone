@@ -37,23 +37,25 @@ function Latest({
         <p>
           Version: <span className="font-semibold">{version}</span>
         </p>
-        <p>
+        <p className="mb-4 md:mb-6 xl:mb-8">
           Released:{" "}
           <span className="font-semibold">
             <time dateTime={date.toDateString()}>{utcDateString}</time>
           </span>
         </p>
-        <p className="mb-4 md:mb-6 xl:mb-8">
+        <ul className="mb-4 md:mb-6 xl:mb-8">
           {downloadLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={{ pathname: link.href.replace(":version", version) }}
-              className="hover:no-underline underline text-accent-500 mr-2"
-            >
-              {link.title}
-            </Link>
+            <li key={link.href}>
+              <Link
+                key={link.href}
+                href={{ pathname: link.href.replace(":version", version) }}
+                className="hover:no-underline underline text-accent-500 mr-2"
+              >
+                {link.title}
+              </Link>
+            </li>
           ))}
-        </p>
+        </ul>
         {children}
       </div>
     </>

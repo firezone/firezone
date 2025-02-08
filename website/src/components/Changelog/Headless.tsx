@@ -4,26 +4,38 @@ import Entries from "./Entries";
 import Link from "next/link";
 import Unreleased from "./Unreleased";
 
-export default function Headless() {
-  const downloadLinks = [
-    {
-      href: "/dl/firezone-client-headless-linux/:version/x86_64",
-      title: "Download for x86_64",
-    },
-    {
-      href: "/dl/firezone-client-headless-linux/:version/aarch64",
-      title: "Download for aarch64",
-    },
-    {
-      href: "/dl/firezone-client-headless-linux/:version/armv7",
-      title: "Download for armv7",
-    },
-  ];
+export default function Headless({ title }: { title: string }) {
+  const downloadLinks =
+    title === "Windows Headless"
+      ? [
+          {
+            href: "/dl/firezone-client-headless-windows/:version/x86_64",
+            title: "Download for x86_64",
+          },
+        ]
+      : [
+          {
+            href: "/dl/firezone-client-headless-linux/:version/x86_64",
+            title: "Download for x86_64",
+          },
+          {
+            href: "/dl/firezone-client-headless-linux/:version/aarch64",
+            title: "Download for aarch64",
+          },
+          {
+            href: "/dl/firezone-client-headless-linux/:version/armv7",
+            title: "Download for armv7",
+          },
+        ];
 
   return (
-    <Entries downloadLinks={downloadLinks} title="Linux headless">
+    <Entries downloadLinks={downloadLinks} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="8041">
+          Publishes the headless client for Windows.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.1" date={new Date("2025-01-28")}>
         <ChangeItem pull="7551">
           Fixes an issue where large DNS responses were incorrectly discarded.
