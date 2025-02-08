@@ -302,39 +302,6 @@ resource "google_monitoring_alert_policy" "sql_disk_utiliziation_policy" {
   }
 }
 
-resource "google_monitoring_alert_policy" "errors" {
-  project = var.project_id
-
-  display_name = "Errors in logs"
-  combiner     = "OR"
-
-  notification_channels = local.notification_channels
-
-  conditions {
-    display_name = "Log match condition"
-
-    condition_matched_log {
-      filter = <<-EOT
-      resource.type="gce_instance"
-      (severity>=ERROR OR "Kernel pid terminated" OR "Crash dump is being written")
-      -protoPayload.@type="type.googleapis.com/google.cloud.audit.AuditLog"
-      -logName:"/logs/GCEGuestAgent"
-      -logName:"/logs/OSConfigAgent"
-      -logName:"/logs/ops-agent-fluent-bit"
-      -"OpentelemetryFinch"
-      EOT
-    }
-  }
-
-  alert_strategy {
-    auto_close = "28800s"
-
-    notification_rate_limit {
-      period = "3600s"
-    }
-  }
-}
-
 resource "google_monitoring_alert_policy" "production_db_access_policy" {
   project = var.project_id
 
