@@ -12,25 +12,27 @@ import NetworkExtension
 
 @MainActor
 struct macOSAlert { // swiftlint:disable:this type_name
-  static func show(for error: Error) {
+  static func show(for error: Error) async {
     if let error = error as? OSSystemExtensionError,
-       // Expected in normal operation
-       error.code != .requestCanceled,
-       error.code != .requestSuperseded,
-       error.code != .authorizationRequired {
-      alert(message(for: error))
+       [
+        // Expected in normal operation
+        .requestCanceled,
+        .requestSuperseded,
+        .authorizationRequired
+       ].contains(error.code) {
+      return
     }
 
-    if let error = error as? NEVPNError {
-      alert(message(for: error))
-    }
+    await alert(message(for: error))
   }
 
-  private static func alert(_ messageText: String) {
+  private static func alert(_ messageText: String) async {
     let alert = NSAlert()
     alert.messageText = messageText
     alert.alertStyle = .critical
-    _ = alert.runModal()
+    _ = await withCheckedContinuation { continuation in
+      continuation.resume(returning: alert.runModal())
+    }
   }
 
   // NEVPNError
@@ -188,6 +190,11 @@ struct macOSAlert { // swiftlint:disable:this type_name
         return "\(error)"
       }
     }()
+  }
+
+  // Error (fallback case)
+  private static func message(for error: Error) -> String {
+    return "\(error)"
   }
 }
 

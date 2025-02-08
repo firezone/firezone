@@ -18,7 +18,10 @@ struct WebAuthSession {
     guard let authURL = store.authURL(),
           let authClient = try? AuthClient(authURL: authURL),
           let url = try? authClient.build()
-    else { fatalError("authURL must be valid!") }
+    else {
+      // Should never get here because we perform URL validation on input, but handle this just in case
+      throw AuthClientError.invalidAuthURL
+    }
 
     let anchor = PresentationAnchor()
 
