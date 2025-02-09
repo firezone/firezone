@@ -165,8 +165,13 @@ public final class Store: ObservableObject {
 
     // Define the Timer's closure
     let updateResources: @Sendable (Timer) -> Void = { _ in
-      Task.detached { [weak self] in
-        await self?.vpnConfigurationManager.fetchResources(callback: callback)
+      Task {
+        do {
+          let resources = try await self.vpnConfigurationManager.fetchResources()
+          callback(resources)
+        } catch {
+          Log.error(error)
+        }
       }
     }
 

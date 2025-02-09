@@ -16,6 +16,7 @@ import NetworkExtension
 
 enum VPNConfigurationManagerError: Error {
   case managerNotInitialized
+  case notConnected
   case cannotLoad
   case decodeIPCDataFailed
   case invalidStatusChange
@@ -25,6 +26,8 @@ enum VPNConfigurationManagerError: Error {
     switch self {
     case .managerNotInitialized:
       return "Manager doesn't seem initialized."
+    case .notConnected:
+      return "Not connected."
     case .decodeIPCDataFailed:
       return "Decoding IPC data failed."
     case .invalidStatusChange:
@@ -320,28 +323,51 @@ public class VPNConfigurationManager {
     updateInternetResourceState()
   }
 
-  func fetchResources(callback: @escaping (ResourceList) -> Void) {
-    guard session()?.status == .connected else { return }
+  func fetchResources() async throws -> ResourceList {
+    return try await withCheckedThrowingContinuation { continuation in
+      guard let session = session()
+      else {
+        continuation.resume(throwing: VPNConfigurationManagerError.managerNotInitialized)
 
-    do {
-      try session()?.sendProviderMessage(encoder.encode(TunnelMessage.getResourceList(resourceListHash))) { data in
-        if let data = data {
+        return
+      }
+
+      guard session.status == .connected else {
+        continuation.resume(throwing: VPNConfigurationManagerError.notConnected)
+
+        return
+      }
+
+      do {
+        // Request list of resources from the provider. We send the hash of the resource list we already have.
+        // If it differs, we'll get the full list in the callback. If not, we'll get nil.
+        try session.sendProviderMessage(encoder.encode(TunnelMessage.getResourceList(resourceListHash))) { data in
+          guard let data = data
+          else {
+            // No data returned; Resources haven't changed
+            continuation.resume(returning: self.resourcesListCache)
+
+            return
+          }
+
+          // Save hash to compare against
           self.resourceListHash = Data(SHA256.hash(data: data))
+
           let decoder = JSONDecoder()
           decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-          guard let decoded = try? decoder.decode([Resource].self, from: data)
-          else {
-            fatalError("Should be able to decode ResourceList")
+          do {
+            let decoded = try decoder.decode([Resource].self, from: data)
+            self.resourcesListCache = ResourceList.loaded(decoded)
+
+            continuation.resume(returning: self.resourcesListCache)
+          } catch {
+            continuation.resume(throwing: error)
           }
-
-          self.resourcesListCache = ResourceList.loaded(decoded)
         }
-
-        callback(self.resourcesListCache)
+      } catch {
+        continuation.resume(throwing: error)
       }
-    } catch {
-      Log.error(error)
     }
   }
 
