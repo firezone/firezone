@@ -160,7 +160,7 @@ public final class Store: ObservableObject {
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
-  func beginUpdatingResources(callback: @escaping (ResourceList) -> Void) {
+  func beginUpdatingResources(callback: @escaping @MainActor (ResourceList) -> Void) {
     Log.log("\(#function)")
 
     // Define the Timer's closure

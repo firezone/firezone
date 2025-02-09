@@ -320,7 +320,7 @@ public class VPNConfigurationManager {
     updateInternetResourceState()
   }
 
-  func fetchResources(callback: @escaping (ResourceList) -> Void) {
+  func fetchResources(callback: @escaping @MainActor (ResourceList) -> Void) {
     guard session()?.status == .connected else { return }
 
     do {
@@ -338,7 +338,7 @@ public class VPNConfigurationManager {
           self.resourcesListCache = ResourceList.loaded(decoded)
         }
 
-        callback(self.resourcesListCache)
+        Task { await MainActor.run { callback(self.resourcesListCache) } }
       }
     } catch {
       Log.error(error)
