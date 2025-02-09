@@ -282,6 +282,12 @@ public class VPNConfigurationManager {
   }
 
   func start(token: String? = nil) throws {
+    guard let session = session()
+    else { throw VPNConfigurationManagerError.managerNotInitialized }
+
+    guard session.status == .disconnected
+    else { throw VPNConfigurationManagerError.invalidStatus(session.status) }
+
     var options: [String: NSObject] = [:]
 
     // Pass token if provided
