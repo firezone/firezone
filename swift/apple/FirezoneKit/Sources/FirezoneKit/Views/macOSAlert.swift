@@ -13,30 +13,20 @@ import NetworkExtension
 @MainActor
 struct macOSAlert { // swiftlint:disable:this type_name
   static func show(for error: Error) async {
-    if let error = error as? OSSystemExtensionError,
-       [
-        // Expected in normal operation
-        .requestCanceled,
-        .requestSuperseded,
-        .authorizationRequired
-       ].contains(error.code) {
-      return
-    }
+    guard let message = userMessage(for: error)
+    else { return }
 
-    await alert(message(for: error))
-  }
-
-  private static func alert(_ messageText: String) async {
     let alert = NSAlert()
-    alert.messageText = messageText
+    alert.messageText = message
     alert.alertStyle = .critical
     _ = await withCheckedContinuation { continuation in
       continuation.resume(returning: alert.runModal())
     }
+
   }
 
   // NEVPNError
-  private static func message(for error: NEVPNError) -> String {
+  private static func userMessage(for error: NEVPNError) -> String? {
     return {
       switch error.code {
 
@@ -89,7 +79,7 @@ struct macOSAlert { // swiftlint:disable:this type_name
 
   // OSSystemExtensionError
   // swiftlint:disable:next cyclomatic_complexity function_body_length
-  private static func message(for error: OSSystemExtensionError) -> String {
+  private static func userMessage(for error: OSSystemExtensionError) -> String? {
     return {
       switch error.code {
 
@@ -173,18 +163,18 @@ struct macOSAlert { // swiftlint:disable:this type_name
         // Code 11
       case .requestCanceled:
         // This will happen if the user cancels
-        return "\(error)"
+        return nil
 
         // Code 12
       case .requestSuperseded:
         // This will happen if the user repeatedly clicks "Enable ..."
-        return "\(error)"
+        return nil
 
         // Code 13
       case .authorizationRequired:
         // This happens the first time we try to install the system extension.
         // The user is prompted but we still get this.
-        return "\(error)"
+        return nil
 
       @unknown default:
         return "\(error)"
@@ -193,7 +183,7 @@ struct macOSAlert { // swiftlint:disable:this type_name
   }
 
   // Error (fallback case)
-  private static func message(for error: Error) -> String {
+  private static func userMessage(for error: Error) -> String? {
     return "\(error)"
   }
 }
