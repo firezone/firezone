@@ -87,8 +87,8 @@ public class AppViewModel: ObservableObject {
       .store(in: &cancellables)
   }
 
-  func updateNotificationDecision(to newStatus: UNAuthorizationStatus) async {
-    await MainActor.run { self.decision = newStatus }
+  func updateNotificationDecision(to newStatus: UNAuthorizationStatus) {
+    self.decision = newStatus
   }
 }
 
@@ -111,7 +111,7 @@ public struct AppView: View {
       GrantNotificationsView(model: GrantNotificationsViewModel(
         sessionNotification: model.sessionNotification,
         onDecisionChanged: { decision in
-          await model.updateNotificationDecision(to: decision)
+          model.updateNotificationDecision(to: decision)
         }
       ))
     case (.disconnected, _):
