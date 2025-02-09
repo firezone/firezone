@@ -10,6 +10,7 @@ import Foundation
 enum AuthClientError: Error {
   case invalidCallbackURL
   case randomNumberGenerationFailure(errorStatus: Int32)
+  case invalidAuthURL
 
   var description: String {
     switch self {
@@ -24,6 +25,10 @@ enum AuthClientError: Error {
       If this issue persists, contact your administrator.
 
       Code: \(errorStatus)
+      """
+    case .invalidAuthURL:
+      return """
+      The provided Auth URL seems invalid. Please double-check your settings.
       """
     }
   }
