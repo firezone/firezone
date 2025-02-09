@@ -23,6 +23,10 @@ pub fn setup_global_subscriber<L>(additional_layer: L) -> Result<()>
 where
     L: Layer<Registry> + Send + Sync,
 {
+    if let Err(error) = output_vt100::try_init() {
+        tracing::debug!("Failed to init terminal colors: {error}");
+    }
+
     let directives = std::env::var("RUST_LOG").unwrap_or_default();
 
     let subscriber = Registry::default()

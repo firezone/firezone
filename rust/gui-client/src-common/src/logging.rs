@@ -49,6 +49,10 @@ pub enum Error {
 /// `Clone` yet, so that's why we take the directives string
 /// <https://github.com/tokio-rs/tracing/issues/2360>
 pub fn setup(directives: &str) -> Result<Handles> {
+    if let Err(error) = output_vt100::try_init() {
+        tracing::debug!("Failed to init terminal colors: {error}");
+    }
+
     let log_path = known_dirs::logs().context("Can't compute app log dir")?;
 
     // Logfilter for stderr cannot be reloaded. This is okay because we are using it only for local dev and debugging anyway.
@@ -66,13 +70,6 @@ pub fn setup(directives: &str) -> Result<Handles> {
         .with(stderr)
         .with(firezone_logging::sentry_layer());
     firezone_logging::init(subscriber)?;
-
-    if let Err(error) = output_vt100::try_init() {
-        tracing::debug!(
-            "Failed to init vt100 terminal colors (expected in release builds and in CI): {}",
-            err_with_src(&error)
-        );
-    }
 
     tracing::debug!(log_path = %log_path.display(), "Log path");
 
