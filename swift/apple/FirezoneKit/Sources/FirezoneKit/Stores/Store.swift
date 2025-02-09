@@ -126,25 +126,16 @@ public final class Store: ObservableObject {
   }
 
   private func start(token: String? = nil) throws {
-    guard status == .disconnected
-    else {
-      Log.log("\(#function): Already connected")
-      return
-    }
-
     try self.vpnConfigurationManager.start(token: token)
   }
 
-  func stop(clearToken: Bool = false) {
-    guard [.connected, .connecting, .reasserting].contains(status)
-    else { return }
-
-    self.vpnConfigurationManager.stop(clearToken: clearToken)
+  func stop() throws {
+    try self.vpnConfigurationManager.stop()
   }
 
   func signIn(authResponse: AuthResponse) async throws {
     // Save actorName
-    await MainActor.run { self.actorName = authResponse.actorName }
+    self.actorName = authResponse.actorName
 
     try await self.vpnConfigurationManager.saveSettings(settings)
     try await self.vpnConfigurationManager.saveAuthResponse(authResponse)
@@ -153,9 +144,8 @@ public final class Store: ObservableObject {
     try self.vpnConfigurationManager.start(token: authResponse.token)
   }
 
-  func signOut() async throws {
-    // Stop tunnel and clear token
-    stop(clearToken: true)
+  func signOut() throws {
+    try self.vpnConfigurationManager.signOut()
   }
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
@@ -171,8 +161,13 @@ public final class Store: ObservableObject {
 
     // Define the Timer's closure
     let updateResources: @Sendable (Timer) -> Void = { _ in
-      Task.detached { [weak self] in
-        await self?.vpnConfigurationManager.fetchResources(callback: callback)
+      Task {
+        do {
+          let resources = try await self.vpnConfigurationManager.fetchResources()
+          callback(resources)
+        } catch {
+          Log.error(error)
+        }
       }
     }
 
@@ -193,23 +188,15 @@ public final class Store: ObservableObject {
     resourcesTimer = nil
   }
 
-  func save(_ newSettings: Settings) {
-    Task.detached { [weak self] in
-      guard let self else { return }
-
-      do {
-        try await self.vpnConfigurationManager.saveSettings(newSettings)
-        await MainActor.run { self.settings = newSettings }
-      } catch {
-        Log.error(error)
-      }
-    }
+  func save(_ newSettings: Settings) async throws {
+    try await self.vpnConfigurationManager.saveSettings(newSettings)
+    self.settings = newSettings
   }
 
-  func toggleInternetResource(enabled: Bool) {
-    self.vpnConfigurationManager.toggleInternetResource(enabled: enabled)
+  func toggleInternetResource(enabled: Bool) async throws {
+    try self.vpnConfigurationManager.toggleInternetResource(enabled: enabled)
     var newSettings = settings
     newSettings.internetResourceEnabled = self.vpnConfigurationManager.internetResourceEnabled
-    save(newSettings)
+    try await save(newSettings)
   }
 }
