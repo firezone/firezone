@@ -277,6 +277,12 @@ public class VPNConfigurationManager {
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
 
+    // Sign out if connected when settings change
+    if let session = session(),
+       [.connected, .connecting, .reasserting].contains(session.status) {
+      try signOut()
+    }
+
     // Reconfigure our Telemetry environment in case it changed
     Telemetry.setEnvironmentOrClose(settings.apiURL)
   }
