@@ -163,6 +163,13 @@ public final class Store: ObservableObject {
   func beginUpdatingResources(callback: @escaping (ResourceList) -> Void) {
     Log.log("\(#function)")
 
+    guard self.resourcesTimer == nil
+    else {
+      // Prevent duplicate timer scheduling. This will happen if the system sends us two .connected status updates
+      // in a row, which can happen occasionally.
+      return
+    }
+
     // Define the Timer's closure
     let updateResources: @Sendable (Timer) -> Void = { _ in
       Task.detached { [weak self] in
