@@ -18,8 +18,8 @@ by advanced users and admins.
 | Windows GUI Client      | `%LOCALAPPDATA%\dev.firezone.client\data\logs` for the GUI process, and `%PROGRAMDATA%\dev.firezone.client\data\logs` for the IPC service                                                                                           |
 | Android/ChromeOS Client | `/data/data/dev.firezone.android/caches/logs`                                                                                                                                                                                       |
 | iOS Client              | N/A                                                                                                                                                                                                                                 |
-| Linux Headless Client   | Set by the user via the `LOG_DIR` environment variable, otherwise STDOUT                                                                                                                                                            |
-| Windows Headless Client | Set by the user via the `LOG_DIR` environment variable, otherwise STDOUT                                                                                                                                                            |
+| Linux Headless Client   | Set by the user via the `LOG_DIR` environment variable, otherwise `stderr`                                                                                                                                                          |
+| Windows Headless Client | Set by the user via the `LOG_DIR` environment variable, otherwise `stderr`                                                                                                                                                          |
 | Gateway                 | Logs are written to STDOUT by default and viewable either by `docker logs firezone-gateway` or `journalctl -u firezone-gateway`                                                                                                     |
 
 ## Exporting Client logs
