@@ -29,20 +29,23 @@ export default function Changelog() {
         <TabsItem title="Gateway" icon={HiServerStack}>
           <Gateway />
         </TabsItem>
-        <TabsItem title="Linux GUI" icon={FaLinux}>
-          <GUI title="Linux GUI" />
-        </TabsItem>
-        <TabsItem title="Apple" icon={FaApple}>
+        <TabsItem title="macOS / iOS" icon={FaApple}>
           <Apple />
         </TabsItem>
-        <TabsItem title="Windows" icon={FaWindows}>
+        <TabsItem title="Windows GUI" icon={FaWindows}>
           <GUI title="Windows" />
+        </TabsItem>
+        <TabsItem title="Windows Headless" icon={FaWindows}>
+          <Headless title="Windows Headless" />
         </TabsItem>
         <TabsItem title="Android" icon={FaAndroid}>
           <Android />
         </TabsItem>
+        <TabsItem title="Linux GUI" icon={FaLinux}>
+          <GUI title="Linux GUI" />
+        </TabsItem>
         <TabsItem title="Linux Headless" icon={FaLinux}>
-          <Headless />
+          <Headless title="Linux Headless" />
         </TabsItem>
       </TabsGroup>
       {sha && (

@@ -39,6 +39,18 @@ module.exports = [
   },
   /*
    *
+   * Windows Headless Client
+   *
+   */
+  {
+    source: "/dl/firezone-client-headless-windows/latest/x86_64",
+    destination:
+      // mark:current-headless-version
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.4.1/firezone-client-headless-windows_1.4.1_x86_64.exe",
+    permanent: false,
+  },
+  /*
+   *
    * Linux Clients
    *
    */

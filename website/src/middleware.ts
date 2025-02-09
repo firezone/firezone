@@ -19,6 +19,11 @@ const versionedRedirects = [
       "https://www.github.com/firezone/firezone/releases/download/gui-client-:version/firezone-client-gui-windows_:version_x86_64.msi",
   },
   {
+    source: /^\/dl\/firezone-client-headless-windows\/(\d+\.\d+\.\d+)\/x86_64$/,
+    destination:
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-:version/firezone-client-headless-windows_:version_x86_64.exe",
+  },
+  {
     source: /^\/dl\/firezone-client-gui-linux\/(\d+\.\d+\.\d+)\/x86_64$/,
     destination:
       "https://www.github.com/firezone/firezone/releases/download/gui-client-:version/firezone-client-gui-linux_:version_x86_64.deb",
@@ -65,6 +70,7 @@ export const config = {
     "/dl/firezone-client-macos/(\\d+).(\\d+).(\\d+)",
     "/dl/firezone-client-android/(\\d+).(\\d+).(\\d+)",
     "/dl/firezone-client-gui-windows/(\\d+).(\\d+).(\\d+)/x86_64",
+    "/dl/firezone-client-headless-windows/(\\d+).(\\d+).(\\d+)/x86_64",
     "/dl/firezone-client-gui-linux/(\\d+).(\\d+).(\\d+)/x86_64",
     "/dl/firezone-client-gui-linux/(\\d+).(\\d+).(\\d+)/aarch64",
     "/dl/firezone-client-headless-linux/(\\d+).(\\d+).(\\d+)/x86_64",
