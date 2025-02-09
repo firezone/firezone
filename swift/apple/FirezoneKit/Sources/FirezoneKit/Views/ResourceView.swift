@@ -173,7 +173,7 @@ struct NonInternetResourceHeader: View {
       if model.favorites.ids.contains(resource.id) {
         Button(
           action: {
-            Task { await model.favorites.remove(resource.id) }
+            model.favorites.remove(resource.id)
           },
           label: {
             HStack {
@@ -186,7 +186,7 @@ struct NonInternetResourceHeader: View {
       } else {
         Button(
           action: {
-            Task { await model.favorites.add(resource.id) }
+            model.favorites.add(resource.id)
           }, label: {
             HStack {
               Image(systemName: "star.fill")

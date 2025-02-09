@@ -25,19 +25,19 @@ public class Favorites: ObservableObject {
     return Set()
   }
 
-  func reset() async {
+  func reset() {
     self.ids = Set()
-    await save()
+    Task { await save() }
   }
 
-  func add(_ id: String) async {
+  func add(_ id: String) {
     self.ids.insert(id)
-    await save()
+    Task { await save() }
   }
 
-  func remove(_ id: String) async {
+  func remove(_ id: String) {
     self.ids.remove(id)
-    await save()
+    Task { await save() }
   }
 
   private func save() async {
