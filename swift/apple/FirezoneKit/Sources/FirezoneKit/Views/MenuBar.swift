@@ -37,16 +37,13 @@ public final class MenuBar: NSObject, ObservableObject {
 
   @ObservedObject var model: SessionViewModel
 
-  private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
-  private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
-  private lazy var signedOutIconNotification = NSImage(named: "MenuBarIconSignedOutNotification")
-  private lazy var signedInConnectedIconNotification = NSImage(named: "MenuBarIconSignedInConnectedNotification")
+  private var signedOutIcon: NSImage?
+  private var signedInConnectedIcon: NSImage?
+  private var signedOutIconNotification: NSImage?
+  private var signedInConnectedIconNotification: NSImage?
 
-  private lazy var connectingAnimationImages = [
-    NSImage(named: "MenuBarIconConnecting1"),
-    NSImage(named: "MenuBarIconConnecting2"),
-    NSImage(named: "MenuBarIconConnecting3")
-  ]
+  private var connectingAnimationImages: [NSImage?] = [nil, nil, nil]
+
   private var connectingAnimationImageIndex: Int = 0
   private var connectingAnimationTimer: Timer?
 
@@ -60,6 +57,26 @@ public final class MenuBar: NSObject, ObservableObject {
 
     createMenu()
     setupObservers()
+
+    Task {
+      self.signedOutIcon = await loadImage(named: "MenuBarIconSignedOut")
+      self.signedInConnectedIcon = await loadImage(named: "MenuBarIconSignedInConnected")
+      self.signedOutIconNotification = await loadImage(named: "MenuBarIconSignedOutNotification")
+      self.signedInConnectedIconNotification = await loadImage(named: "MenuBarIconSignedInConnectedNotification")
+      let image1 = await loadImage(named: "MenuBarIconConnecting1")
+      let image2 = await loadImage(named: "MenuBarIconConnecting2")
+      let image3 = await loadImage(named: "MenuBarIconConnecting3")
+      self.connectingAnimationImages = [
+        image1, image2, image3
+      ]
+    }
+  }
+
+  // NSImage() synchronously loads images from disk. This can be slow on busy drives.
+  private func loadImage(named: String) async -> NSImage? {
+    return await withCheckedContinuation { continuation in
+      continuation.resume(returning: NSImage(named: named))
+    }
   }
 
   func showMenu() {
@@ -280,9 +297,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func grantPermissionMenuItemTapped() {
-    Task.detached { [weak self] in
-      guard let self else { return }
-
+    Task {
       do {
         // If we get here, it means either system extension got disabled or
         // our VPN configuration got removed. Since we don't know which, reinstall
@@ -305,31 +320,23 @@ public final class MenuBar: NSObject, ObservableObject {
     guard let url = URL(string: model.store.settings.authBaseURL)
     else { return }
 
-    Task.detached {
-      NSWorkspace.shared.open(url)
-    }
+    Task { await NSWorkspace.shared.openAsync(url) }
   }
 
   @objc private func updateAvailableButtonTapped() {
-    Task.detached {
-      NSWorkspace.shared.open(UpdateChecker.downloadURL())
-    }
+    Task { await NSWorkspace.shared.openAsync(UpdateChecker.downloadURL()) }
   }
 
   @objc private func documentationButtonTapped() {
     let url = URL(string: "https://www.firezone.dev/kb?utm_source=macos-client")!
 
-    Task.detached {
-      NSWorkspace.shared.open(url)
-    }
+    Task { await NSWorkspace.shared.openAsync(url) }
   }
 
   @objc private func supportButtonTapped() {
     let url = URL(string: "https://www.firezone.dev/support?utm_source=macos-client")!
 
-    Task.detached {
-      NSWorkspace.shared.open(url)
-    }
+    Task { await NSWorkspace.shared.openAsync(url) }
   }
 
   @objc private func aboutButtonTapped() {
@@ -379,11 +386,8 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private func startConnectingAnimation() {
     guard connectingAnimationTimer == nil else { return }
-    let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-      guard let self = self else { return }
-      Task.detached { [weak self] in
-        await self?.connectingAnimationShowNextFrame()
-      }
+    let timer = Timer(timeInterval: 0.25, repeats: true) { _ in
+      Task { await MainActor.run { self.connectingAnimationShowNextFrame() } }
     }
     RunLoop.main.add(timer, forMode: .common)
     connectingAnimationTimer = timer
@@ -819,9 +823,7 @@ public final class MenuBar: NSObject, ObservableObject {
   @objc private func resourceURLTapped(_ sender: AnyObject?) {
     if let value = (sender as? NSMenuItem)?.title,
        let url = URL(string: value) {
-      Task.detached {
-        NSWorkspace.shared.open(url)
-      }
+      Task { await NSWorkspace.shared.openAsync(url) }
     }
   }
 

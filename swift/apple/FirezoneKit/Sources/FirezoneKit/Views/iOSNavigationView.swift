@@ -73,20 +73,18 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
       } else {
         Button(
           action: {
-            Task.detached {
+            Task {
               do {
                 try await WebAuthSession.signIn(store: model.store)
               } catch {
                 Log.error(error)
 
-                await MainActor.run {
-                  self.errorHandler.handle(
-                    ErrorAlert(
-                      title: "Error signing in",
-                      error: error
-                    )
+                self.errorHandler.handle(
+                  ErrorAlert(
+                    title: "Error signing in",
+                    error: error
                   )
-                }
+                )
               }
             }
           },

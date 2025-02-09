@@ -621,16 +621,14 @@ public struct SettingsView: View {
           return
         }
 
-        Task.detached {
+        Task {
           do {
             try await LogExporter.export(
               to: destinationURL,
               with: model.store.vpnConfigurationManager
             )
 
-            await MainActor.run {
-              window.contentViewController?.presentingViewController?.dismiss(self)
-            }
+            window.contentViewController?.presentingViewController?.dismiss(self)
           } catch {
             if let error = error as? VPNConfigurationManagerError,
                case VPNConfigurationManagerError.noIPCData = error {
@@ -639,15 +637,10 @@ public struct SettingsView: View {
               Log.error(error)
             }
 
-            let alert = await NSAlert()
-            await MainActor.run {
-              alert.messageText = "Error exporting logs: \(error.localizedDescription)"
-              alert.alertStyle = .critical
-              _ = alert.runModal()
-            }
+            await macOSAlert.show(for: error)
           }
 
-          await MainActor.run { self.isExportingLogs = false }
+          self.isExportingLogs = false
         }
       }
     }
