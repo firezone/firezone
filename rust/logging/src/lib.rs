@@ -4,6 +4,7 @@ pub mod file;
 mod format;
 #[macro_use]
 mod unwrap_or;
+mod ansi;
 mod err_with_sources;
 
 use anyhow::{Context, Result};
@@ -15,6 +16,7 @@ use tracing_subscriber::{
     util::SubscriberInitExt, EnvFilter, Layer, Registry,
 };
 
+pub use ansi::stdout_supports_ansi;
 pub use err_with_sources::{err_with_src, ErrorWithSources};
 pub use format::Format;
 
@@ -28,7 +30,6 @@ where
     }
 
     let directives = std::env::var("RUST_LOG").unwrap_or_default();
-
     let subscriber = Registry::default()
         .with(
             additional_layer
@@ -37,6 +38,7 @@ where
         .with(sentry_layer())
         .with(
             fmt::layer()
+                .with_ansi(stdout_supports_ansi())
                 .event_format(Format::new())
                 .with_filter(try_filter(&directives).context("Failed to parse directives")?),
         );

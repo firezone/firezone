@@ -2,7 +2,6 @@
 
 use anyhow::{bail, Context as _, Result};
 use firezone_headless_client::{known_dirs, LogFilterReloader};
-use firezone_logging::err_with_src;
 use serde::Serialize;
 use std::{
     fs,
@@ -55,9 +54,10 @@ pub fn setup(directives: &str) -> Result<Handles> {
 
     let log_path = known_dirs::logs().context("Can't compute app log dir")?;
 
-    // Logfilter for stderr cannot be reloaded. This is okay because we are using it only for local dev and debugging anyway.
+    // Logfilter for stdout cannot be reloaded. This is okay because we are using it only for local dev and debugging anyway.
     // Having multiple reload handles makes their type-signature quite complex so we don't bother with that.
-    let stderr = tracing_subscriber::fmt::layer()
+    let stdout = tracing_subscriber::fmt::layer()
+        .with_ansi(firezone_logging::stdout_supports_ansi())
         .event_format(firezone_logging::Format::new())
         .with_filter(firezone_logging::try_filter(directives)?);
 
@@ -67,7 +67,7 @@ pub fn setup(directives: &str) -> Result<Handles> {
 
     let subscriber = Registry::default()
         .with(layer.with_filter(filter))
-        .with(stderr)
+        .with(stdout)
         .with(firezone_logging::sentry_layer());
     firezone_logging::init(subscriber)?;
 
