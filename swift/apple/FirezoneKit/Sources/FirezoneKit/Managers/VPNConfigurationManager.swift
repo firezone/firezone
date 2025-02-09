@@ -277,23 +277,11 @@ public class VPNConfigurationManager {
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
 
-    // Sign out if connected when settings change
-    if let session = session(),
-       [.connected, .connecting, .reasserting].contains(session.status) {
-      try signOut()
-    }
-
     // Reconfigure our Telemetry environment in case it changed
     Telemetry.setEnvironmentOrClose(settings.apiURL)
   }
 
   func start(token: String? = nil) throws {
-    guard let session = session()
-    else { throw VPNConfigurationManagerError.managerNotInitialized }
-
-    guard session.status == .disconnected
-    else { throw VPNConfigurationManagerError.invalidStatus(session.status) }
-
     var options: [String: NSObject] = [:]
 
     // Pass token if provided

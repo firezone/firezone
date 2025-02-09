@@ -37,13 +37,16 @@ public final class MenuBar: NSObject, ObservableObject {
 
   @ObservedObject var model: SessionViewModel
 
-  private var signedOutIcon: NSImage?
-  private var signedInConnectedIcon: NSImage?
-  private var signedOutIconNotification: NSImage?
-  private var signedInConnectedIconNotification: NSImage?
+  private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
+  private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
+  private lazy var signedOutIconNotification = NSImage(named: "MenuBarIconSignedOutNotification")
+  private lazy var signedInConnectedIconNotification = NSImage(named: "MenuBarIconSignedInConnectedNotification")
 
-  private var connectingAnimationImages: [NSImage?] = [nil, nil, nil]
-
+  private lazy var connectingAnimationImages = [
+    NSImage(named: "MenuBarIconConnecting1"),
+    NSImage(named: "MenuBarIconConnecting2"),
+    NSImage(named: "MenuBarIconConnecting3")
+  ]
   private var connectingAnimationImageIndex: Int = 0
   private var connectingAnimationTimer: Timer?
 
@@ -57,26 +60,6 @@ public final class MenuBar: NSObject, ObservableObject {
 
     createMenu()
     setupObservers()
-
-    Task {
-      self.signedOutIcon = await loadImage(named: "MenuBarIconSignedOut")
-      self.signedInConnectedIcon = await loadImage(named: "MenuBarIconSignedInConnected")
-      self.signedOutIconNotification = await loadImage(named: "MenuBarIconSignedOutNotification")
-      self.signedInConnectedIconNotification = await loadImage(named: "MenuBarIconSignedInConnectedNotification")
-      let image1 = await loadImage(named: "MenuBarIconConnecting1")
-      let image2 = await loadImage(named: "MenuBarIconConnecting2")
-      let image3 = await loadImage(named: "MenuBarIconConnecting3")
-      self.connectingAnimationImages = [
-        image1, image2, image3
-      ]
-    }
-  }
-
-  // NSImage() synchronously loads images from disk. This can be slow on busy drives.
-  private func loadImage(named: String) async -> NSImage? {
-    return await withCheckedContinuation { continuation in
-      continuation.resume(returning: NSImage(named: named))
-    }
   }
 
   func showMenu() {
