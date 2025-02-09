@@ -6,7 +6,7 @@ import Unreleased from "./Unreleased";
 
 export default function GUI({ title }: { title: string }) {
   const downloadLinks =
-    title === "Windows"
+    title === "Windows GUI"
       ? [
           {
             title: "Download for x86_64",

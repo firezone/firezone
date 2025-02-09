@@ -1,13 +1,21 @@
 import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
 
-# Windows Client
+# Windows GUI Client
 
 The Windows GUI Client is designed for Windows computers where a user is present
 to authenticate with your identity provider interactively.
 
+<Alert color="info">
+  If you're looking for a headless client suitable for server or workstation use
+  cases where a user is not physically present, see the [Windows Headless
+  Client](/kb/client-apps/windows-headless-client) user guide instead, which
+  uses a long-lived Service Account token for authentication.
+</Alert>
+
 ## Prerequisites
 
-- **Windows 10** or higher
+- **Windows 10** or higher, or **Windows Server 2016** or higher
 - **x86-64** CPU
 - [**WebView2**](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
   (The installer will install this automatically if needed)
@@ -206,5 +214,7 @@ the tunnel, and a GUI which allows the user to control Firezone.
 
 - Firezone does not register itself with Windows as a VPN
   [#2875](https://github.com/firezone/firezone/issues/2875)
+- The Windows client is not yet available for Arm64 devices
+  [#2992](https://github.com/firezone/firezone/issues/2992)
 
 <SupportOptions />
