@@ -51,7 +51,7 @@ libc = { workspace = true }
 nix = { workspace = true, features = ["fs", "user", "socket"] }
 resolv-conf = "0.7.0"
 rtnetlink = { workspace = true }
-sd-notify = "0.4.2" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
+sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 
 [target.'cfg(target_os = "macos")'.dependencies]
 dirs = { workspace = true }
