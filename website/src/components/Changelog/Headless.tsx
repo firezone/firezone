@@ -31,7 +31,12 @@ export default function Headless({ title }: { title: string }) {
   return (
     <Entries downloadLinks={downloadLinks} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="8055">
+          Hides the <code>--check</code> and <code>--exit</code> CLI options
+          from the help output. These are only used internally.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.2" date={new Date("2025-02-10")}>
         <ChangeItem pull="8041">
           Publishes the headless client for Windows.

@@ -92,7 +92,6 @@ Error: Command-line args for the headless Client
 Usage: firezone-client-headless-windows_1.4.2_x86_64.exe [OPTIONS] [COMMAND]
 
 Commands:
-  standalone
   help        Print this message or the help of the given subcommand(s)
 
 Options:
@@ -113,16 +112,6 @@ Options:
           Maximum length of time to retry connecting to the portal if we're having internet issues or it's down. Accepts human times. e.g. "5m" or "1h" or "30d"
 
           [env: MAX_PARTITION_TIME=]
-
-      --check
-          Check the configuration and return 0 before connecting to the API
-
-          Returns 1 if the configuration is wrong. Mostly non-destructive but may write a device ID to disk if one is not found.
-
-      --exit
-          Connect to the Firezone network and initialize, then exit
-
-          Use this to check how fast you can connect.
 
       --firezone-name <FIREZONE_NAME>
           Friendly name for this client to display in the UI
