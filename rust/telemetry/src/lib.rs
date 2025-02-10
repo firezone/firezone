@@ -15,6 +15,7 @@ pub const GATEWAY_DSN: Dsn = Dsn("https://f763102cc3937199ec483fbdae63dfdc@o4507
 pub const GUI_DSN: Dsn = Dsn("https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312");
 pub const HEADLESS_DSN: Dsn = Dsn("https://bc27dca8bb37be0142c48c4f89647c13@o4507971108339712.ingest.us.sentry.io/4508010028728320");
 pub const RELAY_DSN: Dsn = Dsn("https://9d5f664d8f8f7f1716d4b63a58bcafd5@o4507971108339712.ingest.us.sentry.io/4508373298970624");
+pub const TESTING: Dsn = Dsn("https://55ef451fca9054179a11f5d132c02f45@o4507971108339712.ingest.us.sentry.io/4508792604852224");
 
 #[derive(Default)]
 pub struct Telemetry {
@@ -155,4 +156,18 @@ impl Telemetry {
 
 fn set_current_user(user: Option<sentry::User>) {
     sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn starting_session_for_unsupported_env_disables_current_one() {
+        let mut telemetry = Telemetry::default();
+        telemetry.start("wss://api.firez.one", "1.0.0", TESTING);
+        telemetry.start("wss://example.com", "1.0.0", TESTING);
+
+        assert!(telemetry.inner.is_none());
+    }
 }
