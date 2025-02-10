@@ -35,6 +35,10 @@ export default function Headless({ title }: { title: string }) {
         <ChangeItem pull="8041">
           Publishes the headless client for Windows.
         </ChangeItem>
+        <ChangeItem pull="8070">
+          Only write logs using ANSI-escape codes if the underlying output
+          stream supports it.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.1" date={new Date("2025-01-28")}>
         <ChangeItem pull="7551">
