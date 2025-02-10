@@ -17,6 +17,13 @@ pub const HEADLESS_DSN: Dsn = Dsn("https://bc27dca8bb37be0142c48c4f89647c13@o450
 pub const RELAY_DSN: Dsn = Dsn("https://9d5f664d8f8f7f1716d4b63a58bcafd5@o4507971108339712.ingest.us.sentry.io/4508373298970624");
 pub const TESTING: Dsn = Dsn("https://55ef451fca9054179a11f5d132c02f45@o4507971108339712.ingest.us.sentry.io/4508792604852224");
 
+mod env {
+    use std::borrow::Cow;
+
+    pub const PRODUCTION: Cow<'static, str> = Cow::Borrowed("production");
+    pub const STAGING: Cow<'static, str> = Cow::Borrowed("staging");
+}
+
 #[derive(Default)]
 pub struct Telemetry {
     inner: Option<sentry::ClientInitGuard>,
@@ -38,8 +45,8 @@ impl Telemetry {
         // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
         // <https://docs.sentry.io/platforms/rust/configuration/environments/>
         let environment = match api_url {
-            "wss://api.firezone.dev" | "wss://api.firezone.dev/" => "production",
-            "wss://api.firez.one" | "wss://api.firez.one/" => "staging",
+            "wss://api.firezone.dev" | "wss://api.firezone.dev/" => env::PRODUCTION,
+            "wss://api.firez.one" | "wss://api.firez.one/" => env::STAGING,
             _ => {
                 tracing::debug!(%api_url, "Telemetry won't start in unofficial environment");
 
@@ -51,9 +58,9 @@ impl Telemetry {
             .inner
             .as_ref()
             .and_then(|i| i.options().environment.as_ref())
-            .is_some_and(|env| env == environment)
+            .is_some_and(|env| env == &environment)
         {
-            tracing::debug!("Telemetry already initialised");
+            tracing::debug!(%environment, "Telemetry already initialised");
 
             return;
         }
@@ -72,7 +79,7 @@ impl Telemetry {
         let inner = sentry::init((
             dsn.0,
             sentry::ClientOptions {
-                environment: Some(environment.into()),
+                environment: Some(environment),
                 // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
                 release: Some(release.to_owned().into()),
                 traces_sampler: Some(Arc::new(|tx| {
