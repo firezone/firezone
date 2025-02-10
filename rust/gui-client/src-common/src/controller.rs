@@ -580,6 +580,10 @@ impl<I: GuiIntegration> Controller<'_, I> {
                 tracing::info!("IPC service exited gracefully");
                 self.integration
                     .set_tray_icon(system_tray::icon_terminating());
+                self.integration.show_notification(
+                    "Firezone disconnected",
+                    "The Firezone IPC service was shutdown, quitting GUI process.",
+                )?;
 
                 return Ok(ControlFlow::Break(()));
             }
