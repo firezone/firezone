@@ -36,6 +36,48 @@ pub const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// This ends up in registry keys and tunnel management.
 pub const TUNNEL_UUID: Uuid = Uuid::from_u128(0xe924_5bc1_b8c1_44ca_ab1d_c6aa_d4f1_3b9c);
 
+/// Error codes returned from Windows APIs.
+///
+/// For details, see the Windows Error reference: <https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-erref>.
+///
+/// ## tl;dr
+///
+/// - Windows _result_ codes are 32-bit numbers.
+/// - The most-signficant bit indicates an error, if set. Hence all results here start with an `8`.
+/// - We can ignore the next 4 bits.
+/// - The "7" indicates the facility. In our case, this means Win32 APIs.
+/// - The last 4 numbers (i.e. 16 bit) are the actual error code.
+///
+/// ## Adding new codes
+///
+/// We create the error codes using the [`windows_core::HRESULT::from_win32`] constructor which sets these bits correctly.
+/// The doctests make sure we actually construct the error that we'll see in logs.
+/// Being able to search for these with full-text search is important for maintenance.
+pub mod error {
+    use windows_core::HRESULT;
+
+    /// Win32 error code objects that don't exist (like network adapters).
+    ///
+    /// ```
+    /// assert_eq!(firezone_bin_shared::windows::error::NOT_FOUND.0 as u32, 0x80070490)
+    /// ```
+    pub const NOT_FOUND: HRESULT = HRESULT::from_win32(0x0490);
+
+    /// Win32 error code for objects that already exist (like routing table entries).
+    ///
+    /// ```
+    /// assert_eq!(firezone_bin_shared::windows::error::OBJECT_EXISTS.0 as u32, 0x80071392)
+    /// ```
+    pub const OBJECT_EXISTS: HRESULT = HRESULT::from_win32(0x1392);
+
+    /// Win32 error code for unsupported operations (like setting an IPv6 address without an IPv6 stack).
+    ///
+    /// ```
+    /// assert_eq!(firezone_bin_shared::windows::error::NOT_SUPPORTED.0 as u32, 0x80070032)
+    /// ```
+    pub const NOT_SUPPORTED: HRESULT = HRESULT::from_win32(0x0032);
+}
+
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
 pub enum DnsControlMethod {
     /// Explicitly disable DNS control.
@@ -160,8 +202,6 @@ struct RoutingTableEntry {
 impl RoutingTableEntry {
     /// Creates a new routing table entry by using the given prototype and overriding the route.
     fn create(route: IpAddr, mut prototype: MIB_IPFORWARD_ROW2) -> io::Result<Self> {
-        const DUPLICATE_ERR: u32 = 0x80071392;
-
         let prefix = &mut prototype.DestinationPrefix;
         match route {
             IpAddr::V4(x) => {
@@ -178,7 +218,7 @@ impl RoutingTableEntry {
         unsafe { CreateIpForwardEntry2(&prototype) }
             .ok()
             .or_else(|e| {
-                if e.code().0 as u32 == DUPLICATE_ERR {
+                if e.code() == error::OBJECT_EXISTS {
                     Ok(())
                 } else {
                     Err(io::Error::other(e))
@@ -198,8 +238,6 @@ impl RoutingTableEntry {
 
 impl Drop for RoutingTableEntry {
     fn drop(&mut self) {
-        const NOT_FOUND: u32 = 0x80070490;
-
         let iface_idx = self.entry.InterfaceIndex;
 
         // Safety: The entry we stored is valid.
@@ -208,7 +246,7 @@ impl Drop for RoutingTableEntry {
             return;
         };
 
-        if e.code().0 as u32 == NOT_FOUND {
+        if e.code() == error::NOT_FOUND {
             return;
         }
 

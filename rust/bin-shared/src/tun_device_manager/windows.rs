@@ -1,3 +1,4 @@
+use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
 use crate::windows::TUNNEL_UUID;
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
@@ -28,7 +29,6 @@ use windows::Win32::{
     },
     Networking::WinSock::{ADDRESS_FAMILY, AF_INET, AF_INET6},
 };
-use windows_core::HRESULT;
 use wintun::Adapter;
 
 /// The ring buffer size used for Wintun.
@@ -78,9 +78,6 @@ impl TunDeviceManager {
             .luid
             .context("Cannot set IPs prior to creating an adapter")?;
 
-        tracing::debug!("Setting our IPv4 = {}", ipv4);
-        tracing::debug!("Setting our IPv6 = {}", ipv6);
-
         // SAFETY: Both NET_LUID_LH unions should be the same. We're just copying out
         // the u64 value and re-wrapping it, since wintun doesn't refer to the windows
         // crate's version of NET_LUID_LH.
@@ -122,7 +119,6 @@ impl TunDeviceManager {
 
 // It's okay if this blocks until the route is added in the OS.
 fn add_route(route: IpNetwork, iface_idx: u32) {
-    const DUPLICATE_ERR: u32 = 0x80071392;
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
@@ -133,7 +129,7 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
     };
 
     // We expect set_routes to call add_route with the same routes always making this error expected
-    if e.code().0 as u32 == DUPLICATE_ERR {
+    if e.code() == OBJECT_EXISTS {
         return;
     }
 
@@ -142,7 +138,6 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
 
 // It's okay if this blocks until the route is removed in the OS.
 fn remove_route(route: IpNetwork, iface_idx: u32) {
-    const ELEMENT_NOT_FOUND: u32 = 0x80070490;
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
@@ -153,7 +148,7 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
         return;
     };
 
-    if e.code().0 as u32 == ELEMENT_NOT_FOUND {
+    if e.code() == NOT_FOUND {
         return;
     }
 
@@ -387,7 +382,7 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
 
     // SAFETY: TODO
     if let Err(error) = unsafe { GetIpInterfaceEntry(&mut row) }.ok() {
-        if family == AF_INET6 && error.code() == windows_core::HRESULT::from_win32(0x80070490) {
+        if family == AF_INET6 && error.code() == NOT_FOUND {
             tracing::debug!(?family, "Couldn't set MTU, maybe IPv6 is disabled.");
         } else {
             tracing::warn!(?family, "Couldn't set MTU: {}", err_with_src(&error));
@@ -406,7 +401,7 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
 }
 
 fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
-    const ERROR_OBJECT_ALREADY_EXISTS: HRESULT = HRESULT::from_win32(0x80071392);
+    tracing::debug!(%ip, "Setting tunnel interface IP");
 
     // Safety: Docs don't mention anything in regards to safety of this function.
     let mut row = unsafe {
@@ -435,7 +430,10 @@ fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
     // Safety: Docs don't mention anything about safety other than having to use `InitializeUnicastIpAddressEntry` and we did that.
     match unsafe { CreateUnicastIpAddressEntry(&row) }.ok() {
         Ok(()) => {}
-        Err(e) if e.code() == ERROR_OBJECT_ALREADY_EXISTS => {}
+        Err(e) if e.code() == NOT_SUPPORTED => {
+            tracing::debug!(%ip, "IP stack not supported");
+        }
+        Err(e) if e.code() == OBJECT_EXISTS => {}
         Err(e) => {
             return Err(anyhow::Error::new(e).context("Failed to create `UnicastIpAddressEntry`"))
         }
