@@ -1,21 +1,35 @@
-defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
+defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
   @doc """
   This module implement Telemetry reporter that sends metrics to Google Cloud Monitoring API,
   with a *best effort* approach. It means that if the reporter fails to send metrics to the API,
   it will not retry, but it will keep trying to send new metrics.
   """
   use GenServer
+
   alias Telemetry.Metrics
-  alias Domain.GoogleCloudPlatform
+
+  alias Domain.{
+    GoogleCloudPlatform,
+    Repo,
+    Telemetry.Reporter.Log
+  }
+
   require Logger
 
   # Maximum number of metrics a buffer can hold,
   # after this count they will be delivered or flushed right away.
-  @buffer_size 1000
+  # This is bounded by the maximum number of time series points we can
+  # send in a single Google Cloud Metrics API call.
+  # See https://cloud.google.com/monitoring/quotas#custom_metrics_quotas
+  @buffer_size 200
 
   # Maximum time in seconds to wait before flushing the buffer
   # in case it did not reach the @buffer_size limit within the flush interval
-  @flush_interval :timer.seconds(15)
+  # This is bounded by the maximum rate we can send metrics to Google Cloud.
+  # A locking mechanism is used to ensure multiple nodes flushing
+  # metrics independently don't exceed this in aggregate.
+  @flush_interval 5
+  @flush_timer :timer.seconds(@flush_interval)
 
   def start_link(opts) do
     project_id =
@@ -60,7 +74,7 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
         event
       end
 
-    Process.send_after(self(), :flush, @flush_interval)
+    Process.send_after(self(), :flush, @flush_timer)
 
     {:ok, {events, project_id, {resource, labels}, {0, %{}}}}
   end
@@ -106,9 +120,33 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
   end
 
   def handle_info(:flush, {events, project_id, {resource, labels}, {buffer_size, buffer}}) do
-    {buffer_size, buffer} = flush(project_id, resource, labels, {buffer_size, buffer})
-    Process.send_after(self(), :flush, @flush_interval)
+    log =
+      Log.Query.all()
+      |> Log.Query.by_reporter_module("#{__MODULE__}")
+      |> Repo.one()
+
+    {buffer_size, buffer} =
+      if can_flush?(log) do
+        flush(project_id, resource, labels, {buffer_size, buffer}, log)
+      else
+        {buffer_size, buffer}
+      end
+
+    # Prevent starvation by introducing a randomized 2s jitter
+    jitter = :rand.uniform(2000)
+
+    Process.send_after(self(), :flush, @flush_timer + jitter)
     {:noreply, {events, project_id, {resource, labels}, {buffer_size, buffer}}}
+  end
+
+  defp can_flush?(nil), do: true
+
+  defp can_flush?(log) do
+    last_flushed_at = log.last_flushed_at
+    now = DateTime.utc_now()
+    diff = DateTime.diff(now, last_flushed_at, :second)
+
+    diff >= @flush_interval
   end
 
   # counts the total number of emitted events
@@ -218,27 +256,54 @@ defmodule Domain.Telemetry.GoogleCloudMetricsReporter do
     value_buckets ++ [0]
   end
 
-  defp flush(project_id, resource, labels, {buffer_size, buffer}) do
-    buffer
-    |> Enum.flat_map(fn {{schema, name, tags, unit}, measurements} ->
-      labels = Map.merge(labels, tags) |> truncate_labels()
-      format_time_series(schema, name, labels, resource, measurements, unit)
-    end)
-    |> Enum.chunk_every(200)
-    |> Enum.each(fn time_series ->
-      case GoogleCloudPlatform.send_metrics(project_id, time_series) do
-        :ok ->
-          :ok
+  defp flush(
+         project_id,
+         resource,
+         labels,
+         {buffer_size, buffer},
+         log \\ %Log{reporter_module: "#{__MODULE__}"}
+       ) do
+    time_series =
+      buffer
+      |> Enum.flat_map(fn {{schema, name, tags, unit}, measurements} ->
+        labels = Map.merge(labels, tags) |> truncate_labels()
+        format_time_series(schema, name, labels, resource, measurements, unit)
+      end)
 
-        {:error, reason} ->
-          Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
-            reason: inspect(reason),
-            count: buffer_size
-          )
-      end
-    end)
+    case update_last_flushed_at(log) do
+      {:ok, _} ->
+        case GoogleCloudPlatform.send_metrics(project_id, time_series) do
+          :ok ->
+            :ok
 
-    {0, %{}}
+          {:error, reason} ->
+            Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
+              reason: inspect(reason),
+              count: buffer_size
+            )
+        end
+
+        {0, %{}}
+
+      {:error, changeset} ->
+        Logger.info(
+          "Failed to update last_flushed_at. Waiting for next flush.",
+          changeset: inspect(changeset)
+        )
+
+        {buffer_size, buffer}
+    end
+  end
+
+  defp update_last_flushed_at(nil) do
+    update_last_flushed_at(%Log{reporter_module: "#{__MODULE__}"})
+  end
+
+  defp update_last_flushed_at(log) do
+    log
+    |> Log.Changeset.changeset()
+    |> Log.Changeset.update_last_flushed_at_with_lock(DateTime.utc_now())
+    |> Repo.insert_or_update()
   end
 
   defp truncate_labels(labels) do
