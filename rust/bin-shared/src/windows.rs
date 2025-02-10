@@ -50,7 +50,7 @@ pub const TUNNEL_UUID: Uuid = Uuid::from_u128(0xe924_5bc1_b8c1_44ca_ab1d_c6aa_d4
 ///
 /// ## Adding new codes
 ///
-/// We create the error codes using the [`HRESULT::from_win32`] constructor which sets these bits correctly.
+/// We create the error codes using the [`windows_core::HRESULT::from_win32`] constructor which sets these bits correctly.
 /// The doctests make sure we actually construct the error that we'll see in logs.
 /// Being able to search for these with full-text search is important for maintenance.
 pub mod error {
