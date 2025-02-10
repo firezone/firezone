@@ -3,7 +3,6 @@ use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
 use known_folders::{get_known_folder_path, KnownFolder};
 use socket_factory::{TcpSocket, UdpSocket};
-use windows_core::HRESULT;
 use std::{
     cmp::Ordering,
     io,
@@ -37,13 +36,30 @@ pub const CREATE_NO_WINDOW: u32 = 0x08000000;
 /// This ends up in registry keys and tunnel management.
 pub const TUNNEL_UUID: Uuid = Uuid::from_u128(0xe924_5bc1_b8c1_44ca_ab1d_c6aa_d4f1_3b9c);
 
-/// Win32 error code objects that don't exist (like network adapters).
-pub(crate) const ERROR_NOT_FOUND: HRESULT = HRESULT::from_win32(0x80070490);
-
-/// Win32 error code for objects that already exist (like routing table entries).
+/// Error codes returned from Windows APIs.
 ///
-/// See <https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-csra/f46c3c08-6566-407e-a93e-b0f5e91010f7>.
-pub(crate) const ERROR_OBJECT_EXISTS: HRESULT = HRESULT::from_win32(0x80071392);
+/// For details, see the Windows Error reference: <https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-erref>.
+///
+/// ## tl;dr
+///
+/// - Windows _result_ codes are 32-bit numbers.
+/// - The most-signficant bit indicates an error, if set. Hence all results here start with an `8`.
+/// - We can ignore the next 4 bits.
+/// - The "7" indicates the facility. In our case, this means Win32 APIs.
+/// - The last 4 numbers (i.e. 16 bit) are the actual error code.
+///
+pub(crate) mod error {
+    use windows_core::HRESULT;
+
+    /// Win32 error code objects that don't exist (like network adapters).
+    pub(crate) const NOT_FOUND: HRESULT = HRESULT::from_win32(0x80070490);
+
+    /// Win32 error code for objects that already exist (like routing table entries).
+    pub(crate) const OBJECT_EXISTS: HRESULT = HRESULT::from_win32(0x80071392);
+
+    /// Win32 error code for unsupported operations (like setting an IPv6 address without an IPv6 stack).
+    pub(crate) const NOT_SUPPORTED: HRESULT = HRESULT::from_win32(0x80070032);
+}
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
 pub enum DnsControlMethod {
@@ -185,7 +201,7 @@ impl RoutingTableEntry {
         unsafe { CreateIpForwardEntry2(&prototype) }
             .ok()
             .or_else(|e| {
-                if e.code() == ERROR_OBJECT_EXISTS {
+                if e.code() == error::OBJECT_EXISTS {
                     Ok(())
                 } else {
                     Err(io::Error::other(e))
@@ -213,7 +229,7 @@ impl Drop for RoutingTableEntry {
             return;
         };
 
-        if e.code() == ERROR_NOT_FOUND {
+        if e.code() == error::NOT_FOUND {
             return;
         }
 

@@ -1,4 +1,5 @@
-use crate::windows::{ERROR_NOT_FOUND, ERROR_OBJECT_EXISTS, TUNNEL_UUID};
+use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
+use crate::windows::TUNNEL_UUID;
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
@@ -128,7 +129,7 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
     };
 
     // We expect set_routes to call add_route with the same routes always making this error expected
-    if e.code() == ERROR_OBJECT_EXISTS {
+    if e.code() == OBJECT_EXISTS {
         return;
     }
 
@@ -147,7 +148,7 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
         return;
     };
 
-    if e.code() == ERROR_NOT_FOUND {
+    if e.code() == NOT_FOUND {
         return;
     }
 
@@ -381,7 +382,7 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
 
     // SAFETY: TODO
     if let Err(error) = unsafe { GetIpInterfaceEntry(&mut row) }.ok() {
-        if family == AF_INET6 && error.code() == ERROR_NOT_FOUND {
+        if family == AF_INET6 && error.code() == NOT_FOUND {
             tracing::debug!(?family, "Couldn't set MTU, maybe IPv6 is disabled.");
         } else {
             tracing::warn!(?family, "Couldn't set MTU: {}", err_with_src(&error));
@@ -429,7 +430,7 @@ fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
     // Safety: Docs don't mention anything about safety other than having to use `InitializeUnicastIpAddressEntry` and we did that.
     match unsafe { CreateUnicastIpAddressEntry(&row) }.ok() {
         Ok(()) => {}
-        Err(e) if e.code() == ERROR_OBJECT_EXISTS => {}
+        Err(e) if e.code() == OBJECT_EXISTS => {}
         Err(e) => {
             return Err(anyhow::Error::new(e).context("Failed to create `UnicastIpAddressEntry`"))
         }
