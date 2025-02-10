@@ -28,7 +28,6 @@ use windows::Win32::{
     },
     Networking::WinSock::{ADDRESS_FAMILY, AF_INET, AF_INET6},
 };
-use windows_core::HRESULT;
 use wintun::Adapter;
 
 /// The ring buffer size used for Wintun.
