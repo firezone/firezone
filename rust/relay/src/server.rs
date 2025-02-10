@@ -8,7 +8,7 @@ pub use crate::server::client_message::{
 
 use crate::auth::{self, AuthenticatedMessage, MessageIntegrityExt, Nonces, FIREZONE};
 use crate::net_ext::IpAddrExt;
-use crate::{ClientSocket, IpStack, PeerSocket};
+use crate::{ClientSocket, IpStack, PeerSocket, VERSION};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
@@ -23,6 +23,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeInclusive;
+use std::sync::LazyLock;
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Software, Username, XorMappedAddress,
@@ -42,6 +43,10 @@ use stun_codec::{Message, MessageClass, Method, TransactionId};
 use tracing::{field, Span};
 use tracing_core::field::display;
 use uuid::Uuid;
+
+static SOFTWARE: LazyLock<Software> = LazyLock::new(|| {
+    Software::new(format!("firezone-relay; rev={}", &VERSION[..8])).expect("less than 128 chars")
+});
 
 /// A sans-IO STUN & TURN server.
 ///
@@ -330,6 +335,8 @@ where
             error_response.add_attribute(self.new_nonce_attribute());
         }
 
+        error_response.add_attribute(SOFTWARE.clone());
+
         let message = match message.username() {
             Some(username) => {
                 match AuthenticatedMessage::new(&self.auth_secret, username.name(), error_response)
@@ -453,11 +460,7 @@ where
 
     #[tracing::instrument(level = "info", skip_all, fields(software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_binding_request(&mut self, request: &Binding, sender: ClientSocket) {
-        let mut message = Message::new(
-            MessageClass::SuccessResponse,
-            BINDING,
-            request.transaction_id(),
-        );
+        let mut message = success_response(BINDING, request.transaction_id());
         message.add_attribute(XorMappedAddress::new(sender.0));
 
         tracing::info!("Handled BINDING request");
@@ -530,11 +533,7 @@ where
             maybe_second_relay_addr,
         );
 
-        let mut message = Message::new(
-            MessageClass::SuccessResponse,
-            ALLOCATE,
-            request.transaction_id(),
-        );
+        let mut message = success_response(ALLOCATE, request.transaction_id());
 
         let port = allocation.port;
 
@@ -938,9 +937,11 @@ where
         &mut self,
         username: &str,
         request: &impl StunRequest,
-        message: Message<Attribute>,
+        mut message: Message<Attribute>,
         recipient: ClientSocket,
     ) {
+        message.add_attribute(SOFTWARE.clone());
+
         let authenticated_message = match AuthenticatedMessage::new(
             &self.auth_secret,
             username,
@@ -1098,39 +1099,31 @@ fn make_error_response(
 ) -> (Message<Attribute>, String) {
     let method = request.method();
 
-    let mut message = Message::new(
-        MessageClass::ErrorResponse,
-        method,
-        request.transaction_id(),
-    );
     let attribute = error_code.into();
     let reason = attribute.reason_phrase();
     let msg = format!("{method} failed with {reason}");
 
-    message.add_attribute(attribute);
-
-    (message, msg)
+    (
+        error_response(method, request.transaction_id(), attribute),
+        msg,
+    )
 }
 
 fn refresh_success_response(
     effective_lifetime: Lifetime,
     transaction_id: TransactionId,
 ) -> Message<Attribute> {
-    let mut message = Message::new(MessageClass::SuccessResponse, REFRESH, transaction_id);
+    let mut message = success_response(REFRESH, transaction_id);
     message.add_attribute(effective_lifetime);
     message
 }
 
 fn channel_bind_success_response(transaction_id: TransactionId) -> Message<Attribute> {
-    Message::new(MessageClass::SuccessResponse, CHANNEL_BIND, transaction_id)
+    success_response(CHANNEL_BIND, transaction_id)
 }
 
 fn create_permission_success_response(transaction_id: TransactionId) -> Message<Attribute> {
-    Message::new(
-        MessageClass::SuccessResponse,
-        CREATE_PERMISSION,
-        transaction_id,
-    )
+    success_response(CREATE_PERMISSION, transaction_id)
 }
 
 /// Represents an allocation of a client.
@@ -1355,6 +1348,25 @@ stun_codec::define_attribute_enums!(
         Software
     ]
 );
+
+fn success_response(method: Method, id: TransactionId) -> Message<Attribute> {
+    let mut message = Message::new(MessageClass::SuccessResponse, method, id);
+    message.add_attribute(SOFTWARE.clone());
+
+    message
+}
+
+fn error_response(
+    method: Method,
+    transaction_id: TransactionId,
+    error_code: ErrorCode,
+) -> Message<Attribute> {
+    let mut message = Message::new(MessageClass::ErrorResponse, method, transaction_id);
+    message.add_attribute(error_code);
+    message.add_attribute(SOFTWARE.clone());
+
+    message
+}
 
 fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant> {
     match (left, right) {
