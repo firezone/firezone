@@ -50,13 +50,17 @@ public final class SettingsViewModel: ObservableObject {
   }
 
   func saveSettings() {
-      if [.connected, .connecting, .reasserting].contains(store.status) {
-        Task.detached { [weak self] in
-          do { try await self?.store.signOut() } catch { Log.error(error) }
+    Task {
+      do {
+        if [.connected, .connecting, .reasserting].contains(store.status) {
+          try self.store.signOut()
         }
-      }
 
-      store.save(settings)
+        try await store.save(settings)
+      } catch {
+        Log.error(error)
+      }
+    }
   }
 
   // Calculates the total size of our logs by summing the size of the
