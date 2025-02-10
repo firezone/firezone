@@ -4,7 +4,7 @@ use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_telemetry::Telemetry;
 use futures::channel::mpsc;
 use std::{
-    ffi::{c_void, OsString},
+    ffi::{c_void, OsStr, OsString},
     mem::size_of,
     time::Duration,
 };
@@ -155,7 +155,7 @@ pub(crate) fn install_ipc_service() -> Result<()> {
 
     // Un-install existing one first if needed
     if let Err(e) =
-        uninstall_ipc_service(name).with_context(|| format!("Failed to uninstall `{name}`"))
+        uninstall_ipc_service(&service_manager, name).with_context(|| format!("Failed to uninstall `{name}`"))
     {
         tracing::debug!("{e:#}");
     }
@@ -178,7 +178,7 @@ pub(crate) fn install_ipc_service() -> Result<()> {
     Ok(())
 }
 
-fn uninstall_ipc_service(name: impl AsRef<OsStr>) -> Result<()> {
+fn uninstall_ipc_service(service_manager: &ServiceManager, name: impl AsRef<OsStr>) -> Result<()> {
     let service_access = ServiceAccess::DELETE;
     let service = service_manager.open_service(name, service_access)?;
     service.delete()?;
