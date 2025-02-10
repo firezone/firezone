@@ -295,9 +295,7 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Option<(AllocationPort, PeerSocket)> {
-        let username = message.username().cloned();
-
-        let result = match message {
+        let result = match &message {
             ClientMessage::Allocate(request) => self.handle_allocate_request(request, sender, now),
             ClientMessage::Refresh(request) => self.handle_refresh_request(request, sender, now),
             ClientMessage::ChannelBind(request) => {
@@ -332,7 +330,7 @@ where
             error_response.add_attribute(self.new_nonce_attribute());
         }
 
-        let message = match username {
+        let message = match message.username() {
             Some(username) => {
                 match AuthenticatedMessage::new(&self.auth_secret, username.name(), error_response)
                 {
@@ -343,7 +341,11 @@ where
                     }
                 }
             }
-            None => AuthenticatedMessage::new_dangerous_unauthenticated(error_response), // We don't have a username so we can't authenticate the response.
+            None => {
+                tracing::warn!(target: "relay", ?message, "Unable to authenticate error response, message did not contain a `Username` attribute");
+
+                AuthenticatedMessage::new_dangerous_unauthenticated(error_response)
+            }
         };
 
         self.send_message(message, sender);
@@ -450,7 +452,7 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
-    fn handle_binding_request(&mut self, request: Binding, sender: ClientSocket) {
+    fn handle_binding_request(&mut self, request: &Binding, sender: ClientSocket) {
         let mut message = Message::new(
             MessageClass::SuccessResponse,
             BINDING,
@@ -472,15 +474,15 @@ where
     #[tracing::instrument(level = "info", skip_all, fields(allocation, software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_allocate_request(
         &mut self,
-        request: Allocate,
+        request: &Allocate,
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(&request)?;
+        let username = self.verify_auth(request)?;
 
         if let Some(allocation) = self.allocations.get(&sender) {
             Span::current().record("allocation", display(&allocation.port));
-            let (error_response, msg) = make_error_response(AllocationMismatch, &request);
+            let (error_response, msg) = make_error_response(AllocationMismatch, request);
 
             tracing::debug!(target: "relay", "{msg}: Client already has an allocation");
 
@@ -489,7 +491,7 @@ where
 
         let max_available_ports = self.max_available_ports() as usize;
         if self.clients_by_allocation.len() == max_available_ports {
-            let (error_response, msg) = make_error_response(InsufficientCapacity, &request);
+            let (error_response, msg) = make_error_response(InsufficientCapacity, request);
 
             tracing::warn!(target: "relay", %max_available_ports, "{msg}: No more ports available");
 
@@ -498,7 +500,7 @@ where
 
         let requested_protocol = request.requested_transport().protocol();
         if requested_protocol != UDP_TRANSPORT {
-            let (error_response, msg) = make_error_response(BadRequest, &request);
+            let (error_response, msg) = make_error_response(BadRequest, request);
 
             tracing::warn!(target: "relay", %requested_protocol, "{msg}: Unsupported protocol");
 
@@ -511,7 +513,7 @@ where
             request.additional_address_family(),
         )
         .map_err(|e| {
-            let (error_response, msg) = make_error_response(e, &request);
+            let (error_response, msg) = make_error_response(e, request);
             tracing::warn!(target: "relay", "{msg}: Failed to derive relay addresses");
 
             error_response
@@ -560,7 +562,7 @@ where
                 family: second_relay_addr.family(),
             });
         }
-        self.authenticate_and_send(username.name(), &request, message, sender);
+        self.authenticate_and_send(username.name(), request, message, sender);
 
         Span::current().record("allocation", display(&allocation.port));
 
@@ -594,15 +596,15 @@ where
     #[tracing::instrument(level = "info", skip_all, fields(allocation, software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_refresh_request(
         &mut self,
-        request: Refresh,
+        request: &Refresh,
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(&request)?;
+        let username = self.verify_auth(request)?;
 
         // TODO: Verify that this is the correct error code.
         let Some(allocation) = self.allocations.get_mut(&sender) else {
-            let (error_response, msg) = make_error_response(AllocationMismatch, &request);
+            let (error_response, msg) = make_error_response(AllocationMismatch, request);
             tracing::info!(target: "relay", "{msg}: Sender doesn't have an allocation");
 
             return Err(error_response);
@@ -618,7 +620,7 @@ where
             self.delete_allocation(port);
             self.authenticate_and_send(
                 username.name(),
-                &request,
+                request,
                 refresh_success_response(effective_lifetime, request.transaction_id()),
                 sender,
             );
@@ -632,7 +634,7 @@ where
 
         self.authenticate_and_send(
             username.name(),
-            &request,
+            request,
             refresh_success_response(effective_lifetime, request.transaction_id()),
             sender,
         );
@@ -646,14 +648,14 @@ where
     #[tracing::instrument(level = "info", skip_all, fields(allocation, peer, channel, software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_channel_bind_request(
         &mut self,
-        request: ChannelBind,
+        request: &ChannelBind,
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(&request)?;
+        let username = self.verify_auth(request)?;
 
         let Some(allocation) = self.allocations.get_mut(&sender) else {
-            let (error_response, msg) = make_error_response(AllocationMismatch, &request);
+            let (error_response, msg) = make_error_response(AllocationMismatch, request);
 
             tracing::info!(target: "relay", "{msg}: Sender doesn't have an allocation");
 
@@ -670,7 +672,7 @@ where
 
         // Check that our allocation can handle the requested peer addr.
         if !allocation.can_relay_to(peer_address) {
-            let (error_response, msg) = make_error_response(PeerAddressFamilyMismatch, &request);
+            let (error_response, msg) = make_error_response(PeerAddressFamilyMismatch, request);
 
             tracing::warn!(target: "relay", "{msg}: Allocation cannot relay to peer");
 
@@ -683,7 +685,7 @@ where
             .get(&(sender, peer_address))
         {
             if number != &requested_channel {
-                let (error_response, msg) = make_error_response(BadRequest, &request);
+                let (error_response, msg) = make_error_response(BadRequest, request);
 
                 tracing::warn!(target: "relay", existing_channel = %number.value(), "{msg}: Peer is already bound to another channel");
 
@@ -697,7 +699,7 @@ where
             .get_mut(&(sender, requested_channel))
         {
             if channel.peer_address != peer_address {
-                let (error_response, msg) = make_error_response(BadRequest, &request);
+                let (error_response, msg) = make_error_response(BadRequest, request);
 
                 tracing::warn!(target: "relay", existing_peer = %channel.peer_address, "{msg}: Channel is already bound to a different peer");
 
@@ -718,7 +720,7 @@ where
 
             self.authenticate_and_send(
                 username.name(),
-                &request,
+                request,
                 channel_bind_success_response(request.transaction_id()),
                 sender,
             );
@@ -735,7 +737,7 @@ where
         self.create_channel_binding(sender, requested_channel, peer_address, port, now);
         self.authenticate_and_send(
             username.name(),
-            &request,
+            request,
             channel_bind_success_response(request.transaction_id()),
             sender,
         );
@@ -754,14 +756,14 @@ where
     #[tracing::instrument(level = "info", skip_all, fields(software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_create_permission_request(
         &mut self,
-        request: CreatePermission,
+        request: &CreatePermission,
         sender: ClientSocket,
     ) -> Result<(), Message<Attribute>> {
-        let username = self.verify_auth(&request)?;
+        let username = self.verify_auth(request)?;
 
         self.authenticate_and_send(
             username.name(),
-            &request,
+            request,
             create_permission_success_response(request.transaction_id()),
             sender,
         );
@@ -772,7 +774,7 @@ where
     #[tracing::instrument(level = "debug", skip_all, fields(allocation, recipient, channel, %sender))] // It is important that this is level `debug` otherwise performance is shit!
     fn handle_channel_data_message(
         &mut self,
-        message: ChannelData,
+        message: &ChannelData,
         sender: ClientSocket,
     ) -> Option<(AllocationPort, PeerSocket)> {
         let channel_number = message.channel();

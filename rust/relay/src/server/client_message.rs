@@ -88,7 +88,7 @@ impl Decoder {
     }
 }
 
-#[derive(derive_more::From)]
+#[derive(derive_more::From, Debug)]
 pub enum ClientMessage<'a> {
     ChannelData(ChannelData<'a>),
     Binding(Binding),
@@ -154,6 +154,7 @@ impl Binding {
     }
 }
 
+#[derive(Debug)]
 pub struct Allocate {
     transaction_id: TransactionId,
     message_integrity: Option<MessageIntegrity>,
@@ -354,6 +355,7 @@ impl Allocate {
     }
 }
 
+#[derive(Debug)]
 pub struct Refresh {
     transaction_id: TransactionId,
     message_integrity: Option<MessageIntegrity>,
@@ -442,6 +444,7 @@ impl Refresh {
     }
 }
 
+#[derive(Debug)]
 pub struct ChannelBind {
     transaction_id: TransactionId,
     channel_number: ChannelNumber,
@@ -544,6 +547,7 @@ impl ChannelBind {
     }
 }
 
+#[derive(Debug)]
 pub struct CreatePermission {
     transaction_id: TransactionId,
     message_integrity: Option<MessageIntegrity>,
