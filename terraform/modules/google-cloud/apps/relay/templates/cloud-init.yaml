@@ -80,8 +80,8 @@ write_files:
       [Service]
       TimeoutStartSec=0
       Restart=always
-      ExecStartPre=/usr/bin/docker pull otel/opentelemetry-collector-contrib:0.97.0
-      ExecStart=/usr/bin/docker run --rm -u 2000 --name=otel-collector --network host --volume /etc/otelcol-contrib/:/etc/otelcol-contrib/ otel/opentelemetry-collector-contrib:0.97.0
+      ExecStartPre=/usr/bin/docker pull otel/opentelemetry-collector-contrib:0.119.0
+      ExecStart=/usr/bin/docker run --rm -u 2000 --name=otel-collector --network host --volume /etc/otelcol-contrib/:/etc/otelcol-contrib/ otel/opentelemetry-collector-contrib:0.119.0
       ExecStop=/usr/bin/docker stop otel-collector
       ExecStopPost=/usr/bin/docker rm otel-collector
 
