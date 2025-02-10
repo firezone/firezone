@@ -77,9 +77,6 @@ impl TunDeviceManager {
             .luid
             .context("Cannot set IPs prior to creating an adapter")?;
 
-        tracing::debug!("Setting our IPv4 = {}", ipv4);
-        tracing::debug!("Setting our IPv6 = {}", ipv6);
-
         // SAFETY: Both NET_LUID_LH unions should be the same. We're just copying out
         // the u64 value and re-wrapping it, since wintun doesn't refer to the windows
         // crate's version of NET_LUID_LH.
@@ -403,6 +400,8 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
 }
 
 fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
+    tracing::debug!(%ip, "Setting tunnel interface IP");
+
     // Safety: Docs don't mention anything in regards to safety of this function.
     let mut row = unsafe {
         let mut row: MIB_UNICASTIPADDRESS_ROW = std::mem::zeroed();
