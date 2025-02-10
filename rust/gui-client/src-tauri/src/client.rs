@@ -63,7 +63,7 @@ pub(crate) fn run() -> Result<()> {
             let mut telemetry = telemetry::Telemetry::default();
             telemetry.start(
                 settings.api_url.as_ref(),
-                concat!("gui-client@", env!("CARGO_PKG_VERSION")),
+                firezone_gui_client_common::RELEASE,
                 telemetry::GUI_DSN,
             );
             // Don't fix the log filter for smoke tests
