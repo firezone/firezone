@@ -4,7 +4,7 @@ use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_telemetry::Telemetry;
 use futures::channel::mpsc;
 use std::{
-    ffi::{c_void, OsString},
+    ffi::{c_void, OsStr, OsString},
     mem::size_of,
     time::Duration,
 };
@@ -151,18 +151,18 @@ pub(crate) fn install_ipc_service() -> Result<()> {
     let manager_access = ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE;
     let service_manager = ServiceManager::local_computer(None::<&str>, manager_access)?;
 
-    let name = OsString::from("FirezoneClientIpcServiceDebug");
+    let name = "FirezoneClientIpcServiceDebug";
 
     // Un-install existing one first if needed
+    if let Err(e) = uninstall_ipc_service(&service_manager, name)
+        .with_context(|| format!("Failed to uninstall `{name}`"))
     {
-        let service_access = ServiceAccess::DELETE;
-        let service = service_manager.open_service(&name, service_access)?;
-        service.delete()?;
+        tracing::debug!("{e:#}");
     }
 
     let executable_path = std::env::current_exe()?;
     let service_info = ServiceInfo {
-        name,
+        name: OsString::from(name),
         display_name: OsString::from("Firezone Client IPC (Debug)"),
         service_type: ServiceType::OWN_PROCESS,
         start_type: ServiceStartType::AutoStart,
@@ -175,6 +175,14 @@ pub(crate) fn install_ipc_service() -> Result<()> {
     };
     let service = service_manager.create_service(&service_info, ServiceAccess::CHANGE_CONFIG)?;
     service.set_description("Description")?;
+    Ok(())
+}
+
+fn uninstall_ipc_service(service_manager: &ServiceManager, name: impl AsRef<OsStr>) -> Result<()> {
+    let service_access = ServiceAccess::DELETE;
+    let service = service_manager.open_service(name, service_access)?;
+    service.delete()?;
+
     Ok(())
 }
 
