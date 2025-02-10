@@ -154,8 +154,8 @@ pub(crate) fn install_ipc_service() -> Result<()> {
     let name = "FirezoneClientIpcServiceDebug";
 
     // Un-install existing one first if needed
-    if let Err(e) =
-        uninstall_ipc_service(&service_manager, name).with_context(|| format!("Failed to uninstall `{name}`"))
+    if let Err(e) = uninstall_ipc_service(&service_manager, name)
+        .with_context(|| format!("Failed to uninstall `{name}`"))
     {
         tracing::debug!("{e:#}");
     }
