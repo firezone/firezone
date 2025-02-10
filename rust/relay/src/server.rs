@@ -295,8 +295,6 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Option<(AllocationPort, PeerSocket)> {
-        let username = message.username().cloned();
-
         let result = match &message {
             ClientMessage::Allocate(request) => self.handle_allocate_request(request, sender, now),
             ClientMessage::Refresh(request) => self.handle_refresh_request(request, sender, now),
@@ -332,7 +330,7 @@ where
             error_response.add_attribute(self.new_nonce_attribute());
         }
 
-        let message = match username {
+        let message = match message.username() {
             Some(username) => {
                 match AuthenticatedMessage::new(&self.auth_secret, username.name(), error_response)
                 {
@@ -343,7 +341,11 @@ where
                     }
                 }
             }
-            None => AuthenticatedMessage::new_dangerous_unauthenticated(error_response), // We don't have a username so we can't authenticate the response.
+            None => {
+                tracing::warn!(target: "relay", ?message, "Unable to authenticate error response, message did not contain a `Username` attribute");
+
+                AuthenticatedMessage::new_dangerous_unauthenticated(error_response)
+            }
         };
 
         self.send_message(message, sender);
