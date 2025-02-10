@@ -48,17 +48,34 @@ pub const TUNNEL_UUID: Uuid = Uuid::from_u128(0xe924_5bc1_b8c1_44ca_ab1d_c6aa_d4
 /// - The "7" indicates the facility. In our case, this means Win32 APIs.
 /// - The last 4 numbers (i.e. 16 bit) are the actual error code.
 ///
-pub(crate) mod error {
+/// ## Adding new codes
+///
+/// We create the error codes using the [`HRESULT::from_win32`] constructor which sets these bits correctly.
+/// The doctests make sure we actually construct the error that we'll see in logs.
+/// Being able to search for these with full-text search is important for maintenance.
+pub mod error {
     use windows_core::HRESULT;
 
     /// Win32 error code objects that don't exist (like network adapters).
-    pub(crate) const NOT_FOUND: HRESULT = HRESULT::from_win32(0x80070490);
+    ///
+    /// ```
+    /// assert_eq!(firezone_bin_shared::windows::error::NOT_FOUND.0 as u32, 0x80070490)
+    /// ```
+    pub const NOT_FOUND: HRESULT = HRESULT::from_win32(0x0490);
 
     /// Win32 error code for objects that already exist (like routing table entries).
-    pub(crate) const OBJECT_EXISTS: HRESULT = HRESULT::from_win32(0x80071392);
+    ///
+    /// ```
+    /// assert_eq!(firezone_bin_shared::windows::error::OBJECT_EXISTS.0 as u32, 0x80071392)
+    /// ```
+    pub const OBJECT_EXISTS: HRESULT = HRESULT::from_win32(0x1392);
 
     /// Win32 error code for unsupported operations (like setting an IPv6 address without an IPv6 stack).
-    pub(crate) const NOT_SUPPORTED: HRESULT = HRESULT::from_win32(0x80070032);
+    ///
+    /// ```
+    /// assert_eq!(firezone_bin_shared::windows::error::NOT_SUPPORTED.0 as u32, 0x80070032)
+    /// ```
+    pub const NOT_SUPPORTED: HRESULT = HRESULT::from_win32(0x0032);
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
