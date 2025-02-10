@@ -63,7 +63,6 @@ public final class SessionViewModel: ObservableObject {
   public func isInternetResourceEnabled() -> Bool {
     store.internetResourceEnabled()
   }
-
 }
 
 #if os(iOS)
