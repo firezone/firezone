@@ -8,7 +8,7 @@ use firezone_logging::{err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     sockets, AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack,
-    PeerSocket, Server, Sleep,
+    PeerSocket, Server, Sleep, VERSION,
 };
 use firezone_telemetry::{Telemetry, RELAY_DSN};
 use futures::{future, FutureExt};
@@ -104,11 +104,7 @@ fn main() {
 
     let mut telemetry = Telemetry::default();
     if args.telemetry {
-        telemetry.start(
-            args.api_url.as_str(),
-            option_env!("GITHUB_SHA").unwrap_or("unknown"),
-            RELAY_DSN,
-        );
+        telemetry.start(args.api_url.as_str(), VERSION, RELAY_DSN);
     }
 
     let runtime = tokio::runtime::Builder::new_current_thread()

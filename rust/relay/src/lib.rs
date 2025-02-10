@@ -23,6 +23,11 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
 
+pub const VERSION: &str = match option_env!("GITHUB_SHA") {
+    Some(sha) => sha,
+    None => "unknown",
+};
+
 /// Describes the IP stack of a relay server.
 #[derive(Debug, Copy, Clone)]
 pub enum IpStack {
