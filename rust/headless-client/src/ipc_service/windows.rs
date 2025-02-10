@@ -1,16 +1,13 @@
 use crate::CliCommon;
 use anyhow::{bail, Context as _, Result};
 use firezone_bin_shared::platform::DnsControlMethod;
-use firezone_logging::anyhow_dyn_err;
 use firezone_telemetry::Telemetry;
-use futures::future::{self, Either};
+use futures::channel::mpsc;
 use std::{
     ffi::{c_void, OsString},
     mem::size_of,
-    pin::pin,
     time::Duration,
 };
-use tokio::sync::mpsc;
 use windows::{
     core::PWSTR,
     Win32::{
@@ -197,10 +194,7 @@ fn service_run(arguments: Vec<OsString>) {
     let (handle, log_filter_reloader) =
         super::setup_logging(None).expect("Should be able to set up logging");
     if let Err(error) = fallible_service_run(arguments, handle, log_filter_reloader) {
-        tracing::error!(
-            error = anyhow_dyn_err(&error),
-            "`fallible_windows_service_run` returned an error"
-        );
+        tracing::error!("`fallible_windows_service_run` returned an error: {error:#}");
     }
 }
 
@@ -222,7 +216,7 @@ fn fallible_service_run(
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let (shutdown_tx, shutdown_rx) = mpsc::channel(1);
+    let (mut shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         tracing::debug!(?control_event);
@@ -234,7 +228,7 @@ fn fallible_service_run(
                 ServiceControlHandlerResult::NoError
             }
             ServiceControl::Shutdown | ServiceControl::Stop => {
-                if shutdown_tx.blocking_send(()).is_err() {
+                if shutdown_tx.try_send(()).is_err() {
                     tracing::error!("Should be able to send shutdown signal");
                 }
                 ServiceControlHandlerResult::NoError
@@ -286,7 +280,7 @@ fn fallible_service_run(
         ))
         .inspect(|_| rt.block_on(telemetry.stop()))
         .inspect_err(|e| {
-            tracing::error!(error = anyhow_dyn_err(e), "IPC service failed");
+            tracing::error!("IPC service failed: {e:#}");
 
             rt.block_on(telemetry.stop_on_crash())
         });
@@ -329,28 +323,21 @@ fn fallible_service_run(
 async fn service_run_async(
     log_filter_reloader: &crate::LogFilterReloader,
     telemetry: &mut Telemetry,
-    mut shutdown_rx: mpsc::Receiver<()>,
+    shutdown_rx: mpsc::Receiver<()>,
 ) -> Result<()> {
     // Useless - Windows will never send us Ctrl+C when running as a service
     // This just keeps the signatures simpler
-    let mut signals = crate::signals::Terminate::new()?;
-    let listen_fut = pin!(super::ipc_listen(
+    let mut signals = crate::signals::Terminate::from_channel(shutdown_rx);
+    super::ipc_listen(
         DnsControlMethod::Nrpt,
         log_filter_reloader,
         &mut signals,
-        telemetry
-    ));
-    match future::select(listen_fut, pin!(shutdown_rx.recv())).await {
-        Either::Left((Err(error), _)) => Err(error).context("`ipc_listen` threw an error"),
-        Either::Left((Ok(()), _)) => {
-            bail!("Impossible - Shouldn't catch Ctrl+C when running as a Windows service")
-        }
-        Either::Right((None, _)) => bail!("Shutdown channel failed"),
-        Either::Right((Some(()), _)) => {
-            tracing::info!("Caught shutdown signal, stopping IPC listener");
-            Ok(())
-        }
-    }
+        telemetry,
+    )
+    .await
+    .context("`ipc_listen` threw an error")?;
+
+    Ok(())
 }
 
 #[cfg(test)]

@@ -1,13 +1,21 @@
 import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
 
-# Windows Client
+# Windows GUI Client
 
 The Windows GUI Client is designed for Windows computers where a user is present
 to authenticate with your identity provider interactively.
 
+<Alert color="info">
+  If you're looking for a headless client suitable for server or workstation use
+  cases where a user is not physically present, see the [Windows Headless
+  Client](/kb/client-apps/windows-headless-client) user guide instead, which
+  uses a long-lived Service Account token for authentication.
+</Alert>
+
 ## Prerequisites
 
-- **Windows 10** or higher
+- **Windows 10** or higher, or **Windows Server 2016** or higher
 - **x86-64** CPU
 - [**WebView2**](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
   (The installer will install this automatically if needed)
@@ -105,6 +113,20 @@ To export or clear your logs:
 
 ## Troubleshooting
 
+### Firezone is signed in, but I can't access Resources
+
+If the Firezone client shows that you are signed in, but you can't access
+Resources, it's possible that the WinTUN driver is corrupted or in a failed
+state.
+
+To fix, perform these steps:
+
+1. Uninstall Firezone and any other WireGuard-based VPN software from your
+   computer.
+2. Reset your network settings by going to
+   `Settings -> Network and Internet -> Additional network settings -> Network Reset -> Reset now`.
+3. Reinstall Firezone and any other software you previously uninstalled.
+
 ### Check if Firezone Client IPC service is running
 
 In the Start Menu, search for "Windows Powershell". Open it and run this
@@ -192,5 +214,7 @@ the tunnel, and a GUI which allows the user to control Firezone.
 
 - Firezone does not register itself with Windows as a VPN
   [#2875](https://github.com/firezone/firezone/issues/2875)
+- The Windows client is not yet available for Arm64 devices
+  [#2992](https://github.com/firezone/firezone/issues/2992)
 
 <SupportOptions />

@@ -1,7 +1,7 @@
 use crate::windows::TUNNEL_UUID;
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
-use firezone_logging::{anyhow_dyn_err, std_dyn_err};
+use firezone_logging::err_with_src;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
@@ -137,7 +137,7 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
         return;
     }
 
-    tracing::warn!(error = std_dyn_err(&e), %route, "Failed to add route");
+    tracing::warn!( %route, "Failed to add route: {}", err_with_src(&e));
 }
 
 // It's okay if this blocks until the route is removed in the OS.
@@ -157,7 +157,7 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
         return;
     }
 
-    tracing::warn!(error = std_dyn_err(&e), %route, "Failed to remove route")
+    tracing::warn!(%route, "Failed to remove route: {}", err_with_src(&e))
 }
 
 fn forward_entry(route: IpNetwork, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {
@@ -202,7 +202,7 @@ impl Drop for Tun {
         );
         self.inbound_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
         if let Err(error) = self.session.shutdown() {
-            tracing::error!(error = std_dyn_err(&error), "wintun::Session::shutdown");
+            tracing::error!("wintun::Session::shutdown: {error:#}");
         }
         if let Err(error) = self
             .recv_thread
@@ -390,7 +390,7 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
         if family == AF_INET6 && error.code() == windows_core::HRESULT::from_win32(0x80070490) {
             tracing::debug!(?family, "Couldn't set MTU, maybe IPv6 is disabled.");
         } else {
-            tracing::warn!(?family, error = std_dyn_err(&error), "Couldn't set MTU");
+            tracing::warn!(?family, "Couldn't set MTU: {}", err_with_src(&error));
         }
         return Ok(());
     }
@@ -476,9 +476,8 @@ fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {
     let actual_len = match file_length(&f) {
         Err(e) => {
             tracing::warn!(
-                error = anyhow_dyn_err(&e),
                 path = %path.display(),
-                "Failed to get file length"
+                "Failed to get file length: {e:#}"
             );
 
             return false;

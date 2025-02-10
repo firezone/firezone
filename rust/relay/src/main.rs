@@ -4,7 +4,7 @@ use anyhow::{bail, Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::http_health_check;
-use firezone_logging::{anyhow_dyn_err, sentry_layer, std_dyn_err};
+use firezone_logging::{err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     sockets, AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack,
@@ -22,7 +22,6 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{ready, Poll};
 use std::time::{Duration, Instant};
-use tokio::signal::unix;
 use tracing::{level_filters::LevelFilter, Subscriber};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
@@ -120,7 +119,7 @@ fn main() {
     match runtime.block_on(try_main(args)) {
         Ok(()) => runtime.block_on(telemetry.stop()),
         Err(e) => {
-            tracing::error!(error = anyhow_dyn_err(&e));
+            tracing::error!("{e:#}");
             runtime.block_on(telemetry.stop_on_crash());
 
             std::process::exit(1);
@@ -332,7 +331,8 @@ struct Eventloop<R> {
     channel: Option<PhoenixChannel<JoinMessage, IngressMessage, (), NoParams>>,
     sleep: Sleep,
 
-    sigterm: unix::Signal,
+    #[cfg(unix)]
+    sigterm: tokio::signal::unix::Signal,
     shutting_down: bool,
 
     stats_log_interval: tokio::time::Interval,
@@ -385,7 +385,8 @@ where
             sockets,
             buffer: [0u8; MAX_UDP_SIZE],
             last_heartbeat_sent,
-            sigterm: unix::signal(unix::SignalKind::terminate())?,
+            #[cfg(unix)]
+            sigterm: tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?,
             shutting_down: false,
         })
     }
@@ -407,7 +408,7 @@ where
                             recipient.into_socket(),
                             Cow::Owned(payload),
                         ) {
-                            tracing::warn!(target: "relay", error = std_dyn_err(&e), %recipient, "Failed to send message");
+                            tracing::warn!(target: "relay", %recipient, "Failed to send message: {}", err_with_src(&e));
                         }
                     }
                     Command::CreateAllocation { port, family } => {
@@ -478,7 +479,7 @@ where
                             peer.into_socket(),
                             Cow::Borrowed(payload),
                         ) {
-                            tracing::warn!(target: "relay", error = std_dyn_err(&e), %peer, "Failed to relay data to peer");
+                            tracing::warn!(target: "relay", %peer, "Failed to relay data to peer: {}", err_with_src(&e));
                         }
                     };
                     continue;
@@ -504,13 +505,13 @@ where
                             client.into_socket(),
                             Cow::Borrowed(&self.buffer[..total_length]),
                         ) {
-                            tracing::warn!(target: "relay", error = std_dyn_err(&e), %client, "Failed to relay data to client");
+                            tracing::warn!(target: "relay", %client, "Failed to relay data to client: {}", err_with_src(&e));
                         };
                     };
                     continue;
                 }
                 Poll::Ready(Err(sockets::Error::Io(e))) => {
-                    tracing::warn!(target: "relay", error = std_dyn_err(&e), "Error while receiving message");
+                    tracing::warn!(target: "relay", "Error while receiving message: {}", err_with_src(&e));
                     continue;
                 }
                 Poll::Ready(Err(sockets::Error::MioTaskCrashed(e))) => return Poll::Ready(Err(e)), // Fail the event-loop. We can't operate without the `mio` worker-task.
@@ -540,6 +541,7 @@ where
                 Some(Poll::Pending) | None => {}
             }
 
+            #[cfg(unix)]
             match self.sigterm.poll_recv(cx) {
                 Poll::Ready(Some(())) => {
                     if self.shutting_down {

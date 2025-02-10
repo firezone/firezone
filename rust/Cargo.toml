@@ -42,7 +42,7 @@ boringtun = { version = "0.6", default-features = false }
 bytecodec = "0.4.15"
 bytes = { version = "1.9.0", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
-clap = "4.5.21"
+clap = "4.5.28"
 derive_more = "1.0.0"
 difference = "2.0.0"
 dirs = "5.0.1"
@@ -65,6 +65,7 @@ ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
 itertools = "0.13"
 jni = "0.21.1"
+supports-color = "3.0.2"
 keyring = "3.6.1"
 known-folders = "1.2.0"
 libc = "0.2.150"

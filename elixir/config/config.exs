@@ -37,7 +37,7 @@ config :domain, Domain.Gateways,
   gateway_ipv4_masquerade: true,
   gateway_ipv6_masquerade: true
 
-config :domain, Domain.Telemetry, metrics_reporter: nil
+config :domain, Domain.Telemetry, metrics_reporter: nil, healthz_port: 4000
 
 config :domain, Domain.Analytics,
   mixpanel_token: nil,

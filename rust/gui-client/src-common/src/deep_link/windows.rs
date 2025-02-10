@@ -4,7 +4,7 @@
 use super::{CantListen, FZ_SCHEME};
 use anyhow::{Context, Result};
 use firezone_bin_shared::BUNDLE_ID;
-use firezone_logging::std_dyn_err;
+use firezone_logging::err_with_src;
 use secrecy::Secret;
 use std::{
     io,
@@ -71,8 +71,8 @@ async fn bind_to_pipe(pipe_path: &str) -> Result<named_pipe::NamedPipeServer> {
             Ok(server) => return Ok(server),
             Err(e) => {
                 tracing::debug!(
-                    error = std_dyn_err(&e),
-                    "`create_pipe_server` failed, sleeping... (attempt {i}/{NUM_ITERS})"
+                    "`create_pipe_server` failed {}; sleeping... (attempt {i}/{NUM_ITERS})",
+                    err_with_src(&e)
                 );
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }

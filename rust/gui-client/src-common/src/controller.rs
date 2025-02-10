@@ -13,7 +13,7 @@ use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
-use firezone_logging::{anyhow_dyn_err, std_dyn_err};
+
 use firezone_telemetry::Telemetry;
 use futures::{
     stream::{self, BoxStream},
@@ -307,7 +307,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
         tracing::debug!("Closing...");
 
         if let Err(error) = self.ipc_client.disconnect_from_ipc().await {
-            tracing::error!(error = anyhow_dyn_err(&error), "ipc_client");
+            tracing::error!("ipc_client: {error:#}");
         }
 
         // Don't close telemetry here, `run` will close it.
@@ -410,7 +410,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
                     tracing::error!("Can't clear logs, we're already waiting on another log-clearing operation");
                 }
                 if let Err(error) = logging::clear_gui_logs().await {
-                    tracing::error!(error = anyhow_dyn_err(&error), "Failed to clear GUI logs");
+                    tracing::error!("Failed to clear GUI logs: {error:#}");
                 }
                 self.ipc_client.send_msg(&IpcClientMsg::ClearLogs).await?;
                 self.clear_logs_callback = Some(completion_tx);
@@ -435,7 +435,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
                         tracing::debug!("Ignoring deep-link; no local state");
                     }
                     Err(error) => {
-                        tracing::error!(error = std_dyn_err(&error), "`handle_deep_link` failed");
+                        tracing::error!("`handle_deep_link` failed: {error:#}");
                     }
                 }
             }
@@ -577,10 +577,15 @@ impl<I: GuiIntegration> Controller<'_, I> {
                 self.update_disabled_resources().await?;
             }
             IpcServerMsg::TerminatingGracefully => {
-                tracing::info!("Caught TerminatingGracefully");
+                tracing::info!("IPC service exited gracefully");
                 self.integration
                     .set_tray_icon(system_tray::icon_terminating());
-                Err(Error::IpcServiceTerminating)?
+                self.integration.show_notification(
+                    "Firezone disconnected",
+                    "The Firezone IPC service was shutdown, quitting GUI process.",
+                )?;
+
+                return Ok(ControlFlow::Break(()));
             }
             IpcServerMsg::TunnelReady => {
                 let Status::WaitingForTunnel { start_instant } = self.status else {

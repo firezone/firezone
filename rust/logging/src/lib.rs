@@ -1,10 +1,10 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-mod dyn_err;
 pub mod file;
 mod format;
 #[macro_use]
 mod unwrap_or;
+mod ansi;
 mod err_with_sources;
 
 use anyhow::{Context, Result};
@@ -16,7 +16,7 @@ use tracing_subscriber::{
     util::SubscriberInitExt, EnvFilter, Layer, Registry,
 };
 
-pub use dyn_err::{anyhow_dyn_err, std_dyn_err};
+pub use ansi::stdout_supports_ansi;
 pub use err_with_sources::{err_with_src, ErrorWithSources};
 pub use format::Format;
 
@@ -25,8 +25,11 @@ pub fn setup_global_subscriber<L>(additional_layer: L) -> Result<()>
 where
     L: Layer<Registry> + Send + Sync,
 {
-    let directives = std::env::var("RUST_LOG").unwrap_or_default();
+    if let Err(error) = output_vt100::try_init() {
+        tracing::debug!("Failed to init terminal colors: {error}");
+    }
 
+    let directives = std::env::var("RUST_LOG").unwrap_or_default();
     let subscriber = Registry::default()
         .with(
             additional_layer
@@ -35,6 +38,7 @@ where
         .with(sentry_layer())
         .with(
             fmt::layer()
+                .with_ansi(stdout_supports_ansi())
                 .event_format(Format::new())
                 .with_filter(try_filter(&directives).context("Failed to parse directives")?),
         );

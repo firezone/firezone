@@ -11,7 +11,6 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 backoff = { workspace = true }
 boringtun = { workspace = true }
-caps = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 connlib-model = { workspace = true }
@@ -41,6 +40,9 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+caps = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true, features = ["std"] }

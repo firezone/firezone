@@ -6,7 +6,7 @@ import Unreleased from "./Unreleased";
 
 export default function GUI({ title }: { title: string }) {
   const downloadLinks =
-    title === "Windows"
+    title === "Windows GUI"
       ? [
           {
             title: "Download for x86_64",
@@ -27,7 +27,12 @@ export default function GUI({ title }: { title: string }) {
   return (
     <Entries downloadLinks={downloadLinks} title={title}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="8035">
+          Shows a non-disruptive toast notification and quits the GUI client in
+          case the IPC service gets shutdown through the service manager.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.3" date={new Date("2025-02-05")}>
         {title == "Linux GUI" && (
           <ChangeItem>

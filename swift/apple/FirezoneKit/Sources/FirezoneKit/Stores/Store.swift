@@ -160,8 +160,14 @@ public final class Store: ObservableObject {
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
-  func beginUpdatingResources(callback: @escaping (ResourceList) -> Void) {
+  func beginUpdatingResources(callback: @escaping @MainActor (ResourceList) -> Void) {
     Log.log("\(#function)")
+
+    if self.resourcesTimer != nil {
+      // Prevent duplicate timer scheduling. This will happen if the system sends us two .connected status updates
+      // in a row, which can happen occasionally.
+      return
+    }
 
     // Define the Timer's closure
     let updateResources: @Sendable (Timer) -> Void = { _ in

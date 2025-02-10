@@ -1,5 +1,6 @@
 // Swift bridge generated code triggers this below
 #![allow(clippy::unnecessary_cast, improper_ctypes, non_camel_case_types)]
+#![cfg(unix)]
 
 mod make_writer;
 mod tun;
@@ -9,8 +10,7 @@ use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
-use firezone_logging::anyhow_dyn_err;
-use firezone_logging::std_dyn_err;
+use firezone_logging::err_with_src;
 use firezone_telemetry::Telemetry;
 use firezone_telemetry::APPLE_DSN;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -146,7 +146,7 @@ impl Callbacks for CallbackHandler {
                 );
             }
             (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
-                tracing::error!(error = std_dyn_err(&e), "Failed to serialize to JSON");
+                tracing::error!("Failed to serialize to JSON: {}", err_with_src(&e));
             }
         }
     }
@@ -155,7 +155,7 @@ impl Callbacks for CallbackHandler {
         let resource_list = match serde_json::to_string(&resource_list) {
             Ok(resource_list) => resource_list,
             Err(e) => {
-                tracing::error!(error = std_dyn_err(&e), "Failed to serialize resource list");
+                tracing::error!("Failed to serialize resource list: {}", err_with_src(&e));
                 return;
             }
         };
@@ -320,7 +320,7 @@ impl WrappedSession {
 
 fn err_to_string(result: Result<WrappedSession>) -> Result<WrappedSession, String> {
     result.map_err(|e| {
-        tracing::error!(error = anyhow_dyn_err(&e), "Failed to create session");
+        tracing::error!("Failed to create session: {e:#}");
 
         format!("{e:#}")
     })

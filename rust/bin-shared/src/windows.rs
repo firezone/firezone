@@ -1,6 +1,6 @@
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
-use firezone_logging::std_dyn_err;
+use firezone_logging::err_with_src;
 use known_folders::{get_known_folder_path, KnownFolder};
 use socket_factory::{TcpSocket, UdpSocket};
 use std::{
@@ -139,7 +139,7 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
 
         // Safety: The `entry` is initialised.
         if let Err(e) = unsafe { DeleteIpForwardEntry2(entry) }.ok() {
-            tracing::warn!(error = std_dyn_err(&e), "Failed to remove routing entry");
+            tracing::warn!("Failed to remove routing entry: {}", err_with_src(&e));
             continue;
         };
 
@@ -212,7 +212,7 @@ impl Drop for RoutingTableEntry {
             return;
         }
 
-        tracing::warn!(error = std_dyn_err(&e), "Failed to delete routing entry");
+        tracing::warn!("Failed to delete routing entry: {}", err_with_src(&e));
     }
 }
 

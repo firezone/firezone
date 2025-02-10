@@ -19,20 +19,19 @@ defmodule Domain.Config.Resolver do
     end
   end
 
-  @dialyzer {:nowarn_function, fetch_process_env: 1, resolve_process_env_value: 1}
-  defp resolve_process_env_value(key) do
-    pdict_key = {__MODULE__, key}
-
-    case fetch_process_env(pdict_key) do
-      {:ok, {:env, value}} ->
-        {:ok, {{:env, env_key(key)}, value}}
-
-      :error ->
-        :error
-    end
-  end
-
   if Mix.env() == :test do
+    defp resolve_process_env_value(key) do
+      pdict_key = {__MODULE__, key}
+
+      case fetch_process_env(pdict_key) do
+        {:ok, {:env, value}} ->
+          {:ok, {{:env, key}, value}}
+
+        :error ->
+          :error
+      end
+    end
+
     def fetch_process_env(pdict_key) do
       with :error <- fetch_process_value(pdict_key),
            :error <- fetch_process_value(Process.get(:last_caller_pid), pdict_key),
@@ -74,7 +73,7 @@ defmodule Domain.Config.Resolver do
       end
     end
   else
-    def fetch_process_env(_pdict_key), do: :error
+    defp resolve_process_env_value(_key), do: :error
   end
 
   defp resolve_env_value(env_configurations, key, opts) do
