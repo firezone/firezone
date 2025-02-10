@@ -3,6 +3,7 @@ use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
 use known_folders::{get_known_folder_path, KnownFolder};
 use socket_factory::{TcpSocket, UdpSocket};
+use windows_core::HRESULT;
 use std::{
     cmp::Ordering,
     io,
@@ -35,6 +36,9 @@ pub const CREATE_NO_WINDOW: u32 = 0x08000000;
 ///
 /// This ends up in registry keys and tunnel management.
 pub const TUNNEL_UUID: Uuid = Uuid::from_u128(0xe924_5bc1_b8c1_44ca_ab1d_c6aa_d4f1_3b9c);
+
+/// Win32 error code objects that don't exist (like network adapters).
+pub(crate) const ERROR_NOT_FOUND: HRESULT = HRESULT::from_win32(0x80070490);
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
 pub enum DnsControlMethod {
@@ -198,8 +202,6 @@ impl RoutingTableEntry {
 
 impl Drop for RoutingTableEntry {
     fn drop(&mut self) {
-        const NOT_FOUND: u32 = 0x80070490;
-
         let iface_idx = self.entry.InterfaceIndex;
 
         // Safety: The entry we stored is valid.
@@ -208,7 +210,7 @@ impl Drop for RoutingTableEntry {
             return;
         };
 
-        if e.code().0 as u32 == NOT_FOUND {
+        if e.code() == ERROR_NOT_FOUND {
             return;
         }
 

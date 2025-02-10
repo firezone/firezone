@@ -1,4 +1,4 @@
-use crate::windows::TUNNEL_UUID;
+use crate::windows::{ERROR_NOT_FOUND, TUNNEL_UUID};
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
@@ -142,7 +142,6 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
 
 // It's okay if this blocks until the route is removed in the OS.
 fn remove_route(route: IpNetwork, iface_idx: u32) {
-    const ELEMENT_NOT_FOUND: u32 = 0x80070490;
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
@@ -153,7 +152,7 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
         return;
     };
 
-    if e.code().0 as u32 == ELEMENT_NOT_FOUND {
+    if e.code() == ERROR_NOT_FOUND {
         return;
     }
 
@@ -387,7 +386,7 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
 
     // SAFETY: TODO
     if let Err(error) = unsafe { GetIpInterfaceEntry(&mut row) }.ok() {
-        if family == AF_INET6 && error.code() == windows_core::HRESULT::from_win32(0x80070490) {
+        if family == AF_INET6 && error.code() == ERROR_NOT_FOUND {
             tracing::debug!(?family, "Couldn't set MTU, maybe IPv6 is disabled.");
         } else {
             tracing::warn!(?family, "Couldn't set MTU: {}", err_with_src(&error));
