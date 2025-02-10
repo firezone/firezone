@@ -1,4 +1,4 @@
-use crate::windows::{ERROR_NOT_FOUND, TUNNEL_UUID};
+use crate::windows::{ERROR_NOT_FOUND, ERROR_OBJECT_EXISTS, TUNNEL_UUID};
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
@@ -122,7 +122,6 @@ impl TunDeviceManager {
 
 // It's okay if this blocks until the route is added in the OS.
 fn add_route(route: IpNetwork, iface_idx: u32) {
-    const DUPLICATE_ERR: u32 = 0x80071392;
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
@@ -133,7 +132,7 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
     };
 
     // We expect set_routes to call add_route with the same routes always making this error expected
-    if e.code().0 as u32 == DUPLICATE_ERR {
+    if e.code() == ERROR_OBJECT_EXISTS {
         return;
     }
 
@@ -405,8 +404,6 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
 }
 
 fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
-    const ERROR_OBJECT_ALREADY_EXISTS: HRESULT = HRESULT::from_win32(0x80071392);
-
     // Safety: Docs don't mention anything in regards to safety of this function.
     let mut row = unsafe {
         let mut row: MIB_UNICASTIPADDRESS_ROW = std::mem::zeroed();
@@ -434,7 +431,7 @@ fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
     // Safety: Docs don't mention anything about safety other than having to use `InitializeUnicastIpAddressEntry` and we did that.
     match unsafe { CreateUnicastIpAddressEntry(&row) }.ok() {
         Ok(()) => {}
-        Err(e) if e.code() == ERROR_OBJECT_ALREADY_EXISTS => {}
+        Err(e) if e.code() == ERROR_OBJECT_EXISTS => {}
         Err(e) => {
             return Err(anyhow::Error::new(e).context("Failed to create `UnicastIpAddressEntry`"))
         }

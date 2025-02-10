@@ -40,6 +40,11 @@ pub const TUNNEL_UUID: Uuid = Uuid::from_u128(0xe924_5bc1_b8c1_44ca_ab1d_c6aa_d4
 /// Win32 error code objects that don't exist (like network adapters).
 pub(crate) const ERROR_NOT_FOUND: HRESULT = HRESULT::from_win32(0x80070490);
 
+/// Win32 error code for objects that already exist (like routing table entries).
+///
+/// See <https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-csra/f46c3c08-6566-407e-a93e-b0f5e91010f7>.
+pub(crate) const ERROR_OBJECT_EXISTS: HRESULT = HRESULT::from_win32(0x80071392);
+
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
 pub enum DnsControlMethod {
     /// Explicitly disable DNS control.
@@ -164,8 +169,6 @@ struct RoutingTableEntry {
 impl RoutingTableEntry {
     /// Creates a new routing table entry by using the given prototype and overriding the route.
     fn create(route: IpAddr, mut prototype: MIB_IPFORWARD_ROW2) -> io::Result<Self> {
-        const DUPLICATE_ERR: u32 = 0x80071392;
-
         let prefix = &mut prototype.DestinationPrefix;
         match route {
             IpAddr::V4(x) => {
@@ -182,7 +185,7 @@ impl RoutingTableEntry {
         unsafe { CreateIpForwardEntry2(&prototype) }
             .ok()
             .or_else(|e| {
-                if e.code().0 as u32 == DUPLICATE_ERR {
+                if e.code() == ERROR_OBJECT_EXISTS {
                     Ok(())
                 } else {
                     Err(io::Error::other(e))
