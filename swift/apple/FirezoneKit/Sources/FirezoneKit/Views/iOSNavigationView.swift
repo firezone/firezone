@@ -118,9 +118,7 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
   }
 
   private func signOutButtonTapped() {
-    Task {
-      try await model.store.signOut()
-    }
+    do { try model.store.signOut() } catch { Log.error(error) }
   }
 }
 #endif

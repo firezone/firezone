@@ -245,7 +245,13 @@ struct ToggleInternetResourceButton: View {
   var body: some View {
     Button(
       action: {
-        model.store.toggleInternetResource(enabled: !model.isInternetResourceEnabled())
+        Task {
+          do {
+            try await model.store.toggleInternetResource(enabled: !model.isInternetResourceEnabled())
+          } catch {
+            Log.error(error)
+          }
+        }
       },
       label: {
         HStack {

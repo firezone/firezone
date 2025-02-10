@@ -276,9 +276,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func signOutButtonTapped() {
-    Task.detached { [weak self] in
-      try await self?.model.store.signOut()
-    }
+    do { try self.model.store.signOut() } catch { Log.error(error) }
   }
 
   @objc private func grantPermissionMenuItemTapped() {
@@ -340,11 +338,9 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func quitButtonTapped() {
-    Task.detached { [weak self] in
-      guard let self else { return }
-
-      await self.model.store.stop()
-      await NSApp.terminate(self)
+    Task {
+      do { try self.model.store.stop() } catch { Log.error(error) }
+      NSApp.terminate(self)
     }
   }
 
@@ -809,8 +805,15 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func internetResourceToggle(_ sender: NSMenuItem) {
-    self.model.store.toggleInternetResource(enabled: !model.store.internetResourceEnabled())
-    sender.title = internetResourceToggleTitle()
+    Task {
+      do {
+        try await self.model.store.toggleInternetResource(enabled: !model.store.internetResourceEnabled())
+      } catch {
+        Log.error(error)
+      }
+
+      sender.title = internetResourceToggleTitle()
+    }
   }
 
   @objc private func resourceURLTapped(_ sender: AnyObject?) {
