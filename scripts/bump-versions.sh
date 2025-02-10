@@ -118,10 +118,10 @@ function gui() {
     cargo_update_workspace
 }
 
-# Linux Headless
+# Windows / Linux Headless
 #
-# Unlike the Apple, Android, and GUI clients, headless binaries for Linux are
-# built on each `main` workflow.
+# Unlike the Apple, Android, and GUI clients, headless binaries for Windows and
+# Linux are built on each `main` workflow.
 #
 # Instructions:
 # 1. Perform any final QA testing on the new release assets, then publish the
@@ -131,8 +131,8 @@ function gui() {
 # 4. Commit the changes and open a PR. Ensure the Changelog is correctly
 #    updated with the changes.
 function headless() {
-    current_headless_version="1.4.1"
-    next_headless_version="1.4.2"
+    current_headless_version="1.4.2"
+    next_headless_version="1.4.3"
 
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_version}"'/g;}' {} \;
