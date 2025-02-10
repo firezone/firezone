@@ -577,10 +577,15 @@ impl<I: GuiIntegration> Controller<'_, I> {
                 self.update_disabled_resources().await?;
             }
             IpcServerMsg::TerminatingGracefully => {
-                tracing::info!("Caught TerminatingGracefully");
+                tracing::info!("IPC service exited gracefully");
                 self.integration
                     .set_tray_icon(system_tray::icon_terminating());
-                Err(Error::IpcServiceTerminating)?
+                self.integration.show_notification(
+                    "Firezone disconnected",
+                    "The Firezone IPC service was shutdown, quitting GUI process.",
+                )?;
+
+                return Ok(ControlFlow::Break(()));
             }
             IpcServerMsg::TunnelReady => {
                 let Status::WaitingForTunnel { start_instant } = self.status else {

@@ -10,8 +10,6 @@ pub enum Error {
     IpcClosed,
     #[error("IPC read failed")]
     IpcRead(#[source] anyhow::Error),
-    #[error("IPC service terminating")]
-    IpcServiceTerminating,
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
@@ -36,10 +34,6 @@ impl Error {
             }
             Error::IpcClosed => "IPC connection closed".to_string(),
             Error::IpcRead(_) => "IPC read failure".to_string(),
-            Error::IpcServiceTerminating => {
-                "The Firezone IPC service is terminating. Please restart the GUI Client."
-                    .to_string()
-            }
             Error::Other(error) => error.to_string(),
         }
     }
