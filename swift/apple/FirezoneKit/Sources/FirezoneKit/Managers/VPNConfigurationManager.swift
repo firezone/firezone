@@ -282,12 +282,6 @@ public class VPNConfigurationManager {
   }
 
   func start(token: String? = nil) throws {
-    guard let session = session()
-    else { throw VPNConfigurationManagerError.managerNotInitialized }
-
-    guard session.status == .disconnected
-    else { throw VPNConfigurationManagerError.invalidStatus(session.status) }
-
     var options: [String: NSObject] = [:]
 
     // Pass token if provided
@@ -301,38 +295,21 @@ public class VPNConfigurationManager {
       options.merge(["id": id as NSObject]) { _, new in new }
     }
 
-    try session.startTunnel(options: options)
+    try session().startTunnel(options: options)
   }
 
   func signOut() throws {
-    guard let session = session()
-    else { throw VPNConfigurationManagerError.managerNotInitialized }
-
-    guard [.connected, .connecting, .reasserting].contains(session.status)
-    else { throw VPNConfigurationManagerError.invalidStatus(session.status) }
-
-    session.stopTunnel()
-    try session.sendProviderMessage(encoder.encode(TunnelMessage.signOut))
+    try session([.connected, .connecting, .reasserting]).stopTunnel()
+    try session().sendProviderMessage(encoder.encode(TunnelMessage.signOut))
   }
 
   func stop() throws {
-    guard let session = session()
-    else { throw VPNConfigurationManagerError.managerNotInitialized }
-
-    guard [.connected, .connecting, .reasserting].contains(session.status)
-    else { throw VPNConfigurationManagerError.invalidStatus(session.status) }
-
-    session.stopTunnel()
+    try session([.connected, .connecting, .reasserting]).stopTunnel()
   }
 
   func updateInternetResourceState() throws {
-    guard let session = session()
-    else { throw VPNConfigurationManagerError.managerNotInitialized }
-
-    guard session.status == .connected
-    else { throw VPNConfigurationManagerError.invalidStatus(session.status) }
-
-    try session.sendProviderMessage(encoder.encode(TunnelMessage.internetResourceEnabled(internetResourceEnabled)))
+    try session([.connected]).sendProviderMessage(
+      encoder.encode(TunnelMessage.internetResourceEnabled(internetResourceEnabled)))
   }
 
   func toggleInternetResource(enabled: Bool) throws {
@@ -341,20 +318,13 @@ public class VPNConfigurationManager {
   }
 
   func fetchResources() async throws -> ResourceList {
-    guard let session = session()
-    else { throw VPNConfigurationManagerError.managerNotInitialized }
-
     return try await withCheckedThrowingContinuation { continuation in
-      guard session.status == .connected else {
-        continuation.resume(throwing: VPNConfigurationManagerError.invalidStatus(session.status))
-
-        return
-      }
-
       do {
         // Request list of resources from the provider. We send the hash of the resource list we already have.
         // If it differs, we'll get the full list in the callback. If not, we'll get nil.
-        try session.sendProviderMessage(encoder.encode(TunnelMessage.getResourceList(resourceListHash))) { data in
+        try session([.connected]).sendProviderMessage(
+          encoder.encode(TunnelMessage.getResourceList(resourceListHash))) { data in
+
           guard let data = data
           else {
             // No data returned; Resources haven't changed
@@ -385,12 +355,9 @@ public class VPNConfigurationManager {
   }
 
   func clearLogs() async throws {
-    guard let session = session()
-    else { throw VPNConfigurationManagerError.managerNotInitialized }
-
     return try await withCheckedThrowingContinuation { continuation in
       do {
-        try session.sendProviderMessage(encoder.encode(TunnelMessage.clearLogs)) { _ in
+        try session().sendProviderMessage(encoder.encode(TunnelMessage.clearLogs)) { _ in
           continuation.resume()
         }
       } catch {
@@ -400,13 +367,10 @@ public class VPNConfigurationManager {
   }
 
   func getLogFolderSize() async throws -> Int64 {
-    guard let session = session()
-    else { throw VPNConfigurationManagerError.managerNotInitialized }
-
     return try await withCheckedThrowingContinuation { continuation in
 
       do {
-        try session.sendProviderMessage(
+        try session().sendProviderMessage(
           encoder.encode(TunnelMessage.getLogFolderSize)
         ) { data in
 
@@ -438,7 +402,7 @@ public class VPNConfigurationManager {
 
     func loop() {
       do {
-        try session()?.sendProviderMessage(
+        try session().sendProviderMessage(
           encoder.encode(TunnelMessage.exportLogs)
         ) { data in
           guard let data = data
@@ -475,15 +439,8 @@ public class VPNConfigurationManager {
 
   func consumeStopReason() async throws -> NEProviderStopReason? {
     return try await withCheckedThrowingContinuation { continuation in
-      guard let session = session()
-      else {
-        continuation.resume(throwing: VPNConfigurationManagerError.managerNotInitialized)
-
-        return
-      }
-
       do {
-        try session.sendProviderMessage(
+        try session().sendProviderMessage(
           encoder.encode(TunnelMessage.consumeStopReason)
         ) { data in
 
@@ -504,8 +461,17 @@ public class VPNConfigurationManager {
     }
   }
 
-  private func session() -> NETunnelProviderSession? {
-    return manager?.connection as? NETunnelProviderSession
+  private func session(_ requiredStatuses: Set<NEVPNStatus> = []) throws -> NETunnelProviderSession {
+    guard let session = manager?.connection as? NETunnelProviderSession
+    else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+
+    if requiredStatuses.isEmpty || requiredStatuses.contains(session.status) {
+      return session
+    }
+
+    throw VPNConfigurationManagerError.invalidStatus(session.status)
   }
 
   // Subscribe to system notifications about our VPN status changing

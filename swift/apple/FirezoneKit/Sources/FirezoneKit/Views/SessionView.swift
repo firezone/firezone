@@ -49,7 +49,7 @@ public final class SessionViewModel: ObservableObject {
 
         if status == .connected {
           store.beginUpdatingResources { resources in
-            Task { await MainActor.run { self.resources = resources } }
+            self.resources = resources
           }
         } else {
           store.endUpdatingResources()

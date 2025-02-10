@@ -164,7 +164,7 @@ public final class Store: ObservableObject {
       Task {
         do {
           let resources = try await self.vpnConfigurationManager.fetchResources()
-          callback(resources)
+          await callback(resources)
         } catch {
           Log.error(error)
         }
