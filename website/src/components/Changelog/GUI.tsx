@@ -13,7 +13,7 @@ export default function GUI({ os }: { os: OS }) {
           Shows a non-disruptive toast notification and quits the GUI client in
           case the IPC service gets shutdown through the service manager.
         </ChangeItem>
-        {title == "Windows GUI" && (
+        {os === OS.Windows && (
           <ChangeItem pull="8083">
             Fixes a regression introduced in 1.4.3 where Firezone would not work
             on systems with a disabled IPv6 stack.

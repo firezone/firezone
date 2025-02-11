@@ -14,7 +14,7 @@ export default function Headless({ os }: { os: OS }) {
           Hides the <code>--check</code> and <code>--exit</code> CLI options
           from the help output. These are only used internally.
         </ChangeItem>
-        {title == "Windows Headless" && (
+        {os === OS.Windows && (
           <ChangeItem pull="8083">
             Fixes a regression introduced in 1.4.2 where Firezone would not work
             on systems with a disabled IPv6 stack.
