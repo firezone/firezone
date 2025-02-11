@@ -287,7 +287,7 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
 
     // "No such process" is another version of "route does not exist".
     // See <https://askubuntu.com/questions/1330333/what-causes-rtnetlink-answers-no-such-process-when-using-ifdown-command>.
-    if matches!(&err, NetlinkError(err) if err.raw_code() == ESRCH) {
+    if matches!(&err, NetlinkError(err) if err.raw_code() == -ESRCH) {
         return;
     }
 
