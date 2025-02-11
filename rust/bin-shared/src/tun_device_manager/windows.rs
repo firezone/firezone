@@ -431,9 +431,12 @@ fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
     match unsafe { CreateUnicastIpAddressEntry(&row) }.ok() {
         Ok(()) => {}
         Err(e) if e.code() == NOT_SUPPORTED => {
-            tracing::debug!(%ip, "IP stack not supported");
+            tracing::debug!(%ip, "Failed to set interface IP: IP stack not supported?");
         }
-        Err(e) if e.code() == OBJECT_EXISTS => {}
+        Err(e) if e.code() == NOT_FOUND => {
+            tracing::debug!(%ip, "Failed to set interface IP: IP stack disabled?");
+        }
+        Err(e) if e.code() == OBJECT_EXISTS => {} // Happens if we are trying to set the exact same IP.
         Err(e) => {
             return Err(anyhow::Error::new(e).context("Failed to create `UnicastIpAddressEntry`"))
         }
