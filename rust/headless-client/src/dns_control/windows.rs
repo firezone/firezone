@@ -28,6 +28,7 @@ impl DnsController {
     /// Deactivate any control Firezone has over the computer's DNS
     ///
     /// Must be `sync` so we can call it from `Drop`
+    #[expect(clippy::unnecessary_wraps, reason = "Linux version is fallible")]
     pub fn deactivate(&mut self) -> Result<()> {
         let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
