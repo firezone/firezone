@@ -266,7 +266,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
     time_series =
       buffer
       |> Enum.flat_map(fn {{schema, name, tags, unit}, measurements} ->
-        labels = Map.merge(labels, tags) |> truncate_labels()
+        labels = Map.merge(labels, tags) |> truncate_labels() |> Map.merge(%{node: node()})
         format_time_series(schema, name, labels, resource, measurements, unit)
       end)
 
