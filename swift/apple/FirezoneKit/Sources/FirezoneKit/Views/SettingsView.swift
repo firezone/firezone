@@ -506,7 +506,8 @@ public struct SettingsView: View {
                 isProcessing: $isExportingLogs,
                 action: {
                   self.isExportingLogs = true
-                  Task.detached {
+                  Task.detached(priority: .background) { [weak model] in // self can't be weakly captured in views
+                    guard let model else { return }
                     let archiveURL = LogExporter.tempFile()
                     try await LogExporter.export(to: archiveURL)
                     await MainActor.run {
@@ -621,16 +622,14 @@ public struct SettingsView: View {
           return
         }
 
-        Task.detached {
+        Task {
           do {
             try await LogExporter.export(
               to: destinationURL,
               with: model.store.vpnConfigurationManager
             )
 
-            await MainActor.run {
-              window.contentViewController?.presentingViewController?.dismiss(self)
-            }
+            window.contentViewController?.presentingViewController?.dismiss(self)
           } catch {
             if let error = error as? VPNConfigurationManagerError,
                case VPNConfigurationManagerError.noIPCData = error {
@@ -639,15 +638,10 @@ public struct SettingsView: View {
               Log.error(error)
             }
 
-            let alert = await NSAlert()
-            await MainActor.run {
-              alert.messageText = "Error exporting logs: \(error.localizedDescription)"
-              alert.alertStyle = .critical
-              _ = alert.runModal()
-            }
+            await macOSAlert.show(for: error)
           }
 
-          await MainActor.run { self.isExportingLogs = false }
+          self.isExportingLogs = false
         }
       }
     }
@@ -658,7 +652,10 @@ public struct SettingsView: View {
       return
     }
     self.isCalculatingLogsSize = true
-    self.calculateLogSizeTask = Task.detached(priority: .userInitiated) {
+    self.calculateLogSizeTask =
+    Task.detached(priority: .background) { [weak model] in // self can't be weakly captured in views
+      guard let model else { return }
+
       let calculatedLogsSize = await model.calculateLogDirSize()
       await MainActor.run {
         self.calculatedLogsSize = calculatedLogsSize
@@ -675,8 +672,10 @@ public struct SettingsView: View {
   func clearLogFiles() {
     self.isClearingLogs = true
     self.cancelRefreshLogSize()
-    Task.detached(priority: .userInitiated) {
-      try? await model.clearAllLogs()
+    Task.detached(priority: .background) { [weak model] in // self can't be weakly captured in views
+      guard let model else { return }
+
+      do { try await model.clearAllLogs() } catch { Log.error(error) }
       await MainActor.run {
         self.isClearingLogs = false
         if !self.isCalculatingLogsSize {

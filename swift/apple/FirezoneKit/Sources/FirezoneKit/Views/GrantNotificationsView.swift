@@ -23,21 +23,17 @@ public final class GrantNotificationsViewModel: ObservableObject {
   }
 
   func grantNotificationButtonTapped(errorHandler: GlobalErrorHandler) {
-    Task.detached { [weak self] in
-      guard let self else { return }
-
+    Task {
       do {
         let decision = try await sessionNotification.askUserForNotificationPermissions()
         await onDecisionChanged(decision)
       } catch {
         Log.error(error)
 
-        await MainActor.run {
-          errorHandler.handle(ErrorAlert(
-            title: "Error granting notifications",
-            error: error
-          ))
-        }
+        errorHandler.handle(ErrorAlert(
+          title: "Error granting notifications",
+          error: error
+        ))
       }
     }
 

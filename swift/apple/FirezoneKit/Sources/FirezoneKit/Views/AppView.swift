@@ -35,24 +35,20 @@ public class AppViewModel: ObservableObject {
     self.sessionNotification = SessionNotification()
 
     self.sessionNotification.signInHandler = {
-      Task.detached { [weak self] in
-        guard let self else { return }
-
+      Task {
         do { try await WebAuthSession.signIn(store: self.store) } catch { Log.error(error) }
       }
     }
 
-    Task.detached { [weak self] in
-      guard let self else { return }
-
+    Task {
       // Load user's decision whether to allow / disallow notifications
       let decision = await self.sessionNotification.loadAuthorizationStatus()
-      await updateNotificationDecision(to: decision)
+      updateNotificationDecision(to: decision)
 
       // Load VPN configuration and system extension status
       do {
         try await self.store.bindToVPNConfigurationUpdates()
-        let vpnConfigurationStatus = await self.store.status
+        let vpnConfigurationStatus = self.store.status
 
 #if os(macOS)
         let systemExtensionStatus = try await self.store.checkedSystemExtensionStatus()
@@ -61,16 +57,16 @@ public class AppViewModel: ObservableObject {
           || vpnConfigurationStatus == .invalid {
 
           // Show the main Window if VPN permission needs to be granted
-          await AppViewModel.WindowDefinition.main.openWindow()
+          AppViewModel.WindowDefinition.main.openWindow()
         } else {
-          await AppViewModel.WindowDefinition.main.window()?.close()
+          AppViewModel.WindowDefinition.main.window()?.close()
         }
 #endif
 
         if vpnConfigurationStatus == .disconnected {
 
           // Try to connect on start
-          try await self.store.vpnConfigurationManager.start()
+          try self.store.vpnConfigurationManager.start()
         }
       } catch {
         Log.error(error)
@@ -87,8 +83,8 @@ public class AppViewModel: ObservableObject {
       .store(in: &cancellables)
   }
 
-  func updateNotificationDecision(to newStatus: UNAuthorizationStatus) async {
-    await MainActor.run { self.decision = newStatus }
+  func updateNotificationDecision(to newStatus: UNAuthorizationStatus) {
+    self.decision = newStatus
   }
 }
 
@@ -111,7 +107,7 @@ public struct AppView: View {
       GrantNotificationsView(model: GrantNotificationsViewModel(
         sessionNotification: model.sessionNotification,
         onDecisionChanged: { decision in
-          await model.updateNotificationDecision(to: decision)
+          model.updateNotificationDecision(to: decision)
         }
       ))
     case (.disconnected, _):
@@ -155,9 +151,7 @@ public extension AppViewModel {
         window.makeKeyAndOrderFront(self)
       } else {
         // Open new window
-        Task.detached {
-          NSWorkspace.shared.open(externalEventOpenURL)
-        }
+        Task { await NSWorkspace.shared.openAsync(externalEventOpenURL) }
       }
     }
 

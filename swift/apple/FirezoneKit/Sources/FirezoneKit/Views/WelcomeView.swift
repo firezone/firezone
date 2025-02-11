@@ -38,18 +38,16 @@ struct WelcomeView: View {
         """).multilineTextAlignment(.center)
           .padding(.bottom, 10)
         Button("Sign in") {
-          Task.detached {
+          Task {
             do {
               try await WebAuthSession.signIn(store: model.store)
             } catch {
               Log.error(error)
 
-              await MainActor.run {
-                self.errorHandler.handle(ErrorAlert(
-                  title: "Error signing in",
-                  error: error
-                ))
-              }
+              self.errorHandler.handle(ErrorAlert(
+                title: "Error signing in",
+                error: error
+              ))
             }
           }
         }
