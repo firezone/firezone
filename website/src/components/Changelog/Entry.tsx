@@ -1,4 +1,6 @@
 import Link from "next/link";
+import ChangeItem from "./ChangeItem";
+import React from "react";
 
 export default function Entry({
   version,

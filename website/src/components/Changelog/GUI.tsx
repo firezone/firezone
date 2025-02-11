@@ -1,4 +1,3 @@
-import Link from "next/link";
 import Entry from "./Entry";
 import Entries, { DownloadLink } from "./Entries";
 import ChangeItem from "./ChangeItem";
@@ -98,7 +97,7 @@ export default function GUI({ os }: { os: OS }) {
       </Entry>
       <Entry version="1.3.10" date={new Date("2024-10-31")}>
         <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <ChangeItem pull="7009">
             The IPC service `firezone-client-ipc.exe` is now signed.
           </ChangeItem>
@@ -126,7 +125,7 @@ export default function GUI({ os }: { os: OS }) {
       </Entry>
       <Entry version="1.3.8" date={new Date("2024-10-08")}>
         <ChangeItem pull="6874">Fixes the GUI shutting down slowly.</ChangeItem>
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <ChangeItem pull="6931">
             Mitigates an issue where `ipconfig` and WSL weren't aware of
             Firezone DNS resolvers. Users may need to restart WSL after signing
@@ -146,7 +145,7 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull="6782">
           Adds always-on error reporting using sentry.io.
         </ChangeItem>
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <ChangeItem pull="6874">
             Fixes a delay when closing the GUI.
           </ChangeItem>
@@ -175,7 +174,7 @@ export default function GUI({ os }: { os: OS }) {
           Fixes a bug where auto-sign-in with an expired token would cause a
           "Couldn't send Disconnect" error message.
         </ChangeItem>
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <ChangeItem pull="6810">
             Fixes a bug where roaming from Ethernet to WiFi would cause Firezone
             to fail to connect to the portal.
@@ -196,7 +195,7 @@ export default function GUI({ os }: { os: OS }) {
         </ChangeItem>
       </Entry>
       <Entry version="1.3.3" date={new Date("2024-09-13")}>
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <ChangeItem pull="6681">
             Fixes a bug where sign-in fails if IPv6 is disabled.
           </ChangeItem>
@@ -227,7 +226,7 @@ export default function GUI({ os }: { os: OS }) {
           download.
         </ChangeItem>
         <ChangeItem pull="6449">Checks for updates once a day</ChangeItem>
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <ChangeItem pull="6472">
             Fixes an issue where Split DNS didn't work for domain-joined Windows
             machines
@@ -252,13 +251,13 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull="5901">
           Implements glob-like matching of domains for DNS resources.
         </ChangeItem>
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <ChangeItem pull="6280">
             Fixes a bug where the "Clear Logs" button did not clear the IPC
             service logs.
           </ChangeItem>
         )}
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <ChangeItem pull="6308">
             Fixes a bug where the GUI could not run if the user is Administrator
           </ChangeItem>
@@ -303,7 +302,7 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull="6181">
           Improves reliability of DNS resolution of non-resources.
         </ChangeItem>
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <ChangeItem pull="6163">Supports disabling DNS control</ChangeItem>
         )}
         <ChangeItem pull="6184">
@@ -320,7 +319,7 @@ export default function GUI({ os }: { os: OS }) {
         {os === OS.Linux && (
           <ChangeItem pull="5978">Adds network roaming support.</ChangeItem>
         )}
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <ChangeItem pull="6051">
             Fixes "Element not found" error when setting routes.
           </ChangeItem>
@@ -339,7 +338,7 @@ export default function GUI({ os }: { os: OS }) {
             while the GUI is running.
           </ChangeItem>
         )}
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <ChangeItem pull="5375">
             Improves sign-in speed and fixes a DNS leak
           </ChangeItem>
@@ -350,7 +349,7 @@ export default function GUI({ os }: { os: OS }) {
           Unexpected IPC service stops are now reported as "IPC connection
           closed".
         </ChangeItem>
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <ChangeItem pull="5827">
             Fixes a bug where DNS could stop working when you sign out.
           </ChangeItem>
@@ -388,14 +387,14 @@ export default function GUI({ os }: { os: OS }) {
         <li className="pl-2">
           Reduces noise in logs for the default log level.
         </li>
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <li className="pl-2">
             Substantially reduces memory usage for the IPC service.
           </li>
         )}
       </Entry>
       <Entry version="1.1.1" date={new Date("2024-06-27")}>
-        {title === OS.Windows ? (
+        {os === OS.Windows ? (
           <p>This release fixes a performance issue.</p>
         ) : (
           <p>This is a maintenance release with no user-facing changes.</p>
@@ -419,7 +418,7 @@ export default function GUI({ os }: { os: OS }) {
           Updates log file endings to JSONL and adds syslog-style logs for
           easier readability.
         </li>
-        {title === OS.Windows && (
+        {os === OS.Windows && (
           <li className="pl-2">
             Fixes a hang that could occur when the Client is quit, preventing it
             from opening again.
