@@ -200,7 +200,8 @@ fn group_nrpt_path() -> &'static Path {
 
 fn refresh_group_policy() -> Result<()> {
     // SAFETY: No pointers involved, and the docs say nothing about threads.
-    unsafe { RefreshPolicyEx(true, RP_FORCE) }?;
+    unsafe { RefreshPolicyEx(true, RP_FORCE) }.context("Failed to refresh group policy")?;
+
     Ok(())
 }
 
