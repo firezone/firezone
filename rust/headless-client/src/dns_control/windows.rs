@@ -40,7 +40,7 @@ impl DnsController {
 
         match refresh_group_policy() {
             Ok(()) => {}
-            Err(e) if e.code() == EPT_S_NOT_REGISTERED => {
+            Err(e) if e.root_cause().downcast_ref::<windows::core::Error>().is_some_and(|e| e.code() == EPT_S_NOT_REGISTERED) => {
                 // This may happen if we make this syscall multiple times in a row (which we do as we shut down).
                 // It isn't very concerning and deactivation of DNS control is on a best-effort basis anyway.
             }
