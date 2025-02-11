@@ -98,21 +98,21 @@ module.exports = [
     source: "/dl/firezone-gateway/latest/x86_64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.3/firezone-gateway_1.4.3_x86_64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.4/firezone-gateway_1.4.4_x86_64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/aarch64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.3/firezone-gateway_1.4.3_aarch64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.4/firezone-gateway_1.4.4_aarch64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/armv7",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.3/firezone-gateway_1.4.3_armv7",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.4/firezone-gateway_1.4.4_armv7",
     permanent: false,
   },
   /*

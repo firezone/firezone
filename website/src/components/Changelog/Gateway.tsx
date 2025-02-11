@@ -22,12 +22,17 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.4" date={new Date("2025-02-11")}>
+        <ChangeItem pull="7944">
+          Fixes an edge case where a busy Gateway could experience a deadlock
+          due to a busy or unresponsive TUN device.
+        </ChangeItem>
         <ChangeItem pull="8070">
           Only write logs using ANSI-escape codes if the underlying output
           stream supports it.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.3" date={new Date("2025-01-28")}>
         <ChangeItem pull="7567">
           Fixes an issue where ICMPv6's `PacketTooBig' errors were not correctly
