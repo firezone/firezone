@@ -16,6 +16,7 @@
 use super::DnsController;
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
+use firezone_bin_shared::windows::error::EPT_S_NOT_REGISTERED;
 use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 use windows::Win32::System::GroupPolicy::{RefreshPolicyEx, RP_FORCE};
 
@@ -27,17 +28,32 @@ impl DnsController {
     /// Deactivate any control Firezone has over the computer's DNS
     ///
     /// Must be `sync` so we can call it from `Drop`
+    #[expect(clippy::unnecessary_wraps, reason = "Linux version is fallible")]
     pub fn deactivate(&mut self) -> Result<()> {
         let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
         if let Err(error) = delete_subkey(&hklm, local_nrpt_path().join(NRPT_REG_KEY)) {
-            tracing::error!("Failed to delete local NRPT: {error:#}");
+            tracing::warn!("Failed to delete local NRPT: {error:#}");
         }
         if let Err(error) = delete_subkey(&hklm, group_nrpt_path().join(NRPT_REG_KEY)) {
-            tracing::error!("Failed to delete group NRPT: {error:#}");
+            tracing::warn!("Failed to delete group NRPT: {error:#}");
         }
 
-        refresh_group_policy()?;
+        match refresh_group_policy() {
+            Ok(()) => {}
+            Err(e)
+                if e.root_cause()
+                    .downcast_ref::<windows::core::Error>()
+                    .is_some_and(|e| e.code() == EPT_S_NOT_REGISTERED) =>
+            {
+                // This may happen if we make this syscall multiple times in a row (which we do as we shut down).
+                // It isn't very concerning and deactivation of DNS control is on a best-effort basis anyway.
+            }
+            Err(e) => {
+                tracing::warn!("{e:#}");
+            }
+        }
+
         tracing::info!("Deactivated DNS control");
 
         Ok(())
@@ -200,7 +216,8 @@ fn group_nrpt_path() -> &'static Path {
 
 fn refresh_group_policy() -> Result<()> {
     // SAFETY: No pointers involved, and the docs say nothing about threads.
-    unsafe { RefreshPolicyEx(true, RP_FORCE) }?;
+    unsafe { RefreshPolicyEx(true, RP_FORCE) }.context("Failed to refresh group policy")?;
+
     Ok(())
 }
 
