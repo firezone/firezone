@@ -36,6 +36,12 @@ export default function Headless({ title }: { title: string }) {
           Hides the <code>--check</code> and <code>--exit</code> CLI options
           from the help output. These are only used internally.
         </ChangeItem>
+        {title == "Windows Headless" && (
+          <ChangeItem pull="8083">
+            Fixes a regression introduced in 1.4.2 where Firezone would not work
+            on systems with a disabled IPv6 stack.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.4.2" date={new Date("2025-02-10")}>
         <ChangeItem pull="8041">
