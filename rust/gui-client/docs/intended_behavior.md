@@ -45,7 +45,7 @@ Best performed on a clean VM
 
 ## Smoke test checklist (Windows)
 
-Keep this synchronized with the Windows GUI docs in `/website/src/app/kb/client-apps/windows-client`
+Keep this synchronized with the Windows GUI docs in `/website/src/app/kb/client-apps/windows-gui-client`
 
 x86_64 only, see issue #2992. Best performed on a clean VM.
 
