@@ -1,42 +1,20 @@
 import ChangeItem from "./ChangeItem";
 import Entry from "./Entry";
-import Entries from "./Entries";
+import Entries, { DownloadLink } from "./Entries";
 import Link from "next/link";
 import Unreleased from "./Unreleased";
+import { OS } from ".";
 
-export default function Headless({ title }: { title: string }) {
-  const downloadLinks =
-    title === "Windows Headless"
-      ? [
-          {
-            href: "/dl/firezone-client-headless-windows/:version/x86_64",
-            title: "Download for x86_64",
-          },
-        ]
-      : [
-          {
-            href: "/dl/firezone-client-headless-linux/:version/x86_64",
-            title: "Download for x86_64",
-          },
-          {
-            href: "/dl/firezone-client-headless-linux/:version/aarch64",
-            title: "Download for aarch64",
-          },
-          {
-            href: "/dl/firezone-client-headless-linux/:version/armv7",
-            title: "Download for armv7",
-          },
-        ];
-
+export default function Headless({ os }: { os: OS }) {
   return (
-    <Entries downloadLinks={downloadLinks} title={title}>
+    <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="8055">
           Hides the <code>--check</code> and <code>--exit</code> CLI options
           from the help output. These are only used internally.
         </ChangeItem>
-        {title == "Windows Headless" && (
+        {os === OS.Windows && (
           <ChangeItem pull="8083">
             Fixes a regression introduced in 1.4.2 where Firezone would not work
             on systems with a disabled IPv6 stack.
@@ -54,7 +32,7 @@ export default function Headless({ title }: { title: string }) {
       </Entry>
 
       {/* The Windows headless client didn't exist before 1.4.2 */}
-      {title === "Linux Headless" && (
+      {os === OS.Linux && (
         <>
           <Entry version="1.4.1" date={new Date("2025-01-28")}>
             <ChangeItem pull="7551">
@@ -296,4 +274,40 @@ export default function Headless({ title }: { title: string }) {
       )}
     </Entries>
   );
+}
+
+function downloadLinks(os: OS): DownloadLink[] {
+  switch (os) {
+    case OS.Windows:
+      return [
+        {
+          href: "/dl/firezone-client-headless-windows/:version/x86_64",
+          title: "Download for x86_64",
+        },
+      ];
+    case OS.Linux:
+      return [
+        {
+          href: "/dl/firezone-client-headless-linux/:version/x86_64",
+          title: "Download for x86_64",
+        },
+        {
+          href: "/dl/firezone-client-headless-linux/:version/aarch64",
+          title: "Download for aarch64",
+        },
+        {
+          href: "/dl/firezone-client-headless-linux/:version/armv7",
+          title: "Download for armv7",
+        },
+      ];
+  }
+}
+
+function title(os: OS): string {
+  switch (os) {
+    case OS.Windows:
+      return "Windows Headless";
+    case OS.Linux:
+      return "Linux Headless";
+  }
 }

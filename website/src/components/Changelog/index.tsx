@@ -33,19 +33,19 @@ export default function Changelog() {
           <Apple />
         </TabsItem>
         <TabsItem title="Windows GUI" icon={FaWindows}>
-          <GUI title="Windows" />
+          <GUI os={OS.Windows} />
         </TabsItem>
         <TabsItem title="Windows Headless" icon={FaWindows}>
-          <Headless title="Windows Headless" />
+          <Headless os={OS.Windows} />
         </TabsItem>
         <TabsItem title="Android" icon={FaAndroid}>
           <Android />
         </TabsItem>
         <TabsItem title="Linux GUI" icon={FaLinux}>
-          <GUI title="Linux GUI" />
+          <GUI os={OS.Linux} />
         </TabsItem>
         <TabsItem title="Linux Headless" icon={FaLinux}>
-          <Headless title="Linux Headless" />
+          <Headless os={OS.Linux} />
         </TabsItem>
       </TabsGroup>
       {sha && (
@@ -62,4 +62,9 @@ export default function Changelog() {
       )}
     </section>
   );
+}
+
+export enum OS {
+  Windows,
+  Linux,
 }
