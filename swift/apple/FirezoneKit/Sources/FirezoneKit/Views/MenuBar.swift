@@ -280,9 +280,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func grantPermissionMenuItemTapped() {
-    Task.detached { [weak self] in
-      guard let self else { return }
-
+    Task {
       do {
         // If we get here, it means either system extension got disabled or
         // our VPN configuration got removed. Since we don't know which, reinstall
@@ -305,31 +303,23 @@ public final class MenuBar: NSObject, ObservableObject {
     guard let url = URL(string: model.store.settings.authBaseURL)
     else { return }
 
-    Task.detached {
-      NSWorkspace.shared.open(url)
-    }
+    Task { await NSWorkspace.shared.openAsync(url) }
   }
 
   @objc private func updateAvailableButtonTapped() {
-    Task.detached {
-      NSWorkspace.shared.open(UpdateChecker.downloadURL())
-    }
+    Task { await NSWorkspace.shared.openAsync(UpdateChecker.downloadURL()) }
   }
 
   @objc private func documentationButtonTapped() {
     let url = URL(string: "https://www.firezone.dev/kb?utm_source=macos-client")!
 
-    Task.detached {
-      NSWorkspace.shared.open(url)
-    }
+    Task { await NSWorkspace.shared.openAsync(url) }
   }
 
   @objc private func supportButtonTapped() {
     let url = URL(string: "https://www.firezone.dev/support?utm_source=macos-client")!
 
-    Task.detached {
-      NSWorkspace.shared.open(url)
-    }
+    Task { await NSWorkspace.shared.openAsync(url) }
   }
 
   @objc private func aboutButtonTapped() {
@@ -379,11 +369,8 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private func startConnectingAnimation() {
     guard connectingAnimationTimer == nil else { return }
-    let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-      guard let self = self else { return }
-      Task.detached { [weak self] in
-        await self?.connectingAnimationShowNextFrame()
-      }
+    let timer = Timer(timeInterval: 0.25, repeats: true) { _ in
+      Task { await MainActor.run { self.connectingAnimationShowNextFrame() } }
     }
     RunLoop.main.add(timer, forMode: .common)
     connectingAnimationTimer = timer
@@ -819,9 +806,7 @@ public final class MenuBar: NSObject, ObservableObject {
   @objc private func resourceURLTapped(_ sender: AnyObject?) {
     if let value = (sender as? NSMenuItem)?.title,
        let url = URL(string: value) {
-      Task.detached {
-        NSWorkspace.shared.open(url)
-      }
+      Task { await NSWorkspace.shared.openAsync(url) }
     }
   }
 

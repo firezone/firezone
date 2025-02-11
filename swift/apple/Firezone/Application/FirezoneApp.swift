@@ -113,7 +113,7 @@ struct FirezoneApp: App {
           string: "x-apple.systempreferences:com.apple.preferences.softwareupdate"
         )
 
-        NSWorkspace.shared.open(softwareUpdateURL!)
+        Task { await NSWorkspace.shared.openAsync(softwareUpdateURL!) }
       }
     }
   }

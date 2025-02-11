@@ -29,15 +29,13 @@ final class GrantVPNViewModel: ObservableObject {
 
 #if os(macOS)
   func installSystemExtensionButtonTapped() {
-    Task.detached { [weak self] in
-      guard let self else { return }
-
+    Task {
       do {
         try await store.installSystemExtension()
 
         // The window has a tendency to go to the background after installing
         // the system extension
-        await NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate(ignoringOtherApps: true)
 
       } catch {
         Log.error(error)
@@ -48,15 +46,13 @@ final class GrantVPNViewModel: ObservableObject {
 
   func grantPermissionButtonTapped() {
     Log.log("\(#function)")
-    Task.detached { [weak self] in
-      guard let self else { return }
-
+    Task {
       do {
         try await store.grantVPNPermission()
 
         // The window has a tendency to go to the background after allowing the
         // VPN configuration
-        await NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate(ignoringOtherApps: true)
       } catch {
         Log.error(error)
         await macOSAlert.show(for: error)
@@ -68,22 +64,18 @@ final class GrantVPNViewModel: ObservableObject {
 #if os(iOS)
   func grantPermissionButtonTapped(errorHandler: GlobalErrorHandler) {
     Log.log("\(#function)")
-    Task.detached { [weak self] in
-      guard let self else { return }
-
+    Task {
       do {
         try await store.grantVPNPermission()
       } catch {
         Log.error(error)
 
-        await MainActor.run {
-          errorHandler.handle(
-            ErrorAlert(
-              title: "Error installing VPN configuration",
-              error: error
-            )
+        errorHandler.handle(
+          ErrorAlert(
+            title: "Error installing VPN configuration",
+            error: error
           )
-        }
+        )
       }
     }
   }

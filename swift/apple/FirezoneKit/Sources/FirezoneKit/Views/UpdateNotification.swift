@@ -182,8 +182,13 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
       return
     }
 
-    Task.detached {
-      NSWorkspace.shared.open(UpdateChecker.downloadURL())
+    // Must be explicitly run from a MainActor context
+    Task {
+      await MainActor.run {
+        Task {
+          await NSWorkspace.shared.openAsync(UpdateChecker.downloadURL())
+        }
+      }
     }
 
     completionHandler()
