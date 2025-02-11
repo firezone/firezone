@@ -3,7 +3,7 @@
 use bytecodec::{DecodeExt, EncodeExt};
 use firezone_relay::{
     AddressFamily, Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData,
-    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, Server,
+    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, Server, SOFTWARE,
 };
 use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
@@ -835,6 +835,7 @@ fn binding_response(
 ) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::SuccessResponse, BINDING, transaction_id);
+    message.add_attribute(SOFTWARE.clone());
     message.add_attribute(XorMappedAddress::new(address.into()));
 
     message
@@ -849,6 +850,7 @@ fn allocate_response(
 ) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::SuccessResponse, ALLOCATE, transaction_id);
+    message.add_attribute(SOFTWARE.clone());
     message.add_attribute(XorRelayAddress::new(SocketAddr::new(
         public_relay_addr.into(),
         port,
@@ -865,6 +867,7 @@ fn unauthorized_allocate_response(
 ) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::ErrorResponse, ALLOCATE, transaction_id);
+    message.add_attribute(SOFTWARE.clone());
     message.add_attribute(ErrorCode::from(Unauthorized));
     message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
     message.add_attribute(Nonce::new(nonce.as_hyphenated().to_string()).unwrap());
@@ -875,13 +878,18 @@ fn unauthorized_allocate_response(
 fn refresh_response(transaction_id: TransactionId, lifetime: Lifetime) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::SuccessResponse, REFRESH, transaction_id);
+    message.add_attribute(SOFTWARE.clone());
     message.add_attribute(lifetime);
 
     message
 }
 
 fn channel_bind_response(transaction_id: TransactionId) -> Message<Attribute> {
-    Message::<Attribute>::new(MessageClass::SuccessResponse, CHANNEL_BIND, transaction_id)
+    let mut message =
+        Message::<Attribute>::new(MessageClass::SuccessResponse, CHANNEL_BIND, transaction_id);
+    message.add_attribute(SOFTWARE.clone());
+
+    message
 }
 
 fn parse_message(message: &[u8]) -> Message<Attribute> {
