@@ -1,6 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
-use env::SELF_HOSTED;
+use env::ON_PREM;
 use sentry::protocol::SessionStatus;
 
 pub struct Dsn(&'static str);
@@ -23,7 +23,7 @@ mod env {
 
     pub const PRODUCTION: Cow<'static, str> = Cow::Borrowed("production");
     pub const STAGING: Cow<'static, str> = Cow::Borrowed("staging");
-    pub const SELF_HOSTED: Cow<'static, str> = Cow::Borrowed("self-hosted");
+    pub const ON_PREM: Cow<'static, str> = Cow::Borrowed("on-prem");
 }
 
 #[derive(Default)]
@@ -49,7 +49,7 @@ impl Telemetry {
         let environment = match api_url {
             "wss://api.firezone.dev" | "wss://api.firezone.dev/" => env::PRODUCTION,
             "wss://api.firez.one" | "wss://api.firez.one/" => env::STAGING,
-            _ => env::SELF_HOSTED,
+            _ => env::ON_PREM,
         };
 
         if self
@@ -73,7 +73,7 @@ impl Telemetry {
             set_current_user(None);
         }
 
-        if environment == SELF_HOSTED {
+        if environment == ON_PREM {
             tracing::debug!(%api_url, "Telemetry won't start in unofficial environment");
             return;
         }
