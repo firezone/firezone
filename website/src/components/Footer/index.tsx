@@ -260,7 +260,7 @@ export default function Footer() {
             <WindowsIcon
               className="text-neutral-200 hover:text-neutral-50"
               size={5}
-              href="/kb/client-apps/windows-client"
+              href="/kb/client-apps/windows-gui-client"
             />
             <LinuxIcon
               className="text-neutral-200 hover:text-neutral-50"

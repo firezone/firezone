@@ -96,7 +96,7 @@ export default function KbSidebar() {
           <SidebarCollapse prefix="/kb/client-apps" label="Client apps">
             <SidebarItem href="/kb/client-apps">Overview</SidebarItem>
             <SidebarItem href="/kb/client-apps/macos-client">macOS</SidebarItem>
-            <SidebarItem href="/kb/client-apps/windows-client">
+            <SidebarItem href="/kb/client-apps/windows-gui-client">
               Windows
             </SidebarItem>
             <SidebarItem href="/kb/client-apps/linux-gui-client">
@@ -106,7 +106,7 @@ export default function KbSidebar() {
             <SidebarItem href="/kb/client-apps/android-client">
               Android & ChromeOS
             </SidebarItem>
-            <SidebarItem href="/kb/client-apps/linux-client">
+            <SidebarItem href="/kb/client-apps/linux-headless-client">
               Linux Headless
             </SidebarItem>
             <SidebarItem href="/kb/client-apps/windows-headless-client">

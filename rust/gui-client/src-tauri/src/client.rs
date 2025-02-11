@@ -117,7 +117,7 @@ fn run_gui(cli: Cli) -> Result<()> {
                 .find_map(|e| e.downcast_ref::<tauri_runtime::Error>())
                 .is_some_and(|e| matches!(e, tauri_runtime::Error::CreateWebview(_)))
             {
-                common::errors::show_error_dialog("Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-client>.".to_string())?;
+                common::errors::show_error_dialog("Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-gui-client>.".to_string())?;
                 return Err(anyhow);
             }
 

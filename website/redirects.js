@@ -116,19 +116,31 @@ module.exports = [
     permanent: false,
   },
   /*
-   * Redirects for old KB URLs
+   * Redirects for old Website URLs. Most search engines should have re-indexed these after 1 year.
+   * However, other sites may have not, so the general rule here is to keep them indefinitely unless
+   * we need to reuse a particular URL.
+   *
+   * See https://ahrefs.com/blog/are-pemanent-redirects-permanent
    *
    */
   {
-    // TODO: Remove on or after 2024-10-21 after crawlers have re-indexed
     source: "/kb/user-guides/:path",
     destination: "/kb/client-apps/:path",
     permanent: true,
   },
   {
-    // TODO: Remove on or after 2024-10-21 after crawlers have re-indexed
     source: "/kb/user-guides",
     destination: "/kb/client-apps",
+    permanent: true,
+  },
+  {
+    source: "/kb/client-apps/windows-client",
+    destination: "/kb/client-apps/windows-gui-client",
+    permanent: true,
+  },
+  {
+    source: "/kb/client-apps/linux-client",
+    destination: "/kb/client-apps/linux-headless-client",
     permanent: true,
   },
 ];

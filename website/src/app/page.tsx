@@ -195,14 +195,17 @@ export default function Page() {
                 </AppleIcon>
               </div>
               <div className="py-5 flex items-center justify-center bg-neutral-200 rounded-lg">
-                <WindowsIcon size={12} href="/kb/client-apps/windows-client">
+                <WindowsIcon
+                  size={12}
+                  href="/kb/client-apps/windows-gui-client"
+                >
                   <span className="inline-block pt-4 w-full text-center">
                     Windows
                   </span>
                 </WindowsIcon>
               </div>
               <div className="py-5 flex items-center justify-center bg-neutral-200 rounded-lg">
-                <LinuxIcon size={12} href="/kb/client-apps/linux-client">
+                <LinuxIcon size={12} href="/kb/client-apps/linux-gui-client">
                   <span className="inline-block pt-4 w-full text-center">
                     Linux
                   </span>
