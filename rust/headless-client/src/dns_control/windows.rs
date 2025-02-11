@@ -37,7 +37,10 @@ impl DnsController {
             tracing::error!("Failed to delete group NRPT: {error:#}");
         }
 
-        refresh_group_policy()?;
+        if let Err(e) = refresh_group_policy() {
+            tracing::debug!("{e:#}");
+        }
+
         tracing::info!("Deactivated DNS control");
 
         Ok(())
