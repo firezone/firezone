@@ -11,11 +11,11 @@ base64 = { workspace = true }
 firezone-logging = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
+itertools = { workspace = true }
 libc = { workspace = true }
 os_info = { workspace = true }
 rand_core = { workspace = true }
 secrecy = { workspace = true }
-itertools = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
