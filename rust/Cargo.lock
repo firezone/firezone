@@ -4661,6 +4661,7 @@ dependencies = [
  "futures",
  "hex",
  "hostname",
+ "itertools 0.13.0",
  "libc",
  "os_info",
  "rand_core 0.6.4",

@@ -19,6 +19,7 @@ use firezone_logging::{err_with_src, telemetry_span};
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use heartbeat::{Heartbeat, MissedLastHeartbeat};
+use itertools::Itertools as _;
 use rand_core::{OsRng, RngCore};
 use secrecy::{ExposeSecret, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -109,7 +110,8 @@ async fn connect(
     addresses: Vec<SocketAddr>,
     socket_factory: &dyn SocketFactory<TcpSocket>,
 ) -> Result<TcpStream, InternalError> {
-    let mut last_error = None;
+    let mut errors = Vec::with_capacity(addresses.len());
+
     for addr in addresses {
         let Ok(socket) = socket_factory(&addr) else {
             continue;
@@ -118,16 +120,16 @@ async fn connect(
         match socket.connect(addr).await {
             Ok(socket) => return Ok(socket),
             Err(e) => {
-                last_error = Some(e);
+                errors.push((addr, e));
             }
         }
     }
 
-    let Some(err) = last_error else {
+    if errors.is_empty() {
         return Err(InternalError::InvalidUrl);
-    };
+    }
 
-    Err(InternalError::SocketConnection(err))
+    Err(InternalError::SocketConnection(errors))
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -162,7 +164,7 @@ enum InternalError {
     StreamClosed,
     InvalidUrl,
     FailedToBuildRequest(tokio_tungstenite::tungstenite::http::Error),
-    SocketConnection(std::io::Error),
+    SocketConnection(Vec<(SocketAddr, std::io::Error)>),
     Timeout { duration: Duration },
 }
 
@@ -185,7 +187,16 @@ impl fmt::Display for InternalError {
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
             InternalError::StreamClosed => write!(f, "websocket stream was closed"),
             InternalError::InvalidUrl => write!(f, "failed to resolve url"),
-            InternalError::SocketConnection(_) => write!(f, "failed to connect socket"),
+            InternalError::SocketConnection(errors) => {
+                write!(
+                    f,
+                    "failed to connect socket: [{}]",
+                    errors
+                        .iter()
+                        .map(|(addr, e)| format!("{addr}: {e}"))
+                        .join(", ")
+                )
+            }
             InternalError::Timeout { duration, .. } => {
                 write!(f, "operation timed out after {duration:?}")
             }
@@ -202,8 +213,8 @@ impl std::error::Error for InternalError {
             InternalError::WebSocket(tokio_tungstenite::tungstenite::Error::Http(_)) => None,
             InternalError::WebSocket(e) => Some(e),
             InternalError::Serde(e) => Some(e),
-            InternalError::SocketConnection(e) => Some(e),
             InternalError::FailedToBuildRequest(e) => Some(e),
+            InternalError::SocketConnection(_) => None,
             InternalError::MissedHeartbeat => None,
             InternalError::CloseMessage => None,
             InternalError::StreamClosed => None,
