@@ -85,6 +85,8 @@ impl TunDeviceManager {
             Value: unsafe { luid.Value },
         };
 
+        tracing::debug!(%ipv4, %ipv6, "Setting tunnel interface IPs");
+
         try_set_ip(luid, IpAddr::V4(ipv4)).context("Failed to set IPv4 address")?;
         try_set_ip(luid, IpAddr::V6(ipv6)).context("Failed to set IPv6 address")?;
 
@@ -401,8 +403,6 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
 }
 
 fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
-    tracing::debug!(%ip, "Setting tunnel interface IP");
-
     // Safety: Docs don't mention anything in regards to safety of this function.
     let mut row = unsafe {
         let mut row: MIB_UNICASTIPADDRESS_ROW = std::mem::zeroed();
