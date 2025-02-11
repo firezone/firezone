@@ -1,6 +1,6 @@
 use crate::auth::{generate_password, split_username, systemtime_from_unix, FIREZONE};
 use crate::server::channel_data::ChannelData;
-use crate::server::UDP_TRANSPORT;
+use crate::server::{error_response, UDP_TRANSPORT};
 use crate::Attribute;
 use anyhow::{Context, Result};
 use bytecodec::DecodeExt;
@@ -17,7 +17,7 @@ use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, CREATE_PERMISSION, RE
 use stun_codec::rfc8656::attributes::{
     AdditionalAddressFamily, AddressFamily, RequestedAddressFamily,
 };
-use stun_codec::{Message, MessageClass, Method, TransactionId};
+use stun_codec::{Message, MessageClass, TransactionId};
 use uuid::Uuid;
 
 /// The maximum lifetime of an allocation.
@@ -613,17 +613,6 @@ fn bad_request(message: &Message<Attribute>) -> Message<Attribute> {
         message.transaction_id(),
         ErrorCode::from(BadRequest),
     )
-}
-
-fn error_response(
-    method: Method,
-    transaction_id: TransactionId,
-    error_code: ErrorCode,
-) -> Message<Attribute> {
-    let mut message = Message::new(MessageClass::ErrorResponse, method, transaction_id);
-    message.add_attribute(error_code);
-
-    message
 }
 
 #[derive(Debug)]
