@@ -251,7 +251,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   func exportLogs(_ completionHandler: @escaping (Data?) -> Void) {
     func sendChunk(_ tunnelLogArchive: TunnelLogArchive) {
       do {
-        let chunk = try tunnelLogArchive.readChunk()
+        let (chunk, done) = try tunnelLogArchive.readChunk()
+
+        if done {
+          self.logExportState = .idle
+        }
+
         completionHandler(chunk)
       } catch {
         Log.error(error)
