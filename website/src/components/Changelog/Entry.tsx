@@ -18,7 +18,9 @@ export default function Entry({
     day: "numeric",
   };
   const utcDateString = date.toLocaleDateString("en-US", options);
-  const numChildren = React.Children.count(children);
+  const numChangeItems = React.Children.toArray(children).filter(
+    (child) => React.isValidElement(child) && child.type === ChangeItem
+  ).length;
 
   return (
     <tr className="border-t">
@@ -30,7 +32,7 @@ export default function Entry({
       </td>
       <td className="px-2 py-1 sm:px-3 sm:py-1.5 md:px-4 md:py-2 lg:px-6 lg:py-4">
         <ul className="list-disc space-y-2 pl-4 mb-4">
-          {numChildren == 0 ? (
+          {numChangeItems == 0 ? (
             <ChangeItem>
               This is a maintenance release with no user-facing changes.
             </ChangeItem>
