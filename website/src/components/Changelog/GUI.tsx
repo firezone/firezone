@@ -22,11 +22,6 @@ export default function GUI({ os }: { os: OS }) {
         )}
       </Unreleased>
       <Entry version="1.4.3" date={new Date("2025-02-05")}>
-        {os === OS.Linux && (
-          <ChangeItem>
-            This is a maintenance release with no user-facing changes.
-          </ChangeItem>
-        )}
         {os === OS.Windows && (
           <ChangeItem pull="8003">
             Removes dependency on `netsh`, making sign-in faster.
@@ -39,11 +34,6 @@ export default function GUI({ os }: { os: OS }) {
         )}
       </Entry>
       <Entry version="1.4.2" date={new Date("2025-01-30")}>
-        {os === OS.Linux && (
-          <ChangeItem>
-            This is a maintenance with no user-facing changes.
-          </ChangeItem>
-        )}
         {os === OS.Windows && (
           <ChangeItem pull="7912">
             Fixes an issue where the tunnel device could not be created,
@@ -133,11 +123,6 @@ export default function GUI({ os }: { os: OS }) {
             file.
           </ChangeItem>
         )}
-        {title === OS.Windows && (
-          <ChangeItem>
-            This is a maintenance release with no user-facing changes.
-          </ChangeItem>
-        )}
       </Entry>
       <Entry version="1.3.8" date={new Date("2024-10-08")}>
         <ChangeItem pull="6874">Fixes the GUI shutting down slowly.</ChangeItem>
@@ -211,11 +196,6 @@ export default function GUI({ os }: { os: OS }) {
         </ChangeItem>
       </Entry>
       <Entry version="1.3.3" date={new Date("2024-09-13")}>
-        {title === "Linux GUI" && (
-          <ChangeItem>
-            This is a maintenance release with no user-facing changes.
-          </ChangeItem>
-        )}
         {title === OS.Windows && (
           <ChangeItem pull="6681">
             Fixes a bug where sign-in fails if IPv6 is disabled.
@@ -383,11 +363,6 @@ export default function GUI({ os }: { os: OS }) {
         {os === OS.Linux && (
           <ChangeItem pull="5793">
             The Linux GUI Client is now built for both x86-64 and ARM64.
-          </ChangeItem>
-        )}
-        {title === OS.Windows && (
-          <ChangeItem>
-            This is a maintenance release with no user-facing changes.
           </ChangeItem>
         )}
       </Entry>

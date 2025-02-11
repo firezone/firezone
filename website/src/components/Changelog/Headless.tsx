@@ -280,26 +280,26 @@ function downloadLinks(os: OS): DownloadLink[] {
   switch (os) {
     case OS.Windows:
       return [
-          {
-            href: "/dl/firezone-client-headless-windows/:version/x86_64",
-            title: "Download for x86_64",
-          },
-        ];
+        {
+          href: "/dl/firezone-client-headless-windows/:version/x86_64",
+          title: "Download for x86_64",
+        },
+      ];
     case OS.Linux:
       return [
-          {
-            href: "/dl/firezone-client-headless-linux/:version/x86_64",
-            title: "Download for x86_64",
-          },
-          {
-            href: "/dl/firezone-client-headless-linux/:version/aarch64",
-            title: "Download for aarch64",
-          },
-          {
-            href: "/dl/firezone-client-headless-linux/:version/armv7",
-            title: "Download for armv7",
-          },
-        ];
+        {
+          href: "/dl/firezone-client-headless-linux/:version/x86_64",
+          title: "Download for x86_64",
+        },
+        {
+          href: "/dl/firezone-client-headless-linux/:version/aarch64",
+          title: "Download for aarch64",
+        },
+        {
+          href: "/dl/firezone-client-headless-linux/:version/armv7",
+          title: "Download for armv7",
+        },
+      ];
   }
 }
 
