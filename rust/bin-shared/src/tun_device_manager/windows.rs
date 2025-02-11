@@ -135,7 +135,12 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
         return;
     }
 
-    tracing::warn!( %route, "Failed to add route: {}", err_with_src(&e));
+    if e.code() == NOT_FOUND {
+        tracing::debug!(%route, "Failed to add route: IP stack disabled?");
+        return;
+    }
+
+    tracing::warn!(%route, "Failed to add route: {}", err_with_src(&e));
 }
 
 // It's okay if this blocks until the route is removed in the OS.
