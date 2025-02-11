@@ -8,7 +8,8 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.4" date={new Date("2025-02-11")}>
         <ChangeItem pull="8035">
           Shows a non-disruptive toast notification and quits the GUI client in
           case the IPC service gets shutdown through the service manager.
@@ -19,7 +20,7 @@ export default function GUI({ os }: { os: OS }) {
             on systems with a disabled IPv6 stack.
           </ChangeItem>
         )}
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.3" date={new Date("2025-02-05")}>
         {os === OS.Windows && (
           <ChangeItem pull="8003">

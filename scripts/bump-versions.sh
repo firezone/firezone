@@ -107,8 +107,8 @@ function android() {
 # 5. Commit the changes and open a PR. Ensure the Changelog is correctly
 #    updated with the changes.
 function gui() {
-    current_gui_version="1.4.3"
-    next_gui_version="1.4.4"
+    current_gui_version="1.4.4"
+    next_gui_version="1.4.5"
 
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_version}"'/g;}' {} \;
