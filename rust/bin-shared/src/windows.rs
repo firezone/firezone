@@ -76,6 +76,17 @@ pub mod error {
     /// assert_eq!(firezone_bin_shared::windows::error::NOT_SUPPORTED.0 as u32, 0x80070032)
     /// ```
     pub const NOT_SUPPORTED: HRESULT = HRESULT::from_win32(0x0032);
+
+    /// Win32 error code when failing to communicate with the endpoint mapper.
+    ///
+    /// The docs say:
+    ///
+    /// > There are no more endpoints available from the endpoint mapper.
+    ///
+    /// ```
+    /// assert_eq!(firezone_bin_shared::windows::error::EPT_S_NOT_REGISTERED.0 as u32, 0x800706D9)
+    /// ```
+    pub const EPT_S_NOT_REGISTERED: HRESULT = HRESULT::from_win32(0x06D9);
 }
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
