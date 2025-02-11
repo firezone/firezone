@@ -16,6 +16,7 @@
 use super::DnsController;
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
+use firezone_bin_shared::windows::error::EPT_S_NOT_REGISTERED;
 use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 use windows::Win32::System::GroupPolicy::{RefreshPolicyEx, RP_FORCE};
 
@@ -37,8 +38,15 @@ impl DnsController {
             tracing::warn!("Failed to delete group NRPT: {error:#}");
         }
 
-        if let Err(e) = refresh_group_policy() {
-            tracing::debug!("{e:#}");
+        match refresh_group_policy() {
+            Ok(()) => {}
+            Err(e) if e.code() == EPT_S_NOT_REGISTERED => {
+                // This may happen if we make this syscall multiple times in a row (which we do as we shut down).
+                // It isn't very concerning and deactivation of DNS control is on a best-effort basis anyway.
+            }
+            Err(e) => {
+                tracing::warn!("{e:#}");
+            }
         }
 
         tracing::info!("Deactivated DNS control");
