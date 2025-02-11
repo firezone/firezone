@@ -8,7 +8,7 @@ pub use crate::server::client_message::{
 
 use crate::auth::{self, AuthenticatedMessage, MessageIntegrityExt, Nonces, FIREZONE};
 use crate::net_ext::IpAddrExt;
-use crate::{ClientSocket, IpStack, PeerSocket, VERSION};
+use crate::{ClientSocket, IpStack, PeerSocket, SOFTWARE};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
@@ -23,7 +23,6 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::hash::Hash;
 use std::net::{IpAddr, SocketAddr};
 use std::ops::RangeInclusive;
-use std::sync::LazyLock;
 use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Software, Username, XorMappedAddress,
@@ -43,10 +42,6 @@ use stun_codec::{Message, MessageClass, Method, TransactionId};
 use tracing::{field, Span};
 use tracing_core::field::display;
 use uuid::Uuid;
-
-static SOFTWARE: LazyLock<Software> = LazyLock::new(|| {
-    Software::new(format!("firezone-relay; rev={}", &VERSION[..8])).expect("less than 128 chars")
-});
 
 /// A sans-IO STUN & TURN server.
 ///
@@ -334,8 +329,6 @@ where
             error_response.add_attribute((*FIREZONE).clone());
             error_response.add_attribute(self.new_nonce_attribute());
         }
-
-        error_response.add_attribute(SOFTWARE.clone());
 
         let message = match message.username() {
             Some(username) => {
@@ -937,11 +930,9 @@ where
         &mut self,
         username: &str,
         request: &impl StunRequest,
-        mut message: Message<Attribute>,
+        message: Message<Attribute>,
         recipient: ClientSocket,
     ) {
-        message.add_attribute(SOFTWARE.clone());
-
         let authenticated_message = match AuthenticatedMessage::new(
             &self.auth_secret,
             username,
@@ -960,6 +951,8 @@ where
     }
 
     fn send_message(&mut self, message: AuthenticatedMessage, recipient: ClientSocket) {
+        debug_assert!(message.get_attribute::<Software>().is_some());
+
         let method = message.method();
         let class = message.class();
         let error_code = message.get_attribute::<ErrorCode>().map(|e| e.code());
@@ -1362,8 +1355,8 @@ fn error_response(
     error_code: ErrorCode,
 ) -> Message<Attribute> {
     let mut message = Message::new(MessageClass::ErrorResponse, method, transaction_id);
-    message.add_attribute(error_code);
     message.add_attribute(SOFTWARE.clone());
+    message.add_attribute(error_code);
 
     message
 }

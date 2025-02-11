@@ -104,7 +104,11 @@ fn main() {
 
     let mut telemetry = Telemetry::default();
     if args.telemetry {
-        telemetry.start(args.api_url.as_str(), VERSION, RELAY_DSN);
+        telemetry.start(
+            args.api_url.as_str(),
+            VERSION.unwrap_or("unknown"),
+            RELAY_DSN,
+        );
     }
 
     let runtime = tokio::runtime::Builder::new_current_thread()
