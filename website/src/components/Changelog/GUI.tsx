@@ -1,38 +1,19 @@
-import Link from "next/link";
 import Entry from "./Entry";
-import Entries from "./Entries";
+import Entries, { DownloadLink } from "./Entries";
 import ChangeItem from "./ChangeItem";
 import Unreleased from "./Unreleased";
+import { OS } from ".";
 
-export default function GUI({ title }: { title: string }) {
-  const downloadLinks =
-    title === "Windows GUI"
-      ? [
-          {
-            title: "Download for x86_64",
-            href: "/dl/firezone-client-gui-windows/:version/x86_64",
-          },
-        ]
-      : [
-          {
-            title: "Download for x86_64",
-            href: "/dl/firezone-client-gui-linux/:version/x86_64",
-          },
-          {
-            title: "Download for aarch64",
-            href: "/dl/firezone-client-gui-linux/:version/aarch64",
-          },
-        ];
-
+export default function GUI({ os }: { os: OS }) {
   return (
-    <Entries downloadLinks={downloadLinks} title={title}>
+    <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="8035">
           Shows a non-disruptive toast notification and quits the GUI client in
           case the IPC service gets shutdown through the service manager.
         </ChangeItem>
-        {title == "Windows GUI" && (
+        {os === OS.Windows && (
           <ChangeItem pull="8083">
             Fixes a regression introduced in 1.4.3 where Firezone would not work
             on systems with a disabled IPv6 stack.
@@ -40,29 +21,19 @@ export default function GUI({ title }: { title: string }) {
         )}
       </Unreleased>
       <Entry version="1.4.3" date={new Date("2025-02-05")}>
-        {title == "Linux GUI" && (
-          <ChangeItem>
-            This is a maintenance release with no user-facing changes.
-          </ChangeItem>
-        )}
-        {title == "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="8003">
             Removes dependency on `netsh`, making sign-in faster.
           </ChangeItem>
         )}
-        {title == "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="7972">
             Makes DNS configuration more resilient.
           </ChangeItem>
         )}
       </Entry>
       <Entry version="1.4.2" date={new Date("2025-01-30")}>
-        {title == "Linux GUI" && (
-          <ChangeItem>
-            This is a maintenance with no user-facing changes.
-          </ChangeItem>
-        )}
-        {title == "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="7912">
             Fixes an issue where the tunnel device could not be created,
             resulting in an immediate sign-out after signing-in.
@@ -73,12 +44,12 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem pull="7551">
           Fixes an issue where large DNS responses were incorrectly discarded.
         </ChangeItem>
-        {title == "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="7556">
             Disables URO/GRO due to hardware / driver bugs.
           </ChangeItem>
         )}
-        {title == "Linux GUI" && (
+        {os === OS.Linux && (
           <ChangeItem pull="7822">
             Makes the runtime dependency on `update-desktop-database` optional,
             thus improving compatibility on non-Ubuntu systems.
@@ -94,7 +65,7 @@ export default function GUI({ title }: { title: string }) {
           Makes use of the new control protocol, delivering faster and more
           robust connection establishment.
         </ChangeItem>
-        {title == "Linux GUI" && (
+        {os === OS.Linux && (
           <ChangeItem pull="7449">
             Uses multiple threads to read & write to the TUN device, greatly
             improving performance.
@@ -126,7 +97,7 @@ export default function GUI({ title }: { title: string }) {
       </Entry>
       <Entry version="1.3.10" date={new Date("2024-10-31")}>
         <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="7009">
             The IPC service `firezone-client-ipc.exe` is now signed.
           </ChangeItem>
@@ -134,7 +105,7 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem pull="7123">
           Reports the version to the Portal correctly.
         </ChangeItem>
-        {title === "Linux GUI" && (
+        {os === OS.Linux && (
           <ChangeItem pull="6996">
             Supports Ubuntu 24.04, no longer supports Ubuntu 20.04.
           </ChangeItem>
@@ -145,21 +116,16 @@ export default function GUI({ title }: { title: string }) {
         </ChangeItem>
       </Entry>
       <Entry version="1.3.9" date={new Date("2024-10-09")}>
-        {title === "Linux GUI" && (
+        {os === OS.Linux && (
           <ChangeItem pull="6987">
             Fixes a crash on startup caused by incorrect permissions on the ID
             file.
           </ChangeItem>
         )}
-        {title === "Windows" && (
-          <ChangeItem>
-            This is a maintenance release with no user-facing changes.
-          </ChangeItem>
-        )}
       </Entry>
       <Entry version="1.3.8" date={new Date("2024-10-08")}>
         <ChangeItem pull="6874">Fixes the GUI shutting down slowly.</ChangeItem>
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="6931">
             Mitigates an issue where `ipconfig` and WSL weren't aware of
             Firezone DNS resolvers. Users may need to restart WSL after signing
@@ -179,7 +145,7 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem pull="6782">
           Adds always-on error reporting using sentry.io.
         </ChangeItem>
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="6874">
             Fixes a delay when closing the GUI.
           </ChangeItem>
@@ -199,7 +165,7 @@ export default function GUI({ title }: { title: string }) {
           Fixes an issue where some browsers may fail to route DNS Resources
           correctly.
         </ChangeItem>
-        {title === "Linux GUI" && (
+        {os === OS.Linux && (
           <ChangeItem pull="6780">
             Fixes a bug where the Linux Clients didn't work on ZFS filesystems.
           </ChangeItem>
@@ -208,7 +174,7 @@ export default function GUI({ title }: { title: string }) {
           Fixes a bug where auto-sign-in with an expired token would cause a
           "Couldn't send Disconnect" error message.
         </ChangeItem>
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="6810">
             Fixes a bug where roaming from Ethernet to WiFi would cause Firezone
             to fail to connect to the portal.
@@ -229,12 +195,7 @@ export default function GUI({ title }: { title: string }) {
         </ChangeItem>
       </Entry>
       <Entry version="1.3.3" date={new Date("2024-09-13")}>
-        {title === "Linux GUI" && (
-          <ChangeItem>
-            This is a maintenance release with no user-facing changes.
-          </ChangeItem>
-        )}
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="6681">
             Fixes a bug where sign-in fails if IPv6 is disabled.
           </ChangeItem>
@@ -265,7 +226,7 @@ export default function GUI({ title }: { title: string }) {
           download.
         </ChangeItem>
         <ChangeItem pull="6449">Checks for updates once a day</ChangeItem>
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="6472">
             Fixes an issue where Split DNS didn't work for domain-joined Windows
             machines
@@ -290,13 +251,13 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem pull="5901">
           Implements glob-like matching of domains for DNS resources.
         </ChangeItem>
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="6280">
             Fixes a bug where the "Clear Logs" button did not clear the IPC
             service logs.
           </ChangeItem>
         )}
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="6308">
             Fixes a bug where the GUI could not run if the user is Administrator
           </ChangeItem>
@@ -332,7 +293,7 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem pull="5923">
           Adds the ability to mark Resources as favorites.
         </ChangeItem>
-        {title === "Linux GUI" && (
+        {os === OS.Linux && (
           <ChangeItem pull="6163">
             Supports using `etc-resolv-conf` DNS control method, or disabling
             DNS control
@@ -341,7 +302,7 @@ export default function GUI({ title }: { title: string }) {
         <ChangeItem pull="6181">
           Improves reliability of DNS resolution of non-resources.
         </ChangeItem>
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="6163">Supports disabling DNS control</ChangeItem>
         )}
         <ChangeItem pull="6184">
@@ -355,10 +316,10 @@ export default function GUI({ title }: { title: string }) {
         </ChangeItem>
       </Entry>
       <Entry version="1.1.8" date={new Date("2024-08-01")}>
-        {title === "Linux GUI" && (
+        {os === OS.Linux && (
           <ChangeItem pull="5978">Adds network roaming support.</ChangeItem>
         )}
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="6051">
             Fixes "Element not found" error when setting routes.
           </ChangeItem>
@@ -371,13 +332,13 @@ export default function GUI({ title }: { title: string }) {
         </ChangeItem>
       </Entry>
       <Entry version="1.1.7" date={new Date("2024-07-17")}>
-        {title === "Linux GUI" && (
+        {os === OS.Linux && (
           <ChangeItem pull="5848">
             Stops the GUI and prompts you to re-launch it if you update Firezone
             while the GUI is running.
           </ChangeItem>
         )}
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="5375">
             Improves sign-in speed and fixes a DNS leak
           </ChangeItem>
@@ -388,7 +349,7 @@ export default function GUI({ title }: { title: string }) {
           Unexpected IPC service stops are now reported as "IPC connection
           closed".
         </ChangeItem>
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <ChangeItem pull="5827">
             Fixes a bug where DNS could stop working when you sign out.
           </ChangeItem>
@@ -398,14 +359,9 @@ export default function GUI({ title }: { title: string }) {
         </ChangeItem>
       </Entry>
       <Entry version="1.1.5" date={new Date("2024-07-08")}>
-        {title === "Linux GUI" && (
+        {os === OS.Linux && (
           <ChangeItem pull="5793">
             The Linux GUI Client is now built for both x86-64 and ARM64.
-          </ChangeItem>
-        )}
-        {title === "Windows" && (
-          <ChangeItem>
-            This is a maintenance release with no user-facing changes.
           </ChangeItem>
         )}
       </Entry>
@@ -431,14 +387,14 @@ export default function GUI({ title }: { title: string }) {
         <li className="pl-2">
           Reduces noise in logs for the default log level.
         </li>
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <li className="pl-2">
             Substantially reduces memory usage for the IPC service.
           </li>
         )}
       </Entry>
       <Entry version="1.1.1" date={new Date("2024-06-27")}>
-        {title === "Windows" ? (
+        {os === OS.Windows ? (
           <p>This release fixes a performance issue.</p>
         ) : (
           <p>This is a maintenance release with no user-facing changes.</p>
@@ -462,7 +418,7 @@ export default function GUI({ title }: { title: string }) {
           Updates log file endings to JSONL and adds syslog-style logs for
           easier readability.
         </li>
-        {title === "Windows" && (
+        {os === OS.Windows && (
           <li className="pl-2">
             Fixes a hang that could occur when the Client is quit, preventing it
             from opening again.
@@ -512,4 +468,36 @@ export default function GUI({ title }: { title: string }) {
       </Entry>
     </Entries>
   );
+}
+
+function downloadLinks(os: OS): DownloadLink[] {
+  switch (os) {
+    case OS.Windows:
+      return [
+        {
+          title: "Download for x86_64",
+          href: "/dl/firezone-client-gui-windows/:version/x86_64",
+        },
+      ];
+    case OS.Linux:
+      return [
+        {
+          title: "Download for x86_64",
+          href: "/dl/firezone-client-gui-linux/:version/x86_64",
+        },
+        {
+          title: "Download for aarch64",
+          href: "/dl/firezone-client-gui-linux/:version/aarch64",
+        },
+      ];
+  }
+}
+
+function title(os: OS): string {
+  switch (os) {
+    case OS.Windows:
+      return "Windows GUI";
+    case OS.Linux:
+      return "Linux GUI";
+  }
 }
