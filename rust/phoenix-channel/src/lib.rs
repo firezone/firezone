@@ -92,7 +92,7 @@ async fn create_and_connect_websocket(
     user_agent: String,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
-    tracing::debug!(host = url.host().map(tracing::field::display), %user_agent, "Connecting to portal");
+    tracing::debug!(host = url.host().map(tracing::field::display), ?addresses, %user_agent, "Connecting to portal");
 
     let duration = Duration::from_secs(5);
     let socket = tokio::time::timeout(duration, connect(addresses, &*socket_factory))
