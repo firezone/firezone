@@ -65,7 +65,7 @@ class TunnelLogArchive {
     )
   }
 
-  func readChunk() throws -> Data {
+  func readChunk() throws -> (Data, Bool) {
     if self.fileHandle == nil {
       // Open the file for reading
       try self.fileHandle = FileHandle(forReadingFrom: archiveURL)
@@ -94,7 +94,7 @@ class TunnelLogArchive {
       cleanup()
     }
 
-    return try encoder.encode(chunk)
+    return try (encoder.encode(chunk), chunk.done)
   }
 
   func cleanup() {
