@@ -37,16 +37,15 @@ public final class MenuBar: NSObject, ObservableObject {
 
   @ObservedObject var model: SessionViewModel
 
-  private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
-  private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
-  private lazy var signedOutIconNotification = NSImage(named: "MenuBarIconSignedOutNotification")
-  private lazy var signedInConnectedIconNotification = NSImage(named: "MenuBarIconSignedInConnectedNotification")
+  private var signedOutIcon: NSImage?
+  private var signedInConnectedIcon: NSImage?
+  private var signedOutIconNotification: NSImage?
+  private var signedInConnectedIconNotification: NSImage?
+  private var siteOnlineIcon: NSImage?
+  private var siteOfflineIcon: NSImage?
+  private var siteUnknownIcon: NSImage?
+  private var connectingAnimationImages: [NSImage?] = []
 
-  private lazy var connectingAnimationImages = [
-    NSImage(named: "MenuBarIconConnecting1"),
-    NSImage(named: "MenuBarIconConnecting2"),
-    NSImage(named: "MenuBarIconConnecting3")
-  ]
   private var connectingAnimationImageIndex: Int = 0
   private var connectingAnimationTimer: Timer?
 
@@ -60,6 +59,42 @@ public final class MenuBar: NSObject, ObservableObject {
 
     createMenu()
     setupObservers()
+    loadImages()
+  }
+
+  // TODO: Use SwiftUI's Image for these when refactoring the MenuBar to SwiftUI.
+  // NSImage reads image files from disk; this can be slow with lots of disk IO contention.
+  private func loadImages() {
+    Task.detached(priority: .background) { [weak self] in
+      guard let self else { return }
+      let signedOutIcon = MenuBarImage(named: "MenuBarIconSignedOut")
+      let signedInConnectedIcon = MenuBarImage(named: "MenuBarIconSignedInConnected")
+      let signedOutIconNotification = MenuBarImage(named: "MenuBarIconSignedOutNotification")
+      let signedInConnectedIconNotification = MenuBarImage(named: "MenuBarIconSignedInConnectedNotification")
+      let siteOnlineIcon = MenuBarImage(named: NSImage.statusAvailableName)
+      let siteOfflineIcon = MenuBarImage(named: NSImage.statusUnavailableName)
+      let siteUnknownIcon = MenuBarImage(named: NSImage.statusNoneName)
+      let menuBarConnecting1 = MenuBarImage(named: "MenuBarIconConnecting1")
+      let menuBarConnecting2 = MenuBarImage(named: "MenuBarIconConnecting2")
+      let menuBarConnecting3 = MenuBarImage(named: "MenuBarIconConnecting3")
+
+      await MainActor.run {
+        self.signedOutIcon = signedOutIcon.nsImage
+        self.signedInConnectedIcon = signedInConnectedIcon.nsImage
+        self.signedOutIconNotification = signedOutIconNotification.nsImage
+        self.signedInConnectedIconNotification = signedInConnectedIconNotification.nsImage
+        self.siteOnlineIcon = siteOnlineIcon.nsImage
+        self.siteOfflineIcon = siteOfflineIcon.nsImage
+        self.siteUnknownIcon = siteUnknownIcon.nsImage
+
+        self.connectingAnimationImages = [
+          menuBarConnecting1.nsImage,
+          menuBarConnecting2.nsImage,
+          menuBarConnecting3.nsImage
+        ]
+      }
+
+    }
   }
 
   func showMenu() {
@@ -762,7 +797,7 @@ public final class MenuBar: NSObject, ObservableObject {
       siteNameItem.action = #selector(resourceValueTapped(_:))
       siteNameItem.toolTip = "Site name (click to copy)"
       siteNameItem.isEnabled = true
-      siteNameItem.target = self
+     siteNameItem.target = self
       subMenu.addItem(siteNameItem)
 
       // Site status
@@ -772,9 +807,9 @@ public final class MenuBar: NSObject, ObservableObject {
       siteStatusItem.state = statusToState(status: resource.status)
       siteStatusItem.isEnabled = true
       siteStatusItem.target = self
-      if let onImage = NSImage(named: NSImage.statusAvailableName),
-         let offImage = NSImage(named: NSImage.statusUnavailableName),
-         let mixedImage = NSImage(named: NSImage.statusNoneName) {
+      if let onImage = siteOnlineIcon,
+         let offImage = siteOfflineIcon,
+         let mixedImage = siteUnknownIcon {
         siteStatusItem.onStateImage = onImage
         siteStatusItem.offStateImage = offImage
         siteStatusItem.mixedStateImage = mixedImage
@@ -853,18 +888,26 @@ public final class MenuBar: NSObject, ObservableObject {
 extension MenuBar: NSMenuDelegate {
 }
 
-extension NSImage {
-  func resized(to newSize: NSSize) -> NSImage {
-    let newImage = NSImage(size: newSize)
-    newImage.lockFocus()
-    self.draw(
-      in: NSRect(origin: .zero, size: newSize),
-      from: NSRect(origin: .zero, size: self.size),
-      operation: .copy, fraction: 1.0
-    )
-    newImage.unlockFocus()
-    newImage.size = newSize
-    return newImage
+// **SAFETY:** This is @unchecked Sendable, so you must ensure that the wrapped NSImage
+// is only accessed in a thread-safe manner (e.g. confined to the main thread).
+// In general this is safe if the NSImage is not being mutated and is only being
+// accessed from the main thread.
+
+// See https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/Multithreading/ThreadSafetySummary/ThreadSafetySummary.html#//apple_ref/doc/uid/10000057i-CH12-126728 swiftlint:disable:this line_length
+//
+// The alternatives are to use a lower-level type like CGImage that is thread-safe,
+// but requires onerous boilerplate to use (it does not support light and dark mode
+// UI themes), or to use a higher-level type like SwiftUI's Image, which is also
+// thread-safe. The latter option will be used when https://github.com/firezone/firezone/issues/7771
+// is implemented.
+//
+// Without this, we need to load the images on the main thread, which can be slow
+// on systems with lots of disk IO contention.
+class MenuBarImage: @unchecked Sendable {
+  var nsImage: NSImage?
+
+  init(named: String) {
+    self.nsImage = NSImage(named: named)
   }
 }
 #endif
