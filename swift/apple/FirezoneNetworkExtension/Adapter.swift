@@ -393,6 +393,9 @@ extension Adapter: CallbackHandlerDelegate {
   }
 
   public func onDisconnect(error: String) {
+    // We must call disconnect() for connlib to free its session state
+    session?.disconnect()
+
     // Immediately invalidate our session pointer to prevent workQueue items from trying to use it
     session = nil
 
