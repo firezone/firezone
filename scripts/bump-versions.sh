@@ -46,8 +46,8 @@ function cargo_update_workspace() {
 # 7. Commit the changes and open a PR. Ensure the Changelog is correctly
 #    updated with the changes.
 function apple() {
-    current_apple_version="1.4.1"
-    next_apple_version="1.4.2"
+    current_apple_version="1.4.2"
+    next_apple_version="1.4.3"
 
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_version}"'/g;}' {} \;
