@@ -15,30 +15,18 @@ import OSLog
 
 enum AdapterError: Error {
   /// Failure to perform an operation in such state.
-  case invalidState(AdapterState)
+  case invalidSession(WrappedSession?)
 
   /// connlib failed to start
   case connlibConnectError(String)
 
   var localizedDescription: String {
     switch self {
-    case .invalidState(let state):
-      return "Adapter is in an invalid state: \(state)"
+    case .invalidSession(let session):
+      let message = session == nil ? "Session is disconnected" : "Session is still connected"
+      return message
     case .connlibConnectError(let error):
       return "connlib failed to start: \(error)"
-    }
-  }
-}
-
-/// Enum representing internal state of the  adapter
-enum AdapterState: CustomStringConvertible {
-  case tunnelStarted(session: WrappedSession)
-  case tunnelStopped
-
-  var description: String {
-    switch self {
-    case .tunnelStarted: return "tunnelStarted"
-    case .tunnelStopped: return "tunnelStopped"
     }
   }
 }
@@ -48,6 +36,8 @@ class Adapter {
   typealias StartTunnelCompletionHandler = ((AdapterError?) -> Void)
 
   private var callbackHandler: CallbackHandler
+
+  private var session: WrappedSession?
 
   /// Network settings
   private var networkSettings: NetworkSettings?
@@ -120,10 +110,6 @@ class Adapter {
   private lazy var pathUpdateHandler: (Network.NWPath) -> Void = { [weak self] path in
     guard let self else { return }
 
-    // Ignore path updates if we're not started. Prevents responding to path updates
-    // we may receive when shutting down.
-    guard case .tunnelStarted(let session) = self.state else { return }
-
     if path.status == .unsatisfied {
       // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
       if self.packetTunnelProvider?.reasserting == false {
@@ -138,7 +124,8 @@ class Adapter {
       // used anymore.
       if lastRelevantPath?.connectivityDifferentFrom(path: path) != false {
         lastRelevantPath = path
-        session.reset()
+
+        session?.reset()
       }
 
       if shouldFetchSystemResolvers(path: path) {
@@ -149,8 +136,7 @@ class Adapter {
            let encoded = try? JSONEncoder().encode(resolvers),
            let jsonResolvers = String(data: encoded, encoding: .utf8)?.intoRustString() {
 
-          // Update connlib DNS
-          session.setDns(jsonResolvers)
+          session?.setDns(jsonResolvers)
 
           // Update our state tracker
           self.lastFetchedResolvers = resolvers
@@ -168,13 +154,6 @@ class Adapter {
 
   /// Cache of internet resource
   private var internetResource: Resource?
-
-  /// Adapter state.
-  private var state: AdapterState {
-    didSet {
-      Log.log("Adapter state changed to: \(self.state)")
-    }
-  }
 
   /// Keep track of resources
   private var resourceListJSON: String?
@@ -199,7 +178,6 @@ class Adapter {
     self.id = id
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler()
-    self.state = .tunnelStopped
     self.logFilter = logFilter
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
     self.networkSettings = nil
@@ -214,17 +192,17 @@ class Adapter {
     networkMonitor?.cancel()
 
     // Shutdown the tunnel
-    if case .tunnelStarted(let session) = self.state {
-      Log.log("Adapter.deinit: Shutting down connlib")
-      session.disconnect()
-    }
+    session?.disconnect()
+
+    session = nil
   }
 
   /// Start the tunnel.
   public func start() throws {
     Log.log("Adapter.start")
-    guard case .tunnelStopped = self.state else {
-      throw AdapterError.invalidState(self.state)
+
+    guard session == nil else {
+      throw AdapterError.invalidSession(session)
     }
 
     callbackHandler.delegate = self
@@ -235,8 +213,7 @@ class Adapter {
       jsonEncoder.keyEncodingStrategy = .convertToSnakeCase
 
       // Grab a session pointer
-      let session =
-      try WrappedSession.connect(
+      session = try WrappedSession.connect(
         apiURL,
         "\(token)",
         "\(id)",
@@ -253,9 +230,6 @@ class Adapter {
       // tunnel interface coming up, but that's ok -- it will trigger a `set_dns`
       // connlib.
       beginPathMonitoring()
-
-      // Update state in case everything succeeded
-      self.state = .tunnelStarted(session: session)
     } catch let error {
       // `toString` needed to deep copy the string and avoid a possible dangling pointer
       let msg = (error as? RustString)?.toString() ?? "Unknown error"
@@ -275,12 +249,8 @@ class Adapter {
   public func stop() {
     Log.log("Adapter.stop")
 
-    if case .tunnelStarted(let session) = state {
-      state = .tunnelStopped
-
-      // user-initiated, tell connlib to shut down
-      session.disconnect()
-    }
+    session?.disconnect()
+    session = nil
 
     networkMonitor?.cancel()
     networkMonitor = nil
@@ -294,11 +264,6 @@ class Adapter {
     // This is async to avoid blocking the main UI thread
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      guard case .tunnelStarted = self.state
-      else {
-        Log.debug("\(#function): Invalid state \(self.state)")
-        return
-      }
 
       if hash == Data(SHA256.hash(data: Data((resourceListJSON ?? "").utf8))) {
         // nothing changed
@@ -319,11 +284,6 @@ class Adapter {
   public func setInternetResourceEnabled(_ enabled: Bool) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      guard case .tunnelStarted = self.state
-      else {
-        Log.debug("\(#function): Invalid state \(self.state)")
-        return
-      }
 
       self.internetResourceEnabled = enabled
       self.resourcesUpdated()
@@ -331,8 +291,6 @@ class Adapter {
   }
 
   public func resourcesUpdated() {
-    guard case .tunnelStarted(let session) = self.state else { return }
-
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
 
@@ -349,7 +307,7 @@ class Adapter {
       fatalError("Should be able to encode 'disablingResources'")
     }
 
-    session.setDisabledResources(toSet)
+    session?.setDisabledResources(toSet)
   }
 }
 
@@ -392,11 +350,6 @@ extension Adapter: CallbackHandlerDelegate {
     // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      guard case .tunnelStarted = self.state
-      else {
-        Log.debug("\(#function): Invalid state \(self.state)")
-        return
-      }
 
       let networkSettings = self.networkSettings
       ?? NetworkSettings(packetTunnelProvider: packetTunnelProvider)
@@ -429,11 +382,6 @@ extension Adapter: CallbackHandlerDelegate {
     // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      guard case .tunnelStarted = self.state
-      else {
-        Log.debug("Tried to call \(#function) while state is \(self.state)")
-        return
-      }
 
       Log.log("\(#function)")
 
@@ -445,24 +393,20 @@ extension Adapter: CallbackHandlerDelegate {
   }
 
   public func onDisconnect(error: String) {
+    // We must call disconnect() for connlib to free its session state
+    session?.disconnect()
+
+    // Immediately invalidate our session pointer to prevent workQueue items from trying to use it
+    session = nil
+
     // Since connlib has already shutdown by this point, we queue this callback
     // to ensure that we can clean up even if connlib exits before we are done.
     workQueue.async { [weak self] in
       guard let self = self else { return }
-      guard case .tunnelStarted = self.state
-      else {
-        Log.debug("\(#function): Invalid state \(self.state)")
-        return
-      }
-      Log.log("\(#function)")
 
       // Set a default stop reason. In the future, we may have more to act upon in
       // different ways.
       var reason: NEProviderStopReason = .connectionFailed
-
-      // connlib-initiated -- session is already disconnected, move directly to .tunnelStopped
-      // provider will call our stop() at the end.
-      state = .tunnelStopped
 
       // HACK: Define more connlib error types across the FFI so we can switch on them
       // directly and not parse error strings here.
