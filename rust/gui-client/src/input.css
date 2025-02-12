@@ -1,9 +1,64 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 /*
  * This file serves as the main entry point for your Tailwind CSS installation.
  * Generate the CSS from this with `pnpm tailwindcss -i src/input.css -o src/output.css`
  * This has been added to the build script in package.json for convenience.
  */
+
+@plugin 'flowbite/plugin';
+
+@theme {
+  --color-primary-50: #fff9f5;
+  --color-primary-100: #fff1e5;
+  --color-primary-200: #ffddc2;
+  --color-primary-300: #ffbc85;
+  --color-primary-400: #ff9a47;
+  --color-primary-450: #ff7300;
+  --color-primary-500: #ff7605;
+  --color-primary-600: #c25700;
+  --color-primary-700: #7f3900;
+  --color-primary-800: #5c2900;
+  --color-primary-900: #331700;
+
+  --color-accent-50: #f8f5ff;
+  --color-accent-100: #ece5ff;
+  --color-accent-200: #d2c2ff;
+  --color-accent-300: #a585ff;
+  --color-accent-400: #7847ff;
+  --color-accent-450: #5e00d6;
+  --color-accent-500: #4805ff;
+  --color-accent-600: #3400c2;
+  --color-accent-700: #37007f;
+  --color-accent-800: #28005c;
+  --color-accent-900: #160033;
+
+  --color-neutral-50: #fcfcfc;
+  --color-neutral-100: #f8f7f7;
+  --color-neutral-200: #ebebea;
+  --color-neutral-300: #dfdedd;
+  --color-neutral-400: #c7c4c2;
+  --color-neutral-500: #a7a3a0;
+  --color-neutral-600: #90867f;
+  --color-neutral-700: #766a60;
+  --color-neutral-800: #4c3e33;
+  --color-neutral-900: #1b140e;
+}
+
+/*
+  The default border color has changed to `currentColor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentColor);
+  }
+}
