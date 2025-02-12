@@ -14,9 +14,13 @@ jobs:
       - name: Enforce PR title length <= 64
         # Don't run for Dependabot PRs
         if: ${{ !contains(github.event.pull_request.head.label, 'dependabot') }}
+        env:
+          PR_TITLE: "${{ github.event.pull_request.title }}"
         run: |
+          pr_title_length=${#PR_TITLE}
+
           # 64 instead of 72 because GitHub adds the PR number to the title
-          if [ $(echo "${{ github.event.pull_request.title }}" | wc -c) -gt 64 ]; then
+          if [ "$pr_title_length" -gt 64 ]; then
             echo "PR title too long. Please keep it under 64 characters."
             exit 1
           fi
