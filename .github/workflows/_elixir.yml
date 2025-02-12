@@ -111,7 +111,18 @@ jobs:
       - name: Check For Retired Packages
         run: mix hex.audit
       - name: Check For Vulnerable Packages
-        run: mix deps.audit
+        run: |
+          # Fail the pipeline a week from when this was ignored as a reminder
+          cve_epoch=$(date -d "2025-02-11" +%s)
+          now=$(date +%s)
+          one_week=$((7 * 24 * 60 * 60))
+          if (( now > cve_epoch - one_week )); then
+            echo "Check if https://github.com/advisories/GHSA-vq52-99r9-h5pw is fixed"
+            exit 1
+          fi
+
+          # hackney has no non-vulnerable versions :-(
+          mix deps.audit --ignore-advisory-ids GHSA-vq52-99r9-h5pw
       - name: Run Sobelow vulnerability scanner for web app
         working-directory: ./elixir/apps/web
         run: mix sobelow --skip
