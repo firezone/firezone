@@ -20,10 +20,38 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased></Unreleased>
+      <Entry version="1.4.2" date={new Date("2025-02-13")}>
+        <ChangeItem pull="8104">
+          Fixes a minor memory leak that could occur after being unexpectedly
+          disconnected.
+        </ChangeItem>
+        <ChangeItem pull="8091">
+          Fixes a bug that prevented exporting logs from the macOS app more than
+          once.
+        </ChangeItem>
+        <ChangeItem pull="8090">
+          Improves app launch time by asynchronously loading icons upon app
+          launch.
+        </ChangeItem>
+        <ChangeItem pull="8066">
+          Improves MenuBar list responsiveness on macOS.
+        </ChangeItem>
+        <ChangeItem pull="8064">
+          Fixes a bug that might cause the UI process to crash when the Resource
+          list is updated.
+        </ChangeItem>
+        <ChangeItem pull="7996">
+          No longer shows an error dialog if the sign in process is canceled.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.4.1" date={new Date("2025-01-29")}>
         <ChangeItem>Fixes a few minor UI hangs.</ChangeItem>
         <ChangeItem pull="7890">
           Fixes a minor memory leak that occurred when roaming networks.
+        </ChangeItem>
+        <ChangeItem pull="8091">
+          Fixes a bug that prevented exporting logs from the macOS app more than
+          once.
         </ChangeItem>
         <ChangeItem pull="7891">
           Substantially reduces the amount of memory usage when sending large
