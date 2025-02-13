@@ -25,17 +25,20 @@ impl Tun {
         let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
 
         std::thread::Builder::new()
-            .name("TUN send/recv".to_owned())
+            .name("TUN send".to_owned())
             .spawn(move || {
                 firezone_logging::unwrap_or_warn!(
-                    tun::unix::send_recv_tun(
-                        fd,
-                        inbound_tx,
-                        outbound_rx.into_stream(),
-                        read,
-                        write,
-                    ),
-                    "Failed to send / recv from TUN device: {}"
+                    tun::unix::tun_send(fd, outbound_rx.into_stream(), write),
+                    "Failed to send to TUN device: {}"
+                )
+            })
+            .map_err(io::Error::other)?;
+        std::thread::Builder::new()
+            .name("TUN recv".to_owned())
+            .spawn(move || {
+                firezone_logging::unwrap_or_warn!(
+                    tun::unix::tun_recv(fd, inbound_tx, read),
+                    "Failed to recv from TUN device: {}"
                 )
             })
             .map_err(io::Error::other)?;
