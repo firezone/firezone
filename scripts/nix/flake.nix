@@ -56,7 +56,7 @@
           ];
 
           mkShellWithRustVersion = rustVersion: pkgs.mkShell {
-            packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.nodePackages.pnpm cargo-udeps pkgs.cargo-sort pkgs.cargo-deny pkgs.cargo-autoinherit ];
+            packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.pnpm cargo-udeps pkgs.cargo-sort pkgs.cargo-deny pkgs.cargo-autoinherit ];
             buildInputs = packages ++ [
               (rustVersion.override {
                 extensions = [ "rust-src" "rust-analyzer" ];
