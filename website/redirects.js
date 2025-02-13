@@ -34,7 +34,7 @@ module.exports = [
     source: "/dl/firezone-client-gui-windows/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.4/firezone-client-gui-windows_1.4.4_x86_64.msi",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.5/firezone-client-gui-windows_1.4.5_x86_64.msi",
     permanent: false,
   },
   /*
@@ -58,14 +58,14 @@ module.exports = [
     source: "/dl/firezone-client-gui-linux/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.4/firezone-client-gui-linux_1.4.4_x86_64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.5/firezone-client-gui-linux_1.4.5_x86_64.deb",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-gui-linux/latest/aarch64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.4/firezone-client-gui-linux_1.4.4_aarch64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.5/firezone-client-gui-linux_1.4.5_aarch64.deb",
     permanent: false,
   },
   {
