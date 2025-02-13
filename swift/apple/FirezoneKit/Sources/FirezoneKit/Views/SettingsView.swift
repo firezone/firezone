@@ -507,7 +507,8 @@ public struct SettingsView: View {
                 action: {
                   self.isExportingLogs = true
                   Task.detached(priority: .background) { [weak model] in // self can't be weakly captured in views
-                    guard let model else { return }
+                    guard model != nil else { return }
+
                     let archiveURL = LogExporter.tempFile()
                     try await LogExporter.export(to: archiveURL)
                     await MainActor.run {
