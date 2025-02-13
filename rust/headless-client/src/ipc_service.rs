@@ -3,32 +3,41 @@ use crate::{
     ConnlibMsg, LogFilterReloader,
 };
 use anyhow::{bail, Context as _, Result};
+use atomicwrites::{AtomicFile, OverwriteBehavior};
 use clap::Parser;
-use connlib_client_shared::{keypair, ConnectArgs, LoginUrl};
-use connlib_shared::callbacks::ResourceDescription;
+use connlib_model::ResourceView;
 use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
+use firezone_logging::{err_with_src, sentry_layer, telemetry_span};
 use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
     task::{Context, Poll},
     Future as _, SinkExt as _, Stream as _,
 };
+use phoenix_channel::LoginUrl;
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
-use std::{collections::BTreeSet, net::IpAddr, path::PathBuf, pin::pin, sync::Arc, time::Duration};
-use tokio::{sync::mpsc, task::spawn_blocking, time::Instant};
-use tracing::subscriber::set_global_default;
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
+use std::{
+    collections::BTreeSet,
+    io::{self, Write},
+    net::IpAddr,
+    path::PathBuf,
+    pin::pin,
+    sync::Arc,
+    time::Duration,
+};
+use tokio::{sync::mpsc, time::Instant};
+use tracing_subscriber::{layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
 use url::Url;
 
 pub mod ipc;
 use backoff::ExponentialBackoffBuilder;
-use connlib_shared::{get_user_agent, messages::ResourceId};
+use connlib_model::ResourceId;
 use ipc::{Server as IpcServer, ServiceId};
-use phoenix_channel::PhoenixChannel;
+use phoenix_channel::{get_user_agent, PhoenixChannel};
 use secrecy::Secret;
 
 #[cfg(target_os = "linux")]
@@ -41,11 +50,11 @@ pub mod platform;
 
 /// Default log filter for the IPC service
 #[cfg(debug_assertions)]
-const SERVICE_RUST_LOG: &str = "firezone_headless_client=debug,firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,boringtun=debug,snownet=debug,str0m=info,info";
+const SERVICE_RUST_LOG: &str = "debug";
 
 /// Default log filter for the IPC service
 #[cfg(not(debug_assertions))]
-const SERVICE_RUST_LOG: &str = "str0m=warn,info";
+const SERVICE_RUST_LOG: &str = "info";
 
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
@@ -76,14 +85,22 @@ impl Default for Cmd {
 #[derive(Debug, PartialEq, Deserialize, Serialize)]
 pub enum ClientMsg {
     ClearLogs,
-    Connect { api_url: String, token: String },
+    Connect {
+        api_url: String,
+        token: String,
+    },
     Disconnect,
-    ReloadLogFilter,
+    ApplyLogFilter {
+        directives: String,
+    },
     Reset,
     SetDns(Vec<IpAddr>),
     SetDisabledResources(BTreeSet<ResourceId>),
-    StartTelemetry { environment: String },
-    StopTelemetry,
+    StartTelemetry {
+        environment: String,
+        release: String,
+        account_slug: Option<String>,
+    },
 }
 
 /// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
@@ -97,7 +114,7 @@ pub enum ServerMsg {
         error_msg: String,
         is_authentication_error: bool,
     },
-    OnUpdateResources(Vec<ResourceDescription>),
+    OnUpdateResources(Vec<ResourceView>),
     /// The IPC service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
@@ -109,13 +126,24 @@ pub enum ServerMsg {
 }
 
 // All variants are `String` because almost no error type implements `Serialize`
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, thiserror::Error)]
 pub enum Error {
-    DeviceId(String),
-    LoginUrl(String),
-    PortalConnection(String),
-    TunnelDevice(String),
-    UrlParse(String),
+    #[error("IO error: {0}")]
+    Io(String),
+    #[error("{0}")]
+    Other(String),
+}
+
+impl From<io::Error> for Error {
+    fn from(v: io::Error) -> Self {
+        Self::Io(v.to_string())
+    }
+}
+
+impl From<anyhow::Error> for Error {
+    fn from(v: anyhow::Error) -> Self {
+        Self::Other(format!("{v:#}"))
+    }
 }
 
 /// Only called from the GUI Client's build of the IPC service
@@ -142,21 +170,31 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     let log_filter_reloader = crate::setup_stdout_logging()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = firezone_bin_shared::git_version!("gui-client-*"),
+        // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
     );
     if !platform::elevation_check()? {
         bail!("IPC service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
+    let mut telemetry = Telemetry::default();
 
     rt.block_on(ipc_listen(
         cli.common.dns_control,
         &log_filter_reloader,
         &mut signals,
+        &mut telemetry,
     ))
+    .inspect(|_| rt.block_on(telemetry.stop()))
+    .inspect_err(|e| {
+        tracing::error!("IPC service failed: {e:#}");
+
+        rt.block_on(telemetry.stop_on_crash())
+    })
 }
 
 #[cfg(not(debug_assertions))]
@@ -173,7 +211,9 @@ fn run_smoke_test() -> Result<()> {
     if !platform::elevation_check()? {
         bail!("IPC service failed its elevation check, try running as admin / root");
     }
-    let rt = tokio::runtime::Runtime::new()?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
     let _guard = rt.enter();
     let mut dns_controller = DnsController {
         dns_control_method: Default::default(),
@@ -182,7 +222,7 @@ fn run_smoke_test() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
     let mut signals = signals::Terminate::new()?;
-    let telemetry = Telemetry::default();
+    let mut telemetry = Telemetry::default();
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
@@ -192,7 +232,7 @@ fn run_smoke_test() -> Result<()> {
             &mut server,
             &mut dns_controller,
             &log_filter_reloader,
-            telemetry,
+            &mut telemetry,
         )
         .await?
         .run(&mut signals)
@@ -209,19 +249,24 @@ async fn ipc_listen(
     dns_control_method: DnsControlMethod,
     log_filter_reloader: &LogFilterReloader,
     signals: &mut signals::Terminate,
+    telemetry: &mut Telemetry,
 ) -> Result<()> {
     // Create the device ID and IPC service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
-    device_id::get_or_create().context("Failed to read / create device ID")?;
+    let firezone_id = device_id::get_or_create()
+        .context("Failed to read / create device ID")?
+        .id;
+
+    telemetry.set_firezone_id(firezone_id);
+
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController { dns_control_method };
-    let telemetry = Telemetry::default();
     loop {
         let mut handler_fut = pin!(Handler::new(
             &mut server,
             &mut dns_controller,
             log_filter_reloader,
-            telemetry.clone(),
+            telemetry,
         ));
         let Some(handler) = poll_fn(|cx| {
             if let Poll::Ready(()) = signals.poll_recv(cx) {
@@ -253,7 +298,7 @@ struct Handler<'a> {
     last_connlib_start_instant: Option<Instant>,
     log_filter_reloader: &'a LogFilterReloader,
     session: Option<Session>,
-    telemetry: Telemetry, // Handle to the sentry.io telemetry module
+    telemetry: &'a mut Telemetry, // Handle to the sentry.io telemetry module
     tun_device: TunDeviceManager,
 }
 
@@ -284,14 +329,14 @@ impl<'a> Handler<'a> {
         server: &mut IpcServer,
         dns_controller: &'a mut DnsController,
         log_filter_reloader: &'a LogFilterReloader,
-        telemetry: Telemetry,
+        telemetry: &'a mut Telemetry,
     ) -> Result<Self> {
         dns_controller.deactivate()?;
         let (ipc_rx, ipc_tx) = server
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        let tun_device = TunDeviceManager::new(ip_packet::PACKET_SIZE)?;
+        let tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, crate::NUM_TUN_THREADS)?;
 
         Ok(Self {
             dns_controller,
@@ -316,7 +361,7 @@ impl<'a> Handler<'a> {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Callback(x) => {
                     if let Err(error) = self.handle_connlib_cb(x).await {
-                        tracing::error!(?error, "Error while handling connlib callback");
+                        tracing::error!("Error while handling connlib callback: {error:#}");
                         continue;
                     }
                 }
@@ -330,7 +375,7 @@ impl<'a> Handler<'a> {
                     let _entered =
                         tracing::error_span!("handle_ipc_msg", msg = %msg_variant).entered();
                     if let Err(error) = self.handle_ipc_msg(msg).await {
-                        tracing::error!(?error, "Error while handling IPC message from client");
+                        tracing::error!("Error while handling IPC message from client: {error:#}");
                         continue;
                     }
                 }
@@ -339,17 +384,15 @@ impl<'a> Handler<'a> {
                     break HandlerOk::ClientDisconnected;
                 }
                 Event::IpcError(error) => {
-                    tracing::error!(?error, "Error while deserializing IPC message");
+                    tracing::error!("Error while deserializing IPC message: {error:#}");
                     continue;
                 }
                 Event::Terminate => {
                     tracing::info!(
                         "Caught SIGINT / SIGTERM / Ctrl+C while an IPC client is connected"
                     );
-                    self.ipc_tx
-                        .send(&ServerMsg::TerminatingGracefully)
-                        .await
-                        .unwrap();
+                    // Ignore the result here because we're terminating anyway.
+                    let _ = self.ipc_tx.send(&ServerMsg::TerminatingGracefully).await;
                     break HandlerOk::ServiceTerminating;
                 }
             }
@@ -404,12 +447,21 @@ impl<'a> Handler<'a> {
                     .await
                     .context("Error while sending IPC message `OnDisconnect`")?
             }
-            ConnlibMsg::OnSetInterfaceConfig { ipv4, ipv6, dns } => {
+            ConnlibMsg::OnSetInterfaceConfig {
+                ipv4,
+                ipv6,
+                dns,
+                ipv4_routes,
+                ipv6_routes,
+            } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(dns).await?;
                 if let Some(instant) = self.last_connlib_start_instant.take() {
                     tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
                 }
+                self.tun_device.set_routes(ipv4_routes, ipv6_routes).await?;
+                self.dns_controller.flush()?;
+
                 self.ipc_tx
                     .send(&ServerMsg::TunnelReady)
                     .await
@@ -422,10 +474,6 @@ impl<'a> Handler<'a> {
                     .send(&ServerMsg::OnUpdateResources(resources))
                     .await
                     .context("Error while sending IPC message `OnUpdateResources`")?;
-            }
-            ConnlibMsg::OnUpdateRoutes { ipv4, ipv6 } => {
-                self.tun_device.set_routes(ipv4, ipv6).await?;
-                self.dns_controller.flush()?;
             }
         }
         Ok(())
@@ -447,9 +495,7 @@ impl<'a> Handler<'a> {
                 // Warning: Connection errors don't bubble to callers of `handle_ipc_msg`.
                 let token = secrecy::SecretString::from(token);
                 let result = self.connect_to_firezone(&api_url, token);
-                if let Err(error) = &result {
-                    tracing::error!(?error, "Failed to connect connlib session");
-                }
+
                 self.ipc_tx
                     .send(&ServerMsg::ConnectResult(result))
                     .await
@@ -468,9 +514,16 @@ impl<'a> Handler<'a> {
                     .await
                     .context("Failed to send `DisconnectedGracefully`")?;
             }
-            ClientMsg::ReloadLogFilter => {
-                let filter = spawn_blocking(get_log_filter).await??;
-                self.log_filter_reloader.reload(filter)?;
+            ClientMsg::ApplyLogFilter { directives } => {
+                self.log_filter_reloader.reload(directives.clone())?;
+
+                let path = known_dirs::ipc_log_filter()?;
+
+                if let Err(e) = AtomicFile::new(&path, OverwriteBehavior::AllowOverwrite)
+                    .write(|f| f.write_all(directives.as_bytes()))
+                {
+                    tracing::warn!(path = %path.display(), %directives, "Failed to write new log directives: {}", err_with_src(&e));
+                }
             }
             ClientMsg::Reset => {
                 if self.last_connlib_start_instant.is_some() {
@@ -502,12 +555,18 @@ impl<'a> Handler<'a> {
 
                 session.connlib.set_disabled_resources(disabled_resources);
             }
-            ClientMsg::StartTelemetry { environment } => self.telemetry.start(
-                &environment,
-                firezone_bin_shared::git_version!("gui-client-*"),
-                firezone_telemetry::IPC_SERVICE_DSN,
-            ),
-            ClientMsg::StopTelemetry => self.telemetry.stop(),
+            ClientMsg::StartTelemetry {
+                environment,
+                release,
+                account_slug,
+            } => {
+                self.telemetry
+                    .start(&environment, &release, firezone_telemetry::GUI_DSN);
+
+                if let Some(account_slug) = account_slug {
+                    self.telemetry.set_account_slug(account_slug);
+                }
+            }
         }
         Ok(())
     }
@@ -518,71 +577,67 @@ impl<'a> Handler<'a> {
     ///
     /// Throws matchable errors for bad URLs, unable to reach the portal, or unable to create the tunnel device
     fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<(), Error> {
-        let ctx = firezone_telemetry::TransactionContext::new(
-            "connect_to_firezone",
-            "Connecting to Firezone",
-        );
-        let transaction = firezone_telemetry::start_transaction(ctx);
+        let _connect_span = telemetry_span!("connect_to_firezone").entered();
+
         assert!(self.session.is_none());
-        let device_id = device_id::get_or_create().map_err(|e| Error::DeviceId(e.to_string()))?;
-        let (private_key, public_key) = keypair();
+        let device_id = device_id::get_or_create().context("Failed to get-or-create device ID")?;
+        self.telemetry.set_firezone_id(device_id.id.clone());
 
         let url = LoginUrl::client(
-            Url::parse(api_url).map_err(|e| Error::UrlParse(e.to_string()))?,
+            Url::parse(api_url).context("Failed to parse URL")?,
             &token,
             device_id.id,
             None,
-            public_key.to_bytes(),
+            device_id::device_info(),
         )
-        .map_err(|e| Error::LoginUrl(e.to_string()))?;
+        .context("Failed to create `LoginUrl`")?;
 
         self.last_connlib_start_instant = Some(Instant::now());
         let (cb_tx, cb_rx) = mpsc::channel(1_000);
         let callbacks = CallbackHandler { cb_tx };
-        let args = ConnectArgs {
-            tcp_socket_factory: Arc::new(tcp_socket_factory),
-            udp_socket_factory: Arc::new(udp_socket_factory),
-            private_key,
-            callbacks,
-        };
 
         // Synchronous DNS resolution here
-        let phoenix_span = transaction.start_child("phoenix", "Resolve DNS for PhoenixChannel");
-        let portal = PhoenixChannel::connect(
+        let portal = PhoenixChannel::disconnected(
             Secret::new(url),
-            get_user_agent(None, env!("CARGO_PKG_VERSION")),
+            // The IPC service must use the GUI's version number, not the Headless Client's.
+            // But refactoring to separate the IPC service from the Headless Client will take a while.
+            // mark:next-gui-version
+            get_user_agent(None, "1.4.6"),
             "client",
             (),
-            ExponentialBackoffBuilder::default()
-                .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
-                .build(),
+            || {
+                ExponentialBackoffBuilder::default()
+                    .with_max_elapsed_time(Some(Duration::from_secs(60 * 60 * 24 * 30)))
+                    .build()
+            },
             Arc::new(tcp_socket_factory),
-        )
-        .map_err(|e| Error::PortalConnection(e.to_string()))?;
-        phoenix_span.finish();
+        )?; // Turn this `io::Error` directly into an `Error` so we can distinguish it from others in the GUI client.
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
         let connlib = connlib_client_shared::Session::connect(
-            args,
+            Arc::new(tcp_socket_factory),
+            Arc::new(udp_socket_factory),
+            callbacks,
             portal,
             tokio::runtime::Handle::current(),
         );
         // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
         tracing::debug!(?dns, "Calling `set_dns`...");
         connlib.set_dns(dns);
-        let tun_span = transaction.start_child("tun", "Raise tunnel with `make_tun`");
-        let tun = self
-            .tun_device
-            .make_tun()
-            .map_err(|e| Error::TunnelDevice(e.to_string()))?;
+
+        let tun = {
+            let _guard = telemetry_span!("create_tun_device").entered();
+
+            self.tun_device
+                .make_tun()
+                .context("Failed to create TUN device")?
+        };
         connlib.set_tun(Box::new(tun));
-        tun_span.finish();
 
         let session = Session { cb_rx, connlib };
         self.session = Some(session);
 
-        transaction.finish();
         Ok(())
     }
 }
@@ -601,18 +656,24 @@ fn setup_logging(
     )?;
     std::fs::create_dir_all(&log_dir)
         .context("We should have permissions to create our log dir")?;
-    let (layer, handle) = firezone_logging::file::layer(&log_dir);
+
+    let (layer, handle) = firezone_logging::file::layer(&log_dir, "ipc-service");
+
     let directives = get_log_filter().context("Couldn't read log filter")?;
-    let (filter, reloader) =
-        tracing_subscriber::reload::Layer::new(firezone_logging::try_filter(&directives)?);
-    let subscriber = Registry::default().with(layer.with_filter(filter));
-    set_global_default(subscriber).context("`set_global_default` should always work)")?;
+    let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(&directives)?);
+
+    let subscriber = Registry::default()
+        .with(layer.with_filter(filter))
+        .with(sentry_layer());
+    firezone_logging::init(subscriber)?;
+
     tracing::info!(
         arch = std::env::consts::ARCH,
-        git_version = firezone_bin_shared::git_version!("gui-client-*"),
+        // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
         system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
-        ?directives
+        %directives
     );
+
     Ok((handle, reloader))
 }
 
@@ -632,11 +693,8 @@ pub(crate) fn get_log_filter() -> Result<String> {
         return Ok(filter);
     }
 
-    if let Ok(filter) = std::fs::read_to_string(
-        known_dirs::ipc_log_filter()
-            .context("Failed to compute directory for log filter config file")?,
-    )
-    .map(|s| s.trim().to_string())
+    if let Ok(filter) =
+        std::fs::read_to_string(known_dirs::ipc_log_filter()?).map(|s| s.trim().to_string())
     {
         return Ok(filter);
     }

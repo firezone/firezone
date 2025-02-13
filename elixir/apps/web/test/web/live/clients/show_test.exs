@@ -86,16 +86,28 @@ defmodule Web.Live.Clients.ShowTest do
       |> render()
       |> vertical_table_to_map()
 
-    assert table["identifier"] == client.id
+    assert table["id"] == client.id
     assert table["name"] == client.name
     assert table["owner"] =~ actor.name
     assert table["status"] =~ "Offline"
     assert table["created"]
     assert table["last started"]
-    assert table["last seen remote ip"] =~ to_string(client.last_seen_remote_ip)
-    assert table["client version"] =~ client.last_seen_version
+    assert table["version"] =~ client.last_seen_version
     assert table["user agent"] =~ client.last_seen_user_agent
+
+    table =
+      lv
+      |> element("#posture")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["file id"] == client.external_id
+
     assert table["verification"] =~ "Not Verified"
+    assert table["device serial"] =~ to_string(client.device_serial)
+    assert table["device uuid"] =~ to_string(client.device_uuid)
+    assert table["app installation id"] =~ to_string(client.firebase_installation_id)
+    assert table["last seen remote ip"] =~ to_string(client.last_seen_remote_ip)
   end
 
   test "shows client online status", %{
@@ -193,7 +205,6 @@ defmodule Web.Live.Clients.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["expires"]
     assert row["remote ip"] == to_string(client.last_seen_remote_ip)
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
@@ -229,7 +240,6 @@ defmodule Web.Live.Clients.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["expires"]
     assert row["remote ip"] == to_string(client.last_seen_remote_ip)
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
@@ -266,7 +276,6 @@ defmodule Web.Live.Clients.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["expires"]
     assert row["remote ip"] == to_string(client.last_seen_remote_ip)
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
@@ -310,12 +319,32 @@ defmodule Web.Live.Clients.ShowTest do
 
     table =
       lv
-      |> element("#client")
+      |> element("#posture")
       |> render()
       |> vertical_table_to_map()
 
     refute table["verification"] =~ "Not"
     assert table["verification"] =~ "Verified"
     assert table["verification"] =~ "by"
+  end
+
+  test "allows deleting clients", %{
+    account: account,
+    client: client,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/clients/#{client}")
+
+    lv
+    |> element("button[type=submit]", "Delete Client")
+    |> render_click()
+
+    assert_redirected(lv, ~p"/#{account}/clients")
+
+    assert Repo.get(Domain.Clients.Client, client.id).deleted_at
   end
 end

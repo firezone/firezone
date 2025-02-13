@@ -1,48 +1,91 @@
-use crate::{device_channel::Device, sockets::Sockets};
-use futures::{
-    future::{self, Either},
-    stream, Stream, StreamExt,
-};
+mod gso_queue;
+
+use crate::{device_channel::Device, dns, sockets::Sockets};
+use domain::base::Message;
+use firezone_logging::{telemetry_event, telemetry_span};
+use futures_bounded::FuturesTupleSet;
 use futures_util::FutureExt as _;
-use ip_packet::{IpPacket, MAX_DATAGRAM_PAYLOAD};
-use snownet::{EncryptBuffer, EncryptedPacket};
-use socket_factory::{DatagramIn, DatagramOut, SocketFactory, TcpSocket, UdpSocket};
+use gso_queue::GsoQueue;
+use ip_packet::{IpPacket, MAX_FZ_PAYLOAD};
+use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
+    collections::VecDeque,
     io,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
-    time::Instant,
+    time::{Duration, Instant},
 };
-use tokio::sync::mpsc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tracing::Instrument;
 use tun::Tun;
+
+/// How many IP packets we will at most read from the MPSC-channel connected to our TUN device thread.
+///
+/// Reading IP packets from the channel in batches allows us to process (i.e. encrypt) them as a batch.
+/// UDP datagrams of the same size and destination can then be sent in a single syscall using GSO.
+///
+/// On mobile platforms, we are memory-constrained and thus cannot afford to process big batches of packets.
+/// Thus, we limit the batch-size there to 25.
+const MAX_INBOUND_PACKET_BATCH: usize = {
+    if cfg!(any(target_os = "ios", target_os = "android")) {
+        25
+    } else {
+        100
+    }
+};
+
+const MAX_UDP_SIZE: usize = (1 << 16) - 1;
 
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
-    unwritten_packet: Option<EncryptedPacket>,
+    gso_queue: GsoQueue,
 
-    _tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
+    dns_queries: FuturesTupleSet<io::Result<Message<Vec<u8>>>, DnsQueryMetaData>,
+
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
-    tun_tx: mpsc::Sender<Box<dyn Tun>>,
-    outbound_packet_tx: mpsc::Sender<IpPacket>,
-    inbound_packet_rx: mpsc::Receiver<IpPacket>,
+
+    tun: Device,
+    outbound_packet_buffer: VecDeque<IpPacket>,
 }
 
-#[expect(
-    clippy::large_enum_variant,
-    reason = "We purposely don't want to allocate each IP packet."
-)]
-pub enum Input<I> {
+#[derive(Debug)]
+struct DnsQueryMetaData {
+    query: Message<Vec<u8>>,
+    server: SocketAddr,
+    transport: dns::Transport,
+}
+
+pub(crate) struct Buffers {
+    ip: Vec<IpPacket>,
+    udp4: Vec<u8>,
+    udp6: Vec<u8>,
+}
+
+impl Default for Buffers {
+    fn default() -> Self {
+        Self {
+            ip: Vec::with_capacity(MAX_INBOUND_PACKET_BATCH),
+            udp4: Vec::from([0; MAX_UDP_SIZE]),
+            udp6: Vec::from([0; MAX_UDP_SIZE]),
+        }
+    }
+}
+
+pub enum Input<D, I> {
     Timeout(Instant),
-    Device(IpPacket),
+    Device(D),
     Network(I),
+    DnsResponse(dns::RecursiveResponse),
 }
 
-const IP_CHANNEL_SIZE: usize = 1000;
+const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
 
 impl Io {
     /// Creates a new I/O abstraction
@@ -55,27 +98,15 @@ impl Io {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
 
-        let (inbound_packet_tx, inbound_packet_rx) = mpsc::channel(IP_CHANNEL_SIZE);
-        let (outbound_packet_tx, outbound_packet_rx) = mpsc::channel(IP_CHANNEL_SIZE);
-        let (tun_tx, tun_rx) = mpsc::channel(10);
-
-        std::thread::spawn(|| {
-            futures::executor::block_on(tun_send_recv(
-                tun_rx,
-                outbound_packet_rx,
-                inbound_packet_tx,
-            ))
-        });
-
         Self {
-            tun_tx,
-            outbound_packet_tx,
-            inbound_packet_rx,
+            outbound_packet_buffer: VecDeque::with_capacity(10), // It is unlikely that we process more than 10 packets after 1 GRO call.
             timeout: None,
             sockets,
-            _tcp_socket_factory: tcp_socket_factory,
+            tcp_socket_factory,
             udp_socket_factory,
-            unwritten_packet: None,
+            dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
+            gso_queue: GsoQueue::new(),
+            tun: Device::new(),
         }
     }
 
@@ -86,75 +117,114 @@ impl Io {
     pub fn poll<'b>(
         &mut self,
         cx: &mut Context<'_>,
-        ip4_buffer: &'b mut [u8],
-        ip6_bffer: &'b mut [u8],
-        encrypt_buffer: &EncryptBuffer,
-    ) -> Poll<io::Result<Input<impl Iterator<Item = DatagramIn<'b>>>>> {
-        ready!(self.poll_send_unwritten(cx, encrypt_buffer)?);
+        buffers: &'b mut Buffers,
+    ) -> Poll<
+        io::Result<
+            Input<impl Iterator<Item = IpPacket> + use<'b>, impl Iterator<Item = DatagramIn<'b>>>,
+        >,
+    > {
+        ready!(self.flush_send_queue(cx)?);
 
-        if let Poll::Ready(network) = self.sockets.poll_recv_from(ip4_buffer, ip6_bffer, cx)? {
+        if let Poll::Ready(network) =
+            self.sockets
+                .poll_recv_from(&mut buffers.udp4, &mut buffers.udp6, cx)?
+        {
             return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
         }
 
-        if let Poll::Ready(Some(packet)) = self.inbound_packet_rx.poll_recv(cx) {
-            return Poll::Ready(Ok(Input::Device(packet)));
+        if let Poll::Ready(num_packets) =
+            self.tun
+                .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
+        {
+            return Poll::Ready(Ok(Input::Device(buffers.ip.drain(..num_packets))));
+        }
+
+        match self.dns_queries.poll_unpin(cx) {
+            Poll::Ready((result, meta)) => {
+                let response = match result {
+                    Ok(result) => dns::RecursiveResponse {
+                        server: meta.server,
+                        query: meta.query,
+                        message: result,
+                        transport: meta.transport,
+                    },
+                    Err(e @ futures_bounded::Timeout { .. }) => dns::RecursiveResponse {
+                        server: meta.server,
+                        query: meta.query,
+                        message: Err(io::Error::new(io::ErrorKind::TimedOut, e)),
+                        transport: meta.transport,
+                    },
+                };
+
+                return Poll::Ready(Ok(Input::DnsResponse(response)));
+            }
+            Poll::Pending => {}
         }
 
         if let Some(timeout) = self.timeout.as_mut() {
             if timeout.poll_unpin(cx).is_ready() {
-                let deadline = timeout.deadline().into();
-                self.timeout.as_mut().take(); // Clear the timeout.
+                // Always emit `now` as the timeout value.
+                // This ensures that time within our state machine is always monotonic.
+                // If we were to use the `deadline` of the timer instead, time may go backwards.
+                // That is because it is valid to set a `Sleep` to a timestamp in the past.
+                // It will resolve immediately but it will still report the old timestamp as its deadline.
+                // To guard against this case, specifically call `Instant::now` here.
+                let now = Instant::now();
 
-                return Poll::Ready(Ok(Input::Timeout(deadline)));
+                self.timeout = None; // Clear the timeout.
+
+                // Piggy back onto the timeout we already have.
+                // It is not important when we call this, just needs to be called occasionally.
+                self.gso_queue.handle_timeout(now);
+
+                return Poll::Ready(Ok(Input::Timeout(now)));
             }
         }
 
         Poll::Pending
     }
 
-    fn poll_send_unwritten(
-        &mut self,
-        cx: &mut Context<'_>,
-        buf: &EncryptBuffer,
-    ) -> Poll<io::Result<()>> {
-        ready!(self.sockets.poll_send_ready(cx))?;
+    fn flush_send_queue(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        let mut datagrams = self.gso_queue.datagrams();
 
-        // If the `unwritten_packet` is set, `EncryptBuffer` is still holding a packet that we need so send.
-        let Some(unwritten_packet) = self.unwritten_packet.take() else {
-            return Poll::Ready(Ok(()));
-        };
+        loop {
+            ready!(self.sockets.poll_send_ready(cx))?;
 
-        self.send_encrypted_packet(unwritten_packet, buf)?;
+            let Some(datagram) = datagrams.next() else {
+                break;
+            };
+
+            self.sockets.send(datagram)?;
+        }
+
+        loop {
+            // First, check if we can send more packets.
+            ready!(self.tun.poll_send_ready(cx))?;
+
+            // Second, check if we have any buffer packets.
+            let Some(packet) = self.outbound_packet_buffer.pop_front() else {
+                break; // No more packets? All done.
+            };
+
+            // Third, send the packet.
+            self.tun.send(packet)?;
+        }
 
         Poll::Ready(Ok(()))
     }
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        // If we can't set a new TUN device, shut down connlib.
-
-        self.tun_tx
-            .try_send(tun)
-            .expect("Channel to set new TUN device should always have capacity");
+        self.tun.set_tun(tun);
     }
 
-    pub fn send_tun(&mut self, packet: IpPacket) -> io::Result<()> {
-        let Err(e) = self.outbound_packet_tx.try_send(packet) else {
-            return Ok(());
-        };
-
-        match e {
-            mpsc::error::TrySendError::Full(_) => {
-                Err(io::Error::other("Outbound packet channel is at capacity"))
-            }
-            mpsc::error::TrySendError::Closed(_) => Err(io::Error::new(
-                io::ErrorKind::NotConnected,
-                "Outbound packet channel is disconnected",
-            )),
-        }
+    pub fn send_tun(&mut self, packet: IpPacket) {
+        self.outbound_packet_buffer.push_back(packet);
     }
 
-    pub fn rebind_sockets(&mut self) {
+    pub fn reset(&mut self) {
         self.sockets.rebind(self.udp_socket_factory.as_ref());
+        self.gso_queue.clear();
+        self.dns_queries = FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000);
     }
 
     pub fn reset_timeout(&mut self, timeout: Instant) {
@@ -169,117 +239,102 @@ impl Io {
         }
     }
 
-    pub fn send_network(&mut self, transmit: snownet::Transmit) -> io::Result<()> {
-        self.sockets.send(DatagramOut {
-            src: transmit.src,
-            dst: transmit.dst,
-            packet: transmit.payload,
-        })?;
-
-        Ok(())
+    pub fn send_network(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8]) {
+        self.gso_queue.enqueue(src, dst, payload, Instant::now())
     }
 
-    pub fn send_encrypted_packet(
-        &mut self,
-        packet: EncryptedPacket,
-        buf: &EncryptBuffer,
-    ) -> io::Result<()> {
-        let transmit = packet.to_transmit(buf);
-        let res = self.send_network(transmit);
+    pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
+        match query.transport {
+            dns::Transport::Udp { .. } => {
+                let factory = self.udp_socket_factory.clone();
+                let server = query.server;
+                let bind_addr = match query.server {
+                    SocketAddr::V4(_) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
+                    SocketAddr::V6(_) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
+                };
+                let meta = DnsQueryMetaData {
+                    query: query.message.clone(),
+                    server,
+                    transport: query.transport,
+                };
 
-        if res
-            .as_ref()
-            .err()
-            .is_some_and(|e| e.kind() == io::ErrorKind::WouldBlock)
-        {
-            tracing::debug!(dst = %packet.dst(), "Socket busy");
-            self.unwritten_packet = Some(packet);
+                if self
+                    .dns_queries
+                    .try_push(
+                        async move {
+                            // To avoid fragmentation, IP and thus also UDP packets can only reliably sent with an MTU of <= 1500 on the public Internet.
+                            const BUF_SIZE: usize = 1500;
+
+                            let udp_socket = factory(&bind_addr)?;
+
+                            let response = udp_socket
+                                .handshake::<BUF_SIZE>(server, query.message.as_slice())
+                                .await?;
+
+                            let message = Message::from_octets(response)
+                                .map_err(|_| io::Error::other("Failed to parse DNS message"))?;
+
+                            Ok(message)
+                        }
+                        .instrument(telemetry_span!("recursive_udp_dns_query")),
+                        meta,
+                    )
+                    .is_err()
+                {
+                    tracing::debug!("Failed to queue UDP DNS query")
+                }
+            }
+            dns::Transport::Tcp { .. } => {
+                let factory = self.tcp_socket_factory.clone();
+                let server = query.server;
+                let meta = DnsQueryMetaData {
+                    query: query.message.clone(),
+                    server,
+                    transport: query.transport,
+                };
+
+                if self
+                    .dns_queries
+                    .try_push(
+                        async move {
+                            let tcp_socket = factory(&server)?; // TODO: Optimise this to reuse a TCP socket to the same resolver.
+                            let mut tcp_stream = tcp_socket.connect(server).await?;
+
+                            let query = query.message.into_octets();
+                            let dns_message_length = (query.len() as u16).to_be_bytes();
+
+                            tcp_stream.write_all(&dns_message_length).await?;
+                            tcp_stream.write_all(&query).await?;
+
+                            let mut response_length = [0u8; 2];
+                            tcp_stream.read_exact(&mut response_length).await?;
+                            let response_length = u16::from_be_bytes(response_length) as usize;
+
+                            // A u16 is at most 65k, meaning we are okay to allocate here based on what the remote is sending.
+                            let mut response = vec![0u8; response_length];
+                            tcp_stream.read_exact(&mut response).await?;
+
+                            let message = Message::from_octets(response)
+                                .map_err(|_| io::Error::other("Failed to parse DNS message"))?;
+
+                            Ok(message)
+                        }
+                        .instrument(telemetry_span!("recursive_tcp_dns_query")),
+                        meta,
+                    )
+                    .is_err()
+                {
+                    tracing::debug!("Failed to queue TCP DNS query")
+                }
+            }
         }
-
-        res?;
-
-        Ok(())
     }
-}
-
-async fn tun_send_recv(
-    mut tun_rx: mpsc::Receiver<Box<dyn Tun>>,
-    mut outbound_packet_rx: mpsc::Receiver<IpPacket>,
-    inbound_packet_tx: mpsc::Sender<IpPacket>,
-) {
-    let mut device = Device::new();
-
-    let mut command_stream = stream::select_all([
-        new_tun_stream(&mut tun_rx),
-        outgoing_packet_stream(&mut outbound_packet_rx),
-    ]);
-
-    loop {
-        match future::select(
-            command_stream.next(),
-            future::poll_fn(|cx| device.poll_read(cx)),
-        )
-        .await
-        {
-            Either::Left((Some(Command::SendPacket(p)), _)) => {
-                if let Err(e) = device.write(p) {
-                    tracing::debug!("Failed to write TUN packet: {e}");
-                };
-            }
-            Either::Left((Some(Command::UpdateTun(tun)), _)) => {
-                device.set_tun(tun);
-            }
-            Either::Left((None, _)) => {
-                tracing::debug!("Command stream closed");
-                return;
-            }
-            Either::Right((Ok(p), _)) => {
-                if inbound_packet_tx.send(p).await.is_err() {
-                    tracing::debug!("Inbound packet channel closed");
-                    return;
-                };
-            }
-            Either::Right((Err(e), _)) => {
-                tracing::debug!("Failed to read packet from TUN device: {e}");
-                return;
-            }
-        };
-    }
-}
-
-#[expect(
-    clippy::large_enum_variant,
-    reason = "We purposely don't want to allocate each IP packet."
-)]
-enum Command {
-    UpdateTun(Box<dyn Tun>),
-    SendPacket(IpPacket),
-}
-
-fn new_tun_stream(
-    tun_rx: &mut mpsc::Receiver<Box<dyn Tun>>,
-) -> Pin<Box<dyn Stream<Item = Command> + '_>> {
-    Box::pin(stream::poll_fn(|cx| {
-        tun_rx
-            .poll_recv(cx)
-            .map(|maybe_t| maybe_t.map(Command::UpdateTun))
-    }))
-}
-
-fn outgoing_packet_stream(
-    outbound_packet_rx: &mut mpsc::Receiver<IpPacket>,
-) -> Pin<Box<dyn Stream<Item = Command> + '_>> {
-    Box::pin(stream::poll_fn(|cx| {
-        outbound_packet_rx
-            .poll_recv(cx)
-            .map(|maybe_p| maybe_p.map(Command::SendPacket))
-    }))
 }
 
 fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     let len = d.packet.len();
-    if len > MAX_DATAGRAM_PAYLOAD {
-        tracing::debug!(from = %d.from, %len, "Dropping too large datagram (max allowed: {MAX_DATAGRAM_PAYLOAD} bytes)");
+    if len > MAX_FZ_PAYLOAD {
+        telemetry_event!(from = %d.from, %len, "Dropping too large datagram (max allowed: {MAX_FZ_PAYLOAD} bytes)");
 
         return false;
     }
@@ -289,13 +344,120 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use futures::task::noop_waker_ref;
+    use std::{future::poll_fn, ptr::addr_of_mut};
+
     use super::*;
 
-    #[test]
-    fn max_ip_channel_size_is_reasonable() {
-        let one_ip_packet = std::mem::size_of::<IpPacket>();
-        let max_channel_size = IP_CHANNEL_SIZE * one_ip_packet;
+    #[tokio::test]
+    async fn timer_is_reset_after_it_fires() {
+        let mut io = Io::for_test();
 
-        assert_eq!(max_channel_size, 1_360_000); // 1.36MB is fine, we only have 2 of these channels, meaning less than 3MB additional buffer in total.
+        let deadline = Instant::now() + Duration::from_secs(1);
+        io.reset_timeout(deadline);
+
+        let Input::Timeout(timeout) = io.next().await else {
+            panic!("Unexpected result");
+        };
+
+        assert!(timeout >= deadline, "timer expire after deadline");
+
+        let poll = io.poll_test();
+
+        assert!(poll.is_pending());
+        assert!(io.timeout.is_none());
+    }
+
+    #[tokio::test]
+    async fn emits_now_in_case_timeout_is_in_the_past() {
+        let now = Instant::now();
+        let mut io = Io::for_test();
+
+        io.reset_timeout(now - Duration::from_secs(10));
+
+        let Input::Timeout(timeout) = io.next().await else {
+            panic!("Unexpected result");
+        };
+
+        let grace_period = if cfg!(windows) {
+            Duration::from_millis(100)
+        } else {
+            Duration::from_millis(1)
+        };
+
+        assert!(timeout.duration_since(now) < grace_period);
+    }
+
+    static mut DUMMY_BUF: Buffers = Buffers {
+        ip: Vec::new(),
+        udp4: Vec::new(),
+        udp6: Vec::new(),
+    };
+
+    /// Helper functions to make the test more concise.
+    impl Io {
+        fn for_test() -> Io {
+            let mut io = Io::new(
+                Arc::new(|_| Err(io::Error::other("not implemented"))),
+                Arc::new(|_| Err(io::Error::other("not implemented"))),
+            );
+            io.set_tun(Box::new(DummyTun));
+
+            io
+        }
+
+        async fn next(
+            &mut self,
+        ) -> Input<impl Iterator<Item = IpPacket>, impl Iterator<Item = DatagramIn<'static>>>
+        {
+            poll_fn(|cx| {
+                self.poll(
+                    cx,
+                    // SAFETY: This is a test and we never receive packets here.
+                    unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
+                )
+            })
+            .await
+            .unwrap()
+        }
+
+        fn poll_test(
+            &mut self,
+        ) -> Poll<
+            io::Result<
+                Input<impl Iterator<Item = IpPacket>, impl Iterator<Item = DatagramIn<'static>>>,
+            >,
+        > {
+            self.poll(
+                &mut Context::from_waker(noop_waker_ref()),
+                // SAFETY: This is a test and we never receive packets here.
+                unsafe { &mut *addr_of_mut!(DUMMY_BUF) },
+            )
+        }
+    }
+
+    struct DummyTun;
+
+    impl Tun for DummyTun {
+        fn poll_send_ready(&mut self, _: &mut Context) -> Poll<io::Result<()>> {
+            Poll::Ready(Ok(()))
+        }
+
+        fn send(&mut self, _: IpPacket) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn poll_recv_many(
+            &mut self,
+            _: &mut Context,
+            _: &mut Vec<IpPacket>,
+            _: usize,
+        ) -> Poll<usize> {
+            Poll::Pending
+        }
+
+        fn name(&self) -> &str {
+            "dummy"
+        }
     }
 }

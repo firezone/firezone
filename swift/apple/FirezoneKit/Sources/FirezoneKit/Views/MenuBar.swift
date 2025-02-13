@@ -5,6 +5,9 @@
 //  Created by Jamil Bou Kheir on 4/2/24.
 //
 
+// TODO: Refactor to fix file length
+// swiftlint:disable file_length
+
 import Foundation
 import Combine
 import NetworkExtension
@@ -15,6 +18,7 @@ import SwiftUI
 @MainActor
 // TODO: Refactor to MenuBarExtra for macOS 13+
 // https://developer.apple.com/documentation/swiftui/menubarextra
+// swiftlint:disable:next type_body_length
 public final class MenuBar: NSObject, ObservableObject {
   private var statusItem: NSStatusItem
 
@@ -26,23 +30,22 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private var cancellables: Set<AnyCancellable> = []
 
-  private var vpnStatus: NEVPNStatus = .disconnected
+  private var vpnStatus: NEVPNStatus?
 
   private var updateChecker: UpdateChecker = UpdateChecker()
   private var updateMenuDisplayed: Bool = false
 
   @ObservedObject var model: SessionViewModel
 
-  private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
-  private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
-  private lazy var signedOutIconNotification = NSImage(named: "MenuBarIconSignedOutNotification")
-  private lazy var signedInConnectedIconNotification = NSImage(named: "MenuBarIconSignedInConnectedNotification")
+  private var signedOutIcon: NSImage?
+  private var signedInConnectedIcon: NSImage?
+  private var signedOutIconNotification: NSImage?
+  private var signedInConnectedIconNotification: NSImage?
+  private var siteOnlineIcon: NSImage?
+  private var siteOfflineIcon: NSImage?
+  private var siteUnknownIcon: NSImage?
+  private var connectingAnimationImages: [NSImage?] = []
 
-  private lazy var connectingAnimationImages = [
-    NSImage(named: "MenuBarIconConnecting1"),
-    NSImage(named: "MenuBarIconConnecting2"),
-    NSImage(named: "MenuBarIconConnecting3"),
-  ]
   private var connectingAnimationImageIndex: Int = 0
   private var connectingAnimationTimer: Timer?
 
@@ -56,6 +59,42 @@ public final class MenuBar: NSObject, ObservableObject {
 
     createMenu()
     setupObservers()
+    loadImages()
+  }
+
+  // TODO: Use SwiftUI's Image for these when refactoring the MenuBar to SwiftUI.
+  // NSImage reads image files from disk; this can be slow with lots of disk IO contention.
+  private func loadImages() {
+    Task.detached(priority: .background) { [weak self] in
+      guard let self else { return }
+      let signedOutIcon = MenuBarImage(named: "MenuBarIconSignedOut")
+      let signedInConnectedIcon = MenuBarImage(named: "MenuBarIconSignedInConnected")
+      let signedOutIconNotification = MenuBarImage(named: "MenuBarIconSignedOutNotification")
+      let signedInConnectedIconNotification = MenuBarImage(named: "MenuBarIconSignedInConnectedNotification")
+      let siteOnlineIcon = MenuBarImage(named: NSImage.statusAvailableName)
+      let siteOfflineIcon = MenuBarImage(named: NSImage.statusUnavailableName)
+      let siteUnknownIcon = MenuBarImage(named: NSImage.statusNoneName)
+      let menuBarConnecting1 = MenuBarImage(named: "MenuBarIconConnecting1")
+      let menuBarConnecting2 = MenuBarImage(named: "MenuBarIconConnecting2")
+      let menuBarConnecting3 = MenuBarImage(named: "MenuBarIconConnecting3")
+
+      await MainActor.run {
+        self.signedOutIcon = signedOutIcon.nsImage
+        self.signedInConnectedIcon = signedInConnectedIcon.nsImage
+        self.signedOutIconNotification = signedOutIconNotification.nsImage
+        self.signedInConnectedIconNotification = signedInConnectedIconNotification.nsImage
+        self.siteOnlineIcon = siteOnlineIcon.nsImage
+        self.siteOfflineIcon = siteOfflineIcon.nsImage
+        self.siteUnknownIcon = siteUnknownIcon.nsImage
+
+        self.connectingAnimationImages = [
+          menuBarConnecting1.nsImage,
+          menuBarConnecting2.nsImage,
+          menuBarConnecting3.nsImage
+        ]
+      }
+
+    }
   }
 
   func showMenu() {
@@ -65,17 +104,17 @@ public final class MenuBar: NSObject, ObservableObject {
   private func setupObservers() {
     model.favorites.$ids
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] ids in
+      .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
-        // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole menu.
-        // This avoids complex logic when changing in and out of the "nothing is favorited" special case
+        // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole
+        // menu. This avoids complex logic when changing in and out of the "nothing is favorited" special case.
         self.populateResourceMenus([])
         self.populateResourceMenus(model.resources.asArray())
       }).store(in: &cancellables)
 
     model.$resources
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] resources in
+      .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
         self.populateResourceMenus(model.resources.asArray())
         self.handleTunnelStatusOrResourcesChanged()
@@ -83,7 +122,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
     model.$status
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] status in
+      .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
         self.vpnStatus = model.status
         self.updateStatusItemIcon()
@@ -227,7 +266,7 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.addItem(resourcesUnavailableReasonMenuItem)
     menu.addItem(resourcesSeparatorMenuItem)
 
-    if (!model.favorites.ids.isEmpty) {
+    if !model.favorites.ids.isEmpty {
       menu.addItem(otherResourcesMenuItem)
       menu.addItem(otherResourcesSeparatorMenuItem)
     }
@@ -261,13 +300,33 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func signInButtonTapped() {
-    NSApp.activate(ignoringOtherApps: true)
-    Task { await WebAuthSession.signIn(store: model.store) }
+    Task {
+      do {
+        try await WebAuthSession.signIn(store: self.model.store)
+      } catch {
+        Log.error(error)
+        await macOSAlert.show(for: error)
+      }
+    }
   }
 
   @objc private func signOutButtonTapped() {
+    do { try self.model.store.signOut() } catch { Log.error(error) }
+  }
+
+  @objc private func grantPermissionMenuItemTapped() {
     Task {
-      try await model.store.signOut()
+      do {
+        // If we get here, it means either system extension got disabled or
+        // our VPN configuration got removed. Since we don't know which, reinstall
+        // the system extension here too just in case. It's a no-op if already
+        // installed.
+        try await model.store.installSystemExtension()
+        try await model.store.grantVPNPermission()
+      } catch {
+        Log.error(error)
+        await macOSAlert.show(for: error)
+      }
     }
   }
 
@@ -276,22 +335,26 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func adminPortalButtonTapped() {
-    let url = URL(string: model.store.settings.authBaseURL)!
-    NSWorkspace.shared.open(url)
+    guard let url = URL(string: model.store.settings.authBaseURL)
+    else { return }
+
+    Task { await NSWorkspace.shared.openAsync(url) }
   }
 
   @objc private func updateAvailableButtonTapped() {
-    NSWorkspace.shared.open(appStoreLink)
+    Task { await NSWorkspace.shared.openAsync(UpdateChecker.downloadURL()) }
   }
 
   @objc private func documentationButtonTapped() {
     let url = URL(string: "https://www.firezone.dev/kb?utm_source=macos-client")!
-    NSWorkspace.shared.open(url)
+
+    Task { await NSWorkspace.shared.openAsync(url) }
   }
 
   @objc private func supportButtonTapped() {
     let url = URL(string: "https://www.firezone.dev/support?utm_source=macos-client")!
-    NSWorkspace.shared.open(url)
+
+    Task { await NSWorkspace.shared.openAsync(url) }
   }
 
   @objc private func aboutButtonTapped() {
@@ -301,14 +364,14 @@ public final class MenuBar: NSObject, ObservableObject {
 
   @objc private func quitButtonTapped() {
     Task {
-      model.store.stop()
+      do { try self.model.store.stop() } catch { Log.error(error) }
       NSApp.terminate(self)
     }
   }
 
-  private func updateAnimation(status: NEVPNStatus) {
+  private func updateAnimation(status: NEVPNStatus?) {
     switch status {
-    case .invalid, .disconnected:
+    case nil, .invalid, .disconnected:
       self.stopConnectingAnimation()
     case .connected:
       self.stopConnectingAnimation()
@@ -319,13 +382,13 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func getStatusIcon(status: NEVPNStatus, notification: Bool) -> NSImage? {
+  private func getStatusIcon(status: NEVPNStatus?, notification: Bool) -> NSImage? {
     if status == .connecting || status == .disconnecting || status == .reasserting {
       return self.connectingAnimationImages.last!
     }
 
     switch status {
-    case .invalid, .disconnected:
+    case nil, .invalid, .disconnected:
       return notification ? self.signedOutIconNotification : self.signedOutIcon
     case .connected:
       return notification ? self.signedInConnectedIconNotification : self.signedInConnectedIcon
@@ -341,11 +404,8 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private func startConnectingAnimation() {
     guard connectingAnimationTimer == nil else { return }
-    let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-      guard let self = self else { return }
-      Task {
-        await self.connectingAnimationShowNextFrame()
-      }
+    let timer = Timer(timeInterval: 0.25, repeats: true) { _ in
+      Task { await MainActor.run { self.connectingAnimationShowNextFrame() } }
     }
     RunLoop.main.add(timer, forMode: .common)
     connectingAnimationTimer = timer
@@ -362,25 +422,31 @@ public final class MenuBar: NSObject, ObservableObject {
     (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
   }
 
-  private func handleTunnelStatusOrResourcesChanged() {
-    let resources = model.resources
-    let status = model.status
+  private func updateSignInMenuItems(status: NEVPNStatus?) {
     // Update "Sign In" / "Sign Out" menu items
     switch status {
+    case nil:
+      signInMenuItem.title = "Loading VPN configurations from system settings…"
+      signInMenuItem.action = nil
+      signOutMenuItem.isHidden = true
+      settingsMenuItem.target = nil
     case .invalid:
-      signInMenuItem.title = "Requires VPN permission"
-      signInMenuItem.target = nil
+      signInMenuItem.title = "Allow the VPN permission to sign in…"
+      signInMenuItem.target = self
+      signInMenuItem.action = #selector(grantPermissionMenuItemTapped)
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = nil
     case .disconnected:
       signInMenuItem.title = "Sign In"
       signInMenuItem.target = self
+      signInMenuItem.action = #selector(signInButtonTapped)
       signInMenuItem.isEnabled = true
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = self
     case .disconnecting:
-      signInMenuItem.title = "Signing out..."
+      signInMenuItem.title = "Signing out…"
       signInMenuItem.target = self
+      signInMenuItem.action = #selector(signInButtonTapped)
       signInMenuItem.isEnabled = false
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = self
@@ -393,6 +459,9 @@ public final class MenuBar: NSObject, ObservableObject {
     @unknown default:
       break
     }
+  }
+
+  private func updateResourcesMenuItems(status: NEVPNStatus?, resources: ResourceList) {
     // Update resources "header" menu items
     switch status {
     case .connecting:
@@ -422,7 +491,7 @@ public final class MenuBar: NSObject, ObservableObject {
       resourcesUnavailableReasonMenuItem.target = nil
       resourcesUnavailableReasonMenuItem.title = "Disconnecting…"
       resourcesSeparatorMenuItem.isHidden = false
-    case .disconnected, .invalid:
+    case nil, .disconnected, .invalid:
       // We should never be in a state where the tunnel is
       // down but the user is signed in, but we have
       // code to handle it just for the sake of completion.
@@ -434,6 +503,15 @@ public final class MenuBar: NSObject, ObservableObject {
     @unknown default:
       break
     }
+  }
+
+  private func handleTunnelStatusOrResourcesChanged() {
+    let resources = model.resources
+    let status = model.status
+
+    updateSignInMenuItems(status: status)
+    updateResourcesMenuItems(status: status, resources: resources)
+
     quitMenuItem.title = {
       switch status {
       case .connected, .connecting:
@@ -448,8 +526,8 @@ public final class MenuBar: NSObject, ObservableObject {
     switch resources {
     case .loading:
       return "Loading Resources..."
-    case .loaded(let x):
-      if x.isEmpty {
+    case .loaded(let list):
+      if list.isEmpty {
         return "No Resources"
       } else {
         return "Resources"
@@ -460,7 +538,7 @@ public final class MenuBar: NSObject, ObservableObject {
   private func populateResourceMenus(_ newResources: [Resource]) {
     // If we have no favorites, then everything is a favorite
     let hasAnyFavorites = newResources.contains { model.favorites.contains($0.id) }
-    let newFavorites = if (hasAnyFavorites) {
+    let newFavorites = if hasAnyFavorites {
       newResources.filter { model.favorites.contains($0.id) || $0.isInternetResource() }
     } else {
       newResources
@@ -487,7 +565,7 @@ public final class MenuBar: NSObject, ObservableObject {
       // We don't ever need to remove this as the whole menu will be recreated
       // if the user updates, and there's no reason for the update to no longer be available
       // versions should be monotonically increased.
-      if (updateChecker.updateAvailable && !updateMenuDisplayed) {
+      if updateChecker.updateAvailable && !updateMenuDisplayed {
         updateMenuDisplayed = true
         let index = menu.index(of: settingsMenuItem) + 1
         menu.insertItem(NSMenuItem.separator(), at: index)
@@ -517,13 +595,13 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func populateOtherResourcesMenu(_ newOthers: [Resource]) {
-    if (newOthers.isEmpty) {
+    if newOthers.isEmpty {
       removeItemFromMenu(menu: menu, item: otherResourcesMenuItem)
       removeItemFromMenu(menu: menu, item: otherResourcesSeparatorMenuItem)
     } else {
-      let i = menu.index(of: aboutMenuItem)
-      addItemToMenu(menu: menu, item: otherResourcesMenuItem, at: i)
-      addItemToMenu(menu: menu, item: otherResourcesSeparatorMenuItem, at: i + 1)
+      let idx = menu.index(of: aboutMenuItem)
+      addItemToMenu(menu: menu, item: otherResourcesMenuItem, location: idx)
+      addItemToMenu(menu: menu, item: otherResourcesSeparatorMenuItem, location: idx + 1)
     }
 
     // Update the menu in place so everything won't vanish if it's open when it updates
@@ -545,20 +623,20 @@ public final class MenuBar: NSObject, ObservableObject {
 
   }
 
-  private func addItemToMenu(menu: NSMenu, item: NSMenuItem, at: Int) {
+  private func addItemToMenu(menu: NSMenu, item: NSMenuItem, location: Int) {
     // Adding an item that already exists will crash the process, so check for it first.
-    let i = menu.index(of: otherResourcesMenuItem)
-    if (i != -1) {
+    let idx = menu.index(of: otherResourcesMenuItem)
+    if idx != -1 {
       // Item's already in the menu, do nothing
       return
     }
-    menu.insertItem(otherResourcesMenuItem, at: at)
+    menu.insertItem(otherResourcesMenuItem, at: location)
   }
 
   private func removeItemFromMenu(menu: NSMenu, item: NSMenuItem) {
     // Removing an item that doesn't exist will crash the process, so check for it first.
-    let i = menu.index(of: item)
-    if (i == -1) {
+    let idx = menu.index(of: item)
+    if idx == -1 {
       // Item's already not in the menu, do nothing
       return
     }
@@ -566,7 +644,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func internetResourceTitle(resource: Resource) -> String {
-    let status = model.store.internetResourceEnabled() ? StatusSymbol.on : StatusSymbol.off
+    let status = model.store.internetResourceEnabled() ? StatusSymbol.enabled : StatusSymbol.disabled
 
     return status + " " + resource.name
   }
@@ -592,6 +670,8 @@ public final class MenuBar: NSObject, ObservableObject {
     model.isInternetResourceEnabled() ? "Disable this resource" : "Enable this resource"
   }
 
+  // TODO: Refactor this when refactoring for macOS 13
+  // swiftlint:disable:next function_body_length
   private func nonInternetResourceHeader(resource: Resource) -> NSMenu {
     let subMenu = NSMenu()
 
@@ -601,13 +681,14 @@ public final class MenuBar: NSObject, ObservableObject {
       resourceAddressDescriptionItem.title = addressDescription
 
       if let url = URL(string: addressDescription),
-         let _ = url.host {
+         url.host != nil {
         // Looks like a URL, so allow opening it
         resourceAddressDescriptionItem.action = #selector(resourceURLTapped(_:))
         resourceAddressDescriptionItem.toolTip = "Click to open"
 
         // Using Markdown here only to highlight the URL
-        resourceAddressDescriptionItem.attributedTitle = try? NSAttributedString(markdown: "[\(addressDescription)](\(addressDescription))")
+        resourceAddressDescriptionItem.attributedTitle =
+        try? NSAttributedString(markdown: "[\(addressDescription)](\(addressDescription))")
       } else {
         resourceAddressDescriptionItem.title = addressDescription
         resourceAddressDescriptionItem.action = #selector(resourceValueTapped(_:))
@@ -716,7 +797,7 @@ public final class MenuBar: NSObject, ObservableObject {
       siteNameItem.action = #selector(resourceValueTapped(_:))
       siteNameItem.toolTip = "Site name (click to copy)"
       siteNameItem.isEnabled = true
-      siteNameItem.target = self
+     siteNameItem.target = self
       subMenu.addItem(siteNameItem)
 
       // Site status
@@ -726,9 +807,9 @@ public final class MenuBar: NSObject, ObservableObject {
       siteStatusItem.state = statusToState(status: resource.status)
       siteStatusItem.isEnabled = true
       siteStatusItem.target = self
-      if let onImage = NSImage(named: NSImage.statusAvailableName),
-         let offImage = NSImage(named: NSImage.statusUnavailableName),
-         let mixedImage = NSImage(named: NSImage.statusNoneName) {
+      if let onImage = siteOnlineIcon,
+         let offImage = siteOfflineIcon,
+         let mixedImage = siteUnknownIcon {
         siteStatusItem.onStateImage = onImage
         siteStatusItem.offStateImage = offImage
         siteStatusItem.mixedStateImage = mixedImage
@@ -746,24 +827,35 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func internetResourceToggle(_ sender: NSMenuItem) {
-    self.model.store.toggleInternetResource(enabled: !model.store.internetResourceEnabled())
-    sender.title = internetResourceToggleTitle()
+    Task {
+      do {
+        try await self.model.store.toggleInternetResource(enabled: !model.store.internetResourceEnabled())
+      } catch {
+        Log.error(error)
+      }
+
+      sender.title = internetResourceToggleTitle()
+    }
   }
 
   @objc private func resourceURLTapped(_ sender: AnyObject?) {
-    if let value = (sender as? NSMenuItem)?.title {
-      // URL has already been validated
-      NSWorkspace.shared.open(URL(string: value)!)
+    if let value = (sender as? NSMenuItem)?.title,
+       let url = URL(string: value) {
+      Task { await NSWorkspace.shared.openAsync(url) }
     }
   }
 
   @objc private func addFavoriteTapped(_ sender: NSMenuItem) {
-    let id = sender.representedObject as! String
+    guard let id = sender.representedObject as? String
+    else { fatalError("Expected to receive a String") }
+
     setFavorited(id: id, favorited: true)
   }
 
   @objc private func removeFavoriteTapped(_ sender: NSMenuItem) {
-    let id = sender.representedObject as! String
+    guard let id = sender.representedObject as? String
+    else { fatalError("Expected to receive a String") }
+
     setFavorited(id: id, favorited: false)
   }
 
@@ -796,14 +888,26 @@ public final class MenuBar: NSObject, ObservableObject {
 extension MenuBar: NSMenuDelegate {
 }
 
-extension NSImage {
-  func resized(to newSize: NSSize) -> NSImage {
-    let newImage = NSImage(size: newSize)
-    newImage.lockFocus()
-    self.draw(in: NSRect(origin: .zero, size: newSize), from: NSRect(origin: .zero, size: self.size), operation: .copy, fraction: 1.0)
-    newImage.unlockFocus()
-    newImage.size = newSize
-    return newImage
+// **SAFETY:** This is @unchecked Sendable, so you must ensure that the wrapped NSImage
+// is only accessed in a thread-safe manner (e.g. confined to the main thread).
+// In general this is safe if the NSImage is not being mutated and is only being
+// accessed from the main thread.
+
+// See https://developer.apple.com/library/archive/documentation/Cocoa/Conceptual/Multithreading/ThreadSafetySummary/ThreadSafetySummary.html#//apple_ref/doc/uid/10000057i-CH12-126728 swiftlint:disable:this line_length
+//
+// The alternatives are to use a lower-level type like CGImage that is thread-safe,
+// but requires onerous boilerplate to use (it does not support light and dark mode
+// UI themes), or to use a higher-level type like SwiftUI's Image, which is also
+// thread-safe. The latter option will be used when https://github.com/firezone/firezone/issues/7771
+// is implemented.
+//
+// Without this, we need to load the images on the main thread, which can be slow
+// on systems with lots of disk IO contention.
+class MenuBarImage: @unchecked Sendable {
+  var nsImage: NSImage?
+
+  init(named: String) {
+    self.nsImage = NSImage(named: named)
   }
 }
 #endif

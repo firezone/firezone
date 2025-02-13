@@ -35,13 +35,13 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
       </.breadcrumb>
 
       <.breadcrumb path={~p"/#{@account}/settings/identity_providers/okta/#{@provider}"}>
-        <%= @provider.name %>
+        {@provider.name}
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Identity Provider: <code><%= @provider.name %></code>
+        Identity Provider: <code>{@provider.name}</code>
         <span :if={not is_nil(@provider.disabled_at)} class="text-primary-600">(disabled)</span>
         <span :if={not is_nil(@provider.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
@@ -60,7 +60,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
           icon="hero-lock-closed"
           on_confirm="disable"
         >
-          <:dialog_title>Disable the Provider</:dialog_title>
+          <:dialog_title>Confirm disabling the Provider</:dialog_title>
           <:dialog_content>
             Are you sure you want to disable this Provider?
             This will <strong>immediately</strong>
@@ -79,10 +79,11 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
             :if={not is_nil(@provider.disabled_at)}
             id="enable"
             style="warning"
+            confirm_style="primary"
             icon="hero-lock-open"
             on_confirm="enable"
           >
-            <:dialog_title>Enable the Provider</:dialog_title>
+            <:dialog_title>Confirm enabling the Provider</:dialog_title>
             <:dialog_content>
               Are you sure you want to enable this provider?
             </:dialog_content>
@@ -125,7 +126,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
         <.flash_group flash={@flash} />
 
         <.flash :if={@safe_to_delete_actors_count > 0} kind={:warning}>
-          You have <%= @safe_to_delete_actors_count %> Actor(s) that were synced from this provider and do not have any other identities.
+          You have {@safe_to_delete_actors_count} Actor(s) that were synced from this provider and do not have any other identities.
           <.button_with_confirmation
             id="delete_stale_actors"
             style="danger"
@@ -133,7 +134,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
             on_confirm="delete_stale_actors"
             class="mt-4"
           >
-            <:dialog_title>Delete Stale Actors</:dialog_title>
+            <:dialog_title>Confirm deletion of stale Actors</:dialog_title>
             <:dialog_content>
               Are you sure you want to delete all Actors that were synced synced from this provider and do not have any other identities?
             </:dialog_content>
@@ -151,7 +152,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
           <.vertical_table id="provider">
             <.vertical_table_row>
               <:label>Name</:label>
-              <:value><%= @provider.name %></:value>
+              <:value>{@provider.name}</:value>
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Status</:label>
@@ -181,7 +182,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
                     IdP provider reported an error during the last sync:
                   </p>
                   <div class="flex items-center mt-1">
-                    <span class="text-red-500 font-mono"><%= @provider.last_sync_error %></span>
+                    <span class="text-red-500 font-mono">{@provider.last_sync_error}</span>
                   </div>
                 </div>
               </:value>
@@ -189,7 +190,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
 
             <.vertical_table_row>
               <:label>Client ID</:label>
-              <:value><code><%= @provider.adapter_config["client_id"] %></code></:value>
+              <:value><code>{@provider.adapter_config["client_id"]}</code></:value>
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Callback URLs</:label>
@@ -230,7 +231,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete Identity Provider</:dialog_title>
+          <:dialog_title>Confirm deletion of Identity Provider</:dialog_title>
           <:dialog_content>
             Are you sure you want to delete this provider? This will remove <strong>all</strong>
             Actors and Groups associated with this provider.

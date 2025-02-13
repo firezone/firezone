@@ -1,36 +1,41 @@
+mod resource;
+
+pub(crate) use resource::{CidrResource, Resource};
+#[cfg(all(feature = "proptest", test))]
+pub(crate) use resource::{DnsResource, InternetResource};
+use ringbuffer::{AllocRingBuffer, RingBuffer};
+
 use crate::dns::StubResolver;
+use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
+use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
-use crate::{dns, TunConfig};
+use crate::{dns, p2p_control, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
-use connlib_shared::callbacks::Status;
-use connlib_shared::messages::client::{Site, SiteId};
-use connlib_shared::messages::ResolveRequest;
-use connlib_shared::messages::{
-    client::ResourceDescription, client::ResourceDescriptionCidr, Answer, DnsServer, GatewayId,
-    Interface as InterfaceConfig, IpDnsServer, Key, Offer, Relay, RelayId, ResourceId,
+use connlib_model::{
+    DomainName, GatewayId, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
 };
-use connlib_shared::{callbacks, PublicKey, StaticSecret};
+use connlib_model::{Site, SiteId};
+use firezone_logging::{err_with_src, telemetry_event, unwrap_or_debug, unwrap_or_warn};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, UdpSlice, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::{earliest, turn};
-use crate::{ClientEvent, ClientTunnel, Tun};
+use crate::utils::earliest;
+use crate::ClientEvent;
 use domain::base::Message;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{ClientNode, EncryptBuffer, RelaySocket, Transmit};
-use std::borrow::Cow;
+use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
 use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
+use std::{io, iter};
 
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
@@ -70,120 +75,8 @@ const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 /// We only store [`GatewayId`]s so the memory footprint is negligible.
 const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(100) };
 
-impl ClientTunnel {
-    pub fn set_resources(&mut self, resources: Vec<ResourceDescription>) {
-        self.role_state.set_resources(resources);
-
-        self.role_state
-            .buffered_events
-            .push_back(ClientEvent::ResourcesChanged {
-                resources: self.role_state.resources(),
-            });
-    }
-
-    pub fn set_disabled_resources(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
-        self.role_state
-            .set_disabled_resource(new_disabled_resources);
-    }
-
-    pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        self.io.set_tun(tun);
-    }
-
-    pub fn update_relays(&mut self, to_remove: BTreeSet<RelayId>, to_add: Vec<Relay>) {
-        self.role_state
-            .update_relays(to_remove, turn(&to_add), Instant::now())
-    }
-
-    /// Adds a the given resource to the tunnel.
-    pub fn add_resource(&mut self, resource: ResourceDescription) {
-        self.role_state.add_resource(resource);
-
-        self.role_state
-            .buffered_events
-            .push_back(ClientEvent::ResourcesChanged {
-                resources: self.role_state.resources(),
-            });
-    }
-
-    pub fn remove_resource(&mut self, id: ResourceId) {
-        self.role_state.remove_resource(id);
-
-        self.role_state
-            .buffered_events
-            .push_back(ClientEvent::ResourcesChanged {
-                resources: self.role_state.resources(),
-            });
-    }
-
-    /// Updates the system's dns
-    pub fn set_new_dns(&mut self, new_dns: Vec<IpAddr>) {
-        // We store the sentinel dns both in the config and in the system's resolvers
-        // but when we calculate the dns mapping, those are ignored.
-        self.role_state.update_system_resolvers(new_dns);
-    }
-
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub fn set_new_interface_config(&mut self, config: InterfaceConfig) {
-        self.role_state.update_interface_config(config);
-    }
-
-    pub fn cleanup_connection(&mut self, id: ResourceId) {
-        self.role_state.on_connection_failed(id);
-    }
-
-    pub fn set_resource_offline(&mut self, id: ResourceId) {
-        self.role_state.set_resource_offline(id);
-
-        self.role_state.on_connection_failed(id);
-
-        self.role_state
-            .buffered_events
-            .push_back(ClientEvent::ResourcesChanged {
-                resources: self.role_state.resources(),
-            });
-    }
-
-    pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.role_state
-            .add_ice_candidate(conn_id, ice_candidate, Instant::now());
-    }
-
-    pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.role_state.remove_ice_candidate(conn_id, ice_candidate);
-    }
-
-    pub fn on_routing_details(
-        &mut self,
-        resource_id: ResourceId,
-        gateway_id: GatewayId,
-        site_id: SiteId,
-    ) -> anyhow::Result<()> {
-        self.role_state
-            .on_routing_details(resource_id, gateway_id, site_id, Instant::now())
-    }
-
-    pub fn received_offer_response(
-        &mut self,
-        resource_id: ResourceId,
-        answer: Answer,
-        gateway_public_key: PublicKey,
-    ) -> anyhow::Result<()> {
-        self.role_state.accept_answer(
-            snownet::Answer {
-                credentials: snownet::Credentials {
-                    username: answer.username,
-                    password: answer.password,
-                },
-            },
-            resource_id,
-            gateway_public_key,
-            Instant::now(),
-        )?;
-
-        Ok(())
-    }
-}
+/// How many concurrent TCP DNS clients we can server _per_ sentinel DNS server IP.
+const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
 
 /// A sans-IO implementation of a Client's functionality.
 ///
@@ -195,22 +88,27 @@ pub struct ClientState {
     node: ClientNode<GatewayId, RelayId>,
     /// All gateways we are connected to and the associated, connection-specific state.
     peers: PeerStore<GatewayId, GatewayOnClient>,
-    /// Which Resources we are trying to connect to.
-    awaiting_connection_details: HashMap<ResourceId, AwaitingConnectionDetails>,
-
+    /// Tracks the flows to resources that we are currently trying to establish.
+    pending_flows: HashMap<ResourceId, PendingFlow>,
+    /// Tracks the domains for which we have set up a NAT per gateway.
+    ///
+    /// The IPs for DNS resources get assigned on the client.
+    /// In order to route them to the actual resource, the gateway needs to set up a NAT table.
+    /// Until the NAT is set up, packets sent to these resources are effectively black-holed.
+    dns_resource_nat_by_gateway: BTreeMap<(GatewayId, DomainName), DnsResourceNatState>,
     /// Tracks which gateway to use for a particular Resource.
     resources_gateways: HashMap<ResourceId, GatewayId>,
     /// The site a gateway belongs to.
     gateways_site: HashMap<GatewayId, SiteId>,
     /// The online/offline status of a site.
-    sites_status: HashMap<SiteId, Status>,
+    sites_status: HashMap<SiteId, ResourceStatus>,
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
-    active_cidr_resources: IpNetworkTable<ResourceDescriptionCidr>,
+    active_cidr_resources: IpNetworkTable<CidrResource>,
     /// `Some` if the Internet resource is enabled.
     internet_resource: Option<ResourceId>,
     /// All resources indexed by their ID.
-    resources_by_id: BTreeMap<ResourceId, ResourceDescription>,
+    resources_by_id: BTreeMap<ResourceId, Resource>,
 
     /// The DNS resolvers configured on the system outside of connlib.
     system_resolvers: Vec<IpAddr>,
@@ -224,19 +122,7 @@ pub struct ClientState {
     /// DNS queries that had their destination IP mangled because the servers is a CIDR resource.
     ///
     /// The [`Instant`] tracks when the DNS query expires.
-    mangled_dns_queries: HashMap<u16, Instant>,
-    /// DNS queries that were forwarded to an upstream server, indexed by the DNS query ID + the server we sent it to.
-    ///
-    /// The value is a tuple of:
-    ///
-    /// - The [`SocketAddr`] is the original source IP.
-    /// - The [`Instant`] tracks when the DNS query expires.
-    ///
-    /// We store an explicit expiry to avoid a memory leak in case of a non-responding DNS server.
-    ///
-    /// DNS query IDs don't appear to be unique across servers they are being sent to on some operating systems (looking at you, Windows).
-    /// Hence, we need to index by ID + socket of the DNS server.
-    forwarded_dns_queries: HashMap<(u16, SocketAddr), (SocketAddr, Instant)>,
+    mangled_dns_queries: HashMap<(SocketAddr, u16), Instant>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
@@ -246,6 +132,12 @@ pub struct ClientState {
     /// Resources that have been disabled by the UI
     disabled_resources: BTreeSet<ResourceId>,
 
+    tcp_dns_client: dns_over_tcp::Client,
+    tcp_dns_server: dns_over_tcp::Server,
+    /// Tracks the socket on which we received a TCP DNS query by the ID of the recursive DNS query we issued.
+    tcp_dns_sockets_by_upstream_and_query_id:
+        HashMap<(SocketAddr, u16), dns_over_tcp::SocketHandle>,
+
     /// Stores the gateways we recently connected to.
     ///
     /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
@@ -254,22 +146,65 @@ pub struct ClientState {
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit<'static>>,
+    buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct AwaitingConnectionDetails {
+enum DnsResourceNatState {
+    Pending {
+        sent_at: Instant,
+        buffered_packets: AllocRingBuffer<IpPacket>,
+    },
+    Confirmed,
+}
+
+impl DnsResourceNatState {
+    fn num_buffered_packets(&self) -> usize {
+        match self {
+            DnsResourceNatState::Pending {
+                buffered_packets, ..
+            } => buffered_packets.len(),
+            DnsResourceNatState::Confirmed => 0,
+        }
+    }
+
+    fn confirm(&mut self) -> impl Iterator<Item = IpPacket> {
+        let buffered_packets = match std::mem::replace(self, DnsResourceNatState::Confirmed) {
+            DnsResourceNatState::Pending {
+                buffered_packets, ..
+            } => Some(buffered_packets.into_iter()),
+            DnsResourceNatState::Confirmed => None,
+        };
+
+        buffered_packets.into_iter().flatten()
+    }
+}
+
+struct PendingFlow {
     last_intent_sent_at: Instant,
-    domain: Option<ResolveRequest>,
+    packets: AllocRingBuffer<IpPacket>,
+}
+
+impl PendingFlow {
+    /// How many packets we will at most buffer in a [`PendingFlow`].
+    ///
+    /// `PendingFlow`s are per _resource_ (which could be Internet Resource or wildcard DNS resources).
+    /// Thus, we may receive a fair few packets before we can send them.
+    const CAPACITY_POW_2: usize = 7; // 2^7 = 128
+
+    fn new(now: Instant, packet: IpPacket) -> Self {
+        let mut packets = AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2);
+        packets.push(packet);
+
+        Self {
+            last_intent_sent_at: now,
+            packets,
+        }
+    }
 }
 
 impl ClientState {
-    pub(crate) fn new(
-        private_key: impl Into<StaticSecret>,
-        known_hosts: BTreeMap<String, Vec<IpAddr>>,
-        seed: [u8; 32],
-    ) -> Self {
+    pub(crate) fn new(seed: [u8; 32], now: Instant) -> Self {
         Self {
-            awaiting_connection_details: Default::default(),
             resources_gateways: Default::default(),
             active_cidr_resources: IpNetworkTable::new(),
             resources_by_id: Default::default(),
@@ -278,18 +213,23 @@ impl ClientState {
             buffered_events: Default::default(),
             tun_config: Default::default(),
             buffered_packets: Default::default(),
-            node: ClientNode::new(private_key.into(), seed),
+            node: ClientNode::new(seed, now),
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
             mangled_dns_queries: Default::default(),
-            forwarded_dns_queries: Default::default(),
-            stub_resolver: StubResolver::new(known_hosts),
+            stub_resolver: Default::default(),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
             internet_resource: None,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
             upstream_dns: Default::default(),
+            buffered_dns_queries: Default::default(),
+            tcp_dns_client: dns_over_tcp::Client::new(now, seed),
+            tcp_dns_server: dns_over_tcp::Server::new(now),
+            tcp_dns_sockets_by_upstream_and_query_id: Default::default(),
+            pending_flows: Default::default(),
+            dns_resource_nat_by_gateway: BTreeMap::new(),
         }
     }
 
@@ -316,7 +256,7 @@ impl ClientState {
         self.node.num_connections()
     }
 
-    pub(crate) fn resources(&self) -> Vec<callbacks::ResourceDescription> {
+    pub(crate) fn resources(&self) -> Vec<ResourceView> {
         self.resources_by_id
             .values()
             .cloned()
@@ -328,70 +268,197 @@ impl ClientState {
             .collect_vec()
     }
 
-    fn resource_status(&self, resource: &ResourceDescription) -> Status {
+    fn resource_status(&self, resource: &Resource) -> ResourceStatus {
         if resource.sites().iter().any(|s| {
             self.sites_status
                 .get(&s.id)
-                .is_some_and(|s| *s == Status::Online)
+                .is_some_and(|s| *s == ResourceStatus::Online)
         }) {
-            return Status::Online;
+            return ResourceStatus::Online;
         }
 
         if resource.sites().iter().all(|s| {
             self.sites_status
                 .get(&s.id)
-                .is_some_and(|s| *s == Status::Offline)
+                .is_some_and(|s| *s == ResourceStatus::Offline)
         }) {
-            return Status::Offline;
+            return ResourceStatus::Offline;
         }
 
-        Status::Unknown
+        ResourceStatus::Unknown
     }
 
-    fn set_resource_offline(&mut self, id: ResourceId) {
+    pub fn set_resource_offline(&mut self, id: ResourceId) {
         let Some(resource) = self.resources_by_id.get(&id).cloned() else {
             return;
         };
 
         for Site { id, .. } in resource.sites() {
-            self.sites_status.insert(*id, Status::Offline);
+            self.sites_status.insert(*id, ResourceStatus::Offline);
         }
+
+        self.on_connection_failed(id);
+        self.emit_resources_changed();
     }
 
-    #[cfg(all(feature = "proptest", test))]
     pub(crate) fn public_key(&self) -> PublicKey {
         self.node.public_key()
     }
 
-    fn request_access(
+    /// Updates the NAT for all domains resolved by the stub resolver on the corresponding gateway.
+    ///
+    /// In order to route traffic for DNS resources, the designated gateway needs to set up NAT from
+    /// the IPs assigned by the client's stub resolver and the actual IPs the domains resolve to.
+    ///
+    /// The corresponding control message containing the domain and IPs is sent over UDP through the tunnel.
+    /// UDP is unreliable, even through the WG tunnel, meaning we need our own way of making reliable.
+    /// The algorithm for that is simple:
+    /// 1. We track the timestamp when we've last sent the setup message.
+    /// 2. The message is designed to be idempotent on the gateway.
+    /// 3. If we don't receive a response within 2s and this function is called again, we send another message.
+    ///
+    /// The complexity of this function is O(N) with the number of resolved DNS resources.
+    fn update_dns_resource_nat(
         &mut self,
-        resource_ip: &IpAddr,
-        resource_id: ResourceId,
-        gateway_id: GatewayId,
+        now: Instant,
+        buffered_packets: impl Iterator<Item = IpPacket>,
     ) {
-        let Some((fqdn, ips)) = self.stub_resolver.get_fqdn(resource_ip) else {
-            return;
-        };
-        self.peers.add_ips_with_resource(
-            &gateway_id,
-            &ips.iter().copied().map_into().collect_vec(),
-            &resource_id,
-        );
-        self.buffered_events.push_back(ClientEvent::RequestAccess {
-            resource_id,
-            gateway_id,
-            maybe_domain: Some(ResolveRequest {
-                name: fqdn.clone(),
-                proxy_ips: ips.clone(),
-            }),
-        })
+        // Organise all buffered packets by gateway + domain.
+        let mut buffered_packets_by_gateway_and_domain = buffered_packets
+            .map(|packet| {
+                let (domain, resource) = self
+                    .stub_resolver
+                    .resolve_resource_by_ip(&packet.destination())
+                    .context("IP is not associated with a DNS resource domain")?;
+                let gateway_id = self
+                    .resources_gateways
+                    .get(resource)
+                    .context("No gateway for resource")?;
+
+                anyhow::Ok((*gateway_id, domain, packet))
+            })
+            .filter_map(|res| {
+                res.inspect_err(|e| tracing::debug!("Dropping buffered packet: {e}"))
+                    .ok()
+            })
+            .fold(
+                BTreeMap::<_, VecDeque<IpPacket>>::new(),
+                |mut map, (gid, domain, packet)| {
+                    map.entry((gid, domain)).or_default().push_back(packet);
+
+                    map
+                },
+            );
+
+        use std::collections::btree_map::Entry;
+
+        for (domain, rid, proxy_ips, gid) in
+            self.stub_resolver
+                .resolved_resources()
+                .map(|(domain, resource, proxy_ips)| {
+                    let gateway = self.resources_gateways.get(resource);
+
+                    (domain, resource, proxy_ips, gateway)
+                })
+        {
+            let Some(gid) = gid else {
+                tracing::trace!(
+                    %domain, %rid,
+                    "No gateway connected for resource, skipping DNS resource NAT setup"
+                );
+                continue;
+            };
+
+            let packets_for_domain = buffered_packets_by_gateway_and_domain
+                .remove(&(*gid, domain))
+                .unwrap_or_default();
+
+            match self
+                .dns_resource_nat_by_gateway
+                .entry((*gid, domain.clone()))
+            {
+                Entry::Vacant(v) => {
+                    self.peers
+                        .add_ips_with_resource(gid, proxy_ips.iter().copied(), rid);
+                    let mut buffered_packets = AllocRingBuffer::with_capacity_power_of_2(5); // 2^5 = 32
+                    buffered_packets.extend(packets_for_domain);
+
+                    v.insert(DnsResourceNatState::Pending {
+                        sent_at: now,
+                        buffered_packets,
+                    });
+                }
+                Entry::Occupied(mut o) => match o.get_mut() {
+                    DnsResourceNatState::Confirmed => continue,
+                    DnsResourceNatState::Pending {
+                        sent_at,
+                        buffered_packets,
+                    } => {
+                        let time_since_last_attempt = now.duration_since(*sent_at);
+                        buffered_packets.extend(packets_for_domain);
+
+                        if time_since_last_attempt < Duration::from_secs(2) {
+                            continue;
+                        }
+
+                        *sent_at = now;
+                    }
+                },
+            }
+
+            let packet = match p2p_control::dns_resource_nat::assigned_ips(
+                *rid,
+                domain.clone(),
+                proxy_ips.clone(),
+            ) {
+                Ok(packet) => packet,
+                Err(e) => {
+                    tracing::warn!("Failed to create IP packet for `AssignedIp`s event: {e:#}");
+                    continue;
+                }
+            };
+
+            tracing::debug!(%gid, %domain, "Setting up DNS resource NAT");
+
+            encapsulate_and_buffer(
+                packet,
+                *gid,
+                now,
+                &mut self.node,
+                &mut self.buffered_transmits,
+            );
+        }
     }
 
-    fn is_dns_resource(&self, resource: &ResourceId) -> bool {
-        matches!(
-            self.resources_by_id.get(resource),
-            Some(ResourceDescription::Dns(_))
-        )
+    /// Clears the DNS resource NAT state for a given domain.
+    ///
+    /// Once cleared, this will trigger the client to submit another `AssignedIp`s event to the Gateway.
+    /// On the Gateway, such an event causes a new DNS resolution.
+    ///
+    /// We call this function every time a client issues a DNS query for a certain domain.
+    /// Coupling this behaviour together allows a client to refresh the DNS resolution of a DNS resource on the Gateway
+    /// through local DNS resolutions.
+    fn clear_dns_resource_nat_for_domain(&mut self, message: Message<&[u8]>) {
+        let Ok(question) = message.sole_question() else {
+            return;
+        };
+        let domain = question.into_qname();
+
+        let mut any_deleted = false;
+
+        self.dns_resource_nat_by_gateway
+            .retain(|(_, candidate), _| {
+                if candidate == &domain {
+                    any_deleted = true;
+                    return false;
+                }
+
+                true
+            });
+
+        if any_deleted {
+            tracing::debug!(%domain, "Cleared DNS resource NAT");
+        }
     }
 
     fn is_cidr_resource_connected(&self, resource: &ResourceId) -> bool {
@@ -402,80 +469,62 @@ impl ClientState {
         self.peers.get(gateway_id).is_some()
     }
 
-    pub(crate) fn encapsulate(
+    /// Handles packets received on the TUN device.
+    ///
+    /// Most of these packets will be application traffic that needs to be encrypted and sent through a WireGuard tunnel.
+    /// Some of it may be processed directly, for example DNS queries.
+    /// In that case, this function will return `None` and you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    pub(crate) fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
-        buffer: &mut EncryptBuffer,
     ) -> Option<snownet::EncryptedPacket> {
-        let (packet, dst) = match self.try_handle_dns_query(packet, now) {
+        let non_dns_packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
 
-        if is_definitely_not_a_resource(dst) {
-            return None;
-        }
-
-        let Some(resource) = self.get_resource_by_destination(dst) else {
-            tracing::trace!(?packet, "Unknown resource");
-            return None;
-        };
-
-        // We read this here to prevent problems with the borrow checker
-        let is_dns_resource = self.is_dns_resource(&resource);
-
-        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
-        else {
-            self.on_not_connected_resource(resource, &dst, now);
-            return None;
-        };
-
-        let packet = maybe_mangle_dns_query_to_cidr_resource(
-            packet,
-            &self.dns_mapping,
-            &mut self.mangled_dns_queries,
-            now,
-        );
-
-        // Allowed IPs will track the IPs that we have sent to the gateway along with a list of ResourceIds
-        // for DNS resource we will send the IP one at a time.
-        if is_dns_resource && peer.allowed_ips.exact_match(dst).is_none() {
-            let gateway_id = peer.id();
-            self.request_access(&dst, resource, gateway_id);
-            return None;
-        }
-
-        let gid = peer.id();
-
-        let transmit = self
-            .node
-            .encapsulate(gid, packet, now, buffer)
-            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
-            .ok()??;
-
-        Some(transmit)
+        self.encapsulate(non_dns_packet, now)
     }
 
-    pub(crate) fn decapsulate(
+    /// Handles UDP packets received on the network interface.
+    ///
+    /// Most of these packets will be WireGuard encrypted IP packets and will thus yield an [`IpPacket`].
+    /// Some of them will however be handled internally, for example, TURN control packets exchanged with relays.
+    ///
+    /// In case this function returns `None`, you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
+    pub(crate) fn handle_network_input(
         &mut self,
         local: SocketAddr,
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
     ) -> Option<IpPacket> {
-        if let Some(response) = self.try_handle_forwarded_dns_response(from, packet) {
-            return Some(response);
-        };
-
         let (gid, packet) = self.node.decapsulate(
             local,
             from,
             packet.as_ref(),
             now,
         )
-        .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {e}"))
+        .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {}", err_with_src(e)))
         .ok()??;
+
+        if self.tcp_dns_client.accepts(&packet) {
+            self.tcp_dns_client.handle_inbound(packet);
+            return None;
+        }
+
+        if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
+            handle_p2p_control_packet(
+                gid,
+                fz_p2p_control,
+                &mut self.dns_resource_nat_by_gateway,
+                &mut self.node,
+                &mut self.buffered_transmits,
+                now,
+            );
+            return None;
+        }
 
         let Some(peer) = self.peers.get_mut(&gid) else {
             tracing::error!(%gid, "Couldn't find connection by ID");
@@ -497,60 +546,172 @@ impl ClientState {
         Some(packet)
     }
 
-    pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
-        self.node.add_remote_candidate(conn_id, ice_candidate, now);
+    pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse) {
+        let qid = response.query.header().id();
+        let server = response.server;
+        let domain = response
+            .query
+            .sole_question()
+            .ok()
+            .map(|q| q.into_qname())
+            .map(tracing::field::display);
+
+        let _span = tracing::debug_span!("handle_dns_response", %qid, %server, domain).entered();
+
+        match (response.transport, response.message) {
+            (dns::Transport::Udp { .. }, Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
+                tracing::debug!("Recursive UDP DNS query timed out")
+            }
+            (dns::Transport::Udp { source }, result) => {
+                let message = result
+                    .inspect(|message| {
+                        tracing::trace!("Received recursive UDP DNS response");
+
+                        if message.header().tc() {
+                            tracing::debug!("Upstream DNS server had to truncate response");
+                        }
+                    })
+                    .unwrap_or_else(|e| {
+                        telemetry_event!("Recursive UDP DNS query failed: {}", err_with_src(&e));
+
+                        dns::servfail(response.query.for_slice_ref())
+                    });
+
+                unwrap_or_warn!(
+                    self.try_queue_udp_dns_response(server, source, message),
+                    "Failed to queue UDP DNS response: {}"
+                );
+            }
+            (dns::Transport::Tcp { source }, result) => {
+                let message = result
+                    .inspect(|_| {
+                        tracing::trace!("Received recursive TCP DNS response");
+                    })
+                    .unwrap_or_else(|e| {
+                        telemetry_event!("Recursive TCP DNS query failed: {}", err_with_src(&e));
+
+                        dns::servfail(response.query.for_slice_ref())
+                    });
+
+                unwrap_or_warn!(
+                    self.tcp_dns_server.send_message(source, message),
+                    "Failed to send TCP DNS response: {}"
+                );
+            }
+        }
     }
 
-    pub fn remove_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String) {
-        self.node.remove_remote_candidate(conn_id, ice_candidate);
+    fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Option<snownet::EncryptedPacket> {
+        let dst = packet.destination();
+
+        if is_definitely_not_a_resource(dst) {
+            return None;
+        }
+
+        let Some(resource) = self.get_resource_by_destination(dst) else {
+            tracing::trace!(?packet, "Unknown resource");
+            return None;
+        };
+
+        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+        else {
+            self.on_not_connected_resource(resource, packet, now);
+            return None;
+        };
+
+        // TODO: Check DNS resource NAT state for the domain that the destination IP belongs to.
+        // Re-send if older than X.
+
+        if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst) {
+            if let Some(DnsResourceNatState::Pending {
+                buffered_packets, ..
+            }) = self
+                .dns_resource_nat_by_gateway
+                .get_mut(&(peer.id(), domain.clone()))
+            {
+                buffered_packets.push(packet);
+                return None;
+            }
+        }
+
+        let gid = peer.id();
+
+        let transmit = self
+            .node
+            .encapsulate(gid, packet, now)
+            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {}", err_with_src(e)))
+            .ok()??;
+
+        Some(transmit)
     }
 
-    #[tracing::instrument(level = "trace", skip_all, fields(%resource_id))]
-    pub fn accept_answer(
+    fn try_queue_udp_dns_response(
         &mut self,
-        answer: snownet::Answer,
-        resource_id: ResourceId,
-        gateway: PublicKey,
-        now: Instant,
+        from: SocketAddr,
+        dst: SocketAddr,
+        message: Message<Vec<u8>>,
     ) -> anyhow::Result<()> {
-        debug_assert!(!self.awaiting_connection_details.contains_key(&resource_id));
+        let saddr = *self
+            .dns_mapping
+            .get_by_right(&DnsServer::from(from))
+            .context("Unknown DNS server")?;
 
-        let gateway_id = self
-            .gateway_by_resource(&resource_id)
-            .with_context(|| format!("No gateway associated with resource {resource_id}"))?;
+        let ip_packet = ip_packet::make::udp_packet(
+            saddr,
+            dst.ip(),
+            DNS_PORT,
+            dst.port(),
+            truncate_dns_response(message),
+        )?;
 
-        self.node.accept_answer(gateway_id, gateway, answer, now);
+        self.buffered_packets.push_back(ip_packet);
 
         Ok(())
     }
 
-    /// Updates the "routing table".
-    ///
-    /// In a nutshell, this tells us which gateway in which site to use for the given resource.
-    #[tracing::instrument(level = "debug", skip_all, fields(%resource_id, %gateway_id))]
-    pub fn on_routing_details(
+    pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
+        self.node.add_remote_candidate(conn_id, ice_candidate, now);
+        self.node.handle_timeout(now);
+        self.drain_node_events();
+    }
+
+    pub fn remove_ice_candidate(
+        &mut self,
+        conn_id: GatewayId,
+        ice_candidate: String,
+        now: Instant,
+    ) {
+        self.node
+            .remove_remote_candidate(conn_id, ice_candidate, now);
+        self.node.handle_timeout(now);
+        self.drain_node_events();
+    }
+
+    #[tracing::instrument(level = "debug", skip_all, fields(%resource_id))]
+    #[expect(clippy::too_many_arguments)]
+    pub fn handle_flow_created(
         &mut self,
         resource_id: ResourceId,
         gateway_id: GatewayId,
+        gateway_key: PublicKey,
         site_id: SiteId,
+        preshared_key: SecretKey,
+        client_ice: IceCredentials,
+        gateway_ice: IceCredentials,
         now: Instant,
-    ) -> anyhow::Result<()> {
-        tracing::trace!("Updating resource routing table");
+    ) -> anyhow::Result<Result<(), NoTurnServers>> {
+        tracing::debug!(%gateway_id, "New flow authorized for resource");
 
-        let desc = self
+        let resource = self
             .resources_by_id
             .get(&resource_id)
             .context("Unknown resource")?;
 
-        if self.node.is_expecting_answer(gateway_id) {
-            return Ok(());
-        }
+        let Some(pending_flow) = self.pending_flows.remove(&resource_id) else {
+            tracing::debug!("No pending flow");
 
-        let awaiting_connection_details = self
-            .awaiting_connection_details
-            .remove(&resource_id)
-            .context("No connection details found for resource")?;
-        let ips = get_addresses_for_awaiting_resource(desc, &awaiting_connection_details);
+            return Ok(Ok(()));
+        };
 
         if let Some(old_gateway_id) = self.resources_gateways.insert(resource_id, gateway_id) {
             if self.peers.get(&old_gateway_id).is_some() {
@@ -558,47 +719,56 @@ impl ClientState {
             }
         }
 
+        match self.node.upsert_connection(
+            gateway_id,
+            gateway_key,
+            Secret::new(preshared_key.expose_secret().0),
+            snownet::Credentials {
+                username: client_ice.username,
+                password: client_ice.password,
+            },
+            snownet::Credentials {
+                username: gateway_ice.username,
+                password: gateway_ice.password,
+            },
+            now,
+        ) {
+            Ok(()) => {}
+            Err(e) => return Ok(Err(e)),
+        };
+        self.resources_gateways.insert(resource_id, gateway_id);
         self.gateways_site.insert(gateway_id, site_id);
         self.recently_connected_gateways.put(gateway_id, ());
 
-        if self.peers.get(&gateway_id).is_some() {
-            self.peers
-                .add_ips_with_resource(&gateway_id, &ips, &resource_id);
-
-            self.buffered_events.push_back(ClientEvent::RequestAccess {
-                resource_id,
-                gateway_id,
-                maybe_domain: awaiting_connection_details.domain,
-            });
-            return Ok(());
+        if self.peers.get(&gateway_id).is_none() {
+            self.peers.insert(GatewayOnClient::new(gateway_id), &[]);
         };
 
-        self.peers.insert(
-            GatewayOnClient::new(gateway_id, &ips, HashSet::from([resource_id])),
-            &[],
-        );
-        self.peers
-            .add_ips_with_resource(&gateway_id, &ips, &resource_id);
+        let buffered_packets = pending_flow.packets;
 
-        let offer = self.node.new_connection(
-            gateway_id,
-            awaiting_connection_details.last_intent_sent_at,
-            now,
-        );
+        match resource {
+            Resource::Cidr(_) | Resource::Internet(_) => {
+                self.peers.add_ips_with_resource(
+                    &gateway_id,
+                    resource.addresses().into_iter(),
+                    &resource_id,
+                );
 
-        self.buffered_events
-            .push_back(ClientEvent::RequestConnection {
-                gateway_id,
-                offer: Offer {
-                    username: offer.credentials.username,
-                    password: offer.credentials.password,
-                },
-                preshared_key: Secret::new(Key(*offer.session_key.expose_secret())),
-                resource_id,
-                maybe_domain: awaiting_connection_details.domain,
-            });
+                // For CIDR and Internet resources, we can directly queue the buffered packets.
+                for packet in buffered_packets {
+                    encapsulate_and_buffer(
+                        packet,
+                        gateway_id,
+                        now,
+                        &mut self.node,
+                        &mut self.buffered_transmits,
+                    );
+                }
+            }
+            Resource::Dns(_) => self.update_dns_resource_nat(now, buffered_packets.into_iter()),
+        }
 
-        Ok(())
+        Ok(Ok(()))
     }
 
     fn is_upstream_set_by_the_portal(&self) -> bool {
@@ -621,154 +791,71 @@ impl ClientState {
             .is_some()
     }
 
-    /// Attempt to handle the given packet as a DNS query packet.
-    fn try_handle_dns_query(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> ControlFlow<(), (IpPacket, IpAddr)> {
-        match self.stub_resolver.handle(&self.dns_mapping, &packet) {
-            Ok(ControlFlow::Break(dns::ResolveStrategy::LocalResponse(query))) => {
-                self.buffered_packets.push_back(query);
-                ControlFlow::Break(())
-            }
-            Ok(ControlFlow::Break(dns::ResolveStrategy::ForwardQuery {
-                upstream: server,
-                query_id,
-                payload,
-                original_src,
-            })) => {
-                let ip = server.ip();
+    /// Handles UDP & TCP packets targeted at our stub resolver.
+    fn try_handle_dns(&mut self, packet: IpPacket, now: Instant) -> ControlFlow<(), IpPacket> {
+        let dst = packet.destination();
+        let Some(upstream) = self.dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
+            return ControlFlow::Continue(packet); // Not for our DNS resolver.
+        };
 
-                if self.should_forward_dns_query_to_gateway(ip) {
-                    return ControlFlow::Continue((packet, ip));
-                }
-
-                tracing::trace!(%server, %query_id, "Forwarding DNS query");
-
-                self.forwarded_dns_queries
-                    .insert((query_id, server), (original_src, now + IDS_EXPIRE));
-                self.buffered_transmits.push_back(Transmit {
-                    src: None,
-                    dst: server,
-                    payload: Cow::Owned(payload),
-                });
-
-                ControlFlow::Break(())
-            }
-            Ok(ControlFlow::Continue(())) => {
-                let dest = packet.destination();
-                ControlFlow::Continue((packet, dest))
-            }
-            Err(e) => {
-                tracing::trace!(?packet, "Failed to handle DNS query: {e:#}");
-                ControlFlow::Break(())
-            }
-        }
-    }
-
-    fn try_handle_forwarded_dns_response(
-        &mut self,
-        from: SocketAddr,
-        packet: &[u8],
-    ) -> Option<IpPacket> {
-        // The sentinel DNS server shall be the source. If we don't have a sentinel DNS for this socket, it cannot be a DNS response.
-        let saddr = *self.dns_mapping.get_by_right(&DnsServer::from(from))?;
-        let sport = DNS_PORT;
-
-        let message = Message::from_slice(packet).ok()?;
-        let query_id = message.header().id();
-
-        let (destination, _) = self.forwarded_dns_queries.remove(&(query_id, from))?;
-
-        if message.header().tc() {
-            let domain = message
-                .first_question()
-                .map(|q| q.into_qname())
-                .map(tracing::field::display);
-
-            tracing::warn!(server = %from, domain, "Upstream DNS server had to truncate response");
+        if self.tcp_dns_server.accepts(&packet) {
+            self.tcp_dns_server.handle_inbound(packet);
+            return ControlFlow::Break(());
         }
 
-        tracing::trace!(server = %from, %query_id, "Received forwarded DNS response");
-
-        let daddr = destination.ip();
-        let dport = destination.port();
-
-        let ip_packet = ip_packet::make::udp_packet(saddr, daddr, sport, dport, packet.to_vec())
-            .inspect_err(|_| tracing::warn!("Failed to find original dst for DNS response"))
-            .ok()?;
-
-        Some(ip_packet)
+        self.handle_udp_dns_query(upstream, packet, now)
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
-        self.awaiting_connection_details.remove(&resource);
-        self.resources_gateways.remove(&resource);
+        self.pending_flows.remove(&resource);
+        let Some(disconnected_gateway) = self.resources_gateways.remove(&resource) else {
+            return;
+        };
+        self.cleanup_connected_gateway(&disconnected_gateway);
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%resource))]
-    fn on_not_connected_resource(
-        &mut self,
-        resource: ResourceId,
-        destination: &IpAddr,
-        now: Instant,
-    ) {
+    fn on_not_connected_resource(&mut self, resource: ResourceId, packet: IpPacket, now: Instant) {
         debug_assert!(self.resources_by_id.contains_key(&resource));
 
-        if self
-            .gateway_by_resource(&resource)
-            .is_some_and(|gateway_id| self.node.is_expecting_answer(gateway_id))
-        {
-            tracing::debug!("Already connecting to gateway");
+        match self.pending_flows.entry(resource) {
+            Entry::Vacant(v) => {
+                v.insert(PendingFlow::new(now, packet));
+            }
+            Entry::Occupied(mut o) => {
+                let pending_flow = o.get_mut();
+                pending_flow.packets.push(packet);
+                let num_buffered = pending_flow.packets.len();
 
-            return;
-        }
+                tracing::debug!(%num_buffered, "Buffering packet in `PendingFlow`");
 
-        match self.awaiting_connection_details.entry(resource) {
-            Entry::Occupied(mut occupied) => {
-                let time_since_last_intent = now.duration_since(occupied.get().last_intent_sent_at);
+                let time_since_last_intent = now.duration_since(pending_flow.last_intent_sent_at);
 
                 if time_since_last_intent < Duration::from_secs(2) {
                     tracing::trace!(?time_since_last_intent, "Skipping connection intent");
-
                     return;
                 }
 
-                occupied.get_mut().last_intent_sent_at = now;
-            }
-            Entry::Vacant(vacant) => {
-                vacant.insert(AwaitingConnectionDetails {
-                    last_intent_sent_at: now,
-                    // Note: in case of an overlapping CIDR resource this should be None instead of Some if the resource_id
-                    // is for a CIDR resource.
-                    // But this should never happen as DNS resources are always preferred, so we don't encode the logic here.
-                    // Tests will prevent this from ever happening.
-                    domain: self.stub_resolver.get_fqdn(destination).map(|(fqdn, ips)| {
-                        ResolveRequest {
-                            name: fqdn.clone(),
-                            proxy_ips: ips.clone(),
-                        }
-                    }),
-                });
+                pending_flow.last_intent_sent_at = now;
             }
         }
 
         tracing::debug!("Sending connection intent");
 
-        // We tell the portal about all gateways we ever connected to, to encourage re-connecting us to the same ones during a session.
-        // The LRU cache visits them in MRU order, meaning a gateway that we recently connected to should still be preferred.
-        let connected_gateway_ids = self
-            .recently_connected_gateways
-            .iter()
-            .map(|(g, _)| *g)
-            .collect();
-
         self.buffered_events
             .push_back(ClientEvent::ConnectionIntent {
                 resource,
-                connected_gateway_ids,
-            });
+                connected_gateway_ids: self.connected_gateway_ids(),
+            })
+    }
+
+    // We tell the portal about all gateways we ever connected to, to encourage re-connecting us to the same ones during a session.
+    // The LRU cache visits them in MRU order, meaning a gateway that we recently connected to should still be preferred.
+    fn connected_gateway_ids(&self) -> BTreeSet<GatewayId> {
+        self.recently_connected_gateways
+            .iter()
+            .map(|(g, _)| *g)
+            .collect()
     }
 
     pub fn gateway_by_resource(&self, resource: &ResourceId) -> Option<GatewayId> {
@@ -780,7 +867,37 @@ impl ClientState {
         self.mangled_dns_queries.clear();
     }
 
-    pub fn set_disabled_resource(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
+    fn initialise_tcp_dns_client(&mut self) {
+        let Some(tun_config) = self.tun_config.as_ref() else {
+            return;
+        };
+
+        self.tcp_dns_client
+            .set_source_interface(tun_config.ip4, tun_config.ip6);
+
+        let upstream_resolvers = self
+            .dns_mapping
+            .right_values()
+            .map(|s| s.address())
+            .collect();
+
+        if let Err(e) = self.tcp_dns_client.set_resolvers(upstream_resolvers) {
+            tracing::warn!("Failed to connect to upstream DNS resolvers over TCP: {e:#}");
+        }
+    }
+
+    fn initialise_tcp_dns_server(&mut self) {
+        let sentinel_sockets = self
+            .dns_mapping
+            .left_values()
+            .map(|ip| SocketAddr::new(*ip, DNS_PORT))
+            .collect();
+
+        self.tcp_dns_server
+            .set_listen_addresses::<NUM_CONCURRENT_TCP_DNS_CLIENTS>(sentinel_sockets);
+    }
+
+    pub fn set_disabled_resources(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
         let current_disabled_resources = self.disabled_resources.clone();
 
         // We set disabled_resources before anything else so that add_resource knows what resources are enabled right now.
@@ -798,6 +915,7 @@ impl ClientState {
             self.disable_resource(*disabled_resource);
         }
 
+        self.maybe_update_cidr_resources();
         self.maybe_update_tun_routes()
     }
 
@@ -805,11 +923,14 @@ impl ClientState {
         self.dns_mapping.clone()
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(gateway = %gateway_id))]
-    pub fn cleanup_connected_gateway(&mut self, gateway_id: &GatewayId) {
-        self.update_site_status_by_gateway(gateway_id, Status::Unknown);
-        self.peers.remove(gateway_id);
-        self.resources_gateways.retain(|_, g| g != gateway_id);
+    #[tracing::instrument(level = "debug", skip_all, fields(gateway = %disconnected_gateway))]
+    fn cleanup_connected_gateway(&mut self, disconnected_gateway: &GatewayId) {
+        self.update_site_status_by_gateway(disconnected_gateway, ResourceStatus::Unknown);
+        self.peers.remove(disconnected_gateway);
+        self.resources_gateways
+            .retain(|_, g| g != disconnected_gateway);
+        self.dns_resource_nat_by_gateway
+            .retain(|(gateway, _), _| gateway != disconnected_gateway);
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -839,20 +960,32 @@ impl ClientState {
         let maybe_dns_resource_id = self
             .stub_resolver
             .resolve_resource_by_ip(&destination)
-            .filter(|resource| self.is_resource_enabled(resource));
+            .map(|(_, r)| *r)
+            .filter(|resource| self.is_resource_enabled(resource))
+            .inspect(
+                |resource| tracing::trace!(target: "tunnel_test_coverage", %destination, %resource, "Packet for DNS resource"),
+            );
 
         // We don't need to filter from here because resources are removed from the active_cidr_resources as soon as they are disabled.
         let maybe_cidr_resource_id = self
             .active_cidr_resources
             .longest_match(destination)
-            .map(|(_, res)| res.id);
+            .map(|(_, res)| res.id)
+            .inspect(
+                |resource| tracing::trace!(target: "tunnel_test_coverage", %destination, %resource, "Packet for CIDR resource"),
+            );
 
         maybe_dns_resource_id
             .or(maybe_cidr_resource_id)
             .or(self.internet_resource)
+            .inspect(|r| {
+                if Some(*r) == self.internet_resource {
+                    tracing::trace!(target: "tunnel_test_coverage", %destination, "Packet for Internet resource")
+                }
+            })
     }
 
-    pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
+    pub fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
         tracing::debug!(servers = ?new_dns, "Received system-defined DNS servers");
 
         self.system_resolvers = new_dns;
@@ -860,7 +993,7 @@ impl ClientState {
         self.update_dns_mapping()
     }
 
-    pub(crate) fn update_interface_config(&mut self, config: InterfaceConfig) {
+    pub fn update_interface_config(&mut self, config: InterfaceConfig) {
         tracing::trace!(upstream_dns = ?config.upstream_dns, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
 
         match self.tun_config.as_mut() {
@@ -892,29 +1025,203 @@ impl ClientState {
     }
 
     pub fn poll_packets(&mut self) -> Option<IpPacket> {
-        self.buffered_packets.pop_front()
+        self.buffered_packets
+            .pop_front()
+            .or_else(|| self.tcp_dns_server.poll_outbound())
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
         // The number of mangled DNS queries is expected to be fairly small because we only track them whilst connecting to a CIDR resource that is a DNS server.
         // Thus, sorting these values on-demand even within `poll_timeout` is expected to be performant enough.
         let next_dns_query_expiry = self.mangled_dns_queries.values().min().copied();
-        let next_node_timeout = self.node.poll_timeout();
 
-        earliest(next_dns_query_expiry, next_node_timeout)
+        earliest(
+            earliest(
+                self.tcp_dns_client.poll_timeout(),
+                self.tcp_dns_server.poll_timeout(),
+            ),
+            earliest(self.node.poll_timeout(), next_dns_query_expiry),
+        )
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
-        self.mangled_dns_queries.retain(|_, exp| now < *exp);
-        self.forwarded_dns_queries.retain(|_, (_, exp)| now < *exp);
-
         self.drain_node_events();
+
+        self.mangled_dns_queries.retain(|_, exp| now < *exp);
+
+        self.advance_dns_tcp_sockets(now);
+    }
+
+    /// Advance the TCP DNS server and client state machines.
+    ///
+    /// Receiving something on a TCP server socket may trigger packets to be sent on the TCP client socket and vice versa.
+    /// Therefore, we loop here until non of the `poll-X` functions return anything anymore.
+    fn advance_dns_tcp_sockets(&mut self, now: Instant) {
+        loop {
+            self.tcp_dns_server.handle_timeout(now);
+            self.tcp_dns_client.handle_timeout(now);
+
+            // Check if have any pending TCP DNS queries.
+            if let Some(query) = self.tcp_dns_server.poll_queries() {
+                self.handle_tcp_dns_query(query, now);
+                continue;
+            }
+
+            // Check if the client wants to emit any packets.
+            if let Some(packet) = self.tcp_dns_client.poll_outbound() {
+                // All packets from the TCP DNS client _should_ go through the tunnel.
+                let Some(encryped_packet) = self.encapsulate(packet, now) else {
+                    continue;
+                };
+
+                let transmit = encryped_packet.to_transmit().into_owned();
+                self.buffered_transmits.push_back(transmit);
+                continue;
+            }
+
+            // Check if the client has assembled a response to a query.
+            if let Some(query_result) = self.tcp_dns_client.poll_query_result() {
+                let server = query_result.server;
+                let qid = query_result.query.header().id();
+                let known_sockets = &mut self.tcp_dns_sockets_by_upstream_and_query_id;
+
+                let Some(source) = known_sockets.remove(&(server, qid)) else {
+                    tracing::warn!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
+
+                    continue;
+                };
+
+                self.handle_dns_response(dns::RecursiveResponse {
+                    server,
+                    query: query_result.query,
+                    message: query_result
+                        .result
+                        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{e:#}"))),
+                    transport: dns::Transport::Tcp { source },
+                });
+                continue;
+            }
+
+            break;
+        }
+    }
+
+    fn handle_udp_dns_query(
+        &mut self,
+        upstream: SocketAddr,
+        mut packet: IpPacket,
+        now: Instant,
+    ) -> ControlFlow<(), IpPacket> {
+        let Some(datagram) = packet.as_udp() else {
+            tracing::debug!(?packet, "Not a UDP packet");
+
+            return ControlFlow::Break(());
+        };
+
+        let message = match parse_udp_dns_message(&datagram) {
+            Ok(message) => message,
+            Err(e) => {
+                tracing::warn!(?packet, "Failed to parse DNS query: {e:#}");
+                return ControlFlow::Break(());
+            }
+        };
+
+        let source = SocketAddr::new(packet.source(), datagram.source_port());
+
+        match self.stub_resolver.handle(message) {
+            dns::ResolveStrategy::LocalResponse(response) => {
+                self.clear_dns_resource_nat_for_domain(response.for_slice_ref());
+                self.update_dns_resource_nat(now, iter::empty());
+
+                unwrap_or_debug!(
+                    self.try_queue_udp_dns_response(upstream, source, response),
+                    "Failed to queue UDP DNS response: {}"
+                );
+            }
+            dns::ResolveStrategy::Recurse => {
+                let query_id = message.header().id();
+
+                if self.should_forward_dns_query_to_gateway(upstream.ip()) {
+                    tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query via tunnel");
+
+                    self.mangled_dns_queries
+                        .insert((upstream, message.header().id()), now + IDS_EXPIRE);
+                    packet.set_dst(upstream.ip());
+                    packet.update_checksum();
+
+                    return ControlFlow::Continue(packet);
+                }
+
+                let query_id = message.header().id();
+
+                tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host");
+
+                self.buffered_dns_queries
+                    .push_back(dns::RecursiveQuery::via_udp(source, upstream, message));
+            }
+        }
+
+        ControlFlow::Break(())
+    }
+
+    fn handle_tcp_dns_query(&mut self, query: dns_over_tcp::Query, now: Instant) {
+        let message = query.message;
+
+        let Some(upstream) = self.dns_mapping.get_by_left(&query.local.ip()) else {
+            // This is highly-unlikely but might be possible if our DNS mapping changes whilst the TCP DNS server is processing a request.
+            return;
+        };
+        let server = upstream.address();
+
+        match self.stub_resolver.handle(message.for_slice_ref()) {
+            dns::ResolveStrategy::LocalResponse(response) => {
+                self.clear_dns_resource_nat_for_domain(response.for_slice_ref());
+                self.update_dns_resource_nat(now, iter::empty());
+
+                unwrap_or_debug!(
+                    self.tcp_dns_server.send_message(query.socket, response),
+                    "Failed to send TCP DNS response: {}"
+                );
+            }
+            dns::ResolveStrategy::Recurse => {
+                let query_id = message.header().id();
+
+                if self.should_forward_dns_query_to_gateway(server.ip()) {
+                    match self.tcp_dns_client.send_query(server, message.clone()) {
+                        Ok(()) => {}
+                        Err(e) => {
+                            tracing::warn!("Failed to send recursive TCP DNS query: {e:#}");
+
+                            unwrap_or_debug!(
+                                self.tcp_dns_server.send_message(
+                                    query.socket,
+                                    dns::servfail(message.for_slice_ref())
+                                ),
+                                "Failed to send TCP DNS response: {}"
+                            );
+                            return;
+                        }
+                    };
+
+                    let existing = self
+                        .tcp_dns_sockets_by_upstream_and_query_id
+                        .insert((server, query_id), query.socket);
+
+                    debug_assert!(existing.is_none(), "Query IDs should be unique");
+
+                    return;
+                }
+
+                tracing::trace!(%server, %query_id, "Forwarding TCP DNS query");
+
+                self.buffered_dns_queries
+                    .push_back(dns::RecursiveQuery::via_tcp(query.socket, server, message));
+            }
+        };
     }
 
     fn maybe_update_tun_routes(&mut self) {
-        self.active_cidr_resources = self.recalculate_active_cidr_resources();
-
         let Some(config) = self.tun_config.clone() else {
             return;
         };
@@ -933,11 +1240,23 @@ impl ClientState {
         self.maybe_update_tun_config(new_tun_config);
     }
 
-    fn recalculate_active_cidr_resources(&self) -> IpNetworkTable<ResourceDescriptionCidr> {
-        let mut active_cidr_resources = IpNetworkTable::<ResourceDescriptionCidr>::new();
+    fn maybe_update_cidr_resources(&mut self) {
+        let new_resources = self.recalculate_active_cidr_resources();
+
+        if self.active_cidr_resources == new_resources {
+            return;
+        }
+
+        tracing::info!(?self.active_cidr_resources, ?new_resources, "Re-calculated active CIDR resources");
+
+        self.active_cidr_resources = new_resources;
+    }
+
+    fn recalculate_active_cidr_resources(&self) -> IpNetworkTable<CidrResource> {
+        let mut active_cidr_resources = IpNetworkTable::<CidrResource>::new();
 
         for resource in self.resources_by_id.values() {
-            let ResourceDescription::Cidr(resource) = resource else {
+            let Resource::Cidr(resource) = resource else {
                 continue;
             };
 
@@ -959,7 +1278,7 @@ impl ClientState {
 
     fn maybe_update_tun_config(&mut self, new_tun_config: TunConfig) {
         if Some(&new_tun_config) == self.tun_config.as_ref() {
-            tracing::debug!(current = ?self.tun_config, "TUN device configuration unchanged");
+            tracing::trace!(current = ?self.tun_config, "TUN device configuration unchanged");
 
             return;
         }
@@ -973,6 +1292,9 @@ impl ClientState {
         self.tun_config = Some(new_tun_config.clone());
         self.buffered_events
             .push_back(ClientEvent::TunInterfaceUpdated(new_tun_config));
+
+        self.initialise_tcp_dns_client();
+        self.initialise_tcp_dns_server();
     }
 
     fn drain_node_events(&mut self) {
@@ -1005,17 +1327,14 @@ impl ClientState {
                         .insert(candidate);
                 }
                 snownet::Event::ConnectionEstablished(id) => {
-                    self.update_site_status_by_gateway(&id, Status::Online);
+                    self.update_site_status_by_gateway(&id, ResourceStatus::Online);
                     resources_changed = true;
                 }
             }
         }
 
         if resources_changed {
-            self.buffered_events
-                .push_back(ClientEvent::ResourcesChanged {
-                    resources: self.resources(),
-                });
+            self.emit_resources_changed()
         }
 
         for (conn_id, candidates) in added_ice_candidates.into_iter() {
@@ -1035,7 +1354,7 @@ impl ClientState {
         }
     }
 
-    fn update_site_status_by_gateway(&mut self, gateway_id: &GatewayId, status: Status) {
+    fn update_site_status_by_gateway(&mut self, gateway_id: &GatewayId, status: ResourceStatus) {
         // Note: we can do this because in theory we shouldn't have multiple gateways for the same site
         // connected at the same time.
         self.sites_status.insert(
@@ -1050,18 +1369,32 @@ impl ClientState {
         self.buffered_events.pop_front()
     }
 
-    pub(crate) fn reset(&mut self) {
+    pub(crate) fn reset(&mut self, now: Instant) {
         tracing::info!("Resetting network state");
 
-        self.node.reset();
+        self.node.reset(now); // Clear all network connections.
+        self.peers.clear(); // Clear all state associated with Gateways.
+
+        self.resources_gateways.clear(); // Clear Resource <> Gateway mapping (we will re-create this as new flows are authorized).
+
         self.recently_connected_gateways.clear(); // Ensure we don't have sticky gateways when we roam.
+        self.dns_resource_nat_by_gateway.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events();
+
+        // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.
+        // Failed queries get translated into `SERVFAIL` responses to the client.
+        // This will also allocate new local ports for our outgoing TCP connections.
+        self.initialise_tcp_dns_client();
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
         self.buffered_transmits
             .pop_front()
             .or_else(|| self.node.poll_transmit())
+    }
+
+    pub(crate) fn poll_dns_queries(&mut self) -> Option<dns::RecursiveQuery> {
+        self.buffered_dns_queries.pop_front()
     }
 
     /// Sets a new set of resources.
@@ -1073,7 +1406,15 @@ impl ClientState {
     ///
     /// TODO: Add a test that asserts the above.
     ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resource`] and check that it did in fact not get deleted.
-    pub(crate) fn set_resources(&mut self, new_resources: Vec<ResourceDescription>) {
+    pub fn set_resources<R>(&mut self, new_resources: Vec<R>)
+    where
+        R: TryInto<Resource, Error: std::error::Error>,
+    {
+        let new_resources = new_resources
+            .into_iter()
+            .filter_map(|r| r.try_into().inspect_err(|e| tracing::debug!("{e}")).ok())
+            .collect::<Vec<_>>();
+
         let current_resource_ids = self
             .resources_by_id
             .keys()
@@ -1093,10 +1434,20 @@ impl ClientState {
             self.add_resource(resource)
         }
 
+        self.maybe_update_cidr_resources();
         self.maybe_update_tun_routes();
+        self.emit_resources_changed();
     }
 
-    pub(crate) fn add_resource(&mut self, new_resource: ResourceDescription) {
+    pub fn add_resource(&mut self, new_resource: impl TryInto<Resource, Error: std::error::Error>) {
+        let new_resource = match new_resource.try_into() {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::debug!("{e}");
+                return;
+            }
+        };
+
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
             if resource.has_different_address(&new_resource) {
                 self.remove_resource(resource.id());
@@ -1107,14 +1458,13 @@ impl ClientState {
             .insert(new_resource.id(), new_resource.clone());
 
         if !self.is_resource_enabled(&(new_resource.id())) {
+            self.emit_resources_changed(); // We still have a new resource but it is disabled, let the client know.
             return;
         }
 
         let added = match &new_resource {
-            ResourceDescription::Dns(dns) => {
-                self.stub_resolver.add_resource(dns.id, dns.address.clone())
-            }
-            ResourceDescription::Cidr(cidr) => {
+            Resource::Dns(dns) => self.stub_resolver.add_resource(dns.id, dns.address.clone()),
+            Resource::Cidr(cidr) => {
                 let existing = self.active_cidr_resources.exact_match(cidr.address);
 
                 match existing {
@@ -1122,7 +1472,7 @@ impl ClientState {
                     None => true,
                 }
             }
-            ResourceDescription::Internet(resource) => {
+            Resource::Internet(resource) => {
                 self.internet_resource.replace(resource.id) != Some(resource.id)
             }
         };
@@ -1137,14 +1487,41 @@ impl ClientState {
 
         tracing::info!(%name, address, %sites, "Activating resource");
 
+        if matches!(new_resource, Resource::Cidr(_)) {
+            self.maybe_update_cidr_resources();
+        }
+
         self.maybe_update_tun_routes();
+        self.emit_resources_changed();
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
-    pub(crate) fn remove_resource(&mut self, id: ResourceId) {
+    pub fn remove_resource(&mut self, id: ResourceId) {
         self.disable_resource(id);
-        self.resources_by_id.remove(&id);
+
+        if self
+            .resources_by_id
+            .remove(&id)
+            .is_some_and(|r| matches!(r, Resource::Cidr(_)))
+        {
+            self.maybe_update_cidr_resources();
+        };
+
         self.maybe_update_tun_routes();
+        self.emit_resources_changed();
+    }
+
+    /// Emit a [`ClientEvent::ResourcesChanged`] event.
+    ///
+    /// Each instance of this event contains the latest state of the resources.
+    /// To not spam clients with multiple updates, we remove all prior instances of that event.
+    fn emit_resources_changed(&mut self) {
+        self.buffered_events
+            .retain(|e| !matches!(e, ClientEvent::ResourcesChanged { .. }));
+        self.buffered_events
+            .push_back(ClientEvent::ResourcesChanged {
+                resources: self.resources(),
+            });
     }
 
     fn disable_resource(&mut self, id: ResourceId) {
@@ -1153,9 +1530,9 @@ impl ClientState {
         };
 
         match resource {
-            ResourceDescription::Dns(_) => self.stub_resolver.remove_resource(id),
-            ResourceDescription::Cidr(_) => {}
-            ResourceDescription::Internet(_) => {
+            Resource::Dns(_) => self.stub_resolver.remove_resource(id),
+            Resource::Cidr(_) => {}
+            Resource::Internet(_) => {
                 if self.internet_resource.is_some_and(|r_id| r_id == id) {
                     self.internet_resource = None;
                 }
@@ -1168,12 +1545,11 @@ impl ClientState {
 
         tracing::info!(%name, address, %sites, "Deactivating resource");
 
-        self.awaiting_connection_details.remove(&id);
+        self.pending_flows.remove(&id);
 
         let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, id) else {
             return;
         };
-        let gateway_id = peer.id();
 
         // First we remove the id from all allowed ips
         for (_, resources) in peer
@@ -1190,13 +1566,6 @@ impl ClientState {
 
         // We remove all empty allowed ips entry since there's no resource that corresponds to it
         peer.allowed_ips.retain(|_, r| !r.is_empty());
-
-        // If there's no allowed ip left we remove the whole peer because there's no point on keeping it around
-        if peer.allowed_ips.is_empty() {
-            self.peers.remove(&gateway_id);
-            self.update_site_status_by_gateway(&gateway_id, Status::Unknown);
-            // TODO: should we have a Node::remove_connection?
-        }
 
         self.resources_gateways.remove(&id);
     }
@@ -1256,6 +1625,83 @@ impl ClientState {
         now: Instant,
     ) {
         self.node.update_relays(to_remove, &to_add, now);
+        self.drain_node_events(); // Ensure all state changes are fully-propagated.
+    }
+}
+
+fn encapsulate_and_buffer(
+    packet: IpPacket,
+    gid: GatewayId,
+    now: Instant,
+    node: &mut ClientNode<GatewayId, RelayId>,
+    buffered_transmits: &mut VecDeque<Transmit<'static>>,
+) {
+    let Some(enc_packet) = node
+        .encapsulate(gid, packet, now)
+        .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
+        .ok()
+        .flatten()
+    else {
+        return;
+    };
+
+    buffered_transmits.push_back(enc_packet.to_transmit().into_owned());
+}
+
+fn parse_udp_dns_message<'b>(datagram: &UdpSlice<'b>) -> anyhow::Result<Message<&'b [u8]>> {
+    let port = datagram.destination_port();
+
+    anyhow::ensure!(
+        port == DNS_PORT,
+        "DNS over UDP is only supported on port 53"
+    );
+
+    let message = Message::from_octets(datagram.payload())
+        .context("Failed to parse payload as DNS message")?;
+
+    Ok(message)
+}
+
+fn handle_p2p_control_packet(
+    gid: GatewayId,
+    fz_p2p_control: ip_packet::FzP2pControlSlice,
+    dns_resource_nat_by_gateway: &mut BTreeMap<(GatewayId, DomainName), DnsResourceNatState>,
+    node: &mut ClientNode<GatewayId, RelayId>,
+    buffered_transmits: &mut VecDeque<Transmit<'static>>,
+    now: Instant,
+) {
+    use p2p_control::dns_resource_nat;
+
+    match fz_p2p_control.event_type() {
+        p2p_control::DOMAIN_STATUS_EVENT => {
+            let Ok(res) = dns_resource_nat::decode_domain_status(fz_p2p_control)
+                .inspect_err(|e| tracing::debug!("{e:#}"))
+            else {
+                return;
+            };
+
+            if res.status != dns_resource_nat::NatStatus::Active {
+                tracing::debug!(%gid, domain = %res.domain, "DNS resource NAT is not active");
+                return;
+            }
+
+            let Some(nat_state) = dns_resource_nat_by_gateway.get_mut(&(gid, res.domain.clone()))
+            else {
+                tracing::debug!(%gid, domain = %res.domain, "No DNS resource NAT state, ignoring response");
+                return;
+            };
+
+            tracing::debug!(%gid, domain = %res.domain, num_buffered_packets = %nat_state.num_buffered_packets(), "DNS resource NAT is active");
+
+            let buffered_packets = nat_state.confirm();
+
+            for packet in buffered_packets {
+                encapsulate_and_buffer(packet, gid, now, node, buffered_transmits);
+            }
+        }
+        code => {
+            tracing::debug!(code = %code.into_u8(), "Unknown control protocol");
+        }
     }
 }
 
@@ -1268,28 +1714,6 @@ fn peer_by_resource_mut<'p>(
     let peer = peers.get_mut(gateway_id)?;
 
     Some(peer)
-}
-
-fn get_addresses_for_awaiting_resource(
-    desc: &ResourceDescription,
-    awaiting_connection_details: &AwaitingConnectionDetails,
-) -> Vec<IpNetwork> {
-    match desc {
-        ResourceDescription::Dns(_) => awaiting_connection_details
-            .domain
-            .as_ref()
-            .expect("for dns resources the awaiting connection should have an ip")
-            .proxy_ips
-            .iter()
-            .copied()
-            .map_into()
-            .collect_vec(),
-        ResourceDescription::Cidr(r) => vec![r.address],
-        ResourceDescription::Internet(_) => vec![
-            Ipv4Network::DEFAULT_ROUTE.into(),
-            Ipv6Network::DEFAULT_ROUTE.into(),
-        ],
-    }
 }
 
 fn effective_dns_servers(
@@ -1312,7 +1736,7 @@ fn effective_dns_servers(
         .peekable();
 
     if dns_servers.peek().is_none() {
-        tracing::warn!("No system default DNS servers available! Can't initialize resolver. DNS interception will be disabled.");
+        tracing::info!("No system default DNS servers available! Can't initialize resolver. DNS resources won't work.");
         return Vec::new();
     }
 
@@ -1344,6 +1768,7 @@ fn sentinel_dns_mapping(
         })
         .collect()
 }
+
 /// Compares the given [`IpAddr`] against a static set of ignored IPs that are definitely not resources.
 fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
     /// Source: https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv4_multicast_addresses
@@ -1368,40 +1793,10 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
     false
 }
 
-/// In case the given packet is a DNS query, change its source IP to that of the actual DNS server.
-fn maybe_mangle_dns_query_to_cidr_resource(
-    mut packet: IpPacket,
-    dns_mapping: &BiMap<IpAddr, DnsServer>,
-    mangeled_dns_queries: &mut HashMap<u16, Instant>,
-    now: Instant,
-) -> IpPacket {
-    let dst = packet.destination();
-
-    let Some(srv) = dns_mapping.get_by_left(&dst) else {
-        return packet;
-    };
-
-    let Some(dgm) = packet.as_udp() else {
-        return packet;
-    };
-
-    let Ok(message) = domain::base::Message::from_slice(dgm.payload()) else {
-        return packet;
-    };
-
-    tracing::trace!(old_dst = %dst, new_dst = %srv.ip(), "Mangling DNS query to CIDR resource");
-
-    mangeled_dns_queries.insert(message.header().id(), now + IDS_EXPIRE);
-    packet.set_dst(srv.ip());
-    packet.update_checksum();
-
-    packet
-}
-
 fn maybe_mangle_dns_response_from_cidr_resource(
     mut packet: IpPacket,
     dns_mapping: &BiMap<IpAddr, DnsServer>,
-    mangeled_dns_queries: &mut HashMap<u16, Instant>,
+    mangeled_dns_queries: &mut HashMap<(SocketAddr, u16), Instant>,
     now: Instant,
 ) -> IpPacket {
     let src_ip = packet.source();
@@ -1411,8 +1806,9 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     };
 
     let src_port = udp.source_port();
+    let src_socket = SocketAddr::new(src_ip, src_port);
 
-    let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from((src_ip, src_port))) else {
+    let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from(src_socket)) else {
         return packet;
     };
 
@@ -1421,7 +1817,7 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     };
 
     let Some(query_sent_at) = mangeled_dns_queries
-        .remove(&message.header().id())
+        .remove(&(src_socket, message.header().id()))
         .map(|expires_at| expires_at - IDS_EXPIRE)
     else {
         return packet;
@@ -1429,17 +1825,40 @@ fn maybe_mangle_dns_response_from_cidr_resource(
 
     let rtt = now.duration_since(query_sent_at);
 
-    let domains = message
-        .question()
-        .filter_map(|q| Some(q.ok()?.into_qname()))
-        .join(",");
+    let domain = message
+        .sole_question()
+        .ok()
+        .map(|q| q.into_qname())
+        .map(tracing::field::display);
 
-    tracing::trace!(old_src = %src_ip, new_src = %sentinel, ?rtt, %domains, "Mangling DNS response from CIDR resource");
+    tracing::trace!(server = %src_ip, query_id = %message.header().id(), ?rtt, domain, "Received UDP DNS response via tunnel");
 
     packet.set_src(*sentinel);
     packet.update_checksum();
 
     packet
+}
+
+fn truncate_dns_response(mut message: Message<Vec<u8>>) -> Vec<u8> {
+    let message_length = message.as_octets().len();
+    if message_length <= MAX_UDP_PAYLOAD {
+        return message.into_octets();
+    }
+
+    tracing::debug!(?message, %message_length, "Too big DNS response, truncating");
+
+    message.header_mut().set_tc(true);
+
+    let message_truncation = match message.answer() {
+        Ok(answer) if answer.pos() <= MAX_UDP_PAYLOAD => answer.pos(),
+        // This should be very unlikely or impossible.
+        _ => message.question().pos(),
+    };
+
+    let mut message_bytes = message.into_octets();
+    message_bytes.truncate(message_truncation);
+
+    message_bytes
 }
 
 pub struct IpProvider {
@@ -1505,7 +1924,6 @@ impl IpProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::rngs::OsRng;
 
     #[test]
     fn ignores_ip4_igmp_multicast() {
@@ -1550,11 +1968,7 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(
-                StaticSecret::random_from_rng(OsRng),
-                BTreeMap::new(),
-                rand::random(),
-            )
+            ClientState::new(rand::random(), Instant::now())
         }
     }
 
@@ -1588,19 +2002,20 @@ mod tests {
 mod proptests {
     use super::*;
     use crate::proptest::*;
-    use connlib_shared::messages::client::ResourceDescriptionDns;
+    use connlib_model::ResourceView;
     use prop::collection;
     use proptest::prelude::*;
+    use resource::DnsResource;
 
     #[test_strategy::proptest]
     fn cidr_resources_are_turned_into_routes(
-        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
-        #[strategy(cidr_resource())] resource2: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource1: CidrResource,
+        #[strategy(cidr_resource())] resource2: CidrResource,
     ) {
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resource(ResourceDescription::Cidr(resource1.clone()));
-        client_state.add_resource(ResourceDescription::Cidr(resource2.clone()));
+        client_state.add_resource(Resource::Cidr(resource1.clone()));
+        client_state.add_resource(Resource::Cidr(resource2.clone()));
 
         assert_eq!(
             hashset(client_state.routes()),
@@ -1610,58 +2025,54 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn added_resources_show_up_as_resoucres(
-        #[strategy(cidr_resource())] resource1: ResourceDescriptionCidr,
-        #[strategy(dns_resource())] resource2: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] resource3: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource1: CidrResource,
+        #[strategy(dns_resource())] resource2: DnsResource,
+        #[strategy(cidr_resource())] resource3: CidrResource,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resource(ResourceDescription::Cidr(resource1.clone()));
-        client_state.add_resource(ResourceDescription::Dns(resource2.clone()));
+        client_state.add_resource(Resource::Cidr(resource1.clone()));
+        client_state.add_resource(Resource::Dns(resource2.clone()));
 
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                cb::ResourceDescription::Cidr(resource1.clone().with_status(Status::Unknown)),
-                cb::ResourceDescription::Dns(resource2.clone().with_status(Status::Unknown))
+                ResourceView::Cidr(resource1.clone().with_status(ResourceStatus::Unknown)),
+                ResourceView::Dns(resource2.clone().with_status(ResourceStatus::Unknown))
             ])
         );
 
-        client_state.add_resource(ResourceDescription::Cidr(resource3.clone()));
+        client_state.add_resource(Resource::Cidr(resource3.clone()));
 
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                cb::ResourceDescription::Cidr(resource1.with_status(Status::Unknown)),
-                cb::ResourceDescription::Dns(resource2.with_status(Status::Unknown)),
-                cb::ResourceDescription::Cidr(resource3.with_status(Status::Unknown)),
+                ResourceView::Cidr(resource1.with_status(ResourceStatus::Unknown)),
+                ResourceView::Dns(resource2.with_status(ResourceStatus::Unknown)),
+                ResourceView::Cidr(resource3.with_status(ResourceStatus::Unknown)),
             ])
         );
     }
 
     #[test_strategy::proptest]
     fn adding_same_resource_with_different_address_updates_the_address(
-        #[strategy(cidr_resource())] resource: ResourceDescriptionCidr,
+        #[strategy(cidr_resource())] resource: CidrResource,
         #[strategy(any_ip_network(8))] new_address: IpNetwork,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(ResourceDescription::Cidr(resource.clone()));
+        client_state.add_resource(Resource::Cidr(resource.clone()));
 
-        let updated_resource = ResourceDescriptionCidr {
+        let updated_resource = CidrResource {
             address: new_address,
             ..resource
         };
 
-        client_state.add_resource(ResourceDescription::Cidr(updated_resource.clone()));
+        client_state.add_resource(Resource::Cidr(updated_resource.clone()));
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([cb::ResourceDescription::Cidr(
-                updated_resource.with_status(Status::Unknown)
+            hashset([ResourceView::Cidr(
+                updated_resource.with_status(ResourceStatus::Unknown)
             )])
         );
         assert_eq!(
@@ -1672,15 +2083,13 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn adding_cidr_resource_with_same_id_as_dns_resource_replaces_dns_resource(
-        #[strategy(dns_resource())] resource: ResourceDescriptionDns,
+        #[strategy(dns_resource())] resource: DnsResource,
         #[strategy(any_ip_network(8))] address: IpNetwork,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(ResourceDescription::Dns(resource.clone()));
+        client_state.add_resource(Resource::Dns(resource.clone()));
 
-        let dns_as_cidr_resource = ResourceDescriptionCidr {
+        let dns_as_cidr_resource = CidrResource {
             address,
             id: resource.id,
             name: resource.name,
@@ -1688,12 +2097,12 @@ mod proptests {
             sites: resource.sites,
         };
 
-        client_state.add_resource(ResourceDescription::Cidr(dns_as_cidr_resource.clone()));
+        client_state.add_resource(Resource::Cidr(dns_as_cidr_resource.clone()));
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([cb::ResourceDescription::Cidr(
-                dns_as_cidr_resource.with_status(Status::Unknown)
+            hashset([ResourceView::Cidr(
+                dns_as_cidr_resource.with_status(ResourceStatus::Unknown)
             )])
         );
         assert_eq!(
@@ -1704,21 +2113,19 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn resources_can_be_removed(
-        #[strategy(dns_resource())] dns_resource: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] cidr_resource: ResourceDescriptionCidr,
+        #[strategy(dns_resource())] dns_resource: DnsResource,
+        #[strategy(cidr_resource())] cidr_resource: CidrResource,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(ResourceDescription::Dns(dns_resource.clone()));
-        client_state.add_resource(ResourceDescription::Cidr(cidr_resource.clone()));
+        client_state.add_resource(Resource::Dns(dns_resource.clone()));
+        client_state.add_resource(Resource::Cidr(cidr_resource.clone()));
 
         client_state.remove_resource(dns_resource.id);
 
         assert_eq!(
             hashset(client_state.resources()),
-            hashset([cb::ResourceDescription::Cidr(
-                cidr_resource.clone().with_status(Status::Unknown)
+            hashset([ResourceView::Cidr(
+                cidr_resource.clone().with_status(ResourceStatus::Unknown)
             )])
         );
         assert_eq!(
@@ -1734,27 +2141,25 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn resources_can_be_replaced(
-        #[strategy(dns_resource())] dns_resource1: ResourceDescriptionDns,
-        #[strategy(dns_resource())] dns_resource2: ResourceDescriptionDns,
-        #[strategy(cidr_resource())] cidr_resource1: ResourceDescriptionCidr,
-        #[strategy(cidr_resource())] cidr_resource2: ResourceDescriptionCidr,
+        #[strategy(dns_resource())] dns_resource1: DnsResource,
+        #[strategy(dns_resource())] dns_resource2: DnsResource,
+        #[strategy(cidr_resource())] cidr_resource1: CidrResource,
+        #[strategy(cidr_resource())] cidr_resource2: CidrResource,
     ) {
-        use callbacks as cb;
-
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(ResourceDescription::Dns(dns_resource1));
-        client_state.add_resource(ResourceDescription::Cidr(cidr_resource1));
+        client_state.add_resource(Resource::Dns(dns_resource1));
+        client_state.add_resource(Resource::Cidr(cidr_resource1));
 
         client_state.set_resources(vec![
-            ResourceDescription::Dns(dns_resource2.clone()),
-            ResourceDescription::Cidr(cidr_resource2.clone()),
+            Resource::Dns(dns_resource2.clone()),
+            Resource::Cidr(cidr_resource2.clone()),
         ]);
 
         assert_eq!(
             hashset(client_state.resources()),
             hashset([
-                cb::ResourceDescription::Dns(dns_resource2.with_status(Status::Unknown)),
-                cb::ResourceDescription::Cidr(cidr_resource2.clone().with_status(Status::Unknown)),
+                ResourceView::Dns(dns_resource2.with_status(ResourceStatus::Unknown)),
+                ResourceView::Cidr(cidr_resource2.clone().with_status(ResourceStatus::Unknown)),
             ])
         );
         assert_eq!(
@@ -1765,8 +2170,8 @@ mod proptests {
 
     #[test_strategy::proptest]
     fn setting_gateway_online_sets_all_related_resources_online(
-        #[strategy(resources_sharing_n_sites(1))] resources_online: Vec<ResourceDescription>,
-        #[strategy(resources_sharing_n_sites(1))] resources_unknown: Vec<ResourceDescription>,
+        #[strategy(resources_sharing_n_sites(1))] resources_online: Vec<Resource>,
+        #[strategy(resources_sharing_n_sites(1))] resources_unknown: Vec<Resource>,
         #[strategy(gateway_id())] gateway: GatewayId,
     ) {
         let mut client_state = ClientState::for_test();
@@ -1783,20 +2188,26 @@ mod proptests {
             .gateways_site
             .insert(gateway, first_resource.sites().iter().next().unwrap().id);
 
-        client_state.update_site_status_by_gateway(&gateway, Status::Online);
+        client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
 
         for resource in resources_online {
-            assert_eq!(client_state.resource_status(&resource), Status::Online);
+            assert_eq!(
+                client_state.resource_status(&resource),
+                ResourceStatus::Online
+            );
         }
 
         for resource in resources_unknown {
-            assert_eq!(client_state.resource_status(&resource), Status::Unknown);
+            assert_eq!(
+                client_state.resource_status(&resource),
+                ResourceStatus::Unknown
+            );
         }
     }
 
     #[test_strategy::proptest]
     fn disconnecting_gateway_sets_related_resources_unknown(
-        #[strategy(resources_sharing_n_sites(1))] resources: Vec<ResourceDescription>,
+        #[strategy(resources_sharing_n_sites(1))] resources: Vec<Resource>,
         #[strategy(gateway_id())] gateway: GatewayId,
     ) {
         let mut client_state = ClientState::for_test();
@@ -1811,18 +2222,21 @@ mod proptests {
             .gateways_site
             .insert(gateway, first_resources.sites().iter().next().unwrap().id);
 
-        client_state.update_site_status_by_gateway(&gateway, Status::Online);
-        client_state.update_site_status_by_gateway(&gateway, Status::Unknown);
+        client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Online);
+        client_state.update_site_status_by_gateway(&gateway, ResourceStatus::Unknown);
 
         for resource in resources {
-            assert_eq!(client_state.resource_status(&resource), Status::Unknown);
+            assert_eq!(
+                client_state.resource_status(&resource),
+                ResourceStatus::Unknown
+            );
         }
     }
 
     #[test_strategy::proptest]
     fn setting_resource_offline_doesnt_set_all_related_resources_offline(
-        #[strategy(resources_sharing_n_sites(2))] multi_site_resources: Vec<ResourceDescription>,
-        #[strategy(resource())] single_site_resource: ResourceDescription,
+        #[strategy(resources_sharing_n_sites(2))] multi_site_resources: Vec<Resource>,
+        #[strategy(resource())] single_site_resource: Resource,
     ) {
         let mut client_state = ClientState::for_test();
         client_state.add_resource(single_site_resource.clone());
@@ -1834,10 +2248,13 @@ mod proptests {
 
         assert_eq!(
             client_state.resource_status(&single_site_resource),
-            Status::Offline
+            ResourceStatus::Offline
         );
         for resource in multi_site_resources {
-            assert_eq!(client_state.resource_status(&resource), Status::Unknown);
+            assert_eq!(
+                client_state.resource_status(&resource),
+                ResourceStatus::Unknown
+            );
         }
     }
 
@@ -1859,22 +2276,20 @@ mod proptests {
         HashSet::from_iter(val.into_iter().map(|b| b.to_owned()))
     }
 
-    fn resource() -> impl Strategy<Value = ResourceDescription> {
+    fn resource() -> impl Strategy<Value = Resource> {
         crate::proptest::resource(site().prop_map(|s| vec![s]))
     }
 
-    fn cidr_resource() -> impl Strategy<Value = ResourceDescriptionCidr> {
+    fn cidr_resource() -> impl Strategy<Value = CidrResource> {
         crate::proptest::cidr_resource(any_ip_network(8), site().prop_map(|s| vec![s]))
     }
 
-    fn dns_resource() -> impl Strategy<Value = ResourceDescriptionDns> {
+    fn dns_resource() -> impl Strategy<Value = DnsResource> {
         crate::proptest::dns_resource(site().prop_map(|s| vec![s]))
     }
 
     // Generate resources sharing 1 site
-    fn resources_sharing_n_sites(
-        num_sites: usize,
-    ) -> impl Strategy<Value = Vec<ResourceDescription>> {
+    fn resources_sharing_n_sites(num_sites: usize) -> impl Strategy<Value = Vec<Resource>> {
         collection::vec(site(), num_sites)
             .prop_flat_map(|sites| collection::vec(crate::proptest::resource(Just(sites)), 1..=100))
     }

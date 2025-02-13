@@ -19,7 +19,7 @@ pub mod platform;
 pub(crate) use platform::Server;
 use platform::{ClientStream, ServerStream};
 
-pub(crate) type ClientRead = FramedRead<ReadHalf<ClientStream>, Decoder<IpcServerMsg>>;
+pub type ClientRead = FramedRead<ReadHalf<ClientStream>, Decoder<IpcServerMsg>>;
 pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, Encoder<IpcClientMsg>>;
 pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, Decoder<IpcClientMsg>>;
 pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, Encoder<IpcServerMsg>>;
@@ -29,10 +29,8 @@ pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, Encoder<IpcSe
 pub enum Error {
     #[error("Couldn't find IPC service `{0}`")]
     NotFound(String),
-    #[error("Permission denied")]
-    PermissionDenied,
 
-    #[error(transparent)]
+    #[error("{0:#}")] // Use alternate display here to log entire chain of errors.
     Other(anyhow::Error),
 }
 
@@ -144,11 +142,9 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
                 return Ok((rx, tx));
             }
             Err(error) => {
-                tracing::warn!(
-                    ?error,
-                    "Couldn't connect to IPC service, will sleep and try again"
-                );
+                tracing::debug!("Couldn't connect to IPC service: {error}");
                 last_err = Some(error);
+
                 // This won't come up much for humans but it helps the automated
                 // tests pass
                 tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -241,14 +237,14 @@ mod tests {
         if let Err(panic) = &client_result {
             tracing::error!(?panic, "Client panic");
         } else if let Ok(Err(error)) = &client_result {
-            tracing::error!(?error, "Client error");
+            tracing::error!("Client error: {error:#}");
         }
 
         let server_result = server_task.await;
         if let Err(panic) = &server_result {
             tracing::error!(?panic, "Server panic");
         } else if let Ok(Err(error)) = &server_result {
-            tracing::error!(?error, "Server error");
+            tracing::error!("Server error: {error:#}");
         }
 
         if client_result.is_err() || server_result.is_err() {
@@ -275,5 +271,12 @@ mod tests {
             }
         }
         Ok(())
+    }
+
+    #[test]
+    fn error_logs_all_anyhow_sources_on_display() {
+        let err = Error::Other(anyhow::anyhow!("foo").context("bar").context("baz"));
+
+        assert_eq!(err.to_string(), "baz: bar: foo");
     }
 }

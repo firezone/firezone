@@ -31,7 +31,7 @@ defmodule API.Schemas.ActorGroup do
       description: "POST body for creating an Actor Group",
       type: :object,
       properties: %{
-        actor_group: %Schema{anyOf: [ActorGroup.Schema]}
+        actor_group: ActorGroup.Schema
       },
       required: [:actor_group],
       example: %{

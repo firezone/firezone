@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use anyhow::Result;
 
 fn main() -> Result<()> {
@@ -26,7 +28,6 @@ mod platform {
 mod platform {
     use anyhow::Result;
     use firezone_bin_shared::TunDeviceManager;
-    use ip_packet::{IpPacket, IpPacketBuf};
     use std::{
         future::poll_fn,
         net::{Ipv4Addr, Ipv6Addr},
@@ -45,10 +46,11 @@ mod platform {
         const REQ_LEN: usize = 1_000;
         const RESP_CODE: u8 = 43;
         const SERVER_PORT: u16 = 3000;
+        const NUM_THREADS: usize = 1; // Note: Unused on Windows.
 
         let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
         let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
-        let mut device_manager = TunDeviceManager::new(MTU)?;
+        let mut device_manager = TunDeviceManager::new(MTU, NUM_THREADS)?;
         let mut tun = device_manager.make_tun()?;
 
         device_manager.set_ips(ipv4, ipv6).await?;
@@ -60,15 +62,14 @@ mod platform {
         let server_task = tokio::spawn(async move {
             tracing::debug!("Server task entered");
             let mut requests_served = 0;
-            // We aren't interested in allocator speed or doing any processing,
-            // so just cache the response packet
-            let mut response_pkt = None;
+
             let mut time_spent = Duration::from_millis(0);
             loop {
-                let mut req_buf = IpPacketBuf::new();
-                let n = poll_fn(|cx| tun.poll_read(req_buf.buf(), cx)).await?;
+                let mut buf = Vec::with_capacity(1);
+                poll_fn(|cx| tun.poll_recv_many(cx, &mut buf, 1)).await;
+                let original_pkt = buf.remove(0);
+
                 let start = Instant::now();
-                let original_pkt = IpPacket::new(req_buf, n).unwrap();
                 let Some(original_udp) = original_pkt.as_udp() else {
                     continue;
                 };
@@ -79,21 +80,16 @@ mod platform {
                     panic!("Wrong request code");
                 }
 
-                // Only generate the response packet on the first loop,
-                // then just reuse it.
-                let res_buf = response_pkt
-                    .get_or_insert_with(|| {
-                        ip_packet::make::udp_packet(
-                            original_pkt.destination(),
-                            original_pkt.source(),
-                            original_udp.destination_port(),
-                            original_udp.source_port(),
-                            vec![RESP_CODE],
-                        )
-                        .unwrap()
-                    })
-                    .packet();
-                tun.write4(res_buf)?;
+                tun.send(
+                    ip_packet::make::udp_packet(
+                        original_pkt.destination(),
+                        original_pkt.source(),
+                        original_udp.destination_port(),
+                        original_udp.source_port(),
+                        vec![RESP_CODE],
+                    )
+                    .unwrap(),
+                )?;
                 requests_served += 1;
                 time_spent += start.elapsed();
                 if requests_served >= NUM_REQUESTS {

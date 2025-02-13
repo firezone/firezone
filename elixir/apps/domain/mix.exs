@@ -2,11 +2,9 @@ defmodule Domain.MixProject do
   use Mix.Project
 
   def project do
-    {sha, _} = Code.eval_file(Path.join([__DIR__, "..", "..", "sha.exs"]))
-
     [
       app: :domain,
-      version: "0.1.0+#{sha}",
+      version: version(),
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -59,7 +57,7 @@ defmodule Domain.MixProject do
       {:openid_connect,
        github: "firezone/openid_connect", ref: "e4d9dca8ae43c765c00a7d3dfa12d6f24f5b3418"},
       {:argon2_elixir, "~> 4.0"},
-      {:workos, git: "https://github.com/firezone/workos-elixir.git", branch: "main"},
+      {:workos, "~> 1.1"},
 
       # Erlang Clustering
       {:libcluster, "~> 3.3"},
@@ -85,9 +83,9 @@ defmodule Domain.MixProject do
       {:logger_json, "~> 6.0"},
       {:recon, "~> 2.5"},
       {:observer_cli, "~> 1.7"},
-      {:opentelemetry, "~> 1.3"},
+      {:opentelemetry, "~> 1.5"},
       {:opentelemetry_logger_metadata, "~> 0.1.0"},
-      {:opentelemetry_exporter, "~> 1.5"},
+      {:opentelemetry_exporter, "~> 1.8"},
       {:opentelemetry_ecto, "~> 1.2"},
       {:opentelemetry_finch, "~> 0.2.0"},
 
@@ -111,5 +109,10 @@ defmodule Domain.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate", "test"]
     ]
+  end
+
+  defp version do
+    sha = System.get_env("GIT_SHA", "dev") |> String.trim()
+    "0.1.0+#{sha}"
   end
 end

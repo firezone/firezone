@@ -44,24 +44,23 @@ defmodule Web.Actors.Users.NewIdentity do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
-        <%= @actor.name %>
+        {@actor.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/users/#{@actor}/new_identity"}>
         Add Identity
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Identity details</h2>
           <.flash kind={:error} flash={@flash} />
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>
                 <.input
                   type="select"
-                  label="Provider"
+                  label="Identity Provider"
                   field={@form[:provider_id]}
                   options={
                     Enum.map(@providers, fn provider ->
@@ -72,9 +71,6 @@ defmodule Web.Actors.Users.NewIdentity do
                   placeholder="Provider"
                   required
                 />
-                <p class="mt-2 text-xs text-gray-500">
-                  Select the provider to use for signing in.
-                </p>
               </div>
               <.provider_form :if={@provider} form={@form} provider={@provider} />
             </div>
@@ -103,6 +99,8 @@ defmodule Web.Actors.Users.NewIdentity do
   end
 
   def handle_event("submit", %{"identity" => attrs}, socket) do
+    attrs = add_email(attrs)
+
     with {:ok, identity} <-
            Auth.create_identity(
              socket.assigns.actor,
@@ -132,6 +130,16 @@ defmodule Web.Actors.Users.NewIdentity do
     case socket.assigns.next_step do
       "edit_groups" -> ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}/edit_groups"
       _ -> ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}"
+    end
+  end
+
+  defp add_email(attrs) do
+    identifier = attrs["provider_identifier"]
+
+    if Domain.Auth.valid_email?(identifier) do
+      Map.put(attrs, "email", identifier)
+    else
+      Map.put(attrs, "email", nil)
     end
   end
 end

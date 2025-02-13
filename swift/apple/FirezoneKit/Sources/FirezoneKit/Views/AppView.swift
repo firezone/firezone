@@ -22,6 +22,7 @@ import UserNotifications
 public class AppViewModel: ObservableObject {
   let favorites: Favorites
   let store: Store
+  let sessionNotification: SessionNotification
 
   @Published private(set) var status: NEVPNStatus?
   @Published private(set) var decision: UNAuthorizationStatus?
@@ -31,34 +32,59 @@ public class AppViewModel: ObservableObject {
   public init(favorites: Favorites, store: Store) {
     self.favorites = favorites
     self.store = store
+    self.sessionNotification = SessionNotification()
 
-    store.$status
-      .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] status in
-        guard let self = self else { return }
-        Log.app.log("Status: \(status)")
+    self.sessionNotification.signInHandler = {
+      Task {
+        do { try await WebAuthSession.signIn(store: self.store) } catch { Log.error(error) }
+      }
+    }
 
-        self.status = status
+    Task {
+      // Load user's decision whether to allow / disallow notifications
+      let decision = await self.sessionNotification.loadAuthorizationStatus()
+      updateNotificationDecision(to: decision)
+
+      // Load VPN configuration and system extension status
+      do {
+        try await self.store.bindToVPNConfigurationUpdates()
+        let vpnConfigurationStatus = self.store.status
 
 #if os(macOS)
-        if status == .invalid || DeviceMetadata.firstTime() {
+        let systemExtensionStatus = try await self.store.checkedSystemExtensionStatus()
+
+        if systemExtensionStatus != .installed
+          || vpnConfigurationStatus == .invalid {
+
+          // Show the main Window if VPN permission needs to be granted
           AppViewModel.WindowDefinition.main.openWindow()
         } else {
           AppViewModel.WindowDefinition.main.window()?.close()
         }
 #endif
-      })
-      .store(in: &cancellables)
 
-    store.$decision
+        if vpnConfigurationStatus == .disconnected {
+
+          // Try to connect on start
+          try self.store.vpnConfigurationManager.start()
+        }
+      } catch {
+        Log.error(error)
+      }
+    }
+
+    store.$status
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] decision in
+      .sink(receiveValue: { [weak self] status in
         guard let self = self else { return }
 
-        Log.app.log("Decision: \(decision)")
-        self.decision = decision
+        self.status = status
       })
       .store(in: &cancellables)
+  }
+
+  func updateNotificationDecision(to newStatus: UNAuthorizationStatus) {
+    self.decision = newStatus
   }
 }
 
@@ -77,8 +103,13 @@ public struct AppView: View {
       ProgressView()
     case (.invalid, _):
       GrantVPNView(model: GrantVPNViewModel(store: model.store))
-    case (.disconnected, .notDetermined):
-      GrantNotificationsView(model: GrantNotificationsViewModel(store: model.store))
+    case (_, .notDetermined):
+      GrantNotificationsView(model: GrantNotificationsViewModel(
+        sessionNotification: model.sessionNotification,
+        onDecisionChanged: { decision in
+          model.updateNotificationDecision(to: decision)
+        }
+      ))
     case (.disconnected, _):
       iOSNavigationView(model: model) {
         WelcomeView(model: WelcomeViewModel(store: model.store))
@@ -89,8 +120,10 @@ public struct AppView: View {
       }
     }
 #elseif os(macOS)
-    switch model.store.status {
-    case .invalid:
+    switch (model.store.systemExtensionStatus, model.status) {
+    case (nil, nil):
+      ProgressView()
+    case (.needsInstall, _), (_, .invalid):
       GrantVPNView(model: GrantVPNViewModel(store: model.store))
     default:
       FirstTimeView()
@@ -109,7 +142,7 @@ public extension AppViewModel {
     public var externalEventMatchString: String { rawValue }
     public var externalEventOpenURL: URL { URL(string: "firezone://\(rawValue)")! }
 
-    public func openWindow() {
+    @MainActor public func openWindow() {
       if let window = NSApp.windows.first(where: {
         $0.identifier?.rawValue.hasPrefix(identifier) ?? false
       }) {
@@ -118,11 +151,11 @@ public extension AppViewModel {
         window.makeKeyAndOrderFront(self)
       } else {
         // Open new window
-        NSWorkspace.shared.open(externalEventOpenURL)
+        Task { await NSWorkspace.shared.openAsync(externalEventOpenURL) }
       }
     }
 
-    public func window() -> NSWindow? {
+    @MainActor public func window() -> NSWindow? {
       NSApp.windows.first { window in
         if let windowId = window.identifier?.rawValue {
           return windowId.hasPrefix(self.identifier)

@@ -1,22 +1,82 @@
 import SupportOptions from "@/components/SupportOptions";
+import { TabsGroup, TabsItem } from "@/components/Tabs";
+import Alert from "@/components/DocsAlert";
+import { FaInfoCircle } from "react-icons/fa";
 
 # macOS Client
 
-Firezone supports macOS with a native client available in the macOS App Store.
+Firezone supports macOS with a native client available both in the Mac App Store
+and as a standalone distributable.
 
 ## Prerequisites
 
-- **macOS 12** or higher
+- **macOS 13** or higher
 - **Intel x86-64 or Apple Silicon** CPU architecture
 
 ## Installation
 
+Firezone distributes the macOS client in two ways: through the **Mac App Store**
+and as a **standalone** download.
+
+If you're looking for the easiest way to install and manage Firezone on your
+Mac, use the **App Store** version.
+
+If you want the ability to rollback to an earlier release or install the client
+without an Apple account, use the **standalone** version.
+
+<TabsGroup>
+<TabsItem title="App Store">
+
 1. [Download the Client](https://apps.apple.com/us/app/firezone/id6443661826)
-   from the Apple App Store.
-1. Click `Open` in the App Store. The `Welcome to Firezone` window will open.
+   from the Mac App Store.
+1. Click `Open` in the App Store.
+1. Click `Enable System Extension` in the window that appears.
+1. Click `Open System Settings` in the dialog that appears.
+1. Toggle the switch next to `FirezoneNetworkExtension` to enable the system
+   extension.
+1. Click `Done`.
 1. Click `Grant VPN Permission`. macOS will show a dialog saying,
    `"Firezone" Would Like to Add VPN Configurations`.
 1. Click `Allow`.
+1. The `Welcome to Firezone` window will open.
+
+Firezone is now ready for use.
+
+</TabsItem>
+<TabsItem title="Standalone">
+
+1. [Download the Client](/dl/firezone-client-macos/latest)
+1. Open the downloaded `.dmg` file.
+1. Drag the Firezone icon to the Applications folder.
+1. Open the Applications folder and double-click the Firezone icon.
+1. Click `Enable System Extension` in the window that appears.
+1. Click `Open System Settings` in the dialog that appears.
+1. Toggle the switch next to `FirezoneNetworkExtension` to enable the system
+   extension.
+1. Click `Done`.
+1. Next, click `Grant VPN Permission`. macOS will show a dialog saying,
+   `"Firezone" Would Like to Add VPN Configurations`.
+1. Click `Allow`.
+
+Firezone is now ready for use.
+
+</TabsItem>
+</TabsGroup>
+
+### Switching between App Store and Standalone
+
+If you have the App Store version installed and want to switch to the standalone
+version (or vice versa), follow these steps:
+
+1. Quit the Firezone Client.
+1. Uninstall the Firezone Client by dragging it to the Trash and emptying the
+   Trash.
+1. Reboot your Mac. You **must** reboot your Mac to ensure the system extension
+   is removed to prevent conflicts.
+1. Install the desired version using the instructions above.
+
+**Note:** This will reset any changes you've made to the client settings, so be
+sure to configure them again if needed.
 
 ## Usage
 
@@ -61,9 +121,30 @@ will use its normal DNS and Internet behavior.
 
 ## Upgrading
 
+We recommend keeping the Firezone client up to date if possible. How this is
+achieved depends on how you installed the client.
+
+<TabsGroup>
+<TabsItem title="App Store">
+
 Use the App Store to update the Firezone Apple Client. See Apple's documentation
 ["Use the App Store to update apps on Mac"](https://support.apple.com/guide/app-store/update-apps-fir9b01adda3/3.0/mac/14.0)
 for more information.
+
+</TabsItem>
+<TabsItem title="Standalone">
+
+To upgrade the standalone Firezone Client:
+
+1. Quit the Firezone Client if it's running.
+1. [Download](/dl/firezone-client-macos/latest) the latest version.
+1. Open the downloaded `.dmg` file.
+1. Drag the Firezone icon to the Applications folder, replacing the existing
+   version.
+1. Open the Applications folder and double-click the Firezone icon.
+
+</TabsItem>
+</TabsGroup>
 
 ## Diagnostic logs
 
@@ -81,15 +162,53 @@ To export or clear your logs:
 ## Uninstalling
 
 1. Quit the Firezone Client.
-1. Open Launchpad and find Firezone.
-1. Press and hold the `Option` key, and click on the "X" button on the Firezone
-   icon.
+1. Drag the Firezone icon from the Applications folder to the Trash.
+1. Empty the Trash.
 
 See Apple's documentation
 ["Uninstall apps on your Mac"](https://support.apple.com/en-us/102610) for more
 information.
 
 ## Troubleshooting
+
+### Signing in doesn't do anything
+
+If you go through the sign in process successfully and nothing happens, it could
+be that the System Extension is not enabled or installed correctly. To fix this,
+perform the following steps:
+
+#### Step 1: Remove the VPN Profile
+
+1. Quit the Firezone Client.
+1. Open System Settings.
+1. Go to `VPN`.
+1. Click the <span><FaInfoCircle className="inline" /></span> in the `Firezone`
+   entry to open its settings.
+1. Click the `Remove Configuration...` button and confirm the removal.
+
+#### Step 2: Remove the Network Extension
+
+1. Open System Settings.
+1. Go to `General -> Login Items & Extensions`.
+1. Scroll to the bottom and look for the `Network Extensions` section.
+1. Click the <span><FaInfoCircle className="inline" /></span> in the
+   `Network Extensions` section to open its settings.
+1. Click the ellipsis (`...`) button in the `Firezone.app` entry to open the
+   contextual menu.
+1. Click `Delete Extension`.
+
+#### Step 3: Open the Firezone Client
+
+1. Open the Firezone Client.
+1. Click `Enable System Extension` and follow the instructions to enable the
+   system extension.
+1. Click `Grant VPN Permission` and follow the instructions to allow the VPN
+   profile.
+
+#### Step 4: Sign in
+
+The system extension and related VPN profile should now be installed correctly.
+If you still have issues, please [contact support](/support).
 
 ### Check if Firezone is controlling DNS
 
@@ -118,21 +237,11 @@ Normal system DNS:
 
 ## Known issues
 
-- [**SSH session disconnects**](https://github.com/firezone/firezone/issues/6347):
-  SSH sessions on macOS may disconnect when not used for a period of time. As a
-  workaround, try setting the `ServerAliveInterval` in `$HOME/.ssh/config` to 4
-  minutes:
-  ```text
-  Host *
-      ServerAliveInterval 240
-  ```
-- **DNS Resources**: Web browsers that enable "Secure DNS" or DNS-over-HTTPS by
-  default may interfere with DNS resolution because they force all DNS traffic
-  through the browser's configured resolvers. See
-  [Administer / Troubleshooting / Some browsers break DNS routing](/kb/administer/troubleshooting#some-browsers-break-dns-routing)
-  to disable DNS-over-HTTPS if you're experiencing issues connecting to DNS
-  Resources within your browser
-  [#6375](https://github.com/firezone/firezone/issues/6375).
+- [**Authentication will not use Firefox even if it is the default browser**](https://github.com/firezone/firezone/issues/7072):
+  Firezone will not use Firefox for authentication on macOS even if it is the
+  default browser. This is due to Firefox's lack of support for Apple's
+  [WebAuthenticationSession](https://developer.apple.com/documentation/authenticationservices/webauthenticationsession)
+  API. To work around this issue, use Safari or Chrome for authentication.
 - **Cloudflare WARP client conflicts with other VPN apps**: The Cloudflare WARP
   client may interfere with Firezone's ability to initialize its tunnel
   interface or resolve DNS resources. Ensure the Cloudflare WARP client is
@@ -141,9 +250,10 @@ Normal system DNS:
   for more information.
 - **SentinelOne agent can block DNS queries**: The SentinelOne agent for macOS
   may interfere with Firezone's ability to successfully forward and reply to DNS
-  queries made my applications on macOS. The symptom when this occurs is that
+  queries made by applications on macOS. The symptom when this occurs is that
   all DNS queries on the system will fail, not just those that match the DNS
-  Resources you have in your account. See this issue for more information:
+  Resources you have in your account. The issue seems to mainly be present on
+  `x86_64` systems only. See this issue for more information:
   [#6768](https://github.com/firezone/firezone/issues/6768).
 
 <SupportOptions />

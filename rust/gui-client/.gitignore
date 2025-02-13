@@ -7,8 +7,9 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-node_modules
 dist-ssr
+node_modules
+rpmbuild
 *.local
 
 # Editor directories and files
@@ -26,3 +27,9 @@ src/output.css
 
 # JS output from the TypeScript compiler
 src/**/*.js
+
+# Vite output
+dist
+
+# Some new generated files in Tauri v2
+src-tauri/gen

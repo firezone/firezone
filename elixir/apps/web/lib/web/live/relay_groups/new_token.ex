@@ -38,7 +38,7 @@ defmodule Web.RelayGroups.NewToken do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/relay_groups"}>Relays</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/relay_groups/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/relay_groups/#{@group}/new_token"}>Deploy</.breadcrumb>
     </.breadcrumbs>
@@ -283,10 +283,41 @@ defmodule Web.RelayGroups.NewToken do
     Documentation=https://www.firezone.dev/kb
 
     [Service]
-    Type=simple
+    Type=exec
+    DynamicUser=true
+    User=firezone-relay
+
+    WorkingDirectory=/var/lib/firezone-relay
+    StateDirectory=firezone-relay
+
+    LockPersonality=true
+    MemoryDenyWriteExecute=true
+    NoNewPrivileges=true
+    PrivateMounts=true
+    PrivateTmp=true
+    PrivateUsers=false
+    ProcSubset=pid
+    ProtectClock=true
+    ProtectControlGroups=true
+    ProtectHome=true
+    ProtectHostname=true
+    ProtectKernelLogs=true
+    ProtectKernelModules=true
+    ProtectKernelTunables=true
+    ProtectProc=invisible
+    ProtectSystem=strict
+    RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
+    RestrictNamespaces=true
+    RestrictRealtime=true
+    RestrictSUIDSGID=true
+    SystemCallArchitectures=native
+    SystemCallFilter=@system-service
+    UMask=077
+
     #{Enum.map_join(env, "\n", fn {key, value} -> "Environment=\"#{key}=#{value}\"" end)}
     ExecStartPre=/bin/sh -c 'set -ue; \\
-      if [ ! -e /usr/local/bin/firezone-relay ]; then \\
+      mkdir -p bin; \\
+      if [ ! -e bin/firezone-relay ]; then \\
         FIREZONE_VERSION=$(curl -Ls \\
           -H "Accept: application/vnd.github+json" \\
           -H "X-GitHub-Api-Version: 2022-11-28" \\
@@ -307,19 +338,11 @@ defmodule Web.RelayGroups.NewToken do
             echo "Unsupported architecture"; \\
             exit 1 ;; \\
         esac; \\
-        curl -Ls $bin_url -o /usr/local/bin/firezone-relay; \\
-        chgrp firezone /usr/local/bin/firezone-relay; \\
-        chmod 0750 /usr/local/bin/firezone-relay; \\
+        curl -Ls "$bin_url" -o bin/firezone-relay; \\
+        chmod 750 bin/firezone-relay; \\
       fi; \\
-      mkdir -p /var/lib/firezone; \\
-      chown firezone:firezone /var/lib/firezone; \\
-      chmod 0775 /var/lib/firezone; \\
     '
-    ExecStart=/usr/bin/sudo \\
-      --preserve-env=FIREZONE_NAME,FIREZONE_ID,FIREZONE_TOKEN,PUBLIC_IP4_ADDR,PUBLIC_IP6_ADDR,RUST_LOG,LOG_FORMAT \\
-      -u firezone \\
-      -g firezone \\
-      /usr/local/bin/firezone-relay
+    ExecStart=/var/lib/firezone-relay/bin/firezone-relay
     TimeoutStartSec=3s
     TimeoutStopSec=15s
     Restart=always

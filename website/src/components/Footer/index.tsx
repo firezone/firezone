@@ -19,9 +19,7 @@ export default function Footer() {
   return (
     <footer className="relative bg-neutral-950 py-16 md:px-16 px-4 text-neutral-500">
       <div className="flex flex-col justify-center items-center text-center">
-        <h3
-          className={`text-neutral-200 mb-4 text-4xl md:text-6xl text-pretty tracking-tight justify-center font-semibold font-manrope`}
-        >
+        <h3 className="text-neutral-200 mb-4 text-4xl md:text-6xl text-pretty tracking-tight justify-center font-semibold">
           Ready to get started?
         </h3>
         <p className="text-neutral-200 text-md">
@@ -218,21 +216,11 @@ export default function Footer() {
             <p>WireGuard is a registered trademark of Jason A. Donenfeld.</p>
             <p>Firezone is a registered trademark of Firezone, Inc.</p>
           </div>
-          <div className="mt-4 sm:mt-0">
-            <ActionLink
-              href="https://probe.sh"
-              size="sm"
-              color="white"
-              transitionColor="primary-450"
-            >
-              Test your WireGuard connection
-            </ActionLink>
-          </div>
         </div>
         <hr className="my-2 border-neutral-500 sm:mx-auto md:my-4" />
         <div className="flex grid sm:grid-cols-3">
           <div className="text-xs">
-            © 2024{" "}
+            © {new Date().getFullYear()}{" "}
             <Link
               href="/"
               className="text-neutral-200 hover:underline hover:text-neutral-50"
@@ -272,7 +260,7 @@ export default function Footer() {
             <WindowsIcon
               className="text-neutral-200 hover:text-neutral-50"
               size={5}
-              href="/kb/client-apps/windows-client"
+              href="/kb/client-apps/windows-gui-client"
             />
             <LinuxIcon
               className="text-neutral-200 hover:text-neutral-50"

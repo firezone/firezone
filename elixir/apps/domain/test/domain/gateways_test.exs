@@ -142,6 +142,19 @@ defmodule Domain.GatewaysTest do
     end
   end
 
+  describe "all_groups_for_account!/1" do
+    test "returns groups for given account", %{account: account} do
+      Fixtures.Gateways.create_group(account: account)
+      Fixtures.Gateways.create_group(account: account)
+      external_group = Fixtures.Gateways.create_group(account: Fixtures.Accounts.create_account())
+
+      groups = all_groups_for_account!(account)
+
+      assert length(groups) == 2
+      refute Enum.any?(groups, &(&1.id == external_group.id))
+    end
+  end
+
   describe "new_group/0" do
     test "returns group changeset" do
       assert %Ecto.Changeset{data: %Gateways.Group{}, changes: changes} = new_group()

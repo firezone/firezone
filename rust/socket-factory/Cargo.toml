@@ -1,10 +1,13 @@
 [package]
 name = "socket-factory"
 version = "0.1.0"
-edition = "2021"
+edition = { workspace = true }
+license = { workspace = true }
 
 [dependencies]
-quinn-udp = "0.5.2"
+bytes = { workspace = true }
+firezone-logging = { workspace = true }
+quinn-udp = { workspace = true }
 socket2 = { workspace = true }
-tokio = { version = "1.39", features = ["net"] }
-tracing = "0.1"
+tokio = { workspace = true, features = ["net"] }
+tracing = { workspace = true }

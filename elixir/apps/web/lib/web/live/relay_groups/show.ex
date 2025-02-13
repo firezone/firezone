@@ -60,13 +60,13 @@ defmodule Web.RelayGroups.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/relay_groups"}>Relay Instance Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/relay_groups/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Relay Instance Group: <code><%= @group.name %></code>
+        Relay Instance Group: <code>{@group.name}</code>
         <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={not is_nil(@group.account_id) and is_nil(@group.deleted_at)}>
@@ -79,7 +79,7 @@ defmodule Web.RelayGroups.Show do
           <.vertical_table id="group">
             <.vertical_table_row>
               <:label>Instance Group Name</:label>
-              <:value><%= @group.name %></:value>
+              <:value>{@group.name}</:value>
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Created</:label>
@@ -106,7 +106,7 @@ defmodule Web.RelayGroups.Show do
           icon="hero-trash-solid"
           on_confirm="revoke_all_tokens"
         >
-          <:dialog_title>Revoke all tokens</:dialog_title>
+          <:dialog_title>Confirm revocation of all tokens</:dialog_title>
           <:dialog_content>
             Are you sure you want to revoke all tokens for this Relay Group?
             This will <strong>immediately</strong> disconnect all associated Relays.
@@ -133,13 +133,13 @@ defmodule Web.RelayGroups.Show do
             <:col :let={relay} label="instance">
               <.link navigate={~p"/#{@account}/relays/#{relay.id}"} class={[link_style()]}>
                 <code :if={relay.name} class="block text-xs">
-                  <%= relay.name %>
+                  {relay.name}
                 </code>
                 <code :if={relay.ipv4} class="block text-xs">
-                  <%= relay.ipv4 %>
+                  {relay.ipv4}
                 </code>
                 <code :if={relay.ipv6} class="block text-xs">
-                  <%= relay.ipv6 %>
+                  {relay.ipv6}
                 </code>
               </.link>
             </:col>
@@ -162,7 +162,7 @@ defmodule Web.RelayGroups.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete Instance Group</:dialog_title>
+          <:dialog_title>Confirm deletion of the Instance Group</:dialog_title>
           <:dialog_content>
             Are you sure you want to delete this Instance Group? All relay instances will be disconnected.
           </:dialog_content>

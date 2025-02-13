@@ -1,7 +1,7 @@
-use crate::REALM;
-use connlib_shared::messages::{Relay, RelayId};
+use crate::{messages::Relay, REALM};
+use connlib_model::RelayId;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
-use itertools::Itertools;
+use itertools::Itertools as _;
 use snownet::RelaySocket;
 use std::{collections::BTreeSet, net::SocketAddr, time::Instant};
 

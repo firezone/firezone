@@ -9,9 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use tokio::task::spawn_blocking;
-use tracing::subscriber::set_global_default;
-use tracing_log::LogTracer;
-use tracing_subscriber::{fmt, layer::SubscriberExt, reload, Layer, Registry};
+use tracing_subscriber::{layer::SubscriberExt, reload, Layer, Registry};
 
 /// If you don't store `Handles` in a variable, the file logger handle will drop immediately,
 /// resulting in empty log files.
@@ -50,22 +48,31 @@ pub enum Error {
 /// `Clone` yet, so that's why we take the directives string
 /// <https://github.com/tokio-rs/tracing/issues/2360>
 pub fn setup(directives: &str) -> Result<Handles> {
+    if let Err(error) = output_vt100::try_init() {
+        tracing::debug!("Failed to init terminal colors: {error}");
+    }
+
     let log_path = known_dirs::logs().context("Can't compute app log dir")?;
 
+    // Logfilter for stdout cannot be reloaded. This is okay because we are using it only for local dev and debugging anyway.
+    // Having multiple reload handles makes their type-signature quite complex so we don't bother with that.
+    let stdout = tracing_subscriber::fmt::layer()
+        .with_ansi(firezone_logging::stdout_supports_ansi())
+        .event_format(firezone_logging::Format::new())
+        .with_filter(firezone_logging::try_filter(directives)?);
+
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
-    let (layer, logger) = firezone_logging::file::layer(&log_path);
-    let layer = layer.and_then(fmt::layer());
+    let (layer, logger) = firezone_logging::file::layer(&log_path, "gui-client");
     let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(directives)?);
-    let subscriber = Registry::default().with(layer.with_filter(filter));
-    set_global_default(subscriber)?;
-    if let Err(error) = output_vt100::try_init() {
-        tracing::debug!(
-            ?error,
-            "Failed to init vt100 terminal colors (expected in release builds and in CI)"
-        );
-    }
-    LogTracer::init()?;
-    tracing::debug!(?log_path, "Log path");
+
+    let subscriber = Registry::default()
+        .with(layer.with_filter(filter))
+        .with(stdout)
+        .with(firezone_logging::sentry_layer());
+    firezone_logging::init(subscriber)?;
+
+    tracing::debug!(log_path = %log_path.display(), "Log path");
+
     Ok(Handles { logger, reloader })
 }
 
@@ -95,6 +102,7 @@ pub async fn clear_gui_logs() -> Result<()> {
 /// * `stem` - A directory containing all the log files inside the zip archive, to avoid creating a ["tar bomb"](https://www.linfo.org/tarbomb.html). This comes from the automatically-generated name of the archive, even if the user changes it to e.g. `logs.zip`
 pub async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     tracing::info!("Exporting logs to {path:?}");
+    let start = std::time::Instant::now();
     // Use a temp path so that if the export fails we don't end up with half a zip file
     let temp_path = path.with_extension(".zip-partial");
 
@@ -111,6 +119,7 @@ pub async fn export_logs_to(path: PathBuf, stem: PathBuf) -> Result<()> {
     })
     .await
     .context("Failed to join zip export task")??;
+    tracing::debug!(elapsed_s = ?start.elapsed(), "Exported logs");
     Ok(())
 }
 

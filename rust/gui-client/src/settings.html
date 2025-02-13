@@ -2,12 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon">
+    <link rel="shortcut icon" href="data:image/x-icon;," type="image/x-icon" />
     <link rel="stylesheet" href="output.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Settings</title>
-    <script src="./flowbite.min.js" defer></script>
-    <script type="module" src="settings.js" defer></script>
+    <script type="module" src="./flowbite.min.js" defer></script>
+    <script type="module" src="settings.ts" defer></script>
   </head>
 
   <body class="bg-neutral-100 text-neutral-900">
@@ -64,13 +64,13 @@
               <input
                 name="auth-base-url"
                 id="auth-base-url-input"
-                class="block py-2.5 px-0 w-full text-sm text-neutral-900 bg-transparent border-0 border-b-2 border-neutral-300 appearance-none focus:outline-none focus:ring-0 focus:border-accent-600 peer"
+                class="block py-2.5 px-0 w-full text-sm text-neutral-900 bg-transparent border-0 border-b-2 border-neutral-300 appearance-none focus:outline-hidden focus:ring-0 focus:border-accent-600 peer"
                 placeholder=" "
                 required
               />
               <label
                 for="auth-base-url"
-                class="peer-focus:font-medium absolute text-sm text-neutral-600 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:start-0 rtl:peer-focus:translate-x-1/4 rtl:peer-focus:left-auto peer-focus:text-accent-600 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6"
+                class="peer-focus:font-medium absolute text-sm text-neutral-600 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:start-0 peer-focus:rtl:translate-x-1/4 peer-focus:rtl:left-auto peer-focus:text-accent-600 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6"
                 >Auth Base URL</label
               >
             </div>
@@ -78,13 +78,13 @@
               <input
                 name="api-url"
                 id="api-url-input"
-                class="block py-2.5 px-0 w-full text-sm text-neutral-900 bg-transparent border-0 border-b-2 border-neutral-300 appearance-none focus:outline-none focus:ring-0 focus:border-accent-600 peer"
+                class="block py-2.5 px-0 w-full text-sm text-neutral-900 bg-transparent border-0 border-b-2 border-neutral-300 appearance-none focus:outline-hidden focus:ring-0 focus:border-accent-600 peer"
                 placeholder=" "
                 required
               />
               <label
                 for="api-url"
-                class="peer-focus:font-medium absolute text-sm text-neutral-600 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:start-0 rtl:peer-focus:translate-x-1/4 peer-focus:text-accent-600 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6"
+                class="peer-focus:font-medium absolute text-sm text-neutral-600 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:start-0 peer-focus:rtl:translate-x-1/4 peer-focus:text-accent-600 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6"
                 >API URL</label
               >
             </div>
@@ -92,13 +92,13 @@
               <input
                 name="log-filter"
                 id="log-filter-input"
-                class="block py-2.5 px-0 w-full text-sm text-neutral-900 bg-transparent border-0 border-b-2 border-neutral-300 appearance-none focus:outline-none focus:ring-0 focus:border-accent-600 peer"
+                class="block py-2.5 px-0 w-full text-sm text-neutral-900 bg-transparent border-0 border-b-2 border-neutral-300 appearance-none focus:outline-hidden focus:ring-0 focus:border-accent-600 peer"
                 placeholder=" "
                 required
               />
               <label
                 for="log_filter"
-                class="peer-focus:font-medium absolute text-sm text-neutral-600 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:start-0 rtl:peer-focus:translate-x-1/4 peer-focus:text-accent-600 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6"
+                class="peer-focus:font-medium absolute text-sm text-neutral-600 duration-300 transform -translate-y-6 scale-75 top-3 -z-10 origin-[0] peer-focus:start-0 peer-focus:rtl:translate-x-1/4 peer-focus:text-accent-600 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-75 peer-focus:-translate-y-6"
                 >Log Filter</label
               >
             </div>
@@ -106,14 +106,14 @@
               <button
                 id="reset-advanced-settings-btn"
                 type="button"
-                class="bg-neutral-300 border-neutral-400 border text-neutral-900 hover:bg-neutral-400 font-medium rounded text-sm w-full sm:w-auto px-5 py-2.5 text-center"
+                class="bg-neutral-300 border-neutral-400 border text-neutral-900 hover:bg-neutral-400 font-medium rounded-sm text-sm w-full sm:w-auto px-5 py-2.5 text-center"
               >
                 Reset to Defaults
               </button>
               <button
                 id="apply-advanced-settings-btn"
                 type="submit"
-                class="text-white bg-accent-450 hover:bg-accent-700 font-medium rounded text-sm w-full sm:w-auto px-5 py-2.5 text-center"
+                class="text-white bg-accent-450 hover:bg-accent-700 font-medium rounded-sm text-sm w-full sm:w-auto px-5 py-2.5 text-center"
               >
                 Apply
               </button>
@@ -134,7 +134,7 @@
             <button
               id="export-logs-btn"
               type="button"
-              class="mr-4 inline-flex items-center border border-neutral-400 bg-neutral-300 text-neutral-900 hover:bg-neutral-400 font-medium rounded text-sm px-5 py-2.5 text-center"
+              class="mr-4 inline-flex items-center border border-neutral-400 bg-neutral-300 text-neutral-900 hover:bg-neutral-400 font-medium rounded-sm text-sm px-5 py-2.5 text-center"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -156,7 +156,7 @@
             <button
               id="clear-logs-btn"
               type="button"
-              class="inline-flex items-center border border-neutral-400 bg-neutral-300 text-neutral-900 hover:bg-neutral-400 font-medium rounded text-sm px-5 py-2.5 text-center"
+              class="inline-flex items-center border border-neutral-400 bg-neutral-300 text-neutral-900 hover:bg-neutral-400 font-medium rounded-sm text-sm px-5 py-2.5 text-center"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"

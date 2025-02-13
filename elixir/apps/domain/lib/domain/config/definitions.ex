@@ -61,6 +61,7 @@ defmodule Domain.Config.Definitions do
       {"Database",
        [
          :database_host,
+         :database_socket_dir,
          :database_port,
          :database_name,
          :database_user,
@@ -120,6 +121,7 @@ defmodule Domain.Config.Definitions do
        ]},
       {"Instrumentation",
        [
+         :healthz_port,
          :instrumentation_client_logs_enabled,
          :instrumentation_client_logs_bucket,
          :telemetry_metrics_reporter,
@@ -254,6 +256,11 @@ defmodule Domain.Config.Definitions do
   PostgreSQL host.
   """
   defconfig(:database_host, :string, default: "postgres")
+
+  @doc """
+  PostgreSQL socket directory (takes precedence over hostname).
+  """
+  defconfig(:database_socket_dir, :string, default: nil)
 
   @doc """
   PostgreSQL port.
@@ -475,6 +482,19 @@ defmodule Domain.Config.Definitions do
   ##############################################
 
   @doc """
+  The port for the internal healthz endpoint.
+  """
+  defconfig(:healthz_port, :integer,
+    default: 4000,
+    changeset: fn changeset, key ->
+      Ecto.Changeset.validate_number(changeset, key,
+        greater_than: 0,
+        less_than_or_equal_to: 65_535
+      )
+    end
+  )
+
+  @doc """
   Enable or disable the Firezone telemetry collection.
 
   For more details see https://docs.firezone.dev/reference/telemetry/.
@@ -494,7 +514,7 @@ defmodule Domain.Config.Definitions do
     Ecto.ParameterizedType.init(Ecto.Enum,
       values: [
         Telemetry.Metrics.ConsoleReporter,
-        Elixir.Domain.Telemetry.GoogleCloudMetricsReporter
+        Elixir.Domain.Telemetry.Reporter.GoogleCloudMetrics
       ]
     ),
     default: nil

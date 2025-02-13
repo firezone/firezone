@@ -6,7 +6,7 @@ defmodule Web.Resources.Show do
 
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <-
-           Resources.fetch_resource_by_id(id, socket.assigns.subject,
+           Resources.fetch_resource_by_id_or_persistent_id(id, socket.assigns.subject,
              preload: [
                :gateway_groups,
                :created_by_actor,
@@ -33,6 +33,7 @@ defmodule Web.Resources.Show do
         |> assign_live_table("flows",
           query_module: Flows.Flow.Query,
           sortable_fields: [],
+          hide_filters: [:expiration],
           callback: &handle_flows_update!/2
         )
         |> assign_live_table("policies",
@@ -95,12 +96,12 @@ defmodule Web.Resources.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/resources"}>Resources</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/resources/#{@resource.id}"}>
-        <%= @resource.name %>
+        {@resource.name}
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
       <:title>
-        Resource: <code><%= @resource.name %></code>
+        Resource: <code>{@resource.name}</code>
 
         <span
           :if={not is_nil(@resource.deleted_at) and is_nil(@resource.replaced_by_resource_id)}
@@ -125,7 +126,7 @@ defmodule Web.Resources.Show do
               ID
             </:label>
             <:value>
-              <%= @resource.id %>
+              {@resource.id}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row :if={not is_nil(@resource.deleted_at)}>
@@ -133,7 +134,7 @@ defmodule Web.Resources.Show do
               Persistent ID
             </:label>
             <:value>
-              <%= @resource.persistent_id %>
+              {@resource.persistent_id}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -141,7 +142,7 @@ defmodule Web.Resources.Show do
               Name
             </:label>
             <:value>
-              <%= @resource.name %>
+              {@resource.name}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -153,7 +154,7 @@ defmodule Web.Resources.Show do
                 0.0.0.0/0, ::/0
               </span>
               <span :if={@resource.type != :internet}>
-                <%= @resource.address %>
+                {@resource.address}
               </span>
             </:value>
           </.vertical_table_row>
@@ -169,11 +170,11 @@ defmodule Web.Resources.Show do
               <span :if={@resource.type != :internet}>
                 <%= if http_link?(@resource.address_description) do %>
                   <.link class={link_style()} navigate={@resource.address_description} target="_blank">
-                    <%= @resource.address_description %>
+                    {@resource.address_description}
                     <.icon name="hero-arrow-top-right-on-square" class="mb-3 w-3 h-3" />
                   </.link>
                 <% else %>
-                  <%= @resource.address_description %>
+                  {@resource.address_description}
                 <% end %>
               </span>
             </:value>
@@ -190,7 +191,7 @@ defmodule Web.Resources.Show do
                 class={[link_style()]}
               >
                 <.badge type="info">
-                  <%= gateway_group.name %>
+                  {gateway_group.name}
                 </.badge>
               </.link>
               <span :if={@resource.gateway_groups == []}>
@@ -222,7 +223,7 @@ defmodule Web.Resources.Show do
                 navigate={~p"/#{@account}/resources/#{@resource.replaced_by_resource}"}
                 class={["text-accent-600"] ++ link_style()}
               >
-                <%= @resource.replaced_by_resource.name %>
+                {@resource.replaced_by_resource.name}
               </.link>
             </:value>
           </.vertical_table_row>
@@ -237,7 +238,7 @@ defmodule Web.Resources.Show do
                 navigate={~p"/#{@account}/resources/#{@resource.replaces_resource}"}
                 class={["text-accent-600"] ++ link_style()}
               >
-                <%= @resource.replaces_resource.name %>
+                {@resource.replaces_resource.name}
               </.link>
             </:value>
           </.vertical_table_row>
@@ -280,7 +281,7 @@ defmodule Web.Resources.Show do
         >
           <:col :let={policy} label="id">
             <.link class={link_style()} navigate={~p"/#{@account}/policies/#{policy}"}>
-              <%= policy.id %>
+              {policy.id}
             </.link>
           </:col>
           <:col :let={policy} label="group">
@@ -325,9 +326,9 @@ defmodule Web.Resources.Show do
     </.section>
 
     <.section>
-      <:title>Authorized Sessions</:title>
+      <:title>Recent Connections</:title>
       <:help>
-        Authorized sessions opened by Actors to access this Resource.
+        Recent connections opened by Actors to access this Resource.
       </:help>
       <:content>
         <.live_table
@@ -342,9 +343,6 @@ defmodule Web.Resources.Show do
           <:col :let={flow} label="authorized">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
-          <:col :let={flow} label="expires">
-            <.relative_datetime datetime={flow.expires_at} />
-          </:col>
           <:col :let={flow} label="policy">
             <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
               <.policy_name policy={flow.policy} />
@@ -352,20 +350,20 @@ defmodule Web.Resources.Show do
           </:col>
           <:col :let={flow} label="client, actor" class="w-3/12">
             <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={[link_style()]}>
-              <%= flow.client.name %>
+              {flow.client.name}
             </.link>
             owned by
             <.link navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"} class={[link_style()]}>
-              <%= flow.client.actor.name %>
+              {flow.client.actor.name}
             </.link>
-            <%= flow.client_remote_ip %>
+            {flow.client_remote_ip}
           </:col>
           <:col :let={flow} label="gateway" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
-              <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
+              {flow.gateway.group.name}-{flow.gateway.name}
             </.link>
             <br />
-            <code class="text-xs"><%= flow.gateway_remote_ip %></code>
+            <code class="text-xs">{flow.gateway_remote_ip}</code>
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="activity">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
@@ -388,7 +386,7 @@ defmodule Web.Resources.Show do
           on_confirm="delete"
           on_confirm_id={@resource.id}
         >
-          <:dialog_title>Delete Resource</:dialog_title>
+          <:dialog_title>Confirm deletion of Resource</:dialog_title>
           <:dialog_content>
             Are you sure want to delete this Resource along with all associated Policies?
             This will immediately end all active sessions opened for this Resource.

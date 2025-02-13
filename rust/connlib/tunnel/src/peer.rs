@@ -1,107 +1,26 @@
-use std::collections::{hash_map, BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
+use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::messages::gateway::Filters;
+use crate::messages::gateway::ResourceDescription;
 use chrono::{DateTime, Utc};
-use connlib_shared::messages::gateway::ResourceDescription;
-use connlib_shared::messages::{
-    gateway::Filter, gateway::Filters, ClientId, GatewayId, ResourceId,
-};
-use connlib_shared::DomainName;
+use connlib_model::{ClientId, DomainName, GatewayId, ResourceId};
+use filter_engine::FilterEngine;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::IpPacket;
-use itertools::Itertools;
-use rangemap::RangeInclusiveSet;
 
 use crate::utils::network_contains_network;
 use crate::GatewayEvent;
 
 use anyhow::{bail, Context, Result};
-use nat_table::NatTable;
+use nat_table::{NatTable, TranslateIncomingResult};
 
+mod filter_engine;
 mod nat_table;
-
-#[derive(Debug)]
-enum FilterEngine {
-    PermitAll,
-    PermitSome(AllowRules),
-}
-
-#[derive(Debug)]
-struct AllowRules {
-    udp: RangeInclusiveSet<u16>,
-    tcp: RangeInclusiveSet<u16>,
-    icmp: bool,
-}
-
-impl FilterEngine {
-    fn empty() -> FilterEngine {
-        Self::PermitSome(AllowRules::new())
-    }
-
-    fn is_allowed(&self, packet: &IpPacket) -> bool {
-        match self {
-            FilterEngine::PermitAll => true,
-            FilterEngine::PermitSome(filter_engine) => filter_engine.is_allowed(packet),
-        }
-    }
-
-    fn permit_all(&mut self) {
-        *self = FilterEngine::PermitAll;
-    }
-
-    fn add_filters<'a>(&mut self, filters: impl IntoIterator<Item = &'a Filter>) {
-        match self {
-            FilterEngine::PermitAll => {}
-            FilterEngine::PermitSome(filter_engine) => filter_engine.add_filters(filters),
-        }
-    }
-}
-
-impl AllowRules {
-    fn new() -> AllowRules {
-        AllowRules {
-            udp: RangeInclusiveSet::new(),
-            tcp: RangeInclusiveSet::new(),
-            icmp: false,
-        }
-    }
-
-    fn is_allowed(&self, packet: &IpPacket) -> bool {
-        if let Some(tcp) = packet.as_tcp() {
-            return self.tcp.contains(&tcp.destination_port());
-        }
-
-        if let Some(udp) = packet.as_udp() {
-            return self.udp.contains(&udp.destination_port());
-        }
-
-        if packet.is_icmp() || packet.is_icmpv6() {
-            return self.icmp;
-        }
-
-        false
-    }
-
-    fn add_filters<'a>(&mut self, filters: impl IntoIterator<Item = &'a Filter>) {
-        for filter in filters {
-            match filter {
-                Filter::Udp(range) => {
-                    self.udp
-                        .insert(range.port_range_start..=range.port_range_end);
-                }
-                Filter::Tcp(range) => {
-                    self.tcp
-                        .insert(range.port_range_start..=range.port_range_end);
-                }
-                Filter::Icmp => {
-                    self.icmp = true;
-                }
-            }
-        }
-    }
-}
 
 /// The state of one gateway on a client.
 pub(crate) struct GatewayOnClient {
@@ -120,17 +39,11 @@ impl GatewayOnClient {
 }
 
 impl GatewayOnClient {
-    pub(crate) fn new(
-        id: GatewayId,
-        ips: &[IpNetwork],
-        resource: HashSet<ResourceId>,
-    ) -> GatewayOnClient {
-        let mut allowed_ips = IpNetworkTable::new();
-        for ip in ips {
-            allowed_ips.insert(*ip, resource.clone());
+    pub(crate) fn new(id: GatewayId) -> GatewayOnClient {
+        GatewayOnClient {
+            id,
+            allowed_ips: IpNetworkTable::new(),
         }
-
-        GatewayOnClient { id, allowed_ips }
     }
 }
 
@@ -140,6 +53,8 @@ pub struct ClientOnGateway {
     ipv4: Ipv4Addr,
     ipv6: Ipv6Addr,
     resources: HashMap<ResourceId, ResourceOnGateway>,
+    /// Caches the existence of internet resource
+    internet_resource_enabled: bool,
     filters: IpNetworkTable<FilterEngine>,
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
@@ -157,6 +72,7 @@ impl ClientOnGateway {
             permanent_translations: Default::default(),
             nat_table: Default::default(),
             buffered_events: Default::default(),
+            internet_resource_enabled: false,
         }
     }
 
@@ -167,89 +83,54 @@ impl ClientOnGateway {
         [IpAddr::from(self.ipv4), IpAddr::from(self.ipv6)]
     }
 
-    pub(crate) fn refresh_translation(
-        &mut self,
-        name: DomainName,
-        resource_id: ResourceId,
-        resolved_ips: Vec<IpAddr>,
-        now: Instant,
-    ) -> Result<()> {
-        let Some(ResourceOnGateway::Dns { domains, .. }) = self.resources.get_mut(&resource_id)
-        else {
-            bail!("Cannot refresh translation for unknown or non-DNS resource")
-        };
-
-        let old_ips: HashSet<&IpAddr> =
-            HashSet::from_iter(self.permanent_translations.values().filter_map(|state| {
-                (state.name == name && state.resource_id == resource_id)
-                    .then_some(&state.resolved_ip)
-            }));
-        let new_ips: HashSet<&IpAddr> = HashSet::from_iter(resolved_ips.iter());
-        if old_ips == new_ips {
-            return Ok(());
-        }
-
-        domains.insert(
-            name.clone(),
-            resolved_ips.iter().copied().map_into().collect_vec(),
-        );
-
-        let proxy_ips = self
-            .permanent_translations
-            .iter()
-            .filter_map(|(k, state)| {
-                (state.name == name && state.resource_id == resource_id).then_some(*k)
-            })
-            .collect_vec();
-
-        self.assign_translations(name, resource_id, &resolved_ips, proxy_ips, now)?;
-
-        Ok(())
-    }
-
+    /// Setup the NAT for a particular domain within a wildcard DNS resource.
     #[tracing::instrument(level = "debug", skip_all, fields(cid = %self.id))]
-    pub(crate) fn assign_translations(
+    pub(crate) fn setup_nat(
         &mut self,
         name: DomainName,
         resource_id: ResourceId,
-        mapped_ips: &[IpAddr],
-        proxy_ips: Vec<IpAddr>,
-        now: Instant,
+        resolved_ips: BTreeSet<IpAddr>,
+        proxy_ips: BTreeSet<IpAddr>,
     ) -> Result<()> {
-        let Some(ResourceOnGateway::Dns {
+        let resource = self
+            .resources
+            .get_mut(&resource_id)
+            .context("Unknown resource")?;
+
+        let ResourceOnGateway::Dns {
             address, domains, ..
-        }) = self.resources.get_mut(&resource_id)
+        } = resource
         else {
-            bail!("Cannot assign translation for non-DNS resource")
+            bail!("Cannot setup NAT for non-DNS resource")
         };
 
         anyhow::ensure!(crate::dns::is_subdomain(&name, address));
 
-        let mapped_ipv4 = mapped_ipv4(mapped_ips);
-        let mapped_ipv6 = mapped_ipv6(mapped_ips);
+        let mapped_ipv4 = mapped_ipv4(&resolved_ips);
+        let mapped_ipv6 = mapped_ipv6(&resolved_ips);
 
         let ipv4_maps = proxy_ips
             .iter()
             .filter(|ip| ip.is_ipv4())
-            .zip(mapped_ipv4.into_iter().cycle());
+            .zip(mapped_ipv4.iter().cycle().copied());
 
         let ipv6_maps = proxy_ips
             .iter()
             .filter(|ip| ip.is_ipv6())
-            .zip(mapped_ipv6.into_iter().cycle());
+            .zip(mapped_ipv6.iter().cycle().copied());
 
         let ip_maps = ipv4_maps.chain(ipv6_maps);
 
         for (proxy_ip, real_ip) in ip_maps {
             tracing::debug!(%name, %proxy_ip, %real_ip);
 
-            self.permanent_translations.insert(
-                *proxy_ip,
-                TranslationState::new(resource_id, name.clone(), real_ip, now),
-            );
+            self.permanent_translations
+                .insert(*proxy_ip, TranslationState::new(resource_id, real_ip));
         }
 
-        domains.insert(name, mapped_ips.to_vec());
+        tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Set up DNS resource NAT");
+
+        domains.insert(name, resolved_ips);
         self.recalculate_filters();
 
         Ok(())
@@ -284,39 +165,6 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        let expired_translations = self
-            .permanent_translations
-            .iter()
-            .filter(|(_, state)| state.is_expired(now));
-
-        let mut for_refresh = HashSet::new();
-
-        for (proxy_ip, expired_state) in expired_translations {
-            let domain = &expired_state.name;
-            let resource_id = expired_state.resource_id;
-            let resolved_ip = expired_state.resolved_ip;
-
-            // Only refresh DNS for a domain if all of the resolved IPs stop responding in order to not kill existing connections.
-            if self
-                .permanent_translations
-                .values()
-                .filter(|state| state.resource_id == resource_id && state.name == domain)
-                .all(|state| state.no_incoming_in_120s(now))
-            {
-                tracing::debug!(%domain, conn_id = %self.id, %resource_id, %resolved_ip, %proxy_ip, "Refreshing DNS");
-
-                for_refresh.insert((expired_state.name.clone(), expired_state.resource_id));
-            }
-        }
-
-        for (name, resource_id) in for_refresh {
-            self.buffered_events.push_back(GatewayEvent::RefreshDns {
-                name,
-                conn_id: self.id,
-                resource_id,
-            });
-        }
-
         self.nat_table.handle_timeout(now);
     }
 
@@ -327,9 +175,11 @@ impl ClientOnGateway {
 
     pub(crate) fn add_resource(
         &mut self,
-        resource: connlib_shared::messages::gateway::ResourceDescription,
+        resource: crate::messages::gateway::ResourceDescription,
         expires_at: Option<DateTime<Utc>>,
     ) {
+        tracing::info!(client = %self.id, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
+
         match self.resources.entry(resource.id()) {
             hash_map::Entry::Vacant(v) => {
                 v.insert(ResourceOnGateway::new(resource, expires_at));
@@ -358,9 +208,15 @@ impl ClientOnGateway {
     // in case that 2 or more resources have overlapping rules.
     fn recalculate_filters(&mut self) {
         self.filters = IpNetworkTable::new();
-        for resource in self.resources.values() {
+        self.recalculate_cidr_filters();
+        self.recalculate_dns_filters();
+
+        self.internet_resource_enabled = self.resources.values().any(|r| r.is_internet_resource());
+    }
+
+    fn recalculate_cidr_filters(&mut self) {
+        for resource in self.resources.values().filter(|r| r.is_cidr()) {
             for ip in &resource.ips() {
-                let mut filter_engine = FilterEngine::empty();
                 let filters = self.resources.values().filter_map(|r| {
                     r.ips()
                         .iter()
@@ -368,17 +224,24 @@ impl ClientOnGateway {
                         .then_some(r.filters())
                 });
 
-                // Empty filters means permit all
-                if filters.clone().any(|f| f.is_empty()) {
-                    filter_engine.permit_all();
-                }
-
-                filter_engine.add_filters(filters.flatten());
-
-                tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
-
-                self.filters.insert(*ip, filter_engine);
+                insert_filters(&mut self.filters, *ip, filters);
             }
+        }
+    }
+
+    fn recalculate_dns_filters(&mut self) {
+        for (addr, TranslationState { resource_id, .. }) in &self.permanent_translations {
+            let Some(resource) = self.resources.get(resource_id) else {
+                continue;
+            };
+
+            debug_assert!(resource.is_dns());
+
+            insert_filters(
+                &mut self.filters,
+                IpNetwork::from(*addr),
+                iter::once(resource.filters()),
+            );
         }
     }
 
@@ -397,45 +260,65 @@ impl ClientOnGateway {
 
         let mut packet = packet
             .translate_destination(self.ipv4, self.ipv6, source_protocol, real_ip)
-            .context("Failed to translate packet")?;
+            .context("Failed to translate packet to new destination")?;
         packet.update_checksum();
 
-        state.on_outgoing_traffic(now);
-
         Ok(packet)
     }
 
-    pub fn decapsulate(&mut self, packet: IpPacket, now: Instant) -> anyhow::Result<IpPacket> {
-        self.ensure_allowed_src(&packet)?;
-
-        let packet = self.transform_network_to_tun(packet, now)?;
-
-        self.ensure_allowed_dst(&packet)?;
-
-        Ok(packet)
-    }
-
-    pub fn encapsulate(
+    pub fn translate_outbound(
         &mut self,
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<IpPacket>> {
-        let Some((proto, ip)) = self.nat_table.translate_incoming(&packet, now)? else {
-            return Ok(Some(packet));
-        };
-
-        let Some(mut packet) = packet.translate_source(self.ipv4, self.ipv6, proto, ip) else {
+        // Filtering a packet is not an error.
+        if let Err(e) = self.ensure_allowed(&packet) {
+            tracing::debug!(filtered_packet = ?packet, "{e:#}");
             return Ok(None);
-        };
+        }
 
-        self.permanent_translations
-            .get_mut(&ip)
-            .expect("inconsistent state")
-            .on_incoming_traffic(now);
-
-        packet.update_checksum();
+        // Failing to transform is an error we want to know about further up.
+        let packet = self.transform_network_to_tun(packet, now)?;
 
         Ok(Some(packet))
+    }
+
+    pub fn translate_inbound(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> anyhow::Result<IpPacket> {
+        let (proto, ip) = match self.nat_table.translate_incoming(&packet, now)? {
+            TranslateIncomingResult::Ok { proto, src } => (proto, src),
+            TranslateIncomingResult::DestinationUnreachable(prototype) => {
+                tracing::debug!(dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), error = ?prototype.error(), "Destination is unreachable");
+
+                let icmp_error = prototype
+                    .into_packet(self.ipv4, self.ipv6)
+                    .context("Failed to create `DestinationUnreachable` ICMP error")?;
+
+                return Ok(icmp_error);
+            }
+            TranslateIncomingResult::NoNatSession => return Ok(packet),
+        };
+
+        let mut packet = packet
+            .translate_source(self.ipv4, self.ipv6, proto, ip)
+            .context("Failed to translate packet to new source")?;
+        packet.update_checksum();
+
+        Ok(packet)
+    }
+
+    pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
+        self.resources.contains_key(&resource)
+    }
+
+    fn ensure_allowed(&self, packet: &IpPacket) -> anyhow::Result<()> {
+        self.ensure_allowed_src(packet)?;
+        self.ensure_allowed_dst(packet)?;
+
+        Ok(())
     }
 
     fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
@@ -449,15 +332,21 @@ impl ClientOnGateway {
     }
 
     /// Check if an incoming packet arriving over the network is ok to be forwarded to the TUN device.
-    fn ensure_allowed_dst(&mut self, packet: &IpPacket) -> anyhow::Result<()> {
+    fn ensure_allowed_dst(&self, packet: &IpPacket) -> anyhow::Result<()> {
         let dst = packet.destination();
-        if !self
+
+        // Note a Gateway with Internet resource should never get packets for other resources
+        if self.internet_resource_enabled && !is_dns_addr(packet.destination()) {
+            return Ok(());
+        }
+
+        let (_, filter) = self
             .filters
             .longest_match(dst)
-            .is_some_and(|(_, filter)| filter.is_allowed(packet))
-        {
-            return Err(anyhow::Error::new(DstNotAllowed(dst)));
-        };
+            .context("No filter")
+            .context(DstNotAllowed(dst))?;
+
+        filter.apply(packet).context(DstNotAllowed(dst))?;
 
         Ok(())
     }
@@ -500,7 +389,7 @@ enum ResourceOnGateway {
     },
     Dns {
         address: String,
-        domains: HashMap<DomainName, Vec<IpAddr>>,
+        domains: HashMap<DomainName, BTreeSet<IpAddr>>,
         filters: Filters,
         expires_at: Option<DateTime<Utc>>,
     },
@@ -586,6 +475,18 @@ impl ResourceOnGateway {
             ResourceOnGateway::Internet { expires_at } => expires_at.as_ref(),
         }
     }
+
+    fn is_cidr(&self) -> bool {
+        matches!(self, ResourceOnGateway::Cidr { .. })
+    }
+
+    fn is_dns(&self) -> bool {
+        matches!(self, ResourceOnGateway::Dns { .. })
+    }
+
+    fn is_internet_resource(&self) -> bool {
+        matches!(self, ResourceOnGateway::Internet { .. })
+    }
 }
 
 // Current state of a translation for a given proxy ip
@@ -593,107 +494,36 @@ impl ResourceOnGateway {
 struct TranslationState {
     /// Which (DNS) resource we belong to.
     resource_id: ResourceId,
-    /// The concrete domain we have resolved (could be a sub-domain of a `*` or `?` resource).
-    name: DomainName,
     /// The IP we have resolved for the domain.
     resolved_ip: IpAddr,
-
-    /// When we've last received a packet from the resolved IP.
-    last_incoming: Option<Instant>,
-    /// When we've sent the first packet to the resolved IP.
-    first_outgoing: Option<Instant>,
-    /// When we've last sent a packet to the resolved IP.
-    last_outgoing: Option<Instant>,
-    /// When was this translation created
-    created_at: Instant,
-    /// When we first detected that we aren't getting any responses from this IP.
-    ///
-    /// This is set upon outgoing traffic if we haven't received inbound traffic for a while.
-    /// We don't want to immediately trigger a refresh in that case because protocols like TCP and ICMP have responses.
-    /// Thus, a DNS refresh is triggered after a grace-period of 1s after the packet that detected the missing responses.
-    ack_grace_period_started_at: Option<Instant>,
 }
 
 impl TranslationState {
-    const USED_WINDOW: Duration = Duration::from_secs(10);
-
-    fn new(resource_id: ResourceId, name: DomainName, resolved_ip: IpAddr, now: Instant) -> Self {
+    fn new(resource_id: ResourceId, resolved_ip: IpAddr) -> Self {
         Self {
             resource_id,
-            name,
             resolved_ip,
-            created_at: now,
-            last_incoming: None,
-            first_outgoing: None,
-            last_outgoing: None,
-            ack_grace_period_started_at: None,
         }
-    }
-
-    fn is_expired(&self, now: Instant) -> bool {
-        // Note: we don't need to check that it's used here because the ack grace period already implies it
-        self.ack_grace_period_expired(now) && self.no_incoming_in_120s(now)
-    }
-
-    fn ack_grace_period_expired(&self, now: Instant) -> bool {
-        self.ack_grace_period_started_at
-            .is_some_and(|missing_responses_detected_at| {
-                now.duration_since(missing_responses_detected_at) >= Duration::from_secs(1)
-            })
-    }
-
-    fn no_incoming_in_120s(&self, now: Instant) -> bool {
-        const CONNTRACK_UDP_STREAM_TIMEOUT: Duration = Duration::from_secs(120);
-
-        if let Some(last_incoming) = self.last_incoming {
-            now.duration_since(last_incoming) >= CONNTRACK_UDP_STREAM_TIMEOUT
-        } else {
-            now.duration_since(self.created_at) >= CONNTRACK_UDP_STREAM_TIMEOUT
-        }
-    }
-
-    fn on_incoming_traffic(&mut self, now: Instant) {
-        self.last_incoming = Some(now);
-        self.ack_grace_period_started_at = None;
-    }
-
-    fn on_outgoing_traffic(&mut self, now: Instant) {
-        // We need this because it means that if a packet arrives at some point less than 120s but more than 110s
-        // we still start the grace period so that the connection expires at some point after 120s
-        let with_this_packet_the_connection_will_be_considered_used_when_it_expires =
-            self.no_incoming_in_120s(now + Self::USED_WINDOW);
-        if self.ack_grace_period_started_at.is_none()
-            && with_this_packet_the_connection_will_be_considered_used_when_it_expires
-        {
-            self.ack_grace_period_started_at = Some(now);
-        }
-
-        self.last_outgoing = Some(now);
-
-        if self.first_outgoing.is_some() {
-            return;
-        }
-
-        self.first_outgoing = Some(now);
     }
 }
 
-fn ipv4_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect_vec()
+fn ipv4_addresses(ip: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
+    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect()
 }
 
-fn ipv6_addresses(ip: &[IpAddr]) -> Vec<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect_vec()
+fn ipv6_addresses(ip: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
+    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect()
 }
 
-fn mapped_ipv4(ips: &[IpAddr]) -> Vec<IpAddr> {
+fn mapped_ipv4(ips: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
     if !ipv4_addresses(ips).is_empty() {
         ipv4_addresses(ips)
     } else {
         ipv6_addresses(ips)
     }
 }
-fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
+
+fn mapped_ipv6(ips: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
     if !ipv6_addresses(ips).is_empty() {
         ipv6_addresses(ips)
     } else {
@@ -701,21 +531,37 @@ fn mapped_ipv6(ips: &[IpAddr]) -> Vec<IpAddr> {
     }
 }
 
+fn is_dns_addr(addr: IpAddr) -> bool {
+    IpNetwork::from(IPV4_RESOURCES).contains(addr) || IpNetwork::from(IPV6_RESOURCES).contains(addr)
+}
+
+fn insert_filters<'a>(
+    filter_store: &mut IpNetworkTable<FilterEngine>,
+    ip: IpNetwork,
+    filters: impl Iterator<Item = &'a Filters> + Clone,
+) {
+    let filter_engine = FilterEngine::with_filters(filters);
+
+    tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
+    filter_store.insert(ip, filter_engine);
+}
+
 #[cfg(test)]
 mod tests {
     use std::{
-        net::{IpAddr, Ipv4Addr, Ipv6Addr},
+        collections::BTreeSet,
+        net::{Ipv4Addr, Ipv6Addr},
         time::{Duration, Instant},
     };
 
-    use chrono::Utc;
-    use connlib_shared::messages::{
-        gateway::{Filter, PortRange, ResourceDescription, ResourceDescriptionCidr},
-        ClientId, ResourceId,
+    use crate::messages::gateway::{
+        Filter, PortRange, ResourceDescription, ResourceDescriptionCidr,
     };
-    use ip_network::Ipv4Network;
+    use chrono::Utc;
+    use connlib_model::{ClientId, ResourceId};
+    use ip_network::{IpNetwork, Ipv4Network};
 
-    use super::{ClientOnGateway, TranslationState};
+    use super::ClientOnGateway;
 
     #[test]
     fn gateway_filters_expire_individually() {
@@ -783,270 +629,183 @@ mod tests {
     }
 
     #[test]
-    fn initial_translation_state_is_not_expired() {
-        let now = Instant::now();
-        let state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
+    fn dns_and_cidr_filters_dot_mix() {
+        let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
+        peer.add_resource(foo_dns_resource(), None);
+        peer.add_resource(bar_cidr_resource(), None);
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            resource_id(),
+            BTreeSet::from([foo_real_ip().into()]),
+            BTreeSet::from([foo_proxy_ip().into()]),
+        )
+        .unwrap();
 
-        assert!(!state.is_expired(now));
+        assert_eq!(bar_contained_ip(), foo_real_ip());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            bar_contained_ip(),
+            1,
+            bar_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            bar_contained_ip(),
+            1,
+            foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer
+            .translate_outbound(pkt, Instant::now())
+            .unwrap()
+            .is_none());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            bar_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer
+            .translate_outbound(pkt, Instant::now())
+            .unwrap()
+            .is_none());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
     }
 
     #[test]
-    fn translation_state_is_not_used_but_expired_after_120s() {
-        let mut now = Instant::now();
-        let state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
+    fn internet_resource_doesnt_allow_all_traffic_for_dns_resources() {
+        let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
+        peer.add_resource(foo_dns_resource(), None);
+        peer.add_resource(internet_resource(), None);
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            resource_id(),
+            BTreeSet::from([foo_real_ip().into()]),
+            BTreeSet::from([foo_proxy_ip().into()]),
+        )
+        .unwrap();
 
-        now += Duration::from_secs(121);
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
 
-        assert!(!state.is_expired(now));
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            600,
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer
+            .translate_outbound(pkt, Instant::now())
+            .unwrap()
+            .is_none());
+
+        let pkt = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            "1.1.1.1".parse().unwrap(),
+            1,
+            600,
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
     }
 
-    #[test]
-    fn translation_state_is_used_and_expired_after_120s_with_outgoing_packets() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-
-        now += Duration::from_secs(1);
-
-        assert!(state.is_expired(now));
+    fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Dns(
+            crate::messages::gateway::ResourceDescriptionDns {
+                id: resource_id(),
+                address: foo_name(),
+                name: "foo".to_string(),
+                filters: vec![Filter::Udp(PortRange {
+                    port_range_end: foo_allowed_port(),
+                    port_range_start: foo_allowed_port(),
+                })],
+            },
+        )
     }
 
-    #[test]
-    fn translation_state_is_used_and_expired_after_121s_with_outgoing_packets() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(121);
-        state.on_outgoing_traffic(now);
-
-        now += Duration::from_secs(1);
-
-        assert!(state.is_expired(now));
-    }
-    #[test]
-    fn translation_state_is_not_expired_with_incoming_packets() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_incoming_traffic(now);
-
-        now += Duration::from_secs(1);
-
-        assert!(!state.is_expired(now));
+    fn bar_cidr_resource() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Cidr(
+            crate::messages::gateway::ResourceDescriptionCidr {
+                id: resource2_id(),
+                address: bar_address(),
+                name: "foo".to_string(),
+                filters: vec![Filter::Udp(PortRange {
+                    port_range_end: bar_allowed_port(),
+                    port_range_start: bar_allowed_port(),
+                })],
+            },
+        )
     }
 
-    #[test]
-    fn translation_state_doesnt_expire_with_incoming_and_outgoing_packets() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_millis(200);
-        state.on_incoming_traffic(now);
-
-        now += Duration::from_secs(1);
-
-        assert!(!state.is_expired(now));
+    fn internet_resource() -> crate::messages::gateway::ResourceDescription {
+        crate::messages::gateway::ResourceDescription::Internet(
+            crate::messages::gateway::ResourceDescriptionInternet {
+                id: "ed29c148-2acf-4ceb-8db5-d796c267163a".parse().unwrap(),
+            },
+        )
     }
 
-    #[test]
-    fn translation_state_still_has_grace_period_after_incoming_traffic() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_millis(200);
-        state.on_incoming_traffic(now);
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-
-        assert!(!state.is_expired(now));
+    fn foo_allowed_port() -> u16 {
+        80
     }
 
-    #[test]
-    fn translation_state_still_expires_after_grace_period_after_incoming_traffic_resetted_it() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_millis(200);
-        state.on_incoming_traffic(now);
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_secs(1);
-
-        assert!(state.is_expired(now));
+    fn bar_allowed_port() -> u16 {
+        443
     }
 
-    #[test]
-    fn translation_state_doesnt_expire_with_first_packet_after_silence() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-
-        assert!(!state.is_expired(now));
+    fn foo_real_ip() -> Ipv4Addr {
+        "10.0.0.1".parse().unwrap()
     }
 
-    #[test]
-    fn translation_state_expires_after_silence_even_with_multiple_packets() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_secs(5);
-        state.on_outgoing_traffic(now);
-
-        assert!(state.is_expired(now));
+    fn bar_contained_ip() -> Ipv4Addr {
+        "10.0.0.1".parse().unwrap()
     }
 
-    #[test]
-    fn translation_doesnt_expire_before_expected_period() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(110);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_secs(5);
-
-        assert!(!state.is_expired(now));
+    fn foo_proxy_ip() -> Ipv4Addr {
+        "100.96.0.1".parse().unwrap()
     }
 
-    #[test]
-    fn translation_expire_after_expected_period() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(110);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_secs(5);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_secs(5);
-
-        assert!(state.is_expired(now));
+    fn foo_name() -> String {
+        "foo.com".to_string()
     }
 
-    #[test]
-    fn incoming_traffic_prevents_expiration() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_secs(120);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_millis(500);
-        state.on_incoming_traffic(now);
-        now += Duration::from_secs(5);
-
-        assert!(!state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_state_doesnt_expire_with_packet_that_didnt_had_time_to_be_responded() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_millis(119990);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_millis(20);
-
-        assert!(!state.is_expired(now));
-    }
-
-    #[test]
-    fn translation_state_expires_with_packet_that_had_time_to_be_responded() {
-        let mut now = Instant::now();
-        let mut state = TranslationState::new(
-            ResourceId::random(),
-            "example.com".parse().unwrap(),
-            IpAddr::V4(Ipv4Addr::LOCALHOST),
-            now,
-        );
-
-        now += Duration::from_millis(119990);
-        state.on_outgoing_traffic(now);
-        now += Duration::from_secs(1);
-
-        assert!(state.is_expired(now));
+    fn bar_address() -> IpNetwork {
+        "10.0.0.0/24".parse().unwrap()
     }
 
     fn source_v4_addr() -> Ipv4Addr {
@@ -1077,17 +836,19 @@ mod tests {
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
     use super::*;
-    use crate::proptest::*;
-    use connlib_shared::messages::gateway::{
-        PortRange, ResourceDescription, ResourceDescriptionCidr,
+    use crate::messages::gateway::{
+        Filter, PortRange, ResourceDescription, ResourceDescriptionCidr,
     };
+    use crate::proptest::*;
     use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
+    use itertools::Itertools as _;
     use proptest::{
         arbitrary::any,
         collection, prop_oneof,
         sample::select,
         strategy::{Just, Strategy},
     };
+    use rangemap::RangeInclusiveSet;
     use std::{collections::BTreeSet, ops::RangeInclusive};
     use test_strategy::Arbitrary;
 

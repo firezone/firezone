@@ -4,7 +4,6 @@ use firezone_gui_client_common::{
     self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
 use firezone_telemetry as telemetry;
-use std::collections::BTreeMap;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
@@ -27,6 +26,7 @@ pub(crate) enum Error {
 pub(crate) fn run() -> Result<()> {
     let cli = Cli::parse();
 
+    // TODO: Remove, this is only needed for Portal connections and the GUI process doesn't connect to the Portal. Unless it's also needed for update checks.
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
@@ -40,8 +40,9 @@ pub(crate) fn run() -> Result<()> {
                 // Our elevation is correct (not elevated), just run the GUI
                 Ok(true) => run_gui(cli),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
+                #[cfg(not(target_os = "windows"))] // Windows elevation check never fails.
                 Err(error) => {
-                    common::errors::show_error_dialog(&error)?;
+                    common::errors::show_error_dialog(error.user_friendly_msg())?;
                     Err(error.into())
                 }
             }
@@ -52,17 +53,17 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
-                tracing::error!(?error, "Error in `OpenDeepLink`");
+                tracing::error!("Error in `OpenDeepLink`: {error:#}");
             }
             Ok(())
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
             let settings = common::settings::load_advanced_settings().unwrap_or_default();
-            let telemetry = telemetry::Telemetry::default();
+            let mut telemetry = telemetry::Telemetry::default();
             telemetry.start(
                 settings.api_url.as_ref(),
-                firezone_bin_shared::git_version!("gui-client-*"),
+                firezone_gui_client_common::RELEASE,
                 telemetry::GUI_DSN,
             );
             // Don't fix the log filter for smoke tests
@@ -77,7 +78,7 @@ pub(crate) fn run() -> Result<()> {
 
                 // Because of <https://github.com/firezone/firezone/issues/3567>,
                 // errors returned from `gui::run` may not be logged correctly
-                tracing::error!(?error);
+                tracing::error!("{error:#}");
             }
             Ok(result?)
         }
@@ -90,27 +91,50 @@ pub(crate) fn run() -> Result<()> {
 // Can't `instrument` this because logging isn't running when we enter it.
 fn run_gui(cli: Cli) -> Result<()> {
     let mut settings = common::settings::load_advanced_settings().unwrap_or_default();
-    let telemetry = telemetry::Telemetry::default();
+    let mut telemetry = telemetry::Telemetry::default();
     // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
     telemetry.start(
         settings.api_url.as_ref(),
-        firezone_bin_shared::git_version!("gui-client-*"),
+        firezone_gui_client_common::RELEASE,
         telemetry::GUI_DSN,
     );
+    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
+    // Technically this means we can fail to get the device ID on a newly-installed system, since the IPC service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
+    if let Ok(id) = firezone_headless_client::device_id::get() {
+        telemetry.set_firezone_id(id.id);
+    }
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {
         logger: _logger,
         reloader,
     } = start_logging(&settings.log_filter)?;
-    let result = gui::run(cli, settings, reloader, telemetry);
 
-    // Make sure errors get logged, at least to stderr
-    if let Err(error) = &result {
-        tracing::error!(?error, error_msg = %error);
-        common::errors::show_error_dialog(error)?;
+    match gui::run(cli, settings, reloader, telemetry) {
+        Ok(()) => Ok(()),
+        Err(anyhow) => {
+            if anyhow
+                .chain()
+                .find_map(|e| e.downcast_ref::<tauri_runtime::Error>())
+                .is_some_and(|e| matches!(e, tauri_runtime::Error::CreateWebview(_)))
+            {
+                common::errors::show_error_dialog("Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-gui-client>.".to_string())?;
+                return Err(anyhow);
+            }
+
+            if anyhow.root_cause().is::<deep_link::CantListen>() {
+                common::errors::show_error_dialog(
+                    "Firezone is already running. If it's not responding, force-stop it."
+                        .to_string(),
+                )?;
+                return Err(anyhow);
+            }
+
+            common::errors::show_error_dialog(anyhow.to_string())?;
+            tracing::error!("GUI failed: {anyhow:#}");
+
+            Err(anyhow)
+        }
     }
-
-    Ok(result?)
 }
 
 /// Parse the log filter from settings, showing an error and fixing it if needed
@@ -135,26 +159,15 @@ fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
 /// Don't drop the log handle or logging will stop.
 fn start_logging(directives: &str) -> Result<common::logging::Handles> {
     let logging_handles = common::logging::setup(directives)?;
-    let git_version = firezone_bin_shared::git_version!("gui-client-*");
     let system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs());
     tracing::info!(
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
+        version = env!("CARGO_PKG_VERSION"),
         ?directives,
-        ?git_version,
         ?system_uptime_seconds,
         "`gui-client` started logging"
     );
-    telemetry::add_breadcrumb(telemetry::Breadcrumb {
-        ty: "logging_start".into(),
-        category: None,
-        data: BTreeMap::from([
-            ("directives".into(), directives.into()),
-            ("git_version".into(), git_version.into()),
-            ("system_uptime_seconds".into(), system_uptime_seconds.into()),
-        ]),
-        ..Default::default()
-    });
 
     Ok(logging_handles)
 }

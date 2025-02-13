@@ -1,11 +1,13 @@
 use anyhow::{bail, Context, Result};
 use firezone_headless_client::known_dirs;
 use secrecy::{ExposeSecret, Secret};
-use std::{path::PathBuf, process::Command};
+use std::{io::ErrorKind, path::PathBuf, process::Command};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{UnixListener, UnixStream},
 };
+
+use super::CantListen;
 
 const SOCK_NAME: &str = "deep_link.sock";
 
@@ -25,7 +27,7 @@ impl Server {
     /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
     /// On Windows this uses async because of #5143 and #5566.
     #[expect(clippy::unused_async)]
-    pub async fn new() -> Result<Self, super::Error> {
+    pub async fn new() -> Result<Self> {
         let path = sock_path()?;
         let dir = path
             .parent()
@@ -38,7 +40,7 @@ impl Server {
         // socket does not exist, in which case we are the only instance
         // and should proceed.
         if std::os::unix::net::UnixStream::connect(&path).is_ok() {
-            return Err(super::Error::CantListen);
+            return Err(anyhow::Error::new(CantListen));
         }
         std::fs::remove_file(&path).ok();
         std::fs::create_dir_all(dir).context("Can't create dir for deep link socket")?;
@@ -58,7 +60,7 @@ impl Server {
     /// Await one incoming deep link
     ///
     /// To match the Windows API, this consumes the `Server`.
-    pub async fn accept(self) -> Result<Secret<Vec<u8>>> {
+    pub async fn accept(self) -> Result<Option<Secret<Vec<u8>>>> {
         tracing::debug!("deep_link::accept");
         let (mut stream, _) = self.listener.accept().await?;
         tracing::debug!("Accepted Unix domain socket connection");
@@ -71,14 +73,14 @@ impl Server {
             .await
             .context("failed to read incoming deep link over Unix socket stream")?;
         if bytes.is_empty() {
-            bail!("Got zero bytes from the deep link socket - probably a 2nd instance was blocked");
+            return Ok(None);
         }
         let bytes = Secret::new(bytes);
         tracing::debug!(
             len = bytes.expose_secret().len(),
             "Got data from Unix domain socket"
         );
-        Ok(bytes)
+        Ok(Some(bytes))
     }
 }
 
@@ -137,12 +139,19 @@ Categories=Network;
 
     // Needed for Ubuntu 22.04, see issue #4880
     let update_desktop_database = "update-desktop-database";
-    let status = Command::new(update_desktop_database)
-        .arg(&dir)
-        .status()
-        .with_context(|| format!("failed to run `{update_desktop_database}`"))?;
-    if !status.success() {
-        bail!("{update_desktop_database} returned failure exit code");
+    match Command::new(update_desktop_database).arg(&dir).status() {
+        Ok(status) => {
+            if !status.success() {
+                bail!("{update_desktop_database} returned failure exit code");
+            }
+        }
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            // This is not an Ubuntu machine, so this executable won't exist.
+            tracing::debug!("Could not find {update_desktop_database} command, ignoring");
+        }
+        Err(e) => {
+            return Err(e).with_context(|| format!("failed to run `{update_desktop_database}`"));
+        }
     }
 
     Ok(())

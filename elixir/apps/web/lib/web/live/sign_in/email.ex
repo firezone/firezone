@@ -65,9 +65,8 @@ defmodule Web.SignIn.Email do
 
             <div>
               <p>
-                If <strong><%= @provider_identifier %></strong> is registered, a sign in token has
-                been sent to that email. Please copy and paste this into the form below to proceed
-                with your login.
+                If <strong>{@provider_identifier}</strong>
+                is registered, a sign-in token has been sent.
               </p>
               <form
                 id="verify-sign-in-token"
@@ -185,7 +184,7 @@ defmodule Web.SignIn.Email do
         "hover:text-neutral-900 hover:bg-neutral-100"
       ]}
     >
-      Open <%= @name %>
+      Open {@name}
     </a>
     """
   end

@@ -1,19 +1,16 @@
 //! Main connlib library for clients.
 pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use callbacks::{Callbacks, DisconnectError};
-pub use connlib_shared::messages::client::ResourceDescription;
-pub use connlib_shared::{LoginUrl, LoginUrlError, StaticSecret};
+pub use connlib_model::StaticSecret;
 pub use eventloop::Eventloop;
-pub use firezone_tunnel::keypair;
+pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription};
 
-use connlib_shared::messages::ResourceId;
+use connlib_model::ResourceId;
 use eventloop::Command;
-use firezone_telemetry as telemetry;
 use firezone_tunnel::ClientTunnel;
-use messages::{IngressMessages, ReplyMessages};
-use phoenix_channel::PhoenixChannel;
+use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::net::IpAddr;
 use std::sync::Arc;
 use tokio::sync::mpsc::UnboundedReceiver;
@@ -22,7 +19,6 @@ use tun::Tun;
 
 mod callbacks;
 mod eventloop;
-mod messages;
 mod serde_routelist;
 
 const PHOENIX_TOPIC: &str = "client";
@@ -35,27 +31,26 @@ pub struct Session {
     channel: tokio::sync::mpsc::UnboundedSender<Command>,
 }
 
-/// Arguments for `connect`, since Clippy said 8 args is too many
-pub struct ConnectArgs<CB> {
-    pub tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-    pub udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    pub private_key: StaticSecret,
-    pub callbacks: CB,
-}
-
 impl Session {
     /// Creates a new [`Session`].
     ///
-    /// This connects to the portal a specified using [`LoginUrl`] and creates a wireguard tunnel using the provided private key.
+    /// This connects to the portal using the given [`LoginUrl`](phoenix_channel::LoginUrl) and creates a wireguard tunnel using the provided private key.
     pub fn connect<CB: Callbacks + 'static>(
-        args: ConnectArgs<CB>,
-        portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        callbacks: CB,
+        portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         handle: tokio::runtime::Handle,
     ) -> Self {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
-        let callbacks = args.callbacks.clone();
-        let connect_handle = handle.spawn(connect(args, portal, rx));
+        let connect_handle = handle.spawn(connect(
+            tcp_socket_factory,
+            udp_socket_factory,
+            callbacks.clone(),
+            portal,
+            rx,
+        ));
         handle.spawn(connect_supervisor(connect_handle, callbacks));
 
         Self { channel: tx }
@@ -118,27 +113,16 @@ impl Session {
 ///
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
 async fn connect<CB>(
-    args: ConnectArgs<CB>,
-    portal: PhoenixChannel<(), IngressMessages, ReplyMessages>,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+    callbacks: CB,
+    portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     rx: UnboundedReceiver<Command>,
-) -> Result<(), DisconnectError>
+) -> Result<(), phoenix_channel::Error>
 where
     CB: Callbacks + 'static,
 {
-    let ConnectArgs {
-        private_key,
-        callbacks,
-        udp_socket_factory,
-        tcp_socket_factory,
-    } = args;
-
-    let tunnel = ClientTunnel::new(
-        private_key,
-        tcp_socket_factory,
-        udp_socket_factory,
-        BTreeMap::from([(portal.server_host().to_owned(), portal.resolved_addresses())]),
-    );
-
+    let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory);
     let mut eventloop = Eventloop::new(tunnel, callbacks, portal, rx);
 
     std::future::poll_fn(|cx| eventloop.poll(cx)).await?;
@@ -148,7 +132,7 @@ where
 
 /// A supervisor task that handles, when [`connect`] exits.
 async fn connect_supervisor<CB>(
-    connect_handle: JoinHandle<Result<(), DisconnectError>>,
+    connect_handle: JoinHandle<Result<(), phoenix_channel::Error>>,
     callbacks: CB,
 ) where
     CB: Callbacks,
@@ -157,34 +141,7 @@ async fn connect_supervisor<CB>(
         Ok(Ok(())) => {
             tracing::info!("connlib exited gracefully");
         }
-        Ok(Err(e)) => {
-            telemetry::capture_error(&e);
-            tracing::error!("connlib failed: {e}");
-            callbacks.on_disconnect(&e);
-        }
-        Err(e) => {
-            telemetry::capture_error(&e);
-            match e.try_into_panic() {
-                Ok(panic) => {
-                    if let Some(msg) = panic.downcast_ref::<&str>() {
-                        tracing::error!("connlib panicked: {msg}");
-                        callbacks.on_disconnect(&DisconnectError::Panic(msg.to_string()));
-                        return;
-                    }
-                    if let Some(msg) = panic.downcast_ref::<String>() {
-                        tracing::error!("connlib panicked: {msg}");
-                        callbacks.on_disconnect(&DisconnectError::Panic(msg.to_string()));
-                        return;
-                    }
-
-                    tracing::error!("connlib panicked with a non-string payload");
-                    callbacks.on_disconnect(&DisconnectError::PanicNonStringPayload);
-                }
-                Err(_) => {
-                    tracing::error!("connlib task was cancelled");
-                    callbacks.on_disconnect(&DisconnectError::Cancelled);
-                }
-            }
-        }
+        Ok(Err(e)) => callbacks.on_disconnect(&DisconnectError::PortalConnectionFailed(e)),
+        Err(e) => callbacks.on_disconnect(&DisconnectError::Crash(e)),
     }
 }

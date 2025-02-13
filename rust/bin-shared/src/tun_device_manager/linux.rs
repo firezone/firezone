@@ -2,10 +2,12 @@
 
 use crate::FIREZONE_MARK;
 use anyhow::{anyhow, Context as _, Result};
-use futures::TryStreamExt;
+use firezone_logging::err_with_src;
+use futures::{SinkExt, TryStreamExt};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_packet::{IpPacket, IpPacketBuf};
 use libc::{
-    close, fcntl, makedev, mknod, open, EEXIST, ENOENT, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR,
+    fcntl, makedev, mknod, open, EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR,
     S_IFCHR,
 };
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
@@ -20,26 +22,24 @@ use std::{
 use std::{
     ffi::CStr,
     fs, io,
-    os::{
-        fd::{AsRawFd, RawFd},
-        unix::fs::PermissionsExt,
-    },
+    os::{fd::RawFd, unix::fs::PermissionsExt},
 };
-use tokio::io::unix::AsyncFd;
+use tokio::sync::mpsc;
 use tun::ioctl;
+use tun::unix::TunFd;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_DEV_MAJOR: u32 = 10;
 const TUN_DEV_MINOR: u32 = 200;
 
-// Safety: We know that this is a valid C string.
-const TUN_FILE: &CStr = unsafe { CStr::from_bytes_with_nul_unchecked(b"/dev/net/tun\0") };
+const TUN_FILE: &CStr = c"/dev/net/tun";
 
 const FIREZONE_TABLE: u32 = 0x2021_fd00;
 
 /// For lack of a better name
 pub struct TunDeviceManager {
     mtu: u32,
+    num_threads: usize,
     connection: Connection,
     routes: HashSet<IpNetwork>,
 }
@@ -61,8 +61,8 @@ impl TunDeviceManager {
     /// Creates a new managed tunnel device.
     ///
     /// Panics if called without a Tokio runtime.
-    pub fn new(mtu: usize) -> Result<Self> {
-        let (cxn, handle, _) = new_connection()?;
+    pub fn new(mtu: usize, num_threads: usize) -> Result<Self> {
+        let (cxn, handle, _) = new_connection().context("Failed to create netlink connection")?;
         let task = tokio::spawn(cxn);
         let connection = Connection { handle, task };
 
@@ -70,11 +70,12 @@ impl TunDeviceManager {
             connection,
             routes: Default::default(),
             mtu: mtu as u32,
+            num_threads,
         })
     }
 
     pub fn make_tun(&mut self) -> Result<Tun> {
-        Ok(Tun::new()?)
+        Ok(Tun::new(self.num_threads)?)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -257,7 +258,12 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         return;
     }
 
-    tracing::warn!(%route, "Failed to add route: {err}");
+    // On systems without support for a certain IP version (i.e. no IPv6), attempting to add a route may result in "Not supported (os error 95)".
+    if matches!(&err, NetlinkError(err) if err.raw_code() == -libc::EOPNOTSUPP) {
+        return;
+    }
+
+    tracing::warn!(%route, "Failed to add route: {}", err_with_src(&err));
 }
 
 async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
@@ -279,67 +285,95 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         return;
     }
 
-    tracing::warn!(%route, "Failed to remove route: {err}");
+    // "No such process" is another version of "route does not exist".
+    // See <https://askubuntu.com/questions/1330333/what-causes-rtnetlink-answers-no-such-process-when-using-ifdown-command>.
+    if matches!(&err, NetlinkError(err) if err.raw_code() == -ESRCH) {
+        return;
+    }
+
+    tracing::warn!(%route, "Failed to remove route: {}", err_with_src(&err));
 }
 
 #[derive(Debug)]
 pub struct Tun {
-    fd: AsyncFd<RawFd>,
+    outbound_tx: flume::r#async::SendSink<'static, IpPacket>,
+    inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
 impl Tun {
-    pub fn new() -> io::Result<Self> {
+    pub fn new(num_threads: usize) -> io::Result<Self> {
         create_tun_device()?;
 
-        let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
-            -1 => return Err(get_last_error()),
-            fd => fd,
-        };
+        let (inbound_tx, inbound_rx) = mpsc::channel(1000);
+        let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
 
-        // Safety: We just opened the file descriptor.
-        unsafe {
-            ioctl::exec(
-                fd,
-                TUNSETIFF,
-                &mut ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME),
-            )?;
+        for n in 0..num_threads {
+            let fd = open_tun()?;
+            let outbound_rx = outbound_rx.clone().into_stream();
+            let inbound_tx = inbound_tx.clone();
+
+            std::thread::Builder::new()
+                .name(format!("TUN send/recv {n}/{num_threads}"))
+                .spawn(move || {
+                    firezone_logging::unwrap_or_warn!(
+                        tun::unix::send_recv_tun(fd, inbound_tx, outbound_rx, read, write),
+                        "Failed to send / recv from TUN device: {}"
+                    )
+                })
+                .map_err(io::Error::other)?;
         }
 
-        set_non_blocking(fd)?;
-
-        // Safety: We just opened the fd.
-        unsafe { Self::from_fd(fd) }
-    }
-
-    /// Create a new [`Tun`] from a raw file descriptor.
-    ///
-    /// # Safety
-    ///
-    /// The file descriptor must be open.
-    unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
-        Ok(Tun {
-            fd: AsyncFd::new(fd)?,
+        Ok(Self {
+            outbound_tx: outbound_tx.into_sink(),
+            inbound_rx,
         })
     }
 }
 
-impl Drop for Tun {
-    fn drop(&mut self) {
-        unsafe { close(self.fd.as_raw_fd()) };
+fn open_tun() -> Result<TunFd, io::Error> {
+    let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
+        -1 => return Err(get_last_error()),
+        fd => fd,
+    };
+
+    unsafe {
+        ioctl::exec(
+            fd,
+            TUNSETIFF,
+            &mut ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME),
+        )?;
     }
+
+    set_non_blocking(fd)?;
+
+    // Safety: We are not closing the FD.
+    let fd = unsafe { TunFd::new(fd) };
+
+    Ok(fd)
 }
 
 impl tun::Tun for Tun {
-    fn write4(&self, buf: &[u8]) -> io::Result<usize> {
-        write(self.fd.as_raw_fd(), buf)
+    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
+        self.outbound_tx
+            .poll_ready_unpin(cx)
+            .map_err(io::Error::other)
     }
 
-    fn write6(&self, buf: &[u8]) -> io::Result<usize> {
-        write(self.fd.as_raw_fd(), buf)
+    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
+        self.outbound_tx
+            .start_send_unpin(packet)
+            .map_err(io::Error::other)?;
+
+        Ok(())
     }
 
-    fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        tun::unix::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
+    fn poll_recv_many(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut Vec<IpPacket>,
+        max: usize,
+    ) -> Poll<usize> {
+        self.inbound_rx.poll_recv_many(cx, buf, max)
     }
 
     fn name(&self) -> &str {
@@ -368,7 +402,9 @@ fn create_tun_device() -> io::Result<()> {
         return Ok(());
     }
 
-    let parent_dir = path.parent().unwrap();
+    let parent_dir = path
+        .parent()
+        .expect("const-declared path always has a parent");
     fs::create_dir_all(parent_dir)?;
     let permissions = fs::Permissions::from_mode(0o751);
     fs::set_permissions(parent_dir, permissions)?;
@@ -387,7 +423,9 @@ fn create_tun_device() -> io::Result<()> {
 }
 
 /// Read from the given file descriptor in the buffer.
-fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
+fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
+    let dst = dst.buf();
+
     // Safety: Within this module, the file descriptor is always valid.
     match unsafe { libc::read(fd, dst.as_mut_ptr() as _, dst.len()) } {
         -1 => Err(io::Error::last_os_error()),
@@ -395,8 +433,10 @@ fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
     }
 }
 
-/// Write the buffer to the given file descriptor.
-fn write(fd: RawFd, buf: &[u8]) -> io::Result<usize> {
+/// Write the packet to the given file descriptor.
+fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
+    let buf = packet.packet();
+
     // Safety: Within this module, the file descriptor is always valid.
     match unsafe { libc::write(fd, buf.as_ptr() as _, buf.len() as _) } {
         -1 => Err(io::Error::last_os_error()),

@@ -48,13 +48,13 @@ defmodule Web.Settings.ApiClients.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/settings/api_clients"}>API Clients</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/settings/api_clients/#{@actor}"}>
-        <%= @actor.name %>
+        {@actor.name}
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        API Client: <span class="font-medium"><%= @actor.name %></span>
+        API Client: <span class="font-medium">{@actor.name}</span>
         <span :if={Actors.actor_deleted?(@actor)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@actor.deleted_at)}>
@@ -69,7 +69,7 @@ defmodule Web.Settings.ApiClients.Show do
           icon="hero-lock-closed"
           on_confirm="disable"
         >
-          <:dialog_title>Disable the API Client</:dialog_title>
+          <:dialog_title>Confirm disabling the API Client</:dialog_title>
           <:dialog_content>
             Are you sure want to disable this API Client and revoke all its tokens?
           </:dialog_content>
@@ -86,10 +86,11 @@ defmodule Web.Settings.ApiClients.Show do
         <.button_with_confirmation
           id="enable"
           style="warning"
+          confirm_style="primary"
           icon="hero-lock-open"
           on_confirm="enable"
         >
-          <:dialog_title>Enable the API Client</:dialog_title>
+          <:dialog_title>Confirm enabling the API Client</:dialog_title>
           <:dialog_content>
             Are you sure want to enable this API Client?
           </:dialog_content>
@@ -106,13 +107,13 @@ defmodule Web.Settings.ApiClients.Show do
         <.vertical_table id="api-client">
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @actor.name %></:value>
+            <:value>{@actor.name}</:value>
           </.vertical_table_row>
 
           <.vertical_table_row>
             <:label>Created</:label>
             <:value>
-              <%= Cldr.DateTime.Formatter.date(@actor.inserted_at, 1, "en", Web.CLDR, []) %>
+              {Cldr.DateTime.Formatter.date(@actor.inserted_at, 1, "en", Web.CLDR, [])}
             </:value>
           </.vertical_table_row>
         </.vertical_table>
@@ -134,11 +135,11 @@ defmodule Web.Settings.ApiClients.Show do
       <:action :if={Actors.actor_active?(@actor)}>
         <.button_with_confirmation
           id="revoke_all_tokens"
-          style="warning"
-          icon="hero-lock-open"
+          style="danger"
+          icon="hero-trash"
           on_confirm="revoke_all_tokens"
         >
-          <:dialog_title>Revoke all API Client Tokens</:dialog_title>
+          <:dialog_title>Confirm revocation of all API Client tokens</:dialog_title>
           <:dialog_content>
             Are you sure you want to revoke all Tokens for this API client?
           </:dialog_content>
@@ -163,30 +164,35 @@ defmodule Web.Settings.ApiClients.Show do
           metadata={@tokens_metadata}
         >
           <:col :let={token} label="name">
-            <%= token.name %>
+            {token.name}
           </:col>
           <:col :let={token} label="expires at">
-            <%= Cldr.DateTime.Formatter.date(token.expires_at, 1, "en", Web.CLDR, []) %>
+            {Cldr.DateTime.Formatter.date(token.expires_at, 1, "en", Web.CLDR, [])}
           </:col>
           <:col :let={token} label="created by">
-            <%= token.created_by_identity.provider_identifier %>
+            <.link
+              class={[link_style()]}
+              navigate={~p"/#{@account}/actors/#{token.created_by_actor_id}"}
+            >
+              {get_identity_email(token.created_by_identity)}
+            </.link>
           </:col>
           <:col :let={token} label="last used">
             <.relative_datetime datetime={token.last_seen_at} />
           </:col>
           <:col :let={token} label="last used IP">
-            <%= token.last_seen_remote_ip %>
+            {token.last_seen_remote_ip}
           </:col>
           <:action :let={token}>
             <.button_with_confirmation
               id={"revoke_token_#{token.id}"}
-              style="warning"
+              style="danger"
               icon="hero-trash-solid"
               on_confirm="revoke_token"
               on_confirm_id={token.id}
               size="xs"
             >
-              <:dialog_title>Revoke the Token</:dialog_title>
+              <:dialog_title>Confirm revocation of API Token</:dialog_title>
               <:dialog_content>
                 Are you sure you want to revoke this token?
               </:dialog_content>
@@ -218,7 +224,7 @@ defmodule Web.Settings.ApiClients.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete API Client</:dialog_title>
+          <:dialog_title>Confirm deletion of API Client</:dialog_title>
           <:dialog_content>
             Are you sure want to delete this API Client along with all associated tokens?
           </:dialog_content>

@@ -12,6 +12,8 @@ cmd=${1:-""}
 # into our highly evolved Rust-based build system.
 for var in $(env | awk -F= '{print $1}'); do
     if [[ "$var" != "HOME" ]] &&
+        [[ "$var" != "MACOSX_DEPLOYMENT_TARGET" ]] &&
+        [[ "$var" != "IPHONEOS_DEPLOYMENT_TARGET" ]] &&
         [[ "$var" != "USER" ]] &&
         [[ "$var" != "LOGNAME" ]] &&
         [[ "$var" != "TERM" ]] &&
@@ -113,14 +115,3 @@ target_list="${target_list% }"
 
 # Build the library
 cargo build --verbose $target_list $CONFIGURATION_ARGS
-
-# Strip unused symbols from the libraries
-for target in "${TARGETS[@]}"; do
-    profile="debug"
-    if [ "$CONFIGURATION" == "Release" ]; then
-        profile="release"
-    fi
-
-    lib="$CONNLIB_TARGET_DIR/$target/$profile/libconnlib.a"
-    strip "$lib"
-done

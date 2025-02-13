@@ -42,7 +42,8 @@ defmodule API.ResourceController do
     ]
 
   def show(conn, %{"id" => id}) do
-    with {:ok, resource} <- Resources.fetch_resource_by_id(id, conn.assigns.subject) do
+    with {:ok, resource} <-
+           Resources.fetch_resource_by_id_or_persistent_id(id, conn.assigns.subject) do
       render(conn, :show, resource: resource)
     end
   end
@@ -91,7 +92,7 @@ defmodule API.ResourceController do
     subject = conn.assigns.subject
     attrs = set_param_defaults(params)
 
-    with {:ok, resource} <- Resources.fetch_resource_by_id(id, subject) do
+    with {:ok, resource} <- Resources.fetch_active_resource_by_id_or_persistent_id(id, subject) do
       case Resources.update_or_replace_resource(resource, attrs, subject) do
         {:updated, updated_resource} ->
           render(conn, :show, resource: updated_resource)
@@ -126,7 +127,7 @@ defmodule API.ResourceController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, resource} <- Resources.fetch_resource_by_id(id, subject),
+    with {:ok, resource} <- Resources.fetch_resource_by_id_or_persistent_id(id, subject),
          {:ok, resource} <- Resources.delete_resource(resource, subject) do
       render(conn, :show, resource: resource)
     end

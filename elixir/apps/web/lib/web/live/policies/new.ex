@@ -32,10 +32,10 @@ defmodule Web.Policies.New do
       <.breadcrumb path={~p"/#{@account}/policies/new"}>Add Policy</.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Policy details</h2>
+          <legend class="mb-4 text-xl text-neutral-900">Details</legend>
 
           <.form for={@form} phx-submit="submit" phx-change="validate">
             <.base_error form={@form} field={:base} />
@@ -55,11 +55,11 @@ defmodule Web.Policies.New do
                   required
                 >
                   <:options_group :let={options_group}>
-                    <%= options_group %>
+                    {options_group}
                   </:options_group>
 
                   <:option :let={group}>
-                    <%= group.name %>
+                    {group.name}
                   </:option>
 
                   <:no_options :let={name}>
@@ -99,7 +99,7 @@ defmodule Web.Policies.New do
                   required
                 >
                   <:options_group :let={group}>
-                    <%= group %>
+                    {group}
                   </:options_group>
 
                   <:option :let={resource}>
@@ -109,7 +109,7 @@ defmodule Web.Policies.New do
                         - <span class="text-red-800">upgrade to unlock</span>
                       </span>
                     <% else %>
-                      <%= resource.name %>
+                      {resource.name}
 
                       <span
                         :if={length(resource.gateway_groups) > 0}
@@ -153,19 +153,19 @@ defmodule Web.Policies.New do
               </fieldset>
 
               <.conditions_form
-                :if={not is_nil(@selected_resource) and @selected_resource.type != :internet}
+                :if={not is_nil(@selected_resource)}
                 form={@form}
                 account={@account}
                 timezone={@timezone}
                 providers={@providers}
+                selected_resource={@selected_resource}
               />
 
               <.options_form
-                :if={not is_nil(@selected_resource) and @selected_resource.type == :internet}
+                :if={not is_nil(@selected_resource)}
                 form={@form}
                 account={@account}
-                timezone={@timezone}
-                providers={@providers}
+                selected_resource={@selected_resource}
               />
             </div>
 

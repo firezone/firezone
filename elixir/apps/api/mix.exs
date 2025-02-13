@@ -2,11 +2,9 @@ defmodule API.MixProject do
   use Mix.Project
 
   def project do
-    {sha, _} = Code.eval_file(Path.join([__DIR__, "..", "..", "sha.exs"]))
-
     [
       app: :api,
-      version: "0.1.0+#{sha}",
+      version: version(),
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -53,13 +51,15 @@ defmodule API.MixProject do
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:opentelemetry_telemetry, "~> 1.1.1", override: true},
-      {:opentelemetry_cowboy, "~> 0.3"},
-      {:opentelemetry_phoenix, "~> 1.1"},
+      {:opentelemetry_cowboy, "~> 1.0"},
+      {:opentelemetry_phoenix, "~> 2.0"},
+      {:sentry, "~> 10.0"},
+      {:hackney, "~> 1.19"},
 
       # Other deps
       {:jason, "~> 1.2"},
       {:remote_ip, "~> 1.1"},
-      {:open_api_spex, "~> 3.18"},
+      {:open_api_spex, "~> 3.21.2"},
       {:ymlr, "~> 5.0"},
 
       # Test deps
@@ -78,5 +78,10 @@ defmodule API.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate", "test"]
     ]
+  end
+
+  defp version do
+    sha = System.get_env("GIT_SHA", "dev") |> String.trim()
+    "0.1.0+#{sha}"
   end
 end

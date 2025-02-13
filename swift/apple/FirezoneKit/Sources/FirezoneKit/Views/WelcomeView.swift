@@ -15,17 +15,11 @@ final class WelcomeViewModel: ObservableObject {
   init(store: Store) {
     self.store = store
   }
-
-  func signInButtonTapped() {
-    Task { await WebAuthSession.signIn(store: store) }
-  }
 }
 
 struct WelcomeView: View {
+  @EnvironmentObject var errorHandler: GlobalErrorHandler
   @ObservedObject var model: WelcomeViewModel
-
-  // Debounce button taps
-  @State private var tapped = false
 
   var body: some View {
     VStack(
@@ -44,22 +38,23 @@ struct WelcomeView: View {
         """).multilineTextAlignment(.center)
           .padding(.bottom, 10)
         Button("Sign in") {
-          if !tapped {
-            tapped = true
+          Task {
+            do {
+              try await WebAuthSession.signIn(store: model.store)
+            } catch {
+              Log.error(error)
 
-            DispatchQueue.main.async {
-              model.signInButtonTapped()
-            }
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-              tapped = false
+              self.errorHandler.handle(ErrorAlert(
+                title: "Error signing in",
+                error: error
+              ))
             }
           }
         }
-        .disabled(tapped)
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
         Spacer()
-      })
+      }
+    )
   }
 }

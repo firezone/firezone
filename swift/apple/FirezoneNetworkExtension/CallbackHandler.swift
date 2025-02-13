@@ -12,7 +12,7 @@ import OSLog
 // shall get updated.
 // This is so that the app stays buildable even when the FFI changes.
 
-// TODO: https://github.com/chinedufn/swift-bridge/issues/150
+// See https://github.com/chinedufn/swift-bridge/issues/150
 extension RustString: @unchecked Sendable {}
 extension RustString: Error {}
 
@@ -20,9 +20,10 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onSetInterfaceConfig(
     tunnelAddressIPv4: String,
     tunnelAddressIPv6: String,
-    dnsAddresses: [String]
+    dnsAddresses: [String],
+    routeListv4: String,
+    routeListv6: String
   )
-  func onUpdateRoutes(routeList4: String, routeList6: String)
   func onUpdateResources(resourceList: String)
   func onDisconnect(error: String)
 }
@@ -33,39 +34,43 @@ public class CallbackHandler {
   func onSetInterfaceConfig(
     tunnelAddressIPv4: RustString,
     tunnelAddressIPv6: RustString,
-    dnsAddresses: RustString
+    dnsAddresses: RustString,
+    routeListv4: RustString,
+    routeListv6: RustString
   ) {
-    Log.tunnel.log(
+    Log.log(
       """
         CallbackHandler.onSetInterfaceConfig:
           IPv4: \(tunnelAddressIPv4.toString())
           IPv6: \(tunnelAddressIPv6.toString())
           DNS: \(dnsAddresses.toString())
+          IPv4 routes:  \(routeListv4.toString())
+          IPv6 routes: \(routeListv6.toString())
       """)
 
-    let dnsData = dnsAddresses.toString().data(using: .utf8)!
-    let dnsArray = try! JSONDecoder().decode([String].self, from: dnsData)
+    guard let dnsData = dnsAddresses.toString().data(using: .utf8),
+          let dnsArray = try? JSONDecoder().decode([String].self, from: dnsData)
+    else {
+      fatalError("Should be able to decode DNS Addresses from connlib")
+    }
 
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
       tunnelAddressIPv6: tunnelAddressIPv6.toString(),
-      dnsAddresses: dnsArray
+      dnsAddresses: dnsArray,
+      routeListv4: routeListv4.toString(),
+      routeListv6: routeListv6.toString()
     )
   }
 
-  func onUpdateRoutes(routeList4: RustString, routeList6: RustString) {
-    Log.tunnel.log("CallbackHandler.onUpdateRoutes: \(routeList4) \(routeList6)")
-    delegate?.onUpdateRoutes(routeList4: routeList4.toString(), routeList6: routeList6.toString())
-  }
-
   func onUpdateResources(resourceList: RustString) {
-    Log.tunnel.log("CallbackHandler.onUpdateResources: \(resourceList.toString())")
+    Log.log("CallbackHandler.onUpdateResources: \(resourceList.toString())")
     delegate?.onUpdateResources(resourceList: resourceList.toString())
   }
 
   func onDisconnect(error: RustString) {
     let error = error.toString()
-    Log.tunnel.log("CallbackHandler.onDisconnect: \(error)")
+    Log.log("CallbackHandler.onDisconnect: \(error)")
     delegate?.onDisconnect(error: error)
   }
 }

@@ -7,16 +7,22 @@ use crate::{
     updates,
 };
 use anyhow::{anyhow, Context, Result};
-use connlib_shared::callbacks::ResourceDescription;
-use firezone_bin_shared::{new_dns_notifier, new_network_notifier};
+use connlib_model::ResourceView;
+use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
+
 use firezone_telemetry::Telemetry;
+use futures::{
+    stream::{self, BoxStream},
+    Stream, StreamExt,
+};
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, time::Instant};
+use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, task::Poll, time::Instant};
 use tokio::sync::{mpsc, oneshot};
+use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 
 use ControllerRequest as Req;
@@ -25,7 +31,7 @@ mod ran_before;
 
 pub type CtlrTx = mpsc::Sender<ControllerRequest>;
 
-pub struct Controller<I: GuiIntegration> {
+pub struct Controller<'a, I: GuiIntegration> {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
     // Sign-in state with the portal / deep links
@@ -33,59 +39,19 @@ pub struct Controller<I: GuiIntegration> {
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
     ipc_client: ipc::Client,
-    ipc_rx: mpsc::Receiver<ipc::Event>,
+    ipc_rx: ipc::ClientRead,
     integration: I,
     log_filter_reloader: LogFilterReloader,
     /// A release that's ready to download
     release: Option<updates::Release>,
-    rx: mpsc::Receiver<ControllerRequest>,
+    rx: ReceiverStream<ControllerRequest>,
     status: Status,
-    telemetry: Telemetry,
-    updates_rx: mpsc::Receiver<Option<updates::Notification>>,
+    telemetry: &'a mut Telemetry,
+    updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: crate::uptime::Tracker,
-}
 
-pub struct Builder<I: GuiIntegration> {
-    pub advanced_settings: AdvancedSettings,
-    pub ctlr_tx: CtlrTx,
-    pub integration: I,
-    pub log_filter_reloader: LogFilterReloader,
-    pub rx: mpsc::Receiver<ControllerRequest>,
-    pub telemetry: Telemetry,
-    pub updates_rx: mpsc::Receiver<Option<updates::Notification>>,
-}
-
-impl<I: GuiIntegration> Builder<I> {
-    pub async fn build(self) -> Result<Controller<I>> {
-        let Builder {
-            advanced_settings,
-            ctlr_tx,
-            integration,
-            log_filter_reloader,
-            rx,
-            telemetry,
-            updates_rx,
-        } = self;
-
-        let (ipc_tx, ipc_rx) = mpsc::channel(1);
-        let ipc_client = ipc::Client::new(ipc_tx).await?;
-        Ok(Controller {
-            advanced_settings,
-            auth: auth::Auth::new()?,
-            clear_logs_callback: None,
-            ctlr_tx,
-            ipc_client,
-            ipc_rx,
-            integration,
-            log_filter_reloader,
-            release: None,
-            rx,
-            status: Default::default(),
-            telemetry,
-            updates_rx,
-            uptime: Default::default(),
-        })
-    }
+    dns_notifier: BoxStream<'static, Result<()>>,
+    network_notifier: BoxStream<'static, Result<()>>,
 }
 
 pub trait GuiIntegration {
@@ -94,8 +60,8 @@ pub trait GuiIntegration {
     /// Also opens non-URLs
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
 
-    fn set_tray_icon(&mut self, icon: system_tray::Icon) -> Result<()>;
-    fn set_tray_menu(&mut self, app_state: system_tray::AppState) -> Result<()>;
+    fn set_tray_icon(&mut self, icon: system_tray::Icon);
+    fn set_tray_menu(&mut self, app_state: system_tray::AppState);
     fn show_notification(&self, title: &str, body: &str) -> Result<()>;
     fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()>;
 
@@ -134,24 +100,28 @@ pub enum Failure {
     Panic,
 }
 
+#[derive(derive_more::Debug)]
 pub enum Status {
     /// Firezone is disconnected.
     Disconnected,
     /// At least one connection request has failed, due to failing to reach the Portal, and we are waiting for a network change before we try again
     RetryingConnection {
         /// The token to log in to the Portal, for retrying the connection request.
+        #[debug(skip)]
         token: SecretString,
     },
     Quitting, // The user asked to quit and we're waiting for the tunnel daemon to gracefully disconnect so we can flush telemetry.
     /// Firezone is ready to use.
     TunnelReady {
-        resources: Vec<ResourceDescription>,
+        #[debug(skip)]
+        resources: Vec<ResourceView>,
     },
     /// Firezone is signing in to the Portal.
     WaitingForPortal {
         /// The instant when we sent our most recent connect request.
         start_instant: Instant,
         /// The token to log in to the Portal, in case we need to retry the connection request.
+        #[debug(skip)]
         token: SecretString,
     },
     /// Firezone has connected to the Portal and is raising the tunnel.
@@ -190,7 +160,7 @@ impl Status {
         }
     }
 
-    fn internet_resource(&self) -> Option<ResourceDescription> {
+    fn internet_resource(&self) -> Option<ResourceView> {
         #[expect(clippy::wildcard_enum_match_arm)]
         match self {
             Status::TunnelReady { resources } => {
@@ -201,18 +171,71 @@ impl Status {
     }
 }
 
-impl<I: GuiIntegration> Controller<I> {
+enum EventloopTick {
+    NetworkChanged(Result<()>),
+    DnsChanged(Result<()>),
+    IpcMsg(Option<Result<IpcServerMsg>>),
+    ControllerRequest(Option<ControllerRequest>),
+    UpdateNotification(Option<Option<updates::Notification>>),
+}
+
+impl<I: GuiIntegration> Controller<'_, I> {
+    pub async fn start(
+        ctlr_tx: CtlrTx,
+        integration: I,
+        rx: mpsc::Receiver<ControllerRequest>,
+        advanced_settings: AdvancedSettings,
+        log_filter_reloader: LogFilterReloader,
+        telemetry: &mut Telemetry,
+        updates_rx: mpsc::Receiver<Option<updates::Notification>>,
+    ) -> Result<(), Error> {
+        tracing::debug!("Starting new instance of `Controller`");
+
+        let (ipc_client, ipc_rx) = ipc::Client::new().await?;
+
+        let dns_notifier = new_dns_notifier().await?.boxed();
+        let network_notifier = new_network_notifier().await?.boxed();
+
+        let controller = Controller {
+            advanced_settings,
+            auth: auth::Auth::new()?,
+            clear_logs_callback: None,
+            ctlr_tx,
+            ipc_client,
+            ipc_rx,
+            integration,
+            log_filter_reloader,
+            release: None,
+            rx: ReceiverStream::new(rx),
+            status: Default::default(),
+            telemetry,
+            updates_rx: ReceiverStream::new(updates_rx),
+            uptime: Default::default(),
+            dns_notifier,
+            network_notifier,
+        };
+
+        controller.main_loop().await?;
+
+        Ok(())
+    }
+
     pub async fn main_loop(mut self) -> Result<(), Error> {
-        // Start telemetry
+        let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
+
+        // Tell IPC service to start telemetry.
         {
             let environment = self.advanced_settings.api_url.to_string();
-            self.telemetry.start(
-                &environment,
-                firezone_bin_shared::git_version!("gui-client-*"),
-                firezone_telemetry::GUI_DSN,
-            );
+            if let Some(account_slug) = account_slug.clone() {
+                self.telemetry.set_account_slug(account_slug);
+            }
+
             self.ipc_client
-                .send_msg(&IpcClientMsg::StartTelemetry { environment })
+                .send_msg(&IpcClientMsg::StartTelemetry {
+                    environment,
+                    release: crate::RELEASE.to_string(),
+                    account_slug,
+                })
                 .await?;
         }
 
@@ -224,94 +247,99 @@ impl<I: GuiIntegration> Controller<I> {
             self.start_session(token).await?;
         } else {
             tracing::info!("No token / actor_name on disk, starting in signed-out state");
-            self.refresh_system_tray_menu()?;
+            self.refresh_system_tray_menu();
         }
 
         if !ran_before::get().await? {
             self.integration.set_welcome_window_visible(true)?;
         }
 
-        let tokio_handle = tokio::runtime::Handle::current();
-        let dns_control_method = Default::default();
-
-        let mut dns_notifier = new_dns_notifier(tokio_handle.clone(), dns_control_method).await?;
-        let mut network_notifier =
-            new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
-        drop(tokio_handle);
-
-        loop {
-            // TODO: Add `ControllerRequest::NetworkChange` and `DnsChange` and replace
-            // `tokio::select!` with a `poll_*` function
-            tokio::select! {
-                result = network_notifier.notified() => {
-                    result?;
+        while let Some(tick) = self.tick().await {
+            match tick {
+                EventloopTick::NetworkChanged(Ok(())) => {
                     if self.status.needs_network_changes() {
                         tracing::debug!("Internet up/down changed, calling `Session::reset`");
                         self.ipc_client.reset().await?
                     }
+
                     self.try_retry_connection().await?
                 }
-                result = dns_notifier.notified() => {
-                    result?;
+                EventloopTick::DnsChanged(Ok(())) => {
                     if self.status.needs_network_changes() {
-                        let resolvers = firezone_headless_client::dns_control::system_resolvers_for_gui()?;
-                        tracing::debug!(?resolvers, "New DNS resolvers, calling `Session::set_dns`");
+                        let resolvers =
+                            firezone_headless_client::dns_control::system_resolvers_for_gui()?;
+                        tracing::debug!(
+                            ?resolvers,
+                            "New DNS resolvers, calling `Session::set_dns`"
+                        );
                         self.ipc_client.set_dns(resolvers).await?;
                     }
+
                     self.try_retry_connection().await?
                 }
-                event = self.ipc_rx.recv() => {
-                    let event = event.context("IPC task stopped")?;
-                    if let ControlFlow::Break(()) = self.handle_ipc_event(event).await? {
-                        break;
-                    }
+                EventloopTick::NetworkChanged(Err(e)) | EventloopTick::DnsChanged(Err(e)) => {
+                    return Err(Error::Other(e))
                 }
-                req = self.rx.recv() => {
-                    let Some(req) = req else {
-                        tracing::warn!("Controller channel closed, breaking main loop.");
-                        break;
-                    };
 
-                    #[expect(clippy::wildcard_enum_match_arm)]
-                    match req {
-                        // SAFETY: Crashing is unsafe
-                        Req::Fail(Failure::Crash) => {
-                            tracing::error!("Crashing on purpose");
-                            unsafe { sadness_generator::raise_segfault() }
-                        },
-                        Req::Fail(Failure::Error) => Err(anyhow!("Test error"))?,
-                        Req::Fail(Failure::Panic) => panic!("Test panic"),
-                        Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
-                            tracing::info!("User clicked Quit in the menu");
-                            self.status = Status::Quitting;
-                            self.ipc_client.send_msg(&IpcClientMsg::Disconnect).await?;
-                            self.refresh_system_tray_menu()?;
-                        }
-                        // TODO: Should we really skip cleanup if a request fails?
-                        req => self.handle_request(req).await?,
-                    }
+                EventloopTick::IpcMsg(Some(Ok(msg))) => {
+                    match self.handle_ipc_msg(msg).await? {
+                        ControlFlow::Break(()) => break,
+                        ControlFlow::Continue(()) => continue,
+                    };
                 }
-                notification = self.updates_rx.recv() => self.handle_update_notification(notification.context("Update checker task stopped")?)?,
+                EventloopTick::IpcMsg(Some(Err(e))) => return Err(Error::IpcRead(e)),
+                EventloopTick::IpcMsg(None) => return Err(Error::IpcClosed),
+
+                EventloopTick::ControllerRequest(Some(req)) => self.handle_request(req).await?,
+                EventloopTick::ControllerRequest(None) => {
+                    tracing::warn!("Controller channel closed, breaking main loop");
+                    break;
+                }
+                EventloopTick::UpdateNotification(Some(notification)) => {
+                    self.handle_update_notification(notification)?
+                }
+                EventloopTick::UpdateNotification(None) => {
+                    return Err(Error::Other(anyhow!("Update checker task stopped")))
+                }
             }
-            // Code down here may not run because the `select` sometimes `continue`s.
         }
 
         tracing::debug!("Closing...");
 
-        if let Err(error) = dns_notifier.close() {
-            tracing::error!(?error, "dns_notifier");
-        }
-        if let Err(error) = network_notifier.close() {
-            tracing::error!(?error, "network_notifier");
-        }
-
         if let Err(error) = self.ipc_client.disconnect_from_ipc().await {
-            tracing::error!(?error, "ipc_client");
+            tracing::error!("ipc_client: {error:#}");
         }
 
         // Don't close telemetry here, `run` will close it.
 
         Ok(())
+    }
+
+    async fn tick(&mut self) -> Option<EventloopTick> {
+        std::future::poll_fn(|cx| {
+            if let Poll::Ready(Some(res)) = self.dns_notifier.poll_next_unpin(cx) {
+                return Poll::Ready(Some(EventloopTick::DnsChanged(res)));
+            }
+
+            if let Poll::Ready(Some(res)) = self.network_notifier.poll_next_unpin(cx) {
+                return Poll::Ready(Some(EventloopTick::NetworkChanged(res)));
+            }
+
+            if let Poll::Ready(maybe_ipc) = self.ipc_rx.poll_next_unpin(cx) {
+                return Poll::Ready(Some(EventloopTick::IpcMsg(maybe_ipc)));
+            }
+
+            if let Poll::Ready(maybe_req) = self.rx.poll_next_unpin(cx) {
+                return Poll::Ready(Some(EventloopTick::ControllerRequest(maybe_req)));
+            }
+
+            if let Poll::Ready(notification) = self.updates_rx.poll_next_unpin(cx) {
+                return Poll::Ready(Some(EventloopTick::UpdateNotification(notification)));
+            }
+
+            Poll::Pending
+        })
+        .await
     }
 
     async fn start_session(&mut self, token: SecretString) -> Result<(), Error> {
@@ -339,7 +367,7 @@ impl<I: GuiIntegration> Controller<I> {
             start_instant,
             token,
         };
-        self.refresh_system_tray_menu()?;
+        self.refresh_system_tray_menu();
         Ok(())
     }
 
@@ -348,6 +376,7 @@ impl<I: GuiIntegration> Controller<I> {
             deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
         tracing::info!("Received deep link over IPC");
+
         // Uses `std::fs`
         let token = self
             .auth
@@ -360,25 +389,28 @@ impl<I: GuiIntegration> Controller<I> {
     async fn handle_request(&mut self, req: ControllerRequest) -> Result<(), Error> {
         match req {
             Req::ApplySettings(settings) => {
-                let filter = firezone_logging::try_filter(&self.advanced_settings.log_filter)
+                let filter = firezone_logging::try_filter(&settings.log_filter)
                         .context("Couldn't parse new log filter directives")?;
                 self.advanced_settings = *settings;
+
                 self.log_filter_reloader
                     .reload(filter)
                     .context("Couldn't reload log filter")?;
-                self.ipc_client.send_msg(&IpcClientMsg::ReloadLogFilter).await?;
+                self.ipc_client.send_msg(&IpcClientMsg::ApplyLogFilter { directives: self.advanced_settings.log_filter.clone() }).await?;
+
                 tracing::debug!(
                     "Applied new settings. Log level will take effect immediately."
                 );
+
                 // Refresh the menu in case the favorites were reset.
-                self.refresh_system_tray_menu()?;
+                self.refresh_system_tray_menu();
             }
             Req::ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
                     tracing::error!("Can't clear logs, we're already waiting on another log-clearing operation");
                 }
                 if let Err(error) = logging::clear_gui_logs().await {
-                    tracing::error!(?error, "Failed to clear GUI logs");
+                    tracing::error!("Failed to clear GUI logs: {error:#}");
                 }
                 self.ipc_client.send_msg(&IpcClientMsg::ClearLogs).await?;
                 self.clear_logs_callback = Some(completion_tx);
@@ -386,29 +418,38 @@ impl<I: GuiIntegration> Controller<I> {
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
                 .await
                 .context("Failed to export logs to zip")?,
-            Req::Fail(_) => Err(anyhow!(
-                "Impossible error: `Fail` should be handled before this"
-            ))?,
+            Req::Fail(Failure::Crash) => {
+                tracing::error!("Crashing on purpose");
+                // SAFETY: Crashing is unsafe
+                unsafe { sadness_generator::raise_segfault() }
+            },
+            Req::Fail(Failure::Error) => Err(anyhow!("Test error"))?,
+            Req::Fail(Failure::Panic) => panic!("Test panic"),
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
             Req::SchemeRequest(url) => {
-                if let Err(error) = self.handle_deep_link(&url).await {
-                    tracing::error!(?error, "`handle_deep_link` failed");
+                match self.handle_deep_link(&url).await {
+                    Ok(()) => {},
+                    Err(Error::Other(error)) if error.root_cause().downcast_ref::<auth::Error>().is_some_and(|e| matches!(e, auth::Error::NoInflightRequest)) => {
+                        tracing::debug!("Ignoring deep-link; no local state");
+                    }
+                    Err(error) => {
+                        tracing::error!("`handle_deep_link` failed: {error:#}");
+                    }
                 }
             }
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
-                if let Some(req) = self
+                let req = self
                     .auth
                     .start_sign_in()
-                    .context("Couldn't start sign-in flow")?
-                {
-                    let url = req.to_url(&self.advanced_settings.auth_base_url);
-                    self.refresh_system_tray_menu()?;
-                    self.integration.open_url(url.expose_secret())
-                        .context("Couldn't open auth page")?;
-                    self.integration.set_welcome_window_visible(false)?;
-                }
+                    .context("Couldn't start sign-in flow")?;
+
+                let url = req.to_url(&self.advanced_settings.auth_base_url);
+                self.refresh_system_tray_menu();
+                self.integration.open_url(url.expose_secret())
+                    .context("Couldn't open auth page")?;
+                self.integration.set_welcome_window_visible(false)?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::AddFavorite(resource_id)) => {
                 self.advanced_settings.favorite_resources.insert(resource_id);
@@ -431,7 +472,7 @@ impl<I: GuiIntegration> Controller<I> {
                     Status::Quitting => tracing::error!("Can't cancel sign-in while already quitting"),
                     Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
                     Status::WaitingForTunnel { .. } => {
-                        tracing::warn!(
+                        tracing::debug!(
                             "Connlib is already raising the tunnel, calling `sign_out` anyway"
                         );
                         self.sign_out().await?;
@@ -471,9 +512,12 @@ impl<I: GuiIntegration> Controller<I> {
                 self.integration.open_url(&url)
                     .context("Couldn't open URL from system tray")?
             }
-            Req::SystemTrayMenu(TrayMenuEvent::Quit) => Err(anyhow!(
-                "Impossible error: `Quit` should be handled before this"
-            ))?,
+            Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
+                tracing::info!("User clicked Quit in the menu");
+                self.status = Status::Quitting;
+                self.ipc_client.send_msg(&IpcClientMsg::Disconnect).await?;
+                self.refresh_system_tray_menu();
+            }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
                 self.integration.open_url(&download_url)
@@ -481,27 +525,6 @@ impl<I: GuiIntegration> Controller<I> {
             }
         }
         Ok(())
-    }
-
-    async fn handle_ipc_event(&mut self, event: ipc::Event) -> Result<ControlFlow<()>, Error> {
-        match event {
-            ipc::Event::Message(msg) => match self.handle_ipc_msg(msg).await {
-                Ok(flow) => Ok(flow),
-                // Handles <https://github.com/firezone/firezone/issues/6547> more gracefully so we can still export logs even if we crashed right after sign-in
-                Err(Error::ConnectToFirezoneFailed(error)) => {
-                    tracing::error!(?error, "Failed to connect to Firezone");
-                    self.sign_out().await?;
-                    Ok(ControlFlow::Continue(()))
-                }
-                Err(error) => Err(error)?,
-            },
-            ipc::Event::ReadFailed(error) => {
-                // IPC errors are always fatal
-                tracing::error!(?error, "IPC read failure");
-                Err(Error::IpcRead)?
-            }
-            ipc::Event::Closed => Err(Error::IpcClosed)?,
-        }
     }
 
     async fn handle_ipc_msg(&mut self, msg: IpcServerMsg) -> Result<ControlFlow<()>, Error> {
@@ -515,10 +538,7 @@ impl<I: GuiIntegration> Controller<I> {
                 })?;
             }
             IpcServerMsg::ConnectResult(result) => {
-                return self
-                    .handle_connect_result(result)
-                    .await
-                    .map(|_| ControlFlow::Continue(()))
+                self.handle_connect_result(result).await?;
             }
             IpcServerMsg::DisconnectedGracefully => {
                 if let Status::Quitting = self.status {
@@ -537,7 +557,7 @@ impl<I: GuiIntegration> Controller<I> {
                         "To access resources, sign in again.",
                     )?;
                 } else {
-                    tracing::error!(?error_msg, "Disconnected");
+                    tracing::error!("Connlib disconnected: {error_msg}");
                     native_dialog::MessageDialog::new()
                         .set_title("Firezone Error")
                         .set_text(&error_msg)
@@ -552,38 +572,34 @@ impl<I: GuiIntegration> Controller<I> {
                 }
                 tracing::debug!(len = resources.len(), "Got new Resources");
                 self.status = Status::TunnelReady { resources };
-                if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to refresh menu");
-                }
+                self.refresh_system_tray_menu();
 
                 self.update_disabled_resources().await?;
             }
             IpcServerMsg::TerminatingGracefully => {
-                tracing::info!("Caught TerminatingGracefully");
+                tracing::info!("IPC service exited gracefully");
                 self.integration
-                    .set_tray_icon(system_tray::icon_terminating())
-                    .ok();
-                Err(Error::IpcServiceTerminating)?
+                    .set_tray_icon(system_tray::icon_terminating());
+                self.integration.show_notification(
+                    "Firezone disconnected",
+                    "The Firezone IPC service was shutdown, quitting GUI process.",
+                )?;
+
+                return Ok(ControlFlow::Break(()));
             }
             IpcServerMsg::TunnelReady => {
-                if self.auth.session().is_none() {
-                    // This could maybe happen if the user cancels the sign-in
-                    // before it completes. This is because the state machine
-                    // between the GUI, the IPC service, and connlib isn't  perfectly synced.
-                    tracing::error!("Got `TunnelReady` while signed out");
+                let Status::WaitingForTunnel { start_instant } = self.status else {
+                    // If we are not waiting for a tunnel, continue.
                     return Ok(ControlFlow::Continue(()));
-                }
-                if let Status::WaitingForTunnel { start_instant } = self.status {
-                    tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
-                    self.status = Status::TunnelReady { resources: vec![] };
-                    self.integration.show_notification(
-                        "Firezone connected",
-                        "You are now signed in and able to access resources.",
-                    )?;
-                }
-                if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to refresh menu");
-                }
+                };
+
+                tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
+                self.status = Status::TunnelReady { resources: vec![] };
+                self.integration.show_notification(
+                    "Firezone connected",
+                    "You are now signed in and able to access resources.",
+                )?;
+                self.refresh_system_tray_menu();
             }
         }
         Ok(ControlFlow::Continue(()))
@@ -593,47 +609,46 @@ impl<I: GuiIntegration> Controller<I> {
         &mut self,
         result: Result<(), IpcServiceError>,
     ) -> Result<(), Error> {
-        let (start_instant, token) = match &self.status {
-            Status::Disconnected
-            | Status::RetryingConnection { .. }
-            | Status::TunnelReady { .. }
-            | Status::WaitingForTunnel { .. } => {
-                tracing::error!("Impossible logic error, received `ConnectResult` when we weren't waiting on the Portal connection.");
-                return Ok(());
-            }
-            Status::Quitting => {
-                tracing::debug!("Ignoring `ConnectResult`, we are quitting");
-                return Ok(());
-            }
-            Status::WaitingForPortal {
-                start_instant,
-                token,
-            } => (*start_instant, token.expose_secret().clone().into()),
+        let Status::WaitingForPortal {
+            start_instant,
+            token,
+        } = &self.status
+        else {
+            tracing::debug!(current_state = ?self.status, "Ignoring `ConnectResult`");
+
+            return Ok(());
         };
 
         match result {
             Ok(()) => {
                 ran_before::set().await?;
-                self.status = Status::WaitingForTunnel { start_instant };
-                if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to refresh menu");
-                }
+                self.status = Status::WaitingForTunnel {
+                    start_instant: *start_instant,
+                };
+                self.refresh_system_tray_menu();
                 Ok(())
             }
-            Err(IpcServiceError::PortalConnection(error)) => {
+            Err(IpcServiceError::Io(error)) => {
                 // This is typically something like, we don't have Internet access so we can't
                 // open the PhoenixChannel's WebSocket.
-                tracing::warn!(
-                    ?error,
+                tracing::info!(
+                    error,
                     "Failed to connect to Firezone Portal, will try again when the network changes"
                 );
-                self.status = Status::RetryingConnection { token };
-                if let Err(error) = self.refresh_system_tray_menu() {
-                    tracing::error!(?error, "Failed to refresh menu");
-                }
+                self.status = Status::RetryingConnection {
+                    token: token.expose_secret().clone().into(),
+                };
+                self.refresh_system_tray_menu();
                 Ok(())
             }
-            Err(msg) => Err(Error::ConnectToFirezoneFailed(msg)),
+            Err(IpcServiceError::Other(error)) => {
+                // We log this here directly instead of forwarding it because errors hard-abort the event-loop and we still want to be able to export logs and stuff.
+                // See <https://github.com/firezone/firezone/issues/6547>.
+                tracing::error!("Failed to connect to Firezone: {error}");
+                self.sign_out().await?;
+
+                Ok(())
+            }
         }
     }
 
@@ -644,13 +659,13 @@ impl<I: GuiIntegration> Controller<I> {
     ) -> Result<()> {
         let Some(notification) = notification else {
             self.release = None;
-            self.refresh_system_tray_menu()?;
+            self.refresh_system_tray_menu();
             return Ok(());
         };
 
         let release = notification.release;
         self.release = Some(release.clone());
-        self.refresh_system_tray_menu()?;
+        self.refresh_system_tray_menu();
 
         if notification.tell_user {
             let title = format!("Firezone {} available for download", release.version);
@@ -683,7 +698,7 @@ impl<I: GuiIntegration> Controller<I> {
         self.ipc_client
             .send_msg(&SetDisabledResources(disabled_resources))
             .await?;
-        self.refresh_system_tray_menu()?;
+        self.refresh_system_tray_menu();
 
         Ok(())
     }
@@ -691,12 +706,12 @@ impl<I: GuiIntegration> Controller<I> {
     /// Saves the current settings (including favorites) to disk and refreshes the tray menu
     async fn refresh_favorite_resources(&mut self) -> Result<()> {
         settings::save(&self.advanced_settings).await?;
-        self.refresh_system_tray_menu()?;
+        self.refresh_system_tray_menu();
         Ok(())
     }
 
     /// Builds a new system tray menu and applies it to the app
-    fn refresh_system_tray_menu(&mut self) -> Result<()> {
+    fn refresh_system_tray_menu(&mut self) {
         // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
         // doesn't require such complicated control flow to answer.
         let connlib = if let Some(auth_session) = self.auth.session() {
@@ -709,28 +724,26 @@ impl<I: GuiIntegration> Controller<I> {
                 Status::RetryingConnection { .. } => system_tray::ConnlibState::RetryingConnection,
                 Status::TunnelReady { resources } => {
                     system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
-                        actor_name: &auth_session.actor_name,
-                        favorite_resources: &self.advanced_settings.favorite_resources,
-                        internet_resource_enabled: &self
-                            .advanced_settings
-                            .internet_resource_enabled,
-                        resources,
+                        actor_name: auth_session.actor_name.clone(),
+                        favorite_resources: self.advanced_settings.favorite_resources.clone(),
+                        internet_resource_enabled: self.advanced_settings.internet_resource_enabled,
+                        resources: resources.clone(),
                     })
                 }
                 Status::WaitingForPortal { .. } => system_tray::ConnlibState::WaitingForPortal,
                 Status::WaitingForTunnel { .. } => system_tray::ConnlibState::WaitingForTunnel,
             }
-        } else if self.auth.ongoing_request().is_ok() {
+        } else if self.auth.ongoing_request().is_some() {
             // Signing in, waiting on deep link callback
             system_tray::ConnlibState::WaitingForBrowser
         } else {
             system_tray::ConnlibState::SignedOut
         };
+
         self.integration.set_tray_menu(system_tray::AppState {
             connlib,
             release: self.release.clone(),
-        })?;
-        Ok(())
+        });
     }
 
     /// If we're in the `RetryingConnection` state, use the token to retry the Portal connection
@@ -765,7 +778,35 @@ impl<I: GuiIntegration> Controller<I> {
         // This is redundant if the token is expired, in that case
         // connlib already disconnected itself.
         self.ipc_client.send_msg(&IpcClientMsg::Disconnect).await?;
-        self.refresh_system_tray_menu()?;
+        self.refresh_system_tray_menu();
         Ok(())
     }
+}
+
+async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
+    let worker = firezone_bin_shared::new_dns_notifier(
+        tokio::runtime::Handle::current(),
+        DnsControlMethod::default(),
+    )
+    .await?;
+
+    Ok(stream::try_unfold(worker, |mut worker| async move {
+        let () = worker.notified().await?;
+
+        Ok(Some(((), worker)))
+    }))
+}
+
+async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
+    let worker = firezone_bin_shared::new_network_notifier(
+        tokio::runtime::Handle::current(),
+        DnsControlMethod::default(),
+    )
+    .await?;
+
+    Ok(stream::try_unfold(worker, |mut worker| async move {
+        let () = worker.notified().await?;
+
+        Ok(Some(((), worker)))
+    }))
 }

@@ -60,7 +60,7 @@ defmodule Web.Groups.EditActors do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/groups"}>Groups</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/groups/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/groups/#{@group}/edit_actors"}>
         Edit Actors
@@ -69,7 +69,7 @@ defmodule Web.Groups.EditActors do
 
     <.section>
       <:title>
-        Edit Actors in Group: <code><%= @group.name %></code>
+        Edit Actors in Group: <code>{@group.name}</code>
       </:title>
       <:content>
         <.live_table
@@ -141,13 +141,26 @@ defmodule Web.Groups.EditActors do
         </.live_table>
 
         <div class="flex justify-end">
-          <.button_with_confirmation id="save_changes" style="primary" class="m-4" on_confirm="submit">
-            <:dialog_title>Apply changes to Group Actors</:dialog_title>
+          <.button_with_confirmation
+            id="save_changes"
+            style={((@added == %{} and @removed == %{}) && "disabled") || "primary"}
+            confirm_style="primary"
+            class="m-4"
+            on_confirm="submit"
+            disabled={@added == %{} and @removed == %{}}
+          >
+            <:dialog_title>Confirm changes to Group Actors</:dialog_title>
             <:dialog_content>
-              <%= confirm_message(@added, @removed) %>
+              <div class="mb-2">
+                You're about to apply the following membership changes for the
+                <strong>{@group.name}</strong>
+                group:
+              </div>
+
+              <.confirm_message added={@added} removed={@removed} />
             </:dialog_content>
             <:dialog_confirm_button>
-              Save
+              Confirm
             </:dialog_confirm_button>
             <:dialog_cancel_button>
               Cancel
@@ -234,20 +247,19 @@ defmodule Web.Groups.EditActors do
     Map.has_key?(added, actor.id)
   end
 
-  # TODO: this should be replaced by a new state of a form which will render impact of a change
-  defp confirm_message(added, removed) do
-    added_names = Enum.map(added, fn {_id, name} -> name end)
-    removed_names = Enum.map(removed, fn {_id, name} -> name end)
+  defp confirm_message(assigns) do
+    ~H"""
+    <ul>
+      <li :for={{_id, name} <- @added} class="mb-2">
+        <.icon name="hero-plus" class="h-3.5 w-3.5 mr-2 text-green-500" />
+        {name}
+      </li>
 
-    add = if added_names != [], do: "add #{Enum.join(added_names, ", ")}"
-    remove = if removed_names != [], do: "remove #{Enum.join(removed_names, ", ")}"
-    change = [add, remove] |> Enum.reject(&is_nil/1) |> Enum.join(" and ")
-
-    if change == "" do
-      # Don't show confirmation message if no changes were made
-      nil
-    else
-      "Are you sure you want to #{change}?"
-    end
+      <li :for={{_id, name} <- @removed} class="mb-2">
+        <.icon name="hero-minus" class="h-3.5 w-3.5 mr-2 text-red-500" />
+        {name}
+      </li>
+    </ul>
+    """
   end
 end

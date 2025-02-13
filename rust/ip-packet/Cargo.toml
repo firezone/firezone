@@ -1,24 +1,25 @@
 [package]
 name = "ip-packet"
 version = "0.1.0"
-edition = "2021"
+edition = { workspace = true }
 authors = ["Firezone, Inc."]
 publish = false
+license = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
 proptest = ["dep:proptest"]
 
 [dependencies]
-anyhow = "1.0.86"
-domain = "0.10.1"
-etherparse = "0.15"
-proptest = { version = "1", optional = true }
-thiserror = "1"
-tracing = "0.1"
+anyhow = { workspace = true }
+etherparse = { workspace = true }
+lockfree-object-pool = { workspace = true }
+proptest = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
-test-strategy = "0.3.1"
+test-strategy = { workspace = true }
 
 [lints]
 workspace = true

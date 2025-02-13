@@ -4,12 +4,22 @@
 //  LICENSE: Apache-2.0
 //
 
+// TODO: Refactor to fix file length
+// swiftlint:disable file_length
+
 import Combine
 import OSLog
 import SwiftUI
 
 enum SettingsViewError: Error {
   case logFolderIsUnavailable
+
+  var localizedDescription: String {
+    switch self {
+    case .logFolderIsUnavailable:
+      return "Log folder is unavailable."
+    }
+  }
 }
 
 @MainActor
@@ -28,7 +38,7 @@ public final class SettingsViewModel: ObservableObject {
   }
 
   func setupObservers() {
-    // Load settings from saved VPN Profile
+    // Load settings from saved VPN Configuration
     store.$settings
       .receive(on: DispatchQueue.main)
       .sink { [weak self] settings in
@@ -41,85 +51,92 @@ public final class SettingsViewModel: ObservableObject {
 
   func saveSettings() {
     Task {
-      if [.connected, .connecting, .reasserting].contains(store.status) {
-        _ = try await store.signOut()
-      }
       do {
+        if [.connected, .connecting, .reasserting].contains(store.status) {
+          try self.store.signOut()
+        }
+
         try await store.save(settings)
       } catch {
-        Log.app.error("Error saving settings to tunnel store: \(error)")
+        Log.error(error)
       }
     }
   }
 
-  func calculateLogDirSize() -> String? {
-    Log.app.log("\(#function)")
+  // Calculates the total size of our logs by summing the size of the
+  // app, tunnel, and connlib log directories.
+  //
+  // On iOS, SharedAccess.logFolderURL is a single folder that contains all
+  // three directories, but on macOS, the app log directory lives in a different
+  // Group Container than tunnel and connlib directories, so we use IPC to make
+  // a call to sum both the tunnel and connlib directories.
+  //
+  // Unfortunately the IPC method doesn't work on iOS because the tunnel process
+  // is not started on demand, so the IPC calls hang. Thus, we use separate code
+  // paths for iOS and macOS.
+  func calculateLogDirSize() async -> String {
+    Log.log("\(#function)")
 
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
-      Log.app.error("\(#function): Log folder is unavailable")
-      return nil
+      return "Unknown"
     }
 
-    let fileManager = FileManager.default
+    let logFolderSize = await Log.size(of: logFilesFolderURL)
 
-    var totalSize = 0
-    fileManager.forEachFileUnder(
-      logFilesFolderURL,
-      including: [
-        .totalFileAllocatedSizeKey,
-        .totalFileSizeKey,
-        .isRegularFileKey,
-      ]
-    ) { url, resourceValues in
-      if resourceValues.isRegularFile ?? false {
-        totalSize += (resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
+    do {
+#if os(macOS)
+      let providerLogFolderSize = try await store.vpnConfigurationManager.getLogFolderSize()
+      let totalSize = logFolderSize + providerLogFolderSize
+#else
+      let totalSize = logFolderSize
+#endif
+
+      let byteCountFormatter = ByteCountFormatter()
+      byteCountFormatter.countStyle = .file
+      byteCountFormatter.allowsNonnumericFormatting = false
+      byteCountFormatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB, .usePB]
+
+      return byteCountFormatter.string(fromByteCount: Int64(totalSize))
+
+    } catch {
+      if let error = error as? VPNConfigurationManagerError,
+         case VPNConfigurationManagerError.noIPCData = error {
+        // Will happen if the extension is not enabled
+        Log.warning("\(#function): Unable to count logs: \(error). Is the XPC service running?")
+      } else {
+        Log.error(error)
       }
-    }
 
-    if Task.isCancelled {
-      return nil
+      return "Unknown"
     }
-
-    let byteCountFormatter = ByteCountFormatter()
-    byteCountFormatter.countStyle = .file
-    byteCountFormatter.allowsNonnumericFormatting = false
-    byteCountFormatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB, .usePB]
-    return byteCountFormatter.string(fromByteCount: Int64(totalSize))
   }
 
-  func clearAllLogs() throws {
-    Log.app.log("\(#function)")
+  // On iOS, all the logs are stored in one directory.
+  // On macOS, we need to clear logs from the app process, then call over IPC
+  // to clear the provider's log directory.
+  func clearAllLogs() async throws {
+    Log.log("\(#function)")
 
-    guard let logFilesFolderURL = SharedAccess.logFolderURL else {
-      Log.app.error("\(#function): Log folder is unavailable")
-      return
-    }
+    try Log.clear(in: SharedAccess.logFolderURL)
 
-    let fileManager = FileManager.default
-    var unremovedFilesCount = 0
-    fileManager.forEachFileUnder(
-      logFilesFolderURL,
-      including: [
-        .isRegularFileKey
-      ]
-    ) { url, resourceValues in
-      if resourceValues.isRegularFile ?? false {
-        do {
-          try fileManager.removeItem(at: url)
-        } catch {
-          unremovedFilesCount += 1
-          Log.app.error("Unable to remove '\(url)': \(error)")
-        }
-      }
-    }
-
-    if unremovedFilesCount > 0 {
-      Log.app.log("\(#function): Unable to remove \(unremovedFilesCount) files")
-    }
+#if os(macOS)
+    try await store.vpnConfigurationManager.clearLogs()
+#endif
   }
 }
 
 extension FileManager {
+  enum FileManagerError: Error {
+    case invalidURL(URL, Error)
+
+    var localizedDescription: String {
+      switch self {
+      case .invalidURL(let url, let error):
+        return "Unable to get resource value for '\(url)': \(error)"
+      }
+    }
+  }
+
   func forEachFileUnder(
     _ dirURL: URL,
     including resourceKeys: Set<URLResourceKey>,
@@ -144,12 +161,14 @@ extension FileManager {
         let resourceValues = try url.resourceValues(forKeys: resourceKeys)
         handler(url, resourceValues)
       } catch {
-        Log.app.error("Unable to get resource value for '\(url)': \(error)")
+        Log.error(FileManagerError.invalidURL(url, error))
       }
     }
   }
 }
 
+// TODO: Refactor body length
+// swiftlint:disable:next type_body_length
 public struct SettingsView: View {
   @ObservedObject var favorites: Favorites
   @ObservedObject var model: SettingsViewModel
@@ -193,11 +212,12 @@ public struct SettingsView: View {
   }
 
   struct FootnoteText {
-    static let forAdvanced = try! AttributedString(
+    static let forAdvanced = try? AttributedString(
       markdown: """
         **WARNING:** These settings are intended for internal debug purposes **only**. \
         Changing these will disrupt access to your Firezone resources.
-        """)
+        """
+    )
   }
 
   public init(favorites: Favorites, model: SettingsViewModel) {
@@ -332,7 +352,7 @@ public struct SettingsView: View {
               prompt: Text(PlaceholderText.logFilter)
             )
 
-            Text(FootnoteText.forAdvanced)
+            Text(FootnoteText.forAdvanced ?? "")
               .foregroundStyle(.secondary)
 
             HStack(spacing: 30) {
@@ -366,7 +386,7 @@ public struct SettingsView: View {
         }
         Spacer()
         HStack {
-          Text("Build: \(AppInfoPlistConstants.gitSha)")
+          Text("Build: \(BundleHelper.gitSha)")
             .textSelection(.enabled)
             .foregroundColor(.gray)
           Spacer()
@@ -435,12 +455,12 @@ public struct SettingsView: View {
               }
             },
             header: { Text("Advanced Settings") },
-            footer: { Text(FootnoteText.forAdvanced) }
+            footer: { Text(FootnoteText.forAdvanced ?? "") }
           )
         }
         Spacer()
         HStack {
-          Text("Build: \(AppInfoPlistConstants.gitSha)")
+          Text("Build: \(BundleHelper.gitSha)")
             .textSelection(.enabled)
             .foregroundColor(.gray)
           Spacer()
@@ -486,10 +506,14 @@ public struct SettingsView: View {
                 isProcessing: $isExportingLogs,
                 action: {
                   self.isExportingLogs = true
-                  Task {
-                    let compressor = LogCompressor()
-                    self.logTempZipFileURL = try await compressor.compressFolderReturningURL()
-                    self.isPresentingExportLogShareSheet = true
+                  Task.detached(priority: .background) { [weak model] in // self can't be weakly captured in views
+                    guard let model else { return }
+                    let archiveURL = LogExporter.tempFile()
+                    try await LogExporter.export(to: archiveURL)
+                    await MainActor.run {
+                      self.logTempZipFileURL = archiveURL
+                      self.isPresentingExportLogShareSheet = true
+                    }
                   }
                 }
               )
@@ -569,13 +593,14 @@ public struct SettingsView: View {
 
   #if os(macOS)
     func exportLogsWithSavePanelOnMac() {
-      let compressor = LogCompressor()
       self.isExportingLogs = true
 
       let savePanel = NSSavePanel()
       savePanel.prompt = "Save"
-      savePanel.nameFieldLabel = "Save log zip bundle to:"
-      savePanel.nameFieldStringValue = compressor.fileName
+      savePanel.nameFieldLabel = "Save log archive to:"
+      let fileName = "firezone_logs_\(LogExporter.now()).aar"
+
+      savePanel.nameFieldStringValue = fileName
 
       guard
         let window = NSApp.windows.first(where: {
@@ -583,7 +608,7 @@ public struct SettingsView: View {
         })
       else {
         self.isExportingLogs = false
-        Log.app.log("Settings window not found. Can't show save panel.")
+        Log.log("Settings window not found. Can't show save panel.")
         return
       }
 
@@ -599,17 +624,24 @@ public struct SettingsView: View {
 
         Task {
           do {
-            try await compressor.compressFolder(destinationURL: destinationURL)
-            self.isExportingLogs = false
-            await MainActor.run {
-              window.contentViewController?.presentingViewController?.dismiss(self)
-            }
+            try await LogExporter.export(
+              to: destinationURL,
+              with: model.store.vpnConfigurationManager
+            )
+
+            window.contentViewController?.presentingViewController?.dismiss(self)
           } catch {
-            self.isExportingLogs = false
-            await MainActor.run {
-              // Show alert
+            if let error = error as? VPNConfigurationManagerError,
+               case VPNConfigurationManagerError.noIPCData = error {
+              Log.warning("\(#function): Error exporting logs: \(error). Is the XPC service running?")
+            } else {
+              Log.error(error)
             }
+
+            await macOSAlert.show(for: error)
           }
+
+          self.isExportingLogs = false
         }
       }
     }
@@ -620,10 +652,13 @@ public struct SettingsView: View {
       return
     }
     self.isCalculatingLogsSize = true
-    self.calculateLogSizeTask = Task.detached(priority: .userInitiated) {
+    self.calculateLogSizeTask =
+    Task.detached(priority: .background) { [weak model] in // self can't be weakly captured in views
+      guard let model else { return }
+
       let calculatedLogsSize = await model.calculateLogDirSize()
       await MainActor.run {
-        self.calculatedLogsSize = calculatedLogsSize ?? "Unknown"
+        self.calculatedLogsSize = calculatedLogsSize
         self.isCalculatingLogsSize = false
         self.calculateLogSizeTask = nil
       }
@@ -637,8 +672,10 @@ public struct SettingsView: View {
   func clearLogFiles() {
     self.isClearingLogs = true
     self.cancelRefreshLogSize()
-    Task.detached(priority: .userInitiated) {
-      try? await model.clearAllLogs()
+    Task.detached(priority: .background) { [weak model] in // self can't be weakly captured in views
+      guard let model else { return }
+
+      do { try await model.clearAllLogs() } catch { Log.error(error) }
       await MainActor.run {
         self.isClearingLogs = false
         if !self.isCalculatingLogsSize {

@@ -1,10 +1,4 @@
-use connlib_shared::messages::{
-    client::{
-        ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
-        ResourceDescriptionInternet, Site, SiteId,
-    },
-    ClientId, GatewayId, RelayId, ResourceId,
-};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
     arbitrary::{any, any_with},
@@ -16,25 +10,23 @@ use std::{
     ops::Range,
 };
 
+use crate::client::{CidrResource, DnsResource, InternetResource, Resource};
+
 pub fn resource(
     sites: impl Strategy<Value = Vec<Site>> + Clone + 'static,
-) -> impl Strategy<Value = ResourceDescription> {
+) -> impl Strategy<Value = Resource> {
     any::<bool>().prop_flat_map(move |is_dns| {
         if is_dns {
-            dns_resource(sites.clone())
-                .prop_map(ResourceDescription::Dns)
-                .boxed()
+            dns_resource(sites.clone()).prop_map(Resource::Dns).boxed()
         } else {
             cidr_resource(any_ip_network(8), sites.clone())
-                .prop_map(ResourceDescription::Cidr)
+                .prop_map(Resource::Cidr)
                 .boxed()
         }
     })
 }
 
-pub fn dns_resource(
-    sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = ResourceDescriptionDns> {
+pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Value = DnsResource> {
     (
         resource_id(),
         resource_name(),
@@ -42,21 +34,21 @@ pub fn dns_resource(
         address_description(),
         sites,
     )
-        .prop_map(move |(id, name, address, address_description, sites)| {
-            ResourceDescriptionDns {
+        .prop_map(
+            move |(id, name, address, address_description, sites)| DnsResource {
                 id,
                 address,
                 name,
                 sites,
                 address_description,
-            }
-        })
+            },
+        )
 }
 
 pub fn cidr_resource(
     ip_network: impl Strategy<Value = IpNetwork>,
     sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = ResourceDescriptionCidr> {
+) -> impl Strategy<Value = CidrResource> {
     (
         resource_id(),
         resource_name(),
@@ -64,21 +56,21 @@ pub fn cidr_resource(
         address_description(),
         sites,
     )
-        .prop_map(move |(id, name, address, address_description, sites)| {
-            ResourceDescriptionCidr {
+        .prop_map(
+            move |(id, name, address, address_description, sites)| CidrResource {
                 id,
                 address,
                 name,
                 sites,
                 address_description,
-            }
-        })
+            },
+        )
 }
 
 pub fn internet_resource(
     sites: impl Strategy<Value = Vec<Site>>,
-) -> impl Strategy<Value = ResourceDescriptionInternet> {
-    (resource_id(), sites).prop_map(move |(id, sites)| ResourceDescriptionInternet {
+) -> impl Strategy<Value = InternetResource> {
+    (resource_id(), sites).prop_map(move |(id, sites)| InternetResource {
         name: "Internet Resource".to_string(),
         id,
         sites,
@@ -87,7 +79,9 @@ pub fn internet_resource(
 
 pub fn address_description() -> impl Strategy<Value = Option<String>> {
     prop_oneof![
-        any_with::<String>("[a-z]{4,10}".into()).prop_map(Some),
+        any_with::<String>("[a-z]{4,10}".into())
+            .prop_map(Some)
+            .no_shrink(),
         Just(None),
     ]
 }
@@ -97,31 +91,31 @@ pub fn site() -> impl Strategy<Value = Site> + Clone {
 }
 
 pub fn resource_id() -> impl Strategy<Value = ResourceId> + Clone {
-    any::<u128>().prop_map(ResourceId::from_u128)
+    any::<u128>().prop_map(ResourceId::from_u128).no_shrink()
 }
 
 pub fn gateway_id() -> impl Strategy<Value = GatewayId> + Clone {
-    any::<u128>().prop_map(GatewayId::from_u128)
+    any::<u128>().prop_map(GatewayId::from_u128).no_shrink()
 }
 
 pub fn client_id() -> impl Strategy<Value = ClientId> {
-    any::<u128>().prop_map(ClientId::from_u128)
+    any::<u128>().prop_map(ClientId::from_u128).no_shrink()
 }
 
 pub fn relay_id() -> impl Strategy<Value = RelayId> {
-    any::<u128>().prop_map(RelayId::from_u128)
+    any::<u128>().prop_map(RelayId::from_u128).no_shrink()
 }
 
 pub fn site_id() -> impl Strategy<Value = SiteId> + Clone {
-    any::<u128>().prop_map(SiteId::from_u128)
+    any::<u128>().prop_map(SiteId::from_u128).no_shrink()
 }
 
 pub fn site_name() -> impl Strategy<Value = String> + Clone {
-    any_with::<String>("[a-z]{4,10}".into())
+    any_with::<String>("[a-z]{4,10}".into()).no_shrink()
 }
 
 pub fn resource_name() -> impl Strategy<Value = String> {
-    any_with::<String>("[a-z]{4,10}".into())
+    any_with::<String>("[a-z]{4,10}".into()).no_shrink()
 }
 
 pub fn domain_label() -> impl Strategy<Value = String> {

@@ -37,7 +37,7 @@ config :domain, Domain.Gateways,
   gateway_ipv4_masquerade: true,
   gateway_ipv6_masquerade: true
 
-config :domain, Domain.Telemetry, metrics_reporter: nil
+config :domain, Domain.Telemetry, metrics_reporter: nil, healthz_port: 4000
 
 config :domain, Domain.Analytics,
   mixpanel_token: nil,
@@ -74,6 +74,17 @@ config :domain, Domain.GoogleCloudPlatform,
     "https://monitoring.googleapis.com/v3/projects/${project_id}/timeSeries",
   sign_endpoint_url: "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/",
   cloud_storage_url: "https://storage.googleapis.com"
+
+config :domain, Domain.ComponentVersions,
+  firezone_releases_url: "https://www.firezone.dev/api/releases",
+  fetch_from_url: true,
+  versions: [
+    apple: "1.3.8",
+    android: "1.3.6",
+    gateway: "1.4.0",
+    gui: "1.3.11",
+    headless: "1.3.5"
+  ]
 
 config :domain, Domain.Cluster,
   adapter: nil,
@@ -157,6 +168,17 @@ config :web, api_url_override: "ws://localhost:13001/"
 ##### API #####################
 ###############################
 
+config :api, :logger, [
+  {:handler, :api, Sentry.LoggerHandler,
+   %{
+     config: %{
+       level: :warning,
+       metadata: :all,
+       capture_log_messages: true
+     }
+   }}
+]
+
 config :api, ecto_repos: [Domain.Repo]
 config :api, generators: [binary_id: true, context_app: :domain]
 
@@ -223,7 +245,7 @@ config :domain, Domain.Mailer,
 # Failed to load resource: the server responded with a status of 404 ()
 # source-sans-pro-all-400-normal.woff:1     Failed to load resource: the server responded with a status of 404 ()
 config :esbuild,
-  version: "0.17.19",
+  version: "0.24.2",
   web: [
     args: [
       "js/app.js",

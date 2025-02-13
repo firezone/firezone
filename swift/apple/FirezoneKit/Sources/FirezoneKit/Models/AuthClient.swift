@@ -9,10 +9,29 @@ import Foundation
 
 enum AuthClientError: Error {
   case invalidCallbackURL
-  case invalidStateReturnedInCallback(expected: String, got: String)
-  case authResponseError(Error)
-  case sessionFailure(Error)
   case randomNumberGenerationFailure(errorStatus: Int32)
+  case invalidAuthURL
+
+  var description: String {
+    switch self {
+    case .invalidCallbackURL:
+      return """
+      Invalid callback URL. Please try signing in again.
+      If this issue persists, contact your administrator.
+      """
+    case .randomNumberGenerationFailure(let errorStatus):
+      return """
+      Could not generate secure sign in params. Please try signing in again.
+      If this issue persists, contact your administrator.
+
+      Code: \(errorStatus)
+      """
+    case .invalidAuthURL:
+      return """
+      The provided Auth URL seems invalid. Please double-check your settings.
+      """
+    }
+  }
 }
 
 struct AuthClient {
@@ -36,25 +55,23 @@ struct AuthClient {
 
   func response(url: URL?) throws -> AuthResponse {
     guard let url = url,
-          let returnedState = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "state" })?.value,
+          let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
+          let returnedState = urlComponents.sanitizedQueryParam("state"),
           areStringsEqualConstantTime(state, returnedState),
-          let fragment = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-          .queryItems?
-          .first(where: { $0.name == "fragment" })?
-          .value,
-          let actorName = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-          .queryItems?
-          .first(where: { $0.name == "actor_name" })?
-          .value?
-          .removingPercentEncoding?
-          .replacingOccurrences(of: "+", with: " ")
+          let fragment = urlComponents.sanitizedQueryParam("fragment"),
+          let actorName = urlComponents.sanitizedQueryParam("actor_name"),
+          let accountSlug = urlComponents.sanitizedQueryParam("account_slug")
     else {
       throw AuthClientError.invalidCallbackURL
     }
 
     let token = nonce + fragment
 
-    return AuthResponse(token: token, actorName: actorName)
+    return AuthResponse(
+      actorName: actorName,
+      accountSlug: accountSlug,
+      token: token
+    )
   }
 
   private static func createRandomHexString(byteCount: Int) throws -> String {
@@ -68,7 +85,6 @@ struct AuthClient {
     return bytes.map { String(format: "%02hhx", $0) }.joined()
   }
 
-  // TODO: Use a cryptography lib that the compiler can't optimize out
   private func areStringsEqualConstantTime(_ string1: String, _ string2: String) -> Bool {
     let charArray1 = string1.utf8CString
     let charArray2 = string2.utf8CString
@@ -99,5 +115,13 @@ extension URL {
 
     components.queryItems!.append(queryItem)
     return components.url ?? self
+  }
+}
+
+extension URLComponents {
+  func sanitizedQueryParam(_ queryParam: String) -> String? {
+    let value = self.queryItems?.first(where: { $0.name == queryParam })?.value
+
+    return value?.removingPercentEncoding?.replacingOccurrences(of: "+", with: " ")
   }
 }

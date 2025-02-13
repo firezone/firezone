@@ -1,10 +1,7 @@
-use arc_swap::ArcSwapOption;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
-pub use sentry::{
-    add_breadcrumb, capture_error, end_session, end_session_with_status, start_transaction,
-    types::protocol::v7::SessionStatus, Breadcrumb, TransactionContext,
-};
+use env::ON_PREM;
+use sentry::protocol::SessionStatus;
 
 pub struct Dsn(&'static str);
 
@@ -13,167 +10,175 @@ pub struct Dsn(&'static str);
 // > DSNs are safe to keep public because they only allow submission of new events and related event data; they do not allow read access to any information.
 // <https://docs.sentry.io/concepts/key-terms/dsn-explainer/#dsn-utilization>
 
+pub const ANDROID_DSN: Dsn = Dsn("https://928a6ee1f6af9734100b8bc89b2dc87d@o4507971108339712.ingest.us.sentry.io/4508175126233088");
+pub const APPLE_DSN: Dsn = Dsn("https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488");
+pub const GATEWAY_DSN: Dsn = Dsn("https://f763102cc3937199ec483fbdae63dfdc@o4507971108339712.ingest.us.sentry.io/4508162914451456");
 pub const GUI_DSN: Dsn = Dsn("https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312");
 pub const HEADLESS_DSN: Dsn = Dsn("https://bc27dca8bb37be0142c48c4f89647c13@o4507971108339712.ingest.us.sentry.io/4508010028728320");
-pub const IPC_SERVICE_DSN: Dsn = Dsn("https://0590b89fd4479494a1e7ffa4dc705001@o4507971108339712.ingest.us.sentry.io/4508008896069632");
+pub const RELAY_DSN: Dsn = Dsn("https://9d5f664d8f8f7f1716d4b63a58bcafd5@o4507971108339712.ingest.us.sentry.io/4508373298970624");
+pub const TESTING: Dsn = Dsn("https://55ef451fca9054179a11f5d132c02f45@o4507971108339712.ingest.us.sentry.io/4508792604852224");
+
+mod env {
+    use std::borrow::Cow;
+
+    pub const PRODUCTION: Cow<'static, str> = Cow::Borrowed("production");
+    pub const STAGING: Cow<'static, str> = Cow::Borrowed("staging");
+    pub const ON_PREM: Cow<'static, str> = Cow::Borrowed("on-prem");
+}
 
 #[derive(Default)]
 pub struct Telemetry {
-    /// The sentry guard itself
-    ///
-    /// `arc_swap` is used here because the borrowing for the GUI process is
-    /// complex. If the user has already consented to using telemetry, we want
-    /// to start Sentry as soon as possible inside `main`, and keep the guard
-    /// alive there. But sentry's `Drop` hook will never get called during
-    /// normal GUI operation because Tauri internally calls `std::process::exit`
-    /// to bail out of its Tao event loop. So we want the GUI controller to
-    /// be able to gracefully close down Sentry, even though it won't have
-    /// a mutable handle to it, and even though `main` is actually what holds
-    /// the handle. Wrapping it all in `ArcSwap` makes it simpler.
-    inner: ArcSwapOption<sentry::ClientInitGuard>,
+    inner: Option<sentry::ClientInitGuard>,
 }
 
-impl Clone for Telemetry {
-    fn clone(&self) -> Self {
-        Self {
-            inner: ArcSwapOption::new(self.inner.load().clone()),
+impl Drop for Telemetry {
+    fn drop(&mut self) {
+        if self.inner.is_none() {
+            return;
         }
+
+        // Conclude telemetry session as "abnormal" if we get dropped without closing it properly first.
+        sentry::end_session_with_status(SessionStatus::Abnormal);
     }
 }
 
 impl Telemetry {
-    pub fn start(&self, api_url: &str, release: &'static str, dsn: Dsn) {
-        // Since it's `arc_swap` and not `Option`, there is a TOCTOU here,
-        // but in practice it should never trigger
-        if self.inner.load().is_some() {
-            return;
-        }
-
+    pub fn start(&mut self, api_url: &str, release: &str, dsn: Dsn) {
         // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
         // <https://docs.sentry.io/platforms/rust/configuration/environments/>
         let environment = match api_url {
-            "wss://api.firezone.dev/" => "production",
-            "wss://api.firez.one/" => "staging",
-            _ => "self-hosted",
+            "wss://api.firezone.dev" | "wss://api.firezone.dev/" => env::PRODUCTION,
+            "wss://api.firez.one" | "wss://api.firez.one/" => env::STAGING,
+            _ => env::ON_PREM,
         };
 
-        tracing::info!("Starting telemetry");
+        if self
+            .inner
+            .as_ref()
+            .and_then(|i| i.options().environment.as_ref())
+            .is_some_and(|env| env == &environment)
+        {
+            tracing::debug!(%environment, "Telemetry already initialised");
+
+            return;
+        }
+
+        // Stop any previous telemetry session.
+        if let Some(inner) = self.inner.take() {
+            tracing::debug!("Stopping previous telemetry session");
+
+            sentry::end_session();
+            drop(inner);
+
+            set_current_user(None);
+        }
+
+        if environment == ON_PREM {
+            tracing::debug!(%api_url, "Telemetry won't start in unofficial environment");
+            return;
+        }
+
+        tracing::info!(%environment, "Starting telemetry");
+
         let inner = sentry::init((
             dsn.0,
             sentry::ClientOptions {
-                environment: Some(environment.into()),
+                environment: Some(environment),
                 // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
-                release: Some(release.into()),
-                traces_sample_rate: 1.0,
+                release: Some(release.to_owned().into()),
+                traces_sampler: Some(Arc::new(|tx| {
+                    // Only submit `telemetry` spans to Sentry.
+                    // Those get sampled at creation time (to save CPU power) so we want to submit all of them.
+                    if tx.name() == "telemetry" {
+                        1.0
+                    } else {
+                        0.0
+                    }
+                })),
+                max_breadcrumbs: 500,
                 ..Default::default()
             },
         ));
-        sentry::configure_scope(|scope| scope.set_tag("api_url", api_url));
-        self.inner.swap(Some(inner.into()));
+        // Configure scope on the main hub so that all threads will get the tags
+        sentry::Hub::main().configure_scope(|scope| {
+            scope.set_tag("api_url", api_url);
+            let ctx = sentry::integrations::contexts::utils::device_context();
+            scope.set_context("device", ctx);
+            let ctx = sentry::integrations::contexts::utils::rust_context();
+            scope.set_context("rust", ctx);
+
+            if let Some(ctx) = sentry::integrations::contexts::utils::os_context() {
+                scope.set_context("os", ctx);
+            }
+        });
+        self.inner.replace(inner);
         sentry::start_session();
     }
 
     /// Flushes events to sentry.io and drops the guard
-    pub fn stop(&self) {
-        let Some(inner) = self.inner.swap(None) else {
+    pub async fn stop(&mut self) {
+        self.end_session(SessionStatus::Exited).await;
+    }
+
+    pub async fn stop_on_crash(&mut self) {
+        self.end_session(SessionStatus::Crashed).await;
+    }
+
+    async fn end_session(&mut self, status: SessionStatus) {
+        let Some(inner) = self.inner.take() else {
             return;
         };
         tracing::info!("Stopping telemetry");
-        sentry::end_session();
-        // `flush`'s return value is flipped from the docs
-        // <https://github.com/getsentry/sentry-rust/issues/677>
-        if inner.flush(Some(Duration::from_secs(5))) {
-            tracing::error!("Failed to flush telemetry events to sentry.io");
-        } else {
+        sentry::end_session_with_status(status);
+
+        // Sentry uses blocking IO for flushing ..
+        let _ = tokio::task::spawn_blocking(move || {
+            if !inner.flush(Some(Duration::from_secs(5))) {
+                tracing::error!("Failed to flush telemetry events to sentry.io");
+                return;
+            };
+
             tracing::debug!("Flushed telemetry");
-        }
+        })
+        .await;
     }
+
+    pub fn set_account_slug(&mut self, slug: String) {
+        self.update_user(|user| {
+            user.other.insert("account_slug".to_owned(), slug.into());
+        });
+    }
+
+    pub fn set_firezone_id(&mut self, id: String) {
+        self.update_user(|user| {
+            user.id = Some(id);
+        });
+    }
+
+    fn update_user(&mut self, update: impl FnOnce(&mut sentry::User)) {
+        sentry::Hub::main().configure_scope(|scope| {
+            let mut user = scope.user().cloned().unwrap_or_default();
+            update(&mut user);
+
+            scope.set_user(Some(user));
+        });
+    }
+}
+
+fn set_current_user(user: Option<sentry::User>) {
+    sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const ENV: &str = "unit test";
-
-    // To avoid problems with global mutable state, we run unrelated tests in the same test case.
     #[test]
-    fn sentry() {
-        // Test this flush problem
-        {
-            let telemetry = sentry::init((
-                HEADLESS_DSN.0,
-                sentry::ClientOptions {
-                    release: sentry::release_name!(),
-                    traces_sample_rate: 1.0,
-                    ..Default::default()
-                },
-            ));
-            sentry::start_session();
-            sentry::end_session();
-            // `flush`'s return value is flipped from the docs
-            // <https://github.com/getsentry/sentry-rust/issues/677>
-            assert!(!telemetry.flush(Some(Duration::from_secs(5))));
-        }
+    fn starting_session_for_unsupported_env_disables_current_one() {
+        let mut telemetry = Telemetry::default();
+        telemetry.start("wss://api.firez.one", "1.0.0", TESTING);
+        telemetry.start("wss://example.com", "1.0.0", TESTING);
 
-        // Smoke-test Sentry itself by turning it on and off a couple times
-        {
-            let tele = Telemetry::default();
-
-            // Expect no telemetry because the telemetry module needs to be enabled before it can do anything
-            negative_error("X7X4CKH3");
-
-            tele.start("test", ENV, HEADLESS_DSN);
-            // Expect telemetry because the user opted in.
-            sentry::add_breadcrumb(sentry::Breadcrumb {
-                ty: "test_crumb".into(),
-                message: Some("This breadcrumb may appear before error #QELADAGH".into()),
-                ..Default::default()
-            });
-            error("QELADAGH");
-            tele.stop();
-
-            // Expect no telemetry because the user opted back out.
-            negative_error("2RSIYAPX");
-
-            tele.start("test", ENV, HEADLESS_DSN);
-            // Cycle one more time to be sure.
-            error("S672IOBZ");
-            tele.stop();
-
-            // Expect no telemetry after the module is closed.
-            negative_error("W57GJKUO");
-        }
-
-        // Test starting up with the choice opted-in
-        {
-            {
-                let tele = Telemetry::default();
-                negative_error("4H7HFTNX");
-                tele.start("test", ENV, HEADLESS_DSN);
-            }
-            {
-                negative_error("GF46D6IL");
-                let tele = Telemetry::default();
-                tele.start("test", ENV, HEADLESS_DSN);
-                error("OKOEUKSW");
-            }
-        }
-    }
-
-    #[derive(Debug, thiserror::Error)]
-    enum Error {
-        #[error("Test error #{0}, this should appear in the sentry.io portal")]
-        Positive(&'static str),
-        #[error("Negative #{0} - You should NEVER see this")]
-        Negative(&'static str),
-    }
-
-    fn error(code: &'static str) {
-        sentry::capture_error(&Error::Positive(code));
-    }
-
-    fn negative_error(code: &'static str) {
-        sentry::capture_error(&Error::Negative(code));
+        assert!(telemetry.inner.is_none());
     }
 }

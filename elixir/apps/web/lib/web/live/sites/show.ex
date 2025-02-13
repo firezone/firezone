@@ -6,7 +6,10 @@ defmodule Web.Sites.Show do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
            Gateways.fetch_group_by_id(id, socket.assigns.subject,
-             preload: [created_by_identity: [:actor]]
+             preload: [
+               created_by_identity: [:actor],
+               created_by_actor: []
+             ]
            ) do
       if connected?(socket) do
         :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
@@ -175,13 +178,13 @@ defmodule Web.Sites.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        Site: <code><%= @group.name %></code>
+        Site: <code>{@group.name}</code>
         <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
 
@@ -192,14 +195,15 @@ defmodule Web.Sites.Show do
       </:action>
 
       <:help :if={@group.managed_by == :system and @group.name == "Internet"}>
-        The Internet Site is a specialized Site used to host gateways that tunnel traffic that doesn't match any specific Resource.
+        The Internet Site is a dedicated Site for Internet traffic that does not match any specific Resource.
+        Deploy Gateways here to secure access to the public Internet for your workforce.
       </:help>
 
       <:content>
         <.vertical_table id="group">
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @group.name %></:value>
+            <:value>{@group.name}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
@@ -218,6 +222,9 @@ defmodule Web.Sites.Show do
           see all <.icon name="hero-arrow-right" class="w-2 h-2" />
         </.link>
       </:title>
+      <:action>
+        <.docs_action path="/deploy/gateways" />
+      </:action>
       <:action :if={is_nil(@group.deleted_at)}>
         <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
           Deploy Gateway
@@ -230,7 +237,7 @@ defmodule Web.Sites.Show do
           icon="hero-trash-solid"
           on_confirm="revoke_all_tokens"
         >
-          <:dialog_title>Revoke all tokens</:dialog_title>
+          <:dialog_title>Confirm revocation of all tokens</:dialog_title>
           <:dialog_content>
             Are you sure you want to revoke all tokens for this Site?
             This will <strong>immediately</strong> disconnect all associated Gateways.
@@ -253,6 +260,15 @@ defmodule Web.Sites.Show do
         its resources.
       </:help>
       <:content flash={@flash}>
+        <.flash :if={@gateways_metadata.count == 1} kind={:info} style="wide" class="mb-2">
+          Deploy at least one more gateway to ensure
+          <span class="inline-flex">
+            <.website_link path="/kb/deploy/gateways" fragment="deploy-multiple-gateways">
+              high availability
+            </.website_link>.
+          </span>
+        </.flash>
+
         <div class="relative overflow-x-auto">
           <.live_table
             id="gateways"
@@ -264,13 +280,17 @@ defmodule Web.Sites.Show do
           >
             <:col :let={gateway} label="instance">
               <.link navigate={~p"/#{@account}/gateways/#{gateway.id}"} class={[link_style()]}>
-                <%= gateway.name %>
+                {gateway.name}
               </.link>
             </:col>
             <:col :let={gateway} label="remote ip">
               <code>
-                <%= gateway.last_seen_remote_ip %>
+                {gateway.last_seen_remote_ip}
               </code>
+            </:col>
+            <:col :let={gateway} label="version">
+              <.version_status outdated={Gateways.gateway_outdated?(gateway)} />
+              {gateway.last_seen_version}
             </:col>
             <:col :let={gateway} label="status">
               <.connection_status schema={gateway} />
@@ -284,7 +304,7 @@ defmodule Web.Sites.Show do
                       class={[link_style()]}
                       navigate={~p"/#{@account}/sites/#{@group}/new_token"}
                     >
-                      Deploy a gateway to the Internet site.
+                      Deploy a Gateway to the Internet Site.
                     </.link>
                   </span>
                   <span :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
@@ -330,20 +350,25 @@ defmodule Web.Sites.Show do
                 navigate={~p"/#{@account}/resources/#{resource}?site_id=#{@group}"}
                 class={[link_style()]}
               >
-                <%= resource.name %>
+                {resource.name}
               </.link>
             </:col>
             <:col :let={resource} label="address" field={{:resources, :address}}>
               <code class="block text-xs">
-                <%= resource.address %>
+                {resource.address}
               </code>
             </:col>
             <:col :let={resource} label="Authorized groups">
               <.peek peek={Map.fetch!(@resource_actor_groups_peek, resource.id)}>
                 <:empty>
-                  None -
+                  <div class="mr-1">
+                    <.icon
+                      name="hero-exclamation-triangle-solid"
+                      class="inline-block w-3.5 h-3.5 text-red-500"
+                    /> None.
+                  </div>
                   <.link
-                    class={["px-1", link_style()]}
+                    class={[link_style(), "mr-1"]}
                     navigate={~p"/#{@account}/policies/new?resource_id=#{resource}&site_id=#{@group}"}
                   >
                     Create a Policy
@@ -357,7 +382,7 @@ defmodule Web.Sites.Show do
 
                 <:tail :let={count}>
                   <span class="inline-block whitespace-nowrap">
-                    and <%= count %> more.
+                    and {count} more.
                   </span>
                 </:tail>
               </.peek>
@@ -397,7 +422,7 @@ defmodule Web.Sites.Show do
         >
           <:col :let={policy} label="id">
             <.link class={link_style()} navigate={~p"/#{@account}/policies/#{policy}"}>
-              <%= policy.id %>
+              {policy.id}
             </.link>
           </:col>
           <:col :let={policy} label="group">
@@ -436,9 +461,9 @@ defmodule Web.Sites.Show do
     </.section>
 
     <.section :if={@group.managed_by == :system and @group.name == "Internet"}>
-      <:title>Authorized Sessions</:title>
+      <:title>Recent Connections</:title>
       <:help>
-        Authorized sessions opened by Actors to access the Internet.
+        Recent connections opened by Actors to the Internet.
       </:help>
       <:content>
         <.live_table
@@ -453,9 +478,6 @@ defmodule Web.Sites.Show do
           <:col :let={flow} label="authorized">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
-          <:col :let={flow} label="expires">
-            <.relative_datetime datetime={flow.expires_at} />
-          </:col>
           <:col :let={flow} label="policy">
             <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
               <.policy_name policy={flow.policy} />
@@ -463,20 +485,20 @@ defmodule Web.Sites.Show do
           </:col>
           <:col :let={flow} label="client, actor" class="w-3/12">
             <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={[link_style()]}>
-              <%= flow.client.name %>
+              {flow.client.name}
             </.link>
             owned by
             <.link navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"} class={[link_style()]}>
-              <%= flow.client.actor.name %>
+              {flow.client.actor.name}
             </.link>
-            <%= flow.client_remote_ip %>
+            {flow.client_remote_ip}
           </:col>
           <:col :let={flow} label="gateway" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
-              <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
+              {flow.gateway.group.name}-{flow.gateway.name}
             </.link>
             <br />
-            <code class="text-xs"><%= flow.gateway_remote_ip %></code>
+            <code class="text-xs">{flow.gateway_remote_ip}</code>
           </:col>
           <:col :let={flow} :if={Accounts.flow_activities_enabled?(@account)} label="activity">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
@@ -498,7 +520,7 @@ defmodule Web.Sites.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete Site</:dialog_title>
+          <:dialog_title>Confirm deletion of Site</:dialog_title>
           <:dialog_content>
             Are you sure you want to delete this Site? This will <strong>immediately</strong>
             disconnect all associated Gateways.
@@ -539,5 +561,24 @@ defmodule Web.Sites.Show do
   def handle_event("delete", _params, socket) do
     {:ok, _group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites")}
+  end
+
+  attr :outdated, :boolean
+
+  defp version_status(assigns) do
+    ~H"""
+    <.icon
+      :if={!@outdated}
+      name="hero-check-circle"
+      class="w-4 h-4 text-green-500"
+      title="Up to date"
+    />
+    <.icon
+      :if={@outdated}
+      name="hero-arrow-up-circle"
+      class="w-4 h-4 text-primary-500"
+      title="New version available"
+    />
+    """
   end
 end

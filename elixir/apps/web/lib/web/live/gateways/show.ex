@@ -27,18 +27,18 @@ defmodule Web.Gateways.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}"}>
-        <%= @gateway.group.name %>
+        {@gateway.group.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@gateway.group}/gateways"}>
         Gateways
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/gateways/#{@gateway}"}>
-        <%= @gateway.name %>
+        {@gateway.name}
       </.breadcrumb>
     </.breadcrumbs>
     <.section>
       <:title>
-        Gateway: <code><%= @gateway.name %></code>
+        Gateway: <code>{@gateway.name}</code>
         <span :if={not is_nil(@gateway.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:content>
@@ -50,13 +50,13 @@ defmodule Web.Gateways.Show do
                 navigate={~p"/#{@account}/sites/#{@gateway.group}"}
                 class={["font-medium", link_style()]}
               >
-                <%= @gateway.group.name %>
+                {@gateway.group.name}
               </.link>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @gateway.name %></:value>
+            <:value>{@gateway.name}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Status</:label>
@@ -87,13 +87,13 @@ defmodule Web.Gateways.Show do
           <.vertical_table_row>
             <:label>Version</:label>
             <:value>
-              <%= @gateway.last_seen_version %>
+              {@gateway.last_seen_version}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>User agent</:label>
             <:value>
-              <%= @gateway.last_seen_user_agent %>
+              {@gateway.last_seen_user_agent}
             </:value>
           </.vertical_table_row>
           <!--
@@ -114,22 +114,17 @@ defmodule Web.Gateways.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete Gateway</:dialog_title>
+          <:dialog_title>Confirm deletion of Gateway</:dialog_title>
           <:dialog_content>
-            <p>
-              Are you sure you want to delete this Gateway?
-            </p>
-            <p class="mt-4 text-sm">
-              Deleting the gateway does not remove it's access token so it can be re-created again,
-              revoke the token on the
-              <.link
-                navigate={~p"/#{@account}/sites/#{@gateway.group}"}
-                class={["font-medium", link_style()]}
-              >
-                site
-              </.link>
-              page if you want to prevent the gateway from connecting to the portal.
-            </p>
+            Deleting the gateway does not remove it's access token so it can be re-created again,
+            revoke the token on the
+            <.link
+              navigate={~p"/#{@account}/sites/#{@gateway.group}"}
+              class={["font-medium", link_style()]}
+            >
+              site
+            </.link>
+            page if you want to prevent the gateway from connecting to the portal.
           </:dialog_content>
           <:dialog_confirm_button>
             Delete Gateway
@@ -175,9 +170,9 @@ defmodule Web.Gateways.Show do
     {:ok, _gateway} = Gateways.delete_gateway(socket.assigns.gateway, socket.assigns.subject)
 
     socket =
-      push_navigate(socket,
-        to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway.group}"
-      )
+      socket
+      |> put_flash(:info, "Gateway was deleted.")
+      |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{socket.assigns.gateway.group}")
 
     {:noreply, socket}
   end

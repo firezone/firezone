@@ -1,11 +1,12 @@
 [package]
 name = "gui-smoke-test"
 version = "0.1.0"
-edition = "2021"
+edition = { workspace = true }
+license = { workspace = true }
 
 [dependencies]
-anyhow = { version = "1.0" }
-clap = { version = "4.5", features = ["derive"] }
-subprocess = "0.2.9"
+anyhow = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
+subprocess = { workspace = true }
 tracing = { workspace = true }
-tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }

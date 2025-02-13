@@ -40,21 +40,28 @@ defmodule Web.Groups.Index do
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/groups"}><%= @page_title %></.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/groups"}>{@page_title}</.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
         Groups
       </:title>
+
+      <:action>
+        <.docs_action path="/deploy/groups" />
+      </:action>
+
       <:action>
         <.add_button navigate={~p"/#{@account}/groups/new"}>
           Add Group
         </.add_button>
       </:action>
+
       <:help>
         Groups organize Actors and form the basis of the Firezone access control model.
       </:help>
+
       <:content>
         <.flash_group flash={@flash} />
         <.live_table
@@ -66,10 +73,8 @@ defmodule Web.Groups.Index do
           ordered_by={@order_by_table_id["groups"]}
           metadata={@groups_metadata}
         >
-          <:col :let={group} field={{:groups, :name}} label="name" class="w-2/4">
-            <.link navigate={~p"/#{@account}/groups/#{group.id}"} class={[link_style()]}>
-              <%= group.name %>
-            </.link>
+          <:col :let={group} field={{:groups, :name}} label="name" class="w-3/12">
+            <.group account={@account} group={group} />
 
             <span :if={Actors.group_deleted?(group)} class="text-xs text-neutral-100">
               (deleted)
@@ -87,18 +92,25 @@ defmodule Web.Groups.Index do
 
               <:item :let={actor}>
                 <.link navigate={~p"/#{@account}/actors/#{actor}"} class={[link_style()]}>
-                  <%= actor.name %>
+                  {actor.name}
                 </.link>
               </:item>
 
               <:tail :let={count}>
-                <span class="pl-1">
-                  and <%= count %> more.
+                <span class="inline-block whitespace-nowrap flex ml-1">
+                  <span>and</span>
+                  <.link
+                    navigate={~p"/#{@account}/groups/#{group}?#actors"}
+                    class={["inline-flex ml-1", link_style()]}
+                  >
+                    {count} more
+                  </.link>
+                  <span>.</span>
                 </span>
               </:tail>
             </.peek>
           </:col>
-          <:col :let={group} field={{:groups, :inserted_at}} label="Created">
+          <:col :let={group} field={{:groups, :inserted_at}} label="Created" class="w-2/12">
             <.relative_datetime datetime={group.inserted_at} />
           </:col>
           <:empty>

@@ -1,12 +1,9 @@
-use super::sim_dns::DnsServerId;
 use crate::tests::buffered_transmits::BufferedTransmits;
 use crate::tests::strategies::documentation_ip6s;
-use connlib_shared::messages::{ClientId, GatewayId, RelayId};
+use connlib_model::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
-use ip_network::{IpNetwork, Ipv4Network};
+use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
-use itertools::Itertools as _;
-use prop::sample;
 use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
@@ -18,8 +15,7 @@ use std::{
 };
 use tracing::Span;
 
-#[derive(Clone, derivative::Derivative)]
-#[derivative(Debug)]
+#[derive(Clone, derive_more::Debug)]
 pub(crate) struct Host<T> {
     inner: T,
 
@@ -28,23 +24,23 @@ pub(crate) struct Host<T> {
 
     // In production, we always rebind to a new port.
     // To mimic this, we track the used ports here to not sample an existing one.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     pub(crate) old_ports: HashSet<u16>,
 
     default_port: u16,
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     allocated_ports: HashSet<(u16, AddressFamily)>,
 
     // The latency of incoming and outgoing packets.
     latency: Duration,
 
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     span: Span,
 
     /// Messages that have "arrived" and are waiting to be dispatched.
     ///
     /// We buffer them here because we need also apply our latency on inbound packets.
-    #[derivative(Debug = "ignore")]
+    #[debug(skip)]
     inbox: BufferedTransmits,
 }
 
@@ -120,15 +116,6 @@ impl<T> Host<T> {
         match src {
             IpAddr::V4(src) => self.ip4.is_some_and(|v4| v4 == src),
             IpAddr::V6(src) => self.ip6.is_some_and(|v6| v6 == src),
-        }
-    }
-
-    pub(crate) fn single_socket(&self) -> SocketAddr {
-        match (self.ip4, self.ip6) {
-            (None, Some(ip6)) => SocketAddr::new(ip6.into(), self.default_port),
-            (Some(ip4), None) => SocketAddr::new(ip4.into(), self.default_port),
-            (Some(_), Some(_)) => panic!("Dual-stack host"),
-            (None, None) => panic!("No socket available"),
         }
     }
 
@@ -261,7 +248,6 @@ pub(crate) enum HostId {
     Client(ClientId),
     Gateway(GatewayId),
     Relay(RelayId),
-    DnsServer(DnsServerId),
     Stale,
 }
 
@@ -280,12 +266,6 @@ impl From<GatewayId> for HostId {
 impl From<ClientId> for HostId {
     fn from(v: ClientId) -> Self {
         Self::Client(v)
-    }
-}
-
-impl From<DnsServerId> for HostId {
-    fn from(v: DnsServerId) -> Self {
-        Self::DnsServer(v)
     }
 }
 
@@ -326,13 +306,10 @@ pub(crate) fn dual_ip_stack() -> impl Strategy<Value = IpStack> {
 ///
 /// This uses the `TEST-NET-3` (`203.0.113.0/24`) address space reserved for documentation and examples in [RFC5737](https://datatracker.ietf.org/doc/html/rfc5737).
 pub(crate) fn host_ip4s() -> impl Strategy<Value = Ipv4Addr> {
-    let ips = Ipv4Network::new(Ipv4Addr::new(203, 0, 113, 0), 24)
-        .unwrap()
-        .hosts()
-        .take(100)
-        .collect_vec();
+    const FIRST: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 0);
+    const LAST: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 255);
 
-    sample::select(ips)
+    (FIRST.to_bits()..=LAST.to_bits()).prop_map(Ipv4Addr::from_bits)
 }
 
 /// A [`Strategy`] of [`Ipv6Addr`]s used for routing packets between hosts within our test.
@@ -341,5 +318,5 @@ pub(crate) fn host_ip4s() -> impl Strategy<Value = Ipv4Addr> {
 pub(crate) fn host_ip6s() -> impl Strategy<Value = Ipv6Addr> {
     const HOST_SUBNET: u16 = 0x1010;
 
-    documentation_ip6s(HOST_SUBNET, 100)
+    documentation_ip6s(HOST_SUBNET)
 }

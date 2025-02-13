@@ -76,7 +76,7 @@ defmodule Web.HomeHTML do
           border border-neutral-200
           hover:bg-neutral-100 hover:text-neutral-900
     ]}>
-      <%= @account.name %>
+      {@account.name}
 
       <span :if={@signed_in?} class="text-green-400 pl-1">
         <.icon name="hero-shield-check" class="w-4 h-4" />

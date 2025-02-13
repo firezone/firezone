@@ -63,6 +63,11 @@ defmodule Web.Sites.Index do
       <:title>
         Sites
       </:title>
+
+      <:action>
+        <.docs_action path="/deploy/sites" />
+      </:action>
+
       <:action>
         <.add_button navigate={~p"/#{@account}/sites/new"}>
           Add Site
@@ -86,7 +91,7 @@ defmodule Web.Sites.Index do
         >
           <:col :let={group} field={{:groups, :name}} label="site" class="w-1/6">
             <.link navigate={~p"/#{@account}/sites/#{group}"} class={[link_style()]}>
-              <%= group.name %>
+              {group.name}
             </.link>
           </:col>
 
@@ -119,7 +124,7 @@ defmodule Web.Sites.Index do
                     navigate={~p"/#{@account}/sites/#{group}?#resources"}
                     class={["font-medium", link_style()]}
                   >
-                    <%= count %> more.
+                    {count} more.
                   </.link>
                 </span>
               </:tail>
@@ -158,7 +163,7 @@ defmodule Web.Sites.Index do
                     navigate={~p"/#{@account}/sites/#{group}?#gateways"}
                     class={["font-medium", link_style()]}
                   >
-                    <%= count %> more.
+                    {count} more.
                   </.link>
                 </span>
               </:tail>
@@ -209,12 +214,13 @@ defmodule Web.Sites.Index do
 
       <:action :if={Domain.Accounts.internet_resource_enabled?(@account)}>
         <.edit_button navigate={~p"/#{@account}/sites/#{internet_gateway_group}"}>
-          Manage Internet Tunneling
+          Manage Full-route Tunneling
         </.edit_button>
       </:action>
 
       <:help>
-        This is a specialized Site used to host Gateways that tunnel traffic that does not match any Resource.
+        This is a dedicated Site for Internet traffic that does not match any specific Resource.
+        Deploy Gateways here to secure access to the public Internet for your workforce.
       </:help>
 
       <:content></:content>

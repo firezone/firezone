@@ -100,6 +100,44 @@ defmodule Web.Live.Resources.IndexTest do
     end)
   end
 
+  test "sort alphabetically by name ASC by default", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    resource5 = Fixtures.Resources.create_resource(account: account, name: "Resource 5")
+    resource4 = Fixtures.Resources.create_resource(account: account, name: "Resource 4")
+    resource3 = Fixtures.Resources.create_resource(account: account, name: "Resource 3")
+    resource2 = Fixtures.Resources.create_resource(account: account, name: "Resource 2")
+    resource1 = Fixtures.Resources.create_resource(account: account, name: "Resource 1")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources")
+
+    resource_rows =
+      lv
+      |> element("#resources")
+      |> render()
+      |> table_to_map()
+
+    first_row = Enum.at(resource_rows, 0)
+    assert first_row["name"] =~ resource1.name
+
+    second_row = Enum.at(resource_rows, 1)
+    assert second_row["name"] =~ resource2.name
+
+    third_row = Enum.at(resource_rows, 2)
+    assert third_row["name"] =~ resource3.name
+
+    fourth_row = Enum.at(resource_rows, 3)
+    assert fourth_row["name"] =~ resource4.name
+
+    fifth_row = Enum.at(resource_rows, 4)
+    assert fifth_row["name"] =~ resource5.name
+  end
+
   test "renders authorized groups peek", %{
     account: account,
     identity: identity,

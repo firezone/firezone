@@ -35,7 +35,7 @@ defmodule API.Schemas.Policy do
       description: "POST body for creating a Policy",
       type: :object,
       properties: %{
-        policy: %Schema{anyOf: [Policy.Schema]}
+        policy: Policy.Schema
       },
       required: [:policy],
       example: %{

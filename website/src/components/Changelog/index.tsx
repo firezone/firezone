@@ -29,20 +29,23 @@ export default function Changelog() {
         <TabsItem title="Gateway" icon={HiServerStack}>
           <Gateway />
         </TabsItem>
-        <TabsItem title="Linux GUI" icon={FaLinux}>
-          <GUI title="Linux GUI" />
-        </TabsItem>
-        <TabsItem title="Apple" icon={FaApple}>
+        <TabsItem title="macOS / iOS" icon={FaApple}>
           <Apple />
         </TabsItem>
-        <TabsItem title="Windows" icon={FaWindows}>
-          <GUI title="Windows" />
+        <TabsItem title="Windows GUI" icon={FaWindows}>
+          <GUI os={OS.Windows} />
+        </TabsItem>
+        <TabsItem title="Windows Headless" icon={FaWindows}>
+          <Headless os={OS.Windows} />
         </TabsItem>
         <TabsItem title="Android" icon={FaAndroid}>
           <Android />
         </TabsItem>
+        <TabsItem title="Linux GUI" icon={FaLinux}>
+          <GUI os={OS.Linux} />
+        </TabsItem>
         <TabsItem title="Linux Headless" icon={FaLinux}>
-          <Headless />
+          <Headless os={OS.Linux} />
         </TabsItem>
       </TabsGroup>
       {sha && (
@@ -59,4 +62,9 @@ export default function Changelog() {
       )}
     </section>
   );
+}
+
+export enum OS {
+  Windows,
+  Linux,
 }

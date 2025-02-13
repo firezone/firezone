@@ -1,22 +1,31 @@
 import Config
 
 if config_env() == :prod do
-  import Domain.Config, only: [compile_config!: 1]
+  import Domain.Config, only: [compile_config!: 1, compile_config: 1]
 
   ###############################
   ##### Domain ##################
   ###############################
 
-  config :domain, Domain.Repo,
-    database: compile_config!(:database_name),
-    username: compile_config!(:database_user),
-    hostname: compile_config!(:database_host),
-    port: compile_config!(:database_port),
-    password: compile_config!(:database_password),
-    pool_size: compile_config!(:database_pool_size),
-    ssl: compile_config!(:database_ssl_enabled),
-    ssl_opts: compile_config!(:database_ssl_opts),
-    parameters: compile_config!(:database_parameters)
+  config :domain,
+         Domain.Repo,
+         [
+           {:database, compile_config!(:database_name)},
+           {:username, compile_config!(:database_user)},
+           {:port, compile_config!(:database_port)},
+           {:pool_size, compile_config!(:database_pool_size)},
+           {:ssl, compile_config!(:database_ssl_enabled)},
+           {:ssl_opts, compile_config!(:database_ssl_opts)},
+           {:parameters, compile_config!(:database_parameters)}
+         ] ++
+           if(compile_config(:database_password),
+             do: [{:password, compile_config!(:database_password)}],
+             else: []
+           ) ++
+           if(compile_config(:database_socket_dir),
+             do: [{:socket_dir, compile_config!(:database_socket_dir)}],
+             else: [{:hostname, compile_config!(:database_host)}]
+           )
 
   config :domain, Domain.Tokens,
     key_base: compile_config!(:tokens_key_base),
@@ -211,7 +220,9 @@ if config_env() == :prod do
       otlp_endpoint: System.get_env("OTLP_ENDPOINT")
   end
 
-  config :domain, Domain.Telemetry, metrics_reporter: compile_config!(:telemetry_metrics_reporter)
+  config :domain, Domain.Telemetry,
+    healthz_port: compile_config!(:healthz_port),
+    metrics_reporter: compile_config!(:telemetry_metrics_reporter)
 
   if telemetry_metrics_reporter = compile_config!(:telemetry_metrics_reporter) do
     config :domain, telemetry_metrics_reporter, compile_config!(:telemetry_metrics_reporter_opts)
@@ -233,4 +244,39 @@ if config_env() == :prod do
   config :workos, WorkOS.Client,
     api_key: compile_config!(:workos_api_key),
     client_id: compile_config!(:workos_client_id)
+
+  # Sentry
+
+  # Base Sentry config
+  config :sentry,
+    dsn:
+      "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152",
+    environment_name: :unknown,
+    enable_source_code_context: true,
+    root_source_code_paths: [
+      Path.join(File.cwd!(), "apps/domain"),
+      Path.join(File.cwd!(), "apps/web"),
+      Path.join(File.cwd!(), "apps/api")
+    ]
+
+  # Environment-specific Sentry overrides
+  if api_external_url = compile_config!(:api_external_url) do
+    api_external_url_host = URI.parse(api_external_url).host
+
+    # Set environment_name based on which API URL we're using
+    sentry_environment_name =
+      case api_external_url_host do
+        "api.firezone.dev" -> :production
+        "api.firez.one" -> :staging
+        _ -> :unknown
+      end
+
+    config :sentry, :environment_name, sentry_environment_name
+
+    # Disable Sentry for unknown environments
+    # Comment this out to enable Sentry in development and test environments
+    if sentry_environment_name == :unknown do
+      config :sentry, :dsn, nil
+    end
+  end
 end

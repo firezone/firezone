@@ -8,7 +8,12 @@ defmodule Domain.Accounts.Config.Changeset do
   def changeset(config \\ %Config{}, attrs) do
     config
     |> cast(attrs, [])
-    |> cast_embed(:clients_upstream_dns, with: &client_upstream_dns_changeset/2)
+    |> cast_embed(:clients_upstream_dns,
+      with: &client_upstream_dns_changeset/2,
+      sort_param: :clients_upstream_dns_sort,
+      drop_param: :clients_upstream_dns_drop
+    )
+    |> cast_embed(:notifications, with: &notifications_changeset/2)
     |> validate_unique_clients_upstream_dns()
   end
 
@@ -55,6 +60,7 @@ defmodule Domain.Accounts.Config.Changeset do
       message: "this type of DNS provider is not supported yet"
     )
     |> validate_address()
+    |> validate_reserved_ip_exclusion()
   end
 
   defp validate_address(changeset) do
@@ -75,5 +81,23 @@ defmodule Domain.Accounts.Config.Changeset do
         _ -> [address: "must be a valid IP address"]
       end
     end)
+  end
+
+  defp validate_reserved_ip_exclusion(changeset) do
+    if has_errors?(changeset, :address) do
+      changeset
+    else
+      Domain.Network.reserved_cidrs()
+      |> Enum.reduce(changeset, fn {_type, cidr}, changeset ->
+        validate_not_in_cidr(changeset, :address, cidr)
+      end)
+    end
+  end
+
+  def notifications_changeset(notifications, attrs) do
+    notifications
+    |> cast(attrs, [])
+    |> cast_embed(:outdated_gateway, with: &Config.Notifications.Email.Changeset.changeset/2)
+    |> cast_embed(:idp_sync_error, with: &Config.Notifications.Email.Changeset.changeset/2)
   end
 end

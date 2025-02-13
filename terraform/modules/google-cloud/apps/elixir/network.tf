@@ -66,6 +66,20 @@ resource "google_compute_security_policy" "default" {
   }
 
   rule {
+    description = "block sanctioned countries"
+
+    action   = "deny(403)"
+    priority = "101"
+
+    match {
+      expr {
+        # Required by US law due to sanctions.
+        expression = "origin.region_code.matches('^RU|BY|KP|IR|SY|CU|VE|XC|XD|SD|MM$')"
+      }
+    }
+  }
+
+  rule {
     description = "log all requests that match preconfigured sqli-v33-stable OWASP rule"
     preview     = true
 

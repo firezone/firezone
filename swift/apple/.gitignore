@@ -4,6 +4,3 @@ build/
 DerivedData/
 xcuserdata/
 **/*.xcuserstate
-
-Firezone/xcconfig/config.xcconfig
-FirezoneNetworkExtension/Connlib

@@ -28,11 +28,11 @@ defmodule Web.Resources.New do
       <.breadcrumb path={~p"/#{@account}/resources/new"}>Add Resource</.breadcrumb>
     </.breadcrumbs>
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
 
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Resource details</h2>
+          <legend class="text-xl mb-4">Details</legend>
           <.form for={@form} class="space-y-4 lg:space-y-6" phx-submit="submit" phx-change="change">
             <div>
               <p class="mb-2 text-sm text-neutral-900">

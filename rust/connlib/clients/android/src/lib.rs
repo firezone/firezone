@@ -3,13 +3,15 @@
 // However, this consideration has made it idiomatic for Java FFI in the Rust
 // ecosystem, so it's used here for consistency.
 
+#![cfg(unix)]
+
 use crate::tun::Tun;
+use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
-use connlib_client_shared::{
-    keypair, Callbacks, ConnectArgs, DisconnectError, LoginUrl, LoginUrlError, Session,
-    V4RouteList, V6RouteList,
-};
-use connlib_shared::{callbacks::ResourceDescription, get_user_agent, messages::ResourceId};
+use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
+use connlib_model::ResourceView;
+use firezone_logging::err_with_src;
+use firezone_telemetry::{Telemetry, ANDROID_DSN};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     objects::{GlobalRef, JClass, JObject, JString, JValue},
@@ -17,10 +19,12 @@ use jni::{
     sys::jlong,
     JNIEnv, JavaVM,
 };
+use phoenix_channel::get_user_agent;
+use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use std::{collections::BTreeSet, io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
+use std::{io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
 use std::{
     net::{Ipv4Addr, Ipv6Addr},
     os::fd::RawFd,
@@ -29,7 +33,7 @@ use std::{
 use std::{sync::OnceLock, time::Duration};
 use thiserror::Error;
 use tokio::runtime::Runtime;
-use tracing_subscriber::prelude::*;
+use tracing_subscriber::{prelude::*, reload, EnvFilter, Registry};
 
 mod make_writer;
 mod tun;
@@ -39,10 +43,15 @@ mod tun;
 /// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days.
 const MAX_PARTITION_TIME: Duration = Duration::from_secs(60 * 60 * 24 * 30);
 
+/// The Sentry release.
+///
+/// This module is only responsible for the connlib part of the Android app.
+/// Bugs within the Android app itself may use the same DSN but a different component as part of the version string.
+const RELEASE: &str = concat!("connlib-android@", env!("CARGO_PKG_VERSION"));
+
 pub struct CallbackHandler {
     vm: JavaVM,
     callback_handler: GlobalRef,
-    handle: firezone_logging::file::Handle,
 }
 
 impl Clone for CallbackHandler {
@@ -55,7 +64,6 @@ impl Clone for CallbackHandler {
         Self {
             vm: unsafe { std::ptr::read(&self.vm) },
             callback_handler: self.callback_handler.clone(),
-            handle: self.handle.clone(),
         }
     }
 }
@@ -117,39 +125,45 @@ fn call_method(
         .map_err(|source| CallbackError::CallMethodFailed { name, source })
 }
 
-fn init_logging(log_dir: &Path, log_filter: String) -> firezone_logging::file::Handle {
-    // On Android, logging state is persisted indefinitely after the System.loadLibrary
-    // call, which means that a disconnect and tunnel process restart will not
-    // reinitialize the guard. This is a problem because the guard remains tied to
-    // the original process, which means that log events will not be rewritten to the log
-    // file after a disconnect and reconnect.
-    //
-    // So we use a static variable to track whether the guard has been initialized and avoid
-    // re-initialized it if so.
-    static LOGGING_HANDLE: OnceLock<firezone_logging::file::Handle> = OnceLock::new();
-    if let Some(handle) = LOGGING_HANDLE.get() {
-        return handle.clone();
+fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
+    let log_filter =
+        firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?;
+
+    static LOGGER_STATE: OnceLock<(
+        firezone_logging::file::Handle,
+        reload::Handle<EnvFilter, Registry>,
+    )> = OnceLock::new();
+    if let Some((_, reload_handle)) = LOGGER_STATE.get() {
+        reload_handle
+            .reload(log_filter)
+            .context("Failed to apply new log-filter")?;
+        return Ok(());
     }
 
-    let (file_layer, handle) = firezone_logging::file::layer(log_dir);
+    let (log_filter, reload_handle) = reload::Layer::new(log_filter);
+    let (file_layer, handle) = firezone_logging::file::layer(log_dir, "connlib");
 
-    LOGGING_HANDLE
-        .set(handle.clone())
-        .expect("Logging guard should never be initialized twice");
-
-    let _ = tracing_subscriber::registry()
+    let subscriber = tracing_subscriber::registry()
+        .with(log_filter)
         .with(file_layer)
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
-                .without_time()
-                .with_level(false)
+                .event_format(
+                    firezone_logging::Format::new()
+                        .without_timestamp()
+                        .without_level(),
+                )
                 .with_writer(make_writer::MakeWriter::new("connlib")),
-        )
-        .with(firezone_logging::filter(&log_filter))
-        .try_init();
+        );
 
-    handle
+    firezone_logging::init(subscriber)?;
+
+    LOGGER_STATE
+        .set((handle, reload_handle))
+        .expect("Logging guard should never be initialized twice");
+
+    Ok(())
 }
 
 impl Callbacks for CallbackHandler {
@@ -158,6 +172,8 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
+        route_list_4: Vec<Ipv4Network>,
+        route_list_6: Vec<Ipv6Network>,
     ) {
         self.env(|mut env| {
             let tunnel_address_v4 =
@@ -178,26 +194,6 @@ impl Callbacks for CallbackHandler {
                     name: "dns_addresses",
                     source,
                 })?;
-            let name = "onSetInterfaceConfig";
-            env.call_method(
-                &self.callback_handler,
-                name,
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
-                &[
-                    JValue::from(&tunnel_address_v4),
-                    JValue::from(&tunnel_address_v6),
-                    JValue::from(&dns_addresses),
-                ],
-            )
-            .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
-
-            Ok(())
-        })
-        .expect("onSetInterfaceConfig callback failed");
-    }
-
-    fn on_update_routes(&self, route_list_4: Vec<Ipv4Network>, route_list_6: Vec<Ipv6Network>) {
-        self.env(|mut env| {
             let route_list_4 = env
                 .new_string(serde_json::to_string(&V4RouteList::new(route_list_4))?)
                 .map_err(|source| CallbackError::NewStringFailed {
@@ -211,21 +207,27 @@ impl Callbacks for CallbackHandler {
                     source,
                 })?;
 
-            let name = "onUpdateRoutes";
+            let name = "onSetInterfaceConfig";
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;Ljava/lang/String;)V",
-                &[JValue::from(&route_list_4), JValue::from(&route_list_6)],
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+                &[
+                    JValue::from(&tunnel_address_v4),
+                    JValue::from(&tunnel_address_v6),
+                    JValue::from(&dns_addresses),
+                    JValue::from(&route_list_4),
+                    JValue::from(&route_list_6),
+                ],
             )
             .map_err(|source| CallbackError::CallMethodFailed { name, source })?;
 
             Ok(())
         })
-        .expect("onUpdateRoutes callback failed");
+        .expect("onSetInterfaceConfig callback failed");
     }
 
-    fn on_update_resources(&self, resource_list: Vec<ResourceDescription>) {
+    fn on_update_resources(&self, resource_list: Vec<ResourceView>) {
         self.env(|mut env| {
             let resource_list = env
                 .new_string(serde_json::to_string(&resource_list)?)
@@ -267,7 +269,7 @@ impl Callbacks for CallbackHandler {
 fn throw(env: &mut JNIEnv, class: &str, msg: impl Into<JNIString>) {
     if let Err(err) = env.throw_new(class, msg) {
         // We can't panic, since unwinding across the FFI boundary is UB...
-        tracing::error!(?err, "failed to throw Java exception");
+        tracing::error!("failed to throw Java exception: {}", err_with_src(&err));
     }
 }
 
@@ -287,34 +289,12 @@ fn catch_and_throw<F: FnOnce(&mut JNIEnv) -> R, R>(env: &mut JNIEnv, f: F) -> Op
         .ok()
 }
 
-#[derive(Debug, Error)]
-enum ConnectError {
-    #[error("Failed to access {name:?}: {source}")]
-    StringInvalid {
-        name: &'static str,
-        source: jni::errors::Error,
-    },
-    #[error("Failed to get Java VM: {0}")]
-    GetJavaVmFailed(#[source] jni::errors::Error),
-    #[error(transparent)]
-    ConnectFailed(#[from] DisconnectError),
-    #[error(transparent)]
-    InvalidLoginUrl(#[from] LoginUrlError<url::ParseError>),
-    #[error("Unable to create tokio runtime: {0}")]
-    UnableToCreateRuntime(#[from] io::Error),
-    #[error(transparent)]
-    CallbackError(#[from] CallbackError),
-}
-
 macro_rules! string_from_jstring {
     ($env:expr, $j:ident) => {
         String::from(
             ($env)
                 .get_string(&($j))
-                .map_err(|source| ConnectError::StringInvalid {
-                    name: stringify!($j),
-                    source,
-                })?,
+                .with_context(|| format!("Failed to get string {} from JNIEnv", stringify!($j)))?,
         )
     };
 }
@@ -332,7 +312,8 @@ fn connect(
     log_dir: JString,
     log_filter: JString,
     callback_handler: GlobalRef,
-) -> Result<SessionWrapper, ConnectError> {
+    device_info: JString,
+) -> Result<SessionWrapper> {
     let api_url = string_from_jstring!(env, api_url);
     let secret = SecretString::from(string_from_jstring!(env, token));
     let device_id = string_from_jstring!(env, device_id);
@@ -341,22 +322,28 @@ fn connect(
     let log_dir = string_from_jstring!(env, log_dir);
     let log_filter = string_from_jstring!(env, log_filter);
 
-    let handle = init_logging(&PathBuf::from(log_dir), log_filter);
+    let device_info = string_from_jstring!(env, device_info);
+    let device_info =
+        serde_json::from_str(&device_info).context("Failed to deserialize `DeviceInfo`")?;
+
+    let mut telemetry = Telemetry::default();
+    telemetry.start(&api_url, RELEASE, ANDROID_DSN);
+    telemetry.set_firezone_id(device_id.clone());
+
+    init_logging(&PathBuf::from(log_dir), log_filter)?;
     install_rustls_crypto_provider();
 
     let callbacks = CallbackHandler {
-        vm: env.get_java_vm().map_err(ConnectError::GetJavaVmFailed)?,
+        vm: env.get_java_vm()?,
         callback_handler,
-        handle,
     };
 
-    let (private_key, public_key) = keypair();
     let url = LoginUrl::client(
         api_url.as_str(),
         &secret,
         device_id,
         Some(device_name),
-        public_key.to_bytes(),
+        device_info,
     )?;
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -368,27 +355,30 @@ fn connect(
 
     let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(callbacks.clone()));
 
-    let args = ConnectArgs {
-        tcp_socket_factory: tcp_socket_factory.clone(),
-        udp_socket_factory: Arc::new(protected_udp_socket_factory(callbacks.clone())),
-        private_key,
-        callbacks,
-    };
-    let portal = PhoenixChannel::connect(
+    let portal = PhoenixChannel::disconnected(
         Secret::new(url),
         get_user_agent(Some(os_version), env!("CARGO_PKG_VERSION")),
         "client",
         (),
-        ExponentialBackoffBuilder::default()
-            .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
-            .build(),
+        || {
+            ExponentialBackoffBuilder::default()
+                .with_max_elapsed_time(Some(MAX_PARTITION_TIME))
+                .build()
+        },
         tcp_socket_factory,
     )?;
-    let session = Session::connect(args, portal, runtime.handle().clone());
+    let session = Session::connect(
+        Arc::new(protected_tcp_socket_factory(callbacks.clone())),
+        Arc::new(protected_udp_socket_factory(callbacks.clone())),
+        callbacks,
+        portal,
+        runtime.handle().clone(),
+    );
 
     Ok(SessionWrapper {
         inner: session,
         runtime,
+        telemetry,
     })
 }
 
@@ -407,6 +397,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
     log_dir: JString,
     log_filter: JString,
     callback_handler: JObject,
+    device_info: JString,
 ) -> *const SessionWrapper {
     let Ok(callback_handler) = env.new_global_ref(callback_handler) else {
         return std::ptr::null();
@@ -423,6 +414,7 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_co
             log_dir,
             log_filter,
             callback_handler,
+            device_info,
         )
     });
 
@@ -444,6 +436,7 @@ pub struct SessionWrapper {
     inner: Session,
 
     runtime: Runtime,
+    telemetry: Telemetry,
 }
 
 /// # Safety
@@ -456,12 +449,13 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 ) {
     let session = session_ptr as *mut SessionWrapper;
     catch_and_throw(&mut env, |_| {
-        Box::from_raw(session).inner.disconnect();
+        let mut session = Box::from_raw(session);
+
+        session.runtime.block_on(session.telemetry.stop());
+        session.inner.disconnect();
     });
 }
 
-///
-///
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
@@ -474,14 +468,11 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 ) {
     let disabled_resources = String::from(
         env.get_string(&disabled_resources)
-            .map_err(|source| ConnectError::StringInvalid {
-                name: "disabled_resources",
-                source,
-            })
             .expect("Invalid string returned from android client"),
     );
-    let disabled_resources: BTreeSet<ResourceId> =
-        serde_json::from_str(&disabled_resources).unwrap();
+    let disabled_resources = serde_json::from_str(&disabled_resources)
+        .expect("Failed to deserialize disabled resource IDs");
+
     tracing::debug!("disabled resource: {disabled_resources:?}");
     let session = &*(session_ptr as *const SessionWrapper);
     session.inner.set_disabled_resources(disabled_resources);
@@ -505,13 +496,9 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 ) {
     let dns = String::from(
         env.get_string(&dns_list)
-            .map_err(|source| ConnectError::StringInvalid {
-                name: "dns_list",
-                source,
-            })
             .expect("Invalid string returned from android client"),
     );
-    let dns: Vec<IpAddr> = serde_json::from_str(&dns).unwrap();
+    let dns = serde_json::from_str::<Vec<IpAddr>>(&dns).expect("Failed to deserialize DNS IPs");
     let session = &*(session_ptr as *const SessionWrapper);
     session.inner.set_dns(dns);
 }

@@ -407,9 +407,14 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       refute_received {:expire_flow, _flow_id, _client_id, _resource_id}
     end
 
-    test "stops the sync retires on 401 error on the provider", %{provider: provider} do
+    test "stops the sync retries on 401 error on the provider", %{
+      account: account,
+      provider: provider
+    } do
       bypass = Bypass.open()
       MicrosoftEntraDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      _identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
       error_message = "Lifetime validation failed, the token is expired."
 
@@ -441,6 +446,11 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       refute updated_provider.last_synced_at
       assert updated_provider.last_syncs_failed == 1
       assert updated_provider.last_sync_error == error_message
+
+      assert_email_sent(fn email ->
+        assert email.subject == "Firezone Identity Provider Sync Error"
+        assert email.text_body =~ "failed to sync 1 time(s)"
+      end)
     end
 
     test "persists the sync error on the provider", %{provider: provider} do
@@ -509,8 +519,13 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
 
       assert_email_sent(fn email ->
         assert email.subject == "Firezone Identity Provider Sync Error"
-        assert email.text_body =~ "failed to sync 10 times"
+        assert email.text_body =~ "failed to sync 10 time(s)"
       end)
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      refute_email_sent()
 
       cancel_bypass_expectations_check(bypass)
     end

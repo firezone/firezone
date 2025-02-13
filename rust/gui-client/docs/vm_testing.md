@@ -50,7 +50,6 @@ The Windows license is valid for 180 days
 1. In the Server Manager, click "Manage", click "Server Manager Properties", check "Do not start Server Manager automatically at logon", and click "OK". Close Server Manager.
 1. Make any quality-of-life changes you want such as fixing the taskbar
 1. Open `https://ifconfig.net/` in Edge and clear out the Edge first-time setup
-1. In `edge://settings/privacy`, [disable secure DNS](https://www.firezone.dev/kb/administer/troubleshooting#some-browsers-break-dns-routing)
 1. Run Windows Update
 1. In the VirtualBox menu, click "Devices", click "Insert Guest Additions CD image", and then install the VirtualBox guest additions, so you can drag-and-drop files into the VM easily.
 1. Perform a clean shutdown from within the Windows VM.

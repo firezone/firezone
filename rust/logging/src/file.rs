@@ -24,44 +24,59 @@ use tracing::Subscriber;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::Layer;
 
-const LOG_FILE_BASE_NAME: &str = "connlib";
 pub const TIME_FORMAT: &str = "[year]-[month]-[day]-[hour]-[minute]-[second]";
 
+/// How many lines we will at most buffer in the channel with the background thread that writes to disk.
+///
+/// We don't need this number to be very high because:
+/// a. `connlib` doesn't actually log a lot
+/// b. The background continuously reads from the channel and writes to disk.
+///
+/// This buffer only needs to be able to handle bursts.
+///
+/// As per docs on [`tracing_appender::non_blocking::DEFAULT_BUFFERED_LINES_LIMIT`], this is a power of 2.
+const MAX_BUFFERED_LINES: usize = 1024;
+
 /// Create a new file logger layer.
-pub fn layer<T>(log_dir: &Path) -> (Box<dyn Layer<T> + Send + Sync + 'static>, Handle)
+pub fn layer<T>(
+    log_dir: &Path,
+    file_base_name: &'static str,
+) -> (Box<dyn Layer<T> + Send + Sync + 'static>, Handle)
 where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
-    let (appender_json, handle_json) = new_appender(log_dir.to_path_buf(), "jsonl");
-    let layer_json = tracing_stackdriver::layer()
-        .with_writer(appender_json)
-        .boxed();
-
-    let (appender_fmt, handle_fmt) = new_appender(log_dir.to_path_buf(), "log");
+    let (appender_fmt, handle_fmt) = new_appender(log_dir.to_path_buf(), file_base_name, "log");
     let layer_fmt = tracing_subscriber::fmt::layer()
-        .with_writer(appender_fmt)
         .with_ansi(false)
+        .with_writer(appender_fmt)
+        .event_format(crate::Format::new())
         .boxed();
 
     let handle = Handle {
-        _guard_json: Arc::new(handle_json),
         _guard_fmt: Arc::new(handle_fmt),
     };
 
     // Return the guard so that the caller maintains a handle to it. Otherwise,
     // we have to wait for tracing_appender to flush the logs before exiting.
     // See https://docs.rs/tracing-appender/latest/tracing_appender/non_blocking/struct.WorkerGuard.html
-    (vec![layer_json, layer_fmt].boxed(), handle)
+    (layer_fmt, handle)
 }
 
-fn new_appender(directory: PathBuf, file_extension: &'static str) -> (NonBlocking, WorkerGuard) {
+fn new_appender(
+    directory: PathBuf,
+    file_base_name: &'static str,
+    file_extension: &'static str,
+) -> (NonBlocking, WorkerGuard) {
     let appender = Appender {
         directory,
         current: None,
         file_extension,
+        file_base_name,
     };
 
-    let (non_blocking, guard) = tracing_appender::non_blocking(appender);
+    let (non_blocking, guard) = tracing_appender::non_blocking::NonBlockingBuilder::default()
+        .buffered_lines_limit(MAX_BUFFERED_LINES)
+        .finish(appender);
 
     (non_blocking, guard)
 }
@@ -73,13 +88,13 @@ fn new_appender(directory: PathBuf, file_extension: &'static str) -> (NonBlockin
 #[must_use]
 #[derive(Clone, Debug)]
 pub struct Handle {
-    _guard_json: Arc<WorkerGuard>,
     _guard_fmt: Arc<WorkerGuard>,
 }
 
 #[derive(Debug)]
 struct Appender {
     directory: PathBuf,
+    file_base_name: &'static str,
     file_extension: &'static str,
     // Leaving this so that I/O errors come up through `write` instead of panicking
     // in `layer`
@@ -107,13 +122,12 @@ impl Appender {
 
     // Inspired from `tracing-appender/src/rolling.rs`.
     fn create_new_writer(&self) -> io::Result<(fs::File, String)> {
-        let format = time::format_description::parse(TIME_FORMAT)
-            .expect("static format description should always be parsable");
+        let format = time::format_description::parse(TIME_FORMAT).map_err(io::Error::other)?;
         let date = OffsetDateTime::now_utc()
             .format(&format)
-            .expect("formatting a timestamp should always be possible");
+            .map_err(|_| io::Error::other("Failed to format timestamp"))?;
 
-        let filename = format!("{LOG_FILE_BASE_NAME}.{date}.{}", self.file_extension);
+        let filename = format!("{}.{date}.{}", self.file_base_name, self.file_extension);
 
         let path = self.directory.join(&filename);
         let mut open_options = fs::OpenOptions::new();

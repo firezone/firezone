@@ -1,27 +1,28 @@
 use super::buffered_transmits::BufferedTransmits;
+use super::dns_records::DnsRecords;
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
-use super::sim_dns::{DnsServerId, SimDns};
 use super::sim_gateway::SimGateway;
 use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
-use super::transition::DnsQuery;
+use super::transition::{Destination, DnsQuery};
+use super::unreachable_hosts::UnreachableHosts;
+use crate::client::Resource;
 use crate::dns::is_subdomain;
-use crate::gateway::DnsResourceNatEntry;
+use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
-use crate::{ClientEvent, GatewayEvent};
-use connlib_shared::messages::client::ResourceDescription;
-use connlib_shared::{
-    messages::{ClientId, GatewayId, Interface, RelayId},
-    DomainName,
-};
-use secrecy::ExposeSecret as _;
+use crate::{dns, messages::Interface, ClientEvent, GatewayEvent};
+use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
+use domain::base::iana::{Class, Rcode};
+use domain::base::{Message, MessageBuilder, Record, RecordData, ToName as _, Ttl};
+use rand::distributions::DistString;
+use rand::SeedableRng;
+use sha2::Digest;
 use snownet::Transmit;
-use std::collections::BTreeSet;
 use std::iter;
 use std::{
     collections::BTreeMap,
@@ -39,7 +40,6 @@ pub(crate) struct TunnelTest {
     client: Host<SimClient>,
     gateways: BTreeMap<GatewayId, Host<SimGateway>>,
     relays: BTreeMap<RelayId, Host<SimRelay>>,
-    dns_servers: BTreeMap<DnsServerId, Host<SimDns>>,
 
     drop_direct_client_traffic: bool,
     network: RoutingTable,
@@ -49,16 +49,17 @@ impl TunnelTest {
     // Initialize the system under test from our reference state.
     pub(crate) fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
         // Construct client, gateway and relay from the initial state.
-        let mut client = ref_state
-            .client
-            .map(|ref_client, _, _| ref_client.init(), debug_span!("client"));
+        let mut client = ref_state.client.map(
+            |ref_client, _, _| ref_client.init(flux_capacitor.now()),
+            debug_span!("client"),
+        );
 
         let mut gateways = ref_state
             .gateways
             .iter()
             .map(|(gid, gateway)| {
                 let gateway = gateway.map(
-                    |ref_gateway, _, _| ref_gateway.init(*gid),
+                    |ref_gateway, _, _| ref_gateway.init(*gid, flux_capacitor.now()),
                     debug_span!("gateway", %gid),
                 );
 
@@ -76,16 +77,6 @@ impl TunnelTest {
             })
             .collect::<BTreeMap<_, _>>();
 
-        let dns_servers = ref_state
-            .dns_servers
-            .iter()
-            .map(|(did, dns_server)| {
-                let dns_server = dns_server.map(|_, _, _| SimDns {}, debug_span!("dns", %did));
-
-                (*did, dns_server)
-            })
-            .collect::<BTreeMap<_, _>>();
-
         // Configure client and gateway with the relays.
         client.exec_mut(|c| c.update_relays(iter::empty(), relays.iter(), flux_capacitor.now()));
         for gateway in gateways.values_mut() {
@@ -100,7 +91,6 @@ impl TunnelTest {
             client,
             gateways,
             relays,
-            dns_servers,
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
@@ -124,7 +114,7 @@ impl TunnelTest {
                 state.client.exec_mut(|c| {
                     // Flush DNS.
                     match &resource {
-                        ResourceDescription::Dns(r) => {
+                        Resource::Dns(r) => {
                             c.dns_records.retain(|domain, _| {
                                 if is_subdomain(domain, &r.address) {
                                     return false;
@@ -133,8 +123,8 @@ impl TunnelTest {
                                 true
                             });
                         }
-                        ResourceDescription::Cidr(_) => {}
-                        ResourceDescription::Internet(_) => {}
+                        Resource::Cidr(_) => {}
+                        Resource::Internet(_) => {}
                     }
 
                     c.sut.add_resource(resource);
@@ -145,62 +135,71 @@ impl TunnelTest {
             }
             Transition::DisableResources(resources) => state
                 .client
-                .exec_mut(|c| c.sut.set_disabled_resource(resources)),
-            Transition::SendICMPPacketToNonResourceIp {
+                .exec_mut(|c| c.sut.set_disabled_resources(resources)),
+            Transition::SendIcmpPacket {
                 src,
                 dst,
                 seq,
                 identifier,
                 payload,
-            }
-            | Transition::SendICMPPacketToCidrResource {
-                src,
-                dst,
-                seq,
-                identifier,
-                payload,
+                ..
             } => {
+                let dst = address_from_destination(&dst, &state, &src);
+
                 let packet = ip_packet::make::icmp_request_packet(
                     src,
                     dst,
-                    seq,
-                    identifier,
+                    seq.0,
+                    identifier.0,
                     &payload.to_be_bytes(),
                 )
                 .unwrap();
 
-                let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
+                let transmit = state
+                    .client
+                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
-            Transition::SendICMPPacketToDnsResource {
+            Transition::SendUdpPacket {
                 src,
                 dst,
-                seq,
-                identifier,
+                sport,
+                dport,
                 payload,
-                resolved_ip,
-                ..
             } => {
-                let available_ips = state
-                    .client
-                    .inner()
-                    .dns_records
-                    .get(&dst)
-                    .unwrap()
-                    .iter()
-                    .filter(|ip| match ip {
-                        IpAddr::V4(_) => src.is_ipv4(),
-                        IpAddr::V6(_) => src.is_ipv6(),
-                    });
-                let dst = *resolved_ip.select(available_ips);
+                let dst = address_from_destination(&dst, &state, &src);
 
-                let packet = ip_packet::make::icmp_request_packet(
+                let packet = ip_packet::make::udp_packet(
                     src,
                     dst,
-                    seq,
-                    identifier,
-                    &payload.to_be_bytes(),
+                    sport.0,
+                    dport.0,
+                    payload.to_be_bytes().to_vec(),
+                )
+                .unwrap();
+
+                let transmit = state
+                    .client
+                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
+
+                buffered_transmits.push_from(transmit, &state.client, now);
+            }
+            Transition::SendTcpPayload {
+                src,
+                dst,
+                sport,
+                dport,
+                payload,
+            } => {
+                let dst = address_from_destination(&dst, &state, &src);
+
+                let packet = ip_packet::make::tcp_packet(
+                    src,
+                    dst,
+                    sport.0,
+                    dport.0,
+                    payload.to_be_bytes().to_vec(),
                 )
                 .unwrap();
 
@@ -216,10 +215,11 @@ impl TunnelTest {
                     r_type,
                     dns_server,
                     query_id,
+                    transport,
                 } in queries
                 {
                     let transmit = state.client.exec_mut(|sim| {
-                        sim.send_dns_query_for(domain, r_type, query_id, dns_server, now)
+                        sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
                     });
 
                     buffered_transmits.push_from(transmit, &state.client, now);
@@ -247,7 +247,7 @@ impl TunnelTest {
                     .add_host(state.client.inner().id, &state.client));
 
                 state.client.exec_mut(|c| {
-                    c.sut.reset();
+                    c.sut.reset(now);
 
                     // In prod, we reconnect to the portal and receive a new `init` message.
                     c.update_relays(iter::empty(), state.relays.iter(), now);
@@ -273,28 +273,10 @@ impl TunnelTest {
                 });
             }
             Transition::DeployNewRelays(new_relays) => {
-                for relay in state.relays.values() {
-                    state.network.remove_host(relay);
-                }
+                // If we are connected to the portal, we will learn, which ones went down, i.e. `relays_presence`.
+                let to_remove = state.relays.keys().copied().collect();
 
-                let online = new_relays
-                    .into_iter()
-                    .map(|(rid, relay)| (rid, relay.map(SimRelay::new, debug_span!("relay", %rid))))
-                    .collect::<BTreeMap<_, _>>();
-
-                for (rid, relay) in &online {
-                    debug_assert!(state.network.add_host(*rid, relay));
-                }
-
-                state.client.exec_mut(|c| {
-                    c.update_relays(state.relays.keys().copied(), online.iter(), now);
-                });
-                for gateway in state.gateways.values_mut() {
-                    gateway.exec_mut(|g| {
-                        g.update_relays(state.relays.keys().copied(), online.iter(), now)
-                    });
-                }
-                state.relays = online; // Override all relays.
+                state.deploy_new_relays(new_relays, now, to_remove);
             }
             Transition::Idle => {
                 const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
@@ -314,7 +296,7 @@ impl TunnelTest {
                 let packets_per_sec = num_packets / num_seconds / num_connections;
 
                 // This has been chosen through experimentation. It primarily serves as a regression tool to ensure our idle-traffic doesn't suddenly spike.
-                const THRESHOLD: f64 = 2.0;
+                const THRESHOLD: f64 = 2.1;
 
                 if packets_per_sec > THRESHOLD {
                     tracing::error!("Expected at most {THRESHOLD} packets / sec in the network while idling. Got: {packets_per_sec}");
@@ -334,6 +316,8 @@ impl TunnelTest {
                 // 2. Advance state to ensure this is reflected.
                 state.advance(ref_state, &mut buffered_transmits);
 
+                let now = state.flux_capacitor.now();
+
                 // 3. Reconnect all relays.
                 state
                     .client
@@ -341,6 +325,12 @@ impl TunnelTest {
                 for gateway in state.gateways.values_mut() {
                     gateway.exec_mut(|g| g.update_relays(iter::empty(), state.relays.iter(), now));
                 }
+            }
+            Transition::RebootRelaysWhilePartitioned(new_relays) => {
+                // If we are partitioned from the portal, we will only learn which relays to use, potentially replacing existing ones.
+                let to_remove = Vec::default();
+
+                state.deploy_new_relays(new_relays, now, to_remove);
             }
         };
         state.advance(ref_state, &mut buffered_transmits);
@@ -362,13 +352,26 @@ impl TunnelTest {
         assert_icmp_packets_properties(
             ref_client,
             sim_client,
-            sim_gateways,
+            &sim_gateways,
             &ref_state.global_dns_records,
         );
-        assert_dns_packets_properties(ref_client, sim_client);
-        assert_known_hosts_are_valid(ref_client, sim_client);
+        assert_udp_packets_properties(
+            ref_client,
+            sim_client,
+            &sim_gateways,
+            &ref_state.global_dns_records,
+        );
+        assert_tcp_packets_properties(
+            ref_client,
+            sim_client,
+            &sim_gateways,
+            &ref_state.global_dns_records,
+        );
+        assert_udp_dns_packets_properties(ref_client, sim_client);
+        assert_tcp_dns(ref_client, sim_client);
         assert_dns_servers_are_valid(ref_client, sim_client);
         assert_routes_are_valid(ref_client, sim_client);
+        assert_resource_status(ref_client, sim_client);
     }
 }
 
@@ -386,9 +389,61 @@ impl TunnelTest {
         let cut_off = self.flux_capacitor.now::<Instant>() + Duration::from_secs(10);
 
         'outer: while self.flux_capacitor.now::<Instant>() < cut_off {
-            // `handle_timeout` needs to be called at the very top to advance state after we have made other modifications.
-            self.handle_timeout(&ref_state.global_dns_records, buffered_transmits);
             let now = self.flux_capacitor.now();
+
+            // `handle_timeout` needs to be called at the very top to advance state after we have made other modifications.
+            self.handle_timeout(
+                &ref_state.global_dns_records,
+                &ref_state.unreachable_hosts,
+                buffered_transmits,
+                now,
+            );
+
+            if let Some(next) = self.poll_timeout() {
+                if next < now {
+                    tracing::error!(?next, ?now, "State machine requested time in the past");
+                }
+            }
+
+            for (id, gateway) in self.gateways.iter_mut() {
+                let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) else {
+                    continue;
+                };
+
+                on_gateway_event(
+                    *id,
+                    event,
+                    &mut self.client,
+                    gateway,
+                    &ref_state.global_dns_records,
+                    now,
+                );
+                continue 'outer;
+            }
+
+            if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
+                self.on_client_event(self.client.inner().id, event, &ref_state.portal);
+                continue;
+            }
+            if let Some(query) = self.client.exec_mut(|c| c.sut.poll_dns_queries()) {
+                let server = query.server;
+                let transport = query.transport;
+
+                let response = self.on_recursive_dns_query(
+                    query.message.for_slice_ref(),
+                    &ref_state.global_dns_records,
+                );
+                self.client.exec_mut(|c| {
+                    c.sut.handle_dns_response(dns::RecursiveResponse {
+                        server,
+                        query: query.message,
+                        message: Ok(response), // TODO: Vary this?
+                        transport,
+                    })
+                });
+
+                continue;
+            }
 
             for (_, relay) in self.relays.iter_mut() {
                 let Some(message) = relay.exec_mut(|r| r.sut.next_command()) else {
@@ -435,28 +490,11 @@ impl TunnelTest {
                 continue 'outer;
             }
 
-            for (id, gateway) in self.gateways.iter_mut() {
-                let Some(event) = gateway.exec_mut(|g| g.sut.poll_event()) else {
-                    continue;
-                };
-
-                on_gateway_event(*id, event, &mut self.client, now);
-                continue 'outer;
-            }
-
             if let Some(transmit) = self.client.exec_mut(|sim| sim.sut.poll_transmit()) {
                 buffered_transmits.push_from(transmit, &self.client, now);
                 continue;
             }
-            if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
-                self.on_client_event(
-                    self.client.inner().id,
-                    event,
-                    &ref_state.portal,
-                    &ref_state.global_dns_records,
-                );
-                continue;
-            }
+
             self.client.exec_mut(|sim| {
                 while let Some(packet) = sim.sut.poll_packets() {
                     sim.on_received_packet(packet)
@@ -464,7 +502,7 @@ impl TunnelTest {
             });
 
             if let Some(transmit) = buffered_transmits.pop(now) {
-                self.dispatch_transmit(transmit);
+                self.dispatch_transmit(transmit, now);
                 continue;
             }
 
@@ -483,15 +521,46 @@ impl TunnelTest {
 
             self.flux_capacitor.large_tick(); // Large tick to more quickly advance to potential next timeout.
         }
+
+        for (transmit, at) in buffered_transmits.drain() {
+            self.dispatch_transmit(transmit, at);
+        }
     }
 
     fn handle_timeout(
         &mut self,
-        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
+        global_dns_records: &DnsRecords,
+        unreachable_hosts: &UnreachableHosts,
         buffered_transmits: &mut BufferedTransmits,
+        now: Instant,
     ) {
-        let now = self.flux_capacitor.now();
+        // Handle the TCP DNS client, i.e. simulate applications making TCP DNS queries.
+        self.client.exec_mut(|c| {
+            c.tcp_dns_client.handle_timeout(now);
 
+            while let Some(result) = c.tcp_dns_client.poll_query_result() {
+                match result.result {
+                    Ok(message) => {
+                        let upstream = c.dns_mapping().get_by_left(&result.server.ip()).unwrap();
+
+                        c.received_tcp_dns_responses
+                            .insert((*upstream, result.query.header().id()));
+                        c.handle_dns_response(message.for_slice())
+                    }
+                    Err(e) => {
+                        tracing::error!("TCP DNS query failed: {e:#}");
+                    }
+                }
+            }
+        });
+        while let Some(transmit) = self.client.exec_mut(|c| {
+            let packet = c.tcp_dns_client.poll_outbound()?;
+            c.encapsulate(packet, now)
+        }) {
+            buffered_transmits.push_from(transmit, &self.client, now)
+        }
+
+        // Handle the client's `Transmit`s and timeout.
         while let Some(transmit) = self.client.poll_transmit(now) {
             self.client.exec_mut(|c| c.receive(transmit, now))
         }
@@ -501,11 +570,16 @@ impl TunnelTest {
             }
         });
 
+        // Handle all gateway `Transmit`s and timeouts.
         for (_, gateway) in self.gateways.iter_mut() {
+            for transmit in gateway.exec_mut(|g| g.advance_resources(global_dns_records, now)) {
+                buffered_transmits.push_from(transmit, gateway, now);
+            }
+
             while let Some(transmit) = gateway.poll_transmit(now) {
-                let Some(reply) =
-                    gateway.exec_mut(|g| g.receive(global_dns_records, transmit, now))
-                else {
+                let Some(reply) = gateway.exec_mut(|g| {
+                    g.receive(transmit, unreachable_hosts, now, self.flux_capacitor.now())
+                }) else {
                     continue;
                 };
 
@@ -519,6 +593,7 @@ impl TunnelTest {
             });
         }
 
+        // Handle all relay `Transmit`s and timeouts.
         for (_, relay) in self.relays.iter_mut() {
             while let Some(transmit) = relay.poll_transmit(now) {
                 let Some(reply) = relay.exec_mut(|r| r.receive(transmit, now)) else {
@@ -533,18 +608,6 @@ impl TunnelTest {
                     r.sut.handle_timeout(now)
                 }
             })
-        }
-
-        for (_, dns_server) in self.dns_servers.iter_mut() {
-            while let Some(transmit) = dns_server.poll_transmit(now) {
-                let Some(reply) =
-                    dns_server.exec_mut(|d| d.receive(global_dns_records, transmit, now))
-                else {
-                    continue;
-                };
-
-                buffered_transmits.push_from(reply, dns_server, now);
-            }
         }
     }
 
@@ -570,12 +633,11 @@ impl TunnelTest {
     /// It takes a [`Transmit`] and checks, which host accepts it, i.e. has configured the correct IP address.
     ///
     /// Currently, the network topology of our tests are a single subnet without NAT.
-    fn dispatch_transmit(&mut self, transmit: Transmit<'static>) {
+    fn dispatch_transmit(&mut self, transmit: Transmit<'static>, at: Instant) {
         let src = transmit
             .src
             .expect("`src` should always be set in these tests");
         let dst = transmit.dst;
-        let now = self.flux_capacitor.now();
 
         let Some(host) = self.network.host_by_ip(dst.ip()) else {
             tracing::error!("Unhandled packet: {src} -> {dst}");
@@ -592,7 +654,7 @@ impl TunnelTest {
                     return;
                 }
 
-                self.client.receive(transmit, now);
+                self.client.receive(transmit, at);
             }
             HostId::Gateway(id) => {
                 if self.drop_direct_client_traffic && self.client.is_sender(src.ip()) {
@@ -604,33 +666,21 @@ impl TunnelTest {
                 self.gateways
                     .get_mut(&id)
                     .expect("unknown gateway")
-                    .receive(transmit, now);
+                    .receive(transmit, at);
             }
             HostId::Relay(id) => {
                 self.relays
                     .get_mut(&id)
                     .expect("unknown relay")
-                    .receive(transmit, now);
+                    .receive(transmit, at);
             }
             HostId::Stale => {
                 tracing::debug!(%dst, "Dropping packet because host roamed away or is offline");
             }
-            HostId::DnsServer(id) => {
-                self.dns_servers
-                    .get_mut(&id)
-                    .expect("unknown DNS server")
-                    .receive(transmit, now);
-            }
         }
     }
 
-    fn on_client_event(
-        &mut self,
-        src: ClientId,
-        event: ClientEvent,
-        portal: &StubPortal,
-        global_dns_records: &BTreeMap<DomainName, BTreeSet<IpAddr>>,
-    ) {
+    fn on_client_event(&mut self, src: ClientId, event: ClientEvent, portal: &StubPortal) {
         let now = self.flux_capacitor.now();
 
         match event {
@@ -654,61 +704,66 @@ impl TunnelTest {
 
                 gateway.exec_mut(|g| {
                     for candidate in candidates {
-                        g.sut.remove_ice_candidate(src, candidate)
+                        g.sut.remove_ice_candidate(src, candidate, now)
                     }
                 })
             }
             ClientEvent::ConnectionIntent {
-                resource,
+                resource: resource_id,
                 connected_gateway_ids,
             } => {
-                let (gateway, site) =
-                    portal.handle_connection_intent(resource, connected_gateway_ids);
-
-                self.client
-                    .exec_mut(|c| c.sut.on_routing_details(resource, gateway, site, now))
-                    .unwrap();
-            }
-
-            ClientEvent::RequestAccess {
-                resource_id,
-                gateway_id,
-                maybe_domain,
-            } => {
+                let (gateway_id, site_id) =
+                    portal.handle_connection_intent(resource_id, connected_gateway_ids);
                 let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
-                let maybe_entry = maybe_domain.and_then(|r| {
-                    let resolved_ips = Vec::from_iter(global_dns_records.get(&r.name).cloned()?);
-
-                    Some(DnsResourceNatEntry::new(r, resolved_ips))
-                });
-
                 let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
-                gateway.exec_mut(|g| {
-                    g.sut.allow_access(
-                        self.client.inner().id,
-                        self.client.inner().sut.tunnel_ip4().unwrap(),
-                        self.client.inner().sut.tunnel_ip6().unwrap(),
-                        None,
-                        resource.clone(),
-                    );
-                    if let Some(entry) = maybe_entry {
-                        g.sut
-                            .create_dns_resource_nat_entry(
-                                self.client.inner().id,
-                                resource.id(),
-                                entry,
-                                now,
-                            )
-                            .unwrap()
-                    };
+                let client_key = self.client.inner().sut.public_key();
+                let gateway_key = gateway.inner().sut.public_key();
+                let (preshared_key, client_ice, gateway_ice) =
+                    make_preshared_key_and_ice(client_key, gateway_key);
+
+                gateway
+                    .exec_mut(|g| {
+                        g.sut.authorize_flow(
+                            src,
+                            client_key,
+                            preshared_key.clone(),
+                            client_ice.clone(),
+                            gateway_ice.clone(),
+                            self.client.inner().sut.tunnel_ip4().unwrap(),
+                            self.client.inner().sut.tunnel_ip6().unwrap(),
+                            None,
+                            resource,
+                            now,
+                        )
+                    })
+                    .unwrap();
+                if let Err(e) = self.client.exec_mut(|c| {
+                    c.sut.handle_flow_created(
+                        resource_id,
+                        gateway_id,
+                        gateway_key,
+                        site_id,
+                        preshared_key,
+                        client_ice,
+                        gateway_ice,
+                        now,
+                    )
+                }) {
+                    tracing::error!("{e:#}")
+                };
+            }
+
+            ClientEvent::ResourcesChanged { resources } => {
+                self.client.exec_mut(|c| {
+                    c.resource_status = resources
+                        .into_iter()
+                        .map(|r| (r.id(), r.status()))
+                        .collect();
                 });
             }
-            ClientEvent::ResourcesChanged { .. } => {
-                tracing::warn!("Unimplemented");
-            }
             ClientEvent::TunInterfaceUpdated(config) => {
-                if self.client.inner().dns_by_sentinel == config.dns_by_sentinel
+                if self.client.inner().dns_mapping() == &config.dns_by_sentinel
                     && self.client.inner().ipv4_routes == config.ipv4_routes
                     && self.client.inner().ipv6_routes == config.ipv6_routes
                 {
@@ -716,93 +771,139 @@ impl TunnelTest {
                         "Emitted `TunInterfaceUpdated` without changing DNS servers or routes"
                     );
                 }
+
+                if self.client.inner().dns_mapping() != &config.dns_by_sentinel {
+                    for gateway in self.gateways.values_mut() {
+                        gateway.exec_mut(|g| {
+                            g.deploy_new_dns_servers(
+                                config.dns_by_sentinel.right_values().copied(),
+                                now,
+                            )
+                        })
+                    }
+                }
+
                 self.client.exec_mut(|c| {
-                    c.dns_by_sentinel = config.dns_by_sentinel;
+                    c.set_new_dns_servers(config.dns_by_sentinel);
                     c.ipv4_routes = config.ipv4_routes;
                     c.ipv6_routes = config.ipv6_routes;
                 });
             }
-            ClientEvent::RequestConnection {
-                gateway_id,
-                offer,
-                preshared_key,
-                resource_id,
-                maybe_domain,
-            } => {
-                let maybe_entry = maybe_domain.and_then(|r| {
-                    let resolved_ips = Vec::from_iter(global_dns_records.get(&r.name).cloned()?);
-
-                    Some(DnsResourceNatEntry::new(r, resolved_ips))
-                });
-                let resource = portal.map_client_resource_to_gateway_resource(resource_id);
-
-                let Some(gateway) = self.gateways.get_mut(&gateway_id) else {
-                    tracing::error!("Unknown gateway");
-                    return;
-                };
-
-                let client_id = self.client.inner().id;
-
-                let answer = gateway
-                    .exec_mut(|g| {
-                        let answer = g.sut.accept(
-                            client_id,
-                            snownet::Offer {
-                                session_key: preshared_key.expose_secret().0.into(),
-                                credentials: snownet::Credentials {
-                                    username: offer.username,
-                                    password: offer.password,
-                                },
-                            },
-                            self.client.inner().sut.public_key(),
-                            now,
-                        );
-                        g.sut.allow_access(
-                            self.client.inner().id,
-                            self.client.inner().sut.tunnel_ip4().unwrap(),
-                            self.client.inner().sut.tunnel_ip6().unwrap(),
-                            None,
-                            resource.clone(),
-                        );
-                        if let Some(entry) = maybe_entry {
-                            g.sut
-                                .create_dns_resource_nat_entry(
-                                    self.client.inner().id,
-                                    resource.id(),
-                                    entry,
-                                    now,
-                                )
-                                .unwrap()
-                        };
-
-                        anyhow::Ok(answer)
-                    })
-                    .unwrap();
-
-                self.client
-                    .exec_mut(|c| {
-                        c.sut.accept_answer(
-                            snownet::Answer {
-                                credentials: snownet::Credentials {
-                                    username: answer.username,
-                                    password: answer.password,
-                                },
-                            },
-                            resource_id,
-                            gateway.inner().sut.public_key(),
-                            now,
-                        )
-                    })
-                    .unwrap();
-            }
         }
     }
+
+    fn on_recursive_dns_query(
+        &self,
+        query: Message<&[u8]>,
+        global_dns_records: &DnsRecords,
+    ) -> Message<Vec<u8>> {
+        let response = MessageBuilder::new_vec();
+        let mut answers = response.start_answer(&query, Rcode::NOERROR).unwrap();
+
+        let query = query.sole_question().unwrap();
+        let name = query.qname().to_vec();
+        let qtype = query.qtype();
+
+        let records = global_dns_records
+            .domain_records_iter(&name)
+            .filter(|record| qtype == record.rtype())
+            .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
+
+        for record in records {
+            answers.push(record).unwrap();
+        }
+
+        let response = answers.into_message();
+
+        tracing::debug!(%name, %qtype, "Responding to DNS query");
+
+        response
+    }
+
+    fn deploy_new_relays(
+        &mut self,
+        new_relays: BTreeMap<RelayId, Host<u64>>,
+        now: Instant,
+        to_remove: Vec<RelayId>,
+    ) {
+        for relay in self.relays.values() {
+            self.network.remove_host(relay);
+        }
+
+        let online = new_relays
+            .into_iter()
+            .map(|(rid, relay)| (rid, relay.map(SimRelay::new, debug_span!("relay", %rid))))
+            .collect::<BTreeMap<_, _>>();
+
+        for (rid, relay) in &online {
+            debug_assert!(self.network.add_host(*rid, relay));
+        }
+
+        self.client.exec_mut(|c| {
+            c.update_relays(to_remove.iter().copied(), online.iter(), now);
+        });
+        for gateway in self.gateways.values_mut() {
+            gateway.exec_mut(|g| g.update_relays(to_remove.iter().copied(), online.iter(), now));
+        }
+        self.relays = online; // Override all relays.
+    }
+}
+
+fn address_from_destination(destination: &Destination, state: &TunnelTest, src: &IpAddr) -> IpAddr {
+    match destination {
+        Destination::DomainName { resolved_ip, name } => {
+            let available_ips = state
+                .client
+                .inner()
+                .dns_records
+                .get(name)
+                .unwrap()
+                .iter()
+                .filter(|ip| match ip {
+                    IpAddr::V4(_) => src.is_ipv4(),
+                    IpAddr::V6(_) => src.is_ipv6(),
+                });
+            *resolved_ip.select(available_ips)
+        }
+        Destination::IpAddr(addr) => *addr,
+    }
+}
+
+fn make_preshared_key_and_ice(
+    client_key: PublicKey,
+    gateway_key: PublicKey,
+) -> (SecretKey, IceCredentials, IceCredentials) {
+    let secret_key = SecretKey::new(Key(hkdf("SECRET_KEY_DOMAIN_SEP", client_key, gateway_key)));
+    let client_ice = ice_creds("CLIENT_ICE_DOMAIN_SEP", client_key, gateway_key);
+    let gateway_ice = ice_creds("GATEWAY_ICE_DOMAIN_SEP", client_key, gateway_key);
+
+    (secret_key, client_ice, gateway_ice)
+}
+
+fn ice_creds(domain: &str, client_key: PublicKey, gateway_key: PublicKey) -> IceCredentials {
+    let mut rng = rand::rngs::StdRng::from_seed(hkdf(domain, client_key, gateway_key));
+
+    IceCredentials {
+        username: rand::distributions::Alphanumeric.sample_string(&mut rng, 4),
+        password: rand::distributions::Alphanumeric.sample_string(&mut rng, 12),
+    }
+}
+
+fn hkdf(domain: &str, client_key: PublicKey, gateway_key: PublicKey) -> [u8; 32] {
+    sha2::Sha256::default()
+        .chain_update(domain)
+        .chain_update(client_key.as_bytes())
+        .chain_update(gateway_key.as_bytes())
+        .finalize()
+        .into()
 }
 
 fn on_gateway_event(
     src: GatewayId,
     event: GatewayEvent,
     client: &mut Host<SimClient>,
+    gateway: &mut Host<SimGateway>,
+    global_dns_records: &DnsRecords,
     now: Instant,
 ) {
     match event {
@@ -813,9 +914,17 @@ fn on_gateway_event(
         }),
         GatewayEvent::RemovedIceCandidates { candidates, .. } => client.exec_mut(|c| {
             for candidate in candidates {
-                c.sut.remove_ice_candidate(src, candidate)
+                c.sut.remove_ice_candidate(src, candidate, now)
             }
         }),
-        GatewayEvent::RefreshDns { .. } => todo!(),
+        GatewayEvent::ResolveDns(r) => {
+            let resolved_ips = global_dns_records.domain_ips_iter(r.domain()).collect();
+
+            gateway.exec_mut(|g| {
+                g.sut
+                    .handle_domain_resolved(r, Ok(resolved_ips), now)
+                    .unwrap()
+            })
+        }
     }
 }

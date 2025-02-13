@@ -100,4 +100,27 @@ defmodule Domain.Flows.Flow.Query do
       {:flows, :desc, :inserted_at},
       {:flows, :asc, :id}
     ]
+
+  @impl Domain.Repo.Query
+  def filters,
+    do: [
+      %Domain.Repo.Filter{
+        name: :expiration,
+        title: "Expired",
+        type: :string,
+        values: [
+          {"Expired", "expired"},
+          {"Not Expired", "not_expired"}
+        ],
+        fun: &filter_by_expired/2
+      }
+    ]
+
+  def filter_by_expired(queryable, "expired") do
+    {queryable, dynamic([flows: flows], flows.expires_at < fragment("NOW()"))}
+  end
+
+  def filter_by_expired(queryable, "not_expired") do
+    {queryable, dynamic([flows: flows], flows.expires_at >= fragment("NOW()"))}
+  end
 end

@@ -4,14 +4,14 @@ members = [
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",
-  "connlib/shared",
+  "connlib/model",
   "connlib/snownet",
   "connlib/tunnel",
+  "dns-over-tcp",
   "gateway",
   "gui-client/src-common",
   "gui-client/src-tauri",
   "headless-client",
-  "iced-client",
   "ip-packet",
   "logging",
   "phoenix-channel",
@@ -20,29 +20,130 @@ members = [
   "telemetry",
   "tests/gui-smoke-test",
   "tests/http-test-server",
-  "tun"
+  "tun",
 ]
 
 resolver = "2"
 
+[workspace.package]
+license = "Apache-2.0"
+edition = "2021"
+
 [workspace.dependencies]
+anyhow = "1.0.95"
+arboard = { version = "3.4.0", default-features = false }
+async-trait = { version = "0.1", default-features = false }
 atomicwrites = "0.4.4"
-boringtun = { version = "0.6", default-features = false }
-chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
-swift-bridge = "0.1.57"
+axum = { version = "0.7.7", default-features = false }
 backoff = { version = "0.4", features = ["tokio"] }
-tracing = { version = "0.1.40" }
-tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "v0.1.x" } # Contains `dbg!` but for `tracing`.
-tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
-secrecy = "0.8"
-str0m = { version = "0.6.2", default-features = false }
-futures-bounded = "0.2.1"
-domain = { version = "0.10", features = ["serde"] }
+base64 = { version = "0.22.1", default-features = false }
+bimap = "0.6"
+boringtun = { version = "0.6", default-features = false }
+bytecodec = "0.4.15"
+bytes = { version = "1.9.0", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
+clap = "4.5.28"
+derive_more = "1.0.0"
+difference = "2.0.0"
+dirs = "5.0.1"
+divan = "0.1.17"
 dns-lookup = "2.0"
-tokio-tungstenite = "0.23.1"
+domain = { version = "0.10", features = ["serde"] }
+either = "1"
+env_logger = "0.11.6"
+etherparse = "0.16"
+futures = { version = "0.3.31", default-features = false }
+futures-bounded = "0.2.1"
+futures-util = { version = "0.3", default-features = false }
+glob = "0.3.2"
+hex = "0.4.3"
+hex-display = "0.3.0"
+hex-literal = "0.4.1"
+caps = "0.5.5"
+humantime = "2.1"
+ip_network = { version = "0.4", default-features = false }
+ip_network_table = { version = "0.2", default-features = false }
+itertools = "0.13"
+jni = "0.21.1"
+supports-color = "3.0.2"
+keyring = "3.6.1"
+known-folders = "1.2.0"
+libc = "0.2.150"
+log = "0.4"
+lru = "0.12.5"
+mio = "1.0.3"
+native-dialog = "0.7.0"
+nix = "0.29.0"
+nu-ansi-term = "0.50"
+once_cell = "1.17.1"
+ringbuffer = "0.15.0"
+opentelemetry = "0.26.0"
+opentelemetry-otlp = "0.26.0"
+opentelemetry_sdk = "0.26.0"
+os_info = { version = "3", default-features = false }
+output_vt100 = "0.1"
+png = "0.17.16"
+proptest = "1.6.0"
+proptest-state-machine = "0.3.1"
+quinn-udp = { version = "0.5.8", features = ["fast-apple-datapath"] }
+rand = "0.8.5"
+rand_core = "0.6.4"
+rangemap = "1.5.1"
+reqwest = { version = "0.12.9", default-features = false }
 rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
-tokio = "1.39"
-rustls = { version = "0.23.10", default-features = false, features = ["ring"] }
+rustls = { version = "0.23.21", default-features = false, features = ["ring"] }
+sadness-generator = "0.6.0"
+secrecy = "0.8"
+semver = "1.0.25"
+sentry = { version = "0.36.0", default-features = false }
+sentry-tracing = "0.36.0"
+serde = "1.0.217"
+serde_json = "1.0.135"
+serde_variant = "0.1.3"
+sha2 = "0.10.8"
+smallvec = "1.13.2"
+smbios-lib = "0.9.2"
+smoltcp = { version = "0.12", default-features = false }
+static_assertions = "1.1.0"
+str0m = { version = "0.6.3", default-features = false, features = ["sha1"] }
+stun_codec = "0.3.4"
+subprocess = "0.2.9"
+subtle = "2.5.0"
+swift-bridge = "0.1.57"
+swift-bridge-build = "0.1.57"
+lockfree-object-pool = "0.1.6"
+tauri = "2.2.5"
+tauri-build = "2.0.1"
+tauri-plugin-dialog = "2.2.0"
+tauri-plugin-notification = "2.2.0"
+tauri-plugin-shell = "2.2.0"
+tauri-plugin-opener = "2.2.0"
+tauri-runtime = "2.3.0"
+tauri-utils = "2.1.1"
+tempfile = "3.13.0"
+test-case = "3.3.1"
+test-strategy = "0.4.0"
+thiserror = "1.0.68"
+time = "0.3.37"
+tokio = "1.43"
+tokio-stream = "0.1.17"
+flume = { version = "0.11.1", features = ["async"] }
+tokio-tungstenite = "0.23.1"
+tokio-util = "0.7.11"
+tracing = { version = "0.1.40" }
+tracing-appender = "0.2.3"
+tracing-core = "0.1.31"
+tracing-log = "0.2.0"
+tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "v0.1.x" } # Contains `dbg!` but for `tracing`.
+tracing-opentelemetry = "0.27.0"
+tracing-stackdriver = "0.11.0"
+tracing-subscriber = { version = "0.3.17", features = ["parking_lot"] }
+trackable = "1.3.0"
+url = "2.5.2"
+uuid = "1.10.0"
+windows = "0.58.0"
+winreg = "0.52.0"
+zip = { version = "2", default-features = false }
 
 connlib-client-android = { path = "connlib/clients/android" }
 connlib-client-apple = { path = "connlib/clients/apple" }
@@ -50,9 +151,12 @@ connlib-client-shared = { path = "connlib/clients/shared" }
 firezone-bin-shared = { path = "bin-shared" }
 firezone-logging = { path = "logging" }
 firezone-telemetry = { path = "telemetry" }
+firezone-headless-client = { path = "headless-client" }
+firezone-gui-client-common = { path = "gui-client/src-common" }
 snownet = { path = "connlib/snownet" }
+dns-over-tcp = { path = "dns-over-tcp" }
 firezone-relay = { path = "relay" }
-connlib-shared = { path = "connlib/shared" }
+connlib-model = { path = "connlib/model" }
 firezone-tunnel = { path = "connlib/tunnel" }
 phoenix-channel = { path = "phoenix-channel" }
 ip-packet = { path = "ip-packet" }
@@ -69,26 +173,24 @@ unused_async = "warn"
 wildcard_enum_match_arm = "warn" # Ensures we match on all combinations of `Poll`, preventing erroneous suspensions.
 redundant_else = "warn"
 redundant_clone = "warn"
+unwrap_in_result = "warn"
+unwrap_used = "warn"
 
 [workspace.lints.rustdoc]
 private-intra-doc-links = "allow" # We don't publish any of our docs but want to catch dead links.
 
 [patch.crates-io]
-boringtun = { git = "https://github.com/cloudflare/boringtun", branch = "master" }
+boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
-proptest = { git = "https://github.com/proptest-rs/proptest", branch = "master" }
-proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "master" }
-tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "deps/bump-otel-0.23" } # Waiting for release.
+tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.26" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
-tracing = "0.1"
+tracing = "0.1.41"
 
 [profile.release]
-strip = true
-
 # Full link-time optimization. Reduces binaries by up to 3x on some platforms.
 lto = "fat"
 
@@ -96,17 +198,12 @@ lto = "fat"
 # at the expense of compilation time
 codegen-units = 1
 
-[profile.bench]
-strip = false # Frame pointers are necessary for profiling; `strip=true` appears to remove them.
-
 # Override build settings just for the GUI client, so we get a pdb/dwp
 # Cargo ignores profile settings if they're not in the workspace's Cargo.toml
 [profile.dev.package.firezone-gui-client]
 debug = "full"
 split-debuginfo = "packed"
-strip = "none"
 
 [profile.release.package.firezone-gui-client]
 debug = "full"
 split-debuginfo = "packed"
-strip = "none"

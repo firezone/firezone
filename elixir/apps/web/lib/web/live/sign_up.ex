@@ -133,7 +133,7 @@ defmodule Web.SignUp do
     ~H"""
     <div class="space-y-6">
       <div class="text-center text-neutral-900">
-        Your account has been created!
+        <p class="text-xl font-medium">Your account has been created!</p>
         <p>Please check your email for sign in instructions.</p>
       </div>
       <div class="text-center">
@@ -141,28 +141,28 @@ defmodule Web.SignUp do
           <table class="border-collapse w-full text-sm">
             <tbody>
               <tr>
-                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
+                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900 font-bold]}>
                   Account Name:
                 </td>
                 <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
-                  <%= @account.name %>
+                  {@account.name}
                 </td>
               </tr>
               <tr>
-                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
+                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900 font-bold]}>
                   Account Slug:
                 </td>
                 <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
-                  <%= @account.slug %>
+                  {@account.slug}
                 </td>
               </tr>
               <tr>
-                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
+                <td class={~w[border-b border-neutral-100 py-4 text-neutral-900 font-bold]}>
                   Sign In URL:
                 </td>
                 <td class={~w[border-b border-neutral-100 py-4 text-neutral-900]}>
                   <.link class={[link_style()]} navigate={~p"/#{@account}"}>
-                    <%= url(~p"/#{@account}") %>
+                    {url(~p"/#{@account}")}
                   </.link>
                 </td>
               </tr>
@@ -204,8 +204,8 @@ defmodule Web.SignUp do
         <.input
           field={@form[:email]}
           type="text"
-          label="Email"
-          placeholder="Enter your work email here"
+          label="Work Email"
+          placeholder="E.g. foo@example.com"
           required
           autofocus
           phx-debounce="300"
@@ -215,8 +215,8 @@ defmodule Web.SignUp do
           <.input
             field={account[:name]}
             type="text"
-            label="Account Name"
-            placeholder="Enter an account name"
+            label="Company Name"
+            placeholder="E.g. Example Corp"
             required
             phx-debounce="300"
           />
@@ -228,7 +228,7 @@ defmodule Web.SignUp do
             field={actor[:name]}
             type="text"
             label="Your Name"
-            placeholder="Enter your name here"
+            placeholder="E.g. John Smith"
             required
             phx-debounce="300"
           />
@@ -293,8 +293,6 @@ defmodule Web.SignUp do
 
     changeset =
       attrs
-      |> maybe_put_default_account_name(account_name_changed?)
-      |> maybe_put_default_actor_name(actor_name_changed?)
       |> Registration.changeset()
       |> Map.put(:action, :validate)
 
@@ -313,8 +311,6 @@ defmodule Web.SignUp do
 
     changeset =
       attrs
-      |> maybe_put_default_account_name()
-      |> maybe_put_default_actor_name()
       |> put_in(["actor", "type"], :account_admin_user)
       |> Registration.changeset()
       |> Map.put(:action, :insert)
@@ -380,33 +376,6 @@ defmodule Web.SignUp do
     else
       {:noreply, assign(socket, form: to_form(changeset))}
     end
-  end
-
-  defp maybe_put_default_account_name(attrs, account_name_changed? \\ true)
-
-  defp maybe_put_default_account_name(attrs, true) do
-    attrs
-  end
-
-  defp maybe_put_default_account_name(attrs, false) do
-    case String.split(attrs["email"], "@", parts: 2) do
-      [default_name | _] when byte_size(default_name) > 0 ->
-        put_in(attrs, ["account", "name"], "#{default_name}'s account")
-
-      _ ->
-        attrs
-    end
-  end
-
-  defp maybe_put_default_actor_name(attrs, actor_name_changed? \\ true)
-
-  defp maybe_put_default_actor_name(attrs, true) do
-    attrs
-  end
-
-  defp maybe_put_default_actor_name(attrs, false) do
-    [default_name | _] = String.split(attrs["email"], "@", parts: 2)
-    put_in(attrs, ["actor", "name"], default_name)
   end
 
   defp register_account(socket, registration) do

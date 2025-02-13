@@ -23,20 +23,16 @@ mod imp;
 #[path = "deep_link/windows.rs"]
 mod imp;
 
-#[cfg_attr(target_os = "linux", allow(dead_code))]
-#[cfg_attr(target_os = "macos", allow(dead_code))]
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
-    // This one is not `anyhow` since we catch it in the caller
-    #[error("named pipe server couldn't start listening, we are probably the second instance")]
-    CantListen,
-    #[error(transparent)]
-    Other(#[from] anyhow::Error),
-}
+#[error("named pipe server couldn't start listening, we are probably the second instance")]
+pub struct CantListen;
 
 pub use imp::{open, register, Server};
 
-pub fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Response> {
+/// Parses a deep-link URL into a struct.
+///
+/// e.g. `firezone-fd0020211111://handle_client_sign_in_callback/?state=secret&fragment=secret&account_name=Firezone&account_slug=firezone&actor_name=Jane+Doe&identity_provider_identifier=secret`
+pub(crate) fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Response> {
     let url = Url::parse(url_secret.expose_secret())?;
     if Some(url::Host::Domain("handle_client_sign_in_callback")) != url.host() {
         bail!("URL host should be `handle_client_sign_in_callback`");
@@ -48,12 +44,20 @@ pub fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Response> 
         _ => bail!("URL path should be `/` or empty"),
     }
 
+    let mut account_slug = None;
     let mut actor_name = None;
     let mut fragment = None;
     let mut state = None;
 
+    // There's probably a way to get serde to do this
     for (key, value) in url.query_pairs() {
         match key.as_ref() {
+            "account_slug" => {
+                if account_slug.is_some() {
+                    bail!("`account_slug` should appear exactly once");
+                }
+                account_slug = Some(value.to_string());
+            }
             "actor_name" => {
                 if actor_name.is_some() {
                     bail!("`actor_name` should appear exactly once");
@@ -77,6 +81,7 @@ pub fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Response> 
     }
 
     Ok(auth::Response {
+        account_slug: account_slug.context("URL should have `account_slug`")?,
         actor_name: actor_name.context("URL should have `actor_name`")?,
         fragment: fragment.context("URL should have `fragment`")?,
         state: state.context("URL should have `state`")?,
@@ -92,9 +97,10 @@ mod tests {
     #[test]
     fn parse_auth_callback() -> Result<()> {
         // Positive cases
-        let input = "firezone://handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
+        let input = "firezone://handle_client_sign_in_callback/?account_slug=firezone&actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input)?;
 
+        assert_eq!(actual.account_slug, "firezone");
         assert_eq!(actual.actor_name, "Reactor Scram");
         assert_eq!(actual.fragment.expose_secret(), "a_very_secret_string");
         assert_eq!(actual.state.expose_secret(), "a_less_secret_string");
@@ -102,14 +108,16 @@ mod tests {
         let input = "firezone-fd0020211111://handle_client_sign_in_callback?account_name=Firezone&account_slug=firezone&actor_name=Reactor+Scram&fragment=a_very_secret_string&identity_provider_identifier=1234&state=a_less_secret_string";
         let actual = parse_callback_wrapper(input)?;
 
+        assert_eq!(actual.account_slug, "firezone");
         assert_eq!(actual.actor_name, "Reactor Scram");
         assert_eq!(actual.fragment.expose_secret(), "a_very_secret_string");
         assert_eq!(actual.state.expose_secret(), "a_less_secret_string");
 
         // Empty string "" `actor_name` is fine
-        let input = "firezone://handle_client_sign_in_callback/?actor_name=&fragment=&state=&identity_provider_identifier=12345";
+        let input = "firezone://handle_client_sign_in_callback/?account_slug=firezone&actor_name=&fragment=&state=&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input)?;
 
+        assert_eq!(actual.account_slug, "firezone");
         assert_eq!(actual.actor_name, "");
         assert_eq!(actual.fragment.expose_secret(), "");
         assert_eq!(actual.state.expose_secret(), "");
@@ -117,12 +125,12 @@ mod tests {
         // Negative cases
 
         // URL host is wrong
-        let input = "firezone://not_handle_client_sign_in_callback/?actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
+        let input = "firezone://not_handle_client_sign_in_callback/?account_slug=firezone&actor_name=Reactor+Scram&fragment=a_very_secret_string&state=a_less_secret_string&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input);
         assert!(actual.is_err());
 
         // `actor_name` is not just blank but totally missing
-        let input = "firezone://handle_client_sign_in_callback/?fragment=&state=&identity_provider_identifier=12345";
+        let input = "firezone://handle_client_sign_in_callback/?account_slug=firezone&fragment=&state=&identity_provider_identifier=12345";
         let actual = parse_callback_wrapper(input);
         assert!(actual.is_err());
 
@@ -155,7 +163,7 @@ mod tests {
         let expected_url = url::Url::parse(&format!("bogus-test-schema://{id}"))?;
         super::open(&expected_url).await?;
 
-        let bytes = server_task.await??;
+        let bytes = server_task.await??.unwrap();
         let s = std::str::from_utf8(bytes.expose_secret())?;
         let url = url::Url::parse(s)?;
         assert_eq!(url, expected_url);

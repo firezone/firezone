@@ -7,22 +7,42 @@
 import Combine
 import Foundation
 import SwiftUI
+import UserNotifications
 
 @MainActor
 public final class GrantNotificationsViewModel: ObservableObject {
-  private var store: Store
+  private let sessionNotification: SessionNotification
+  private let onDecisionChanged: (UNAuthorizationStatus) async -> Void
 
-  init(store: Store) {
-    self.store = store
+  init(
+    sessionNotification: SessionNotification,
+    onDecisionChanged: @escaping (UNAuthorizationStatus) async -> Void
+  ) {
+    self.sessionNotification = sessionNotification
+    self.onDecisionChanged = onDecisionChanged
   }
 
-  func grantNotificationButtonTapped() {
-    store.requestNotifications()
+  func grantNotificationButtonTapped(errorHandler: GlobalErrorHandler) {
+    Task {
+      do {
+        let decision = try await sessionNotification.askUserForNotificationPermissions()
+        await onDecisionChanged(decision)
+      } catch {
+        Log.error(error)
+
+        errorHandler.handle(ErrorAlert(
+          title: "Error granting notifications",
+          error: error
+        ))
+      }
+    }
+
   }
 }
 
 struct GrantNotificationsView: View {
   @ObservedObject var model: GrantNotificationsViewModel
+  @EnvironmentObject var errorHandler: GlobalErrorHandler
 
   public var body: some View {
     VStack(
@@ -46,7 +66,7 @@ struct GrantNotificationsView: View {
           .imageScale(.large)
         Spacer()
         Button("Grant Notification Permission") {
-          model.grantNotificationButtonTapped()
+          model.grantNotificationButtonTapped(errorHandler: errorHandler)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)

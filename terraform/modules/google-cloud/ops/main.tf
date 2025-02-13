@@ -212,7 +212,7 @@ resource "google_monitoring_alert_policy" "instances_high_cpu_policy" {
       filter     = "resource.type = \"gce_instance\" AND metric.type = \"compute.googleapis.com/instance/cpu/utilization\" AND metadata.user_labels.managed_by = \"terraform\""
       comparison = "COMPARISON_GT"
 
-      threshold_value = 0.8
+      threshold_value = 0.9
       duration        = "60s"
 
       trigger {
@@ -302,39 +302,6 @@ resource "google_monitoring_alert_policy" "sql_disk_utiliziation_policy" {
   }
 }
 
-resource "google_monitoring_alert_policy" "errors" {
-  project = var.project_id
-
-  display_name = "Errors in logs"
-  combiner     = "OR"
-
-  notification_channels = local.notification_channels
-
-  conditions {
-    display_name = "Log match condition"
-
-    condition_matched_log {
-      filter = <<-EOT
-      resource.type="gce_instance"
-      (severity>=ERROR OR "Kernel pid terminated" OR "Crash dump is being written")
-      -protoPayload.@type="type.googleapis.com/google.cloud.audit.AuditLog"
-      -logName:"/logs/GCEGuestAgent"
-      -logName:"/logs/OSConfigAgent"
-      -logName:"/logs/ops-agent-fluent-bit"
-      -"OpentelemetryFinch"
-      EOT
-    }
-  }
-
-  alert_strategy {
-    auto_close = "28800s"
-
-    notification_rate_limit {
-      period = "3600s"
-    }
-  }
-}
-
 resource "google_monitoring_alert_policy" "production_db_access_policy" {
   project = var.project_id
 
@@ -412,5 +379,39 @@ resource "google_monitoring_alert_policy" "ssl_certs_expiring_policy" {
 
   alert_strategy {
     auto_close = "28800s"
+  }
+}
+
+resource "google_monitoring_alert_policy" "load_balancer_latency_policy" {
+  project = var.project_id
+
+  display_name          = "Load balancer latency"
+  combiner              = "OR"
+  notification_channels = local.notification_channels
+
+  documentation {
+    content   = "This alert is triggered when the load balancer latency is higher than 3000ms."
+    mime_type = "text/markdown"
+  }
+
+  conditions {
+    display_name = "Load balancer latency"
+
+    condition_threshold {
+      # Filter out HTTP 101 responses (switching protocols) to prevent WebSocket connections from triggering the alert
+      filter          = "metric.labels.response_code != \"101\" AND resource.type = \"https_lb_rule\" AND metric.type = \"loadbalancing.googleapis.com/https/total_latencies\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 3000
+      duration        = "0s"
+
+      trigger {
+        count = 1
+      }
+
+      aggregations {
+        alignment_period   = "300s"
+        per_series_aligner = "ALIGN_PERCENTILE_99"
+      }
+    }
   }
 }

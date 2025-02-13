@@ -22,6 +22,23 @@ updates:
     schedule:
       interval: weekly
     groups:
+      tauri:
+        # See https://github.com/tauri-apps/tauri/blob/dev/Cargo.toml
+        patterns:
+          - tauri
+          - tauri-runtime
+          - tauri-runtime-wry
+          - tauri-macros
+          - tauri-utils
+          - tauri-build
+          - tauri-codegen
+          - tauri-plugin
+          - tauri-schema-generator
+          - tauri-schema-worker
+          - tauri-cli
+          - tauri-bundler
+          - tauri-macos-sign
+          - tauri-driver
       netlink:
         patterns:
           - rtnetlink
@@ -71,8 +88,7 @@ updates:
           - androidx.lifecycle:lifecycle-livedata-ktx
       navigation:
         patterns:
-          - androidx.navigation:navigation-fragment-ktx
-          - androidx.navigation:navigation-ui-ktx
+          - androidx.navigation:navigation-*
       hilt:
         patterns:
           - androidx.hilt:hilt-compiler
@@ -104,7 +120,7 @@ updates:
           - com.google.firebase:firebase-analytics-ktx
 
   - package-ecosystem: swift
-    directory: swift/apple/FirezoneKit/
+    directory: swift/apple/Firezone.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
     schedule:
       interval: monthly
   - package-ecosystem: npm
@@ -115,10 +131,10 @@ updates:
     directory: rust/gui-client/
     schedule:
       interval: monthly
-  - package-ecosystem: npm
-    directory: scripts/tests/browser/
-    schedule:
-      interval: monthly
+    groups:
+      tauri:
+        patterns:
+          - "@tauri-apps/*"
   - package-ecosystem: npm
     directory: elixir/apps/web/assets/
     schedule:

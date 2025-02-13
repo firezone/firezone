@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 pub mod http_health_check;
 
 mod network_changes;
@@ -43,26 +45,3 @@ pub use network_changes::{new_dns_notifier, new_network_notifier};
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use tun_device_manager::TunDeviceManager;
-
-/// Output of `git describe` at compile time
-/// e.g. `1.0.0-pre.4-20-ged5437c88-modified` where:
-///
-/// * `1.0.0-pre.4` is the most recent ancestor tag
-/// * `20` is the number of commits since then
-/// * `g` doesn't mean anything
-/// * `ed5437c88` is the Git commit hash
-/// * `-modified` is present if the working dir has any changes from that commit number
-#[macro_export]
-macro_rules! git_version {
-    ($regex:literal) => {
-        $crate::__reexport::git_version!(
-            args = ["--always", "--dirty=-modified", "--tags", "--match", $regex],
-            fallback = "unknown"
-        )
-    };
-}
-
-#[doc(hidden)]
-pub mod __reexport {
-    pub use git_version::git_version;
-}

@@ -18,8 +18,11 @@ defmodule Web.TableComponents do
     ~H"""
     <thead id={"#{@table_id}-header"} class="text-xs text-neutral-700 uppercase bg-neutral-50">
       <tr>
-        <th :for={col <- @columns} class={["px-4 py-3 font-medium", Map.get(col, :class, "")]}>
-          <%= col[:label] %>
+        <th
+          :for={col <- @columns}
+          class={["px-4 py-3 font-medium whitespace-nowrap", Map.get(col, :class, "")]}
+        >
+          {col[:label]}
           <.table_header_order_buttons
             :if={col[:field]}
             field={col[:field]}
@@ -28,7 +31,7 @@ defmodule Web.TableComponents do
           />
         </th>
         <th :if={not Enum.empty?(@actions)} class="px-4 py-3">
-          <span class="sr-only"><%= gettext("Actions") %></span>
+          <span class="sr-only">{gettext("Actions")}</span>
         </th>
       </tr>
     </thead>
@@ -87,7 +90,7 @@ defmodule Web.TableComponents do
           @click && "hover:cursor-pointer"
         ]}
       >
-        <%= render_slot(col, @mapper.(@row)) %>
+        {render_slot(col, @mapper.(@row))}
       </td>
       <% # this is a hack which allows to hide empty action dropdowns,
       # because LiveView doesn't allow to do <:slot :let={x} :if={x} />
@@ -99,7 +102,7 @@ defmodule Web.TableComponents do
       <td :if={@actions != [] and show_actions?} class="px-4 py-3">
         <div class="flex space-x-1 items-center justify-end">
           <span :for={action <- @actions}>
-            <%= render_slot(action, @mapper.(@row)) %>
+            {render_slot(action, @mapper.(@row))}
           </span>
         </div>
       </td>
@@ -174,7 +177,7 @@ defmodule Web.TableComponents do
         </tbody>
       </table>
       <div :if={Enum.empty?(@rows)} id={"#{@id}-empty"}>
-        <%= render_slot(@empty) %>
+        {render_slot(@empty)}
       </div>
     </div>
     """
@@ -234,7 +237,7 @@ defmodule Web.TableComponents do
       <tbody :for={group <- @groups} data-group-id={@group_id && @group_id.(group)}>
         <tr class="bg-neutral-100">
           <td class="px-4 py-2" colspan={length(@col) + 1}>
-            <%= render_slot(@group, group) %>
+            {render_slot(@group, group)}
           </td>
         </tr>
 
@@ -250,7 +253,7 @@ defmodule Web.TableComponents do
       </tbody>
     </table>
     <div :if={Enum.empty?(@groups)}>
-      <%= render_slot(@empty) %>
+      {render_slot(@empty)}
     </div>
     """
   end
@@ -289,7 +292,7 @@ defmodule Web.TableComponents do
     ~H"""
     <table class={["w-full text-sm text-left text-neutral-500", @class]} {@rest}>
       <tbody>
-        <%= render_slot(@inner_block) %>
+        {render_slot(@inner_block)}
       </tbody>
     </table>
     """
@@ -329,10 +332,10 @@ defmodule Web.TableComponents do
           @label_class
         ]}
       >
-        <%= render_slot(@label) %>
+        {render_slot(@label)}
       </th>
       <td class={["px-4 py-3", @value_class]}>
-        <%= render_slot(@value) %>
+        {render_slot(@value)}
       </td>
     </tr>
     """
@@ -348,7 +351,7 @@ defmodule Web.TableComponents do
   def action_link(assigns) do
     ~H"""
     <.link navigate={@navigate} class="block py-2 px-4 hover:bg-neutral-100">
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </.link>
     """
   end

@@ -39,6 +39,9 @@ defmodule Domain.Repo.Changeset do
     Keyword.has_key?(changeset.errors, field)
   end
 
+  def empty?(%Ecto.Changeset{} = changeset), do: Enum.empty?(changeset.changes)
+  def empty?(%{}), do: true
+
   def empty?(%Ecto.Changeset{} = changeset, field) do
     case fetch_field(changeset, field) do
       :error -> true
@@ -203,7 +206,7 @@ defmodule Domain.Repo.Changeset do
 
   def validate_email(%Ecto.Changeset{} = changeset, field) do
     changeset
-    |> validate_format(field, ~r/^[^\s]+@[^\s]+\.[^\s]+$/, message: "is an invalid email address")
+    |> validate_format(field, Domain.Auth.email_regex(), message: "is an invalid email address")
     |> validate_length(field, max: 160)
   end
 
@@ -505,7 +508,7 @@ defmodule Domain.Repo.Changeset do
       data = Map.get(changeset.data, field)
       changes = get_change(changeset, field)
 
-      if required? and is_nil(changes) and empty?(data) do
+      if required? and is_nil(changes) and empty_value?(data) do
         add_error(changeset, field, "can't be blank", validation: :required)
       else
         %Changeset{} = nested_changeset = on_cast.(data || %{}, changes || %{})
@@ -546,7 +549,7 @@ defmodule Domain.Repo.Changeset do
     Keyword.has_key?(changeset.errors, field)
   end
 
-  defp empty?(term), do: is_nil(term) or term == %{}
+  defp empty_value?(term), do: is_nil(term) or term == %{}
 
   defp dump(changeset, field, original_type) do
     map =

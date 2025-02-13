@@ -50,11 +50,11 @@ defmodule Web.Settings.ApiClients.Index do
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
-      <.breadcrumb path={~p"/#{@account}/settings/api_clients"}><%= @page_title %></.breadcrumb>
+      <.breadcrumb path={~p"/#{@account}/settings/api_clients"}>{@page_title}</.breadcrumb>
     </.breadcrumbs>
 
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:help>
         API Clients are used to manage Firezone configuration through a REST API. See our
         <.link navigate={"#{@api_url}/swaggerui"} class={link_style()} target="_blank">
@@ -63,6 +63,9 @@ defmodule Web.Settings.ApiClients.Index do
         for more information.
       </:help>
 
+      <:action>
+        <.docs_action path="/reference/rest-api" />
+      </:action>
       <:action>
         <.add_button navigate={~p"/#{@account}/settings/api_clients/new"}>
           Add API Client
@@ -80,16 +83,16 @@ defmodule Web.Settings.ApiClients.Index do
         >
           <:col :let={actor} label="name">
             <.link navigate={~p"/#{@account}/settings/api_clients/#{actor}"} class={link_style()}>
-              <%= actor.name %>
+              {actor.name}
             </.link>
           </:col>
           <:col :let={actor} label="status">
             <.badge type={badge_type(actor)}>
-              <%= status(actor) %>
+              {status(actor)}
             </.badge>
           </:col>
           <:col :let={actor} label="created at">
-            <%= Cldr.DateTime.Formatter.date(actor.inserted_at, 1, "en", Web.CLDR, []) %>
+            {Cldr.DateTime.Formatter.date(actor.inserted_at, 1, "en", Web.CLDR, [])}
           </:col>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">

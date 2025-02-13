@@ -1,6 +1,6 @@
 //! An abstraction over Tauri's system tray menu structs, that implements `PartialEq` for unit testing
 
-use connlib_shared::{callbacks::ResourceDescription, messages::ResourceId};
+use connlib_model::{ResourceId, ResourceView};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -8,16 +8,14 @@ pub const INTERNET_RESOURCE_DESCRIPTION: &str = "All network traffic";
 
 /// A menu that can either be assigned to the system tray directly or used as a submenu in another menu.
 ///
-/// Equivalent to `tauri::SystemTrayMenu`
-#[derive(Debug, Default, PartialEq, Serialize)]
+/// Equivalent to `tauri::menu::Menu` or `tauri::menu::Submenu`
+#[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct Menu {
     pub entries: Vec<Entry>,
 }
 
 /// Something that can be shown in a menu, including text items, separators, and submenus
-///
-/// Equivalent to `tauri::SystemTrayMenuEntry`
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub enum Entry {
     Item(Item),
     Separator,
@@ -27,7 +25,7 @@ pub enum Entry {
 /// Something that shows text and may be clickable
 ///
 /// Equivalent to `tauri::CustomMenuItem`
-#[derive(Debug, PartialEq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Item {
     /// An event to send to the app when the item is clicked.
     ///
@@ -35,12 +33,12 @@ pub struct Item {
     pub event: Option<Event>,
     /// The text displayed to the user
     pub title: String,
-    /// If true, show a checkmark next to the item
-    pub selected: bool,
+    /// `None` means not checkable, `Some` is the checked state
+    pub checked: Option<bool>,
 }
 
 /// Events that the menu can send to the app
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Event {
     /// Marks this Resource as favorite
     AddFavorite(ResourceId),
@@ -73,13 +71,13 @@ pub enum Event {
     DisableInternetResource,
 }
 
-#[derive(Debug, Deserialize, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub enum Window {
     About,
     Settings,
 }
 
-fn resource_header(res: &ResourceDescription) -> Item {
+fn resource_header(res: &ResourceView) -> Item {
     let Some(address_description) = res.address_description() else {
         return copyable(&res.pastable());
     };
@@ -140,14 +138,14 @@ impl Menu {
         self.disabled(INTERNET_RESOURCE_DESCRIPTION)
     }
 
-    fn resource_body(self, resource: &ResourceDescription) -> Self {
+    fn resource_body(self, resource: &ResourceView) -> Self {
         self.separator()
             .disabled("Resource")
             .copyable(resource.name())
             .copyable(resource.pastable().as_ref())
     }
 
-    pub(crate) fn resource_description(mut self, resource: &ResourceDescription) -> Self {
+    pub(crate) fn resource_description(mut self, resource: &ResourceView) -> Self {
         if resource.is_internet_resource() {
             self.internet_resource()
         } else {
@@ -163,8 +161,8 @@ impl Item {
         self
     }
 
-    pub(crate) fn selected(mut self) -> Self {
-        self.selected = true;
+    pub(crate) fn checked(mut self, b: bool) -> Self {
+        self.checked = Some(b);
         self
     }
 }
@@ -179,6 +177,6 @@ pub(crate) fn item<E: Into<Option<Event>>, S: Into<String>>(event: E, title: S) 
     Item {
         event: event.into(),
         title: title.into(),
-        selected: false,
+        checked: None,
     }
 }

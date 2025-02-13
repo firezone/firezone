@@ -11,8 +11,9 @@ import androidx.recyclerview.widget.RecyclerView
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.databinding.ListItemResourceBinding
 
-internal class ResourcesAdapter(private val internetResourceToggle: () -> ResourceState) :
-    ListAdapter<ResourceViewModel, ResourcesAdapter.ViewHolder>(
+internal class ResourcesAdapter(
+    private val internetResourceToggle: () -> ResourceState,
+) : ListAdapter<ResourceViewModel, ResourcesAdapter.ViewHolder>(
         ResourceDiffCallback(),
     ) {
     override fun onCreateViewHolder(
@@ -38,7 +39,9 @@ internal class ResourcesAdapter(private val internetResourceToggle: () -> Resour
         }
     }
 
-    class ViewHolder(private val binding: ListItemResourceBinding) : RecyclerView.ViewHolder(binding.root) {
+    class ViewHolder(
+        private val binding: ListItemResourceBinding,
+    ) : RecyclerView.ViewHolder(binding.root) {
         fun bind(resource: ResourceViewModel) {
             binding.resourceNameText.text = resource.displayName
             if (resource.isInternetResource()) {
@@ -53,15 +56,11 @@ internal class ResourcesAdapter(private val internetResourceToggle: () -> Resour
         override fun areItemsTheSame(
             oldItem: ResourceViewModel,
             newItem: ResourceViewModel,
-        ): Boolean {
-            return oldItem.id == newItem.id
-        }
+        ): Boolean = oldItem.id == newItem.id
 
         override fun areContentsTheSame(
             oldItem: ResourceViewModel,
             newItem: ResourceViewModel,
-        ): Boolean {
-            return oldItem == newItem
-        }
+        ): Boolean = oldItem == newItem
     }
 }

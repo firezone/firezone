@@ -70,8 +70,11 @@ defmodule Web.Live.Actors.ShowTest do
       |> render()
       |> table_to_map()
 
+    assert row[""] =~ "Apple iOS"
     assert row["name"] == client.name
     assert row["status"] == "Offline"
+    assert row["last started"]
+    assert row["created"]
   end
 
   test "updates clients table using presence events", %{
@@ -132,7 +135,6 @@ defmodule Web.Live.Actors.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["expires"]
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 
@@ -172,7 +174,6 @@ defmodule Web.Live.Actors.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["expires"]
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 
@@ -213,7 +214,6 @@ defmodule Web.Live.Actors.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["expires"]
     assert row["policy"] =~ flow.policy.actor_group.name
     assert row["policy"] =~ flow.policy.resource.name
 

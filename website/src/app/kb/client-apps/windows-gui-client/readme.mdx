@@ -1,0 +1,220 @@
+import SupportOptions from "@/components/SupportOptions";
+import Alert from "@/components/DocsAlert";
+
+# Windows GUI Client
+
+The Windows GUI Client is designed for Windows computers where a user is present
+to authenticate with your identity provider interactively.
+
+<Alert color="info">
+  If you're looking for a headless client suitable for server or workstation use
+  cases where a user is not physically present, see the [Windows Headless
+  Client](/kb/client-apps/windows-headless-client) user guide instead, which
+  uses a long-lived Service Account token for authentication.
+</Alert>
+
+## Prerequisites
+
+- **Windows 10** or higher, or **Windows Server 2016** or higher
+- **x86-64** CPU
+- [**WebView2**](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
+  (The installer will install this automatically if needed)
+
+## Installation
+
+Download the `.msi` installer from [our changelog page](/changelog) or from the
+direct link below:
+
+- [Download the Windows `.msi` installer for `x86-64`](/dl/firezone-client-gui-windows/latest/x86_64)
+
+After downloading, run the `.msi` to install the Firezone GUI Client.
+
+To auto-start the Client when you log in, copy the "Firezone" shortcut from your
+desktop to `%APPDATA%/Microsoft/Windows/Start Menu/Programs/Startup/`
+
+## Usage
+
+### Signing in
+
+1. Run Firezone
+1. At the Welcome screen, click `Sign in`. This will open the Firezone sign-in
+   page in your default web browser.
+1. Sign in using your account slug and identity provider.
+1. If your browser asks whether it should open Firezone links, check
+   `Always allow` and open the link.
+1. When you see the `Firezone connected` notification, Firezone is running.
+
+The Welcome screen only appears during your first sign-in. After that, you can
+click on the Firezone icon in the system tray to open the tray menu and sign in.
+
+### Accessing a Resource
+
+When Firezone is signed in, web browsers and other programs will automatically
+use it to securely connect to Resources.
+
+To copy-paste the address of a Resource:
+
+1. Right-click on the Firezone tray icon to open the menu.
+1. Open a Resource's submenu and click on its address to copy it.
+1. Paste the address into your browser's URL bar and press Enter.
+
+### Quitting
+
+1. Right-click on the Firezone tray icon to open the menu.
+1. Click `Disconnect and Quit` or `Quit`.
+
+When Firezone is not running, you can't access private Resources, and the
+computer will use its normal DNS and Internet behavior.
+
+If you were signed in, then you will still be signed in the next time you start
+Firezone.
+
+### Signing out
+
+1. Right-click on the Firezone tray icon to open the menu.
+1. Click `Sign out`.
+
+When you're signed out, you can't access private Resources, and the computer
+will use its normal DNS and Internet behavior.
+
+## Upgrading
+
+The Windows Client will automatically check for updates on launch and prompt you
+to upgrade when a new version is available.
+
+To upgrade:
+
+1. Download the latest `.msi` installer package from
+   ["Installation"](#installation) above.
+1. Quit the Client
+1. Install the new `.msi`
+
+## Diagnostic logs
+
+Firezone writes log files to disk. These logs stay on your computer and are not
+transmitted anywhere. If you find a bug, you can send us a `.zip` archive of
+your logs to help us fix the bug.
+
+To export or clear your logs:
+
+1. Right-click on the Firezone tray icon.
+1. Click `Settings`.
+1. Click `Diagnostic Logs`.
+1. Click `Export Logs` or `Clear Log Directory`.
+
+## Uninstalling
+
+1. Delete the "Firezone" shortcut from
+   `%APPDATA%/Microsoft/Windows/Start Menu/Programs/Startup/`
+1. Quit Firezone.
+1. Open the Start Menu. Search for `Add or remove programs` and open it.
+1. In the `Add or remove programs` dialog, search for `Firezone`.
+1. Click on Firezone and click `Uninstall`.
+
+## Troubleshooting
+
+### Firezone is signed in, but I can't access Resources
+
+If the Firezone client shows that you are signed in, but you can't access
+Resources, it's possible that the WinTUN driver is corrupted or in a failed
+state.
+
+To fix, perform these steps:
+
+1. Uninstall Firezone and any other WireGuard-based VPN software from your
+   computer.
+2. Reset your network settings by going to
+   `Settings -> Network and Internet -> Additional network settings -> Network Reset -> Reset now`.
+3. Reinstall Firezone and any other software you previously uninstalled.
+
+### Check if Firezone Client IPC service is running
+
+In the Start Menu, search for "Windows Powershell". Open it and run this
+command:
+
+```pwsh
+Get-Service -Name FirezoneClientIpcService
+```
+
+Good output
+
+```text
+Status   Name               DisplayName
+------   ----               -----------
+Running  FirezoneClientI... Firezone Client IPC
+```
+
+Bad output
+
+```text
+Status   Name               DisplayName
+------   ----               -----------
+Stopped  FirezoneClientI... Firezone Client IPC
+```
+
+### Check if Firezone is controlling DNS
+
+In the Start Menu, search for "Windows Powershell". Open it and run this
+command:
+
+```pwsh
+Get-DnsClientNrptPolicy
+```
+
+Firezone Split DNS example:
+
+```text
+Namespace                        : .
+QueryPolicy                      :
+SecureNameQueryFallback          :
+DirectAccessIPsecCARestriction   :
+DirectAccessProxyName            :
+DirectAccessDnsServers           :
+DirectAccessEnabled              :
+DirectAccessProxyType            : NoProxy
+DirectAccessQueryIPsecEncryption :
+DirectAccessQueryIPsecRequired   : False
+NameServers                      : {100.100.111.1, fd00:2021:1111:8000:100:100:111:0}
+DnsSecIPsecCARestriction         :
+DnsSecQueryIPsecEncryption       :
+DnsSecQueryIPsecRequired         : False
+DnsSecValidationRequired         : False
+NameEncoding                     : Utf8WithoutMapping
+```
+
+If Firezone's Split DNS is not active, the output will be empty.
+
+### Revert Firezone DNS control
+
+If Firezone crashes and does not revert control of the system's DNS, you can
+revert it manually with this command:
+
+```pwsh
+Get-DnsClientNrptRule | where Comment -eq firezone-fd0020211111 | foreach { Remove-DnsClientNrptRule -Name $_.Name -Force }
+```
+
+1. Right-click on the Start Menu
+1. Click "Terminal (Admin)" to open a Powershell terminal with admin privileges
+1. When UAC asks "Do you want to allow this app to make changes to your device?"
+   click `Yes`
+1. Enter the above command and
+   [Check if Firezone is controlling DNS](#check-if-firezone-is-controlling-dns)
+
+### Viewing logs
+
+The Firezone Client is split into 2 main processes: An IPC service which runs
+the tunnel, and a GUI which allows the user to control Firezone.
+
+- IPC service logs are stored at `%PROGRAMDATA%\dev.firezone.client\data\logs\`,
+  where `%PROGRAMDATA%` is almost always `C:\ProgramData`
+- GUI logs are stored at `%LOCALAPPDATA%\dev.firezone.client\data\logs`, where
+  `%LOCALAPPDATA%` is, e.g. `C:\Users\username\AppData\Local`
+
+## Known issues
+
+- Firezone does not register itself with Windows as a VPN
+  [#2875](https://github.com/firezone/firezone/issues/2875)
+- The Windows client is not yet available for Arm64 devices
+  [#2992](https://github.com/firezone/firezone/issues/2992)
+
+<SupportOptions />

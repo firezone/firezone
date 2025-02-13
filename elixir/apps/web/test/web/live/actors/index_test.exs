@@ -59,6 +59,8 @@ defmodule Web.Live.Actors.IndexTest do
   } do
     admin_actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
     Fixtures.Actors.create_membership(account: account, actor: admin_actor)
+    client = Fixtures.Clients.create_client(account: account, actor: admin_actor)
+    Domain.Clients.connect_client(client)
     admin_actor = Repo.preload(admin_actor, identities: [:provider], groups: [])
 
     user_actor = Fixtures.Actors.create_actor(account: account, type: :account_user)
@@ -84,14 +86,13 @@ defmodule Web.Live.Actors.IndexTest do
       |> render()
       |> table_to_map()
 
-    for {actor, name} <- [
-          {admin_actor, "#{admin_actor.name} (admin)"},
-          {user_actor, user_actor.name},
-          {service_account_actor, "#{service_account_actor.name} (service account)"}
+    for {actor, name, clients} <- [
+          {admin_actor, "#{admin_actor.name} (admin)", [client]},
+          {user_actor, user_actor.name, []},
+          {service_account_actor, "#{service_account_actor.name} (service account)", []}
         ] do
       with_table_row(rows, "name", name, fn row ->
         for identity <- actor.identities do
-          assert row["identifiers"] =~ identity.provider.name
           assert row["identifiers"] =~ identity.provider_identifier
         end
 
@@ -99,7 +100,14 @@ defmodule Web.Live.Actors.IndexTest do
           assert row["groups"] =~ group.name
         end
 
-        assert row["last signed in"] == "Never"
+        for client <- clients do
+          assert row["clients"] =~ client.name
+          assert row["clients"] =~ "Online"
+          assert row["clients"] =~ "Apple"
+          assert row["clients"] =~ "iOS 12.5"
+        end
+
+        assert row["last signed in"]
       end)
     end
   end
@@ -135,5 +143,26 @@ defmodule Web.Live.Actors.IndexTest do
     |> with_table_row("name", actor.name, fn row ->
       assert String.contains?(row["last signed in"], "1 hour ago")
     end)
+  end
+
+  test "renders proper URL for API client 'show' page", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    api_client = Fixtures.Actors.create_actor(type: :api_client, account: account)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/actors")
+
+    items =
+      lv
+      |> element("#actors")
+      |> render()
+      |> Floki.find("a[href*=\"api_clients/#{api_client.id}\"]")
+
+    assert length(items) == 1
   end
 end

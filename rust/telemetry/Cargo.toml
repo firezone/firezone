@@ -1,15 +1,17 @@
 [package]
 name = "firezone-telemetry"
 version = "0.1.0"
-edition = "2021"
+edition = { workspace = true }
+license = { workspace = true }
 
 [dependencies]
-arc-swap = "1.7.1"
-sentry = { version = "0.34.0", default-features = false, features = ["panic", "reqwest", "rustls", "tracing"] }
+sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls", "tracing"] }
+tokio = { workspace = true, features = ["rt"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-thiserror = "1.0.63"
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }
 
 [lints]
 workspace = true

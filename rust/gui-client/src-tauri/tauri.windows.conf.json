@@ -1,8 +1,7 @@
 {
   "build": {
-    "beforeBundleCommand": "bash -c '../../scripts/build/sign.sh ../target/release/Firezone.exe'"
+    "beforeBundleCommand": "bash -c '../../scripts/build/sign.sh ../target/release/Firezone.exe ../target/release/firezone-client-ipc.exe'"
   },
-  "package": {
-    "productName": "Firezone"
-  }
+  "mainBinaryName": "Firezone",
+  "productName": "Firezone"
 }

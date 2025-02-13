@@ -1,35 +1,44 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
+mod get_user_agent;
 mod heartbeat;
 mod login_url;
 
 use std::collections::{HashSet, VecDeque};
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
+use std::time::Duration;
 use std::{fmt, future, marker::PhantomData};
 use std::{io, mem};
 
 use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
 use base64::Engine;
+use firezone_logging::{err_with_src, telemetry_span};
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use heartbeat::{Heartbeat, MissedLastHeartbeat};
+use itertools::Itertools as _;
 use rand_core::{OsRng, RngCore};
 use secrecy::{ExposeSecret, Secret};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use std::task::{Context, Poll, Waker};
 use tokio_tungstenite::client_async_tls;
-use tokio_tungstenite::tungstenite::http::StatusCode;
 use tokio_tungstenite::{
     tungstenite::{handshake::client::Request, Message},
     MaybeTlsStream, WebSocketStream,
 };
-use url::{Host, Url};
+use url::Url;
 
-pub use login_url::{LoginUrl, LoginUrlError};
+pub use get_user_agent::get_user_agent;
+pub use login_url::{DeviceInfo, LoginUrl, LoginUrlError, NoParams, PublicKeyParam};
+pub use tokio_tungstenite::tungstenite::http::StatusCode;
 
-pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
+const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are connected, these should never build up.
+
+pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes, TFinish> {
     state: State,
     waker: Option<Waker>,
     pending_messages: VecDeque<String>,
@@ -43,9 +52,11 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes> {
     pending_join_requests: HashSet<OutboundRequestId>,
 
     // Stored here to allow re-connecting.
-    url: Secret<LoginUrl>,
+    url_prototype: Secret<LoginUrl<TFinish>>,
+    last_url: Option<Url>,
     user_agent: String,
-    reconnect_backoff: ExponentialBackoff,
+    make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
+    reconnect_backoff: Option<ExponentialBackoff>,
 
     resolved_addresses: Vec<IpAddr>,
 
@@ -64,50 +75,44 @@ enum State {
 
 impl State {
     fn connect(
-        url: Secret<LoginUrl>,
+        url: Url,
+        addresses: Vec<SocketAddr>,
         user_agent: String,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
-        Self::Connecting(create_and_connect_websocket(url, user_agent, socket_factory).boxed())
+        Self::Connecting(
+            create_and_connect_websocket(url, addresses, user_agent, socket_factory).boxed(),
+        )
     }
 }
 
 async fn create_and_connect_websocket(
-    url: Secret<LoginUrl>,
+    url: Url,
+    addresses: Vec<SocketAddr>,
     user_agent: String,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
-    let socket = make_socket(url.expose_secret().inner(), &*socket_factory).await?;
+    tracing::debug!(host = url.host().map(tracing::field::display), ?addresses, %user_agent, "Connecting to portal");
 
-    let (stream, _) = client_async_tls(make_request(url, user_agent), socket)
+    let duration = Duration::from_secs(5);
+    let socket = tokio::time::timeout(duration, connect(addresses, &*socket_factory))
+        .await
+        .map_err(|_| InternalError::Timeout { duration })??;
+
+    let (stream, _) = client_async_tls(make_request(url, user_agent)?, socket)
         .await
         .map_err(InternalError::WebSocket)?;
 
     Ok(stream)
 }
 
-async fn make_socket(
-    url: &Url,
+async fn connect(
+    addresses: Vec<SocketAddr>,
     socket_factory: &dyn SocketFactory<TcpSocket>,
 ) -> Result<TcpStream, InternalError> {
-    let port = url
-        .port_or_known_default()
-        .expect("scheme to be http, https, ws or wss");
-    let addrs: Vec<SocketAddr> = match url.host().ok_or(InternalError::InvalidUrl)? {
-        Host::Domain(n) => tokio::net::lookup_host((n, port))
-            .await
-            .map_err(|_| InternalError::InvalidUrl)?
-            .collect(),
-        Host::Ipv6(ip) => {
-            vec![(ip, port).into()]
-        }
-        Host::Ipv4(ip) => {
-            vec![(ip, port).into()]
-        }
-    };
+    let mut errors = Vec::with_capacity(addresses.len());
 
-    let mut last_error = None;
-    for addr in addrs {
+    for addr in addresses {
         let Ok(socket) = socket_factory(&addr) else {
             continue;
         };
@@ -115,27 +120,27 @@ async fn make_socket(
         match socket.connect(addr).await {
             Ok(socket) => return Ok(socket),
             Err(e) => {
-                last_error = Some(e);
+                errors.push((addr, e));
             }
         }
     }
 
-    let Some(err) = last_error else {
+    if errors.is_empty() {
         return Err(InternalError::InvalidUrl);
-    };
+    }
 
-    Err(InternalError::SocketConnection(err))
+    Err(InternalError::SocketConnection(errors))
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("client error: {0}")]
+    #[error("Failed to establish WebSocket connection: {0}")]
     Client(StatusCode),
-    #[error("token expired")]
+    #[error("Authentication token expired")]
     TokenExpired,
-    #[error("max retries reached")]
-    MaxRetriesReached,
-    #[error("login failed: {0}")]
+    #[error("Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}")]
+    MaxRetriesReached { final_error: String },
+    #[error("Failed to login with portal: {0}")]
     LoginFailed(ErrorReply),
 }
 
@@ -144,12 +149,13 @@ impl Error {
         match self {
             Error::Client(s) => s == &StatusCode::UNAUTHORIZED || s == &StatusCode::FORBIDDEN,
             Error::TokenExpired => true,
-            Error::MaxRetriesReached => false,
+            Error::MaxRetriesReached { .. } => false,
             Error::LoginFailed(_) => false,
         }
     }
 }
 
+#[derive(Debug)]
 enum InternalError {
     WebSocket(tokio_tungstenite::tungstenite::Error),
     Serde(serde_json::Error),
@@ -157,7 +163,9 @@ enum InternalError {
     CloseMessage,
     StreamClosed,
     InvalidUrl,
-    SocketConnection(std::io::Error),
+    FailedToBuildRequest(tokio_tungstenite::tungstenite::http::Error),
+    SocketConnection(Vec<(SocketAddr, std::io::Error)>),
+    Timeout { duration: Duration },
 }
 
 impl fmt::Display for InternalError {
@@ -173,13 +181,45 @@ impl fmt::Display for InternalError {
 
                 write!(f, "http error: {status} - {body}")
             }
-            InternalError::WebSocket(e) => write!(f, "websocket connection failed: {e}"),
-            InternalError::Serde(e) => write!(f, "failed to deserialize message: {e}"),
+            InternalError::WebSocket(_) => write!(f, "websocket connection failed"),
+            InternalError::Serde(_) => write!(f, "failed to deserialize message"),
             InternalError::MissedHeartbeat => write!(f, "portal did not respond to our heartbeat"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
             InternalError::StreamClosed => write!(f, "websocket stream was closed"),
             InternalError::InvalidUrl => write!(f, "failed to resolve url"),
-            InternalError::SocketConnection(e) => write!(f, "failed to connect socket: {e}"),
+            InternalError::SocketConnection(errors) => {
+                write!(
+                    f,
+                    "failed to connect socket: [{}]",
+                    errors
+                        .iter()
+                        .map(|(addr, e)| format!("{addr}: {e}"))
+                        .join(", ")
+                )
+            }
+            InternalError::Timeout { duration, .. } => {
+                write!(f, "operation timed out after {duration:?}")
+            }
+            InternalError::FailedToBuildRequest(_) => {
+                write!(f, "failed to build request")
+            }
+        }
+    }
+}
+
+impl std::error::Error for InternalError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            InternalError::WebSocket(tokio_tungstenite::tungstenite::Error::Http(_)) => None,
+            InternalError::WebSocket(e) => Some(e),
+            InternalError::Serde(e) => Some(e),
+            InternalError::FailedToBuildRequest(e) => Some(e),
+            InternalError::SocketConnection(_) => None,
+            InternalError::MissedHeartbeat => None,
+            InternalError::CloseMessage => None,
+            InternalError::StreamClosed => None,
+            InternalError::InvalidUrl => None,
+            InternalError::Timeout { .. } => None,
         }
     }
 }
@@ -212,47 +252,50 @@ impl fmt::Display for OutboundRequestId {
 #[error("Cannot close websocket while we are connecting")]
 pub struct Connecting;
 
-impl<TInitReq, TInboundMsg, TOutboundRes> PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes>
+impl<TInitReq, TInboundMsg, TOutboundRes, TFinish>
+    PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes, TFinish>
 where
     TInitReq: Serialize + Clone,
     TInboundMsg: DeserializeOwned,
     TOutboundRes: DeserializeOwned,
+    TFinish: IntoIterator<Item = (&'static str, String)>,
 {
-    /// Creates a new [PhoenixChannel] to the given endpoint.
+    /// Creates a new [PhoenixChannel] to the given endpoint in the `disconnected` state.
+    ///
+    /// You must explicitly call [`PhoenixChannel::connect`] to establish a connection.
     ///
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
-    pub fn connect(
-        url: Secret<LoginUrl>,
+    pub fn disconnected(
+        url: Secret<LoginUrl<TFinish>>,
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,
-        reconnect_backoff: ExponentialBackoff,
+        make_reconnect_backoff: impl Fn() -> ExponentialBackoff + Send + 'static,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> io::Result<Self> {
         let next_request_id = Arc::new(AtomicU64::new(0));
 
+        let host_and_port = url.expose_secret().host_and_port();
+
+        let _span = telemetry_span!("resolve_portal_url", host = %host_and_port.0).entered();
+
         // Statically resolve the host in the URL to a set of addresses.
-        // We don't use these directly because we need to connect to the domain via TLS which requires a hostname.
-        // We expose them to other components that deal with DNS stuff to ensure our domain always resolves to these IPs.
-        let resolved_addresses = url
-            .expose_secret()
-            .inner()
-            .socket_addrs(|| None)?
-            .iter()
+        // We use these when connecting the socket to avoid a dependency on DNS resolution later on.
+        let resolved_addresses = host_and_port
+            .to_socket_addrs()?
             .map(|addr| addr.ip())
             .collect();
 
-        tracing::debug!(host = %url.expose_secret().host(), %user_agent, "Connecting to portal");
-
         Ok(Self {
-            reconnect_backoff,
-            url: url.clone(),
-            user_agent: user_agent.clone(),
-            state: State::connect(url, user_agent, socket_factory.clone()),
+            make_reconnect_backoff: Box::new(make_reconnect_backoff),
+            reconnect_backoff: None,
+            url_prototype: url,
+            user_agent,
+            state: State::Closed,
             socket_factory,
             waker: None,
-            pending_messages: Default::default(),
+            pending_messages: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
             _phantom: PhantomData,
             heartbeat: Heartbeat::new(
                 heartbeat::INTERVAL,
@@ -264,17 +307,8 @@ where
             login,
             init_req,
             resolved_addresses,
+            last_url: None,
         })
-    }
-
-    /// Returns the addresses that have been resolved for our server host.
-    pub fn resolved_addresses(&self) -> Vec<IpAddr> {
-        self.resolved_addresses.clone()
-    }
-
-    /// The host we are connecting / connected to.
-    pub fn server_host(&self) -> &str {
-        self.url.expose_secret().host()
     }
 
     /// Join the provided room.
@@ -289,21 +323,39 @@ where
 
     /// Send a message to a topic.
     pub fn send(&mut self, topic: impl Into<String>, message: impl Serialize) -> OutboundRequestId {
+        if self.pending_messages.len() > MAX_BUFFERED_MESSAGES {
+            self.pending_messages.clear();
+
+            tracing::warn!("Dropping pending messages to portal because we exceeded the maximum of {MAX_BUFFERED_MESSAGES}");
+        }
+
         let (id, msg) = self.make_message(topic, message);
         self.pending_messages.push_back(msg);
 
         id
     }
 
-    /// Reconnects to the portal.
-    pub fn reconnect(&mut self) {
+    /// Establishes a new connection, dropping the current one if any exists.
+    pub fn connect(&mut self, params: TFinish) {
+        let url = self.url_prototype.expose_secret().to_url(params);
+
+        if matches!(self.state, State::Connecting(_)) && Some(&url) == self.last_url.as_ref() {
+            tracing::debug!("We are already connecting");
+            return;
+        }
+
         // 1. Reset the backoff.
-        self.reconnect_backoff.reset();
+        self.reconnect_backoff = None;
 
         // 2. Set state to `Connecting` without a timer.
-        let url = self.url.clone();
         let user_agent = self.user_agent.clone();
-        self.state = State::connect(url, user_agent, self.socket_factory.clone());
+        self.state = State::connect(
+            url.clone(),
+            self.socket_addresses(),
+            user_agent,
+            self.socket_factory.clone(),
+        );
+        self.last_url = Some(url);
 
         // 3. In case we were already re-connecting, we need to wake the suspended task.
         if let Some(waker) = self.waker.take() {
@@ -343,7 +395,7 @@ where
                         return Poll::Ready(Ok(Event::Closed));
                     }
                     Poll::Ready(Err(e)) => {
-                        tracing::warn!("Error while closing websocket: {e}");
+                        tracing::warn!("Error while closing websocket: {}", err_with_src(&e));
 
                         return Poll::Ready(Ok(Event::Closed));
                     }
@@ -352,11 +404,11 @@ where
                 State::Connected(stream) => stream,
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
-                        self.reconnect_backoff.reset();
+                        self.reconnect_backoff = None;
                         self.heartbeat.reset();
                         self.state = State::Connected(stream);
 
-                        let host = self.url.expose_secret().host();
+                        let (host, _) = self.url_prototype.expose_secret().host_and_port();
 
                         tracing::info!(%host, "Connected to portal");
                         self.join(self.login, self.init_req.clone());
@@ -369,21 +421,38 @@ where
                         return Poll::Ready(Err(Error::Client(r.status())));
                     }
                     Poll::Ready(Err(e)) => {
-                        let Some(backoff) = self.reconnect_backoff.next_backoff() else {
-                            tracing::warn!("Reconnect backoff expired");
-                            return Poll::Ready(Err(Error::MaxRetriesReached));
-                        };
+                        let socket_addresses = self.socket_addresses();
 
-                        let secret_url = self.url.clone();
+                        // If we don't have a backoff yet, this is the first error so create one.
+                        let reconnect_backoff = self
+                            .reconnect_backoff
+                            .get_or_insert_with(|| (self.make_reconnect_backoff)());
+
+                        let backoff = reconnect_backoff.next_backoff().ok_or_else(|| {
+                            Error::MaxRetriesReached {
+                                final_error: err_with_src(&e).to_string(),
+                            }
+                        })?;
+
+                        let secret_url = self
+                            .last_url
+                            .as_ref()
+                            .expect("should have last URL if we receive connection error")
+                            .clone();
                         let user_agent = self.user_agent.clone();
                         let socket_factory = self.socket_factory.clone();
 
-                        tracing::debug!(?backoff, max_elapsed_time = ?self.reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {e}");
+                        tracing::debug!(?backoff, max_elapsed_time = ?reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {}", err_with_src(&e));
 
                         self.state = State::Connecting(Box::pin(async move {
                             tokio::time::sleep(backoff).await;
-                            create_and_connect_websocket(secret_url, user_agent, socket_factory)
-                                .await
+                            create_and_connect_websocket(
+                                secret_url,
+                                socket_addresses,
+                                user_agent,
+                                socket_factory,
+                            )
+                            .await
                         }));
 
                         continue;
@@ -452,7 +521,7 @@ where
                             continue;
                         }
                         Err(e) => {
-                            tracing::warn!("Failed to deserialize message: {e}");
+                            tracing::warn!("Failed to deserialize message: {}", err_with_src(&e));
                             continue;
                         }
                     };
@@ -588,6 +657,15 @@ where
 
         OutboundRequestId(next_id)
     }
+
+    fn socket_addresses(&self) -> Vec<SocketAddr> {
+        let port = self.url_prototype.expose_secret().host_and_port().1;
+
+        self.resolved_addresses
+            .iter()
+            .map(|ip| SocketAddr::new(*ip, port))
+            .collect()
+    }
 }
 
 #[derive(Debug)]
@@ -667,9 +745,7 @@ enum OkReply<T> {
 pub enum ErrorReply {
     #[serde(rename = "unmatched topic")]
     UnmatchedTopic,
-    NotFound,
     InvalidVersion,
-    Offline,
     Disabled,
     #[serde(other)]
     Other,
@@ -679,9 +755,7 @@ impl fmt::Display for ErrorReply {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ErrorReply::UnmatchedTopic => write!(f, "unmatched topic"),
-            ErrorReply::NotFound => write!(f, "not found"),
             ErrorReply::InvalidVersion => write!(f, "invalid version"),
-            ErrorReply::Offline => write!(f, "offline"),
             ErrorReply::Disabled => write!(f, "disabled"),
             ErrorReply::Other => write!(f, "other"),
         }
@@ -734,24 +808,27 @@ impl<T, R> PhoenixMessage<T, R> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(url: Secret<LoginUrl>, user_agent: String) -> Request {
-    use secrecy::ExposeSecret as _;
-
+fn make_request(url: Url, user_agent: String) -> Result<Request, InternalError> {
     let mut r = [0u8; 16];
     OsRng.fill_bytes(&mut r);
     let key = base64::engine::general_purpose::STANDARD.encode(r);
 
-    Request::builder()
+    let request = Request::builder()
         .method("GET")
-        .header("Host", url.expose_secret().host())
+        .header(
+            "Host",
+            url.host().ok_or(InternalError::InvalidUrl)?.to_string(),
+        )
         .header("Connection", "Upgrade")
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
         .header("Sec-WebSocket-Key", key)
         .header("User-Agent", user_agent)
-        .uri(url.expose_secret().inner().as_str())
+        .uri(url.to_string())
         .body(())
-        .expect("building static request always works")
+        .map_err(InternalError::FailedToBuildRequest)?;
+
+    Ok(request)
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -859,28 +936,6 @@ mod tests {
         let expected_reply = Payload::<(), ()>::Disconnect {
             reason: DisconnectReason::TokenExpired,
         };
-        assert_eq!(actual_reply, expected_reply);
-    }
-
-    #[test]
-    fn not_found() {
-        let actual_reply = r#"
-        {
-            "event": "phx_reply",
-            "ref": null,
-            "topic": "client",
-            "payload": {
-                "status": "error",
-                "response": {
-                    "reason": "not_found"
-                }
-            }
-        }
-        "#;
-        let actual_reply: Payload<(), ()> = serde_json::from_str(actual_reply).unwrap();
-        let expected_reply = Payload::<(), ()>::Reply(Reply::Error {
-            reason: ErrorReply::NotFound,
-        });
         assert_eq!(actual_reply, expected_reply);
     }
 

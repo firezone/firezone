@@ -15,10 +15,9 @@
 
 use super::DnsController;
 use anyhow::{Context as _, Result};
-use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW};
-use std::{
-    io::ErrorKind, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command,
-};
+use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
+use firezone_bin_shared::windows::error::EPT_S_NOT_REGISTERED;
+use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 use windows::Win32::System::GroupPolicy::{RefreshPolicyEx, RP_FORCE};
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
@@ -29,20 +28,34 @@ impl DnsController {
     /// Deactivate any control Firezone has over the computer's DNS
     ///
     /// Must be `sync` so we can call it from `Drop`
+    #[expect(clippy::unnecessary_wraps, reason = "Linux version is fallible")]
     pub fn deactivate(&mut self) -> Result<()> {
         let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
-        if let Err(error) = hklm.delete_subkey(local_nrpt_path().join(NRPT_REG_KEY)) {
-            if error.kind() != ErrorKind::NotFound {
-                tracing::error!(?error, "Couldn't delete local NRPT");
+
+        if let Err(error) = delete_subkey(&hklm, local_nrpt_path().join(NRPT_REG_KEY)) {
+            tracing::warn!("Failed to delete local NRPT: {error:#}");
+        }
+        if let Err(error) = delete_subkey(&hklm, group_nrpt_path().join(NRPT_REG_KEY)) {
+            tracing::warn!("Failed to delete group NRPT: {error:#}");
+        }
+
+        match refresh_group_policy() {
+            Ok(()) => {}
+            Err(e)
+                if e.root_cause()
+                    .downcast_ref::<windows::core::Error>()
+                    .is_some_and(|e| e.code() == EPT_S_NOT_REGISTERED) =>
+            {
+                // This may happen if we make this syscall multiple times in a row (which we do as we shut down).
+                // It isn't very concerning and deactivation of DNS control is on a best-effort basis anyway.
+            }
+            Err(e) => {
+                tracing::warn!("{e:#}");
             }
         }
-        if let Err(error) = hklm.delete_subkey(group_nrpt_path().join(NRPT_REG_KEY)) {
-            if error.kind() != ErrorKind::NotFound {
-                tracing::error!(?error, "Couldn't delete Group Policy NRPT");
-            }
-        }
-        refresh_group_policy()?;
+
         tracing::info!("Deactivated DNS control");
+
         Ok(())
     }
 
@@ -77,6 +90,22 @@ impl DnsController {
     }
 }
 
+fn delete_subkey(key: &winreg::RegKey, subkey: impl AsRef<Path>) -> io::Result<()> {
+    let path = subkey.as_ref();
+
+    if let Err(error) = key.delete_subkey(path) {
+        if error.kind() == io::ErrorKind::NotFound {
+            return Ok(());
+        }
+
+        return Err(error);
+    }
+
+    tracing::debug!(path = %path.display(), "Deleted registry key");
+
+    Ok(())
+}
+
 pub(crate) fn system_resolvers(_method: DnsControlMethod) -> Result<Vec<IpAddr>> {
     let resolvers = ipconfig::get_adapters()?
         .iter()
@@ -102,40 +131,73 @@ pub(crate) fn system_resolvers(_method: DnsControlMethod) -> Result<Vec<IpAddr>>
 const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
 
 /// Tells Windows to send all DNS queries to our sentinels
-///
-/// Parameters:
-/// - `dns_config_string`: Comma-separated IP addresses of DNS servers, e.g. "1.1.1.1,8.8.8.8"
 fn activate(dns_config: &[IpAddr]) -> Result<()> {
     // TODO: Known issue where web browsers will keep a connection open to a site,
     // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
     // again unless you let that connection time out:
     // <https://github.com/firezone/firezone/issues/3113#issuecomment-1882096111>
-    tracing::info!("Activating DNS control...");
+    tracing::info!(nameservers = ?dns_config, "Activating DNS control");
 
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
-    let dns_config_string = dns_config
-        .iter()
-        .map(|ip| ip.to_string())
-        .collect::<Vec<_>>()
-        .join(";");
+    if let Err(e) = set_nameservers_on_interface(dns_config) {
+        tracing::warn!( "Failed to explicitly set nameservers on tunnel interface; DNS resources in WSL may not work: {e:#}");
+    }
+
+    // e.g. [100.100.111.1, 100.100.111.2] -> "100.100.111.1;100.100.111.2"
+    let dns_config_string = itertools::join(dns_config, ";");
 
     // It's safe to always set the local rule.
-    let (key, _) = hklm.create_subkey(local_nrpt_path().join(NRPT_REG_KEY))?;
-    set_nrpt_rule(&key, &dns_config_string)?;
+    let (key, _) = hklm
+        .create_subkey(local_nrpt_path().join(NRPT_REG_KEY))
+        .context("Failed to create local NRPT registry key")?;
+    set_nrpt_rule(&key, &dns_config_string).context("Failed to set local NRPT rule")?;
 
     // If this key exists, our local NRPT rules are ignored and we have to stick
     // them in with group policies for some reason.
     let group_policy_key_exists = hklm.open_subkey(group_nrpt_path()).is_ok();
     tracing::debug!(?group_policy_key_exists);
+
     if group_policy_key_exists {
         // TODO: Possible TOCTOU problem - We check whether the key exists, then create a subkey if it does. If Group Policy is disabled between those two steps, and something else removes that parent key, we'll re-create it, which might be bad. We can set up unit tests to see if it's possible to avoid this in the registry, but for now it's not a huge deal.
-        let (key, _) = hklm.create_subkey(group_nrpt_path().join(NRPT_REG_KEY))?;
-        set_nrpt_rule(&key, &dns_config_string)?;
+        let (key, _) = hklm
+            .create_subkey(group_nrpt_path().join(NRPT_REG_KEY))
+            .context("Failed to create group NRPT registry key")?;
+        set_nrpt_rule(&key, &dns_config_string).context("Failed to set group NRPT rule")?;
         refresh_group_policy()?;
     }
 
     tracing::info!("DNS control active.");
+
+    Ok(())
+}
+
+/// Sets our DNS servers in the registry so `ipconfig` and WSL will notice them
+/// Fixes #6777
+fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
+    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+    let ipv4_nameservers = itertools::join(dns_config.iter().filter(|addr| addr.is_ipv4()), ";");
+    let ipv6_nameservers = itertools::join(dns_config.iter().filter(|addr| addr.is_ipv6()), ";");
+
+    tracing::debug!(ipv4_nameservers);
+
+    let key = hklm.open_subkey_with_flags(
+        Path::new(&format!(
+            r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
+        )),
+        winreg::enums::KEY_WRITE,
+    )?;
+    key.set_value("NameServer", &ipv4_nameservers)?;
+
+    tracing::debug!(ipv6_nameservers);
+
+    let key = hklm.open_subkey_with_flags(
+        Path::new(&format!(
+            r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
+        )),
+        winreg::enums::KEY_WRITE,
+    )?;
+    key.set_value("NameServer", &ipv6_nameservers)?;
 
     Ok(())
 }
@@ -154,11 +216,10 @@ fn group_nrpt_path() -> &'static Path {
 
 fn refresh_group_policy() -> Result<()> {
     // SAFETY: No pointers involved, and the docs say nothing about threads.
-    unsafe { RefreshPolicyEx(true, RP_FORCE) }?;
+    unsafe { RefreshPolicyEx(true, RP_FORCE) }.context("Failed to refresh group policy")?;
+
     Ok(())
 }
-
-/// Returns
 
 /// Given the path of a registry key, sets the parameters of an NRPT rule on it.
 fn set_nrpt_rule(key: &winreg::RegKey, dns_config_string: &str) -> Result<()> {
@@ -170,4 +231,67 @@ fn set_nrpt_rule(key: &winreg::RegKey, dns_config_string: &str) -> Result<()> {
     key.set_value("Name", &vec!["."])?;
     key.set_value("Version", &0x2u32)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    // Passes in CI but not locally. Maybe ReactorScram's dev system has IPv6 misconfigured. There it fails to pick up the IPv6 DNS servers.
+    #[ignore = "Needs admin, changes system state"]
+    #[test]
+    fn dns_control() {
+        let _guard = firezone_logging::test("debug");
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+
+        let mut tun_dev_manager = firezone_bin_shared::TunDeviceManager::new(1280, 1).unwrap(); // Note: num_threads (`1`) is unused on windows.
+        let _tun = tun_dev_manager.make_tun().unwrap();
+
+        rt.block_on(async {
+            tun_dev_manager
+                .set_ips(
+                    [100, 92, 193, 137].into(),
+                    [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0xa, 0x9db5].into(),
+                )
+                .await
+        })
+        .unwrap();
+
+        let mut dns_controller = DnsController {
+            dns_control_method: DnsControlMethod::Nrpt,
+        };
+
+        let fz_dns_servers = vec![
+            IpAddr::from([100, 100, 111, 1]),
+            IpAddr::from([100, 100, 111, 2]),
+            IpAddr::from([
+                0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0x0003,
+            ]),
+            IpAddr::from([
+                0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0x0004,
+            ]),
+        ];
+        rt.block_on(async {
+            dns_controller
+                .set_dns(fz_dns_servers.clone())
+                .await
+                .unwrap();
+        });
+
+        let adapter = ipconfig::get_adapters()
+            .unwrap()
+            .into_iter()
+            .find(|a| a.friendly_name() == "Firezone")
+            .unwrap();
+        assert_eq!(
+            BTreeSet::from_iter(adapter.dns_servers().iter().cloned()),
+            BTreeSet::from_iter(fz_dns_servers.into_iter())
+        );
+
+        dns_controller.deactivate().unwrap();
+    }
 }

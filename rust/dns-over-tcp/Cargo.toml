@@ -1,0 +1,23 @@
+[package]
+name = "dns-over-tcp"
+version = "0.1.0"
+edition = { workspace = true }
+description = "User-space implementation of DNS over TCP."
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+domain = { workspace = true }
+firezone-logging = { workspace = true }
+ip-packet = { workspace = true }
+itertools = { workspace = true }
+rand = { workspace = true }
+smoltcp = { workspace = true, features = ["std", "log", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+firezone-bin-shared = { workspace = true }
+futures = { workspace = true }
+ip_network = { workspace = true }
+tokio = { workspace = true, features = ["process", "rt", "macros"] }
+tun = { workspace = true }

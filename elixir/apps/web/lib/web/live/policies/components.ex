@@ -13,10 +13,28 @@ defmodule Web.Policies.Components do
     {"U", "Sunday"}
   ]
 
+  @all_conditions [
+    :remote_ip_location_region,
+    :remote_ip,
+    :provider_id,
+    :client_verified,
+    :current_utc_datetime
+  ]
+
+  # current_utc_datetime is a condition evaluated at the time of the request,
+  # so we don't need to include it in the list of conditions that can be set
+  # for internet resources, otherwise it would be blocking all the requests.
+  @conditions_by_resource_type %{
+    internet: @all_conditions -- [:current_utc_datetime],
+    dns: @all_conditions,
+    ip: @all_conditions,
+    cidr: @all_conditions
+  }
+
   attr(:policy, :map, required: true)
 
   def policy_name(assigns) do
-    ~H"<%= @policy.actor_group.name %> → <%= @policy.resource.name %>"
+    ~H"{@policy.actor_group.name} → {@policy.resource.name}"
   end
 
   def maybe_drop_unsupported_conditions(attrs, socket) do
@@ -136,7 +154,7 @@ defmodule Web.Policies.Components do
       <span :if={@operator == :is_in}>from</span>
       <span :if={@operator == :is_not_in}>from any counties except</span>
       <span class="font-medium">
-        <%= @values |> Enum.map(&Domain.Geo.country_common_name!/1) |> Enum.join(", ") %>
+        {@values |> Enum.map(&Domain.Geo.country_common_name!/1) |> Enum.join(", ")}
       </span>
     </span>
     """
@@ -147,7 +165,7 @@ defmodule Web.Policies.Components do
     <span :if={@values != []} class="mr-1">
       <span>from IP addresses that are</span> <span :if={@operator == :is_in_cidr}>in</span>
       <span :if={@operator == :is_not_in_cidr}>not in</span>
-      <span class="font-medium"><%= Enum.join(@values, ", ") %></span>
+      <span class="font-medium">{Enum.join(@values, ", ")}</span>
     </span>
     """
   end
@@ -176,7 +194,7 @@ defmodule Web.Policies.Components do
 
         <:item :for={provider <- @providers}>
           <.link navigate={"/providers/#{provider.id}"} class={[link_style(), "font-medium"]}>
-            <%= provider.name %>
+            {provider.name}
           </.link>
         </:item>
       </.intersperse_blocks>
@@ -223,12 +241,12 @@ defmodule Web.Policies.Components do
 
         <:item :for={{day_of_week, tz_time_ranges} <- @tz_time_ranges_by_dow}>
           <span class="ml-1 font-medium">
-            <%= day_of_week_name(day_of_week) <> "s" %>
+            {day_of_week_name(day_of_week) <> "s"}
             <span :for={{timezone, time_ranges} <- tz_time_ranges}>
-              <%= "(" <>
+              {"(" <>
                 Enum.map_join(time_ranges, ", ", fn {from, to} ->
                   "#{from} - #{to}"
-                end) <> " #{timezone})" %>
+                end) <> " #{timezone})"}
             </span>
           </span>
         </:item>
@@ -256,8 +274,12 @@ defmodule Web.Policies.Components do
 
   def conditions_form(assigns) do
     assigns =
-      assign_new(assigns, :policy_conditions_enabled?, fn ->
+      assigns
+      |> assign_new(:policy_conditions_enabled?, fn ->
         Domain.Accounts.policy_conditions_enabled?(assigns.account)
+      end)
+      |> assign_new(:enabled_conditions, fn ->
+        Map.fetch!(@conditions_by_resource_type, assigns.selected_resource.type)
       end)
 
     ~H"""
@@ -280,17 +302,28 @@ defmodule Web.Policies.Components do
 
       <div class={@policy_conditions_enabled? == false && "opacity-50"}>
         <.remote_ip_location_region_condition_form
+          :if={:remote_ip_location_region in @enabled_conditions}
           form={@form}
           disabled={@policy_conditions_enabled? == false}
         />
-        <.remote_ip_condition_form form={@form} disabled={@policy_conditions_enabled? == false} />
+        <.remote_ip_condition_form
+          :if={:remote_ip in @enabled_conditions}
+          form={@form}
+          disabled={@policy_conditions_enabled? == false}
+        />
         <.provider_id_condition_form
+          :if={:provider_id in @enabled_conditions}
           form={@form}
           providers={@providers}
           disabled={@policy_conditions_enabled? == false}
         />
-        <.client_verified_condition_form form={@form} disabled={@policy_conditions_enabled? == false} />
+        <.client_verified_condition_form
+          :if={:client_verified in @enabled_conditions}
+          form={@form}
+          disabled={@policy_conditions_enabled? == false}
+        />
         <.current_utc_datetime_condition_form
+          :if={:current_utc_datetime in @enabled_conditions}
           form={@form}
           timezone={@timezone}
           disabled={@policy_conditions_enabled? == false}
@@ -781,7 +814,7 @@ defmodule Web.Policies.Components do
       <:separator>
         <span class="mr-1">,</span>
       </:separator>
-      <span><%= gateway_group.name %></span>
+      <span>{gateway_group.name}</span>
     </.intersperse>
     """
   end

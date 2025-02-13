@@ -1,14 +1,15 @@
 [package]
 name = "http-test-server"
 version = "0.1.0"
-edition = "2021"
+edition = { workspace = true }
+license = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1"
-axum = { version = "0.7.5", features = ["http1", "tokio"] }
-futures = "0.3"
-serde = { version = "1", features = ["derive"] }
+anyhow = { workspace = true }
+axum = { workspace = true, features = ["http1", "tokio", "query"] }
+futures = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 tokio = { workspace = true, features = ["net"] }
 
 [lints]

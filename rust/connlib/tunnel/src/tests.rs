@@ -2,10 +2,11 @@ use crate::tests::{flux_capacitor::FluxCapacitor, sut::TunnelTest};
 use assertions::PanicOnErrorEvents;
 use core::fmt;
 use proptest::{
+    sample::SizeRange,
     strategy::{Strategy, ValueTree as _},
     test_runner::{Config, RngAlgorithm, TestError, TestRng, TestRunner},
 };
-use proptest_state_machine::ReferenceStateMachine;
+use proptest_state_machine::Sequential;
 use reference::ReferenceState;
 use std::sync::atomic::{self, AtomicU32};
 use tracing_subscriber::{
@@ -15,10 +16,11 @@ use tracing_subscriber::{
 mod assertions;
 mod buffered_transmits;
 mod composite_strategy;
+mod dns_records;
+mod dns_server_resource;
 mod flux_capacitor;
 mod reference;
 mod sim_client;
-mod sim_dns;
 mod sim_gateway;
 mod sim_net;
 mod sim_relay;
@@ -26,10 +28,9 @@ mod strategies;
 mod stub_portal;
 mod sut;
 mod transition;
+mod unreachable_hosts;
 
 type QueryId = u16;
-type IcmpSeq = u16;
-type IcmpIdentifier = u16;
 
 #[test]
 #[expect(clippy::print_stdout, clippy::print_stderr)]
@@ -45,8 +46,16 @@ fn tunnel_test() {
     let _ = std::fs::create_dir_all("testcases");
 
     let test_runner = &mut TestRunner::new(config);
+    let strategy = Sequential::new(
+        SizeRange::new(5..=15),
+        ReferenceState::initial_state,
+        ReferenceState::is_valid_transition,
+        ReferenceState::transitions,
+        ReferenceState::apply,
+    );
+
     let result = test_runner.run(
-        &ReferenceState::sequential_strategy(5..15),
+        &strategy,
         |(mut ref_state, transitions, mut seen_counter)| {
             let test_index = test_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let flux_capacitor = FluxCapacitor::default();
@@ -120,8 +129,8 @@ fn tunnel_test() {
 #[test]
 fn reference_state_is_deterministic() {
     for n in 0..1000 {
-        let state1 = sample_from_strategy(n, ReferenceState::init_state());
-        let state2 = sample_from_strategy(n, ReferenceState::init_state());
+        let state1 = sample_from_strategy(n, ReferenceState::initial_state());
+        let state2 = sample_from_strategy(n, ReferenceState::initial_state());
 
         assert_eq!(format!("{state1:?}"), format!("{state2:?}"));
     }
@@ -130,7 +139,7 @@ fn reference_state_is_deterministic() {
 #[test]
 fn transitions_are_deterministic() {
     for n in 0..1000 {
-        let state = sample_from_strategy(n, ReferenceState::init_state());
+        let state = sample_from_strategy(n, ReferenceState::initial_state());
         let transitions1 = sample_from_strategy(n, ReferenceState::transitions(&state));
         let transitions2 = sample_from_strategy(n, ReferenceState::transitions(&state));
 
@@ -188,7 +197,7 @@ fn init_logging(
 
 fn log_file_filter() -> EnvFilter {
     let default_filter =
-        "debug,firezone_tunnel=trace,firezone_tunnel::tests=debug,ip_packet=trace".to_owned();
+        "debug,firezone_tunnel=trace,firezone_tunnel::tests=debug,tunnel_test_coverage=trace,ip_packet=trace".to_owned();
     let env_filter = std::env::var("RUST_LOG").unwrap_or_default();
 
     EnvFilter::new([default_filter, env_filter].join(","))

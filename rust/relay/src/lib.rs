@@ -1,9 +1,12 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 mod net_ext;
 mod server;
 mod sleep;
 
 pub mod auth;
 #[cfg(feature = "proptest")]
+#[allow(clippy::unwrap_used)]
 pub mod proptest;
 pub mod sockets;
 
@@ -13,12 +16,23 @@ pub use server::{
     CreatePermission, Refresh, Server,
 };
 pub use sleep::Sleep;
+use stun_codec::rfc5389::attributes::Software;
 pub use stun_codec::rfc8656::attributes::AddressFamily;
 
 use std::{
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    sync::LazyLock,
 };
+
+pub const VERSION: Option<&str> = option_env!("GITHUB_SHA");
+pub static SOFTWARE: LazyLock<Software> = LazyLock::new(|| {
+    Software::new(format!(
+        "firezone-relay; rev={}",
+        VERSION.map(|rev| &rev[..8]).unwrap_or("xxxx")
+    ))
+    .expect("less than 128 chars")
+});
 
 /// Describes the IP stack of a relay server.
 #[derive(Debug, Copy, Clone)]

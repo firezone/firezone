@@ -5,7 +5,7 @@ defmodule Web.Policies.Edit do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
-           Policies.fetch_policy_by_id(id, socket.assigns.subject,
+           Policies.fetch_policy_by_id_or_persistent_id(id, socket.assigns.subject,
              preload: [:actor_group, :resource],
              filter: [deleted?: false]
            ) do
@@ -45,10 +45,10 @@ defmodule Web.Policies.Edit do
     </.breadcrumbs>
 
     <.section>
-      <:title><%= @page_title %></:title>
+      <:title>{@page_title}</:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Policy details</h2>
+          <legend class="mb-4 text-xl text-neutral-900">Details</legend>
 
           <.form for={@form} phx-submit="submit" phx-change="validate">
             <.base_error form={@form} field={:base} />
@@ -67,11 +67,11 @@ defmodule Web.Policies.Edit do
                   required
                 >
                   <:options_group :let={options_group}>
-                    <%= options_group %>
+                    {options_group}
                   </:options_group>
 
                   <:option :let={group}>
-                    <%= group.name %>
+                    {group.name}
                   </:option>
 
                   <:no_options :let={name}>
@@ -110,7 +110,7 @@ defmodule Web.Policies.Edit do
                   required
                 >
                   <:options_group :let={group}>
-                    <%= group %>
+                    {group}
                   </:options_group>
 
                   <:option :let={resource}>
@@ -120,7 +120,7 @@ defmodule Web.Policies.Edit do
                         - <span class="text-red-800">upgrade to unlock</span>
                       </span>
                     <% else %>
-                      <%= resource.name %>
+                      {resource.name}
                     <% end %>
 
                     <span :if={resource.gateway_groups == []} class="text-red-800">
@@ -163,19 +163,19 @@ defmodule Web.Policies.Edit do
               </fieldset>
 
               <.conditions_form
-                :if={@selected_resource.type != :internet}
+                :if={not is_nil(@selected_resource)}
                 form={@form}
                 account={@account}
                 timezone={@timezone}
                 providers={@providers}
+                selected_resource={@selected_resource}
               />
 
               <.options_form
-                :if={@selected_resource.type == :internet}
+                :if={not is_nil(@selected_resource)}
                 form={@form}
                 account={@account}
-                timezone={@timezone}
-                providers={@providers}
+                selected_resource={@selected_resource}
               />
             </div>
 

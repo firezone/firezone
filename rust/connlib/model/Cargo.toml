@@ -1,0 +1,18 @@
+[package]
+name = "connlib-model"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+boringtun = { workspace = true }
+domain = { workspace = true }
+ip_network = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive", "std"] }
+uuid = { workspace = true, features = ["std", "v4", "serde"] }
+
+[dev-dependencies]
+itertools = { workspace = true }
+
+[lints]
+workspace = true

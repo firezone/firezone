@@ -8,7 +8,7 @@ To compile natively for x86_64 Linux:
 
 1. [Install rustup](https://rustup.rs/)
 1. Install [pnpm](https://pnpm.io/installation)
-1. `sudo apt-get install at-spi2-core gcc libwebkit2gtk-4.0-dev libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev pkg-config xvfb`
+1. `sudo apt-get install build-essential curl file libayatana-appindicator3-dev librsvg2-dev libssl-dev libwebkit2gtk-4.1-dev libxdo-dev wget`
 
 ## Setup (Windows)
 
@@ -49,6 +49,30 @@ stat ../target/release/Firezone.exe
 stat ../target/release/bundle/msi/Firezone_0.0.0_x64_en-US.msi
 ```
 
+## Signing the Windows MSI in GitHub CI
+
+The MSI is signed in GitHub CI using the `firezone/firezone` repository's
+secrets. This was originally set up using these guides for inspiration:
+
+- https://melatonin.dev/blog/how-to-code-sign-windows-installers-with-an-ev-cert-on-github-actions/
+- https://support.globalsign.com/code-signing/code-signing-using-azure-key-vault
+
+Renewing / issuing a new code signing certificate and associated Azure entities is outside the scope of this section. Use the guides above if this needs to be done.
+
+Instead, you'll most likely simply need to rotate the Azure `CodeSigning` Application's client secret.
+
+To do so, login to [the Azure portal](https://portal.azure.com) using your `@firezoneprod.onmicrosoft.com` account.
+Try to access it via the following [deep-link](https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationMenuBlade/~/Credentials/appId/51da0daa-39dd-4890-9018-e02609efc9c8).
+If that doesn't work:
+
+- Go to the `Microsoft Entra ID` service
+- Click on `App Registrations`
+- Make sure the tab `All applications` is selected
+- Find and navigate to the `CodeSigning` app registration
+- Client on `client credentials`
+- Click `New client secret`
+- Note down the secret value. This should be entered into the GitHub repository's secrets as `AZURE_CLIENT_SECRET`.
+
 ## Running
 
 From this dir:
@@ -70,15 +94,13 @@ The app's config and logs will be stored at
 
 ## Platform support
 
-Ubuntu 20.04 and newer is supported.
+Ubuntu 22.04 and newer is supported.
 
 Tauri says it should work on Windows 10, Version 1803 and up. Older versions may
 work if you
 [manually install WebView2](https://tauri.app/v1/guides/getting-started/prerequisites#2-webview2)
 
-`x86_64` architecture is supported at this time. See
-[this issue](https://github.com/firezone/firezone/issues/2992) for `aarch64`
-support.
+`x86_64` architecture is supported for Windows. `aarch64` and `x86_64` are supported for Linux.
 
 ## Threat model
 

@@ -6,7 +6,7 @@ on:
       domain_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/domain'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/domain"
       domain_tag:
         required: false
         type: string
@@ -14,7 +14,7 @@ on:
       api_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/api'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/api"
       api_tag:
         required: false
         type: string
@@ -22,7 +22,7 @@ on:
       web_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/web'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/web"
       web_tag:
         required: false
         type: string
@@ -30,7 +30,7 @@ on:
       elixir_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/elixir'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/elixir"
       elixir_tag:
         required: false
         type: string
@@ -38,7 +38,7 @@ on:
       relay_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay"
       relay_tag:
         required: false
         type: string
@@ -46,7 +46,7 @@ on:
       gateway_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/gateway'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/debug/gateway"
       gateway_tag:
         required: false
         type: string
@@ -54,7 +54,7 @@ on:
       client_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client"
       client_tag:
         required: false
         type: string
@@ -62,7 +62,7 @@ on:
       http_test_server_image:
         required: false
         type: string
-        default: 'us-east1-docker.pkg.dev/firezone-staging/firezone/debug/http-test-server'
+        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/debug/http-test-server"
       http_test_server_tag:
         required: false
         type: string
@@ -97,29 +97,20 @@ jobs:
       fail-fast: false
       matrix:
         test:
-          - name: direct-curl-relay-restart
           - name: direct-curl-api-down
-          - name: direct-curl-api-relay-down
           - name: direct-curl-api-restart
           - name: direct-dns-api-down
-          - name: direct-dns-relay-down
           - name: direct-dns-two-resources
           - name: direct-dns
           - name: direct-download-roaming-network
             # Too noisy can cause flaky tests due to the amount of data
             rust_log: debug
-          - name: dns-failsafe # Uses the default DNS control method
           - name: dns-nm
+          - name: tcp-dns
           - name: relay-graceful-shutdown
-          - name: relayed-curl-api-down
-          - name: relayed-curl-api-restart
-          - name: relayed-curl-relay-restart
-          - name: relayed-dns-api-down
-          - name: relayed-dns-relay-restart
-          - name: relayed-dns
           - name: systemd/dns-systemd-resolved
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
@@ -151,18 +142,30 @@ jobs:
 
       - run: ./scripts/tests/${{ matrix.test.name }}.sh
 
+      - name: Ensure Client emitted no warnings
+        run: docker compose logs client | grep --quiet --invert "WARN"
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
+
+      - name: Ensure Relay-1 emitted no warnings
+        run: docker compose logs relay-1 | grep --quiet --invert "WARN"
       - name: Show Relay-1 logs
         if: "!cancelled()"
         run: docker compose logs relay-1
+
+      - name: Ensure Relay-2 emitted no warnings
+        run: docker compose logs relay-2 | grep --quiet --invert "WARN"
       - name: Show Relay-2 logs
         if: "!cancelled()"
         run: docker compose logs relay-2
+
+      - name: Ensure Gateway emitted no warnings
+        run: docker compose logs gateway | grep --quiet --invert "WARN"
       - name: Show Gateway logs
         if: "!cancelled()"
         run: docker compose logs gateway
+
       - name: Show API logs
         if: "!cancelled()"
         run: docker compose logs api

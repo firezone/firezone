@@ -11,18 +11,19 @@ use anyhow::{bail, Context, Result};
 use common::system_tray::Event as TrayMenuEvent;
 use firezone_gui_client_common::{
     self as common,
-    controller::{ControllerRequest, CtlrTx, GuiIntegration},
-    deep_link,
-    errors::{self, Error},
+    controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
+    deep_link, errors,
     settings::AdvancedSettings,
     updates,
 };
 use firezone_headless_client::LogFilterReloader;
+use firezone_logging::err_with_src;
 use firezone_telemetry as telemetry;
+use futures::FutureExt;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{str::FromStr, time::Duration};
-use tauri::{Manager, SystemTrayEvent};
-use tokio::sync::{mpsc, oneshot};
+use std::{panic::AssertUnwindSafe, str::FromStr, time::Duration};
+use tauri::Manager;
+use tokio::sync::mpsc;
 use tracing::instrument;
 
 pub(crate) mod system_tray;
@@ -61,7 +62,7 @@ impl GuiIntegration for TauriIntegration {
     fn set_welcome_window_visible(&self, visible: bool) -> Result<()> {
         let win = self
             .app
-            .get_window("welcome")
+            .get_webview_window("welcome")
             .context("Couldn't get handle to Welcome window")?;
 
         if visible {
@@ -73,23 +74,25 @@ impl GuiIntegration for TauriIntegration {
     }
 
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
-        Ok(tauri::api::shell::open(&self.app.shell_scope(), url, None)?)
+        tauri_plugin_opener::open_url(url, Option::<&str>::None)?;
+
+        Ok(())
     }
 
-    fn set_tray_icon(&mut self, icon: common::system_tray::Icon) -> Result<()> {
-        self.tray.set_icon(icon)
+    fn set_tray_icon(&mut self, icon: common::system_tray::Icon) {
+        self.tray.set_icon(icon);
     }
 
-    fn set_tray_menu(&mut self, app_state: common::system_tray::AppState) -> Result<()> {
+    fn set_tray_menu(&mut self, app_state: common::system_tray::AppState) {
         self.tray.update(app_state)
     }
 
     fn show_notification(&self, title: &str, body: &str) -> Result<()> {
-        os::show_notification(title, body)
+        os::show_notification(&self.app, title, body)
     }
 
     fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()> {
-        os::show_update_notification(ctlr_tx, title, url)
+        os::show_update_notification(&self.app, ctlr_tx, title, url)
     }
 
     fn show_window(&self, window: common::system_tray::Window) -> Result<()> {
@@ -100,7 +103,7 @@ impl GuiIntegration for TauriIntegration {
 
         let win = self
             .app
-            .get_window(id)
+            .get_webview_window(id)
             .context("Couldn't get handle to `{id}` window")?;
 
         // Needed to bring shown windows to the front
@@ -113,15 +116,13 @@ impl GuiIntegration for TauriIntegration {
 }
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
-///
-/// Still uses `thiserror` so we can catch the deep_link `CantListen` error
 #[instrument(skip_all)]
 pub(crate) fn run(
     cli: client::Cli,
     advanced_settings: AdvancedSettings,
     reloader: LogFilterReloader,
-    telemetry: telemetry::Telemetry,
-) -> Result<(), Error> {
+    mut telemetry: telemetry::Telemetry,
+) -> Result<()> {
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
     let _guard = rt.enter();
@@ -129,7 +130,7 @@ pub(crate) fn run(
     // Make sure we're single-instance
     // We register our deep links to call the `open-deep-link` subcommand,
     // so if we're at this point, we know we've been launched manually
-    let deep_link_server = rt.block_on(async { deep_link::Server::new().await })?;
+    let deep_link_server = rt.block_on(deep_link::Server::new())?;
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let (updates_tx, updates_rx) = mpsc::channel(1);
@@ -139,16 +140,17 @@ pub(crate) fn run(
         inject_faults: cli.inject_faults,
     };
 
-    let (setup_result_tx, mut setup_result_rx) = oneshot::channel::<Result<(), Error>>();
     let app = tauri::Builder::default()
         .manage(managed)
-        .on_window_event(|event| {
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event.event() {
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 // Keep the frontend running but just hide this webview
                 // Per https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
                 // Closing the window fully seems to deallocate it or something.
 
-                event.window().hide().unwrap();
+                if let Err(e) = window.hide() {
+                    tracing::warn!("Failed to hide window: {}", err_with_src(&e))
+                };
                 api.prevent_close();
             }
         })
@@ -163,162 +165,130 @@ pub(crate) fn run(
             settings::get_advanced_settings,
             crate::client::welcome::sign_in,
         ])
-        .system_tray(system_tray::loading())
-        .on_system_tray_event(|app, event| {
-            if let SystemTrayEvent::MenuItemClick { id, .. } = event {
-                tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
-                let event = match serde_json::from_str::<TrayMenuEvent>(&id) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        tracing::error!("{e}");
-                        return;
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_opener::init())
+        .setup(move |app| {
+            // Check for updates
+            tokio::spawn(async move {
+                if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await
+                {
+                    tracing::error!("Error in updates::checker_task: {error:#}");
+                }
+            });
+
+            if let Some(client::Cmd::SmokeTest) = &cli.command {
+                let ctlr_tx = ctlr_tx.clone();
+                tokio::spawn(async move {
+                    if let Err(error) = smoke_test(ctlr_tx).await {
+                        tracing::error!("Error during smoke test, crashing on purpose so a dev can see our stacktraces: {error:#}");
+                        unsafe { sadness_generator::raise_segfault() }
+                    }
+                });
+            }
+
+            tracing::debug!(cli.no_deep_links);
+            if !cli.no_deep_links {
+                // The single-instance check is done, so register our exe
+                // to handle deep links
+                let exe = tauri_utils::platform::current_exe().context("Can't find our own exe path")?;
+                deep_link::register(exe).context("Failed to register deep link handler")?;
+                tokio::spawn(accept_deep_links(deep_link_server, ctlr_tx.clone()));
+            }
+
+            if let Some(failure) = cli.fail_on_purpose() {
+                let ctlr_tx = ctlr_tx.clone();
+                tokio::spawn(async move {
+                    let delay = 5;
+                    tracing::warn!(
+                        "Will crash / error / panic on purpose in {delay} seconds to test error handling."
+                    );
+                    tokio::time::sleep(Duration::from_secs(delay)).await;
+                    tracing::warn!("Crashing / erroring / panicking on purpose");
+                    ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
+                    Ok::<_, anyhow::Error>(())
+                });
+            }
+
+            if let Some(delay) = cli.quit_after {
+                let ctlr_tx = ctlr_tx.clone();
+                tokio::spawn(async move {
+                    tracing::warn!("Will quit gracefully in {delay} seconds.");
+                    tokio::time::sleep(Duration::from_secs(delay)).await;
+                    tracing::warn!("Quitting gracefully due to `--quit-after`");
+                    ctlr_tx.send(ControllerRequest::SystemTrayMenu(firezone_gui_client_common::system_tray::Event::Quit)).await?;
+                    Ok::<_, anyhow::Error>(())
+                });
+            }
+
+            assert_eq!(
+                firezone_bin_shared::BUNDLE_ID,
+                app.handle().config().identifier,
+                "BUNDLE_ID should match bundle ID in tauri.conf.json"
+            );
+
+            let tray = system_tray::Tray::new(app.handle().clone(), |app, event| match handle_system_tray_event(app, event) {
+                Ok(_) => {}
+                Err(e) => tracing::error!("{e}"),
+            })?;
+            let integration = TauriIntegration { app: app.handle().clone(), tray };
+
+            let app_handle = app.handle().clone();
+            let _ctlr_task = tokio::spawn(async move {
+                let result = AssertUnwindSafe(Controller::start(
+                    ctlr_tx,
+                    integration,
+                    ctlr_rx,
+                    advanced_settings,
+                    reloader,
+                    &mut telemetry,
+                    updates_rx,
+                )).catch_unwind().await;
+
+                // See <https://github.com/tauri-apps/tauri/issues/8631>
+                // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
+                // because it exits the entire process without dropping anything.
+                //
+                // This seems to be a platform limitation that Tauri is unable to hide
+                // from us. It was the source of much consternation at time of writing.
+
+                let exit_code = match result {
+                    Err(_panic) => {
+                        // The panic will have been recorded already by Sentry's panic hook.
+                        telemetry.stop_on_crash().await;
+
+                        1
+                    }
+                    Ok(Err(error)) => {
+                        tracing::error!("run_controller returned an error: {}", err_with_src(&error));
+                        if let Err(e) = errors::show_error_dialog(error.user_friendly_msg()) {
+                            tracing::error!("Failed to show error dialog: {e:#}");
+                        }
+                        telemetry.stop_on_crash().await;
+                        1
+                    }
+                    Ok(Ok(_)) => {
+                        telemetry.stop().await;
+
+                        0
                     }
                 };
-                match handle_system_tray_event(app, event) {
-                    Ok(_) => {}
-                    Err(e) => tracing::error!("{e}"),
-                }
-            }
-        })
-        .setup(move |app| {
-            let setup_inner = move || {
-                // Check for updates
-                tokio::spawn(async move {
-                    if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await
-                    {
-                        tracing::error!(?error, "Error in updates::checker_task");
-                    }
-                });
 
-                if let Some(client::Cmd::SmokeTest) = &cli.command {
-                    let ctlr_tx = ctlr_tx.clone();
-                    tokio::spawn(async move {
-                        if let Err(error) = smoke_test(ctlr_tx).await {
-                            tracing::error!(?error, "Error during smoke test, crashing on purpose so a dev can see our stacktraces");
-                            unsafe { sadness_generator::raise_segfault() }
-                        }
-                    });
-                }
+                // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
+                // TODO: This limit may not exist in Tauri v2
 
-                tracing::debug!(cli.no_deep_links);
-                if !cli.no_deep_links {
-                    // The single-instance check is done, so register our exe
-                    // to handle deep links
-                    let exe = tauri_utils::platform::current_exe().context("Can't find our own exe path")?;
-                    deep_link::register(exe).context("Failed to register deep link handler")?;
-                    tokio::spawn(accept_deep_links(deep_link_server, ctlr_tx.clone()));
-                }
-
-                if let Some(failure) = cli.fail_on_purpose() {
-                    let ctlr_tx = ctlr_tx.clone();
-                    tokio::spawn(async move {
-                        let delay = 5;
-                        tracing::warn!(
-                            "Will crash / error / panic on purpose in {delay} seconds to test error handling."
-                        );
-                        telemetry::add_breadcrumb(telemetry::Breadcrumb {
-                            ty: "fail_on_purpose".into(),
-                            message: Some("Will crash / error / panic on purpose to test error handling.".into()),
-                            ..Default::default()
-                        });
-                        tokio::time::sleep(Duration::from_secs(delay)).await;
-                        tracing::warn!("Crashing / erroring / panicking on purpose");
-                        ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
-                        Ok::<_, anyhow::Error>(())
-                    });
-                }
-
-                if let Some(delay) = cli.quit_after {
-                    let ctlr_tx = ctlr_tx.clone();
-                    tokio::spawn(async move {
-                        tracing::warn!("Will quit gracefully in {delay} seconds.");
-                        tokio::time::sleep(Duration::from_secs(delay)).await;
-                        tracing::warn!("Quitting gracefully due to `--quit-after`");
-                        ctlr_tx.send(ControllerRequest::SystemTrayMenu(firezone_gui_client_common::system_tray::Event::Quit)).await?;
-                        Ok::<_, anyhow::Error>(())
-                    });
-                }
-
-                assert_eq!(
-                    firezone_bin_shared::BUNDLE_ID,
-                    app.handle().config().tauri.bundle.identifier,
-                    "BUNDLE_ID should match bundle ID in tauri.conf.json"
-                );
-
-                let app_handle = app.handle();
-                let _ctlr_task = tokio::spawn(async move {
-                    // Spawn two nested Tasks so the outer can catch panics from the inner
-                    let task = tokio::spawn(run_controller(
-                        app_handle.clone(),
-                        ctlr_tx,
-                        ctlr_rx,
-                        advanced_settings,
-                        reloader,
-                        telemetry.clone(),
-                        updates_rx,
-                    ));
-
-                    // See <https://github.com/tauri-apps/tauri/issues/8631>
-                    // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
-                    // because it exits the entire process without dropping anything.
-                    //
-                    // This seems to be a platform limitation that Tauri is unable to hide
-                    // from us. It was the source of much consternation at time of writing.
-
-                    let exit_code = match task.await {
-                        Err(error) => {
-                            telemetry::capture_error(&error);
-                            tracing::error!(?error, "run_controller panicked");
-                            telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
-                            1
-                        }
-                        Ok(Err(error)) => {
-                            telemetry::capture_error(&error);
-                            tracing::error!(?error, "run_controller returned an error");
-                            errors::show_error_dialog(&error).unwrap();
-                            telemetry::end_session_with_status(telemetry::SessionStatus::Crashed);
-                            1
-                        }
-                        Ok(Ok(_)) => {
-                            telemetry::end_session();
-                            0
-                        }
-                    };
-
-                    // In a normal Rust application, Sentry's guard would flush on drop: https://docs.sentry.io/platforms/rust/configuration/draining/
-                    // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
-                    telemetry.stop();
-
-                    tracing::info!(?exit_code);
-                    app_handle.exit(exit_code);
-                });
-                Ok(())
-            };
-
-            setup_result_tx.send(setup_inner()).expect("should be able to send setup result");
+                tracing::info!(%exit_code, "Goodbye!");
+                app_handle.exit(exit_code);
+                // In Tauri v1, calling `App::exit` internally exited the process.
+                // In Tauri v2, that doesn't happen, but `App::run` still doesn't return, so we have to bail out of the process manually.
+                std::process::exit(exit_code);
+            });
 
             Ok(())
-        });
-    tracing::debug!("Building Tauri app...");
-    let app = app.build(tauri::generate_context!());
-
-    setup_result_rx
-        .try_recv()
-        .context("couldn't receive result of setup")??;
-
-    let app = match app {
-        Ok(x) => x,
-        Err(error) => {
-            tracing::error!(?error, "Failed to build Tauri app instance");
-            #[expect(clippy::wildcard_enum_match_arm)]
-            match error {
-                tauri::Error::Runtime(tauri_runtime::Error::CreateWebview(_)) => {
-                    return Err(Error::WebViewNotInstalled);
-                }
-                error => Err(anyhow::Error::from(error).context("Tauri error"))?,
-            }
-        }
-    };
+        })
+        .build(tauri::generate_context!())
+        .context("Failed to build Tauri app instance")?;
 
     app.run(|_app_handle, event| {
         if let tauri::RunEvent::ExitRequested { api, .. } = event {
@@ -328,6 +298,7 @@ pub(crate) fn run(
             api.prevent_exit();
         }
     });
+    tracing::warn!("app.run returned, this is normally unreachable even in Tauri v2");
     Ok(())
 }
 
@@ -365,7 +336,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
         })
         .await
         .context("Failed to send `ExportLogs` request")?;
-    let (tx, rx) = oneshot::channel();
+    let (tx, rx) = tokio::sync::oneshot::channel();
     ctlr_tx
         .send(ControllerRequest::ClearLogs(tx))
         .await
@@ -412,7 +383,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
 async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Result<()> {
     loop {
         match server.accept().await {
-            Ok(bytes) => {
+            Ok(Some(bytes)) => {
                 let url = SecretString::from_str(
                     std::str::from_utf8(bytes.expose_secret())
                         .context("Incoming deep link was not valid UTF-8")?,
@@ -424,7 +395,12 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
                     .await
                     .ok();
             }
-            Err(error) => tracing::error!(?error, "error while accepting deep link"),
+            Ok(None) => {
+                tracing::debug!("Accepted deep-link but read 0 bytes, trying again ...");
+            }
+            Err(error) => {
+                tracing::warn!("Failed to accept deep link: {error:#}")
+            }
         }
         // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
         server = deep_link::Server::new().await?;
@@ -436,36 +412,5 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Res
         .context("can't get Managed struct from Tauri")?
         .ctlr_tx
         .blocking_send(ControllerRequest::SystemTrayMenu(event))?;
-    Ok(())
-}
-
-// TODO: Move this into `impl Controller`
-async fn run_controller(
-    app: tauri::AppHandle,
-    ctlr_tx: CtlrTx,
-    rx: mpsc::Receiver<ControllerRequest>,
-    advanced_settings: AdvancedSettings,
-    log_filter_reloader: LogFilterReloader,
-    telemetry: telemetry::Telemetry,
-    updates_rx: mpsc::Receiver<Option<updates::Notification>>,
-) -> Result<(), Error> {
-    tracing::debug!("Entered `run_controller`");
-    let tray = system_tray::Tray::new(app.tray_handle());
-    let controller = firezone_gui_client_common::controller::Builder {
-        advanced_settings,
-        ctlr_tx,
-        integration: TauriIntegration { app, tray },
-        log_filter_reloader,
-        rx,
-        telemetry,
-        updates_rx,
-    }
-    .build()
-    .await?;
-
-    controller.main_loop().await?;
-
-    // Last chance to do any drops / cleanup before the process crashes.
-
     Ok(())
 }

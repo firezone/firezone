@@ -35,6 +35,14 @@ defmodule Domain.Accounts.Account.Query do
     )
   end
 
+  def by_stripe_product_name(queryable, account_type) do
+    where(
+      queryable,
+      [accounts: accounts],
+      fragment("?->'stripe'->>'product_name' = ?", accounts.metadata, ^account_type)
+    )
+  end
+
   def by_slug(queryable, slug) do
     where(queryable, [accounts: accounts], accounts.slug == ^slug)
   end
@@ -45,6 +53,38 @@ defmodule Domain.Accounts.Account.Query do
     else
       by_slug(queryable, id_or_slug)
     end
+  end
+
+  def by_notification_enabled(queryable, notification) do
+    where(
+      queryable,
+      [accounts: accounts],
+      fragment(
+        "(?->'notifications'->?->>'enabled') = 'true'",
+        accounts.config,
+        ^notification
+      )
+    )
+  end
+
+  def by_notification_last_notified(queryable, notification, hours) do
+    interval = Duration.new!(hour: hours)
+
+    where(
+      queryable,
+      [accounts: accounts],
+      fragment(
+        "(?->'notifications'->?->>'last_notified')::timestamp < NOW() - ?::interval",
+        accounts.config,
+        ^notification,
+        ^interval
+      ) or
+        fragment(
+          "(?->'notifications'->?->>'last_notified') IS NULL",
+          accounts.config,
+          ^notification
+        )
+    )
   end
 
   # Pagination
@@ -98,7 +138,7 @@ defmodule Domain.Accounts.Account.Query do
   end
 
   def filter_by_status(queryable, "enabled") do
-    {queryable, dynamic([accounts: accounts], not is_nil(accounts.disabled_at))}
+    {queryable, dynamic([accounts: accounts], is_nil(accounts.disabled_at))}
   end
 
   def filter_by_status(queryable, "disabled") do

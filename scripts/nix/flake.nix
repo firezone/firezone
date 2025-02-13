@@ -5,7 +5,7 @@
     rust-overlay.url = "github:oxalica/rust-overlay";
   };
 
-  outputs = { nixpkgs, flake-utils, rust-overlay, ... } @ inputs:
+  outputs = { nixpkgs, flake-utils, rust-overlay, ... }:
     flake-utils.lib.eachDefaultSystem
       (
         system:
@@ -23,18 +23,6 @@
             exec "${pkgs.cargo-udeps}/bin/cargo-udeps" "$@"
           '';
 
-          libraries = with pkgs; [
-            webkitgtk
-            gtk3
-            cairo
-            gdk-pixbuf
-            glib
-            dbus
-            openssl_3
-            librsvg
-            libappindicator-gtk3
-          ];
-
           packages = with pkgs; [
             curl
             wget
@@ -49,12 +37,26 @@
             gnome.zenity
             desktop-file-utils
             android-tools
-            erlang_27
-            elixir
+
+            # For Tauri
+            at-spi2-atk
+            atkmm
+            cairo
+            gdk-pixbuf
+            glib
+            gobject-introspection
+            gobject-introspection.dev
+            gtk3
+            harfbuzz
+            librsvg
+            libsoup_3
+            pango
+            webkitgtk_4_1
+            webkitgtk_4_1.dev
           ];
 
           mkShellWithRustVersion = rustVersion: pkgs.mkShell {
-            packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.nodePackages.pnpm cargo-udeps pkgs.cargo-sort ];
+            packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.pnpm cargo-udeps pkgs.cargo-sort pkgs.cargo-deny pkgs.cargo-autoinherit ];
             buildInputs = packages ++ [
               (rustVersion.override {
                 extensions = [ "rust-src" "rust-analyzer" ];
@@ -64,8 +66,7 @@
             name = "rust-env";
             src = ../../rust;
 
-            LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath libraries}:$LD_LIBRARY_PATH${pkgs.lib.makeLibraryPath libraries}:$LD_LIBRARY_PATH";
-            XDG_DATA_DIRS = "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
+            PKG_CONFIG_PATH = with pkgs; "${glib.dev}/lib/pkgconfig:${libsoup_3.dev}/lib/pkgconfig:${webkitgtk_4_1.dev}/lib/pkgconfig:${at-spi2-atk.dev}/lib/pkgconfig:${gtk3.dev}/lib/pkgconfig:${gdk-pixbuf.dev}/lib/pkgconfig:${cairo.dev}/lib/pkgconfig:${pango.dev}/lib/pkgconfig:${harfbuzz.dev}/lib/pkgconfig";
           };
         in
         {

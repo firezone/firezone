@@ -53,7 +53,7 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Actors"
     assert breadcrumbs =~ actor.name
-    assert breadcrumbs =~ "Add Token"
+    assert breadcrumbs =~ "Create Token"
   end
 
   test "renders form", %{

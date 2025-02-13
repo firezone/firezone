@@ -5,13 +5,88 @@ import Link from "next/link";
 import Unreleased from "./Unreleased";
 
 export default function Android() {
+  const downloadLinks = [
+    {
+      href: "https://play.google.com/store/apps/details?id=dev.firezone.android",
+      title: "Download on Google Play",
+    },
+    {
+      href: "/dl/firezone-client-android/:version",
+      title: "Download APK",
+    },
+  ];
+
   return (
-    <Entries
-      href="https://play.google.com/store/apps/details?id=dev.firezone.android"
-      title="Android"
-    >
+    <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="8110">
+          Fixes a minor memory leak that could occur after being disconnected
+          unexpectedly.
+        </ChangeItem>
+      </Unreleased>
+      <Entry version="1.4.1" date={new Date("2025-01-28")}>
+        <ChangeItem pull="7891">
+          Substantially reduces memory usage when sending large amounts of data.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.4.0" date={new Date("2025-01-02")}>
+        <ChangeItem pull="7599">
+          The Android app is now distributed{" "}
+          <Link
+            href="https://www.github.com/firezone/firezone/releases"
+            className="text-accent-500 underline hover:no-underline"
+          >
+            via GitHub Releases in addition
+          </Link>
+          to the Google Play Store.
+        </ChangeItem>
+        <ChangeItem pull="7334">
+          Fixes an issue where symmetric NATs would generate unnecessary
+          candidate for hole-punching.
+        </ChangeItem>
+        <ChangeItem pull="7210">
+          Adds support for GSO (Generic Segmentation Offload), delivering
+          throughput improvements of up to 60%.
+        </ChangeItem>
+        <ChangeItem>
+          Makes use of the new control protocol, delivering faster and more
+          robust connection establishment.
+        </ChangeItem>
+        <ChangeItem pull="7477">
+          Improves connection setup latency by buffering initial packets.
+        </ChangeItem>
+        <ChangeItem pull="7551">
+          Fixes an issue where large DNS responses were incorrectly discarded.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.3.7" date={new Date("2024-11-08")}>
+        <ChangeItem pull="7263">
+          Mitigates a crash in case the maximum packet size is not respected.
+        </ChangeItem>
+        <ChangeItem pull="7265">
+          Prevents re-connections to the portal from hanging for longer than 5s.
+        </ChangeItem>
+        <ChangeItem pull="7288">
+          Fixes an issue where network roaming would cause Firezone to become
+          unresponsive.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.3.6" date={new Date("2024-10-31")}>
+        <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
+        <ChangeItem pull="7151">
+          Adds always-on error reporting using sentry.io.
+        </ChangeItem>
+        <ChangeItem pull="7160">
+          Fixes an issue where notifications would sometimes not get delivered
+          when Firezone was active.
+        </ChangeItem>
+        <ChangeItem pull="7164">
+          Fixes an issue where Firezone would fail to establish connections to
+          Gateways and the user had to sign-out and in again.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.3.5" date={new Date("2024-10-03")}>
         <ChangeItem pull="6831">
           Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is
           active.
@@ -20,7 +95,10 @@ export default function Android() {
           Fixes connectivity issues on idle connections by entering an
           always-on, low-power mode instead of closing them.
         </ChangeItem>
-      </Unreleased>
+        <ChangeItem pull="6857">
+          Sends the Firebase Installation ID for device verification.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.3.4" date={new Date("2024-09-26")}>
         <ChangeItem pull="6809">
           Fixes a bug where non-wildcard DNS resources were not prioritised over

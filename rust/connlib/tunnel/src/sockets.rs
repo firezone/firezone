@@ -2,6 +2,7 @@ use socket_factory::{DatagramIn, DatagramOut, SocketFactory, UdpSocket};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    ops::Deref,
     task::{ready, Context, Poll, Waker},
 };
 
@@ -19,10 +20,10 @@ pub(crate) struct Sockets {
 impl Sockets {
     pub fn rebind(&mut self, socket_factory: &dyn SocketFactory<UdpSocket>) {
         self.socket_v4 = socket_factory(&SocketAddr::V4(UNSPECIFIED_V4_SOCKET))
-            .inspect_err(|e| tracing::warn!("Failed to bind IPv4 socket: {e}"))
+            .inspect_err(|e| tracing::info!("Failed to bind IPv4 socket: {e}"))
             .ok();
         self.socket_v6 = socket_factory(&SocketAddr::V6(UNSPECIFIED_V6_SOCKET))
-            .inspect_err(|e| tracing::warn!("Failed to bind IPv6 socket: {e}"))
+            .inspect_err(|e| tracing::info!("Failed to bind IPv6 socket: {e}"))
             .ok();
 
         if let Some(waker) = self.waker.take() {
@@ -57,7 +58,10 @@ impl Sockets {
         Poll::Ready(Ok(()))
     }
 
-    pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
+    pub fn send<B>(&mut self, datagram: DatagramOut<B>) -> io::Result<()>
+    where
+        B: Deref<Target: bytes::Buf>,
+    {
         let socket = match datagram.dst {
             SocketAddr::V4(dst) => self.socket_v4.as_mut().ok_or_else(|| {
                 io::Error::new(

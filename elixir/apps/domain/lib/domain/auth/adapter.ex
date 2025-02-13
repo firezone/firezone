@@ -90,5 +90,15 @@ defmodule Domain.Auth.Adapter do
                 | {:error, :invalid_secret}
                 | {:error, :expired_secret}
                 | {:error, :internal_error}
+
+    @doc """
+    This function can be used to refresh the access token for the given identity,
+    eg. when we want to extend the lifetime of the browser session token.
+    """
+    @callback refresh_access_token(%Identity{}) ::
+                {:ok, %Identity{}, expires_at :: %DateTime{} | nil}
+                | {:error, :expired_token}
+                | {:error, :invalid_token}
+                | {:error, reason :: term()}
   end
 end

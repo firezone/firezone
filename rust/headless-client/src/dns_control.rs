@@ -33,7 +33,7 @@ pub struct DnsController {
 impl Drop for DnsController {
     fn drop(&mut self) {
         if let Err(error) = self.deactivate() {
-            tracing::error!(?error, "Failed to deactivate DNS control");
+            tracing::error!("Failed to deactivate DNS control: {error:#}");
         }
     }
 }

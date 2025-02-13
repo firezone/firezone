@@ -1,20 +1,24 @@
-use crate::windows::CREATE_NO_WINDOW;
+use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
+use crate::windows::TUNNEL_UUID;
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
+use firezone_logging::err_with_src;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
+use std::net::IpAddr;
 use std::{
     collections::HashSet,
     io::{self, Read as _},
     net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
-    os::windows::process::CommandExt,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
-    str::FromStr,
     sync::Arc,
-    task::{ready, Context, Poll},
+    task::{Context, Poll},
 };
 use tokio::sync::mpsc;
+use windows::Win32::NetworkManagement::IpHelper::{
+    CreateUnicastIpAddressEntry, InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW,
+};
 use windows::Win32::{
     NetworkManagement::{
         IpHelper::{
@@ -40,16 +44,21 @@ const RING_BUFFER_SIZE: u32 = 0x10_0000;
 
 pub struct TunDeviceManager {
     mtu: u32,
+
+    /// Interface index of the last created adapter.
     iface_idx: Option<u32>,
+    /// ID of the last created adapter.
+    luid: Option<wintun::NET_LUID_LH>,
 
     routes: HashSet<IpNetwork>,
 }
 
 impl TunDeviceManager {
     #[expect(clippy::unnecessary_wraps, reason = "Fallible on Linux")]
-    pub fn new(mtu: usize) -> Result<Self> {
+    pub fn new(mtu: usize, _num_threads: usize) -> Result<Self> {
         Ok(Self {
             iface_idx: None,
+            luid: None,
             routes: HashSet::default(),
             mtu: mtu as u32,
         })
@@ -58,40 +67,28 @@ impl TunDeviceManager {
     pub fn make_tun(&mut self) -> Result<Tun> {
         let tun = Tun::new(self.mtu)?;
         self.iface_idx = Some(tun.iface_idx());
+        self.luid = Some(tun.luid);
 
         Ok(tun)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
-        tracing::debug!("Setting our IPv4 = {}", ipv4);
-        tracing::debug!("Setting our IPv6 = {}", ipv6);
+        let luid = self
+            .luid
+            .context("Cannot set IPs prior to creating an adapter")?;
 
-        // TODO: See if there's a good Win32 API for this
-        // Using netsh directly instead of wintun's `set_network_addresses_tuple` because their code doesn't work for IPv6
-        Command::new("netsh")
-            .creation_flags(CREATE_NO_WINDOW)
-            .arg("interface")
-            .arg("ipv4")
-            .arg("set")
-            .arg("address")
-            .arg(format!("name=\"{TUNNEL_NAME}\""))
-            .arg("source=static")
-            .arg(format!("address={}", ipv4))
-            .arg("mask=255.255.255.255")
-            .stdout(Stdio::null())
-            .status()?;
+        // SAFETY: Both NET_LUID_LH unions should be the same. We're just copying out
+        // the u64 value and re-wrapping it, since wintun doesn't refer to the windows
+        // crate's version of NET_LUID_LH.
+        let luid = NET_LUID_LH {
+            Value: unsafe { luid.Value },
+        };
 
-        Command::new("netsh")
-            .creation_flags(CREATE_NO_WINDOW)
-            .arg("interface")
-            .arg("ipv6")
-            .arg("set")
-            .arg("address")
-            .arg(format!("interface=\"{TUNNEL_NAME}\""))
-            .arg(format!("address={}", ipv6))
-            .stdout(Stdio::null())
-            .status()?;
+        tracing::debug!(%ipv4, %ipv6, "Setting tunnel interface IPs");
+
+        try_set_ip(luid, IpAddr::V4(ipv4)).context("Failed to set IPv4 address")?;
+        try_set_ip(luid, IpAddr::V6(ipv6)).context("Failed to set IPv6 address")?;
 
         Ok(())
     }
@@ -124,7 +121,6 @@ impl TunDeviceManager {
 
 // It's okay if this blocks until the route is added in the OS.
 fn add_route(route: IpNetwork, iface_idx: u32) {
-    const DUPLICATE_ERR: u32 = 0x80071392;
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
@@ -135,16 +131,20 @@ fn add_route(route: IpNetwork, iface_idx: u32) {
     };
 
     // We expect set_routes to call add_route with the same routes always making this error expected
-    if e.code().0 as u32 == DUPLICATE_ERR {
+    if e.code() == OBJECT_EXISTS {
         return;
     }
 
-    tracing::warn!(%route, "Failed to add route: {e}");
+    if e.code() == NOT_FOUND {
+        tracing::debug!(%route, "Failed to add route: IP stack disabled?");
+        return;
+    }
+
+    tracing::warn!(%route, "Failed to add route: {}", err_with_src(&e));
 }
 
 // It's okay if this blocks until the route is removed in the OS.
 fn remove_route(route: IpNetwork, iface_idx: u32) {
-    const ELEMENT_NOT_FOUND: u32 = 0x80070490;
     let entry = forward_entry(route, iface_idx);
 
     // SAFETY: Windows shouldn't store the reference anywhere, it's just a way to pass lots of arguments at once. And no other thread sees this variable.
@@ -155,11 +155,11 @@ fn remove_route(route: IpNetwork, iface_idx: u32) {
         return;
     };
 
-    if e.code().0 as u32 == ELEMENT_NOT_FOUND {
+    if e.code() == NOT_FOUND {
         return;
     }
 
-    tracing::warn!(%route, "Failed to remove route: {e}")
+    tracing::warn!(%route, "Failed to remove route: {}", err_with_src(&e))
 }
 
 fn forward_entry(route: IpNetwork, iface_idx: u32) -> MIB_IPFORWARD_ROW2 {
@@ -190,20 +190,21 @@ pub struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
-    packet_rx: mpsc::Receiver<wintun::Packet>,
+    inbound_rx: mpsc::Receiver<IpPacket>,
     recv_thread: Option<std::thread::JoinHandle<()>>,
     session: Arc<wintun::Session>,
+    luid: wintun::NET_LUID_LH,
 }
 
 impl Drop for Tun {
     fn drop(&mut self) {
         tracing::debug!(
-            channel_capacity = self.packet_rx.capacity(),
+            channel_capacity = self.inbound_rx.capacity(),
             "Shutting down packet channel..."
         );
-        self.packet_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
+        self.inbound_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
         if let Err(error) = self.session.shutdown() {
-            tracing::error!(?error, "wintun::Session::shutdown");
+            tracing::error!("wintun::Session::shutdown: {error:#}");
         }
         if let Err(error) = self
             .recv_thread
@@ -217,39 +218,40 @@ impl Drop for Tun {
 }
 
 impl Tun {
-    #[tracing::instrument(level = "debug")]
-    pub fn new(mtu: u32) -> Result<Self> {
-        const TUNNEL_UUID: &str = "e9245bc1-b8c1-44ca-ab1d-c6aad4f13b9c";
-
-        let path = ensure_dll()?;
+    fn new(mtu: u32) -> Result<Self> {
+        let path = ensure_dll().context("Failed to ensure `wintun.dll` is in place")?;
         // SAFETY: we're loading a DLL from disk and it has arbitrary C code in it. There's no perfect way to prove it's safe.
-        let wintun = unsafe { wintun::load_from_path(path) }?;
+        let wintun = unsafe { wintun::load_from_path(path.clone()) }
+            .with_context(|| format!("Failed to load `wintun.dll` from {}", path.display()))?;
 
         // Create wintun adapter
-        let uuid = uuid::Uuid::from_str(TUNNEL_UUID)
-            .expect("static UUID should always parse correctly")
-            .as_u128();
-        let adapter = match Adapter::create(&wintun, TUNNEL_NAME, TUNNEL_NAME, Some(uuid)) {
-            Ok(x) => x,
-            Err(error) => {
-                tracing::error!(?error, "Failed in `Adapter::create`");
-                return Err(error)?;
-            }
-        };
-        let iface_idx = adapter.get_adapter_index()?;
+        let adapter = Adapter::create(
+            &wintun,
+            TUNNEL_NAME,
+            TUNNEL_NAME,
+            Some(TUNNEL_UUID.as_u128()),
+        )?;
+        let iface_idx = adapter
+            .get_adapter_index()
+            .context("Failed to get adapter index")?;
+        let luid = adapter.get_luid();
 
-        set_iface_config(adapter.get_luid(), mtu)?;
+        set_iface_config(luid, mtu).context("Failed to set interface config")?;
 
-        let session = Arc::new(adapter.start_session(RING_BUFFER_SIZE)?);
-        // 4 is a nice power of two. Wintun already queues packets for us, so we don't
-        // need much capacity here.
-        let (packet_tx, packet_rx) = mpsc::channel(4);
-        let recv_thread = start_recv_thread(packet_tx, Arc::clone(&session))?;
+        let session = Arc::new(
+            adapter
+                .start_session(RING_BUFFER_SIZE)
+                .context("Failed to start session")?,
+        );
+        let (inbound_tx, inbound_rx) = mpsc::channel(1000); // We want to be able to batch-receive from this.
+        let recv_thread = start_recv_thread(inbound_tx, Arc::clone(&session))
+            .context("Failed to start recv thread")?;
 
         Ok(Self {
             iface_idx,
+            luid,
             recv_thread: Some(recv_thread),
-            packet_rx,
+            inbound_rx,
             session: Arc::clone(&session),
         })
     }
@@ -257,76 +259,60 @@ impl Tun {
     pub fn iface_idx(&self) -> u32 {
         self.iface_idx
     }
-
-    // Moves packets from the Internet towards the user
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "Fn signature must align with other platform implementations"
-    )]
-    fn write(&self, bytes: &[u8]) -> io::Result<usize> {
-        let len = bytes
-            .len()
-            .try_into()
-            .expect("Packet length should fit into u16");
-
-        let Ok(mut pkt) = self.session.allocate_send_packet(len) else {
-            // Ring buffer is full, just drop the packet since we're at the IP layer
-            return Ok(0);
-        };
-
-        pkt.bytes_mut().copy_from_slice(bytes);
-        // `send_packet` cannot fail to enqueue the packet, since we already allocated
-        // space in the ring buffer.
-        self.session.send_packet(pkt);
-        Ok(bytes.len())
-    }
 }
 
 impl tun::Tun for Tun {
-    // Moves packets from the user towards the Internet
-    fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        let pkt = ready!(self.packet_rx.poll_recv(cx));
-
-        match pkt {
-            Some(pkt) => {
-                let bytes = pkt.bytes();
-                let len = bytes.len();
-                if len > buf.len() {
-                    // This shouldn't happen now that we set IPv4 and IPv6 MTU
-                    // If it does, something is wrong.
-                    tracing::warn!("Packet is too long to read ({len} bytes)");
-                    return Poll::Ready(Ok(0));
-                }
-                buf[0..len].copy_from_slice(bytes);
-                Poll::Ready(Ok(len))
-            }
-            None => {
-                tracing::error!("error receiving packet from mpsc channel");
-                Poll::Ready(Err(std::io::ErrorKind::Other.into()))
-            }
-        }
+    /// Receive a batch of packets up to `max`.
+    fn poll_recv_many(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut Vec<IpPacket>,
+        max: usize,
+    ) -> Poll<usize> {
+        self.inbound_rx.poll_recv_many(cx, buf, max)
     }
 
     fn name(&self) -> &str {
         TUNNEL_NAME
     }
 
-    fn write4(&self, bytes: &[u8]) -> io::Result<usize> {
-        self.write(bytes)
+    /// Check if more packets can be sent.
+    fn poll_send_ready(&mut self, _: &mut Context) -> Poll<io::Result<()>> {
+        // TODO: Figure out how we can do readiness checks on `wintun`.
+
+        Poll::Ready(Ok(()))
     }
 
-    fn write6(&self, bytes: &[u8]) -> io::Result<usize> {
-        self.write(bytes)
+    /// Send a packet.
+    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
+        let bytes = packet.packet();
+
+        let len = bytes
+            .len()
+            .try_into()
+            .map_err(|_| io::Error::other("Packet too large; length does not fit into u16"))?;
+
+        let mut pkt = self
+            .session
+            .allocate_send_packet(len)
+            .map_err(io::Error::other)?;
+
+        pkt.bytes_mut().copy_from_slice(bytes);
+        // `send_packet` cannot fail to enqueue the packet, since we already allocated
+        // space in the ring buffer.
+        self.session.send_packet(pkt);
+
+        Ok(())
     }
 }
 
 // Moves packets from the user towards the Internet
 fn start_recv_thread(
-    packet_tx: mpsc::Sender<wintun::Packet>,
+    packet_tx: mpsc::Sender<IpPacket>,
     session: Arc<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
-        .name("Firezone wintun worker".into())
+        .name("TUN recv".into())
         .spawn(move || loop {
             let pkt = match session.receive_blocking() {
                 Ok(pkt) => pkt,
@@ -339,6 +325,26 @@ fn start_recv_thread(
                 Err(e) => {
                     tracing::error!("wintun::Session::receive_blocking: {e:#?}");
                     break;
+                }
+            };
+
+            let mut ip_packet_buf = IpPacketBuf::new();
+
+            let src = pkt.bytes();
+            let dst = ip_packet_buf.buf();
+
+            if src.len() > dst.len() {
+                tracing::warn!(len = %src.len(), "Received too large packet");
+                continue;
+            }
+
+            dst[..src.len()].copy_from_slice(src);
+
+            let pkt = match IpPacket::new(ip_packet_buf, src.len()) {
+                Ok(pkt) => pkt,
+                Err(e) => {
+                    tracing::debug!("Failed to parse IP packet: {e:#}");
+                    continue;
                 }
             };
 
@@ -355,7 +361,7 @@ fn start_recv_thread(
                     );
                     break;
                 }
-            }
+            };
         })
 }
 
@@ -383,10 +389,10 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
 
     // SAFETY: TODO
     if let Err(error) = unsafe { GetIpInterfaceEntry(&mut row) }.ok() {
-        if family == AF_INET6 && error.code() == windows_core::HRESULT::from_win32(0x80070490) {
+        if family == AF_INET6 && error.code() == NOT_FOUND {
             tracing::debug!(?family, "Couldn't set MTU, maybe IPv6 is disabled.");
         } else {
-            tracing::warn!(?family, ?error, "Couldn't set MTU");
+            tracing::warn!(?family, "Couldn't set MTU: {}", err_with_src(&error));
         }
         return Ok(());
     }
@@ -398,6 +404,49 @@ fn try_set_mtu(luid: NET_LUID_LH, family: ADDRESS_FAMILY, mtu: u32) -> Result<()
 
     // SAFETY: TODO
     unsafe { SetIpInterfaceEntry(&mut row) }.ok()?;
+    Ok(())
+}
+
+fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
+    // Safety: Docs don't mention anything in regards to safety of this function.
+    let mut row = unsafe {
+        let mut row: MIB_UNICASTIPADDRESS_ROW = std::mem::zeroed();
+        InitializeUnicastIpAddressEntry(&mut row);
+
+        row
+    };
+
+    row.InterfaceLuid = luid; // Target our tunnel interface.
+    row.ValidLifetime = 0xffffffff; // Infinite
+
+    match ip {
+        IpAddr::V4(ipv4) => {
+            row.Address.si_family = AF_INET;
+            row.Address.Ipv4 = SocketAddrV4::new(ipv4, 0).into();
+            row.OnLinkPrefixLength = 32;
+        }
+        IpAddr::V6(ipv6) => {
+            row.Address.si_family = AF_INET6;
+            row.Address.Ipv6 = SocketAddrV6::new(ipv6, 0, 0, 0).into();
+            row.OnLinkPrefixLength = 128;
+        }
+    }
+
+    // Safety: Docs don't mention anything about safety other than having to use `InitializeUnicastIpAddressEntry` and we did that.
+    match unsafe { CreateUnicastIpAddressEntry(&row) }.ok() {
+        Ok(()) => {}
+        Err(e) if e.code() == NOT_SUPPORTED => {
+            tracing::debug!(%ip, "Failed to set interface IP: IP stack not supported?");
+        }
+        Err(e) if e.code() == NOT_FOUND => {
+            tracing::debug!(%ip, "Failed to set interface IP: IP stack disabled?");
+        }
+        Err(e) if e.code() == OBJECT_EXISTS => {} // Happens if we are trying to set the exact same IP.
+        Err(e) => {
+            return Err(anyhow::Error::new(e).context("Failed to create `UnicastIpAddressEntry`"))
+        }
+    }
+
     Ok(())
 }
 
@@ -430,7 +479,18 @@ fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {
         Ok(x) => x,
     };
 
-    let actual_len = usize::try_from(f.metadata().unwrap().len()).unwrap();
+    let actual_len = match file_length(&f) {
+        Err(e) => {
+            tracing::warn!(
+                path = %path.display(),
+                "Failed to get file length: {e:#}"
+            );
+
+            return false;
+        }
+        Ok(l) => l,
+    };
+
     let expected_len = dll_bytes.bytes.len();
     // If the dll is 100 MB instead of 0.5 MB, this allows us to skip a 100 MB read
     if actual_len != expected_len {
@@ -442,9 +502,16 @@ fn dll_already_exists(path: &Path, dll_bytes: &DllBytes) -> bool {
         return false;
     }
 
-    let expected = ring::test::from_hex(dll_bytes.expected_sha256).unwrap();
+    let expected = dll_bytes.expected_sha256;
     let actual = digest::digest(&digest::SHA256, &buf);
     expected == actual.as_ref()
+}
+
+fn file_length(f: &std::fs::File) -> Result<usize> {
+    let len = f.metadata().context("Failed to read metadata")?.len();
+    let len = usize::try_from(len).context("File length doesn't fit into usize")?;
+
+    Ok(len)
 }
 
 /// Returns the absolute path for installing and loading `wintun.dll`
@@ -461,14 +528,16 @@ struct DllBytes {
     /// Bytes embedded in the client with `include_bytes`
     pub bytes: &'static [u8],
     /// Expected SHA256 hash
-    pub expected_sha256: &'static str,
+    pub expected_sha256: [u8; 32],
 }
 
 #[cfg(target_arch = "x86_64")]
 fn wintun_bytes() -> DllBytes {
     DllBytes {
         bytes: include_bytes!("../wintun/bin/amd64/wintun.dll"),
-        expected_sha256: "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
+        expected_sha256: hex_literal::hex!(
+            "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce"
+        ),
     }
 }
 
@@ -476,6 +545,8 @@ fn wintun_bytes() -> DllBytes {
 fn wintun_bytes() -> DllBytes {
     DllBytes {
         bytes: include_bytes!("../wintun/bin/arm64/wintun.dll"),
-        expected_sha256: "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80",
+        expected_sha256: hex_literal::hex!(
+            "f7ba89005544be9d85231a9e0d5f23b2d15b3311667e2dad0debd344918a3f80"
+        ),
     }
 }

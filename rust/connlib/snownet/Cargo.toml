@@ -1,27 +1,29 @@
 [package]
 name = "snownet"
 version = "0.1.0"
-edition = "2021"
+edition = { workspace = true }
+license = { workspace = true }
 
 [dependencies]
-backoff = "0.4.0"
 boringtun = { workspace = true }
-bytecodec = "0.4.15"
-bytes = "1.7.1"
-hex = "0.4.0"
-hex-display = "0.3.0"
-ip-packet = { workspace = true }
-once_cell = "1.17.1"
-rand = "0.8"
-secrecy = { workspace = true }
-sha2 = "0.10.8"
-str0m = { workspace = true }
-stun_codec = "0.3.4"
-thiserror = "1"
-tracing = { workspace = true }
-
-[dev-dependencies]
+bytecodec = { workspace = true }
+bytes = { workspace = true }
+derive_more = { workspace = true, features = ["debug"] }
 firezone-logging = { workspace = true }
+hex = { workspace = true }
+hex-display = { workspace = true }
+ip-packet = { workspace = true }
+itertools = { workspace = true }
+lockfree-object-pool = { workspace = true }
+once_cell = { workspace = true }
+rand = { workspace = true }
+ringbuffer = { workspace = true }
+secrecy = { workspace = true }
+sha2 = { workspace = true }
+str0m = { workspace = true }
+stun_codec = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
 
 [lints]
 workspace = true

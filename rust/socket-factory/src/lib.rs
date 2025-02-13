@@ -1,7 +1,10 @@
+use bytes::Buf as _;
+use firezone_logging::err_with_src;
+use quinn_udp::Transmit;
 use std::collections::HashMap;
+use std::fmt;
+use std::ops::Deref;
 use std::{
-    borrow::Cow,
-    // collections::VecDeque,
     io::{self, IoSliceMut},
     net::{IpAddr, SocketAddr},
     slice,
@@ -46,7 +49,7 @@ pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
     let send_buf_size = socket.send_buffer_size()?;
     let recv_buf_size = socket.recv_buffer_size()?;
 
-    tracing::info!(addr = %std_addr, %send_buf_size, %recv_buf_size, "Created new UDP socket");
+    tracing::trace!(addr = %std_addr, %send_buf_size, %recv_buf_size, "Created new UDP socket");
 
     let socket = std::net::UdpSocket::from(socket);
     let socket = tokio::net::UdpSocket::try_from(socket)?;
@@ -190,6 +193,7 @@ impl std::os::fd::AsFd for UdpSocket {
 }
 
 /// An inbound UDP datagram.
+#[derive(Debug)]
 pub struct DatagramIn<'a> {
     pub local: SocketAddr,
     pub from: SocketAddr,
@@ -197,10 +201,11 @@ pub struct DatagramIn<'a> {
 }
 
 /// An outbound UDP datagram.
-pub struct DatagramOut<'a> {
+pub struct DatagramOut<B> {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
-    pub packet: Cow<'a, [u8]>,
+    pub packet: B,
+    pub segment_size: Option<usize>,
 }
 
 impl UdpSocket {
@@ -208,7 +213,7 @@ impl UdpSocket {
         &self,
         buffer: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>>>> {
+    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>> + fmt::Debug>> {
         let Self {
             port, inner, state, ..
         } = self;
@@ -233,7 +238,26 @@ impl UdpSocket {
                     continue;
                 };
 
+                match meta.stride.cmp(&meta.len) {
+                    std::cmp::Ordering::Equal | std::cmp::Ordering::Less => {}
+                    std::cmp::Ordering::Greater => {
+                        return Poll::Ready(Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!(
+                                "stride ({}) is larger than buffer len ({})",
+                                meta.stride, meta.len
+                            ),
+                        )))
+                    }
+                }
+
                 let local = SocketAddr::new(local_ip, *port);
+
+                let segment_size = meta.stride;
+                let num_packets = meta.len / segment_size;
+                let trailing_bytes = meta.len % segment_size;
+
+                tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, %num_packets, %segment_size, %trailing_bytes);
 
                 let iter = buffer[..meta.len]
                     .chunks(meta.stride)
@@ -241,9 +265,6 @@ impl UdpSocket {
                         local,
                         from: meta.addr,
                         packet,
-                    })
-                    .inspect(|r| {
-                        tracing::trace!(target: "wire::net::recv", src = %r.from, dst = %r.local, num_bytes = %r.packet.len());
                     });
 
                 return Poll::Ready(Ok(iter));
@@ -255,43 +276,127 @@ impl UdpSocket {
         self.inner.poll_send_ready(cx)
     }
 
-    pub fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
-        tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, num_bytes = %datagram.packet.len());
+    pub fn send<B>(&mut self, datagram: DatagramOut<B>) -> io::Result<()>
+    where
+        B: Deref<Target: bytes::Buf>,
+    {
+        let Some(transmit) = self.prepare_transmit(
+            datagram.dst,
+            datagram.src.map(|s| s.ip()),
+            datagram.packet.deref().chunk(),
+            datagram.segment_size,
+        )?
+        else {
+            return Ok(());
+        };
 
-        self.try_send(&datagram)?;
+        match transmit.segment_size {
+            Some(segment_size) => {
+                for transmit in transmit
+                    .contents
+                    .chunks(segment_size * self.state.max_gso_segments())
+                    .map(|contents| Transmit {
+                        destination: transmit.destination,
+                        ecn: transmit.ecn,
+                        contents,
+                        segment_size: Some(segment_size),
+                        src_ip: transmit.src_ip,
+                    })
+                {
+                    let num_packets = transmit.contents.len() / segment_size;
+
+                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_packets, %segment_size);
+
+                    self.inner.try_io(Interest::WRITABLE, || {
+                        self.state.try_send((&self.inner).into(), &transmit)
+                    })?;
+                }
+            }
+            None => {
+                let num_bytes = transmit.contents.len();
+
+                tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_bytes);
+
+                self.inner.try_io(Interest::WRITABLE, || {
+                    self.state.try_send((&self.inner).into(), &transmit)
+                })?;
+            }
+        }
 
         Ok(())
     }
 
-    pub fn try_send(&mut self, transmit: &DatagramOut) -> io::Result<()> {
-        let destination = transmit.dst;
-        let src_ip = transmit.src.map(|s| s.ip());
+    /// Performs a single request-response handshake with the specified destination socket address.
+    ///
+    /// This consumes `self` because we want to enforce that we only receive a single message on this socket.
+    /// UDP is stateless and therefore, anybody can just send a packet to our socket.
+    ///
+    /// To simulate a handshake, we therefore only wait for a single message arriving on this socket,
+    /// after that, we discard it, freeing up the used source port.
+    ///
+    /// This is similar to the `connect` functionality but that one doesn't seem to work reliably in a cross-platform way.
+    ///
+    /// TODO: Should we make a type-safe API to ensure only one "mode" of the socket can be used?
+    pub async fn handshake<const BUF_SIZE: usize>(
+        mut self,
+        dst: SocketAddr,
+        payload: &[u8],
+    ) -> io::Result<Vec<u8>> {
+        let transmit = self
+            .prepare_transmit(dst, None, payload, None)?
+            .ok_or_else(|| io::Error::other("Failed to prepare `Transmit`"))?;
 
+        self.inner
+            .async_io(Interest::WRITABLE, || {
+                self.state.try_send((&self.inner).into(), &transmit)
+            })
+            .await?;
+
+        let mut buffer = vec![0u8; BUF_SIZE];
+
+        let (num_received, sender) = self.inner.recv_from(&mut buffer).await?;
+
+        if sender != dst {
+            return Err(io::Error::other(format!(
+                "Unexpected reply source: {sender}; expected: {dst}"
+            )));
+        }
+
+        buffer.truncate(num_received);
+
+        Ok(buffer)
+    }
+
+    fn prepare_transmit<'a>(
+        &mut self,
+        dst: SocketAddr,
+        src_ip: Option<IpAddr>,
+        packet: &'a [u8],
+        segment_size: Option<usize>,
+    ) -> io::Result<Option<quinn_udp::Transmit<'a>>> {
         let src_ip = match src_ip {
             Some(src_ip) => Some(src_ip),
-            None => match self.resolve_source_for(destination.ip()) {
+            None => match self.resolve_source_for(dst.ip()) {
                 Ok(src_ip) => src_ip,
                 Err(e) => {
                     tracing::trace!(
-                        dst = %transmit.dst.ip(),
-                        "No available interface for packet: {e}"
+                        dst = %dst.ip(),
+                        "No available interface for packet: {}", err_with_src(&e)
                     );
-                    return Ok(());
+                    return Ok(None); // Not an error because we log it above already.
                 }
             },
         };
 
         let transmit = quinn_udp::Transmit {
-            destination,
+            destination: dst,
             ecn: None,
-            contents: &transmit.packet,
-            segment_size: None,
+            contents: packet,
+            segment_size,
             src_ip,
         };
 
-        self.inner.try_io(Interest::WRITABLE, || {
-            self.state.send((&self.inner).into(), &transmit)
-        })
+        Ok(Some(transmit))
     }
 
     /// Attempt to resolve the source IP to use for sending to the given destination IP.

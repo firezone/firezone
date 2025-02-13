@@ -7,7 +7,6 @@ defmodule Web.Settings.DNS do
            Accounts.fetch_account_by_id(socket.assigns.account.id, socket.assigns.subject) do
       form =
         Accounts.change_account(account, %{})
-        |> maybe_append_empty_embed()
         |> to_form()
 
       socket =
@@ -33,24 +32,35 @@ defmodule Web.Settings.DNS do
       <:title>
         DNS
       </:title>
+
+      <:action>
+        <.docs_action path="/deploy/dns" />
+      </:action>
+
       <:help>
-        Configure the default resolver used by connected Clients.
-        Queries for Resources will <strong>always</strong>
-        use Firezone's internal DNS.
-        All other queries will use the DNS servers configured here or the Client's
-        system resolvers if no servers are configured.
-        <p class="mt-2">
-          <.website_link path="/kb/deploy/dns">
-            Read more about configuring DNS in Firezone.
-          </.website_link>
-        </p>
+        Configure the upstream resolver used by connected Clients.
+        Queries for Resources will <strong>always</strong> use Firezone's internal DNS.
+        All other queries will use the resolvers configured here or the Client's
+        system resolvers if none are configured.
       </:help>
+
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto">
-          <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
           <h2 class="mb-4 text-xl text-neutral-900">Client DNS</h2>
-          <p class="mb-4 text-neutral-500">
-            DNS servers will be used in the order they are listed below.
+
+          <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
+
+          <% empty? =
+            Domain.Repo.Changeset.empty?(@form.source) and
+              Enum.empty?(@account.config.clients_upstream_dns) %>
+
+          <p :if={not empty?} class="mb-4 text-neutral-500">
+            Upstream resolvers will be used by Clients in the order they are listed below.
+          </p>
+
+          <p :if={empty?} class="text-neutral-500">
+            No upstream resolvers have been configured. Click <strong>New Resolver</strong>
+            to add one.
           </p>
 
           <.form for={@form} phx-submit={:submit} phx-change={:change}>
@@ -58,8 +68,14 @@ defmodule Web.Settings.DNS do
               <div>
                 <.inputs_for :let={config} field={@form[:config]}>
                   <.inputs_for :let={dns} field={config[:clients_upstream_dns]}>
+                    <input
+                      type="hidden"
+                      name={"#{config.name}[clients_upstream_dns_sort][]"}
+                      value={dns.index}
+                    />
+
                     <div class="flex gap-4 items-start mb-2">
-                      <div class="w-1/4">
+                      <div class="w-3/12">
                         <.input
                           type="select"
                           label="Protocol"
@@ -70,28 +86,48 @@ defmodule Web.Settings.DNS do
                         />
                       </div>
                       <div class="w-3/4">
-                        <.input
-                          label="Address"
-                          field={dns[:address]}
-                          placeholder="DNS Server Address"
-                        />
+                        <.input label="Address" field={dns[:address]} placeholder="E.g. 1.1.1.1" />
+                      </div>
+                      <div class="w-1/12 flex">
+                        <div class="pt-7">
+                          <button
+                            type="button"
+                            name={"#{config.name}[clients_upstream_dns_drop][]"}
+                            value={dns.index}
+                            phx-click={JS.dispatch("change")}
+                          >
+                            <.icon
+                              name="hero-trash"
+                              class="-ml-1 text-red-500 w-5 h-5 relative top-2"
+                            />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </.inputs_for>
-                  <% errors =
-                    translate_errors(
-                      @form.source.changes.config.errors,
-                      :clients_upstream_dns
-                    ) %>
-                  <.error :for={error <- errors} data-validation-error-for="clients_upstream_dns">
-                    <%= error %>
+                  <input type="hidden" name={"#{config.name}[clients_upstream_dns_drop][]"} />
+                  <.button
+                    class="mt-6 w-full"
+                    type="button"
+                    style="info"
+                    name={"#{config.name}[clients_upstream_dns_sort][]"}
+                    value="new"
+                    phx-click={JS.dispatch("change")}
+                  >
+                    New Resolver
+                  </.button>
+                  <.error
+                    :for={error <- dns_config_errors(@form.source.changes)}
+                    data-validation-error-for="clients_upstream_dns"
+                  >
+                    {error}
                   </.error>
                 </.inputs_for>
               </div>
               <p class="text-sm text-neutral-500">
                 <strong>Note:</strong>
                 It is highly recommended to to specify <strong>both</strong>
-                IPv4 and IPv6 addresses when adding custom resolvers. Otherwise, Clients without IPv4
+                IPv4 and IPv6 addresses when adding upstream resolvers. Otherwise, Clients without IPv4
                 or IPv6 connectivity may not be able to resolve DNS queries.
               </p>
               <.submit_button>
@@ -106,101 +142,33 @@ defmodule Web.Settings.DNS do
   end
 
   def handle_event("change", %{"account" => attrs}, socket) do
-    changeset =
+    form =
       Accounts.change_account(socket.assigns.account, attrs)
-      |> maybe_append_empty_embed()
-      |> filter_errors()
       |> Map.put(:action, :validate)
+      |> to_form()
 
-    {:noreply, assign(socket, form: to_form(changeset))}
+    {:noreply, assign(socket, form: form)}
   end
 
   def handle_event("submit", %{"account" => attrs}, socket) do
-    attrs = remove_empty_servers(attrs)
-
     with {:ok, account} <-
            Accounts.update_account(socket.assigns.account, attrs, socket.assigns.subject) do
       form =
         Accounts.change_account(account, %{})
-        |> maybe_append_empty_embed()
         |> to_form()
+
+      socket = put_flash(socket, :success, "Save successful!")
 
       {:noreply, assign(socket, account: account, form: form)}
     else
       {:error, changeset} ->
-        changeset =
+        form =
           changeset
-          |> maybe_append_empty_embed()
-          |> filter_errors()
           |> Map.put(:action, :validate)
+          |> to_form()
 
-        {:noreply, assign(socket, form: to_form(changeset))}
+        {:noreply, assign(socket, form: form)}
     end
-  end
-
-  defp filter_errors(changeset) do
-    update_clients_upstream_dns(changeset, fn
-      clients_upstream_dns_changesets ->
-        remove_errors(clients_upstream_dns_changesets, :address, "can't be blank")
-    end)
-  end
-
-  defp remove_errors(changesets, field, message) do
-    Enum.map(changesets, fn changeset ->
-      errors =
-        Enum.filter(changeset.errors, fn
-          {^field, {^message, _}} -> false
-          {_, _} -> true
-        end)
-
-      %{changeset | errors: errors}
-    end)
-  end
-
-  defp maybe_append_empty_embed(changeset) do
-    update_clients_upstream_dns(changeset, fn
-      clients_upstream_dns_changesets ->
-        last_client_upstream_dns_changeset = List.last(clients_upstream_dns_changesets)
-
-        with true <- last_client_upstream_dns_changeset != nil,
-             {_data_or_changes, last_address} <-
-               Ecto.Changeset.fetch_field(last_client_upstream_dns_changeset, :address),
-             true <- last_address in [nil, ""] do
-          clients_upstream_dns_changesets
-        else
-          _other -> clients_upstream_dns_changesets ++ [%Accounts.Config.ClientsUpstreamDNS{}]
-        end
-    end)
-  end
-
-  defp update_clients_upstream_dns(changeset, cb) do
-    config_changeset = Ecto.Changeset.get_embed(changeset, :config)
-
-    clients_upstream_dns_changeset =
-      Ecto.Changeset.get_embed(config_changeset, :clients_upstream_dns)
-
-    config_changeset =
-      Ecto.Changeset.put_embed(
-        config_changeset,
-        :clients_upstream_dns,
-        cb.(clients_upstream_dns_changeset)
-      )
-
-    Ecto.Changeset.put_embed(changeset, :config, config_changeset)
-  end
-
-  defp remove_empty_servers(attrs) do
-    update_in(attrs, [Access.key("config", %{}), "clients_upstream_dns"], fn
-      nil ->
-        nil
-
-      servers ->
-        Map.filter(servers, fn
-          {_index, %{"address" => ""}} -> false
-          {_index, %{"address" => nil}} -> false
-          _ -> true
-        end)
-    end)
   end
 
   defp dns_options do
@@ -217,5 +185,13 @@ defmodule Web.Settings.DNS do
         false -> option ++ [disabled: true]
       end
     end)
+  end
+
+  defp dns_config_errors(changes) when changes == %{} do
+    []
+  end
+
+  defp dns_config_errors(changes) do
+    translate_errors(changes.config.errors, :clients_upstream_dns)
   end
 end

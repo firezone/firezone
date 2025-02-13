@@ -115,8 +115,8 @@ defmodule Web.FormComponents do
           ]}
           {@rest}
         />
-        <%= @label %>
-        <%= if @inner_block, do: render_slot(@inner_block) %>
+        {@label}
+        {if @inner_block, do: render_slot(@inner_block)}
       </label>
     </div>
     """
@@ -167,10 +167,10 @@ defmodule Web.FormComponents do
           ]}
           {@rest}
         />
-        <%= @label %>
+        {@label}
       </label>
       <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
-        <%= msg %>
+        {msg}
       </.error>
     </div>
     """
@@ -179,7 +179,7 @@ defmodule Web.FormComponents do
   def input(%{type: "group_select"} = assigns) do
     ~H"""
     <div>
-      <.label :if={@label} for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}>{@label}</.label>
       <input
         :if={not is_nil(@value) and @rest[:disabled] == true}
         type="hidden"
@@ -199,20 +199,20 @@ defmodule Web.FormComponents do
         multiple={@multiple}
         {@rest}
       >
-        <option :if={@prompt} value=""><%= @prompt %></option>
+        <option :if={@prompt} value="">{@prompt}</option>
 
         <%= for {label, options} <- @options do %>
           <%= if label == nil do %>
-            <%= Phoenix.HTML.Form.options_for_select(options, @value) %>
+            {Phoenix.HTML.Form.options_for_select(options, @value)}
           <% else %>
             <optgroup label={label}>
-              <%= Phoenix.HTML.Form.options_for_select(options, @value) %>
+              {Phoenix.HTML.Form.options_for_select(options, @value)}
             </optgroup>
           <% end %>
         <% end %>
       </select>
       <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
-        <%= msg %>
+        {msg}
       </.error>
     </div>
     """
@@ -221,7 +221,7 @@ defmodule Web.FormComponents do
   def input(%{type: "select"} = assigns) do
     ~H"""
     <div>
-      <.label :if={@label} for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}>{@label}</.label>
       <input
         :if={@rest[:disabled] in [true, "true"] and not is_nil(@value)}
         type="hidden"
@@ -241,11 +241,11 @@ defmodule Web.FormComponents do
         multiple={@multiple}
         {@rest}
       >
-        <option :if={@prompt} value=""><%= @prompt %></option>
-        <%= Phoenix.HTML.Form.options_for_select(@options, @value) %>
+        <option :if={@prompt} value="">{@prompt}</option>
+        {Phoenix.HTML.Form.options_for_select(@options, @value)}
       </select>
       <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
-        <%= msg %>
+        {msg}
       </.error>
     </div>
     """
@@ -254,7 +254,7 @@ defmodule Web.FormComponents do
   def input(%{type: "textarea"} = assigns) do
     ~H"""
     <div>
-      <.label :if={@label} for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}>{@label}</.label>
       <textarea
         id={@id}
         name={@name}
@@ -270,7 +270,7 @@ defmodule Web.FormComponents do
         {@rest}
       ><%= Phoenix.HTML.Form.normalize_value("textarea", @value) %></textarea>
       <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
-        <%= msg %>
+        {msg}
       </.error>
     </div>
     """
@@ -291,9 +291,9 @@ defmodule Web.FormComponents do
   def input(%{type: "readonly"} = assigns) do
     ~H"""
     <div>
-      <.label :if={@label}><%= @label %></.label>
+      <.label :if={@label}>{@label}</.label>
       <div class="border border-solid rounded p-2 text-sm text-neutral-500">
-        <%= assigns.value %>
+        {assigns.value}
       </div>
       <input
         type="hidden"
@@ -304,7 +304,7 @@ defmodule Web.FormComponents do
       />
 
       <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
-        <%= msg %>
+        {msg}
       </.error>
     </div>
     """
@@ -313,7 +313,7 @@ defmodule Web.FormComponents do
   def input(%{type: "text", prefix: prefix} = assigns) when not is_nil(prefix) do
     ~H"""
     <div class={@inline_errors && "flex flex-row items-center"}>
-      <.label :if={@label} for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}>{@label}</.label>
       <div class={[
         "flex",
         "text-sm text-neutral-900 bg-neutral-50",
@@ -331,7 +331,7 @@ defmodule Web.FormComponents do
           phx-hook="Refocus"
           data-refocus={@id}
         >
-          <%= @prefix %>
+          {@prefix}
         </span>
         <input
           type={@type}
@@ -348,7 +348,7 @@ defmodule Web.FormComponents do
         />
       </div>
       <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
-        <%= msg %>
+        {msg}
       </.error>
     </div>
     """
@@ -357,7 +357,7 @@ defmodule Web.FormComponents do
   def input(assigns) do
     ~H"""
     <div class={@inline_errors && "flex flex-row items-center"}>
-      <.label :if={@label} for={@id}><%= @label %></.label>
+      <.label :if={@label} for={@id}>{@label}</.label>
       <input
         type={@type}
         name={@name}
@@ -376,7 +376,7 @@ defmodule Web.FormComponents do
         {@rest}
       />
       <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
-        <%= msg %>
+        {msg}
       </.error>
     </div>
     """
@@ -387,9 +387,11 @@ defmodule Web.FormComponents do
   attr :id, :string, required: true, doc: "The id of the dialog"
   attr :class, :string, default: "", doc: "Custom classes to be added to the button"
   attr :style, :string, default: "danger", doc: "The style of the button"
+  attr :confirm_style, :string, default: "danger", doc: "The style of the confirm button"
   attr :icon, :string, default: nil, doc: "The icon of the button"
   attr :size, :string, default: "md", doc: "The size of the button"
   attr :on_confirm, :string, required: true, doc: "The phx event to broadcast on confirm"
+  attr :disabled, :boolean, default: false, doc: "Whether the button is disabled"
 
   attr :on_confirm_id, :string,
     default: nil,
@@ -415,10 +417,10 @@ defmodule Web.FormComponents do
         <div class="relative bg-white rounded-lg shadow max-w-2xl">
           <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
             <h3 class="text-xl font-semibold text-neutral-900">
-              <%= render_slot(@dialog_title) %>
+              {render_slot(@dialog_title)}
             </h3>
             <button
-              class="text-neutral-400 bg-transparent hover:text-accent-900"
+              class="text-neutral-400 bg-transparent hover:text-accent-900 ml-2"
               type="submit"
               value="cancel"
             >
@@ -427,7 +429,7 @@ defmodule Web.FormComponents do
             </button>
           </div>
           <div class="p-4 md:p-5 text-neutral-500 text-base">
-            <%= render_slot(@dialog_content) %>
+            {render_slot(@dialog_content)}
           </div>
           <div class="flex items-center justify-end p-4 md:p-5 border-t border-gray-200 rounded-b">
             <.button
@@ -437,25 +439,33 @@ defmodule Web.FormComponents do
               style="info"
               class="px-5 py-2.5"
             >
-              <%= render_slot(@dialog_cancel_button) %>
+              {render_slot(@dialog_cancel_button)}
             </.button>
             <.button
               data-dialog-action="confirm"
               phx-click={@on_confirm}
               phx-value-id={@on_confirm_id}
               type="submit"
-              style="danger"
+              style={@confirm_style}
               value="confirm"
               class="py-2.5 px-5 ms-3"
             >
-              <%= render_slot(@dialog_confirm_button) %>
+              {render_slot(@dialog_confirm_button)}
             </.button>
           </div>
         </div>
       </form>
     </dialog>
-    <.button id={@id} style={@style} size={@size} icon={@icon} class={@class} phx-hook="ConfirmDialog">
-      <%= render_slot(@inner_block) %>
+    <.button
+      id={@id}
+      style={@style}
+      size={@size}
+      icon={@icon}
+      class={@class}
+      disabled={@disabled}
+      phx-hook="ConfirmDialog"
+    >
+      {render_slot(@inner_block)}
     </.button>
     """
   end
@@ -500,7 +510,7 @@ defmodule Web.FormComponents do
     ~H"""
     <.link class={button_style(@style) ++ button_size(@size) ++ [@class]} navigate={@navigate} {@rest}>
       <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </.link>
     """
   end
@@ -509,7 +519,7 @@ defmodule Web.FormComponents do
     ~H"""
     <button type={@type} class={button_style(@style) ++ button_size(@size) ++ [@class]} {@rest}>
       <.icon :if={@icon} name={@icon} class={icon_size(@size)} />
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </button>
     """
   end
@@ -532,7 +542,7 @@ defmodule Web.FormComponents do
     ~H"""
     <div class="flex justify-end">
       <.button type="submit" style={@style} {@rest}>
-        <%= render_slot(@inner_block) %>
+        {render_slot(@inner_block)}
       </.button>
     </div>
     """
@@ -554,7 +564,7 @@ defmodule Web.FormComponents do
   def delete_button(assigns) do
     ~H"""
     <.button style="danger" size={@size} icon="hero-trash-solid" {@rest}>
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </.button>
     """
   end
@@ -575,7 +585,7 @@ defmodule Web.FormComponents do
   def add_button(assigns) do
     ~H"""
     <.button style="primary" class={@class} navigate={@navigate} icon="hero-plus">
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </.button>
     """
   end
@@ -595,7 +605,7 @@ defmodule Web.FormComponents do
   def edit_button(assigns) do
     ~H"""
     <.button style="primary" navigate={@navigate} icon="hero-pencil-solid">
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
     </.button>
     """
   end
@@ -632,6 +642,15 @@ defmodule Web.FormComponents do
         "text-neutral-900",
         "border border-neutral-200",
         "hover:bg-neutral-100 hover:text-neutral-900"
+      ]
+  end
+
+  def button_style("disabled") do
+    button_style() ++
+      [
+        "text-neutral-200",
+        "border border-neutral-200",
+        "cursor-not-allowed"
       ]
   end
 

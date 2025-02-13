@@ -1,5 +1,11 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 pub mod make;
 
+mod buffer_pool;
+mod fz_p2p_control;
+mod fz_p2p_control_slice;
+mod icmp_dest_unreachable;
 mod icmpv4_header_slice_mut;
 mod icmpv6_header_slice_mut;
 mod ipv4_header_slice_mut;
@@ -7,16 +13,22 @@ mod ipv6_header_slice_mut;
 mod nat46;
 mod nat64;
 #[cfg(feature = "proptest")]
+#[allow(clippy::unwrap_used)]
 pub mod proptest;
 mod slice_utils;
 mod tcp_header_slice_mut;
 mod udp_header_slice_mut;
 
+use buffer_pool::Buffer;
 pub use etherparse::*;
+pub use fz_p2p_control::EventType as FzP2pEventType;
+pub use fz_p2p_control_slice::FzP2pControlSlice;
+pub use icmp_dest_unreachable::{DestUnreachable, FailedPacket};
 
 #[cfg(all(test, feature = "proptest"))]
 mod proptests;
 
+use anyhow::{bail, Context as _, Result};
 use icmpv4_header_slice_mut::Icmpv4HeaderSliceMut;
 use icmpv6_header_slice_mut::Icmpv6EchoHeaderSliceMut;
 use ipv4_header_slice_mut::Ipv4HeaderSliceMut;
@@ -26,16 +38,34 @@ use tcp_header_slice_mut::TcpHeaderSliceMut;
 use udp_header_slice_mut::UdpHeaderSliceMut;
 
 /// The maximum size of an IP packet we can handle.
-pub const PACKET_SIZE: usize = 1280;
-/// The maximum payload of a UDP packet that carries an encrypted IP packet.
-pub const MAX_DATAGRAM_PAYLOAD: usize =
-    PACKET_SIZE + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
+pub const MAX_IP_SIZE: usize = 1280;
+/// The maximum payload an IP packet can have.
+///
+/// IPv6 headers are always a fixed size whereas IPv4 headers can vary.
+/// The max length of an IPv4 header is > the fixed length of an IPv6 header.
+pub const MAX_IP_PAYLOAD: usize = MAX_IP_SIZE - etherparse::Ipv4Header::MAX_LEN;
+/// The maximum payload a UDP packet can have.
+pub const MAX_UDP_PAYLOAD: usize = MAX_IP_PAYLOAD - etherparse::UdpHeader::LEN;
+
+/// The maximum size of the payload that Firezone will send between nodes.
+///
+/// - The TUN device MTU is constrained to 1280 ([`MAX_IP_SIZE`]).
+/// - WireGuard adds an overhoad of 32 bytes ([`WG_OVERHEAD`]).
+/// - In case NAT46 comes into effect, the size may increase by 20 ([`NAT46_OVERHEAD`]).
+/// - In case the connection is relayed, a 4 byte overhead is added ([`DATA_CHANNEL_OVERHEAD`]).
+///
+/// There is only a single scenario within which all of these apply at once:
+/// A client receiving a relayed IPv6 packet from a Gateway from an IPv4-only DNS resource where the sender (i.e. the resource) maxed out the MTU (1280).
+/// In that case, the Gateway needs to translate the packet to IPv6, thus increasing the header size by 20 bytes.
+/// WireGuard adds its fixed 32-byte overhead and the relayed connections adds its 4 byte overhead.
+pub const MAX_FZ_PAYLOAD: usize =
+    MAX_IP_SIZE + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
 /// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
-const WG_OVERHEAD: usize = 32;
+pub const WG_OVERHEAD: usize = 32;
 /// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
-const NAT46_OVERHEAD: usize = 20;
+pub(crate) const NAT46_OVERHEAD: usize = 20;
 /// TURN's data channels have a 4 byte overhead.
-const DATA_CHANNEL_OVERHEAD: usize = 4;
+pub const DATA_CHANNEL_OVERHEAD: usize = 4;
 
 macro_rules! for_both {
     ($this:ident, |$name:ident| $body:expr) => {
@@ -83,26 +113,26 @@ impl Protocol {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum Layer4Protocol {
+    Udp { src: u16, dst: u16 },
+    Tcp { src: u16, dst: u16 },
+    Icmp { seq: u16, id: u16 },
+}
+
 /// A buffer for reading a new [`IpPacket`] from the network.
+#[derive(Default)]
 pub struct IpPacketBuf {
-    inner: [u8; MAX_DATAGRAM_PAYLOAD],
+    inner: Buffer,
 }
 
 impl IpPacketBuf {
     pub fn new() -> Self {
-        Self {
-            inner: [0u8; MAX_DATAGRAM_PAYLOAD],
-        }
+        Self::default()
     }
 
     pub fn buf(&mut self) -> &mut [u8] {
         &mut self.inner[NAT46_OVERHEAD..] // We read packets at an offset so we can convert without copying.
-    }
-}
-
-impl Default for IpPacketBuf {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -151,21 +181,21 @@ impl std::fmt::Debug for IpPacket {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv4Packet {
-    buf: [u8; MAX_DATAGRAM_PAYLOAD],
+    buf: Buffer,
     start: usize,
     len: usize,
 }
 
 impl ConvertibleIpv4Packet {
-    pub fn new(ip: IpPacketBuf, len: usize) -> Option<ConvertibleIpv4Packet> {
+    pub fn new(ip: IpPacketBuf, len: usize) -> Result<ConvertibleIpv4Packet> {
         let this = Self {
             buf: ip.inner,
             start: NAT46_OVERHEAD,
             len,
         };
-        Ipv4HeaderSlice::from_slice(this.packet()).ok()?;
+        Ipv4Slice::from_slice(this.packet()).context("Invalid IPv4 packet")?;
 
-        Some(this)
+        Ok(this)
     }
 
     fn ip_header(&self) -> Ipv4HeaderSlice {
@@ -184,18 +214,20 @@ impl ConvertibleIpv4Packet {
         self.ip_header().destination_addr()
     }
 
-    fn consume_to_ipv6(mut self, src: Ipv6Addr, dst: Ipv6Addr) -> Option<ConvertibleIpv6Packet> {
+    fn consume_to_ipv6(mut self, src: Ipv6Addr, dst: Ipv6Addr) -> Result<ConvertibleIpv6Packet> {
         // `translate_in_place` expects the packet to sit at a 20-byte offset.
         // `self.start` tells us where the packet actually starts, thus we need to pass `self.start - 20` to the function.
-        let start_minus_padding = self.start.checked_sub(NAT46_OVERHEAD)?;
+        let start_minus_padding = self
+            .start
+            .checked_sub(NAT46_OVERHEAD)
+            .context("Invalid `start`of IP packet in buffer")?;
 
         let offset = nat46::translate_in_place(
             &mut self.buf[start_minus_padding..(self.start + self.len)],
             src,
             dst,
         )
-        .inspect_err(|e| tracing::trace!("NAT46 failed: {e:#}"))
-        .ok()?;
+        .context("NAT46 failed")?;
 
         // We need to handle 2 cases here:
         // `offset` > NAT46_OVERHEAD
@@ -207,7 +239,7 @@ impl ConvertibleIpv4Packet {
         let len_diff = (NAT46_OVERHEAD as isize) - (offset as isize);
         let len = (self.len as isize) + len_diff;
 
-        Some(ConvertibleIpv6Packet {
+        Ok(ConvertibleIpv6Packet {
             buf: self.buf,
             start: start_minus_padding + offset,
             len: len as usize,
@@ -229,22 +261,22 @@ impl ConvertibleIpv4Packet {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv6Packet {
-    buf: [u8; MAX_DATAGRAM_PAYLOAD],
+    buf: Buffer,
     start: usize,
     len: usize,
 }
 
 impl ConvertibleIpv6Packet {
-    pub fn new(ip: IpPacketBuf, len: usize) -> Option<ConvertibleIpv6Packet> {
+    pub fn new(ip: IpPacketBuf, len: usize) -> Result<ConvertibleIpv6Packet> {
         let this = Self {
             buf: ip.inner,
             start: NAT46_OVERHEAD,
             len,
         };
 
-        Ipv6HeaderSlice::from_slice(this.packet()).ok()?;
+        Ipv6Slice::from_slice(this.packet()).context("Invalid IPv6 packet")?;
 
-        Some(this)
+        Ok(this)
     }
 
     fn header(&self) -> Ipv6HeaderSlice {
@@ -264,12 +296,10 @@ impl ConvertibleIpv6Packet {
         self.header().destination_addr()
     }
 
-    fn consume_to_ipv4(mut self, src: Ipv4Addr, dst: Ipv4Addr) -> Option<ConvertibleIpv4Packet> {
-        nat64::translate_in_place(self.packet_mut(), src, dst)
-            .inspect_err(|e| tracing::trace!("NAT64 failed: {e:#}"))
-            .ok()?;
+    fn consume_to_ipv4(mut self, src: Ipv4Addr, dst: Ipv4Addr) -> Result<ConvertibleIpv4Packet> {
+        nat64::translate_in_place(self.packet_mut(), src, dst).context("NAT64 failed")?;
 
-        Some(ConvertibleIpv4Packet {
+        Ok(ConvertibleIpv4Packet {
             buf: self.buf,
             start: self.start + 20,
             len: self.len - 20,
@@ -318,25 +348,27 @@ pub fn ipv6_translated(ip: Ipv6Addr) -> Option<Ipv4Addr> {
 }
 
 impl IpPacket {
-    pub fn new(buf: IpPacketBuf, len: usize) -> Option<Self> {
-        match buf.inner[NAT46_OVERHEAD] >> 4 {
-            4 => Some(IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf, len)?)),
-            6 => Some(IpPacket::Ipv6(ConvertibleIpv6Packet::new(buf, len)?)),
-            _ => None,
+    pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
+        anyhow::ensure!(len <= MAX_IP_SIZE, "Packet too large (len: {len})");
+
+        Ok(match buf.inner[NAT46_OVERHEAD] >> 4 {
+            4 => IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf, len)?),
+            6 => IpPacket::Ipv6(ConvertibleIpv6Packet::new(buf, len)?),
+            v => bail!("Invalid IP version: {v}"),
+        })
+    }
+
+    pub(crate) fn consume_to_ipv4(self, src: Ipv4Addr, dst: Ipv4Addr) -> Result<IpPacket> {
+        match self {
+            IpPacket::Ipv4(pkt) => Ok(IpPacket::Ipv4(pkt)),
+            IpPacket::Ipv6(pkt) => Ok(IpPacket::Ipv4(pkt.consume_to_ipv4(src, dst)?)),
         }
     }
 
-    pub(crate) fn consume_to_ipv4(self, src: Ipv4Addr, dst: Ipv4Addr) -> Option<IpPacket> {
+    pub(crate) fn consume_to_ipv6(self, src: Ipv6Addr, dst: Ipv6Addr) -> Result<IpPacket> {
         match self {
-            IpPacket::Ipv4(pkt) => Some(IpPacket::Ipv4(pkt)),
-            IpPacket::Ipv6(pkt) => Some(IpPacket::Ipv4(pkt.consume_to_ipv4(src, dst)?)),
-        }
-    }
-
-    pub(crate) fn consume_to_ipv6(self, src: Ipv6Addr, dst: Ipv6Addr) -> Option<IpPacket> {
-        match self {
-            IpPacket::Ipv4(pkt) => Some(IpPacket::Ipv6(pkt.consume_to_ipv6(src, dst)?)),
-            IpPacket::Ipv6(pkt) => Some(IpPacket::Ipv6(pkt)),
+            IpPacket::Ipv4(pkt) => Ok(IpPacket::Ipv6(pkt.consume_to_ipv6(src, dst)?)),
+            IpPacket::Ipv6(pkt) => Ok(IpPacket::Ipv6(pkt)),
         }
     }
 
@@ -594,6 +626,92 @@ impl IpPacket {
         Icmpv4HeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
+    /// In case the packet is an ICMP unreachable error, parses the unroutable packet from the ICMP payload.
+    pub fn icmp_unreachable_destination(&self) -> Result<Option<(FailedPacket, DestUnreachable)>> {
+        if let Some(icmpv4) = self.as_icmpv4() {
+            let icmp_type = icmpv4.icmp_type();
+
+            // Handle success case early to avoid erroring below.
+            if matches!(
+                icmp_type,
+                Icmpv4Type::EchoReply(_) | Icmpv4Type::EchoRequest(_)
+            ) {
+                return Ok(None);
+            }
+
+            let Icmpv4Type::DestinationUnreachable(error) = icmp_type else {
+                bail!("ICMP message is not `DestinationUnreachable` but {icmp_type:?}");
+            };
+
+            let (ipv4, _) = LaxIpv4Slice::from_slice(icmpv4.payload())
+                .context("Failed to parse payload of ICMPv4 error message as IPv4 packet")?;
+            let header = ipv4.header();
+
+            let src = IpAddr::V4(header.source_addr());
+            let failed_dst = IpAddr::V4(header.destination_addr());
+            let l4_proto = extract_l4_proto(ipv4.payload().payload, header.protocol())
+                .context("Failed to extract protocol")?;
+
+            return Ok(Some((
+                FailedPacket {
+                    src,
+                    failed_dst,
+                    l4_proto,
+                    raw: icmpv4.payload().to_vec(),
+                },
+                DestUnreachable::V4 {
+                    header: error,
+                    total_length: header.total_len(),
+                },
+            )));
+        }
+
+        if let Some(icmpv6) = self.as_icmpv6() {
+            let icmp_type = icmpv6.icmp_type();
+
+            // Handle success case early to avoid erroring below.
+            if matches!(
+                icmp_type,
+                Icmpv6Type::EchoReply(_) | Icmpv6Type::EchoRequest(_)
+            ) {
+                return Ok(None);
+            }
+
+            #[expect(
+                clippy::wildcard_enum_match_arm,
+                reason = "We only want to match on these two variants"
+            )]
+            let dest_unreachable = match icmp_type {
+                Icmpv6Type::DestinationUnreachable(error) => DestUnreachable::V6Unreachable(error),
+                Icmpv6Type::PacketTooBig { mtu } => DestUnreachable::V6PacketTooBig { mtu },
+                other => {
+                    bail!("ICMP message is not `DestinationUnreachable` or `PacketTooBig` but {other:?}");
+                }
+            };
+
+            let (ipv6, _) = LaxIpv6Slice::from_slice(icmpv6.payload())
+                .context("Failed to parse payload of ICMPv6 error message as IPv6 packet")?;
+            let header = ipv6.header();
+
+            let src = IpAddr::V6(header.source_addr());
+            let failed_dst = IpAddr::V6(header.destination_addr());
+            let l4_proto = extract_l4_proto(ipv6.payload().payload, header.next_header())
+                .context("Failed to extract protocol")?;
+
+            return Ok(Some((
+                FailedPacket {
+                    src,
+                    failed_dst,
+                    l4_proto,
+                    raw: icmpv6.payload().to_vec(),
+                },
+                dest_unreachable,
+            )));
+        }
+
+        Ok(None)
+    }
+
     pub fn as_icmpv6(&self) -> Option<Icmpv6Slice> {
         if !self.is_icmpv6() {
             return None;
@@ -608,6 +726,14 @@ impl IpPacket {
         }
 
         Icmpv6EchoHeaderSliceMut::from_slice(self.payload_mut()).ok()
+    }
+
+    pub fn as_fz_p2p_control(&self) -> Option<FzP2pControlSlice> {
+        if !self.is_fz_p2p_control() {
+            return None;
+        }
+
+        FzP2pControlSlice::from_slice(self.payload()).ok()
     }
 
     fn icmpv4_echo_header(&self) -> Option<IcmpEchoHeader> {
@@ -642,7 +768,7 @@ impl IpPacket {
         src_v6: Ipv6Addr,
         src_proto: Protocol,
         dst: IpAddr,
-    ) -> Option<IpPacket> {
+    ) -> Result<IpPacket> {
         let mut packet = match (&self, dst) {
             (&IpPacket::Ipv4(_), IpAddr::V6(dst)) => self.consume_to_ipv6(src_v6, dst)?,
             (&IpPacket::Ipv6(_), IpAddr::V4(dst)) => self.consume_to_ipv4(src_v4, dst)?,
@@ -653,7 +779,7 @@ impl IpPacket {
         };
         packet.set_source_protocol(src_proto.value());
 
-        Some(packet)
+        Ok(packet)
     }
 
     pub fn translate_source(
@@ -662,7 +788,7 @@ impl IpPacket {
         dst_v6: Ipv6Addr,
         dst_proto: Protocol,
         src: IpAddr,
-    ) -> Option<IpPacket> {
+    ) -> Result<IpPacket> {
         let mut packet = match (&self, src) {
             (&IpPacket::Ipv4(_), IpAddr::V6(src)) => self.consume_to_ipv6(src, dst_v6)?,
             (&IpPacket::Ipv6(_), IpAddr::V4(src)) => self.consume_to_ipv4(src, dst_v4)?,
@@ -673,7 +799,7 @@ impl IpPacket {
         };
         packet.set_destination_protocol(dst_proto.value());
 
-        Some(packet)
+        Ok(packet)
     }
 
     #[inline]
@@ -733,16 +859,23 @@ impl IpPacket {
         }
     }
 
-    fn is_udp(&self) -> bool {
+    pub fn is_udp(&self) -> bool {
         self.next_header() == IpNumber::UDP
     }
 
-    fn is_tcp(&self) -> bool {
+    pub fn is_tcp(&self) -> bool {
         self.next_header() == IpNumber::TCP
     }
 
     pub fn is_icmp(&self) -> bool {
         self.next_header() == IpNumber::ICMP
+    }
+
+    /// Whether the packet is a Firezone p2p control protocol packet.
+    pub fn is_fz_p2p_control(&self) -> bool {
+        self.next_header() == fz_p2p_control::IP_NUMBER
+            && self.source() == fz_p2p_control::ADDR
+            && self.destination() == fz_p2p_control::ADDR
     }
 
     pub fn is_icmpv6(&self) -> bool {
@@ -753,6 +886,13 @@ impl IpPacket {
         match self {
             IpPacket::Ipv4(v4) => v4.header_length(),
             IpPacket::Ipv6(v6) => v6.header().header_len(),
+        }
+    }
+
+    fn payload_length(&self) -> u16 {
+        match self {
+            IpPacket::Ipv4(v4) => v4.ip_header().total_len() - v4.header_length() as u16,
+            IpPacket::Ipv6(v6) => v6.header().payload_length(),
         }
     }
 
@@ -770,17 +910,76 @@ impl IpPacket {
         }
     }
 
-    fn payload(&self) -> &[u8] {
+    pub fn payload(&self) -> &[u8] {
         let start = self.header_length();
+        let payload_length = self.payload_length() as usize;
 
-        &self.packet()[start..]
+        &self.packet()[start..(start + payload_length)]
     }
 
     fn payload_mut(&mut self) -> &mut [u8] {
         let start = self.header_length();
+        let payload_length = self.payload_length() as usize;
 
-        &mut self.packet_mut()[start..]
+        &mut self.packet_mut()[start..(start + payload_length)]
     }
+}
+
+fn extract_l4_proto(payload: &[u8], protocol: IpNumber) -> Result<Layer4Protocol> {
+    let proto = match protocol {
+        IpNumber::UDP => {
+            let udp =
+                UdpHeaderSlice::from_slice(payload).context("Failed to parse payload as UDP")?;
+
+            Layer4Protocol::Udp {
+                src: udp.source_port(),
+                dst: udp.destination_port(),
+            }
+        }
+        IpNumber::TCP => {
+            let tcp =
+                TcpHeaderSlice::from_slice(payload).context("Failed to parse payload as TCP")?;
+
+            Layer4Protocol::Tcp {
+                src: tcp.source_port(),
+                dst: tcp.destination_port(),
+            }
+        }
+        IpNumber::ICMP => {
+            let icmp_type = Icmpv4Slice::from_slice(payload)
+                .context("Failed to parse payload as ICMPv4")?
+                .header()
+                .icmp_type;
+
+            let Icmpv4Type::EchoRequest(echo_header) = icmp_type else {
+                bail!("Original packet was not any ICMP echo request but {icmp_type:?}")
+            };
+
+            Layer4Protocol::Icmp {
+                seq: echo_header.seq,
+                id: echo_header.id,
+            }
+        }
+        IpNumber::IPV6_ICMP => {
+            let icmp_type = Icmpv6Slice::from_slice(payload)
+                .context("Failed to parse payload as ICMPv6")?
+                .header()
+                .icmp_type;
+
+            let Icmpv6Type::EchoRequest(echo_header) = icmp_type else {
+                bail!("Original packet was not any ICMP echo request but {icmp_type:?}")
+            };
+
+            Layer4Protocol::Icmp {
+                seq: echo_header.seq,
+                id: echo_header.id,
+            }
+        }
+        other => {
+            bail!("Unsupported protocol: {:?}", other.keyword_str())
+        }
+    };
+    Ok(proto)
 }
 
 impl From<ConvertibleIpv4Packet> for IpPacket {
@@ -803,4 +1002,30 @@ pub enum UnsupportedProtocol {
     UnsupportedIcmpv4Type(Icmpv4Type),
     #[error("Unsupported ICMPv6 type: {0:?}")]
     UnsupportedIcmpv6Type(Icmpv6Type),
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Packet cannot be translated as part of NAT64/46")]
+pub struct ImpossibleTranslation;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn udp_packet_payload() {
+        let udp_packet = crate::make::udp_packet(
+            Ipv4Addr::LOCALHOST,
+            Ipv4Addr::LOCALHOST,
+            0,
+            0,
+            b"foobar".to_vec(),
+        )
+        .unwrap();
+
+        let ip_payload = udp_packet.payload();
+        let udp_payload = &ip_payload[etherparse::UdpHeader::LEN..];
+
+        assert_eq!(udp_payload, b"foobar");
+    }
 }

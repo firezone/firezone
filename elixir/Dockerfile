@@ -1,10 +1,10 @@
-ARG ALPINE_VERSION="3.20.2"
-ARG ERLANG_VERSION="27.0.1"
-ARG ERLANG_DOWNLOAD_SHA256="26d894e2f0dda9d13560af08ea589afc01569df6b5486e565beb5accb99c9cf4"
-ARG ELIXIR_VERSION="1.17.2"
-ARG ELIXIR_DOWNLOAD_SHA256="7bb8e6414b77c1707f39f620a2ad54f68d64846d663ec78069536854247fb1ab"
+ARG ALPINE_VERSION="3.20.5"
+ARG ERLANG_VERSION="27.2.1"
+ARG ERLANG_DOWNLOAD_SHA256="07982134e10637dde57cf9cdc6dda6f65425810229986136d184766d4db9eda3"
+ARG ELIXIR_VERSION="1.18.2"
+ARG ELIXIR_DOWNLOAD_SHA256="efc8d0660b56dd3f0c7536725a95f4d8b6be9f11ca9779d824ad79377753e916"
 
-FROM alpine:${ALPINE_VERSION} as base
+FROM alpine:${ALPINE_VERSION} AS base
 
 # Important!  Update this no-op ENV variable when this Dockerfile
 # is updated with the current date. It will force refresh of all
@@ -189,7 +189,7 @@ WORKDIR ${HOME}
 
 CMD ["iex"]
 
-FROM base as elixir
+FROM base AS elixir
 
 WORKDIR ${HOME}
 
@@ -204,7 +204,7 @@ RUN set -xe \
 
 CMD ["bash"]
 
-FROM elixir as compiler
+FROM elixir AS compiler
 
 WORKDIR /app
 
@@ -226,10 +226,10 @@ COPY apps/domain/mix.exs ./apps/domain/mix.exs
 COPY apps/web/mix.exs ./apps/web/mix.exs
 COPY apps/api/mix.exs ./apps/api/mix.exs
 COPY config config
-COPY sha.exs .
 
 # Fetch and compile the dependencies
 ARG MIX_ENV="prod"
+ARG GIT_SHA
 RUN mix deps.get --only ${MIX_ENV}
 RUN mix deps.compile --skip-umbrella-children
 
@@ -251,9 +251,11 @@ RUN cd apps/web \
     && mix assets.deploy
 
 # Copy the rest of the application files and compile them
-RUN mix compile
+# mix doesn't know when GIT_SHA changes, so --force is needed to avoid
+# pulling in a cached version.
+RUN mix compile --force
 
-FROM elixir as builder
+FROM elixir AS builder
 
 # Install build deps
 RUN apk add --update --no-cache \
@@ -269,7 +271,9 @@ COPY rel rel
 
 ARG APPLICATION_NAME
 ARG MIX_ENV="prod"
+ARG GIT_SHA
 RUN mix release ${APPLICATION_NAME}
+RUN mix sentry.package_source_code
 
 # start a new build stage so that the final image will only contain
 # the compiled release and other runtime necessities
@@ -300,10 +304,6 @@ COPY --from=builder /app/_build/${MIX_ENV}/rel/${APPLICATION_NAME} ./
 
 # Allow the default user to write to the priv directory of some libraries
 RUN chmod -R ugo+rw /app/lib/tzdata-*/priv
-
-# Populate the SHA pointing to this build
-ARG GIT_SHA
-RUN echo ${GIT_SHA} > ./GIT_SHA
 
 # Change user to "default" to limit runtime privileges
 USER default

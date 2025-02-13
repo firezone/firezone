@@ -3,6 +3,30 @@
 module.exports = [
   /*
    *
+   * macOS Client
+   *
+   */
+  {
+    source: "/dl/firezone-client-macos/latest",
+    destination:
+      // mark:current-apple-version
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.4.1/firezone-macos-client-1.4.1.dmg",
+    permanent: false,
+  },
+  /*
+   *
+   * Android Client
+   *
+   */
+  {
+    source: "/dl/firezone-client-android/latest",
+    destination:
+      // mark:current-android-version
+      "https://www.github.com/firezone/firezone/releases/download/android-client-1.4.1/firezone-android-client-1.4.1.apk",
+    permanent: false,
+  },
+  /*
+   *
    * Windows GUI Client
    *
    */
@@ -10,7 +34,19 @@ module.exports = [
     source: "/dl/firezone-client-gui-windows/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.3.6/firezone-client-gui-windows_1.3.6_x86_64.msi",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.5/firezone-client-gui-windows_1.4.5_x86_64.msi",
+    permanent: false,
+  },
+  /*
+   *
+   * Windows Headless Client
+   *
+   */
+  {
+    source: "/dl/firezone-client-headless-windows/latest/x86_64",
+    destination:
+      // mark:current-headless-version
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.4.3/firezone-client-headless-windows_1.4.3_x86_64.exe",
     permanent: false,
   },
   /*
@@ -22,35 +58,35 @@ module.exports = [
     source: "/dl/firezone-client-gui-linux/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.3.6/firezone-client-gui-linux_1.3.6_x86_64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.5/firezone-client-gui-linux_1.4.5_x86_64.deb",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-gui-linux/latest/aarch64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.3.6/firezone-client-gui-linux_1.3.6_aarch64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.5/firezone-client-gui-linux_1.4.5_aarch64.deb",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/x86_64",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.3/firezone-client-headless-linux_1.3.3_x86_64",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.4.3/firezone-client-headless-linux_1.4.3_x86_64",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/aarch64",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.3/firezone-client-headless-linux_1.3.3_aarch64",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.4.3/firezone-client-headless-linux_1.4.3_aarch64",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-headless-linux/latest/armv7",
     destination:
       // mark:current-headless-version
-      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.3.3/firezone-client-headless-linux_1.3.3_armv7",
+      "https://www.github.com/firezone/firezone/releases/download/headless-client-1.4.3/firezone-client-headless-linux_1.4.3_armv7",
     permanent: false,
   },
   /*
@@ -62,37 +98,49 @@ module.exports = [
     source: "/dl/firezone-gateway/latest/x86_64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.3.1/firezone-gateway_1.3.1_x86_64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.4/firezone-gateway_1.4.4_x86_64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/aarch64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.3.1/firezone-gateway_1.3.1_aarch64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.4/firezone-gateway_1.4.4_aarch64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/armv7",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.3.1/firezone-gateway_1.3.1_armv7",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.4/firezone-gateway_1.4.4_armv7",
     permanent: false,
   },
   /*
-   * Redirects for old KB URLs
+   * Redirects for old Website URLs. Most search engines should have re-indexed these after 1 year.
+   * However, other sites may have not, so the general rule here is to keep them indefinitely unless
+   * we need to reuse a particular URL.
+   *
+   * See https://ahrefs.com/blog/are-pemanent-redirects-permanent
    *
    */
   {
-    // TODO: Remove on or after 2024-10-21 after crawlers have re-indexed
     source: "/kb/user-guides/:path",
     destination: "/kb/client-apps/:path",
     permanent: true,
   },
   {
-    // TODO: Remove on or after 2024-10-21 after crawlers have re-indexed
     source: "/kb/user-guides",
     destination: "/kb/client-apps",
+    permanent: true,
+  },
+  {
+    source: "/kb/client-apps/windows-client",
+    destination: "/kb/client-apps/windows-gui-client",
+    permanent: true,
+  },
+  {
+    source: "/kb/client-apps/linux-client",
+    destination: "/kb/client-apps/linux-headless-client",
     permanent: true,
   },
 ];

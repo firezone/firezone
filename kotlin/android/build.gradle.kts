@@ -8,16 +8,16 @@ buildscript {
     }
 
     dependencies {
-        classpath("androidx.navigation:navigation-safe-args-gradle-plugin:2.7.7")
+        classpath("androidx.navigation:navigation-safe-args-gradle-plugin:2.8.6")
     }
 }
 
 plugins {
-    id("org.mozilla.rust-android-gradle.rust-android") version "0.9.4" apply false
-    id("org.jetbrains.kotlin.android") version "1.8.22" apply false
-    id("com.android.application") version "8.6.0" apply false
-    id("com.google.firebase.appdistribution") version "5.0.0" apply false
-    id("com.google.dagger.hilt.android") version "2.52" apply false
+    id("org.mozilla.rust-android-gradle.rust-android") version "0.9.6" apply false
+    id("org.jetbrains.kotlin.android") version "2.1.0" apply false
+    id("com.android.application") version "8.8.0" apply false
+    id("com.google.firebase.appdistribution") version "5.1.0" apply false
+    id("com.google.dagger.hilt.android") version "2.55" apply false
     id("com.google.gms.google-services") version "4.4.2" apply false
     id("com.google.firebase.crashlytics") version "3.0.2" apply false
 }

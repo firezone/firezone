@@ -227,7 +227,7 @@ defmodule Web.ConnCase do
     table_html
     |> Floki.find("tbody tr")
     |> Enum.map(fn row ->
-      key = Floki.find(row, "th") |> element_to_text() |> String.downcase()
+      key = Floki.find(row, "th") |> reject_tooltips() |> element_to_text() |> String.downcase()
       value = Floki.find(row, "td") |> element_to_text()
       {key, value}
     end)
@@ -254,6 +254,24 @@ defmodule Web.ConnCase do
     assert row, "No row found with #{key} = #{value} in #{inspect(rows)}"
     callback.(row)
     rows
+  end
+
+  defp reject_tooltips([{"th", attrs, content}]) do
+    content =
+      content
+      |> Enum.reject(fn
+        {"div", attrs, _content} ->
+          {"role", "tooltip"} in attrs
+
+        _ ->
+          false
+      end)
+
+    [{"th", attrs, content}]
+  end
+
+  defp reject_tooltips(other) do
+    other
   end
 
   def elements_to_text(elements) do

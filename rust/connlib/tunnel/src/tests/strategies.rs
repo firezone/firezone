@@ -1,20 +1,12 @@
-use super::{
-    sim_dns::{dns_server_id, ref_dns_host, DnsServerId, RefDns},
-    sim_net::Host,
-    sim_relay::ref_relay_host,
-    stub_portal::StubPortal,
+use super::dns_records::{ip_to_domain_record, DnsRecords};
+use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
+use crate::client::{
+    CidrResource, DnsResource, InternetResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6,
+    IPV4_RESOURCES, IPV6_RESOURCES,
 };
-use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::messages::DnsServer;
 use crate::proptest::*;
-use connlib_shared::{
-    messages::{
-        client::{
-            ResourceDescriptionCidr, ResourceDescriptionDns, ResourceDescriptionInternet, Site,
-        },
-        DnsServer, RelayId,
-    },
-    DomainName,
-};
+use connlib_model::{DomainRecord, RelayId, Site};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
@@ -25,13 +17,36 @@ use std::{
     time::Duration,
 };
 
-pub(crate) fn global_dns_records() -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<IpAddr>>>
-{
+pub(crate) fn global_dns_records() -> impl Strategy<Value = DnsRecords> {
     collection::btree_map(
         domain_name(2..4).prop_map(|d| d.parse().unwrap()),
-        collection::btree_set(any::<IpAddr>(), 1..6),
+        collection::btree_set(dns_record(), 1..6),
         0..5,
     )
+    .prop_map_into()
+}
+
+fn dns_record() -> impl Strategy<Value = DomainRecord> {
+    prop_oneof![
+        3 => non_reserved_ip().prop_map(ip_to_domain_record),
+        1 => collection::vec(txt_record(), 6..=10)
+            .prop_map(|sections| { sections.into_iter().flatten().collect_vec() })
+            .prop_map(|o| domain::rdata::Txt::from_octets(o).unwrap())
+            .prop_map(DomainRecord::Txt)
+    ]
+}
+
+// A maximum length txt record section
+fn txt_record() -> impl Strategy<Value = Vec<u8>> {
+    "[a-z]{255}".prop_map(|s| {
+        let mut b = s.into_bytes();
+        // This is always 255 but this is less error-prone
+        let length = b.len() as u8;
+        let mut section = Vec::new();
+        section.push(length);
+        section.append(&mut b);
+        section
+    })
 }
 
 pub(crate) fn packet_source_v4(client: Ipv4Addr) -> impl Strategy<Value = Ipv4Addr> {
@@ -109,39 +124,74 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
         )
 }
 
-pub(crate) fn relays() -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
-    collection::btree_map(relay_id(), ref_relay_host(), 1..=2)
+pub(crate) fn relays(
+    id: impl Strategy<Value = RelayId>,
+) -> impl Strategy<Value = BTreeMap<RelayId, Host<u64>>> {
+    collection::btree_map(id, ref_relay_host(), 1..=2)
 }
 
 /// Sample a list of DNS servers.
 ///
 /// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
-pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeMap<DnsServerId, Host<RefDns>>> {
+pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
     let ip4_dns_servers = collection::btree_set(
-        any::<Ipv4Addr>().prop_map(|ip| SocketAddr::from((ip, 53))),
+        non_reserved_ipv4().prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
     let ip6_dns_servers = collection::btree_set(
-        any::<Ipv6Addr>().prop_map(|ip| SocketAddr::from((ip, 53))),
+        non_reserved_ipv6().prop_map(|ip| SocketAddr::from((ip, 53))),
         1..4,
     );
 
-    (ip4_dns_servers, ip6_dns_servers).prop_flat_map(|(ip4_dns_servers, ip6_dns_servers)| {
-        let servers = Vec::from_iter(ip4_dns_servers.into_iter().chain(ip6_dns_servers));
+    (ip4_dns_servers, ip6_dns_servers).prop_map(|(mut v4, v6)| {
+        v4.extend(v6);
+        v4
+    })
+}
 
-        // First, generate a unique number of IDs, one for each DNS server.
-        let ids = collection::btree_set(dns_server_id(), servers.len());
+pub(crate) fn non_reserved_ip() -> impl Strategy<Value = IpAddr> {
+    prop_oneof![
+        non_reserved_ipv4().prop_map_into(),
+        non_reserved_ipv6().prop_map_into(),
+    ]
+}
 
-        (ids, Just(servers))
-            .prop_flat_map(move |(ids, servers)| {
-                let ids = ids.into_iter();
+fn non_reserved_ipv4() -> impl Strategy<Value = Ipv4Addr> {
+    let undesired_ranges = [
+        Ipv4Network::new(Ipv4Addr::BROADCAST, 32).unwrap(),
+        Ipv4Network::new(Ipv4Addr::UNSPECIFIED, 32).unwrap(),
+        Ipv4Network::new(Ipv4Addr::new(224, 0, 0, 0), 4).unwrap(), // Multicast
+        DNS_SENTINELS_V4,
+        IPV4_RESOURCES,
+    ];
 
-                // Second, zip the IDs and addresses together.
-                ids.zip(servers)
-                    .map(|(id, addr)| (Just(id), ref_dns_host(addr)))
-                    .collect::<Vec<_>>()
-            })
-            .prop_map(BTreeMap::from_iter) // Third, turn the `Vec` of tuples into a `BTreeMap`.
+    any::<Ipv4Addr>().prop_map(move |mut ip| {
+        while let Some(range) = undesired_ranges.iter().find(|range| range.contains(ip)) {
+            ip = Ipv4Addr::from(u32::from(range.broadcast_address()).wrapping_add(1));
+        }
+
+        debug_assert!(undesired_ranges.iter().all(|range| !range.contains(ip)));
+
+        ip
+    })
+}
+
+fn non_reserved_ipv6() -> impl Strategy<Value = Ipv6Addr> {
+    let undesired_ranges = [
+        Ipv6Network::new(Ipv6Addr::UNSPECIFIED, 32).unwrap(),
+        DNS_SENTINELS_V6,
+        IPV6_RESOURCES,
+        Ipv6Network::new(Ipv6Addr::new(0xff00, 0, 0, 0, 0, 0, 0, 0), 8).unwrap(), // Multicast
+    ];
+
+    any::<Ipv6Addr>().prop_map(move |mut ip| {
+        while let Some(range) = undesired_ranges.iter().find(|range| range.contains(ip)) {
+            ip = Ipv6Addr::from(u128::from(range.last_address()).wrapping_add(1));
+        }
+
+        debug_assert!(undesired_ranges.iter().all(|range| !range.contains(ip)));
+
+        ip
     })
 }
 
@@ -151,10 +201,10 @@ fn any_site(sites: BTreeSet<Site>) -> impl Strategy<Value = Site> {
 
 fn cidr_resource_outside_reserved_ranges(
     sites: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionCidr> {
+) -> impl Strategy<Value = CidrResource> {
     cidr_resource(any_ip_network(8), sites.prop_map(|s| vec![s]))
         .prop_filter(
-            "tests doesn't support yet CIDR resources overlapping DNS resources",
+            "tests doesn't support CIDR resources overlapping DNS resources",
             |r| {
                 // This works because CIDR resources' host mask is always <8 while IP resource is 21
                 let is_ip4_reserved = IpNetwork::V4(IPV4_RESOURCES)
@@ -168,22 +218,20 @@ fn cidr_resource_outside_reserved_ranges(
         .prop_filter("resource must not be in the documentation range because we use those for host addresses and DNS IPs", |r| !r.address.is_documentation())
 }
 
-fn internet_resource(
-    site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionInternet> {
+fn internet_resource(site: impl Strategy<Value = Site>) -> impl Strategy<Value = InternetResource> {
     crate::proptest::internet_resource(site.prop_map(|s| vec![s]))
 }
 
 fn non_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionDns> {
+) -> impl Strategy<Value = DnsResource> {
     dns_resource(site.prop_map(|s| vec![s]))
 }
 
 fn star_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionDns> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| ResourceDescriptionDns {
+) -> impl Strategy<Value = DnsResource> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| DnsResource {
         address: format!("*.{}", r.address),
         ..r
     })
@@ -191,28 +239,28 @@ fn star_wildcard_dns_resource(
 
 fn double_star_wildcard_dns_resource(
     site: impl Strategy<Value = Site>,
-) -> impl Strategy<Value = ResourceDescriptionDns> {
-    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| ResourceDescriptionDns {
+) -> impl Strategy<Value = DnsResource> {
+    dns_resource(site.prop_map(|s| vec![s])).prop_map(|r| DnsResource {
         address: format!("**.{}", r.address),
         ..r
     })
 }
 
-pub(crate) fn resolved_ips() -> impl Strategy<Value = BTreeSet<IpAddr>> {
-    collection::btree_set(
-        prop_oneof![
-            dns_resource_ip4s().prop_map_into(),
-            dns_resource_ip6s().prop_map_into()
-        ],
-        1..6,
-    )
+pub(crate) fn resolved_ips() -> impl Strategy<Value = BTreeSet<DomainRecord>> {
+    let record = prop_oneof![
+        dns_resource_ip4s().prop_map_into(),
+        dns_resource_ip6s().prop_map_into()
+    ]
+    .prop_map(ip_to_domain_record);
+
+    collection::btree_set(record, 1..6)
 }
 
 /// A strategy for generating a set of DNS records all nested under the provided base domain.
 pub(crate) fn subdomain_records(
     base: String,
     subdomains: impl Strategy<Value = String>,
-) -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<IpAddr>>> {
+) -> impl Strategy<Value = DnsRecords> {
     collection::hash_map(subdomains, resolved_ips(), 1..4).prop_map(move |subdomain_ips| {
         subdomain_ips
             .into_iter()
@@ -230,12 +278,10 @@ pub(crate) fn subdomain_records(
 /// This uses the `TEST-NET-2` (`198.51.100.0/24`) address space reserved for documentation and examples in [RFC5737](https://datatracker.ietf.org/doc/html/rfc5737).
 /// `TEST-NET-2` only contains 256 addresses which is small enough to generate overlapping IPs for our DNS resources (i.e. two different domains pointing to the same IP).
 fn dns_resource_ip4s() -> impl Strategy<Value = Ipv4Addr> {
-    let ips = Ipv4Network::new(Ipv4Addr::new(198, 51, 100, 0), 24)
-        .unwrap()
-        .hosts()
-        .collect_vec();
+    const FIRST: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 0);
+    const LAST: Ipv4Addr = Ipv4Addr::new(198, 51, 100, 255);
 
-    sample::select(ips)
+    (FIRST.to_bits()..=LAST.to_bits()).prop_map(Ipv4Addr::from_bits)
 }
 
 /// A [`Strategy`] of [`Ipv6Addr`]s used for the "real" IPs of DNS resources.
@@ -244,37 +290,36 @@ fn dns_resource_ip4s() -> impl Strategy<Value = Ipv4Addr> {
 fn dns_resource_ip6s() -> impl Strategy<Value = Ipv6Addr> {
     const DNS_SUBNET: u16 = 0x2020;
 
-    documentation_ip6s(DNS_SUBNET, 256)
+    documentation_ip6s(DNS_SUBNET)
 }
 
-pub(crate) fn documentation_ip6s(subnet: u16, num_ips: usize) -> impl Strategy<Value = Ipv6Addr> {
-    let ips = Ipv6Network::new_truncate(
+pub(crate) fn documentation_ip6s(subnet: u16) -> impl Strategy<Value = Ipv6Addr> {
+    let network = Ipv6Network::new_truncate(
         Ipv6Addr::new(0x2001, 0xDB80, subnet, subnet, 0, 0, 0, 0),
         32,
     )
-    .unwrap()
-    .subnets_with_prefix(128)
-    .map(|n| n.network_address())
-    .take(num_ips)
-    .collect_vec();
+    .unwrap();
 
-    sample::select(ips)
+    let first = network.network_address().to_bits();
+    let last = network.last_address().to_bits();
+
+    (first..=last).prop_map(Ipv6Addr::from_bits)
 }
 
-pub(crate) fn system_dns_servers(
-    dns_servers: Vec<Host<RefDns>>,
-) -> impl Strategy<Value = Vec<IpAddr>> {
-    let max = dns_servers.len();
+pub(crate) fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
+    dns_servers().prop_flat_map(|dns_servers| {
+        let max = dns_servers.len();
 
-    sample::subsequence(dns_servers, ..=max)
-        .prop_map(|seq| seq.into_iter().map(|h| h.single_socket().ip()).collect())
+        sample::subsequence(Vec::from_iter(dns_servers), ..=max)
+            .prop_map(|seq| seq.into_iter().map(|h| h.ip()).collect())
+    })
 }
 
-pub(crate) fn upstream_dns_servers(
-    dns_servers: Vec<Host<RefDns>>,
-) -> impl Strategy<Value = Vec<DnsServer>> {
-    let max = dns_servers.len();
+pub(crate) fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
+    dns_servers().prop_flat_map(|dns_servers| {
+        let max = dns_servers.len();
 
-    sample::subsequence(dns_servers, ..=max)
-        .prop_map(|seq| seq.into_iter().map(|h| h.single_socket().into()).collect())
+        sample::subsequence(Vec::from_iter(dns_servers), ..=max)
+            .prop_map(|seq| seq.into_iter().map(|h| h.into()).collect())
+    })
 }

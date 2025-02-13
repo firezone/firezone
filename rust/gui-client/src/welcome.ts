@@ -1,18 +1,9 @@
-import "./tauri_stub.js";
+import { invoke } from "@tauri-apps/api/core";
 
-const invoke = window.__TAURI__.tauri.invoke;
+const signInBtn = <HTMLButtonElement>document.getElementById("sign-in");
 
-const signInBtn = <HTMLButtonElement>(
-  document.getElementById("sign-in")
-);
-
-async function sign_in() {
+signInBtn.addEventListener("click", async (_e) => {
   console.log("Signing in...");
-  invoke("sign_in")
-    .then(() => {})
-    .catch((e: Error) => {
-      console.error(e);
-    });
-}
 
-signInBtn.addEventListener("click", (e) => sign_in());
+  await invoke("sign_in");
+});

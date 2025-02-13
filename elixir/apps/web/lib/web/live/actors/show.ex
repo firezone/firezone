@@ -1,6 +1,7 @@
 defmodule Web.Actors.Show do
   use Web, :live_view
   import Web.Actors.Components
+  import Web.Clients.Components
   alias Domain.{Accounts, Auth, Tokens, Flows, Clients}
   alias Domain.Actors
 
@@ -31,12 +32,13 @@ defmodule Web.Actors.Show do
         |> assign_live_table("clients",
           query_module: Clients.Client.Query,
           sortable_fields: [],
-          hide_filters: [:client_or_actor_name],
+          hide_filters: [:client_or_actor_name, :presence, :verification],
           callback: &handle_clients_update!/2
         )
         |> assign_live_table("flows",
           query_module: Flows.Flow.Query,
           sortable_fields: [],
+          hide_filters: [:expiration],
           callback: &handle_flows_update!/2
         )
         |> assign_live_table("groups",
@@ -137,73 +139,77 @@ defmodule Web.Actors.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/actors"}>Actors</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/actors/#{@actor}"}>
-        <%= @actor.name %>
+        {@actor.name}
       </.breadcrumb>
     </.breadcrumbs>
 
     <.section>
       <:title>
-        <%= actor_type(@actor.type) %>: <span class="font-medium"><%= @actor.name %></span>
+        {actor_type(@actor.type)}: <span class="font-medium">{@actor.name}</span>
         <span :if={@actor.id == @subject.actor.id} class="text-sm text-neutral-400">(you)</span>
-        <span :if={not is_nil(@actor.deleted_at)} class="text-red-600">(deleted)</span>
+        <span :if={Actors.actor_deleted?(@actor)} class="text-red-600">(deleted)</span>
+        <span :if={Actors.actor_disabled?(@actor)} class="text-red-600">(disabled)</span>
       </:title>
       <:action :if={is_nil(@actor.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/actors/#{@actor}/edit"}>
-          Edit <%= actor_type(@actor.type) %>
+          Edit {actor_type(@actor.type)}
         </.edit_button>
       </:action>
       <:action :if={is_nil(@actor.deleted_at) and not Actors.actor_disabled?(@actor)}>
         <.button_with_confirmation
           id="disable_actor"
           style="warning"
+          confirm_style="primary"
           icon="hero-lock-closed"
           on_confirm="disable"
         >
-          <:dialog_title>Apply changes to Actor Groups</:dialog_title>
+          <:dialog_title>Confirm disabling the Actor</:dialog_title>
           <:dialog_content>
-            Are you sure you want to disable this <%= String.downcase(actor_type(@actor.type)) %> and revoke all its tokens?
+            Are you sure you want to disable this {String.downcase(actor_type(@actor.type))} and revoke all its tokens?
           </:dialog_content>
           <:dialog_confirm_button>
-            Disable <%= actor_type(@actor.type) %>
+            Disable {actor_type(@actor.type)}
           </:dialog_confirm_button>
           <:dialog_cancel_button>
             Cancel
           </:dialog_cancel_button>
-          Disable <%= actor_type(@actor.type) %>
+          Disable {actor_type(@actor.type)}
         </.button_with_confirmation>
       </:action>
       <:action :if={is_nil(@actor.deleted_at) and Actors.actor_disabled?(@actor)}>
         <.button_with_confirmation
           id="enable_actor"
           style="warning"
+          confirm_style="primary"
           icon="hero-lock-open"
           on_confirm="enable"
         >
-          <:dialog_title>Apply changes to Actor Groups</:dialog_title>
+          <:dialog_title>Confirm enabling the Actor</:dialog_title>
           <:dialog_content>
-            Are you sure you want to enable this <%= String.downcase(actor_type(@actor.type)) %>?
+            Are you sure you want to enable this {String.downcase(actor_type(@actor.type))}?
           </:dialog_content>
           <:dialog_confirm_button>
-            Enable <%= actor_type(@actor.type) %>
+            Enable {actor_type(@actor.type)}
           </:dialog_confirm_button>
           <:dialog_cancel_button>
             Cancel
           </:dialog_cancel_button>
-          Enable <%= actor_type(@actor.type) %>
+          Enable {actor_type(@actor.type)}
         </.button_with_confirmation>
       </:action>
       <:content flash={@flash}>
         <.vertical_table id="actor">
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @actor.name %>
-              <.actor_status actor={@actor} /></:value>
+            <:value>
+              {@actor.name}
+            </:value>
           </.vertical_table_row>
 
           <.vertical_table_row>
             <:label>Role</:label>
             <:value>
-              <%= actor_role(@actor.type) %>
+              {actor_role(@actor.type)}
             </:value>
           </.vertical_table_row>
 
@@ -279,7 +285,7 @@ defmodule Web.Actors.Show do
               on_confirm_id={identity.id}
               size="xs"
             >
-              <:dialog_title>Delete Identity</:dialog_title>
+              <:dialog_title>Confirm Identity deletion</:dialog_title>
               <:dialog_content>
                 Are you sure you want to delete this identity?
                 This will <strong>immediately</strong>
@@ -342,10 +348,11 @@ defmodule Web.Actors.Show do
         <.button_with_confirmation
           id="revoke_all_tokens"
           style="danger"
+          confirm_style="primary"
           icon="hero-trash-solid"
           on_confirm="revoke_all_tokens"
         >
-          <:dialog_title>Revoke All Tokens</:dialog_title>
+          <:dialog_title>Confirm revocation of all actor tokens</:dialog_title>
           <:dialog_content>
             Are you sure you want to revoke all tokens?
             This will <strong>immediately</strong> sign the actor out of all clients.
@@ -371,29 +378,12 @@ defmodule Web.Actors.Show do
           metadata={@tokens_metadata}
         >
           <:col :let={token} label="type" class="w-1/12">
-            <%= token.type %>
+            {token.type}
           </:col>
           <:col :let={token} :if={@actor.type != :service_account} label="identity" class="w-3/12">
             <.identity_identifier account={@account} identity={token.identity} />
           </:col>
-          <:col :let={token} :if={@actor.type == :service_account} label="name" class="w-2/12">
-            <%= token.name %>
-          </:col>
-          <:col :let={token} label="created">
-            <.created_by account={@account} schema={token} />
-          </:col>
-          <:col :let={token} label="last used">
-            <p>
-              <.relative_datetime datetime={token.last_seen_at} />
-            </p>
-            <p :if={not is_nil(token.last_seen_at)}>
-              <code class="text-xs"><.last_seen schema={token} /></code>
-            </p>
-          </:col>
-          <:col :let={token} label="expires">
-            <.relative_datetime datetime={token.expires_at} />
-          </:col>
-          <:col :let={token} label="client">
+          <:col :let={token} label="client" class="w-1/12">
             <.intersperse_blocks :if={token.type == :client}>
               <:separator>,&nbsp;</:separator>
 
@@ -401,11 +391,39 @@ defmodule Web.Actors.Show do
 
               <:item :for={client <- token.clients}>
                 <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
-                  <%= client.name %>
+                  {client.name}
                 </.link>
               </:item>
             </.intersperse_blocks>
             <span :if={token.type != :client}>N/A</span>
+          </:col>
+          <:col :let={token} :if={@actor.type == :service_account} label="name" class="w-2/12">
+            {token.name}
+          </:col>
+          <:col :let={token} label="created" class="w-2/12">
+            <.created_by account={@account} schema={token} />
+          </:col>
+          <:col :let={token} label="expires" class="w-1/12">
+            <%= if DateTime.compare(token.expires_at, DateTime.utc_now()) == :lt do %>
+              <.popover>
+                <:target>
+                  expired
+                </:target>
+                <:content>
+                  <.datetime datetime={token.expires_at} />
+                </:content>
+              </.popover>
+            <% else %>
+              <.relative_datetime datetime={token.expires_at} negative_class="text-red-600" />
+            <% end %>
+          </:col>
+          <:col :let={token} label="last used" class="w-3/12">
+            <p>
+              <.relative_datetime datetime={token.last_seen_at} />
+            </p>
+            <p :if={not is_nil(token.last_seen_at)}>
+              <code class="text-xs"><.last_seen schema={token} /></code>
+            </p>
           </:col>
           <:action :let={token}>
             <.button_with_confirmation
@@ -416,7 +434,7 @@ defmodule Web.Actors.Show do
               on_confirm_id={token.id}
               size="xs"
             >
-              <:dialog_title>Revoke the Token</:dialog_title>
+              <:dialog_title>Confirm token revocation</:dialog_title>
               <:dialog_content>
                 Are you sure you want to revoke the token?
                 This will <strong>immediately</strong>
@@ -451,25 +469,51 @@ defmodule Web.Actors.Show do
           ordered_by={@order_by_table_id["clients"]}
           metadata={@clients_metadata}
         >
-          <:col :let={client} label="name">
-            <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
-              <%= client.name %>
-            </.link>
+          <:col :let={client} class="w-8">
+            <.popover placement="right">
+              <:target>
+                <.client_os_icon client={client} />
+              </:target>
+              <:content>
+                <.client_os_name_and_version client={client} />
+              </:content>
+            </.popover>
+          </:col>
+          <:col :let={client} field={{:clients, :name}} label="name">
+            <div class="flex items-center space-x-1">
+              <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
+                {client.name}
+              </.link>
+              <.icon
+                :if={not is_nil(client.verified_at)}
+                name="hero-shield-check"
+                class="w-4 h-4"
+                title="Device attributes of this client are manually verified"
+              />
+            </div>
           </:col>
           <:col :let={client} label="status">
             <.connection_status schema={client} />
           </:col>
+          <:col :let={client} field={{:clients, :last_seen_at}} label="last started">
+            <.relative_datetime datetime={client.last_seen_at} />
+          </:col>
+          <:col :let={client} field={{:clients, :inserted_at}} label="created">
+            <.relative_datetime datetime={client.inserted_at} />
+          </:col>
           <:empty>
-            <div class="text-center text-neutral-500 p-4">No clients to display.</div>
+            <div class="text-center text-neutral-500 p-4">
+              Actor has not signed in from any Client.
+            </div>
           </:empty>
         </.live_table>
       </:content>
     </.section>
 
     <.section>
-      <:title>Authorized Sessions</:title>
+      <:title>Recent Connections</:title>
       <:help>
-        Authorized sessions opened by this Actor to access a Resource.
+        Recent connections opened by this Actor to access a Resource.
       </:help>
       <:content>
         <.live_table
@@ -484,9 +528,6 @@ defmodule Web.Actors.Show do
           <:col :let={flow} label="authorized" class="xl:w-1/12">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
-          <:col :let={flow} label="expires" class="xl:w-1/12">
-            <.relative_datetime datetime={flow.expires_at} />
-          </:col>
           <:col :let={flow} label="policy" class="w-3/12">
             <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
               <Web.Policies.Components.policy_name policy={flow.policy} />
@@ -494,17 +535,17 @@ defmodule Web.Actors.Show do
           </:col>
           <:col :let={flow} label="client">
             <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={link_style()}>
-              <%= flow.client.name %>
+              {flow.client.name}
             </.link>
             <br />
-            <code class="text-xs"><%= flow.client_remote_ip %></code>
+            <code class="text-xs">{flow.client_remote_ip}</code>
           </:col>
           <:col :let={flow} label="gateway">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
-              <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
+              {flow.gateway.group.name}-{flow.gateway.name}
             </.link>
             <br />
-            <code class="text-xs"><%= flow.gateway_remote_ip %></code>
+            <code class="text-xs">{flow.gateway_remote_ip}</code>
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="activity" class="w-1/12">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
@@ -538,9 +579,7 @@ defmodule Web.Actors.Show do
           metadata={@groups_metadata}
         >
           <:col :let={group} label="name">
-            <.link navigate={~p"/#{@account}/groups/#{group.id}"} class={[link_style()]}>
-              <%= group.name %>
-            </.link>
+            <.group account={@account} group={group} />
           </:col>
           <:empty>
             <div class="text-center text-neutral-500 p-4">No Groups to display.</div>
@@ -557,17 +596,17 @@ defmodule Web.Actors.Show do
           icon="hero-trash-solid"
           on_confirm="delete"
         >
-          <:dialog_title>Delete <%= actor_type(@actor.type) %></:dialog_title>
+          <:dialog_title>Confirm {actor_type(@actor.type)} deletion</:dialog_title>
           <:dialog_content>
-            Are you sure you want to delete this <%= String.downcase(actor_type(@actor.type)) %> along with all associated identities?
+            Are you sure you want to delete this {String.downcase(actor_type(@actor.type))} along with all associated identities?
           </:dialog_content>
           <:dialog_confirm_button>
-            Delete <%= actor_type(@actor.type) %>
+            Delete {actor_type(@actor.type)}
           </:dialog_confirm_button>
           <:dialog_cancel_button>
             Cancel
           </:dialog_cancel_button>
-          Delete <%= actor_type(@actor.type) %>
+          Delete {actor_type(@actor.type)}
         </.button_with_confirmation>
       </:action>
     </.danger_zone>

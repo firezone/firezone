@@ -54,7 +54,7 @@ defmodule Web.Sites.Gateways.Index do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/sites"}>Sites</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}"}>
-        <%= @group.name %>
+        {@group.name}
       </.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/sites/#{@group}/gateways"}>
         Gateways
@@ -63,11 +63,11 @@ defmodule Web.Sites.Gateways.Index do
 
     <.section>
       <:title>
-        Site <code><%= @group.name %></code> Gateways
+        Site <code>{@group.name}</code> Gateways
       </:title>
       <:help :if={@group.managed_by == :system and @group.name == "Internet"}>
-        Gateways deployed to the Internet Site are used to route Internet Resource,
-        tunneling all traffic that doesn't match any specific Resource.
+        Gateways deployed to the Internet Site will be used for full-route tunneling
+        of traffic that doesn't match a more specific Resource.
       </:help>
       <:help :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
         Deploy gateways to terminate connections to your site's resources. All
@@ -85,13 +85,16 @@ defmodule Web.Sites.Gateways.Index do
         >
           <:col :let={gateway} field={{:gateways, :name}} label="instance">
             <.link navigate={~p"/#{@account}/gateways/#{gateway.id}"} class={[link_style()]}>
-              <%= gateway.name %>
+              {gateway.name}
             </.link>
           </:col>
-          <:col :let={gateway} label="remote iP">
+          <:col :let={gateway} label="remote ip">
             <code>
-              <%= gateway.last_seen_remote_ip %>
+              {gateway.last_seen_remote_ip}
             </code>
+          </:col>
+          <:col :let={gateway} label="version">
+            {gateway.last_seen_version}
           </:col>
           <:col :let={gateway} label="status">
             <.connection_status schema={gateway} />
@@ -102,12 +105,12 @@ defmodule Web.Sites.Gateways.Index do
                 No gateways to display.
                 <span :if={@group.managed_by == :system and @group.name == "Internet"}>
                   <.link class={[link_style()]} navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
-                    Deploy a gateway to the Internet site.
+                    Deploy a Gateway to the Internet Site.
                   </.link>
                 </span>
                 <span :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
                   <.link class={[link_style()]} navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
-                    Deploy a gateway to connect resources.
+                    Deploy a Gateway to connect Resources.
                   </.link>
                 </span>
               </div>

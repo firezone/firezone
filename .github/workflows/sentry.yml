@@ -1,0 +1,36 @@
+name: Create Sentry releases
+run-name: Triggered by ${{ github.actor }}
+on:
+  release:
+    types:
+      - published
+
+concurrency:
+  group: "publish-production-${{ github.event_name }}-${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  create_sentry_release:
+    name: create_${{ matrix.component }}_sentry_release
+    runs-on: ubuntu-22.04
+    strategy:
+      matrix:
+        include:
+          - component: gateway
+            projects: gateway
+          - component: gui-client
+            projects: gui-client
+          - component: headless-client
+            projects: headless-client
+          - component: macos-client
+            projects: apple-client
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/create-sentry-release
+        if: ${{ startsWith(github.event.release.name, matrix.component) }}
+        with:
+          component: ${{ matrix.component }}
+          projects: ${{ matrix.projects }}
+          sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}

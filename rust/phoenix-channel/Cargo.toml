@@ -1,33 +1,37 @@
 [package]
 name = "phoenix-channel"
 version = "0.1.0"
-edition = "2021"
+edition = { workspace = true }
+license = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-backoff = "0.4.0"
-base64 = "0.22.1"
-futures = "0.3.29"
-hex = "0.4"
-libc = "0.2"
-rand_core = "0.6.4"
+backoff = { workspace = true }
+base64 = { workspace = true }
+firezone-logging = { workspace = true }
+futures = { workspace = true }
+hex = { workspace = true }
+itertools = { workspace = true }
+libc = { workspace = true }
+os_info = { workspace = true }
+rand_core = { workspace = true }
 secrecy = { workspace = true }
-serde = { version = "1.0.210", features = ["derive"] }
-serde_json = "1.0.125"
-sha2 = "0.10.8"
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
 socket-factory = { workspace = true }
-thiserror = "1.0.61"
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["net", "time"] }
 tokio-tungstenite = { workspace = true, features = ["rustls-tls-webpki-roots"] }
 tracing = { workspace = true }
-url = "2.5.2"
-uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
+url = { workspace = true }
+uuid = { workspace = true, features = ["std", "v4"] }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 hostname = "0.4.0"
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "tracing"] }
 
 [lints]
 workspace = true

@@ -116,8 +116,9 @@ pub struct Worker {
 
 impl Drop for Worker {
     fn drop(&mut self) {
-        self.close()
-            .expect("should be able to close WorkerInner cleanly");
+        if let Err(e) = self.close() {
+            tracing::error!("Failed to close worker thread: {e:#}")
+        }
     }
 }
 
@@ -252,12 +253,14 @@ struct Callback {
     tx: NotifySender,
 }
 
-impl<'a> Drop for Listener<'a> {
+impl Drop for Listener<'_> {
     // Might never be called. Due to the way the scopes ended up,
     // we crash the GUI process before we can get back to the main thread
     // and drop the DNS listeners
     fn drop(&mut self) {
-        self.close_dont_drop().unwrap();
+        if let Err(e) = self.close_dont_drop() {
+            tracing::error!("Failed to close `Listener` gracefully: {e:#}");
+        }
     }
 }
 
@@ -445,11 +448,11 @@ mod async_dns {
                 }
             }
 
-            if let Err(error) = listener_4.close() {
-                tracing::error!(?error, "Error while closing IPv4 DNS listener");
+            if let Err(e) = listener_4.close() {
+                tracing::error!("Error while closing IPv4 DNS listener: {e:#}");
             }
-            if let Err(error) = listener_6.close() {
-                tracing::error!(?error, "Error while closing IPv6 DNS listener");
+            if let Err(e) = listener_6.close() {
+                tracing::error!("Error while closing IPv6 DNS listener: {e:#}");
             }
 
             Ok(())

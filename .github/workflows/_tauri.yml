@@ -1,16 +1,7 @@
 name: Tauri
 on:
   workflow_call:
-    inputs:
-      release_tag:
-        required: false
-        type: string
   workflow_dispatch:
-
-permissions:
-  # For saving to release
-  contents: write
-  id-token: write
 
 defaults:
   run:
@@ -20,69 +11,82 @@ defaults:
 env:
   RUSTFLAGS: "-Dwarnings"
   RUSTDOCFLAGS: "-D warnings"
-  SENTRY_ENVIRONMENT: "production"
 
 jobs:
+  update-release-draft:
+    name: update-release-draft
+    runs-on: ubuntu-22.04
+    env:
+      # mark:next-gui-version
+      RELEASE_NAME: gui-client-1.4.6
+    steps:
+      - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        id: update-release-draft
+        with:
+          config-name: release-drafter-gui-client.yml
+          tag: ${{ env.RELEASE_NAME }}
+          version: ${{ env.RELEASE_NAME }}
+          name: ${{ env.RELEASE_NAME }}
+          commitish: ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
+    needs: update-release-draft
     runs-on: ${{ matrix.runs-on }}
+    permissions:
+      contents: write # for attaching the build artifacts to the release
+      id-token: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          - runs-on: ubuntu-20.04
-            # mark:next-gui-version
-            binary-dest-path: firezone-client-gui-linux_1.3.7_x86_64
-            rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
-            upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
-            # mark:next-gui-version
-            syms-artifact: rust/gui-client/firezone-client-gui-linux_1.3.7_x86_64.dwp
-            # mark:next-gui-version
-            pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.3.7_x86_64.deb
+          - runs-on: ubuntu-22.04
+            arch: x86_64
+            os: linux
+            pkg-extension: deb
           - runs-on: ubuntu-22.04-arm
-            # mark:next-gui-version
-            binary-dest-path: firezone-client-gui-linux_1.3.7_aarch64
-            rename-script: ../../scripts/build/tauri-rename-ubuntu.sh
-            upload-script: ../../scripts/build/tauri-upload-ubuntu.sh
-            # mark:next-gui-version
-            syms-artifact: rust/gui-client/firezone-client-gui-linux_1.3.7_aarch64.dwp
-            # mark:next-gui-version
-            pkg-artifact: rust/gui-client/firezone-client-gui-linux_1.3.7_aarch64.deb
+            arch: aarch64
+            os: linux
+            pkg-extension: deb
           - runs-on: windows-2019
-            # mark:next-gui-version
-            binary-dest-path: firezone-client-gui-windows_1.3.7_x86_64
-            rename-script: ../../scripts/build/tauri-rename-windows.sh
-            upload-script: ../../scripts/build/tauri-upload-windows.sh
-            # mark:next-gui-version
-            syms-artifact: rust/gui-client/firezone-client-gui-windows_1.3.7_x86_64.pdb
-            # mark:next-gui-version
-            pkg-artifact: rust/gui-client/firezone-client-gui-windows_1.3.7_x86_64.msi
+            arch: x86_64
+            os: windows
+            pkg-extension: msi
     env:
-      BINARY_DEST_PATH: ${{ matrix.binary-dest-path }}
+      # mark:next-gui-version
+      ARTIFACT_SRC: ./rust/gui-client/firezone-client-gui-${{ matrix.os }}_1.4.6_${{ matrix.arch }}
+      # mark:next-gui-version
+      ARTIFACT_DST: firezone-client-gui-${{ matrix.os }}_1.4.6_${{ matrix.arch }}
       AZURE_KEY_VAULT_URI: ${{ secrets.AZURE_KEY_VAULT_URI }}
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
       AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
       AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
+      # mark:next-gui-version
+      BINARY_DEST_PATH: firezone-client-gui-${{ matrix.os }}_1.4.6_${{ matrix.arch }}
+      # Seems like there's no way to de-dupe env vars that depend on each other
+      # mark:next-gui-version
+      FIREZONE_GUI_VERSION: 1.4.6
+      RENAME_SCRIPT: ../../scripts/build/tauri-rename-${{ matrix.os }}.sh
+      TEST_INSTALL_SCRIPT: ../../scripts/tests/gui-client-install-${{ matrix.os }}-${{ matrix.pkg-extension }}.sh
+      TARGET_DIR: ../target
+      UPLOAD_SCRIPT: ../../scripts/build/tauri-upload-${{ matrix.os }}.sh
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-rust
-      - uses: ./.github/actions/setup-tauri
+      - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
         timeout-minutes: 10
-      # the arm64 images don't have the GH cli installed.
-      # Remove this when https://github.com/actions/runner-images/issues/10192 is resolved.
-      - name: Ubuntu arm workaround
-        if: ${{ matrix.runs-on == 'ubuntu-22.04-arm' }}
-        run: |
-          (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
-          && sudo mkdir -p -m 755 /etc/apt/keyrings \
-          && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
-          && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-          && sudo apt update \
-          && sudo apt install gh -y
+      - uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
+        with:
+          token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          organization: firezone-inc
       - name: Install pnpm deps
         run: pnpm install
       - name: Install AzureSignTool
@@ -91,6 +95,8 @@ jobs:
         # AzureSignTool >= 5 needs .NET 8. windows-2019 runner only has .NET 7.
         run: dotnet tool install --global AzureSignTool --version 4.0.1
       - name: Build release exe and MSI / deb
+        env:
+          CARGO_PROFILE_RELEASE_LTO: thin # Fat LTO is getting too slow / RAM-hungry on Tauri builds
         # Signs the exe before bundling it into the MSI
         run: pnpm build
       - name: Ensure unmodified Git workspace
@@ -103,32 +109,38 @@ jobs:
       - name: Sign the MSI
         if: ${{ runner.os == 'Windows' }}
         shell: bash
-        # mark:next-gui-version
-        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_1.3.7_x64_en-US.msi
+        run: ../../scripts/build/sign.sh ../target/release/bundle/msi/Firezone_${{ env.FIREZONE_GUI_VERSION }}_x64_en-US.msi
       - name: Rename artifacts and compute SHA256
         shell: bash
-        run: ${{ matrix.rename-script }}
-      - name: Upload debug symbols
-        uses: actions/upload-artifact@v4
+        run: ${{ env.RENAME_SCRIPT }}
+      - name: Upload deb / msi package
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
-          name: ${{ matrix.binary-dest-path }}-syms
-          path: |
-            ${{ matrix.syms-artifact }}
+          name: ${{ env.ARTIFACT_DST }}-pkg
+          path: ${{ env.ARTIFACT_SRC }}.${{ matrix.pkg-extension }}
           if-no-files-found: error
-      - name: Upload package
-        uses: actions/upload-artifact@v4
+      - name: Upload rpm package
+        if: "${{ runner.os == 'Linux' }}"
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
-          name: ${{ matrix.binary-dest-path }}-pkg
-          path: |
-            ${{ matrix.pkg-artifact }}
+          name: ${{ env.ARTIFACT_DST }}-rpm
+          path: ${{ env.ARTIFACT_SRC }}.rpm
           if-no-files-found: error
+      - name: Test installation
+        if: "${{ github.event_name == 'workflow_dispatch' }}"
+        shell: bash
+        run: ${{ env.TEST_INSTALL_SCRIPT }}
+
+      - name: Upload debug symbols to Sentry
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        run: |
+          sentry-cli debug-files upload --log-level info --project gui-client --include-sources ../target
+
       - name: Upload Release Assets
-        # Only upload the windows build to the drafted release on main builds
-        if: ${{ github.ref_name == 'main' }}
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
-          # mark:next-gui-version
-          TAG_NAME: gui-client-1.3.7
+          TAG_NAME: gui-client-${{ env.FIREZONE_GUI_VERSION }}
         shell: bash
-        run: ${{ matrix.upload-script }}
+        run: ${{ env.UPLOAD_SCRIPT }}

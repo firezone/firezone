@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use etherparse::{
     icmpv4,
     icmpv6::{self, ParameterProblemHeader},
@@ -6,7 +6,7 @@ use etherparse::{
 };
 use std::{io::Cursor, net::Ipv6Addr};
 
-use crate::NAT46_OVERHEAD;
+use crate::{ImpossibleTranslation, NAT46_OVERHEAD};
 
 /// Performs IPv4 -> IPv6 NAT on the packet in `buf` to the given src & dst IP.
 ///
@@ -132,8 +132,8 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv6Addr, dst: Ipv6Addr) -> Resul
         let icmpv4_header_dbg = tracing::event_enabled!(tracing::Level::TRACE)
             .then(|| tracing::field::debug(icmpv4_header.clone()));
 
-        let icmpv6_header = translate_icmpv4_header(total_length, icmpv4_header)
-            .context("Untranslatable ICMPv4 header")?;
+        let icmpv6_header =
+            translate_icmpv4_header(total_length, icmpv4_header).ok_or(ImpossibleTranslation)?;
         let icmpv6_header_length = icmpv6_header.header_len();
 
         tracing::trace!(from = icmpv4_header_dbg, to = ?icmpv6_header, "Performed ICMP-NAT46");
@@ -187,90 +187,7 @@ fn translate_icmpv4_header(
         // described below, set the Type to 1, and adjust the ICMP
         // checksum both to take the type/code change into account and
         // to include the ICMPv6 pseudo-header.
-        Icmpv4Type::DestinationUnreachable(i) => {
-            use icmpv4::DestUnreachableHeader::*;
-            use icmpv6::DestUnreachableCode::*;
-
-            match i {
-                // Code 0, 1 (Net Unreachable, Host Unreachable):  Set the Code
-                //    to 0 (No route to destination).
-                Network | Host => Icmpv6Type::DestinationUnreachable(NoRoute),
-
-                // Code 2 (Protocol Unreachable):  Translate to an ICMPv6
-                //    Parameter Problem (Type 4, Code 1) and make the Pointer
-                //    point to the IPv6 Next Header field.
-                Protocol => Icmpv6Type::ParameterProblem(ParameterProblemHeader {
-                    code: icmpv6::ParameterProblemCode::UnrecognizedNextHeader,
-                    pointer: 6, // The "Next Header" field is always at a fixed offset.
-                }),
-                // Code 3 (Port Unreachable):  Set the Code to 4 (Port
-                //    unreachable).
-                icmpv4::DestUnreachableHeader::Port => {
-                    Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Port)
-                }
-                // Code 4 (Fragmentation Needed and DF was Set):  Translate to
-                //    an ICMPv6 Packet Too Big message (Type 2) with Code set
-                //    to 0.  The MTU field MUST be adjusted for the difference
-                //    between the IPv4 and IPv6 header sizes, i.e.,
-                //    minimum(advertised MTU+20, MTU_of_IPv6_nexthop,
-                //    (MTU_of_IPv4_nexthop)+20).  Note that if the IPv4 router
-                //    set the MTU field to zero, i.e., the router does not
-                //    implement [RFC1191], then the translator MUST use the
-                //    plateau values specified in [RFC1191] to determine a
-                //    likely path MTU and include that path MTU in the ICMPv6
-                //    packet.  (Use the greatest plateau value that is less
-                //    than the returned Total Length field.)
-
-                //    See also the requirements in Section 6.
-                FragmentationNeeded { next_hop_mtu: 0 } => {
-                    const PLATEAU_VALUES: [u16; 10] =
-                        [68, 296, 508, 1006, 1492, 2002, 4352, 8166, 32000, 65535];
-
-                    let mtu = PLATEAU_VALUES
-                        .into_iter()
-                        .filter(|mtu| *mtu < total_length)
-                        .max()?;
-
-                    Icmpv6Type::PacketTooBig { mtu: mtu as u32 }
-                }
-                FragmentationNeeded { .. } => {
-                    return None; // FIXME: We don't know our IPv4 / IPv6 MTU here so cannot currently implement this.
-                }
-
-                // Code 5 (Source Route Failed):  Set the Code to 0 (No route
-                //    to destination).  Note that this error is unlikely since
-                //    source routes are not translated.
-                SourceRouteFailed => Icmpv6Type::DestinationUnreachable(NoRoute),
-                // Code 6, 7, 8:  Set the Code to 0 (No route to destination).
-                NetworkUnknown | HostUnknown | Isolated => {
-                    Icmpv6Type::DestinationUnreachable(NoRoute)
-                }
-
-                // Code 9, 10 (Communication with Destination Host
-                //     Administratively Prohibited):  Set the Code to 1
-                //     (Communication with destination administratively
-                //     prohibited).
-                NetworkProhibited | HostProhibited => {
-                    Icmpv6Type::DestinationUnreachable(Prohibited)
-                }
-
-                //  Code 11, 12:  Set the Code to 0 (No route to destination).
-                TosNetwork | TosHost => Icmpv6Type::DestinationUnreachable(NoRoute),
-
-                //  Code 13 (Communication Administratively Prohibited):  Set
-                //     the Code to 1 (Communication with destination
-                //     administratively prohibited).
-                FilterProhibited => Icmpv6Type::DestinationUnreachable(Prohibited),
-
-                //  Code 14 (Host Precedence Violation):  Silently drop.
-                HostPrecedenceViolation => return None,
-
-                //  Code 15 (Precedence cutoff in effect):  Set the Code to 1
-                //     (Communication with destination administratively
-                //     prohibited).
-                PrecedenceCutoff => Icmpv6Type::DestinationUnreachable(Prohibited),
-            }
-        }
+        Icmpv4Type::DestinationUnreachable(i) => translate_icmp_unreachable(i, total_length)?,
         Icmpv4Type::Redirect(_) => return None,
         Icmpv4Type::ParameterProblem(_) => return None,
 
@@ -292,4 +209,88 @@ fn translate_icmpv4_header(
     };
 
     Some(Icmpv6Header::new(icmpv6_type))
+}
+
+pub fn translate_icmp_unreachable(
+    header: icmpv4::DestUnreachableHeader,
+    total_length: u16,
+) -> Option<Icmpv6Type> {
+    use icmpv4::DestUnreachableHeader::*;
+    use icmpv6::DestUnreachableCode::*;
+
+    Some(match header {
+        // Code 0, 1 (Net Unreachable, Host Unreachable):  Set the Code
+        //    to 0 (No route to destination).
+        Network | Host => Icmpv6Type::DestinationUnreachable(NoRoute),
+
+        // Code 2 (Protocol Unreachable):  Translate to an ICMPv6
+        //    Parameter Problem (Type 4, Code 1) and make the Pointer
+        //    point to the IPv6 Next Header field.
+        Protocol => Icmpv6Type::ParameterProblem(ParameterProblemHeader {
+            code: icmpv6::ParameterProblemCode::UnrecognizedNextHeader,
+            pointer: 6, // The "Next Header" field is always at a fixed offset.
+        }),
+        // Code 3 (Port Unreachable):  Set the Code to 4 (Port
+        //    unreachable).
+        icmpv4::DestUnreachableHeader::Port => {
+            Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Port)
+        }
+        // Code 4 (Fragmentation Needed and DF was Set):  Translate to
+        //    an ICMPv6 Packet Too Big message (Type 2) with Code set
+        //    to 0.  The MTU field MUST be adjusted for the difference
+        //    between the IPv4 and IPv6 header sizes, i.e.,
+        //    minimum(advertised MTU+20, MTU_of_IPv6_nexthop,
+        //    (MTU_of_IPv4_nexthop)+20).  Note that if the IPv4 router
+        //    set the MTU field to zero, i.e., the router does not
+        //    implement [RFC1191], then the translator MUST use the
+        //    plateau values specified in [RFC1191] to determine a
+        //    likely path MTU and include that path MTU in the ICMPv6
+        //    packet.  (Use the greatest plateau value that is less
+        //    than the returned Total Length field.)
+
+        //    See also the requirements in Section 6.
+        FragmentationNeeded { next_hop_mtu: 0 } => {
+            const PLATEAU_VALUES: [u16; 10] =
+                [68, 296, 508, 1006, 1492, 2002, 4352, 8166, 32000, 65535];
+
+            let mtu = PLATEAU_VALUES
+                .into_iter()
+                .filter(|mtu| *mtu < total_length)
+                .max()?;
+
+            Icmpv6Type::PacketTooBig { mtu: mtu as u32 }
+        }
+        FragmentationNeeded { next_hop_mtu } => Icmpv6Type::PacketTooBig {
+            mtu: next_hop_mtu as u32 + 20,
+        },
+
+        // Code 5 (Source Route Failed):  Set the Code to 0 (No route
+        //    to destination).  Note that this error is unlikely since
+        //    source routes are not translated.
+        SourceRouteFailed => Icmpv6Type::DestinationUnreachable(NoRoute),
+        // Code 6, 7, 8:  Set the Code to 0 (No route to destination).
+        NetworkUnknown | HostUnknown | Isolated => Icmpv6Type::DestinationUnreachable(NoRoute),
+
+        // Code 9, 10 (Communication with Destination Host
+        //     Administratively Prohibited):  Set the Code to 1
+        //     (Communication with destination administratively
+        //     prohibited).
+        NetworkProhibited | HostProhibited => Icmpv6Type::DestinationUnreachable(Prohibited),
+
+        //  Code 11, 12:  Set the Code to 0 (No route to destination).
+        TosNetwork | TosHost => Icmpv6Type::DestinationUnreachable(NoRoute),
+
+        //  Code 13 (Communication Administratively Prohibited):  Set
+        //     the Code to 1 (Communication with destination
+        //     administratively prohibited).
+        FilterProhibited => Icmpv6Type::DestinationUnreachable(Prohibited),
+
+        //  Code 14 (Host Precedence Violation):  Silently drop.
+        HostPrecedenceViolation => return None,
+
+        //  Code 15 (Precedence cutoff in effect):  Set the Code to 1
+        //     (Communication with destination administratively
+        //     prohibited).
+        PrecedenceCutoff => Icmpv6Type::DestinationUnreachable(Prohibited),
+    })
 }

@@ -1,5 +1,42 @@
+//! The authentication scheme for the TURN server.
+//!
+//! TURN specifies two ways of authentication: long-term credentials & short-term credentials.
+//! For details on those, please consult the RFC: <https://www.rfc-editor.org/rfc/rfc8489.html#section-9>.
+//!
+//! This implementation only supports long-term credentials.
+//!
+//! ## Client authentication
+//!
+//! On startup, the server generates a 32-byte secret (referred to as `relay_secret`) that is only ever stored in-memory.
+//! This secret is shared with the Firezone portal upon connecting with the WebSocket.
+//! The portal uses this secret to generate credentials for each TURN client.
+//! The credentials take the form of:
+//!
+//! - username: `{unix_expiry_timestamp}:{salt}`
+//! - password: `sha256({unix_expiry_timestamp}:{relay_secret}:{salt})`
+//!
+//! As such, a TURN client can never create a set of credentials themselves because they are missing the `relay_secret`.
+//! In addition, a relay can validate such a username and password combination without having to store any state other than the `relay_secret`.
+//!
+//! All STUN messages other than `BINDING` requests MUST be authenticated by the client.
+//!
+//! ## Server authentication
+//!
+//! In addition to authenticating all messages from the client with the server, a server will authenticate its messages to the client.
+//! This also uses the long-term credentials mechanism using the same username and password.
+//! In other words, the server will authenticate the messages sent to the client with the client's username and password.
+//!
+//! ## Security considerations
+//!
+//! The password is a shared secret and thus ensures message integrity and authenticity to the client.
+//! An observer on the network path does not have knowledge of the `relay_secret` and thus cannot fake a relay's identity.
+//!
+//! Each client will receive a different pair of username and password.
+//! Thus, even with valid credentials, an attacker cannot reuse those credentials to fake responses for a different client.
+
 use base64::prelude::BASE64_STANDARD_NO_PAD;
 use base64::Engine;
+use bytecodec::Encode;
 use once_cell::sync::Lazy;
 use secrecy::{ExposeSecret, SecretString};
 use sha2::digest::FixedOutput;
@@ -8,10 +45,14 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
+use stun_codec::Message;
 use uuid::Uuid;
 
+use crate::Attribute;
+
 // TODO: Upstream a const constructor to `stun-codec`.
-pub static FIREZONE: Lazy<Realm> = Lazy::new(|| Realm::new("firezone".to_owned()).unwrap());
+pub static FIREZONE: Lazy<Realm> =
+    Lazy::new(|| Realm::new("firezone".to_owned()).expect("static realm is less than 128 chars"));
 
 pub(crate) trait MessageIntegrityExt {
     fn verify(
@@ -50,6 +91,72 @@ impl MessageIntegrityExt for MessageIntegrity {
     }
 }
 
+pub(crate) struct AuthenticatedMessage(Message<Attribute>);
+
+impl AuthenticatedMessage {
+    /// Creates a new [`AuthenticatedMessage`] that isn't actually authenticated.
+    ///
+    /// This should only be used in circumstances where we cannot authenticate the message because e.g. the original request wasn't authenticated either.
+    pub(crate) fn new_dangerous_unauthenticated(message: Message<Attribute>) -> Self {
+        Self(message)
+    }
+
+    pub(crate) fn new(
+        relay_secret: &SecretString,
+        username: &str,
+        mut message: Message<Attribute>,
+    ) -> Result<Self, Error> {
+        let (expiry_unix_timestamp, salt) = split_username(username)?;
+        let expired = systemtime_from_unix(expiry_unix_timestamp);
+
+        let username = Username::new(format!("{}:{}", expiry_unix_timestamp, salt))
+            .map_err(|_| Error::InvalidUsername)?;
+        let password = generate_password(relay_secret, expired, salt);
+
+        let message_integrity =
+            MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)?;
+
+        message.add_attribute(message_integrity);
+
+        Ok(Self(message))
+    }
+
+    pub fn class(&self) -> stun_codec::MessageClass {
+        self.0.class()
+    }
+
+    pub fn method(&self) -> stun_codec::Method {
+        self.0.method()
+    }
+
+    pub fn get_attribute<T>(&self) -> Option<&T>
+    where
+        T: stun_codec::Attribute,
+        Attribute: stun_codec::convert::TryAsRef<T>,
+    {
+        self.0.get_attribute()
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct MessageEncoder(stun_codec::MessageEncoder<Attribute>);
+
+impl Encode for MessageEncoder {
+    type Item = AuthenticatedMessage;
+
+    fn encode(&mut self, buf: &mut [u8], eos: bytecodec::Eos) -> bytecodec::Result<usize> {
+        self.0.encode(buf, eos)
+    }
+
+    fn start_encoding(&mut self, item: Self::Item) -> bytecodec::Result<()> {
+        self.0.start_encoding(item.0)
+    }
+
+    fn requiring_bytes(&self) -> bytecodec::ByteCount {
+        self.0.requiring_bytes()
+    }
+}
+
 /// Tracks valid nonces for the TURN relay.
 ///
 /// The semantic nature of nonces is an implementation detail of the relay in TURN.
@@ -73,7 +180,7 @@ impl Nonces {
     /// Record the usage of a nonce in a request.
     pub(crate) fn handle_nonce_used(&mut self, nonce: Uuid) -> Result<(), Error> {
         let mut entry = match self.inner.entry(nonce) {
-            Entry::Vacant(_) => return Err(Error::InvalidNonce),
+            Entry::Vacant(_) => return Err(Error::UnknownNonce),
             Entry::Occupied(entry) => entry,
         };
 
@@ -82,7 +189,7 @@ impl Nonces {
         if *remaining_requests == 0 {
             entry.remove();
 
-            return Err(Error::InvalidNonce);
+            return Err(Error::NonceUsedUp);
         }
 
         *remaining_requests -= 1;
@@ -91,12 +198,20 @@ impl Nonces {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    #[error("expired")]
     Expired,
+    #[error("invalid password")]
     InvalidPassword,
+    #[error("invalid username")]
     InvalidUsername,
-    InvalidNonce,
+    #[error("nonce has been used up")]
+    NonceUsedUp,
+    #[error("unknown nonce")]
+    UnknownNonce,
+    #[error("cannot authenticate message")]
+    CannotAuthenticate(#[from] bytecodec::Error),
 }
 
 pub(crate) fn split_username(username: &str) -> Result<(u64, &str), Error> {
@@ -202,7 +317,7 @@ mod tests {
             systemtime_from_unix(1685200000),
         );
 
-        assert_eq!(result.unwrap_err(), Error::Expired)
+        assert!(matches!(result.unwrap_err(), Error::Expired))
     }
 
     #[test]
@@ -219,7 +334,7 @@ mod tests {
             systemtime_from_unix(168520000 + 1000),
         );
 
-        assert_eq!(result.unwrap_err(), Error::InvalidPassword)
+        assert!(matches!(result.unwrap_err(), Error::InvalidPassword))
     }
 
     #[test]
@@ -236,7 +351,7 @@ mod tests {
             systemtime_from_unix(168520000 + 1000),
         );
 
-        assert_eq!(result.unwrap_err(), Error::InvalidUsername)
+        assert!(matches!(result.unwrap_err(), Error::InvalidUsername))
     }
 
     #[test]
@@ -250,10 +365,10 @@ mod tests {
             nonces.handle_nonce_used(nonce).unwrap();
         }
 
-        assert_eq!(
+        assert!(matches!(
             nonces.handle_nonce_used(nonce).unwrap_err(),
-            Error::InvalidNonce
-        );
+            Error::NonceUsedUp
+        ));
     }
 
     #[test]
@@ -261,10 +376,10 @@ mod tests {
         let mut nonces = Nonces::default();
         let nonce = Uuid::new_v4();
 
-        assert_eq!(
+        assert!(matches!(
             nonces.handle_nonce_used(nonce).unwrap_err(),
-            Error::InvalidNonce
-        );
+            Error::UnknownNonce
+        ));
     }
 
     fn message_integrity(

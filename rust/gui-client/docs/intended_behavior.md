@@ -19,7 +19,6 @@ Best performed on a clean VM
 1. Open the Settings window and change to staging if needed
 1. Click "Sign in"
 1. Expect a browser to open
-1. Disable DoH in Firefox if needed (20.04 and 22.04 both have it, in different places) https://www.firezone.dev/kb/administer/troubleshooting#some-browsers-break-dns-routing
 1. Sign in
 1. Expect Firefox to show "Allow this site to open the link with Firezone?" modal
 1. Check "Always..." and click "Open link"
@@ -46,7 +45,7 @@ Best performed on a clean VM
 
 ## Smoke test checklist (Windows)
 
-Keep this synchronized with the Windows GUI docs in `/website/src/app/kb/client-apps/windows-client`
+Keep this synchronized with the Windows GUI docs in `/website/src/app/kb/client-apps/windows-gui-client`
 
 x86_64 only, see issue #2992. Best performed on a clean VM.
 

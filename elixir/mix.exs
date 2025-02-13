@@ -2,12 +2,10 @@ defmodule Firezone.MixProject do
   use Mix.Project
 
   def project do
-    {sha, _} = Code.eval_file(Path.join([__DIR__, "sha.exs"]))
-
     [
       name: :firezone,
       apps_path: "apps",
-      version: "0.1.0+#{sha}",
+      version: version(),
       start_permanent: Mix.env() == :prod,
       test_coverage: [tool: ExCoveralls],
       preferred_cli_env: [
@@ -49,10 +47,7 @@ defmodule Firezone.MixProject do
       # Formatter doesn't track dependencies of children applications
       {:phoenix, "~> 1.7.0"},
       {:phoenix_live_view, "~> 1.0.0-rc.0"},
-
-      # TODO: remove it after new version of Floki is released
-      {:floki,
-       override: true, github: "philss/floki", ref: "3d5adab58a41b020a775baca82fe15c0c364daab"}
+      {:floki, "~> 0.37.0"}
     ]
   end
 
@@ -97,5 +92,10 @@ defmodule Firezone.MixProject do
         ]
       ]
     ]
+  end
+
+  defp version do
+    sha = System.get_env("GIT_SHA", "dev") |> String.trim()
+    "0.1.0+#{sha}"
   end
 end

@@ -2,9 +2,11 @@
 
 use anyhow::Result;
 use firezone_headless_client::known_dirs;
+use firezone_logging::err_with_src;
 use rand::{thread_rng, RngCore};
 use secrecy::{ExposeSecret, SecretString};
-use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use subtle::ConstantTimeEq;
 use url::Url;
 
@@ -12,24 +14,26 @@ const NONCE_LENGTH: usize = 32;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("`actor_name_path` has no parent, this should be impossible")]
-    ActorNamePathWrong,
     #[error("`known_dirs` failed")]
     CantFindKnownDir,
     #[error("`create_dir_all` failed while writing `actor_name_path`")]
     CreateDirAll(std::io::Error),
-    #[error("Couldn't delete actor_name from disk: {0}")]
-    DeleteActorName(std::io::Error),
+    #[error("Couldn't delete session file from disk: {0}")]
+    DeleteFile(std::io::Error),
     #[error(transparent)]
     Keyring(#[from] keyring::Error),
     #[error("No in-flight request")]
     NoInflightRequest,
-    #[error("Couldn't read actor_name from disk: {0}")]
-    ReadActorName(std::io::Error),
+    #[error("session file path has no parent, this should be impossible")]
+    PathWrong,
+    #[error("Couldn't read session file: {0}")]
+    ReadFile(std::io::Error),
+    #[error("Could not (de)serialize session data")]
+    Serde,
     #[error("State in server response doesn't match state in client request")]
     StatesDontMatch,
-    #[error("Couldn't write actor_name to disk: {0}")]
-    WriteActorName(std::io::Error),
+    #[error("Couldn't write session file: {0}")]
+    WriteFile(std::io::Error),
 }
 
 pub struct Auth {
@@ -61,14 +65,23 @@ impl Request {
     }
 }
 
-pub struct Response {
-    pub actor_name: String,
-    pub fragment: SecretString,
-    pub state: SecretString,
+pub(crate) struct Response {
+    pub(crate) account_slug: String,
+    pub(crate) actor_name: String,
+    pub(crate) fragment: SecretString,
+    pub(crate) state: SecretString,
 }
 
+#[derive(Default, Deserialize, Serialize)]
 pub struct Session {
-    pub actor_name: String,
+    pub(crate) account_slug: String,
+    pub(crate) actor_name: String,
+}
+
+impl Session {
+    pub fn account_slug(&self) -> &str {
+        &self.account_slug
+    }
 }
 
 struct SessionAndToken {
@@ -97,8 +110,8 @@ impl Auth {
 
         match this.get_token_from_disk() {
             Err(error) => tracing::error!(
-                ?error,
-                "Failed to load token from disk. Will start in signed-out state"
+                "Failed to load token from disk. Will start in signed-out state: {}",
+                err_with_src(&error)
             ),
             Ok(Some(SessionAndToken { session, token: _ })) => {
                 this.state = State::SignedIn(session);
@@ -122,15 +135,17 @@ impl Auth {
     ///
     /// Performs I/O.
     pub fn sign_out(&mut self) -> Result<(), Error> {
-        if let Err(error) = self.token_store.delete_credential() {
-            tracing::warn!(?error, "Couldn't delete token while signing out");
-        }
-        if let Err(error) = std::fs::remove_file(actor_name_path()?) {
-            // Ignore NotFound, since the file is gone anyway
-            if error.kind() != std::io::ErrorKind::NotFound {
-                return Err(Error::DeleteActorName(error));
+        match self.token_store.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => {}
+            Err(error) => {
+                tracing::warn!(
+                    "Couldn't delete token while signing out: {}",
+                    err_with_src(&error)
+                );
             }
         }
+        delete_if_exists(&actor_name_path()?)?;
+        delete_if_exists(&session_data_path()?)?;
         self.state = State::SignedOut;
         Ok(())
     }
@@ -139,13 +154,17 @@ impl Auth {
     ///
     /// Returns parameters used to make a URL for the web browser to open
     /// May return Ok(None) if we're already signed in
-    pub fn start_sign_in(&mut self) -> Result<Option<&Request>, Error> {
+    pub fn start_sign_in(&mut self) -> Result<&Request, Error> {
         self.sign_out()?;
         self.state = State::NeedResponse(Request {
             nonce: generate_nonce(),
             state: generate_nonce(),
         });
-        Ok(Some(self.ongoing_request()?))
+        let State::NeedResponse(request) = &self.state else {
+            unreachable!("We just set `self.state`")
+        };
+
+        Ok(request)
     }
 
     /// Complete an ongoing sign-in flow using parameters from a deep link
@@ -153,9 +172,9 @@ impl Auth {
     /// Returns a valid token.
     /// Performs I/O.
     ///
-    /// Errors if we don't have any ongoing flow, or if the response is invalid
-    pub fn handle_response(&mut self, resp: Response) -> Result<SecretString, Error> {
-        let req = self.ongoing_request()?;
+    /// Errors if the response is invalid.
+    pub(crate) fn handle_response(&mut self, resp: Response) -> Result<SecretString, Error> {
+        let req = self.ongoing_request().ok_or(Error::NoInflightRequest)?;
 
         if !secure_equality(&resp.state, &req.state) {
             self.sign_out()?;
@@ -169,21 +188,27 @@ impl Auth {
         );
         let token = SecretString::from(token);
 
-        self.save_session(&resp.actor_name, &token)?;
-        self.state = State::SignedIn(Session {
+        let session = Session {
+            account_slug: resp.account_slug,
             actor_name: resp.actor_name,
-        });
+        };
+
+        self.save_session(&session, &token)?;
+        self.state = State::SignedIn(session);
         Ok(SecretString::from(token))
     }
 
-    fn save_session(&self, actor_name: &str, token: &SecretString) -> Result<(), Error> {
+    fn save_session(&self, session: &Session, token: &SecretString) -> Result<(), Error> {
         // This MUST be the only place the GUI can call `set_password`, since
         // the actor name is also saved here.
         self.token_store.set_password(token.expose_secret())?;
-        let path = actor_name_path()?;
-        std::fs::create_dir_all(path.parent().ok_or(Error::ActorNamePathWrong)?)
-            .map_err(Error::CreateDirAll)?;
-        std::fs::write(path, actor_name.as_bytes()).map_err(Error::WriteActorName)?;
+        save_file(&actor_name_path()?, session.actor_name.as_bytes())?;
+        save_file(
+            &session_data_path()?,
+            serde_json::to_string(session)
+                .map_err(|_| Error::Serde)?
+                .as_bytes(),
+        )?;
         Ok(())
     }
 
@@ -205,14 +230,24 @@ impl Auth {
     ///
     /// Performs I/O
     fn get_token_from_disk(&self) -> Result<Option<SessionAndToken>, Error> {
-        let actor_name = match std::fs::read_to_string(actor_name_path()?) {
-            Ok(x) => x,
+        // Read the actor_name file, then let the session file override it if present.
+
+        let mut session = Session::default();
+        match std::fs::read_to_string(actor_name_path()?) {
+            Ok(x) => session.actor_name = x,
             // It can happen with dev systems that actor_name.txt doesn't exist
             // even though the token is in the cred manager.
             // In that case we just say the app is signed out
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-            Err(e) => return Err(Error::ReadActorName(e)),
+            Err(e) => return Err(Error::ReadFile(e)),
         };
+        match std::fs::read_to_string(session_data_path()?) {
+            Ok(x) => {
+                session = serde_json::from_str(&x).map_err(|_| Error::Serde)?;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(Error::ReadFile(e)),
+        }
 
         // This MUST be the only place the GUI can call `get_password`, since the
         // actor name is also loaded here.
@@ -221,18 +256,31 @@ impl Auth {
         };
         let token = SecretString::from(token);
 
-        Ok(Some(SessionAndToken {
-            session: Session { actor_name },
-            token,
-        }))
+        Ok(Some(SessionAndToken { session, token }))
     }
 
-    pub fn ongoing_request(&self) -> Result<&Request, Error> {
+    pub fn ongoing_request(&self) -> Option<&Request> {
         match &self.state {
-            State::NeedResponse(x) => Ok(x),
-            State::SignedIn(_) | State::SignedOut => Err(Error::NoInflightRequest),
+            State::NeedResponse(x) => Some(x),
+            State::SignedIn(_) | State::SignedOut => None,
         }
     }
+}
+
+fn delete_if_exists(path: &Path) -> Result<(), Error> {
+    if let Err(error) = std::fs::remove_file(path) {
+        // Ignore NotFound, since the file is gone anyway
+        if error.kind() != std::io::ErrorKind::NotFound {
+            return Err(Error::DeleteFile(error));
+        }
+    }
+    Ok(())
+}
+
+fn save_file(path: &Path, content: &[u8]) -> Result<(), Error> {
+    std::fs::create_dir_all(path.parent().ok_or(Error::PathWrong)?).map_err(Error::CreateDirAll)?;
+    std::fs::write(path, content).map_err(Error::WriteFile)?;
+    Ok(())
 }
 
 /// Returns a path to a file where we can save the actor name
@@ -242,6 +290,12 @@ fn actor_name_path() -> Result<PathBuf, Error> {
     Ok(known_dirs::session()
         .ok_or(Error::CantFindKnownDir)?
         .join("actor_name.txt"))
+}
+
+fn session_data_path() -> Result<PathBuf, Error> {
+    Ok(known_dirs::session()
+        .ok_or(Error::CantFindKnownDir)?
+        .join("session_data.json"))
 }
 
 /// Generates a random nonce using a CSPRNG, then returns it as hexadecimal
@@ -268,7 +322,10 @@ pub fn replicate_6791() -> Result<()> {
     tracing::warn!("Debugging issue #6791, pretending to be signed in with a bad token");
     let this = Auth::new()?;
     this.save_session(
-        "Jane Doe",
+        &Session {
+            account_slug: "firezone".to_string(),
+            actor_name: "Jane Doe".to_string(),
+        },
         &SecretString::from("obviously invalid token for testing #6791".to_string()),
     )?;
     Ok(())
@@ -389,8 +446,9 @@ mod tests {
             assert!(state.token().unwrap().is_none());
 
             // User clicks "Sign In", build a fake server response
-            let req = state.start_sign_in().unwrap().unwrap();
+            let req = state.start_sign_in().unwrap();
             let resp = Response {
+                account_slug: "firezone".into(),
                 actor_name: actor_name.into(),
                 fragment: bogus_secret("fragment"),
                 state: req.state.clone(),
@@ -416,7 +474,7 @@ mod tests {
             // Accidentally sign in again, this can happen if the user holds the systray menu open while a sign in is succeeding.
             // For now, we treat that like signing out and back in immediately, so it wipes the old token.
             // TODO: That sounds wrong.
-            assert!(state.start_sign_in().unwrap().is_some());
+            assert!(state.start_sign_in().is_ok());
             assert!(state.token().unwrap().is_none());
 
             // Sign out again, now the token is gone
@@ -437,6 +495,7 @@ mod tests {
 
         // If we get a deep link with no in-flight request, it's invalid
         let r = state.handle_response(Response {
+            account_slug: "firezone".into(),
             actor_name: "Jane Doe".into(),
             fragment: bogus_secret("fragment"),
             state: bogus_secret("state"),
@@ -465,6 +524,7 @@ mod tests {
         // User clicks "Sign In", build a fake server response
         state.start_sign_in().unwrap();
         let resp = Response {
+            account_slug: "firezone".into(),
             actor_name: "Jane Doe".into(),
             fragment: bogus_secret("fragment"),
             state: SecretString::from(

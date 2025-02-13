@@ -8,41 +8,56 @@
 import Foundation
 import AuthenticationServices
 
-
 /// Wraps the ASWebAuthenticationSession ordeal so it can be called from either
 /// the AuthView (iOS) or the MenuBar (macOS)
 @MainActor
 struct WebAuthSession {
   private static let scheme = "firezone-fd0020211111"
 
-  static func signIn(store: Store) async {
+  static func signIn(store: Store) async throws {
     guard let authURL = store.authURL(),
           let authClient = try? AuthClient(authURL: authURL),
           let url = try? authClient.build()
-    else { fatalError("authURL must be valid!") }
+    else {
+      // Should never get here because we perform URL validation on input, but handle this just in case
+      throw AuthClientError.invalidAuthURL
+    }
 
     let anchor = PresentationAnchor()
 
-    let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { returnedURL, error in
-      guard error == nil,
-            let authResponse = try? authClient.response(url: returnedURL)
-      else {
-        // Can happen if the user closes the opened Webview without signing in
-        dump(error)
-        return
+    let authResponse: AuthResponse? = try await withCheckedThrowingContinuation { continuation in
+      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { returnedURL, error in
+        do {
+          if let error = error as? ASWebAuthenticationSessionError,
+             error.code == .canceledLogin {
+            // User canceled sign in
+            continuation.resume(returning: nil)
+            return
+          } else if let error = error {
+            throw error
+          }
+
+          let authResponse = try authClient.response(url: returnedURL)
+
+          continuation.resume(returning: authResponse)
+        } catch {
+          continuation.resume(throwing: error)
+        }
       }
 
-      Task { try await store.signIn(authResponse: authResponse) }
+      // Apple weirdness, doesn't seem to be actually used in macOS
+      session.presentationContextProvider = anchor
+
+      // load cookies
+      session.prefersEphemeralWebBrowserSession = false
+
+      // Start auth
+      session.start()
     }
 
-    // Apple weirdness, doesn't seem to be actually used in macOS
-    session.presentationContextProvider = anchor
-
-    // load cookies
-    session.prefersEphemeralWebBrowserSession = false
-
-    // Start auth
-    session.start()
+    if let authResponse {
+      try await store.signIn(authResponse: authResponse)
+    }
   }
 }
 

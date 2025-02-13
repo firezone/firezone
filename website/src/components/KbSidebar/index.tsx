@@ -96,18 +96,21 @@ export default function KbSidebar() {
           <SidebarCollapse prefix="/kb/client-apps" label="Client apps">
             <SidebarItem href="/kb/client-apps">Overview</SidebarItem>
             <SidebarItem href="/kb/client-apps/macos-client">macOS</SidebarItem>
-            <SidebarItem href="/kb/client-apps/ios-client">iOS</SidebarItem>
-            <SidebarItem href="/kb/client-apps/windows-client">
+            <SidebarItem href="/kb/client-apps/windows-gui-client">
               Windows
             </SidebarItem>
+            <SidebarItem href="/kb/client-apps/linux-gui-client">
+              Linux
+            </SidebarItem>
+            <SidebarItem href="/kb/client-apps/ios-client">iOS</SidebarItem>
             <SidebarItem href="/kb/client-apps/android-client">
               Android & ChromeOS
             </SidebarItem>
-            <SidebarItem href="/kb/client-apps/linux-client">
+            <SidebarItem href="/kb/client-apps/linux-headless-client">
               Linux Headless
             </SidebarItem>
-            <SidebarItem href="/kb/client-apps/linux-gui-client">
-              Linux GUI
+            <SidebarItem href="/kb/client-apps/windows-headless-client">
+              Windows Headless
             </SidebarItem>
           </SidebarCollapse>
           <SidebarCollapse prefix="/kb/use-cases" label="Use cases">
@@ -158,6 +161,9 @@ export default function KbSidebar() {
             <SidebarItem href="/kb/reference/rest-api">REST API</SidebarItem>
             <SidebarItem href="/kb/reference/faq">FAQ</SidebarItem>
             <SidebarItem href="/kb/reference/glossary">Glossary</SidebarItem>
+            <SidebarItem href="/kb/reference/restricted-regions">
+              Restricted regions
+            </SidebarItem>
           </SidebarCollapse>
         </SidebarItemGroup>
       </SidebarItems>

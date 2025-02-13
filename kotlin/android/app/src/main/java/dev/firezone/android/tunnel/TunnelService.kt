@@ -16,8 +16,13 @@ import android.os.Binder
 import android.os.Build
 import android.os.Bundle
 import android.os.IBinder
+import android.util.Log
 import androidx.lifecycle.MutableLiveData
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.installations.FirebaseInstallations
+import com.google.gson.FieldNamingPolicy
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
@@ -30,9 +35,13 @@ import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.isInternetResource
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.util.UUID
+import java.util.concurrent.Executors
 import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
+
+data class DeviceInfo(
+    var firebaseInstallationId: String? = null,
+)
 
 @AndroidEntryPoint
 @OptIn(ExperimentalStdlibApi::class)
@@ -92,9 +101,7 @@ class TunnelService : VpnService() {
         fun getService(): TunnelService = this@TunnelService
     }
 
-    override fun onBind(intent: Intent): IBinder {
-        return binder
-    }
+    override fun onBind(intent: Intent): IBinder = binder
 
     private val callback: ConnlibCallback =
         object : ConnlibCallback {
@@ -109,22 +116,16 @@ class TunnelService : VpnService() {
                 addressIPv4: String,
                 addressIPv6: String,
                 dnsAddresses: String,
-            ) {
-                // init tunnel config
-                tunnelDnsAddresses = moshi.adapter<MutableList<String>>().fromJson(dnsAddresses)!!
-                tunnelIpv4Address = addressIPv4
-                tunnelIpv6Address = addressIPv6
-
-                buildVpnService()
-            }
-
-            override fun onUpdateRoutes(
                 routes4JSON: String,
                 routes6JSON: String,
             ) {
+                // init tunnel config
+                tunnelDnsAddresses = moshi.adapter<MutableList<String>>().fromJson(dnsAddresses)!!
                 val routes4 = moshi.adapter<MutableList<Cidr>>().fromJson(routes4JSON)!!
                 val routes6 = moshi.adapter<MutableList<Cidr>>().fromJson(routes6JSON)!!
 
+                tunnelIpv4Address = addressIPv4
+                tunnelIpv6Address = addressIPv6
                 tunnelRoutes.clear()
                 tunnelRoutes.addAll(routes4)
                 tunnelRoutes.addAll(routes6)
@@ -141,6 +142,11 @@ class TunnelService : VpnService() {
                 // Clear any user tokens and actorNames
                 repo.clearToken()
                 repo.clearActorName()
+
+                // Free the connlib session
+                connlibSessionPtr?.let {
+                    ConnlibSession.disconnect(it)
+                }
 
                 shutdown()
                 if (startedByUser) {
@@ -165,43 +171,51 @@ class TunnelService : VpnService() {
             }
         }
 
-        Builder().apply {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                setMetered(false) // Inherit the metered status from the underlying networks.
+        Builder()
+            .apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    setMetered(false) // Inherit the metered status from the underlying networks.
+                }
+
+                if (tunnelRoutes.all { it.prefix != 0 }) {
+                    // Allow traffic to bypass the VPN interface when Always-on VPN is enabled only
+                    // if full-route is not enabled.
+                    allowBypass()
+                }
+
+                setUnderlyingNetworks(null) // Use all available networks.
+
+                setSession(SESSION_NAME)
+                setMtu(MTU)
+
+                handleApplications(appRestrictions, "allowedApplications") { addAllowedApplication(it) }
+                handleApplications(
+                    appRestrictions,
+                    "disallowedApplications",
+                ) { addDisallowedApplication(it) }
+
+                // Never route GCM notifications through the tunnel.
+                addDisallowedApplication("com.google.android.gms") // Google Mobile Services
+                addDisallowedApplication("com.google.firebase.messaging") // Firebase Cloud Messaging
+                addDisallowedApplication("com.google.android.gsf") // Google Services Framework
+
+                tunnelRoutes.forEach {
+                    addRoute(it.address, it.prefix)
+                }
+
+                tunnelDnsAddresses.forEach { dns ->
+                    addDnsServer(dns)
+                }
+
+                addAddress(tunnelIpv4Address!!, 32)
+                addAddress(tunnelIpv6Address!!, 128)
+            }.establish()
+            ?.detachFd()
+            ?.also { fd ->
+                connlibSessionPtr?.let {
+                    ConnlibSession.setTun(it, fd)
+                }
             }
-
-            if (tunnelRoutes.all { it.prefix != 0 }) {
-                // Allow traffic to bypass the VPN interface when Always-on VPN is enabled only
-                // if full-route is not enabled.
-                allowBypass()
-            }
-
-            setUnderlyingNetworks(null) // Use all available networks.
-
-            setSession(SESSION_NAME)
-            setMtu(MTU)
-
-            handleApplications(appRestrictions, "allowedApplications") { addAllowedApplication(it) }
-            handleApplications(
-                appRestrictions,
-                "disallowedApplications",
-            ) { addDisallowedApplication(it) }
-
-            tunnelRoutes.forEach {
-                addRoute(it.address, it.prefix)
-            }
-
-            tunnelDnsAddresses.forEach { dns ->
-                addDnsServer(dns)
-            }
-
-            addAddress(tunnelIpv4Address!!, 32)
-            addAddress(tunnelIpv6Address!!, 128)
-        }.establish()?.detachFd()?.also { fd ->
-            connlibSessionPtr?.let {
-                ConnlibSession.setTun(it, fd)
-            }
-        }
     }
 
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
@@ -255,13 +269,9 @@ class TunnelService : VpnService() {
         super.onRevoke()
     }
 
-    fun internetState(): ResourceState {
-        return resourceState
-    }
+    fun internetState(): ResourceState = resourceState
 
-    private fun internetResource(): Resource? {
-        return tunnelResources.firstOrNull { it.isInternetResource() }
-    }
+    private fun internetResource(): Resource? = tunnelResources.firstOrNull { it.isInternetResource() }
 
     // UI updates for resources
     fun resourcesUpdated() {
@@ -317,20 +327,40 @@ class TunnelService : VpnService() {
             tunnelState = State.CONNECTING
             updateStatusNotification(TunnelStatusNotification.Connecting)
 
-            connlibSessionPtr =
-                ConnlibSession.connect(
-                    apiUrl = config.apiUrl,
-                    token = token,
-                    deviceId = deviceId(),
-                    deviceName = getDeviceName(),
-                    osVersion = Build.VERSION.RELEASE,
-                    logDir = getLogDir(),
-                    logFilter = config.logFilter,
-                    callback = callback,
-                )
+            val executor = Executors.newSingleThreadExecutor()
 
-            startNetworkMonitoring()
-            startDisconnectMonitoring()
+            executor.execute {
+                val deviceInfo = DeviceInfo()
+
+                runCatching {
+                    Tasks.await(FirebaseInstallations.getInstance().id)
+                }.onSuccess { firebaseInstallationId ->
+                    deviceInfo.firebaseInstallationId = firebaseInstallationId
+                }.onFailure { exception ->
+                    Log.d(TAG, "Failed to obtain firebase installation id: $exception")
+                }
+
+                val gson: Gson =
+                    GsonBuilder()
+                        .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
+                        .create()
+
+                connlibSessionPtr =
+                    ConnlibSession.connect(
+                        apiUrl = config.apiUrl,
+                        token = token,
+                        deviceId = deviceId(),
+                        deviceName = getDeviceName(),
+                        osVersion = Build.VERSION.RELEASE,
+                        logDir = getLogDir(),
+                        logFilter = config.logFilter,
+                        callback = callback,
+                        deviceInfo = gson.toJson(deviceInfo),
+                    )
+
+                startNetworkMonitoring()
+                startDisconnectMonitoring()
+            }
         }
     }
 
@@ -404,10 +434,14 @@ class TunnelService : VpnService() {
         // Get the deviceId from the preferenceRepository, or save a new UUIDv4 and return that if it doesn't exist
         val deviceId =
             repo.getDeviceIdSync() ?: run {
-                val newDeviceId = UUID.randomUUID().toString()
+                val newDeviceId =
+                    java.util.UUID
+                        .randomUUID()
+                        .toString()
                 repo.saveDeviceIdSync(newDeviceId)
                 newDeviceId
             }
+
         return deviceId
     }
 
@@ -441,6 +475,7 @@ class TunnelService : VpnService() {
 
         private const val SESSION_NAME: String = "Firezone Connection"
         private const val MTU: Int = 1280
+        private const val TAG: String = "TunnelService"
 
         private val MANAGED_CONFIGURATIONS = arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
 

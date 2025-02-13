@@ -2,11 +2,9 @@ defmodule Web.MixProject do
   use Mix.Project
 
   def project do
-    {sha, _} = Code.eval_file(Path.join([__DIR__, "..", "..", "sha.exs"]))
-
     [
       app: :web,
-      version: "0.1.0+#{sha}",
+      version: version(),
       build_path: "../../_build",
       config_path: "../../config/config.exs",
       deps_path: "../../deps",
@@ -63,11 +61,13 @@ defmodule Web.MixProject do
       {:observer_cli, "~> 1.7"},
 
       # Observability
-      {:opentelemetry_telemetry, "~> 1.1.1", override: true},
-      {:opentelemetry_cowboy, "~> 0.3"},
+      {:opentelemetry_telemetry, "~> 1.1", override: true},
+      {:opentelemetry_cowboy, "~> 1.0"},
       {:opentelemetry_liveview, "~> 1.0.0-rc.4"},
-      {:opentelemetry_phoenix, "~> 1.1"},
+      {:opentelemetry_phoenix, "~> 2.0"},
       {:nimble_options, "~> 1.0", override: true},
+      {:sentry, "~> 10.0"},
+      {:hackney, "~> 1.19"},
 
       # Other deps
       {:jason, "~> 1.2"},
@@ -75,12 +75,7 @@ defmodule Web.MixProject do
       {:nimble_csv, "~> 1.2"},
 
       # Test deps
-      # TODO: use Hex after a new version of Floki is released
-      {:floki,
-       only: :test,
-       override: true,
-       github: "philss/floki",
-       ref: "3d5adab58a41b020a775baca82fe15c0c364daab"},
+      {:floki, "~> 0.37.0", only: :test},
       {:bypass, "~> 2.1", only: :test},
       {:bureaucrat, "~> 0.2.9", only: :test},
       {:wallaby, "~> 0.30.0", only: :test},
@@ -108,5 +103,10 @@ defmodule Web.MixProject do
       "phx.server": ["ecto.create --quiet", "ecto.migrate", "phx.server"],
       test: ["ecto.create --quiet", "ecto.migrate", "test"]
     ]
+  end
+
+  defp version do
+    sha = System.get_env("GIT_SHA", "dev") |> String.trim()
+    "0.1.0+#{sha}"
   end
 end

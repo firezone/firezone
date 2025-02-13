@@ -1,51 +1,58 @@
 [package]
 name = "firezone-tunnel"
 version = "0.1.0"
-edition = "2021"
+edition = { workspace = true }
+license = { workspace = true }
 
 [dependencies]
-anyhow = "1.0"
-bimap = "0.6"
+anyhow = { workspace = true }
+base64 = { workspace = true, features = ["std"] }
+bimap = { workspace = true }
 boringtun = { workspace = true }
-bytes = { version = "1.7", default-features = false, features = ["std"] }
+bytes = { workspace = true, features = ["std"] }
 chrono = { workspace = true }
-connlib-shared = { workspace = true }
-derivative = "2.2.0"
-divan = { version = "0.1.14", optional = true }
+connlib-model = { workspace = true }
+derive_more = { workspace = true, features = ["debug"] }
+divan = { workspace = true, optional = true }
+dns-over-tcp = { workspace = true }
 domain = { workspace = true }
-futures =  { version = "0.3", default-features = false, features = ["std", "async-await", "executor"] }
-futures-util =  { version = "0.3", default-features = false, features = ["std", "async-await", "async-await-macro"] }
-glob = "0.3.1"
-hex = "0.4.3"
+firezone-logging = { workspace = true }
+futures = { workspace = true, features = ["std", "async-await", "executor"] }
+futures-bounded = { workspace = true }
+futures-util = { workspace = true, features = ["std", "async-await", "async-await-macro"] }
+glob = { workspace = true }
+hex = { workspace = true }
 ip-packet = { workspace = true }
-ip_network = { version = "0.4", default-features = false }
-ip_network_table = { version = "0.2", default-features = false }
-itertools = { version = "0.13", default-features = false, features = ["use_std"] }
-lru = "0.12.4"
-proptest = { version = "1", optional = true }
-rand = "0.8.5"
-rangemap = "1.5.1"
-secrecy = { workspace = true }
-serde = { version = "1.0", default-features = false, features = ["derive", "std"] }
+ip_network = { workspace = true }
+ip_network_table = { workspace = true }
+itertools = { workspace = true, features = ["use_std"] }
+lockfree-object-pool = { workspace = true }
+lru = { workspace = true }
+proptest = { workspace = true, optional = true }
+rand = { workspace = true }
+rangemap = { workspace = true }
+ringbuffer = { workspace = true }
+secrecy = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive", "std"] }
+serde_json = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { workspace = true }
-thiserror = { version = "1.0", default-features = false }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
-uuid = { version = "1.10", default-features = false, features = ["std", "v4"] }
+uuid = { workspace = true, features = ["std", "v4"] }
 
 [dev-dependencies]
-derivative = "2.2.0"
 firezone-relay = { workspace = true, features = ["proptest"] }
 ip-packet = { workspace = true, features = ["proptest"] }
-proptest-state-machine = "0.3"
-rand = "0.8"
-serde_json = "1.0"
-test-case = "3.3.1"
-test-strategy = "0.3.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+proptest-state-machine = { workspace = true }
+rand = { workspace = true }
+sha2 = { workspace = true }
+test-case = { workspace = true }
+test-strategy = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [[bench]]
 name = "divan"

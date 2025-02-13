@@ -222,6 +222,37 @@ defmodule Web.Live.Policies.ShowTest do
     assert table["conditions"] =~ "provider(s)"
   end
 
+  test "renders policy details when created by API", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    subject = Fixtures.Auth.create_subject(account: account, actor: actor)
+
+    policy =
+      Fixtures.Policies.create_policy(account: account, subject: subject, resource: resource)
+      |> Domain.Repo.preload(:actor_group)
+      |> Domain.Repo.preload(:resource)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/policies/#{policy}")
+
+    table =
+      lv
+      |> element("#policy")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["group"] =~ policy.actor_group.name
+    assert table["resource"] =~ policy.resource.name
+    assert table["description"] =~ policy.description
+    assert table["created"] =~ actor.name
+  end
+
   test "renders logs table", %{
     account: account,
     identity: identity,
@@ -250,7 +281,6 @@ defmodule Web.Live.Policies.ShowTest do
       |> table_to_map()
 
     assert row["authorized"]
-    assert row["expires"]
     assert row["client, actor"] =~ flow.client.name
     assert row["client, actor"] =~ "owned by #{flow.client.actor.name}"
     assert row["client, actor"] =~ to_string(flow.client_remote_ip)

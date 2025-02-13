@@ -1,7 +1,7 @@
 defmodule Domain.Auth.Adapters.MicrosoftEntra do
   use Supervisor
   alias Domain.Actors
-  alias Domain.Auth.{Provider, Adapter}
+  alias Domain.Auth.{Provider, Adapter, Identity}
   alias Domain.Auth.Adapters.OpenIDConnect
   alias Domain.Auth.Adapters.MicrosoftEntra
   require Logger
@@ -37,6 +37,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra do
   @impl true
   def identity_changeset(%Provider{} = _provider, %Ecto.Changeset{} = changeset) do
     changeset
+    |> Domain.Repo.Changeset.trim_change(:email)
     |> Domain.Repo.Changeset.trim_change(:provider_identifier)
     |> Domain.Repo.Changeset.copy_change(:provider_virtual_state, :provider_state)
     |> Ecto.Changeset.put_change(:provider_virtual_state, %{})
@@ -79,6 +80,11 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra do
   end
 
   def refresh_access_token(%Provider{} = provider) do
-    OpenIDConnect.refresh_access_token(provider)
+    OpenIDConnect.refresh_access_token(provider, "oid")
+  end
+
+  @impl true
+  def refresh_access_token(%Identity{} = identity) do
+    OpenIDConnect.refresh_access_token(identity, "oid")
   end
 end

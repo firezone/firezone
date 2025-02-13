@@ -225,7 +225,7 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
 
           Auth.Provider.Changeset.sync_failed(provider, user_message)
           |> Domain.Repo.update!()
-          |> send_sync_error_email()
+          |> send_rate_limited_sync_error_email()
           |> log_sync_error(log_message)
 
           :error
@@ -384,27 +384,30 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
     end)
   end
 
+  defp send_rate_limited_sync_error_email(provider) do
+    if notification_criteria_met?(provider) do
+      send_sync_error_email(provider)
+    else
+      Logger.debug("Sync error email already sent today")
+      provider
+    end
+  end
+
   defp send_sync_error_email(provider) do
     provider = Repo.preload(provider, :account)
 
-    if notification_criteria_met?(provider) do
-      Domain.Actors.all_admins_for_account!(provider.account, preload: :identities)
-      |> Enum.flat_map(fn actor ->
-        Enum.map(actor.identities, &Domain.Auth.get_identity_email(&1))
-      end)
-      |> Enum.uniq()
-      |> Enum.each(fn email ->
-        Domain.Mailer.SyncEmail.sync_error_email(provider, email)
-        |> Domain.Mailer.deliver()
-      end)
+    Domain.Actors.all_admins_for_account!(provider.account, preload: :identities)
+    |> Enum.flat_map(fn actor ->
+      Enum.map(actor.identities, &Domain.Auth.get_identity_email(&1))
+    end)
+    |> Enum.uniq()
+    |> Enum.each(fn email ->
+      Domain.Mailer.SyncEmail.sync_error_email(provider, email)
+      |> Domain.Mailer.deliver()
+    end)
 
-      Auth.Provider.Changeset.sync_error_emailed(provider)
-      |> Domain.Repo.update!()
-    else
-      Logger.debug("Sync error email already sent today")
-
-      provider
-    end
+    Auth.Provider.Changeset.sync_error_emailed(provider)
+    |> Domain.Repo.update!()
   end
 
   defp notification_criteria_met?(provider) do

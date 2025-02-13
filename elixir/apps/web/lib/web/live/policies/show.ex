@@ -5,11 +5,12 @@ defmodule Web.Policies.Show do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
-           Policies.fetch_policy_by_id(id, socket.assigns.subject,
+           Policies.fetch_policy_by_id_or_persistent_id(id, socket.assigns.subject,
              preload: [
                actor_group: [:provider],
                resource: [],
                created_by_identity: :actor,
+               created_by_actor: [],
                replaced_by_policy: [:actor_group, :resource],
                replaces_policy: [:actor_group, :resource]
              ]
@@ -30,6 +31,7 @@ defmodule Web.Policies.Show do
         |> assign_live_table("flows",
           query_module: Flows.Flow.Query,
           sortable_fields: [],
+          hide_filters: [:expiration],
           callback: &handle_flows_update!/2
         )
 
@@ -98,7 +100,7 @@ defmodule Web.Policies.Show do
           icon="hero-lock-closed"
           on_confirm="disable"
         >
-          <:dialog_title>Disable the Policy</:dialog_title>
+          <:dialog_title>Confirm disabling the Policy</:dialog_title>
           <:dialog_content>
             Are you sure you want to disable this policy?
             This will <strong>immediately</strong>
@@ -116,10 +118,11 @@ defmodule Web.Policies.Show do
           :if={not is_nil(@policy.disabled_at)}
           id="enable"
           style="warning"
+          confirm_style="primary"
           icon="hero-lock-open"
           on_confirm="enable"
         >
-          <:dialog_title>Enable the Policy</:dialog_title>
+          <:dialog_title>Confirm enabling the Policy</:dialog_title>
           <:dialog_content>
             Are you sure you want to enable this policy?
             This will <strong>immediately</strong>
@@ -141,7 +144,7 @@ defmodule Web.Policies.Show do
               ID
             </:label>
             <:value>
-              <%= @policy.id %>
+              {@policy.id}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row :if={not is_nil(@policy.deleted_at)}>
@@ -149,7 +152,7 @@ defmodule Web.Policies.Show do
               Persistent ID
             </:label>
             <:value>
-              <%= @policy.persistent_id %>
+              {@policy.persistent_id}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row :if={
@@ -199,7 +202,7 @@ defmodule Web.Policies.Show do
             </:label>
             <:value>
               <.link navigate={~p"/#{@account}/resources/#{@policy.resource_id}"} class={link_style()}>
-                <%= @policy.resource.name %>
+                {@policy.resource.name}
               </.link>
               <span :if={not is_nil(@policy.resource.deleted_at)} class="text-red-600">
                 (deleted)
@@ -235,9 +238,9 @@ defmodule Web.Policies.Show do
     </.section>
 
     <.section>
-      <:title>Authorized Sessions</:title>
+      <:title>Recent Connections</:title>
       <:help>
-        Authorized sessions opened by Actors to access the Resources governed by this Policy.
+        Recent connections opened by Actors to access the Resources governed by this Policy.
       </:help>
       <:content>
         <.live_table
@@ -252,25 +255,22 @@ defmodule Web.Policies.Show do
           <:col :let={flow} label="authorized">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
-          <:col :let={flow} label="expires">
-            <.relative_datetime datetime={flow.expires_at} />
-          </:col>
           <:col :let={flow} label="client, actor" class="w-3/12">
             <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={link_style()}>
-              <%= flow.client.name %>
+              {flow.client.name}
             </.link>
             owned by
             <.link navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"} class={link_style()}>
-              <%= flow.client.actor.name %>
+              {flow.client.actor.name}
             </.link>
-            <%= flow.client_remote_ip %>
+            {flow.client_remote_ip}
           </:col>
           <:col :let={flow} label="gateway" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={link_style()}>
-              <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
+              {flow.gateway.group.name}-{flow.gateway.name}
             </.link>
             <br />
-            <code class="text-xs"><%= flow.gateway_remote_ip %></code>
+            <code class="text-xs">{flow.gateway_remote_ip}</code>
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="activity">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={link_style()}>
@@ -293,7 +293,7 @@ defmodule Web.Policies.Show do
           on_confirm="delete"
           on_confirm_id={@policy.id}
         >
-          <:dialog_title>Delete Policy</:dialog_title>
+          <:dialog_title>Confirm deletion of Policy</:dialog_title>
           <:dialog_content>
             Are you sure you want to delete this Policy? All sessions authorized by it will be expired.
           </:dialog_content>
@@ -312,7 +312,9 @@ defmodule Web.Policies.Show do
 
   def handle_info({_action, _policy_id}, socket) do
     {:ok, policy} =
-      Policies.fetch_policy_by_id(socket.assigns.policy.id, socket.assigns.subject,
+      Policies.fetch_policy_by_id_or_persistent_id(
+        socket.assigns.policy.id,
+        socket.assigns.subject,
         preload: [
           actor_group: [:provider],
           resource: [],

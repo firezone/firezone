@@ -58,17 +58,24 @@ internal class SessionViewModel
                     }
                 }
 
-            return if (repo.favorites.value.inner.isEmpty()) {
+            return if (repo.favorites.value.inner
+                    .isEmpty()
+            ) {
                 resources
             } else if (selectedTab == RESOURCES_TAB_FAVORITES) {
-                resources.filter { repo.favorites.value.inner.contains(it.id) }
+                resources.filter {
+                    repo.favorites.value.inner
+                        .contains(it.id)
+                }
             } else {
                 resources
             }
         }
 
         fun forceTab(): Int? =
-            if (repo.favorites.value.inner.isEmpty()) {
+            if (repo.favorites.value.inner
+                    .isEmpty()
+            ) {
                 RESOURCES_TAB_ALL
             } else {
                 null
@@ -78,10 +85,14 @@ internal class SessionViewModel
             selectedTab = position
         }
 
-        fun isFavorite(id: String) = repo.favorites.value.inner.contains(id)
+        fun isFavorite(id: String) =
+            repo.favorites.value.inner
+                .contains(id)
 
         fun tabLayoutVisibility(): Int =
-            if (repo.favorites.value.inner.isNotEmpty()) {
+            if (repo.favorites.value.inner
+                    .isNotEmpty()
+            ) {
                 View.VISIBLE
             } else {
                 View.GONE

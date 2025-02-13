@@ -22,6 +22,22 @@ defmodule Domain.Tokens.Token.Query do
     where(queryable, [tokens: tokens], tokens.expires_at <= ^DateTime.utc_now())
   end
 
+  def expires_in(queryable, value, unit) do
+    duration = Duration.new!([{unit, value}])
+
+    where(
+      queryable,
+      [tokens: tokens],
+      not is_nil(tokens.expires_at) and
+        fragment(
+          "NOW() + '5 seconds'::interval < ? AND ? < NOW() + ?::interval",
+          tokens.expires_at,
+          tokens.expires_at,
+          ^duration
+        )
+    )
+  end
+
   def by_id(queryable, id) do
     where(queryable, [tokens: tokens], tokens.id == ^id)
   end

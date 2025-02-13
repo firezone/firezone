@@ -1,6 +1,8 @@
 name: Static Analysis
 on:
   workflow_call:
+  pull_request:
+    types: [edited]
 
 jobs:
   pr-lint:
@@ -9,23 +11,36 @@ jobs:
     permissions:
       pull-requests: read
     steps:
-      - uses: amannn/action-semantic-pull-request@v5
+      - name: Enforce PR title length <= 64
+        # Don't run for Dependabot PRs
+        if: ${{ !contains(github.event.pull_request.head.label, 'dependabot') }}
+        env:
+          PR_TITLE: "${{ github.event.pull_request.title }}"
+        run: |
+          pr_title_length=${#PR_TITLE}
+
+          # 64 instead of 72 because GitHub adds the PR number to the title
+          if [ "$pr_title_length" -gt 64 ]; then
+            echo "PR title too long. Please keep it under 64 characters."
+            exit 1
+          fi
+      - uses: amannn/action-semantic-pull-request@0723387faaf9b38adef4775cd42cfd5155ed6017 #v5.5.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   version-check:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Check version is up to date
         run: |
-          make -f scripts/Makefile version
+          ./scripts/bump-versions.sh
           if [ -z "$(git status --porcelain)" ]; then
             # Working directory clean
             echo "Version manifests up to date"
           else
             # Uncommitted changes
-            echo '`make version` found outdated files! Showing diff'
+            echo '`scripts/bump-versions.sh` found outdated files! Showing diff'
             git diff
             exit 1
           fi
@@ -33,8 +48,8 @@ jobs:
   link-check:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: lycheeverse/lychee-action@v1.10.0
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: lycheeverse/lychee-action@f796c8b7d468feb9b8c0a46da3fac0af6874d374 # v2.2.0
         with:
           fail: true
           args: --offline --verbose --no-progress **/*.md
@@ -42,11 +57,11 @@ jobs:
   global-linter:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
         with:
           python-version: "3.11"
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         name: Restore Python Cache
         id: cache
         with:
@@ -55,15 +70,19 @@ jobs:
       - name: Install Python Dependencies
         run: |
           pip install -r .github/requirements.txt
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: 20
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y shfmt
+          npm install -g prettier
       - name: Run pre-commit
         run: |
           pre-commit install --config .github/pre-commit-config.yaml
           SKIP=no-commit-to-branch pre-commit run --all-files --config .github/pre-commit-config.yaml
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         if: ${{ steps.cache.outputs.cache-hit != 'true'}}
         name: Save Python Cache
         with:

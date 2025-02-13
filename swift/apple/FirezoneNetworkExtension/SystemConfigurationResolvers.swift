@@ -10,21 +10,43 @@ import Foundation
 import SystemConfiguration
 
 class SystemConfigurationResolvers {
-  private var dynamicStore: SCDynamicStore?
+  enum SystemConfigurationError: Error {
+    case failedToCreateDynamicStore(code: Int32)
+    case unableToRetrieveNetworkServices(code: Int32)
+    case unableToCopyValue(path: String, code: Int32)
+
+    var localizedDescription: String {
+      switch self {
+      case .failedToCreateDynamicStore(let code):
+        return "Failed to create dynamic store. Code: \(code)"
+      case .unableToRetrieveNetworkServices(let code):
+        return "Unable to retrieve network services. Code: \(code)"
+      case .unableToCopyValue(let path, let code):
+        return "Unable to copy value from path \(path). Code: \(code)"
+      }
+    }
+  }
+
+  /// We use a computed property to memoize the creation of SC Dynamic Store, since this
+  /// can fail in some circumstances to initialize, like because of allocation failures.
+  private var _dynamicStore: SCDynamicStore?
+  private var dynamicStore: SCDynamicStore? {
+    if self._dynamicStore == nil {
+      guard let dynamicStore = SCDynamicStoreCreate(nil, storeName, nil, nil)
+      else {
+        let code = SCError()
+        Log.error(SystemConfigurationError.failedToCreateDynamicStore(code: code))
+        return nil
+      }
+
+      self._dynamicStore = dynamicStore
+    }
+
+    return self._dynamicStore
+  }
 
   // Arbitrary name for the connection to the store
   private let storeName = "dev.firezone.firezone.dns" as CFString
-
-  init() {
-    guard let dynamicStore = SCDynamicStoreCreate(nil, storeName, nil, nil)
-    else {
-      Log.tunnel.error("\(#function): Failed to create dynamic store")
-      self.dynamicStore = nil
-      return
-    }
-
-    self.dynamicStore = dynamicStore
-  }
 
   /// 1. First, find the service ID that corresponds to the interface we're interested in.
   ///    We do this by searching the configuration store at "Setup:/Network/Service/<service-id>/Interface"
@@ -47,7 +69,8 @@ class SystemConfigurationResolvers {
     let interfaceSearchKey = "Setup:/Network/Service/.*/Interface" as CFString
     guard let services = SCDynamicStoreCopyKeyList(dynamicStore, interfaceSearchKey) as? [String]
     else {
-      Log.tunnel.error("\(#function): Unable to retrieve network services")
+      let code = SCError()
+      Log.error(SystemConfigurationError.unableToRetrieveNetworkServices(code: code))
       return []
     }
 
@@ -78,9 +101,25 @@ class SystemConfigurationResolvers {
   }
 
   private func fetch(path: String, key: String) -> Any? {
-    guard let dynamicStore = dynamicStore,
-          let result = SCDynamicStoreCopyValue(dynamicStore, path as CFString),
-          let value = result[key]
+    guard let dynamicStore = dynamicStore
+    else { return nil }
+
+    guard let result = SCDynamicStoreCopyValue(dynamicStore, path as CFString)
+    else {
+      let code = SCError()
+
+      // kSCStatusNoKey indicates the key is missing, which is expected if the
+      // interface has no DNS configuration.
+      if code == kSCStatusNoKey {
+        return nil
+      }
+
+      Log.error(SystemConfigurationError.unableToCopyValue(path: path, code: code))
+
+      return nil
+    }
+
+    guard let value = result[key]
     else { return nil }
 
     return value

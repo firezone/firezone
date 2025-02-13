@@ -66,10 +66,10 @@ defmodule Web.NavigationComponents do
     ~H"""
     <div class="py-3 px-4">
       <span class="block text-sm font-medium text-neutral-900">
-        <%= @subject.actor.name %>
+        {@subject.actor.name}
       </span>
       <span class="block text-sm text-neutral-900 truncate">
-        <%= @subject.identity.provider_identifier %>
+        {@subject.identity.provider_identifier}
       </span>
     </div>
     <ul class="py-1 text-neutral-700" aria-labelledby="user-menu-dropdown">
@@ -102,20 +102,24 @@ defmodule Web.NavigationComponents do
 
   def sidebar(assigns) do
     ~H"""
-    <aside class={~w[
-        fixed top-0 left-0 z-40
-        w-64 h-screen
-        pt-14 pb-8
-        transition-transform -translate-x-full
-        bg-white border-r border-neutral-200
-        lg:translate-x-0
-      ]} aria-label="Sidenav" id="drawer-navigation">
+    <aside
+      class={[
+        "fixed top-0 left-0 z-40 lg:z-10",
+        "w-64 h-screen",
+        "pt-14 pb-8",
+        "transition-transform -translate-x-full",
+        "bg-white border-r border-neutral-200",
+        "lg:translate-x-0"
+      ]}
+      aria-label="Sidenav"
+      id="drawer-navigation"
+    >
       <div class="overflow-y-auto py-1 px-2 h-full bg-white">
         <ul>
-          <%= render_slot(@inner_block) %>
+          {render_slot(@inner_block)}
         </ul>
       </div>
-      <%= render_slot(@bottom) %>
+      {render_slot(@bottom)}
     </aside>
     """
   end
@@ -133,7 +137,7 @@ defmodule Web.NavigationComponents do
       aria-expanded="false"
       data-dropdown-toggle={"#{@id}-dropdown"}
     >
-      <%= render_slot(@button) %>
+      {render_slot(@button)}
     </button>
     <div
       class={[
@@ -144,7 +148,7 @@ defmodule Web.NavigationComponents do
       ]}
       id={"#{@id}-dropdown"}
     >
-      <%= render_slot(@dropdown) %>
+      {render_slot(@dropdown)}
     </div>
     """
   end
@@ -172,7 +176,7 @@ defmodule Web.NavigationComponents do
         <.icon name={@icon} class={~w[
           w-5 h-5
         ]} />
-        <span class="ml-3 text-lg"><%= render_slot(@inner_block) %></span>
+        <span class="ml-3 text-lg">{render_slot(@inner_block)}</span>
       </.link>
     </li>
     """
@@ -221,7 +225,7 @@ defmodule Web.NavigationComponents do
       >
         <.icon name={@icon} class={~w[
           w-5 h-5 text-neutral-700]} />
-        <span class="flex-1 ml-3 text-left whitespace-nowrap"><%= render_slot(@name) %></span>
+        <span class="flex-1 ml-3 text-left whitespace-nowrap">{render_slot(@name)}</span>
         <.icon name="hero-chevron-down-solid" class={~w[
           w-5 h-5 text-neutral-700]} />
       </button>
@@ -233,7 +237,7 @@ defmodule Web.NavigationComponents do
               #{String.starts_with?(@current_path, item.navigate) && @active_class}
               hover:text-neutral-900
               hover:bg-neutral-100]}>
-            <%= render_slot(item) %>
+            {render_slot(item)}
           </.link>
         </li>
       </ul>
@@ -263,7 +267,7 @@ defmodule Web.NavigationComponents do
             <.icon name="hero-home-solid" class="w-3.5 h-3.5 mr-2" /> Home
           </.link>
 
-          <%= render_slot(@inner_block) %>
+          {render_slot(@inner_block)}
         </li>
       </ol>
     </nav>
@@ -286,11 +290,11 @@ defmodule Web.NavigationComponents do
           navigate={@path}
           class="ml-1 text-neutral-700 hover:text-neutral-900 md:ml-2"
         >
-          <%= render_slot(@inner_block) %>
+          {render_slot(@inner_block)}
         </.link>
 
         <span :if={is_nil(@path)} class="ml-1 text-sm text-neutral-700 hover:text-neutral-900 md:ml-2">
-          <%= render_slot(@inner_block) %>
+          {render_slot(@inner_block)}
         </span>
       </div>
     </li>
@@ -315,7 +319,7 @@ defmodule Web.NavigationComponents do
         class="text-sm font-semibold leading-6 text-neutral-900 hover:text-neutral-700"
       >
         <.icon name="hero-arrow-left-solid" class="h-3 w-3" />
-        <%= render_slot(@inner_block) %>
+        {render_slot(@inner_block)}
       </.link>
     </div>
     """
@@ -343,7 +347,33 @@ defmodule Web.NavigationComponents do
       target="_blank"
       {@rest}
     >
-      <%= render_slot(@inner_block) %>
+      {render_slot(@inner_block)}
+    </.link>
+    """
+  end
+
+  @doc """
+  Renders links to the docs based off documentation portal path.
+
+  ## Examples
+
+    <.website_link href="/pricing>Pricing</.website_link>
+    <.website_link href="/kb/deploy/gateways" class="text-neutral-900">Deploy Gateway(s)</.website_link>
+    <.website_link href={~p"/contact/sales"}>Contact Sales</.website_link>
+  """
+  attr :path, :string, required: true
+  attr :fragment, :string, required: false, default: ""
+  attr :rest, :global
+
+  def docs_action(assigns) do
+    ~H"""
+    <.link
+      title="View documentation for this page"
+      href={"https://www.firezone.dev/kb#{@path}?utm_source=product##{@fragment}"}
+      target="_blank"
+      {@rest}
+    >
+      <.icon name="hero-question-mark-circle" class="mr-2 w-5 h-5" />
     </.link>
     """
   end

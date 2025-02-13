@@ -6,12 +6,13 @@ pub use crate::server::client_message::{
     Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
 };
 
-use crate::auth::{MessageIntegrityExt, Nonces, FIREZONE};
+use crate::auth::{self, AuthenticatedMessage, MessageIntegrityExt, Nonces, FIREZONE};
 use crate::net_ext::IpAddrExt;
-use crate::{ClientSocket, IpStack, PeerSocket};
+use crate::{ClientSocket, IpStack, PeerSocket, SOFTWARE};
 use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
+use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt as _;
 use opentelemetry::metrics::{Counter, UpDownCounter};
 use opentelemetry::KeyValue;
@@ -26,7 +27,7 @@ use std::time::{Duration, Instant, SystemTime};
 use stun_codec::rfc5389::attributes::{
     ErrorCode, MessageIntegrity, Nonce, Realm, Software, Username, XorMappedAddress,
 };
-use stun_codec::rfc5389::errors::{BadRequest, StaleNonce, Unauthorized};
+use stun_codec::rfc5389::errors::{BadRequest, ServerError, StaleNonce, Unauthorized};
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{
     ChannelNumber, Lifetime, RequestedTransport, XorPeerAddress, XorRelayAddress,
@@ -37,7 +38,7 @@ use stun_codec::rfc8656::attributes::{
     AdditionalAddressFamily, AddressFamily, RequestedAddressFamily,
 };
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
-use stun_codec::{Message, MessageClass, MessageEncoder, Method, TransactionId};
+use stun_codec::{Message, MessageClass, Method, TransactionId};
 use tracing::{field, Span};
 use tracing_core::field::display;
 use uuid::Uuid;
@@ -52,7 +53,7 @@ use uuid::Uuid;
 #[derive(Debug)]
 pub struct Server<R> {
     decoder: client_message::Decoder,
-    encoder: MessageEncoder<Attribute>,
+    encoder: auth::MessageEncoder,
 
     public_address: IpStack,
 
@@ -265,7 +266,10 @@ where
             Ok(Err(error_response)) => {
                 tracing::warn!(target: "relay", %sender, method = %error_response.method(), "Failed to decode message");
 
-                self.send_message(error_response, sender);
+                // This is fine, the original message failed to parse to we cannot respond with an authenticated reply.
+                let message = AuthenticatedMessage::new_dangerous_unauthenticated(error_response);
+
+                self.send_message(message, sender);
             }
             // Parsing the bytes failed.
             Err(client_message::Error::BadChannelData(ref error)) => {
@@ -291,7 +295,7 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Option<(AllocationPort, PeerSocket)> {
-        let result = match message {
+        let result = match &message {
             ClientMessage::Allocate(request) => self.handle_allocate_request(request, sender, now),
             ClientMessage::Refresh(request) => self.handle_refresh_request(request, sender, now),
             ClientMessage::ChannelBind(request) => {
@@ -309,11 +313,42 @@ where
             }
         };
 
-        let Err(error_response) = result else {
+        let Err(mut error_response) = result else {
             return None;
         };
 
-        self.send_message(error_response, sender);
+        let is_auth_error = error_response
+            .get_attribute::<ErrorCode>()
+            .is_some_and(|error_code| {
+                error_code == &ErrorCode::from(Unauthorized)
+                    || error_code == &ErrorCode::from(StaleNonce)
+            });
+
+        // In case of a 401 or 438 response, attach a realm and nonce.
+        if is_auth_error {
+            error_response.add_attribute((*FIREZONE).clone());
+            error_response.add_attribute(self.new_nonce_attribute());
+        }
+
+        let message = match message.username() {
+            Some(username) => {
+                match AuthenticatedMessage::new(&self.auth_secret, username.name(), error_response)
+                {
+                    Ok(message) => message,
+                    Err(e) => {
+                        tracing::warn!(target: "relay", "Failed to create error response: {}", err_with_src(&e));
+                        return None;
+                    }
+                }
+            }
+            None => {
+                tracing::warn!(target: "relay", ?message, "Unable to authenticate error response, message did not contain a `Username` attribute");
+
+                AuthenticatedMessage::new_dangerous_unauthenticated(error_response)
+            }
+        };
+
+        self.send_message(message, sender);
 
         None
     }
@@ -417,17 +452,16 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
-    fn handle_binding_request(&mut self, request: Binding, sender: ClientSocket) {
-        let mut message = Message::new(
-            MessageClass::SuccessResponse,
-            BINDING,
-            request.transaction_id(),
-        );
+    fn handle_binding_request(&mut self, request: &Binding, sender: ClientSocket) {
+        let mut message = success_response(BINDING, request.transaction_id());
         message.add_attribute(XorMappedAddress::new(sender.0));
 
         tracing::info!("Handled BINDING request");
 
-        self.send_message(message, sender);
+        self.send_message(
+            AuthenticatedMessage::new_dangerous_unauthenticated(message),
+            sender,
+        );
     }
 
     /// Handle a TURN allocate request.
@@ -436,39 +470,37 @@ where
     #[tracing::instrument(level = "info", skip_all, fields(allocation, software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_allocate_request(
         &mut self,
-        request: Allocate,
+        request: &Allocate,
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request)?;
+        let username = self.verify_auth(request)?;
 
         if let Some(allocation) = self.allocations.get(&sender) {
             Span::current().record("allocation", display(&allocation.port));
-            tracing::warn!(target: "relay", "Client already has an allocation");
+            let (error_response, msg) = make_error_response(AllocationMismatch, request);
 
-            return Err(self.make_error_response(
-                AllocationMismatch,
-                &request,
-                ResponseErrorLevel::Warn,
-            ));
+            tracing::debug!(target: "relay", "{msg}: Client already has an allocation");
+
+            return Err(error_response);
         }
 
         let max_available_ports = self.max_available_ports() as usize;
         if self.clients_by_allocation.len() == max_available_ports {
-            tracing::warn!(target: "relay", %max_available_ports, "No more ports available");
+            let (error_response, msg) = make_error_response(InsufficientCapacity, request);
 
-            return Err(self.make_error_response(
-                InsufficientCapacity,
-                &request,
-                ResponseErrorLevel::Warn,
-            ));
+            tracing::warn!(target: "relay", %max_available_ports, "{msg}: No more ports available");
+
+            return Err(error_response);
         }
 
         let requested_protocol = request.requested_transport().protocol();
         if requested_protocol != UDP_TRANSPORT {
-            tracing::warn!(target: "relay", %requested_protocol, "Unsupported protocol");
+            let (error_response, msg) = make_error_response(BadRequest, request);
 
-            return Err(self.make_error_response(BadRequest, &request, ResponseErrorLevel::Warn));
+            tracing::warn!(target: "relay", %requested_protocol, "{msg}: Unsupported protocol");
+
+            return Err(error_response);
         }
 
         let (first_relay_address, maybe_second_relay_addr) = derive_relay_addresses(
@@ -476,7 +508,12 @@ where
             request.requested_address_family(),
             request.additional_address_family(),
         )
-        .map_err(|e| self.make_error_response(e, &request, ResponseErrorLevel::Warn))?;
+        .map_err(|e| {
+            let (error_response, msg) = make_error_response(e, request);
+            tracing::warn!(target: "relay", "{msg}: Failed to derive relay addresses");
+
+            error_response
+        })?;
 
         // TODO: Do we need to handle DONT-FRAGMENT?
         // TODO: Do we need to handle EVEN/ODD-PORT?
@@ -489,11 +526,7 @@ where
             maybe_second_relay_addr,
         );
 
-        let mut message = Message::new(
-            MessageClass::SuccessResponse,
-            ALLOCATE,
-            request.transaction_id(),
-        );
+        let mut message = success_response(ALLOCATE, request.transaction_id());
 
         let port = allocation.port;
 
@@ -521,7 +554,7 @@ where
                 family: second_relay_addr.family(),
             });
         }
-        self.send_message(message, sender);
+        self.authenticate_and_send(username.name(), request, message, sender);
 
         Span::current().record("allocation", display(&allocation.port));
 
@@ -555,19 +588,18 @@ where
     #[tracing::instrument(level = "info", skip_all, fields(allocation, software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_refresh_request(
         &mut self,
-        request: Refresh,
+        request: &Refresh,
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request)?;
+        let username = self.verify_auth(request)?;
 
         // TODO: Verify that this is the correct error code.
         let Some(allocation) = self.allocations.get_mut(&sender) else {
-            return Err(self.make_error_response(
-                AllocationMismatch,
-                &request,
-                ResponseErrorLevel::Warn,
-            ));
+            let (error_response, msg) = make_error_response(AllocationMismatch, request);
+            tracing::info!(target: "relay", "{msg}: Sender doesn't have an allocation");
+
+            return Err(error_response);
         };
 
         Span::current().record("allocation", display(&allocation.port));
@@ -578,7 +610,9 @@ where
             let port = allocation.port;
 
             self.delete_allocation(port);
-            self.send_message(
+            self.authenticate_and_send(
+                username.name(),
+                request,
                 refresh_success_response(effective_lifetime, request.transaction_id()),
                 sender,
             );
@@ -590,7 +624,9 @@ where
 
         tracing::info!(target: "relay", "Refreshed allocation");
 
-        self.send_message(
+        self.authenticate_and_send(
+            username.name(),
+            request,
             refresh_success_response(effective_lifetime, request.transaction_id()),
             sender,
         );
@@ -604,18 +640,18 @@ where
     #[tracing::instrument(level = "info", skip_all, fields(allocation, peer, channel, software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_channel_bind_request(
         &mut self,
-        request: ChannelBind,
+        request: &ChannelBind,
         sender: ClientSocket,
         now: Instant,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request)?;
+        let username = self.verify_auth(request)?;
 
         let Some(allocation) = self.allocations.get_mut(&sender) else {
-            return Err(self.make_error_response(
-                AllocationMismatch,
-                &request,
-                ResponseErrorLevel::Warn,
-            ));
+            let (error_response, msg) = make_error_response(AllocationMismatch, request);
+
+            tracing::info!(target: "relay", "{msg}: Sender doesn't have an allocation");
+
+            return Err(error_response);
         };
 
         // Note: `channel_number` is enforced to be in the correct range.
@@ -628,13 +664,11 @@ where
 
         // Check that our allocation can handle the requested peer addr.
         if !allocation.can_relay_to(peer_address) {
-            tracing::warn!(target: "relay", "Allocation cannot relay to peer");
+            let (error_response, msg) = make_error_response(PeerAddressFamilyMismatch, request);
 
-            return Err(self.make_error_response(
-                PeerAddressFamilyMismatch,
-                &request,
-                ResponseErrorLevel::Warn,
-            ));
+            tracing::warn!(target: "relay", "{msg}: Allocation cannot relay to peer");
+
+            return Err(error_response);
         }
 
         // Ensure the same address isn't already bound to a different channel.
@@ -643,13 +677,11 @@ where
             .get(&(sender, peer_address))
         {
             if number != &requested_channel {
-                tracing::warn!(target: "relay", existing_channel = %number.value(), "Peer is already bound to another channel");
+                let (error_response, msg) = make_error_response(BadRequest, request);
 
-                return Err(self.make_error_response(
-                    BadRequest,
-                    &request,
-                    ResponseErrorLevel::Warn,
-                ));
+                tracing::warn!(target: "relay", existing_channel = %number.value(), "{msg}: Peer is already bound to another channel");
+
+                return Err(error_response);
             }
         }
 
@@ -659,13 +691,11 @@ where
             .get_mut(&(sender, requested_channel))
         {
             if channel.peer_address != peer_address {
-                tracing::warn!(target: "relay", existing_peer = %channel.peer_address, "Channel is already bound to a different peer");
+                let (error_response, msg) = make_error_response(BadRequest, request);
 
-                return Err(self.make_error_response(
-                    BadRequest,
-                    &request,
-                    ResponseErrorLevel::Warn,
-                ));
+                tracing::warn!(target: "relay", existing_peer = %channel.peer_address, "{msg}: Channel is already bound to a different peer");
+
+                return Err(error_response);
             }
 
             // Binding requests for existing channels act as a refresh for the binding.
@@ -680,7 +710,9 @@ where
 
             tracing::info!(target: "relay", "Refreshed channel binding");
 
-            self.send_message(
+            self.authenticate_and_send(
+                username.name(),
+                request,
                 channel_bind_success_response(request.transaction_id()),
                 sender,
             );
@@ -695,7 +727,9 @@ where
 
         let port = allocation.port;
         self.create_channel_binding(sender, requested_channel, peer_address, port, now);
-        self.send_message(
+        self.authenticate_and_send(
+            username.name(),
+            request,
             channel_bind_success_response(request.transaction_id()),
             sender,
         );
@@ -714,12 +748,14 @@ where
     #[tracing::instrument(level = "info", skip_all, fields(software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_create_permission_request(
         &mut self,
-        request: CreatePermission,
+        request: &CreatePermission,
         sender: ClientSocket,
     ) -> Result<(), Message<Attribute>> {
-        self.verify_auth(&request)?;
+        let username = self.verify_auth(request)?;
 
-        self.send_message(
+        self.authenticate_and_send(
+            username.name(),
+            request,
             create_permission_success_response(request.transaction_id()),
             sender,
         );
@@ -730,7 +766,7 @@ where
     #[tracing::instrument(level = "debug", skip_all, fields(allocation, recipient, channel, %sender))] // It is important that this is level `debug` otherwise performance is shit!
     fn handle_channel_data_message(
         &mut self,
-        message: ChannelData,
+        message: &ChannelData,
         sender: ClientSocket,
     ) -> Option<(AllocationPort, PeerSocket)> {
         let channel_number = message.channel();
@@ -767,37 +803,61 @@ where
     fn verify_auth(
         &mut self,
         request: &(impl StunRequest + ProtectedRequest),
-    ) -> Result<(), Message<Attribute>> {
+    ) -> Result<Username, Message<Attribute>> {
         let message_integrity = request.message_integrity().ok_or_else(|| {
-            self.make_error_response(Unauthorized, request, ResponseErrorLevel::Warn)
+            let (error_response, msg) = make_error_response(Unauthorized, request);
+            tracing::warn!(target: "relay", "{msg}: Missing `MessageIntegrity` attribute");
+
+            error_response
         })?;
         let username = request.username().ok_or_else(|| {
-            self.make_error_response(Unauthorized, request, ResponseErrorLevel::Warn)
+            let (error_response, msg) = make_error_response(Unauthorized, request);
+            tracing::warn!(target: "relay", "{msg}: Missing `Username` attribute");
+
+            error_response
         })?;
         let nonce = request
             .nonce()
             .ok_or_else(|| {
-                self.make_error_response(Unauthorized, request, ResponseErrorLevel::Debug)
+                let (error_response, msg) = make_error_response(Unauthorized, request);
+                tracing::debug!(target: "relay", "{msg}: Missing `Nonce` attribute");
+
+                error_response
             })?
             .value()
             .parse::<Uuid>()
             .map_err(|e| {
-                tracing::debug!(target: "relay", "failed to parse nonce: {e}");
+                let (error_response, msg) = make_error_response(Unauthorized, request);
+                tracing::warn!(target: "relay", "{msg}: Failed to parse nonce: {e}");
 
-                self.make_error_response(Unauthorized, request, ResponseErrorLevel::Warn)
+                error_response
             })?;
 
-        self.nonces.handle_nonce_used(nonce).map_err(|_| {
-            self.make_error_response(StaleNonce, request, ResponseErrorLevel::Debug)
+        self.nonces.handle_nonce_used(nonce).map_err(|e| {
+            let (error_response, msg) = make_error_response(StaleNonce, request);
+            tracing::debug!(target: "relay", "{msg}: Nonce is invalid: {e}");
+
+            error_response
         })?;
 
         message_integrity
             .verify(&self.auth_secret, username.name(), SystemTime::now()) // This is impure but we don't need to control this in our tests.
-            .map_err(|_| {
-                self.make_error_response(Unauthorized, request, ResponseErrorLevel::Warn)
+            .map_err(|e| {
+                let (error_response, msg) = make_error_response(Unauthorized, request);
+
+                match e {
+                    auth::Error::UnknownNonce | auth::Error::NonceUsedUp | auth::Error::Expired | auth::Error::InvalidPassword => {
+                        tracing::debug!(target: "relay", "{msg}: MessageIntegrity check failed: {e}");
+                    },
+                    auth::Error::CannotAuthenticate(_) | auth::Error::InvalidUsername => {
+                        tracing::warn!(target: "relay", "{msg}: MessageIntegrity check failed: {e}")
+                    },
+                }
+
+                error_response
             })?;
 
-        Ok(())
+        Ok(username.clone())
     }
 
     fn create_new_allocation(
@@ -866,7 +926,33 @@ where
         debug_assert!(existing.is_none());
     }
 
-    fn send_message(&mut self, message: Message<Attribute>, recipient: ClientSocket) {
+    fn authenticate_and_send(
+        &mut self,
+        username: &str,
+        request: &impl StunRequest,
+        message: Message<Attribute>,
+        recipient: ClientSocket,
+    ) {
+        let authenticated_message = match AuthenticatedMessage::new(
+            &self.auth_secret,
+            username,
+            message,
+        ) {
+            Ok(message) => message,
+            Err(e) => {
+                let (error_response, msg) = make_error_response(ServerError, request);
+                tracing::warn!(target: "relay", "{msg}: Failed to authenticate message: {}", err_with_src(&e));
+
+                AuthenticatedMessage::new_dangerous_unauthenticated(error_response)
+            }
+        };
+
+        self.send_message(authenticated_message, recipient);
+    }
+
+    fn send_message(&mut self, message: AuthenticatedMessage, recipient: ClientSocket) {
+        debug_assert!(message.get_attribute::<Software>().is_some());
+
         let method = message.method();
         let class = message.class();
         let error_code = message.get_attribute::<ErrorCode>().map(|e| e.code());
@@ -990,72 +1076,47 @@ where
         tracing::info!(target: "relay", channel = %chan.value(), %client, %peer, %allocation, "Channel binding is now deleted (and can be rebound)");
     }
 
-    fn make_error_response(
-        &mut self,
-        error_code: impl Into<ErrorCode>,
-        request: &impl StunRequest,
-        error_level: ResponseErrorLevel,
-    ) -> Message<Attribute> {
-        let error_code = error_code.into();
+    fn new_nonce_attribute(&mut self) -> Nonce {
+        let new_nonce = Uuid::from_u128(self.rng.gen());
 
-        match error_level {
-            ResponseErrorLevel::Warn => {
-                tracing::warn!(target: "relay", "{} failed: {}", request.method(), error_code.reason_phrase());
-            }
-            ResponseErrorLevel::Debug => {
-                tracing::debug!(target: "relay", "{} failed: {}", request.method(), error_code.reason_phrase());
-            }
-        }
+        self.add_nonce(new_nonce);
 
-        let mut message = Message::new(
-            MessageClass::ErrorResponse,
-            request.method(),
-            request.transaction_id(),
-        );
-
-        let is_auth_error = error_code == ErrorCode::from(Unauthorized)
-            || error_code == ErrorCode::from(StaleNonce);
-
-        message.add_attribute(Attribute::from(error_code));
-
-        // In case of a 401 or 438 response, attach a realm and nonce.
-        if is_auth_error {
-            let new_nonce = Uuid::from_u128(self.rng.gen());
-
-            self.add_nonce(new_nonce);
-
-            message.add_attribute(Nonce::new(new_nonce.to_string()).unwrap());
-            message.add_attribute((*FIREZONE).clone());
-        }
-
-        message
+        Nonce::new(new_nonce.to_string())
+            .expect("UUIDs are valid nonces because they are less than 128 characters long")
     }
 }
 
-enum ResponseErrorLevel {
-    Warn,
-    Debug,
+fn make_error_response(
+    error_code: impl Into<ErrorCode>,
+    request: &impl StunRequest,
+) -> (Message<Attribute>, String) {
+    let method = request.method();
+
+    let attribute = error_code.into();
+    let reason = attribute.reason_phrase();
+    let msg = format!("{method} failed with {reason}");
+
+    (
+        error_response(method, request.transaction_id(), attribute),
+        msg,
+    )
 }
 
 fn refresh_success_response(
     effective_lifetime: Lifetime,
     transaction_id: TransactionId,
 ) -> Message<Attribute> {
-    let mut message = Message::new(MessageClass::SuccessResponse, REFRESH, transaction_id);
+    let mut message = success_response(REFRESH, transaction_id);
     message.add_attribute(effective_lifetime);
     message
 }
 
 fn channel_bind_success_response(transaction_id: TransactionId) -> Message<Attribute> {
-    Message::new(MessageClass::SuccessResponse, CHANNEL_BIND, transaction_id)
+    success_response(CHANNEL_BIND, transaction_id)
 }
 
 fn create_permission_success_response(transaction_id: TransactionId) -> Message<Attribute> {
-    Message::new(
-        MessageClass::SuccessResponse,
-        CREATE_PERMISSION,
-        transaction_id,
-    )
+    success_response(CREATE_PERMISSION, transaction_id)
 }
 
 /// Represents an allocation of a client.
@@ -1168,7 +1229,7 @@ fn derive_relay_addresses(
             // For now, we will just partially satisfy the request.
             // We expect clients to gracefully handle this by only extracting the relay addresses they receive.
 
-            tracing::warn!(target: "relay", "Partially fulfilling allocation using only an IPv4 address");
+            tracing::debug!(target: "relay", "Partially fulfilling allocation using only an IPv4 address");
 
             Ok((ip4.into(), None))
         }
@@ -1177,7 +1238,7 @@ fn derive_relay_addresses(
             // For now, we will just partially satisfy the request.
             // We expect clients to gracefully handle this by only extracting the relay addresses they receive.
 
-            tracing::warn!(target: "relay", "Partially fulfilling allocation using only an IPv6 address");
+            tracing::debug!(target: "relay", "Partially fulfilling allocation using only an IPv6 address");
 
             Ok((ip6.into(), None))
         }
@@ -1280,6 +1341,25 @@ stun_codec::define_attribute_enums!(
         Software
     ]
 );
+
+fn success_response(method: Method, id: TransactionId) -> Message<Attribute> {
+    let mut message = Message::new(MessageClass::SuccessResponse, method, id);
+    message.add_attribute(SOFTWARE.clone());
+
+    message
+}
+
+fn error_response(
+    method: Method,
+    transaction_id: TransactionId,
+    error_code: ErrorCode,
+) -> Message<Attribute> {
+    let mut message = Message::new(MessageClass::ErrorResponse, method, transaction_id);
+    message.add_attribute(SOFTWARE.clone());
+    message.add_attribute(error_code);
+
+    message
+}
 
 fn earliest(left: Option<Instant>, right: Option<Instant>) -> Option<Instant> {
     match (left, right) {

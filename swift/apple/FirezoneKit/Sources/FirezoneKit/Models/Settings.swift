@@ -27,18 +27,18 @@ struct Settings: Equatable {
       && !logFilter.isEmpty
   }
 
-
   // Convert provider configuration (which may have empty fields if it was tampered with) to Settings
   static func fromProviderConfiguration(_ providerConfiguration: [String: Any]?) -> Settings {
     if let providerConfiguration = providerConfiguration as? [String: String] {
       return Settings(
-        authBaseURL: providerConfiguration[TunnelManagerKeys.authBaseURL]
+        authBaseURL: providerConfiguration[VPNConfigurationManagerKeys.authBaseURL]
           ?? Settings.defaultValue.authBaseURL,
-        apiURL: providerConfiguration[TunnelManagerKeys.apiURL]
+        apiURL: providerConfiguration[VPNConfigurationManagerKeys.apiURL]
           ?? Settings.defaultValue.apiURL,
-        logFilter: providerConfiguration[TunnelManagerKeys.logFilter]
+        logFilter: providerConfiguration[VPNConfigurationManagerKeys.logFilter]
           ?? Settings.defaultValue.logFilter,
-        internetResourceEnabled: getInternetResourceEnabled(internetResourceEnabled:  providerConfiguration[TunnelManagerKeys.internetResourceEnabled])
+        internetResourceEnabled: getInternetResourceEnabled(
+          internetResourceEnabled: providerConfiguration[VPNConfigurationManagerKeys.internetResourceEnabled])
       )
     } else {
       return Settings.defaultValue
@@ -46,18 +46,26 @@ struct Settings: Equatable {
   }
 
   static private func getInternetResourceEnabled(internetResourceEnabled: String?) -> Bool? {
-    guard let internetResourceEnabled = internetResourceEnabled, let jsonData = internetResourceEnabled.data(using: .utf8) else { return nil }
+    guard let internetResourceEnabled = internetResourceEnabled,
+          let jsonData = internetResourceEnabled.data(using: .utf8)
+    else { return nil }
 
     return try? JSONDecoder().decode(Bool?.self, from: jsonData)
   }
 
   // Used for initializing a new providerConfiguration from Settings
   func toProviderConfiguration() -> [String: String] {
+    guard let data = try? JSONEncoder().encode(internetResourceEnabled),
+          let string = String(data: data, encoding: .utf8)
+    else {
+      fatalError("internetResourceEnabled should be encodable")
+    }
+
     return [
-      TunnelManagerKeys.authBaseURL: authBaseURL,
-      TunnelManagerKeys.apiURL: apiURL,
-      TunnelManagerKeys.logFilter: logFilter,
-      TunnelManagerKeys.internetResourceEnabled: String(data: try! JSONEncoder().encode(internetResourceEnabled) , encoding: .utf8)!,
+      VPNConfigurationManagerKeys.authBaseURL: authBaseURL,
+      VPNConfigurationManagerKeys.apiURL: apiURL,
+      VPNConfigurationManagerKeys.logFilter: logFilter,
+      VPNConfigurationManagerKeys.internetResourceEnabled: string
     ]
   }
 
@@ -68,15 +76,14 @@ struct Settings: Equatable {
       Settings(
         authBaseURL: "https://app.firez.one",
         apiURL: "wss://api.firez.one",
-        logFilter:
-          "firezone_tunnel=debug,phoenix_channel=debug,connlib_shared=debug,connlib_client_shared=debug,snownet=debug,str0m=info,warn",
+        logFilter: "debug",
         internetResourceEnabled: nil
       )
     #else
       Settings(
         authBaseURL: "https://app.firezone.dev",
         apiURL: "wss://api.firezone.dev",
-        logFilter: "str0m=warn,info",
+        logFilter: "info",
         internetResourceEnabled: nil
       )
     #endif

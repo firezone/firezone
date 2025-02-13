@@ -1,5 +1,6 @@
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
+use firezone_logging::err_with_src;
 use known_folders::{get_known_folder_path, KnownFolder};
 use socket_factory::{TcpSocket, UdpSocket};
 use std::{
@@ -10,6 +11,7 @@ use std::{
     path::PathBuf,
     ptr::null,
 };
+use uuid::Uuid;
 use windows::Win32::NetworkManagement::{
     IpHelper::{GetAdaptersAddresses, MIB_IPFORWARD_TABLE2},
     Ndis::NET_LUID_LH,
@@ -28,6 +30,64 @@ use windows::Win32::{
 /// <https://stackoverflow.com/questions/59692146/is-it-possible-to-use-the-standard-library-to-spawn-a-process-without-showing-th#60958956>
 /// Also used for self-elevation
 pub const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// A UUID we generated at dev time for our tunnel.
+///
+/// This ends up in registry keys and tunnel management.
+pub const TUNNEL_UUID: Uuid = Uuid::from_u128(0xe924_5bc1_b8c1_44ca_ab1d_c6aa_d4f1_3b9c);
+
+/// Error codes returned from Windows APIs.
+///
+/// For details, see the Windows Error reference: <https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-erref>.
+///
+/// ## tl;dr
+///
+/// - Windows _result_ codes are 32-bit numbers.
+/// - The most-signficant bit indicates an error, if set. Hence all results here start with an `8`.
+/// - We can ignore the next 4 bits.
+/// - The "7" indicates the facility. In our case, this means Win32 APIs.
+/// - The last 4 numbers (i.e. 16 bit) are the actual error code.
+///
+/// ## Adding new codes
+///
+/// We create the error codes using the [`windows_core::HRESULT::from_win32`] constructor which sets these bits correctly.
+/// The doctests make sure we actually construct the error that we'll see in logs.
+/// Being able to search for these with full-text search is important for maintenance.
+pub mod error {
+    use windows_core::HRESULT;
+
+    /// Win32 error code objects that don't exist (like network adapters).
+    ///
+    /// ```
+    /// assert_eq!(firezone_bin_shared::windows::error::NOT_FOUND.0 as u32, 0x80070490)
+    /// ```
+    pub const NOT_FOUND: HRESULT = HRESULT::from_win32(0x0490);
+
+    /// Win32 error code for objects that already exist (like routing table entries).
+    ///
+    /// ```
+    /// assert_eq!(firezone_bin_shared::windows::error::OBJECT_EXISTS.0 as u32, 0x80071392)
+    /// ```
+    pub const OBJECT_EXISTS: HRESULT = HRESULT::from_win32(0x1392);
+
+    /// Win32 error code for unsupported operations (like setting an IPv6 address without an IPv6 stack).
+    ///
+    /// ```
+    /// assert_eq!(firezone_bin_shared::windows::error::NOT_SUPPORTED.0 as u32, 0x80070032)
+    /// ```
+    pub const NOT_SUPPORTED: HRESULT = HRESULT::from_win32(0x0032);
+
+    /// Win32 error code when failing to communicate with the endpoint mapper.
+    ///
+    /// The docs say:
+    ///
+    /// > There are no more endpoints available from the endpoint mapper.
+    ///
+    /// ```
+    /// assert_eq!(firezone_bin_shared::windows::error::EPT_S_NOT_REGISTERED.0 as u32, 0x800706D9)
+    /// ```
+    pub const EPT_S_NOT_REGISTERED: HRESULT = HRESULT::from_win32(0x06D9);
+}
 
 #[derive(clap::ValueEnum, Clone, Copy, Debug)]
 pub enum DnsControlMethod {
@@ -132,7 +192,7 @@ fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {
 
         // Safety: The `entry` is initialised.
         if let Err(e) = unsafe { DeleteIpForwardEntry2(entry) }.ok() {
-            tracing::warn!("Failed to remove routing entry: {e}");
+            tracing::warn!("Failed to remove routing entry: {}", err_with_src(&e));
             continue;
         };
 
@@ -153,8 +213,6 @@ struct RoutingTableEntry {
 impl RoutingTableEntry {
     /// Creates a new routing table entry by using the given prototype and overriding the route.
     fn create(route: IpAddr, mut prototype: MIB_IPFORWARD_ROW2) -> io::Result<Self> {
-        const DUPLICATE_ERR: u32 = 0x80071392;
-
         let prefix = &mut prototype.DestinationPrefix;
         match route {
             IpAddr::V4(x) => {
@@ -171,7 +229,7 @@ impl RoutingTableEntry {
         unsafe { CreateIpForwardEntry2(&prototype) }
             .ok()
             .or_else(|e| {
-                if e.code().0 as u32 == DUPLICATE_ERR {
+                if e.code() == error::OBJECT_EXISTS {
                     Ok(())
                 } else {
                     Err(io::Error::other(e))
@@ -194,12 +252,16 @@ impl Drop for RoutingTableEntry {
         let iface_idx = self.entry.InterfaceIndex;
 
         // Safety: The entry we stored is valid.
-        if let Err(e) = unsafe { DeleteIpForwardEntry2(&self.entry) }.ok() {
-            tracing::warn!("Failed to delete routing entry: {e}");
+        let Err(e) = unsafe { DeleteIpForwardEntry2(&self.entry) }.ok() else {
+            tracing::debug!(route = %self.route, %iface_idx, "Removed route");
             return;
         };
 
-        tracing::debug!(route = %self.route, %iface_idx, "Removed route");
+        if e.code() == error::NOT_FOUND {
+            return;
+        }
+
+        tracing::warn!("Failed to delete routing entry: {}", err_with_src(&e));
     }
 }
 

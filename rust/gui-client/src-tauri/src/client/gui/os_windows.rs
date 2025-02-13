@@ -1,6 +1,8 @@
 use super::{ControllerRequest, CtlrTx};
 use anyhow::{Context, Result};
 use firezone_bin_shared::BUNDLE_ID;
+use firezone_logging::err_with_src;
+use tauri::AppHandle;
 
 pub(crate) async fn set_autostart(_enabled: bool) -> Result<()> {
     todo!()
@@ -9,6 +11,7 @@ pub(crate) async fn set_autostart(_enabled: bool) -> Result<()> {
 /// Since clickable notifications don't work on Linux yet, the update text
 /// must be different on different platforms
 pub(crate) fn show_update_notification(
+    _app: &AppHandle,
     ctlr_tx: CtlrTx,
     title: &str,
     download_url: url::Url,
@@ -29,7 +32,7 @@ pub(crate) fn show_update_notification(
 ///
 /// TODO: Warn about silent failure if the AppID is not installed:
 /// <https://github.com/tauri-apps/winrt-notification/issues/17#issuecomment-1988715694>
-pub(crate) fn show_notification(title: &str, body: &str) -> Result<()> {
+pub(crate) fn show_notification(_app: &AppHandle, title: &str, body: &str) -> Result<()> {
     tracing::debug!(?title, ?body, "show_notification");
 
     tauri_winrt_notification::Toast::new(BUNDLE_ID)
@@ -74,8 +77,8 @@ pub(crate) fn show_clickable_notification(
             if let Some(req) = req.take() {
                 if let Err(error) = tx.blocking_send(req) {
                     tracing::error!(
-                        ?error,
-                        "User clicked on notification, but we couldn't tell `Controller`"
+                        "User clicked on notification, but we couldn't tell `Controller`: {}",
+                        err_with_src(&error)
                     );
                 }
             }

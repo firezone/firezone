@@ -26,7 +26,7 @@ jobs:
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
@@ -44,7 +44,7 @@ jobs:
           mix_test="mix test --warnings-as-errors --exclude flaky:true --exclude acceptance:true"
           $mix_test || $mix_test --failed
       - name: Test Report
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@31a54ee7ebcacc03a09ea97a7e5465a47b84aea5 # v1.9.1
         if:
           ${{ github.event.pull_request.head.repo.full_name == github.repository
           && (success() || failure()) }}
@@ -63,26 +63,26 @@ jobs:
       MIX_ENV: dev
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-elixir
         id: setup-beam
         with:
           mix_env: ${{ env.MIX_ENV }}
       - name: Compile Application
         run: mix compile --warnings-as-errors
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         name: Restore PLT cache
         id: plt_cache
         with:
           path: elixir/priv/plts
-          key: dialyzer-ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ hashFiles('elixir/mix.lock') }}
+          key: dialyzer-ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.erlang-version }}-${{ hashFiles('elixir/mix.lock') }}
           # This will make sure that we can incrementally build the PLT from older cache and save it under a new key
           restore-keys: |
-            dialyzer-ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-
+            dialyzer-ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.erlang-version }}-
       - name: Create PLTs
         if: ${{ steps.plt_cache.outputs.cache-hit != 'true' }}
         run: mix dialyzer --plt
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         if: ${{ github.ref_name == 'main' }}
         name: Save PLT cache
         with:
@@ -100,7 +100,7 @@ jobs:
       MIX_ENV: test
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
@@ -111,7 +111,18 @@ jobs:
       - name: Check For Retired Packages
         run: mix hex.audit
       - name: Check For Vulnerable Packages
-        run: mix deps.audit
+        run: |
+          # Fail the pipeline a week from when this was ignored as a reminder
+          cve_epoch=$(date -d "2025-02-11" +%s)
+          now=$(date +%s)
+          one_week=$((7 * 24 * 60 * 60))
+          if (( (cve_epoch + one_week) < now )); then
+            echo "Check if https://github.com/advisories/GHSA-vq52-99r9-h5pw is fixed"
+            exit 1
+          fi
+
+          # hackney has no non-vulnerable versions :-(
+          mix deps.audit --ignore-advisory-ids GHSA-vq52-99r9-h5pw
       - name: Run Sobelow vulnerability scanner for web app
         working-directory: ./elixir/apps/web
         run: mix sobelow --skip
@@ -141,7 +152,7 @@ jobs:
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
@@ -203,8 +214,8 @@ jobs:
           - 8200:8200/tcp
         options: --cap-add=IPC_LOCK
     steps:
-      - uses: actions/checkout@v4
-      - uses: nanasess/setup-chromedriver@v2
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: nanasess/setup-chromedriver@e93e57b843c0c92788f22483f1a31af8ee48db25 # v2.3.0
       - run: |
           export DISPLAY=:99
           chromedriver --url-base=/wd/hub &
@@ -216,7 +227,7 @@ jobs:
       - name: Compile Application
         run: mix compile --warnings-as-errors
       # Front-End deps cache
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         name: pnpm Web Deps Cache
         id: pnpm-web-deps-cache
         env:
@@ -232,7 +243,7 @@ jobs:
         run: |
           cd apps/web
           mix assets.setup
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         name: Save pnpm Deps Cache
         if: ${{ github.ref_name == 'main' }}
         env:
@@ -244,7 +255,7 @@ jobs:
             elixir/tailwind-*
           key: ubuntu-22.04-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/pnpm-lock.yaml') }}
       # Front-End build cache, it rarely changes so we cache it aggressively too
-      - uses: actions/cache/restore@v4
+      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         name: Web Assets Cache
         id: pnpm-web-build-cache
         env:
@@ -259,7 +270,7 @@ jobs:
         run: |
           cd apps/web
           mix assets.build
-      - uses: actions/cache/save@v4
+      - uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
         name: Save Web Assets Cache
         if: ${{ github.ref_name == 'main' }}
         env:
@@ -277,7 +288,7 @@ jobs:
       - name: Run Acceptance Tests
         env:
           MIX_TEST_PARTITION: ${{ matrix.MIX_TEST_PARTITION }}
-          E2E_DEFAULT_WAIT_SECONDS: 5
+          E2E_DEFAULT_WAIT_SECONDS: 20
         run: |
           mix test --only acceptance:true \
                    --partitions=${{ env.MIX_TEST_PARTITIONS }} \
@@ -292,12 +303,12 @@ jobs:
         if:
           ${{ github.event.pull_request.head.repo.full_name == github.repository
           && always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
         with:
           name: screenshots-${{ matrix.MIX_TEST_PARTITION }}
           path: elixir/apps/web/screenshots
       - name: Test Report
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@31a54ee7ebcacc03a09ea97a7e5465a47b84aea5 # v1.9.1
         if:
           ${{ github.event.pull_request.head.repo.full_name == github.repository
           && (success() || failure()) }}

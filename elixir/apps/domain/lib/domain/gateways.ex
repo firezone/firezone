@@ -1,5 +1,6 @@
 defmodule Domain.Gateways do
   use Supervisor
+  alias Domain.Accounts.Account
   alias Domain.{Repo, Auth, Geo, PubSub}
   alias Domain.{Accounts, Resources, Tokens, Billing}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Presence}
@@ -46,6 +47,12 @@ defmodule Domain.Gateways do
   def all_groups!(%Auth.Subject{} = subject) do
     Group.Query.not_deleted()
     |> Authorizer.for_subject(subject)
+    |> Repo.all()
+  end
+
+  def all_groups_for_account!(%Accounts.Account{} = account) do
+    Group.Query.not_deleted()
+    |> Group.Query.by_account_id(account.id)
     |> Repo.all()
   end
 
@@ -198,6 +205,15 @@ defmodule Domain.Gateways do
       |> Authorizer.for_subject(subject)
       |> Repo.list(Gateway.Query, opts)
     end
+  end
+
+  def all_gateways_for_account!(%Account{} = account, opts \\ []) do
+    {preload, _opts} = Keyword.pop(opts, :preload, [])
+
+    Gateway.Query.not_deleted()
+    |> Gateway.Query.by_account_id(account.id)
+    |> Repo.all()
+    |> Repo.preload(preload)
   end
 
   @doc false
@@ -413,6 +429,15 @@ defmodule Domain.Gateways do
       :ok = PubSub.subscribe(group_gateways_topic(gateway.group_id))
       :ok = PubSub.subscribe(account_gateways_topic(gateway.account_id))
       :ok
+    end
+  end
+
+  def gateway_outdated?(gateway) do
+    latest_release = Domain.ComponentVersions.gateway_version()
+
+    case Version.compare(gateway.last_seen_version, latest_release) do
+      :lt -> true
+      _ -> false
     end
   end
 

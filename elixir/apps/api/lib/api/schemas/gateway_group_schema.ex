@@ -31,7 +31,7 @@ defmodule API.Schemas.GatewayGroup do
       description: "POST body for creating a Gateway Group",
       type: :object,
       properties: %{
-        gateway_group: %Schema{anyOf: [GatewayGroup.Schema]}
+        gateway_group: GatewayGroup.Schema
       },
       required: [:gateway_group],
       example: %{

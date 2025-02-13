@@ -60,7 +60,7 @@ defmodule Web.LiveTable do
         </tbody>
       </table>
       <div :if={Enum.empty?(@rows) and not has_filter?(@filter, @filters)} id={"#{@id}-empty"}>
-        <%= render_slot(@empty) %>
+        {render_slot(@empty)}
       </div>
       <div :if={Enum.empty?(@rows) and has_filter?(@filter, @filters)} id={"#{@id}-empty"}>
         <div class="flex justify-center text-center text-neutral-500 p-4">
@@ -125,7 +125,7 @@ defmodule Web.LiveTable do
         ]}
       />
       <.error :for={msg <- @field.errors} data-validation-error-for={@field.name}>
-        <%= msg %>
+        {msg}
       </.error>
     </div>
     """
@@ -186,7 +186,7 @@ defmodule Web.LiveTable do
 
   defp filter(%{filter: %{type: {:string, :websearch}}} = assigns) do
     ~H"""
-    <div class="flex items-center order-last md:w-56">
+    <div class="flex items-center order-last">
       <div class="relative w-full" phx-feedback-for={@form[@filter.name].name}>
         <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
           <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
@@ -200,7 +200,7 @@ defmodule Web.LiveTable do
           placeholder={"Search by " <> @filter.title}
           class={[
             "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
-            "block w-full pl-10 p-2",
+            "block w-full md:w-72 pl-10 p-2",
             "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-300 disabled:shadow-none",
             "focus:outline-none focus:border-1 focus:ring-0",
             @form[@filter.name].errors != [] && "border-rose-400"
@@ -210,7 +210,7 @@ defmodule Web.LiveTable do
           :for={msg <- @form[@filter.name].errors}
           data-validation-error-for={@form[@filter.name].name}
         >
-          <%= msg %>
+          {msg}
         </.error>
       </div>
     </div>
@@ -219,7 +219,7 @@ defmodule Web.LiveTable do
 
   defp filter(%{filter: %{type: {:string, :email}}} = assigns) do
     ~H"""
-    <div class="flex items-center order-last md:w-56">
+    <div class="flex items-center order-last">
       <div class="relative w-full" phx-feedback-for={@form[@filter.name].name}>
         <div class="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
           <.icon name="hero-magnifying-glass" class="w-5 h-5 text-neutral-500" />
@@ -233,7 +233,7 @@ defmodule Web.LiveTable do
           placeholder={"Search by " <> @filter.title}
           class={[
             "bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded",
-            "block w-full pl-10 p-2",
+            "block w-full md:w-72 pl-10 p-2",
             "disabled:bg-neutral-50 disabled:text-neutral-500 disabled:border-neutral-300 disabled:shadow-none",
             "focus:outline-none focus:border-1 focus:ring-0",
             @form[@filter.name].errors != [] && "border-rose-400"
@@ -243,7 +243,7 @@ defmodule Web.LiveTable do
           :for={msg <- @form[@filter.name].errors}
           data-validation-error-for={@form[@filter.name].name}
         >
-          <%= msg %>
+          {msg}
         </.error>
       </div>
     </div>
@@ -318,7 +318,7 @@ defmodule Web.LiveTable do
                 checked={@form[@filter.name].value == value}
                 class="hidden"
               />
-              <%= label %>
+              {label}
             </label>
           </:item>
         </.intersperse_blocks>
@@ -378,7 +378,7 @@ defmodule Web.LiveTable do
                 checked={@form[@filter.name].value && value in @form[@filter.name].value}
                 class="hidden"
               />
-              <%= label %>
+              {label}
             </label>
           </:item>
         </.intersperse_blocks>
@@ -411,8 +411,8 @@ defmodule Web.LiveTable do
       aria-label="Table navigation"
     >
       <span class="text-sm text-neutral-500">
-        Showing <span class="font-medium text-neutral-900"><%= @rows_count %></span>
-        of <span class="font-medium text-neutral-900"><%= @metadata.count %></span>
+        Showing <span class="font-medium text-neutral-900">{@rows_count}</span>
+        of <span class="font-medium text-neutral-900">{@metadata.count}</span>
       </span>
       <ul class="inline-flex items-stretch -space-x-px">
         <li>
@@ -468,6 +468,13 @@ defmodule Web.LiveTable do
 
     assign(socket,
       live_table_ids: [id] ++ (socket.assigns[:live_table_ids] || []),
+      query_module_by_table_id:
+        put_table_state(
+          socket,
+          id,
+          :query_module_by_table_id,
+          query_module
+        ),
       callback_by_table_id:
         put_table_state(
           socket,
@@ -495,6 +502,13 @@ defmodule Web.LiveTable do
           id,
           :enforced_filters_by_table_id,
           enforce_filters
+        ),
+      order_by_table_id:
+        put_table_state(
+          socket,
+          id,
+          :order_by_table_id,
+          maybe_use_default_order_by(query_module)
         ),
       limit_by_table_id: put_table_state(socket, id, :limit_by_table_id, limit)
     )
@@ -559,6 +573,7 @@ defmodule Web.LiveTable do
   end
 
   defp handle_live_table_params(socket, params, id) do
+    query_module = Map.fetch!(socket.assigns.query_module_by_table_id, id)
     enforced_filters = Map.fetch!(socket.assigns.enforced_filters_by_table_id, id)
     sortable_fields = Map.fetch!(socket.assigns.sortable_fields_by_table_id, id)
     limit = Map.fetch!(socket.assigns.limit_by_table_id, id)
@@ -589,7 +604,7 @@ defmodule Web.LiveTable do
                 socket,
                 id,
                 :order_by_table_id,
-                order_by
+                maybe_use_default_order_by(query_module, order_by)
               ),
             list_opts_by_table_id:
               put_table_state(
@@ -624,6 +639,20 @@ defmodule Web.LiveTable do
         message = "The page was reset due to invalid pagination filter."
         reset_live_table_params(socket, id, message)
     end
+  end
+
+  defp maybe_use_default_order_by(query_module, order_by \\ nil)
+
+  defp maybe_use_default_order_by(query_module, nil) do
+    if function_exported?(query_module, :cursor_fields, 0) do
+      query_module.cursor_fields() |> List.first()
+    else
+      []
+    end
+  end
+
+  defp maybe_use_default_order_by(_query_module, order_by) do
+    order_by
   end
 
   defp reset_live_table_params(socket, id, message) do

@@ -32,7 +32,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Edit do
     </.breadcrumbs>
     <.section>
       <:title>
-        Edit Identity Provider <%= @form.data.name %>
+        Edit Identity Provider {@form.data.name}
       </:title>
       <:content>
         <.provider_form account={@account} id={@form.data.id} form={@form} />

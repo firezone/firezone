@@ -8,49 +8,110 @@ import Foundation
 import OSLog
 
 public final class Log {
-  public static let app = Log(category: .app, folderURL: SharedAccess.appLogFolderURL)
-  public static let tunnel = Log(category: .tunnel, folderURL: SharedAccess.tunnelLogFolderURL)
-
-  public enum Category: String, Codable {
-    case app = "app"
-    case tunnel = "tunnel"
+  private static var logger = switch Bundle.main.bundleIdentifier {
+  case "dev.firezone.firezone":
+    Logger(subsystem: "dev.firezone.firezone", category: "app")
+  case "dev.firezone.firezone.network-extension":
+    Logger(subsystem: "dev.firezone.firezone", category: "tunnel")
+  default:
+    fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
   }
 
-  private let logger: Logger
-  private let logWriter: LogWriter?
-
-  public init(category: Category, folderURL: URL?) {
-    self.logger = Logger(subsystem: "dev.firezone.firezone", category: category.rawValue)
-    self.logWriter = LogWriter(category: category, folderURL: folderURL, logger: self.logger)
+  private static var logWriter = switch Bundle.main.bundleIdentifier {
+  case "dev.firezone.firezone":
+    LogWriter(folderURL: SharedAccess.appLogFolderURL, logger: logger)
+  case "dev.firezone.firezone.network-extension":
+    LogWriter(folderURL: SharedAccess.tunnelLogFolderURL, logger: logger)
+  default:
+    fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
   }
 
-  public func log(_ message: String) {
+  public static func log(_ message: String) {
     debug(message)
   }
 
-  public func trace(_ message: String) {
+  public static func trace(_ message: String) {
     logger.trace("\(message, privacy: .public)")
     logWriter?.write(severity: .trace, message: message)
   }
 
-  public func debug(_ message: String) {
+  public static func debug(_ message: String) {
     self.logger.debug("\(message, privacy: .public)")
     logWriter?.write(severity: .debug, message: message)
   }
 
-  public func info(_ message: String) {
+  public static func info(_ message: String) {
     logger.info("\(message, privacy: .public)")
     logWriter?.write(severity: .info, message: message)
   }
 
-  public func warning(_ message: String) {
+  public static func warning(_ message: String) {
     logger.warning("\(message, privacy: .public)")
     logWriter?.write(severity: .warning, message: message)
   }
 
-  public func error(_ message: String) {
-    self.logger.error("\(message, privacy: .public)")
-    logWriter?.write(severity: .error, message: message)
+  public static func error(_ err: Error) {
+    self.logger.error("\(err.localizedDescription, privacy: .public)")
+    logWriter?.write(severity: .error, message: err.localizedDescription)
+
+    if shouldCaptureError(err) {
+      Telemetry.capture(err)
+    }
+  }
+
+  // Returns the size in bytes of the provided directory, calculated by summing
+  // the size of its contents recursively.
+  public static func size(of directory: URL) async -> Int64 {
+    let fileManager = FileManager.default
+    var totalSize: Int64 = 0
+
+    func sizeOfFile(at url: URL, with resourceValues: URLResourceValues) -> Int64 {
+      guard resourceValues.isRegularFile == true else { return 0 }
+      return Int64(resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
+    }
+
+    // Tally size of each log file in parallel
+    await withTaskGroup(of: Int64.self) { taskGroup in
+      fileManager.forEachFileUnder(
+        directory,
+        including: [
+          .totalFileAllocatedSizeKey,
+          .totalFileSizeKey,
+          .isRegularFileKey
+        ]
+      ) { url, resourceValues in
+        taskGroup.addTask {
+          return sizeOfFile(at: url, with: resourceValues)
+        }
+      }
+
+      for await size in taskGroup {
+        totalSize += size
+      }
+    }
+
+    return totalSize
+  }
+
+  // Clears the contents of the provided directory.
+  public static func clear(in directory: URL?) throws {
+    guard let directory = directory
+    else { return }
+
+    try FileManager.default.removeItem(at: directory)
+  }
+
+  // Don't capture certain kinds of IPC and security errors in DEBUG builds
+  // because these happen often due to code signing requirements.
+  private static func shouldCaptureError(_ err: Error) -> Bool {
+#if DEBUG
+    if let err = err as? VPNConfigurationManagerError,
+       case VPNConfigurationManagerError.noIPCData = err {
+      return false
+    }
+#endif
+
+    return true
   }
 }
 
@@ -65,20 +126,18 @@ private final class LogWriter {
 
   struct LogEntry: Codable {
     let time: String
-    let category: Log.Category
     let severity: Severity
     let message: String
   }
 
   // All log writes happen in the workQueue
   private let workQueue: DispatchQueue
-  private let category: Log.Category
   private let logger: Logger
   private let handle: FileHandle
   private let dateFormatter: ISO8601DateFormatter
   private let jsonEncoder: JSONEncoder
 
-  init?(category: Log.Category, folderURL: URL?, logger: Logger) {
+  init?(folderURL: URL?, logger: Logger) {
     let fileManager = FileManager.default
     let dateFormatter = ISO8601DateFormatter()
     let jsonEncoder = JSONEncoder()
@@ -88,7 +147,6 @@ private final class LogWriter {
     self.dateFormatter = dateFormatter
     self.jsonEncoder = jsonEncoder
     self.logger = logger
-    self.category = category
 
     // Create log dir if not exists
     guard let folderURL = folderURL,
@@ -103,9 +161,9 @@ private final class LogWriter {
       .appendingPathExtension("jsonl")
 
     // Create log file
-    guard fileManager.createFile(atPath: logFileURL.path, contents: "".data(using: .utf8)),
+    guard fileManager.createFile(atPath: logFileURL.path, contents: Data()),
           let handle = try? FileHandle(forWritingTo: logFileURL),
-          let _ = try? handle.seekToEnd()
+          (try? handle.seekToEnd()) != nil
     else {
       logger.error("Could not create log file: \(logFileURL.path)")
       return nil
@@ -126,19 +184,19 @@ private final class LogWriter {
   func write(severity: Severity, message: String) {
     let logEntry = LogEntry(
       time: dateFormatter.string(from: Date()),
-      category: category,
       severity: severity,
       message: message)
 
-    guard var jsonData = try? jsonEncoder.encode(logEntry),
-          let newLineData = "\n".data(using: .utf8)
-        else {
+    guard var jsonData = try? jsonEncoder.encode(logEntry)
+    else {
       logger.error("Could not encode log message to JSON!")
       return
     }
 
-    jsonData.append(newLineData)
+    jsonData.append(Data("\n".utf8))
 
-    workQueue.async { self.handle.write(jsonData) }
+    workQueue.async { [weak self] in
+      self?.handle.write(jsonData)
+    }
   }
 }

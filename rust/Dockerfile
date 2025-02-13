@@ -1,5 +1,5 @@
 # Keep synced with `rust-toolchain.toml`
-ARG RUST_VERSION="1.81.0"
+ARG RUST_VERSION="1.84.0"
 ARG ALPINE_VERSION="3.20"
 ARG CARGO_CHEF_VERSION="0.1.67"
 
@@ -11,9 +11,9 @@ FROM rust:${RUST_VERSION}-alpine${ALPINE_VERSION} AS chef
 
 ARG CARGO_CHEF_VERSION
 RUN set -xe \
-  && apk add --no-cache musl-dev  \
-  && cargo install cargo-chef --locked --version=${CARGO_CHEF_VERSION} \
-  && rm -rf $CARGO_HOME/registry/
+    && apk add --no-cache musl-dev \
+    && cargo install cargo-chef --locked --version=${CARGO_CHEF_VERSION} \
+    && rm -rf $CARGO_HOME/registry/
 
 ## See https://github.com/LukeMathWalker/cargo-chef/issues/231.
 COPY rust-toolchain.toml rust-toolchain.toml
@@ -37,7 +37,7 @@ COPY --from=planner /build/recipe.json .
 
 ARG PACKAGE
 RUN set -xe \
-  && cargo chef cook --recipe-path recipe.json --bin ${PACKAGE}
+    && cargo chef cook --recipe-path recipe.json --bin ${PACKAGE}
 
 COPY . .
 
@@ -48,9 +48,9 @@ RUN cargo build -p ${PACKAGE} $([ -n "${TARGET}" ] && "--target ${TARGET}")
 FROM alpine:${ALPINE_VERSION} AS runtime_base
 
 ENV LANG=C.UTF-8 \
-  TERM=xterm \
-  RUST_BACKTRACE=1 \
-  RUST_LOG=str0m=warn,info
+    TERM=xterm \
+    RUST_BACKTRACE=1 \
+    RUST_LOG=info
 
 WORKDIR /bin
 

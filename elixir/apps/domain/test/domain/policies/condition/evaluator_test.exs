@@ -490,7 +490,10 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
       assert parse_days_of_week_time_ranges(["M/true/UTC"]) ==
                {:ok, %{"M" => [{~T[00:00:00], ~T[23:59:59], "UTC"}]}}
 
-      assert parse_days_of_week_time_ranges(["M/true/UTC", "W/19:00:00-22:00:00,22-23/US/Pacific"]) ==
+      assert parse_days_of_week_time_ranges([
+               "M/true/UTC",
+               "W/19:00:00-22:00:00,22-23/US/Pacific"
+             ]) ==
                {:ok,
                 %{
                   "M" => [

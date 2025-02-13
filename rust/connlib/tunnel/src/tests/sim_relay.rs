@@ -2,7 +2,7 @@ use super::{
     sim_net::{dual_ip_stack, host, Host},
     strategies::latency,
 };
-use connlib_shared::messages::RelayId;
+use connlib_model::RelayId;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use proptest::prelude::*;
 use rand::{rngs::StdRng, SeedableRng as _};

@@ -1,6 +1,7 @@
 defmodule Web.Clients.Show do
   use Web, :live_view
   import Web.Policies.Components
+  import Web.Clients.Components
   alias Domain.{Accounts, Clients, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
@@ -28,6 +29,7 @@ defmodule Web.Clients.Show do
         |> assign_live_table("flows",
           query_module: Flows.Flow.Query,
           sortable_fields: [],
+          hide_filters: [:expiration],
           callback: &handle_flows_update!/2
         )
 
@@ -65,7 +67,7 @@ defmodule Web.Clients.Show do
     <.breadcrumbs account={@account}>
       <.breadcrumb path={~p"/#{@account}/clients"}>Clients</.breadcrumb>
       <.breadcrumb path={~p"/#{@account}/clients/#{@client.id}"}>
-        <%= @client.name %>
+        {@client.name}
       </.breadcrumb>
     </.breadcrumbs>
 
@@ -75,69 +77,41 @@ defmodule Web.Clients.Show do
         <span :if={not is_nil(@client.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
 
-      <:action :if={is_nil(@client.deleted_at) and not is_nil(@client.verified_at)}>
-        <.button_with_confirmation
-          id="remove_client_verification"
-          style="danger"
-          icon="hero-shield-exclamation"
-          on_confirm="remove_client_verification"
-        >
-          <:dialog_title>Remove verification</:dialog_title>
-          <:dialog_content>
-            Are you sure you want to remove verification of this Client?
-          </:dialog_content>
-          <:dialog_confirm_button>
-            Remove
-          </:dialog_confirm_button>
-          <:dialog_cancel_button>
-            Cancel
-          </:dialog_cancel_button>
-          Remove verification
-        </.button_with_confirmation>
-      </:action>
-      <:action :if={is_nil(@client.deleted_at) and is_nil(@client.verified_at)}>
-        <.button_with_confirmation
-          id="verify_client"
-          style="warning"
-          icon="hero-shield-check"
-          on_confirm="verify_client"
-        >
-          <:dialog_title>Verify Client</:dialog_title>
-          <:dialog_content>
-            Are you sure you want to verify this Client?
-          </:dialog_content>
-          <:dialog_confirm_button>
-            Verify
-          </:dialog_confirm_button>
-          <:dialog_cancel_button>
-            Cancel
-          </:dialog_cancel_button>
-          Verify
-        </.button_with_confirmation>
-      </:action>
       <:action :if={is_nil(@client.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/clients/#{@client}/edit"}>
           Edit Client
         </.edit_button>
       </:action>
+
       <:content>
         <.vertical_table id="client">
           <.vertical_table_row>
-            <:label>Identifier</:label>
-            <:value><%= @client.id %></:value>
+            <:label>
+              <.popover>
+                <:target>
+                  ID <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
+                </:target>
+                <:content>
+                  Database ID assigned to this Client that can be used to manage this Client via the REST API.
+                </:content>
+              </.popover>
+            </:label>
+            <:value>{@client.id}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Name</:label>
-            <:value><%= @client.name %></:value>
+            <:value>{@client.name}</:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Status</:label>
             <:value><.connection_status class="ml-1/2" schema={@client} /></:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Verification</:label>
+            <:label>Owner</:label>
             <:value>
-              <.verified_by account={@account} schema={@client} />
+              <.link navigate={~p"/#{@account}/actors/#{@client.actor.id}"} class={[link_style()]}>
+                {@client.actor.name}
+              </.link>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -162,7 +136,7 @@ defmodule Web.Clients.Show do
                   }
                   class={[link_style()]}
                 >
-                  <%= @client.last_used_token.name %>
+                  {@client.last_used_token.name}
                 </.link>
                 <span :if={not is_nil(@client.last_used_token.deleted_at)}>
                   (deleted)
@@ -171,11 +145,13 @@ defmodule Web.Clients.Show do
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Owner</:label>
+            <:label>Version</:label>
+            <:value>{@client.last_seen_version}</:value>
+          </.vertical_table_row>
+          <.vertical_table_row>
+            <:label>User agent</:label>
             <:value>
-              <.link navigate={~p"/#{@account}/actors/#{@client.actor.id}"} class={[link_style()]}>
-                <%= @client.actor.name %>
-              </.link>
+              {@client.last_seen_user_agent}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -190,28 +166,132 @@ defmodule Web.Clients.Show do
               <.relative_datetime datetime={@client.last_seen_at} />
             </:value>
           </.vertical_table_row>
+        </.vertical_table>
+      </:content>
+    </.section>
+
+    <.section>
+      <:title>
+        Device Attributes
+      </:title>
+
+      <:help>
+        Information about the device that the Client is running on.
+      </:help>
+
+      <:action :if={is_nil(@client.deleted_at) and not is_nil(@client.verified_at)}>
+        <.button_with_confirmation
+          id="remove_client_verification"
+          style="danger"
+          icon="hero-shield-exclamation"
+          on_confirm="remove_client_verification"
+        >
+          <:dialog_title>Confirm removal of Client verification</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to remove verification of this Client?
+            It will no longer be able to access Resources using Policies that require verification.
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Remove
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
+          Remove verification
+        </.button_with_confirmation>
+      </:action>
+      <:action :if={is_nil(@client.deleted_at) and is_nil(@client.verified_at)}>
+        <.button_with_confirmation
+          id="verify_client"
+          style="warning"
+          confirm_style="primary"
+          icon="hero-shield-check"
+          on_confirm="verify_client"
+        >
+          <:dialog_title>Confirm verification of Client</:dialog_title>
+          <:dialog_content>
+            Are you sure you want to verify this Client?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Verify
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
+          Verify
+        </.button_with_confirmation>
+      </:action>
+
+      <:content>
+        <.vertical_table id="posture">
+          <.vertical_table_row>
+            <:label>
+              <.popover>
+                <:target>
+                  File ID
+                  <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
+                </:target>
+                <:content>
+                  Firezone-specific UUID generated and persisted to the device upon app installation.
+                </:content>
+              </.popover>
+            </:label>
+            <:value>{@client.external_id}</:value>
+          </.vertical_table_row>
+          <.vertical_table_row :for={{{title, helptext}, value} <- hardware_ids(@client)}>
+            <:label>
+              <.popover :if={not is_nil(helptext)}>
+                <:target>
+                  {title}
+                  <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
+                </:target>
+                <:content>
+                  {helptext}
+                </:content>
+              </.popover>
+              <span :if={is_nil(helptext)}>{title}</span>
+            </:label>
+            <:value>{value}</:value>
+          </.vertical_table_row>
+
           <.vertical_table_row>
             <:label>Last seen remote IP</:label>
             <:value>
               <.last_seen schema={@client} />
             </:value>
           </.vertical_table_row>
+
           <.vertical_table_row>
-            <:label>Client version</:label>
-            <:value><%= @client.last_seen_version %></:value>
+            <:label>
+              <.popover>
+                <:target>
+                  Verification
+                  <.icon name="hero-question-mark-circle" class="w-3 h-3 mb-1 text-neutral-400" />
+                </:target>
+                <:content>
+                  Policies can be configured to require verification in order to access a Resource.
+                </:content>
+              </.popover>
+            </:label>
+            <:value>
+              <.verified_by account={@account} schema={@client} />
+            </:value>
           </.vertical_table_row>
+
           <.vertical_table_row>
-            <:label>User agent</:label>
-            <:value><%= @client.last_seen_user_agent %></:value>
+            <:label>Operating System</:label>
+            <:value>
+              <.client_os client={@client} />
+            </:value>
           </.vertical_table_row>
         </.vertical_table>
       </:content>
     </.section>
 
     <.section>
-      <:title>Authorized Sessions</:title>
+      <:title>Recent Connections</:title>
       <:help>
-        Authorized sessions opened by this Client to access a Resource.
+        Recent connections opened by this Client to access a Resource.
       </:help>
       <:content>
         <.live_table
@@ -226,11 +306,8 @@ defmodule Web.Clients.Show do
           <:col :let={flow} label="authorized">
             <.relative_datetime datetime={flow.inserted_at} />
           </:col>
-          <:col :let={flow} label="expires">
-            <.relative_datetime datetime={flow.expires_at} />
-          </:col>
           <:col :let={flow} label="remote ip" class="w-3/12">
-            <%= flow.client_remote_ip %>
+            {flow.client_remote_ip}
           </:col>
           <:col :let={flow} label="policy">
             <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
@@ -239,10 +316,10 @@ defmodule Web.Clients.Show do
           </:col>
           <:col :let={flow} label="gateway" class="w-3/12">
             <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
-              <%= flow.gateway.group.name %>-<%= flow.gateway.name %>
+              {flow.gateway.group.name}-{flow.gateway.name}
             </.link>
             <br />
-            <code class="text-xs"><%= flow.gateway_remote_ip %></code>
+            <code class="text-xs">{flow.gateway_remote_ip}</code>
           </:col>
           <:col :let={flow} :if={@flow_activities_enabled?} label="activity">
             <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
@@ -255,8 +332,82 @@ defmodule Web.Clients.Show do
         </.live_table>
       </:content>
     </.section>
+
+    <.danger_zone :if={is_nil(@client.deleted_at)}>
+      <:action>
+        <.button_with_confirmation
+          id="delete_client"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete"
+        >
+          <:dialog_title>Confirm deletion of client</:dialog_title>
+          <:dialog_content>
+            <p>
+              Deleting the client doesn't remove it from the device; it will be re-created with the same
+              hardware attributes upon the next sign-in, but the verification status won't carry over.
+            </p>
+
+            <p class="mt-2">
+              To prevent the client owner from logging in again,
+              <.link navigate={~p"/#{@account}/actors/#{@client.actor_id}"} class={link_style()}>
+                disable the owning actor
+              </.link>
+              instead.
+            </p>
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Client
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
+          Delete Client
+        </.button_with_confirmation>
+      </:action>
+    </.danger_zone>
     """
   end
+
+  defp hardware_ids(client) do
+    [
+      {:device_serial, client.device_serial},
+      {:device_uuid, client.device_uuid},
+      {:identifier_for_vendor, client.identifier_for_vendor},
+      {:firebase_installation_id, client.firebase_installation_id}
+    ]
+    |> Enum.flat_map(fn {key, value} ->
+      if is_nil(value) do
+        []
+      else
+        [{hardware_id_title(client, key), value}]
+      end
+    end)
+  end
+
+  defp hardware_id_title(%{last_seen_user_agent: "Mac OS/" <> _}, :device_serial),
+    do: {"Device Serial", nil}
+
+  defp hardware_id_title(%{last_seen_user_agent: "Mac OS/" <> _}, :device_uuid),
+    do: {"Device UUID", nil}
+
+  defp hardware_id_title(%{last_seen_user_agent: "iOS/" <> _}, :identifier_for_vendor),
+    do: {"App installation ID", "This value is reset if the Firezone application is reinstalled."}
+
+  defp hardware_id_title(%{last_seen_user_agent: "Android/" <> _}, :firebase_installation_id),
+    do: {"App installation ID", "This value is reset if the Firezone application is reinstalled."}
+
+  defp hardware_id_title(_client, :device_serial),
+    do: {"Device Serial", nil}
+
+  defp hardware_id_title(_client, :device_uuid),
+    do: {"Device UUID", nil}
+
+  defp hardware_id_title(_client, :identifier_for_vendor),
+    do: {"App installation ID", nil}
+
+  defp hardware_id_title(_client, :firebase_installation_id),
+    do: {"App installation ID", nil}
 
   def handle_info(
         %Phoenix.Socket.Broadcast{
@@ -292,6 +443,9 @@ defmodule Web.Clients.Show do
     {:noreply, socket}
   end
 
+  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
+    do: handle_live_table_event(event, params, socket)
+
   def handle_event("verify_client", _params, socket) do
     {:ok, client} = Clients.verify_client(socket.assigns.client, socket.assigns.subject)
 
@@ -319,6 +473,14 @@ defmodule Web.Clients.Show do
     {:noreply, assign(socket, :client, client)}
   end
 
-  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
-    do: handle_live_table_event(event, params, socket)
+  def handle_event("delete", _params, socket) do
+    {:ok, _client} = Clients.delete_client(socket.assigns.client, socket.assigns.subject)
+
+    socket =
+      socket
+      |> put_flash(:info, "Client was deleted.")
+      |> push_navigate(to: ~p"/#{socket.assigns.account}/clients")
+
+    {:noreply, socket}
+  end
 end

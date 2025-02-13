@@ -28,12 +28,31 @@ below. If you find an exception, please
 [open a GitHub issue](https://www.github.com/firezone/firezone/issues/new/choose)
 so we can prioritize appropriately.
 
-| Platform           | Distribution Method                                                                                                                                      |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Android / ChromeOS | The Android / ChromeOS client is available exclusively from the [Google Play Store](https://play.google.com/store/apps/details?id=dev.firezone.android). |
-| Linux              | The headless and GUI Linux clients are available from our [changelog page](/changelog).                                                                  |
-| macOS / iOS        | The macOS and iOS clients are available exclusively from the [Apple App Store](https://apps.apple.com/us/app/firezone/id6443661826).                     |
-| Windows            | The Windows client is available as a standalone MSI installer from our [changelog page](/changelog).                                                     |
+| Platform           | Distribution Method                                                                                                                                                  |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android / ChromeOS | The Android / ChromeOS client is available exclusively from the [Google Play Store](https://play.google.com/store/apps/details?id=dev.firezone.android).             |
+| Linux              | The headless and GUI Linux clients are available from our [changelog page](/changelog).                                                                              |
+| iOS                | The iOS client is available exclusively from the [Apple App Store](https://apps.apple.com/us/app/firezone/id6443661826).                                             |
+| macOS              | The macOS client is available either from the [Apple App Store](https://apps.apple.com/us/app/firezone/id6443661826) or as a [standalone distributable](/changelog). |
+| Windows            | The Windows client is available as a standalone MSI installer from our [changelog page](/changelog).                                                                 |
+
+### Allowlisting the macOS System Extension
+
+The macOS client version 1.4.0 and higher includes a System Extension that must
+be enabled in order to function. For MDM-managed devices, the System Extension
+can be allowlisted to eliminate the need for the user to perform this step
+manually.
+
+Follow one of the guides below for your MDM provider:
+
+- [Jamf Pro](https://developer.jamf.com/jamf-pro/docs/kernel-and-system-extensions#system-extensions)
+- [Kandji](https://support.kandji.io/kb/system-extensions-overview-and-guide)
+- [JumpCloud](https://jumpcloud.com/support/create-mac-system-extension-policy)
+- [Hexnode](https://www.hexnode.com/mobile-device-management/help/how-to-configure-system-extensions-on-macos-devices/)
+- [InTune](https://learn.microsoft.com/en-us/mem/intune/configuration/kernel-extensions-overview-macos)
+
+Use `47R2M6779T` for the team identifier and
+`dev.firezone.firezone.network-extension` for the extension bundle identifier.
 
 ## Headless mode operation
 
@@ -48,9 +67,9 @@ See the table below for achieving headless mode operation on each platform:
 | Platform           | Headless Mode Operation                                                                                                                                                                                                                                                               |
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Android / ChromeOS | Set the `token` key using an MDM provider that supports Android [managed configurations](https://developer.android.com/work/managed-configurations). If the token is set and valid, Firezone will automatically connect and authenticate using this token when the Client is started. |
-| Linux              | Set the `FIREZONE_TOKEN` and `FIREZONE_ID` environment variables when running the Client binary.                                                                                                                                                                                      |
+| Linux              | See the [Linux Headless Client](/kb/client-apps/linux-headless-client) guide.                                                                                                                                                                                                         |
 | macOS / iOS        | Not yet supported.                                                                                                                                                                                                                                                                    |
-| Windows            | Not yet supported.                                                                                                                                                                                                                                                                    |
+| Windows            | See the [Windows Headless Client](/kb/client-apps/windows-headless-client) guide.                                                                                                                                                                                                     |
 
 <NextStep href="/kb/deploy/dns">Next: Configure DNS</NextStep>
 

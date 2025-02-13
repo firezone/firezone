@@ -11,6 +11,7 @@ object ConnlibSession {
         logDir: String,
         logFilter: String,
         callback: Any,
+        deviceInfo: String,
     ): Long
 
     external fun disconnect(connlibSession: Long): Boolean

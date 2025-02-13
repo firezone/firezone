@@ -5,10 +5,14 @@ defmodule API.ResourceControllerTest do
   setup do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :api_client, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    subject = Fixtures.Auth.create_subject(identity: identity)
 
     %{
       account: account,
-      actor: actor
+      actor: actor,
+      identity: identity,
+      subject: subject
     }
   end
 
@@ -98,7 +102,7 @@ defmodule API.ResourceControllerTest do
       assert json_response(conn, 200) == %{
                "data" => %{
                  "address" => resource.address,
-                 "description" => resource.address_description,
+                 "address_description" => resource.address_description,
                  "id" => resource.id,
                  "name" => resource.name,
                  "type" => Atom.to_string(resource.type)
@@ -169,7 +173,7 @@ defmodule API.ResourceControllerTest do
       assert resp = json_response(conn, 201)
 
       assert resp["data"]["address"] == attrs["address"]
-      assert resp["data"]["description"] == nil
+      assert resp["data"]["address_description"] == nil
       assert resp["data"]["name"] == attrs["name"]
       assert resp["data"]["type"] == attrs["type"]
     end
@@ -195,6 +199,27 @@ defmodule API.ResourceControllerTest do
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
     end
 
+    test "returns not found when resource is deleted", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(%{account: account})
+      Domain.Resources.delete_resource(resource, subject)
+
+      attrs = %{"name" => "Google"}
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> put("/resources/#{resource.id}", resource: attrs)
+
+      assert resp = json_response(conn, 404)
+      assert resp == %{"error" => %{"reason" => "Not Found"}}
+    end
+
     test "updates a resource", %{conn: conn, account: account, actor: actor} do
       resource = Fixtures.Resources.create_resource(%{account: account})
 
@@ -209,7 +234,7 @@ defmodule API.ResourceControllerTest do
       assert resp = json_response(conn, 200)
 
       assert resp["data"]["address"] == resource.address
-      assert resp["data"]["description"] == resource.address_description
+      assert resp["data"]["address_description"] == resource.address_description
       assert resp["data"]["name"] == attrs["name"]
     end
   end
@@ -233,7 +258,7 @@ defmodule API.ResourceControllerTest do
       assert json_response(conn, 200) == %{
                "data" => %{
                  "address" => resource.address,
-                 "description" => resource.address_description,
+                 "address_description" => resource.address_description,
                  "id" => resource.id,
                  "name" => resource.name,
                  "type" => Atom.to_string(resource.type)

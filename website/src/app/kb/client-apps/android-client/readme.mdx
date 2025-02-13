@@ -15,7 +15,9 @@ Google Play Store.
 ## Installation
 
 1. [Download the Firezone app](https://play.google.com/store/apps/details?id=dev.firezone.android)
-   from the Google Play Store.
+   from the Google Play Store or
+   [download an APK](https://www.github.com/firezone/firezone/releases) from
+   GitHub.
 1. Run the app. The welcome screen will show "Enable VPN Permission" and the
    Firezone logo.
 1. Tap `Request Permission`. Android will show a dialog saying,
@@ -54,10 +56,13 @@ use its normal DNS and Internet behavior.
 
 ## Upgrading
 
-Updates for the Android client are handled through the Google Play Store.
-Consult the
+Updates for the Android client are handled through the Google Play Store if you
+installed the app from there. Consult the
 [Play Store documentation](https://support.google.com/googleplay/answer/113412?hl=en)
 for more information on how to update apps on your device.
+
+If you installed the app from an APK directly, you will need to download and
+install the new APK manually.
 
 ## Diagnostic logs
 
@@ -88,12 +93,6 @@ We will add troubleshooting steps here in the future.
 
 ## Known issues
 
-- ChromeOS devices using the Android 9 compatibility layer don't work with
-  Firezone. Android 11 and newer do work.
-  [#3620](https://github.com/firezone/firezone/issues/3620)
-- Some apps do not use Firezone's SplitDNS and so cannot access DNS Resources.
-  [#4834](https://github.com/firezone/firezone/issues/4834)
-- Disconnecting the VPN from the System Settings does not work
-  [#5413](https://github.com/firezone/firezone/issues/5413)
+None at this time.
 
 <SupportOptions />

@@ -1,31 +1,51 @@
 use std::time::{Duration, Instant};
 
-pub type ExponentialBackoff = backoff::exponential::ExponentialBackoff<ManualClock>;
+const MULTIPLIER: f32 = 1.5;
+const MAX_ELAPSED_TIME: Duration = Duration::from_secs(8);
 
 #[derive(Debug)]
-pub struct ManualClock {
-    pub now: Instant,
+pub struct ExponentialBackoff {
+    start_time: Instant,
+    next_trigger: Instant,
+    interval: Duration,
 }
 
-impl backoff::Clock for ManualClock {
-    fn now(&self) -> Instant {
-        self.now
+impl ExponentialBackoff {
+    pub(crate) fn handle_timeout(&mut self, now: Instant) {
+        if self.is_expired(now) {
+            return;
+        }
+
+        if now < self.next_trigger {
+            return;
+        }
+
+        self.interval = Duration::from_secs_f32(self.interval.as_secs_f32() * MULTIPLIER);
+        self.next_trigger += self.interval;
+    }
+
+    pub(crate) fn next_trigger(&self) -> Instant {
+        self.next_trigger
+    }
+
+    pub(crate) fn is_expired(&self, at: Instant) -> bool {
+        at >= self.start_time + MAX_ELAPSED_TIME
+    }
+
+    pub(crate) fn interval(&self) -> Duration {
+        self.interval
+    }
+
+    pub(crate) fn start_time(&self) -> Instant {
+        self.start_time
     }
 }
 
-pub fn new(
-    now: Instant,
-    initial_interval: Duration,
-) -> backoff::exponential::ExponentialBackoff<ManualClock> {
+pub fn new(now: Instant, interval: Duration) -> ExponentialBackoff {
     ExponentialBackoff {
-        current_interval: initial_interval,
-        initial_interval,
-        randomization_factor: 0.,
-        multiplier: backoff::default::MULTIPLIER,
-        max_interval: Duration::from_millis(backoff::default::MAX_INTERVAL_MILLIS),
+        interval,
         start_time: now,
-        max_elapsed_time: Some(Duration::from_secs(60)),
-        clock: ManualClock { now },
+        next_trigger: now + interval,
     }
 }
 
@@ -33,7 +53,7 @@ pub fn new(
 ///
 /// The current strategy is multiplying the previous interval by 1.5 and adding them up.
 #[cfg(test)]
-pub fn steps(start: Instant) -> [Instant; 8] {
+pub fn steps(start: Instant) -> [Instant; 4] {
     fn secs(secs: f64) -> Duration {
         Duration::from_nanos((secs * 1_000_000_000.0) as u64)
     }
@@ -43,9 +63,36 @@ pub fn steps(start: Instant) -> [Instant; 8] {
         start + secs(1.0 + 1.5),
         start + secs(1.0 + 1.5 + 2.25),
         start + secs(1.0 + 1.5 + 2.25 + 3.375),
-        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625),
-        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625 + 7.59375),
-        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625 + 7.59375 + 11.390625),
-        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625 + 7.59375 + 11.390625 + 17.0859375),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::{collections::BTreeSet, iter};
+
+    #[test]
+    fn backoff_steps() {
+        let mut now = Instant::now();
+
+        let steps = Vec::from_iter(
+            iter::from_fn({
+                let mut backoff = super::new(now, Duration::from_secs(1));
+
+                move || {
+                    if backoff.is_expired(now) {
+                        return None;
+                    }
+
+                    now += Duration::from_millis(100); // Purposely updating more often than the interval.
+                    backoff.handle_timeout(now);
+
+                    Some(backoff.next_trigger())
+                }
+            })
+            .collect::<BTreeSet<_>>(),
+        );
+
+        assert_eq!(&steps, &super::steps(now));
+    }
 }

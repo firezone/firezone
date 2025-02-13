@@ -1,63 +1,53 @@
 {
- "build": {
+  "build": {
     "beforeDevCommand": "",
     "beforeBuildCommand": "",
-    "devPath": "../src",
-    "distDir": "../src",
-    "withGlobalTauri": true
+    "frontendDist": "../dist"
   },
-  "package": {
-    "productName": "firezone-client-gui"
-  },
-  "tauri": {
-    "allowlist": {
-      "all": false,
-      "shell": {
-        "all": false,
-        "open": false
-      }
-    },
-    "bundle": {
-      "active": true,
+  "bundle": {
+    "active": true,
+    "shortDescription": "Firezone",
+    "linux": {
       "deb": {
         "files": {
           "/usr/lib/systemd/system/firezone-client-ipc.service": "./deb_files/firezone-client-ipc.service",
           "/usr/lib/sysusers.d/firezone-client-ipc.conf": "./deb_files/sysusers.conf"
         }
-      },
-      "targets": ["deb", "msi"],
-      "identifier": "dev.firezone.client",
-      "icon": [
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/32x32.png",
-        "icons/icon.ico",
-        "icons/icon.png"
-      ],
-      "publisher": "Firezone",
-      "shortDescription": "Firezone",
-      "windows": {
-        "wix": {
-          "bannerPath": "./win_files/banner.png",
-          "componentRefs": ["FirezoneClientIpcService"],
-          "dialogImagePath": "./win_files/install_dialog.png",
-          "fragmentPaths": ["./win_files/service.wxs"],
-          "template": "./win_files/main.wxs"
-        }
       }
     },
+    "targets": ["deb", "msi"],
+    "windows": {
+      "wix": {
+        "bannerPath": "./win_files/banner.png",
+        "componentRefs": ["FirezoneClientIpcService"],
+        "dialogImagePath": "./win_files/install_dialog.png",
+        "fragmentPaths": ["./win_files/service.wxs"],
+        "template": "./win_files/main.wxs"
+      }
+    },
+    "icon": [
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/32x32.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "publisher": "Firezone"
+  },
+  "mainBinaryName": "firezone-client-gui",
+  "identifier": "dev.firezone.client",
+  "plugins": {},
+  "productName": "firezone-client-gui",
+  "app": {
+    "withGlobalTauri": true,
     "security": {
       "csp": null
-    },
-    "systemTray": {
-      "iconPath": "icons/tray/Busy layer.png",
-      "iconAsTemplate": true
     },
     "windows": [
       {
         "label": "about",
         "title": "About Firezone",
-        "url": "about.html",
+        "url": "src/about.html",
         "fullscreen": false,
         "resizable": true,
         "width": 640,
@@ -67,7 +57,7 @@
       {
         "label": "settings",
         "title": "Settings",
-        "url": "settings.html",
+        "url": "src/settings.html",
         "fullscreen": false,
         "resizable": true,
         "width": 640,
@@ -77,7 +67,7 @@
       {
         "label": "welcome",
         "title": "Welcome",
-        "url": "welcome.html",
+        "url": "src/welcome.html",
         "fullscreen": false,
         "resizable": true,
         "width": 640,

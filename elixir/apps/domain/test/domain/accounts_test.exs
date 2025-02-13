@@ -41,6 +41,171 @@ defmodule Domain.AccountsTest do
     end
   end
 
+  describe "all_active_paid_accounts_pending_notification!/0" do
+    test "returns paid and active accounts" do
+      attrs = %{
+        config: %{
+          notifications: %{
+            outdated_gateway: %{
+              enabled: true,
+              last_notified: nil
+            }
+          }
+        }
+      }
+
+      Fixtures.Accounts.create_account()
+      Fixtures.Accounts.create_account(attrs) |> Fixtures.Accounts.change_to_enterprise()
+      Fixtures.Accounts.create_account(attrs) |> Fixtures.Accounts.change_to_team()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_team()
+      |> Fixtures.Accounts.disable_account()
+
+      accounts = all_active_paid_accounts_pending_notification!()
+      assert length(accounts) == 2
+    end
+
+    test "returns empty list when no paid accounts exist" do
+      Fixtures.Accounts.create_account()
+      Fixtures.Accounts.create_account() |> Fixtures.Accounts.change_to_starter()
+
+      accounts = all_active_paid_accounts_pending_notification!()
+      assert length(accounts) == 0
+    end
+
+    test "does not return accounts with notification disabled" do
+      enabled_attrs = %{
+        config: %{
+          notifications: %{
+            outdated_gateway: %{
+              enabled: true,
+              last_notified: nil
+            }
+          }
+        }
+      }
+
+      disabled_attrs = %{
+        config: %{
+          notifications: %{
+            outdated_gateway: %{
+              enabled: false,
+              last_notified: nil
+            }
+          }
+        }
+      }
+
+      Fixtures.Accounts.create_account(enabled_attrs)
+      |> Fixtures.Accounts.change_to_enterprise()
+
+      Fixtures.Accounts.create_account(disabled_attrs)
+      |> Fixtures.Accounts.change_to_enterprise()
+
+      Fixtures.Accounts.create_account(enabled_attrs)
+      |> Fixtures.Accounts.change_to_team()
+
+      Fixtures.Accounts.create_account(disabled_attrs)
+      |> Fixtures.Accounts.change_to_team()
+
+      accounts = all_active_paid_accounts_pending_notification!()
+      assert length(accounts) == 2
+    end
+
+    test "does not return accounts that have been notified within 24 hours" do
+      attrs = %{
+        config: %{
+          notifications: %{
+            outdated_gateway: %{
+              enabled: true,
+              last_notified: DateTime.utc_now() |> DateTime.add(-(60 * 60 * 12))
+            }
+          }
+        }
+      }
+
+      Fixtures.Accounts.create_account()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_enterprise()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_team()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_team()
+      |> Fixtures.Accounts.disable_account()
+
+      accounts = all_active_paid_accounts_pending_notification!()
+      assert length(accounts) == 0
+    end
+
+    test "returns accounts that have been notified more than 24 hours ago" do
+      attrs = %{
+        config: %{
+          notifications: %{
+            outdated_gateway: %{
+              enabled: true,
+              last_notified: DateTime.utc_now() |> DateTime.add(-(60 * 60 * 36))
+            }
+          }
+        }
+      }
+
+      Fixtures.Accounts.create_account()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_enterprise()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_team()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_team()
+      |> Fixtures.Accounts.disable_account()
+
+      accounts = all_active_paid_accounts_pending_notification!()
+      assert length(accounts) == 2
+    end
+  end
+
+  describe "all_active_accounts_by_subscription_name_pending_notification!/1" do
+    test "returns all active accounts for given subscription name" do
+      attrs = %{
+        config: %{
+          notifications: %{
+            outdated_gateway: %{
+              enabled: true,
+              last_notified: nil
+            }
+          }
+        }
+      }
+
+      Fixtures.Accounts.create_account()
+      Fixtures.Accounts.create_account(attrs) |> Fixtures.Accounts.change_to_team()
+
+      Fixtures.Accounts.create_account(attrs)
+      |> Fixtures.Accounts.change_to_team()
+      |> Fixtures.Accounts.disable_account()
+
+      accounts = all_active_accounts_by_subscription_name_pending_notification!("Team")
+      assert length(accounts) == 1
+    end
+
+    test "returns an empty list when no active accounts with type" do
+      Fixtures.Accounts.create_account()
+
+      Fixtures.Accounts.create_account()
+      |> Fixtures.Accounts.change_to_team()
+      |> Fixtures.Accounts.disable_account()
+
+      accounts = all_active_accounts_by_subscription_name_pending_notification!("Team")
+      assert length(accounts) == 0
+    end
+  end
+
   describe "fetch_account_by_id/3" do
     setup do
       account = Fixtures.Accounts.create_account()
@@ -374,6 +539,46 @@ defmodule Domain.AccountsTest do
       assert errors_on(changeset) == %{
                config: %{
                  clients_upstream_dns: ["all addresses must be unique"]
+               }
+             }
+    end
+
+    test "returns error on dns config address in IPv4 sentinel range", %{account: account} do
+      attrs = %{
+        config: %{
+          clients_upstream_dns: [
+            %{protocol: "ip_port", address: "100.64.10.1"}
+          ]
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 clients_upstream_dns: [
+                   %{address: ["cannot be in the CIDR 100.64.0.0/10"]}
+                 ]
+               }
+             }
+    end
+
+    test "returns error on dns config address in IPv6 sentinel range", %{account: account} do
+      attrs = %{
+        config: %{
+          clients_upstream_dns: [
+            %{protocol: "ip_port", address: "fd00:2021:1111:10::"}
+          ]
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 clients_upstream_dns: [
+                   %{address: ["cannot be in the CIDR fd00:2021:1111::/48"]}
+                 ]
                }
              }
     end

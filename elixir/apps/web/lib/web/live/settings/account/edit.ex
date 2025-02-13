@@ -26,11 +26,10 @@ defmodule Web.Settings.Account.Edit do
     </.breadcrumbs>
     <.section>
       <:title>
-        Edit Account <%= @form.data.name %>
+        Edit Account {@form.data.name}
       </:title>
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto lg:py-16">
-          <h2 class="mb-4 text-xl text-neutral-900">Edit account details</h2>
           <.form for={@form} phx-change={:change} phx-submit={:submit}>
             <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
               <div>

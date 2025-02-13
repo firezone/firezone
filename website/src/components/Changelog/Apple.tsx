@@ -5,13 +5,95 @@ import ChangeItem from "./ChangeItem";
 import Unreleased from "./Unreleased";
 
 export default function Apple() {
+  const downloadLinks = [
+    {
+      href: "https://apps.apple.com/us/app/firezone/id6443661826",
+      title: "Download on App Store for macOS and iOS",
+    },
+    {
+      href: "/dl/firezone-client-macos/:version",
+      title: "Download standalone package for macOS",
+    },
+  ];
+
   return (
-    <Entries
-      href="https://apps.apple.com/us/app/firezone/id6443661826"
-      title="macOS / iOS"
-    >
+    <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.1" date={new Date("2025-01-29")}>
+        <ChangeItem>Fixes a few minor UI hangs.</ChangeItem>
+        <ChangeItem pull="7890">
+          Fixes a minor memory leak that occurred when roaming networks.
+        </ChangeItem>
+        <ChangeItem pull="7891">
+          Substantially reduces the amount of memory usage when sending large
+          amount of data to many different Gateways.
+        </ChangeItem>
+        <ChangeItem>
+          Improves UX around installing the system extension, VPN configuration,
+          and granting notifications by showing the user actionable alerts if
+          errors occur.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.4.0" date={new Date("2025-01-16")}>
+        <ChangeItem pull="7581">
+          Adds download links and CI configuration to publish the macOS app as a
+          standalone package.
+        </ChangeItem>
+        <ChangeItem pull="7344">
+          The macOS app now uses a System Extension instead of an App Extension
+          for tunneling. This is needed for the app to be distributed outside of
+          the Mac App Store.
+        </ChangeItem>
+        <ChangeItem pull="7594">
+          Fixes a race condition that could cause the app to crash in rare
+          circumstances if the VPN profile is removed from system settings while
+          the app is running.
+        </ChangeItem>
+        <ChangeItem pull="7593">
+          Fixes a bug where the VPN status would not properly update upon the
+          first launch of the app.
+        </ChangeItem>
+        <ChangeItem pull="7334">
+          Fixes an issue where certain NAT types would cause excessive signaling
+          traffic which led to connectivity issues.
+        </ChangeItem>
+        <ChangeItem>
+          Makes use of the new control protocol, delivering faster and more
+          robust connection establishment.
+        </ChangeItem>
+        <ChangeItem pull="7477">
+          Improves connection setup latency by buffering initial packets.
+        </ChangeItem>
+        <ChangeItem pull="7551">
+          Fixes an issue where large DNS responses were incorrectly discarded.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.3.9" date={new Date("2024-11-08")}>
+        <ChangeItem pull="7288">
+          Fixes an issue where network roaming would cause Firezone to become
+          unresponsive.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.3.8" date={new Date("2024-11-05")}>
+        <ChangeItem pull="7263">
+          Mitigates a crash in case the maximum packet size is not respected.
+        </ChangeItem>
+        <ChangeItem pull="7265">
+          Prevents re-connections to the portal from hanging for longer than 5s.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.3.7" date={new Date("2024-10-31")}>
+        <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
+        <ChangeItem pull="7152">
+          Adds always-on error reporting using sentry.io.
+        </ChangeItem>
+        <ChangeItem pull="7164">
+          Fixes an issue where Firezone would fail to establish connections to
+          Gateways and the user had to sign-out and in again.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.3.6" date={new Date("2024-10-02")}>
         <ChangeItem pull="6831">
           Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is
           active.
@@ -20,7 +102,13 @@ export default function Apple() {
           Fixes connectivity issues on idle connections by entering an
           always-on, low-power mode instead of closing them.
         </ChangeItem>
-      </Unreleased>
+        <ChangeItem pull="6857">
+          MacOS: sends hardware's UUID for device verification.
+        </ChangeItem>
+        <ChangeItem pull="6857">
+          iOS: sends Id for vendor for device verification.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.3.5" date={new Date("2024-09-26")}>
         <ChangeItem pull="6809">
           Fixes a bug where non-wildcard DNS resources were not prioritised over

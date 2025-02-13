@@ -1,14 +1,18 @@
+#![allow(clippy::unwrap_used)]
+
 use bytecodec::{DecodeExt, EncodeExt};
 use firezone_relay::{
     AddressFamily, Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData,
-    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, Server,
+    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, Server, SOFTWARE,
 };
 use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
 use std::iter;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::time::{Duration, Instant, SystemTime};
-use stun_codec::rfc5389::attributes::{ErrorCode, Nonce, Realm, Username, XorMappedAddress};
+use stun_codec::rfc5389::attributes::{
+    ErrorCode, MessageIntegrity, Nonce, Realm, Username, XorMappedAddress,
+};
 use stun_codec::rfc5389::errors::Unauthorized;
 use stun_codec::rfc5389::methods::BINDING;
 use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, XorPeerAddress, XorRelayAddress};
@@ -61,7 +65,8 @@ fn deallocate_once_time_expired(
                 valid_username(&username_salt),
                 secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -121,7 +126,8 @@ fn unauthenticated_allocate_triggers_authentication(
                 valid_username(&username_salt),
                 &secret,
                 first_nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -165,7 +171,8 @@ fn when_refreshed_in_time_allocation_does_not_expire(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -198,7 +205,8 @@ fn when_refreshed_in_time_allocation_does_not_expire(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [send_message(
@@ -243,7 +251,8 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -275,7 +284,8 @@ fn when_receiving_lifetime_0_for_existing_allocation_then_delete(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -315,36 +325,45 @@ fn freeing_allocation_clears_all_channels(
     let secret = server.auth_secret().to_owned();
 
     let _ = server.server.handle_client_message(
-        ClientMessage::Allocate(Allocate::new_authenticated_udp_implicit_ip4(
-            allocate_transaction_id,
-            None,
-            valid_username(&username_salt),
-            &secret,
-            nonce,
-        )),
+        ClientMessage::Allocate(
+            Allocate::new_authenticated_udp_implicit_ip4(
+                allocate_transaction_id,
+                None,
+                valid_username(&username_salt),
+                &secret,
+                nonce,
+            )
+            .unwrap(),
+        ),
         ClientSocket::new(source),
         now,
     );
     let _ = server.server.handle_client_message(
-        ClientMessage::ChannelBind(ChannelBind::new(
-            channel_bind_transaction_id,
-            channel,
-            XorPeerAddress::new(peer.into()),
-            valid_username(&username_salt),
-            &secret,
-            nonce,
-        )),
+        ClientMessage::ChannelBind(
+            ChannelBind::new(
+                channel_bind_transaction_id,
+                channel,
+                XorPeerAddress::new(peer.into()),
+                valid_username(&username_salt),
+                &secret,
+                nonce,
+            )
+            .unwrap(),
+        ),
         ClientSocket::new(source),
         now,
     );
     let _ = server.server.handle_client_message(
-        ClientMessage::Refresh(Refresh::new(
-            refresh_transaction_id,
-            Some(Lifetime::new(Duration::ZERO).unwrap()),
-            valid_username(&username_salt),
-            &secret,
-            nonce,
-        )),
+        ClientMessage::Refresh(
+            Refresh::new(
+                refresh_transaction_id,
+                Some(Lifetime::new(Duration::ZERO).unwrap()),
+                valid_username(&username_salt),
+                &secret,
+                nonce,
+            )
+            .unwrap(),
+        ),
         ClientSocket::new(source),
         now,
     );
@@ -387,7 +406,8 @@ fn ping_pong_relay(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -422,7 +442,8 @@ fn ping_pong_relay(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [send_message(
@@ -496,7 +517,8 @@ fn allows_rebind_channel_after_expiry(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -531,7 +553,8 @@ fn allows_rebind_channel_after_expiry(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [send_message(
@@ -566,7 +589,8 @@ fn allows_rebind_channel_after_expiry(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [send_message(
@@ -614,7 +638,8 @@ fn ping_pong_ip6_relay(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [
@@ -649,7 +674,8 @@ fn ping_pong_ip6_relay(
                 valid_username(&username_salt),
                 &secret,
                 nonce,
-            ),
+            )
+            .unwrap(),
             now,
         ),
         [send_message(
@@ -739,16 +765,23 @@ impl TestServer {
 
             match (expected_output, actual_output) {
                 (
-                    Output::SendMessage((to, message)),
+                    Output::SendMessage((to, mut message)),
                     Command::SendMessage { payload, recipient },
                 ) => {
+                    let sent_message = parse_message(&payload);
+
+                    // In order to avoid simulating authentication, we copy the MessageIntegrity attribute.
+                    if let Some(mi) = sent_message.get_attribute::<MessageIntegrity>() {
+                        message.add_attribute(mi.clone());
+                    }
+
                     let expected_bytes = MessageEncoder::new()
                         .encode_into_bytes(message.clone())
                         .unwrap();
 
                     if expected_bytes != payload {
                         let expected_message = format!("{:?}", message);
-                        let actual_message = format!("{:?}", parse_message(&payload));
+                        let actual_message = format!("{:?}", sent_message);
 
                         difference::assert_diff!(&expected_message, &actual_message, "\n", 0);
                     }
@@ -802,6 +835,7 @@ fn binding_response(
 ) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::SuccessResponse, BINDING, transaction_id);
+    message.add_attribute(SOFTWARE.clone());
     message.add_attribute(XorMappedAddress::new(address.into()));
 
     message
@@ -816,6 +850,7 @@ fn allocate_response(
 ) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::SuccessResponse, ALLOCATE, transaction_id);
+    message.add_attribute(SOFTWARE.clone());
     message.add_attribute(XorRelayAddress::new(SocketAddr::new(
         public_relay_addr.into(),
         port,
@@ -832,9 +867,10 @@ fn unauthorized_allocate_response(
 ) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::ErrorResponse, ALLOCATE, transaction_id);
+    message.add_attribute(SOFTWARE.clone());
     message.add_attribute(ErrorCode::from(Unauthorized));
-    message.add_attribute(Nonce::new(nonce.as_hyphenated().to_string()).unwrap());
     message.add_attribute(Realm::new("firezone".to_owned()).unwrap());
+    message.add_attribute(Nonce::new(nonce.as_hyphenated().to_string()).unwrap());
 
     message
 }
@@ -842,13 +878,18 @@ fn unauthorized_allocate_response(
 fn refresh_response(transaction_id: TransactionId, lifetime: Lifetime) -> Message<Attribute> {
     let mut message =
         Message::<Attribute>::new(MessageClass::SuccessResponse, REFRESH, transaction_id);
+    message.add_attribute(SOFTWARE.clone());
     message.add_attribute(lifetime);
 
     message
 }
 
 fn channel_bind_response(transaction_id: TransactionId) -> Message<Attribute> {
-    Message::<Attribute>::new(MessageClass::SuccessResponse, CHANNEL_BIND, transaction_id)
+    let mut message =
+        Message::<Attribute>::new(MessageClass::SuccessResponse, CHANNEL_BIND, transaction_id);
+    message.add_attribute(SOFTWARE.clone());
+
+    message
 }
 
 fn parse_message(message: &[u8]) -> Message<Attribute> {

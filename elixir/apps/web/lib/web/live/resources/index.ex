@@ -62,6 +62,9 @@ defmodule Web.Resources.Index do
         in the <.link navigate={~p"/#{@account}/sites"} class={link_style()}>Sites</.link> section.
       </:help>
       <:action>
+        <.docs_action path="/deploy/resources" />
+      </:action>
+      <:action>
         <.add_button navigate={~p"/#{@account}/resources/new"}>
           Add Resource
         </.add_button>
@@ -79,12 +82,12 @@ defmodule Web.Resources.Index do
         >
           <:col :let={resource} field={{:resources, :name}} label="Name">
             <.link navigate={~p"/#{@account}/resources/#{resource.id}"} class={link_style()}>
-              <%= resource.name %>
+              {resource.name}
             </.link>
           </:col>
           <:col :let={resource} field={{:resources, :address}} label="Address">
             <code :if={resource.type != :internet} class="block text-xs">
-              <%= resource.address %>
+              {resource.address}
             </code>
             <span :if={resource.type == :internet} class="block text-xs">
               <code>0.0.0.0/0</code>, <code>::/0 </code>
@@ -97,7 +100,7 @@ defmodule Web.Resources.Index do
               class={link_style()}
             >
               <.badge type="info">
-                <%= gateway_group.name %>
+                {gateway_group.name}
               </.badge>
             </.link>
           </:col>
@@ -120,7 +123,7 @@ defmodule Web.Resources.Index do
 
               <:tail :let={count}>
                 <span class="inline-block whitespace-nowrap">
-                  and <%= count %> more.
+                  and {count} more.
                 </span>
               </:tail>
             </.peek>

@@ -1,38 +1,44 @@
+use futures::SinkExt as _;
+use ip_packet::{IpPacket, IpPacketBuf};
 use std::task::{Context, Poll};
-use std::{
-    io,
-    os::fd::{AsRawFd, RawFd},
-};
-use tokio::io::unix::AsyncFd;
+use std::{io, os::fd::RawFd};
+use tokio::sync::mpsc;
 use tun::ioctl;
+use tun::unix::TunFd;
 
 #[derive(Debug)]
 pub struct Tun {
-    fd: AsyncFd<RawFd>,
     name: String,
-}
-
-impl Drop for Tun {
-    fn drop(&mut self) {
-        unsafe { libc::close(self.fd.as_raw_fd()) };
-    }
+    outbound_tx: flume::r#async::SendSink<'static, IpPacket>,
+    inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
 impl tun::Tun for Tun {
-    fn write4(&self, src: &[u8]) -> std::io::Result<usize> {
-        write(self.fd.as_raw_fd(), src)
-    }
-
-    fn write6(&self, src: &[u8]) -> std::io::Result<usize> {
-        write(self.fd.as_raw_fd(), src)
-    }
-
-    fn poll_read(&mut self, buf: &mut [u8], cx: &mut Context<'_>) -> Poll<io::Result<usize>> {
-        tun::unix::poll_raw_fd(&self.fd, |fd| read(fd, buf), cx)
-    }
-
     fn name(&self) -> &str {
         self.name.as_str()
+    }
+
+    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
+        self.outbound_tx
+            .poll_ready_unpin(cx)
+            .map_err(io::Error::other)
+    }
+
+    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
+        self.outbound_tx
+            .start_send_unpin(packet)
+            .map_err(io::Error::other)?;
+
+        Ok(())
+    }
+
+    fn poll_recv_many(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut Vec<IpPacket>,
+        max: usize,
+    ) -> Poll<usize> {
+        self.inbound_rx.poll_recv_many(cx, buf, max)
     }
 }
 
@@ -41,13 +47,39 @@ impl Tun {
     ///
     /// # Safety
     ///
-    /// The file descriptor must be open.
+    /// - The file descriptor must be open.
+    /// - The file descriptor must not get closed by anyone else.
     pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
         let name = interface_name(fd)?;
 
+        // Safety: We are forwarding the safety requirements to the caller.
+        let fd = unsafe { TunFd::new(fd) };
+
+        let (inbound_tx, inbound_rx) = mpsc::channel(1000);
+        let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
+
+        // TODO: Test whether we can set `IFF_MULTI_QUEUE` on Android devices.
+
+        std::thread::Builder::new()
+            .name("TUN send/recv".to_owned())
+            .spawn(|| {
+                firezone_logging::unwrap_or_warn!(
+                    tun::unix::send_recv_tun(
+                        fd,
+                        inbound_tx,
+                        outbound_rx.into_stream(),
+                        read,
+                        write,
+                    ),
+                    "Failed to send / recv from TUN device: {}"
+                )
+            })
+            .map_err(io::Error::other)?;
+
         Ok(Tun {
-            fd: AsyncFd::new(fd)?,
             name,
+            outbound_tx: outbound_tx.into_sink(),
+            inbound_rx,
         })
     }
 }
@@ -67,7 +99,9 @@ unsafe fn interface_name(fd: RawFd) -> io::Result<String> {
 }
 
 /// Read from the given file descriptor in the buffer.
-fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
+fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
+    let dst = dst.buf();
+
     // Safety: Within this module, the file descriptor is always valid.
     match unsafe { libc::read(fd, dst.as_mut_ptr() as _, dst.len()) } {
         -1 => Err(io::Error::last_os_error()),
@@ -75,10 +109,12 @@ fn read(fd: RawFd, dst: &mut [u8]) -> io::Result<usize> {
     }
 }
 
-/// Write the buffer to the given file descriptor.
-fn write(fd: RawFd, buf: &[u8]) -> io::Result<usize> {
+/// Write the packet to the given file descriptor.
+fn write(fd: RawFd, packet: &IpPacket) -> io::Result<usize> {
+    let buf = packet.packet();
+
     // Safety: Within this module, the file descriptor is always valid.
-    match unsafe { libc::write(fd.as_raw_fd(), buf.as_ptr() as _, buf.len() as _) } {
+    match unsafe { libc::write(fd, buf.as_ptr() as _, buf.len() as _) } {
         -1 => Err(io::Error::last_os_error()),
         n => Ok(n as usize),
     }

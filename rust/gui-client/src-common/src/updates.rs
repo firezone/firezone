@@ -46,7 +46,7 @@ pub async fn checker_task(
                 tracing::debug!("CheckNetwork");
                 match check().await {
                     Ok(release) => fsm.handle_check(release),
-                    Err(error) => tracing::error!(?error, "Couldn't check website for update"),
+                    Err(e) => tracing::debug!("Couldn't check website for update: {e:#}"),
                 }
             }
             Event::WaitInterval => {

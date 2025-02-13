@@ -1,11 +1,8 @@
 locals {
   project_owners = [
-    "a@firezone.dev",
     "bmanifold@firezone.dev",
-    "gabriel@firezone.dev",
     "jamil@firezone.dev",
     "thomas@firezone.dev",
-    "trish@firezone.dev"
   ]
 
   # list of emails for users that should be able to SSH into a demo instance
@@ -25,6 +22,10 @@ locals {
   iap_ipv4_ranges = [
     "35.235.240.0/20"
   ]
+
+  gateway_image_tag = var.gateway_image_tag != null ? var.gateway_image_tag : var.image_tag
+  relay_image_tag   = var.relay_image_tag != null ? var.relay_image_tag : var.image_tag
+  portal_image_tag  = var.portal_image_tag != null ? var.portal_image_tag : var.image_tag
 }
 
 terraform {
@@ -51,6 +52,8 @@ module "google-cloud-project" {
   name               = "Staging Environment"
   organization_id    = "335836213177"
   billing_account_id = "01DFC9-3D6951-579BE1"
+
+  auto_create_network = false
 }
 
 # Grant owner access to the project

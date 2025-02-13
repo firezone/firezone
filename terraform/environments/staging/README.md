@@ -11,6 +11,32 @@ This directory houses the Firezone staging environment.
 1. SSH to the Gateway using instance connect:
    ```
    aws ec2-instance-connect ssh --instance-id \
-     $(aws ec2 describe-instances --filters "Name=tag:Name,Values=gateway - staging" --query "Reservations[*].Instances[*].InstanceId" --output text) \
+     $(aws ec2 describe-instances --filters "Name=tag:Name,Values=gateway - staging" "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].InstanceId" --output text) \
      --os-user ubuntu --connection-type eice
    ```
+
+## Set NAT type on AWS NAT gateway VM
+
+Note: The NAT gateway VM will default to using a non-symmetric NAT when deployed or restarted.
+
+### Enable Symmetric NAT
+
+1. SSH in to the NAT gateway VM using the instructions above by replacing `gateway` with `nat`
+1. Run the following:
+   ```
+   sudo iptables -t nat -F && sudo iptables -t nat -A POSTROUTING -o ens5 -j MASQUERADE --random
+   ```
+
+### Enable Non-Symmetric NAT
+
+1. SSH in to the NAT gateway VM using the instructions above by replacing `gateway` with `nat`
+1. Run the following:
+   ```
+   sudo iptables -t nat -F && sudo iptables -t nat -A POSTROUTING -o ens5 -j MASQUERADE
+   ```
+
+## View gateway logs
+
+1. SSH into the Gateway instance as per the above instructions.
+1. Run `sudo journalctl -u gateway.service --no-hostname --output cat`.
+   This will give you coloured logs without additional clutter like duplicate timestamps or hostnames.

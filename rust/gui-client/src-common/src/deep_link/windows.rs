@@ -1,9 +1,10 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
-use super::FZ_SCHEME;
+use super::{CantListen, FZ_SCHEME};
 use anyhow::{Context, Result};
 use firezone_bin_shared::BUNDLE_ID;
+use firezone_logging::err_with_src;
 use secrecy::Secret;
 use std::{
     io,
@@ -23,7 +24,7 @@ impl Server {
     ///
     /// Panics if there is no Tokio runtime
     /// Still uses `thiserror` so we can catch the deep_link `CantListen` error
-    pub async fn new() -> Result<Self, super::Error> {
+    pub async fn new() -> Result<Self> {
         // This isn't air-tight - We recreate the whole server on each loop,
         // rather than binding 1 socket and accepting many streams like a normal socket API.
         // Tokio appears to be following Windows' underlying API here, so not
@@ -39,7 +40,7 @@ impl Server {
     /// I assume this is based on the underlying Windows API.
     /// I tried re-using the server and it acted strange. The official Tokio
     /// examples are not clear on this.
-    pub async fn accept(mut self) -> Result<Secret<Vec<u8>>> {
+    pub async fn accept(mut self) -> Result<Option<Secret<Vec<u8>>>> {
         self.inner
             .connect()
             .await
@@ -57,34 +58,35 @@ impl Server {
         let bytes = Secret::new(bytes);
 
         self.inner.disconnect().ok();
-        Ok(bytes)
+        Ok(Some(bytes))
     }
 }
 
-async fn bind_to_pipe(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, super::Error> {
+async fn bind_to_pipe(pipe_path: &str) -> Result<named_pipe::NamedPipeServer> {
     const NUM_ITERS: usize = 10;
     // Relating to #5143 and #5566, sometimes re-creating a named pipe server
     // in a loop fails. This is copied from `firezone_headless_client::ipc_service::ipc::windows`.
     for i in 0..NUM_ITERS {
         match create_pipe_server(pipe_path) {
             Ok(server) => return Ok(server),
-            Err(super::Error::CantListen) => {
-                tracing::warn!("`create_pipe_server` failed, sleeping... (loop {i})");
+            Err(e) => {
+                tracing::debug!(
+                    "`create_pipe_server` failed {}; sleeping... (attempt {i}/{NUM_ITERS})",
+                    err_with_src(&e)
+                );
                 tokio::time::sleep(Duration::from_secs(1)).await;
             }
-            Err(error) => Err(error)?,
         }
     }
-    Err(super::Error::CantListen)
+    Err(anyhow::Error::new(CantListen))
 }
 
-fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, super::Error> {
+fn create_pipe_server(pipe_path: &str) -> io::Result<named_pipe::NamedPipeServer> {
     let mut server_options = named_pipe::ServerOptions::new();
     server_options.first_pipe_instance(true);
 
-    let server = server_options
-        .create(pipe_path)
-        .map_err(|_| super::Error::CantListen)?;
+    let server = server_options.create(pipe_path)?;
+
     Ok(server)
 }
 

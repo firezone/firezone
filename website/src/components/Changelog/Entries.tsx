@@ -3,16 +3,19 @@ import Entry from "./Entry";
 import Link from "next/link";
 import Unreleased from "./Unreleased";
 
+export type DownloadLink = {
+  title: string;
+  href: string;
+};
+
 function Latest({
-  arches,
-  href,
+  downloadLinks,
   title,
   version,
   date,
   children,
 }: {
-  arches?: string[];
-  href: string;
+  downloadLinks: DownloadLink[];
   title: string;
   version: string;
   date: Date;
@@ -34,37 +37,25 @@ function Latest({
         <p>
           Version: <span className="font-semibold">{version}</span>
         </p>
-        <p>
+        <p className="mb-4 md:mb-6 xl:mb-8">
           Released:{" "}
           <span className="font-semibold">
             <time dateTime={date.toDateString()}>{utcDateString}</time>
           </span>
         </p>
-        <p className="mb-4 md:mb-6 xl:mb-8">
-          <span className="mr-2">Download:</span>
-          {arches ? (
-            arches.map((arch) => (
+        <ul className="mb-4 md:mb-6 xl:mb-8">
+          {downloadLinks.map((link) => (
+            <li key={link.href}>
               <Link
-                key={arch}
-                href={{
-                  pathname: href
-                    .replace(":arch", arch)
-                    .replace(":version", version),
-                }}
+                key={link.href}
+                href={{ pathname: link.href.replace(":version", version) }}
                 className="hover:no-underline underline text-accent-500 mr-2"
               >
-                {arch}
+                {link.title}
               </Link>
-            ))
-          ) : (
-            <Link
-              href={new URL(href)}
-              className="hover:no-underline underline text-accent-500"
-            >
-              Download for all platforms
-            </Link>
-          )}
-        </p>
+            </li>
+          ))}
+        </ul>
         {children}
       </div>
     </>
@@ -113,13 +104,11 @@ function Previous({
 }
 
 export default function Entries({
-  href,
-  arches,
+  downloadLinks,
   title,
   children,
 }: {
-  href: string;
-  arches?: string[];
+  downloadLinks: DownloadLink[];
   title: string;
   children: React.ReactNode;
 }) {
@@ -135,8 +124,7 @@ export default function Entries({
   return (
     <div className="relative overflow-x-auto p-4 md:p-6 xl:p-8">
       <Latest
-        href={href}
-        arches={arches}
+        downloadLinks={downloadLinks}
         title={title}
         version={version}
         date={date}
