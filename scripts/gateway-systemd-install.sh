@@ -43,6 +43,8 @@ User=firezone
 Group=firezone
 PermissionsStartOnly=true
 SyslogIdentifier=firezone-gateway
+StateDirectory=firezone
+StateDirectoryMode=0755
 
 # Environment variables
 Environment="FIREZONE_NAME=$FIREZONE_NAME"
@@ -145,11 +147,8 @@ else
   echo "/usr/local/bin/firezone-gateway found. Skipping download."
 fi
 
-# Set proper capabilities and permissions on each start
+# Set proper permissions on each start
 chmod 0755 /usr/local/bin/firezone-gateway
-mkdir -p /var/lib/firezone
-chown firezone:firezone /var/lib/firezone
-chmod 0775 /var/lib/firezone
 
 # Enable masquerading for ethernet and wireless interfaces
 iptables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i tun-firezone -j ACCEPT
