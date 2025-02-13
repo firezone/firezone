@@ -19,7 +19,12 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="8122">
+          Fixes a rare crash that could occur when dismissing the update
+          available notification.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.2" date={new Date("2025-02-13")}>
         <ChangeItem pull="8104">
           Fixes a minor memory leak that could occur after being unexpectedly
