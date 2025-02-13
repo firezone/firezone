@@ -115,8 +115,6 @@ class UpdateChecker {
 }
 
 private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
-  private var lastNotifiedVersion: SemanticVersion?
-  private var lastDismissedVersion: SemanticVersion?
   static let notificationIdentifier = "UPDATE_CATEGORY"
   static let dismissIdentifier = "DISMISS_ACTION"
 
@@ -155,7 +153,7 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
 
   func showUpdateNotification(version: SemanticVersion) {
     let content = UNMutableNotificationContent()
-    lastNotifiedVersion = version
+    setLastNotifiedVersion(version: version)
     content.title = "Update Firezone"
     content.body = "New version available"
     content.sound = .default
@@ -177,8 +175,12 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
   func userNotificationCenter(_ center: UNUserNotificationCenter,
                               didReceive response: UNNotificationResponse,
                               withCompletionHandler completionHandler: @escaping () -> Void) {
-    if response.actionIdentifier == NotificationAdapter.dismissIdentifier {
-      setLastDismissedVersion(version: lastNotifiedVersion!)
+    if response.actionIdentifier == NotificationAdapter.dismissIdentifier { // User dismissed this notification
+      if let lastNotifiedVersion = getLastNotifiedVersion() { // Don't notify them again for this version
+        setLastDismissedVersion(version: lastNotifiedVersion)
+      }
+
+      completionHandler()
       return
     }
 
@@ -210,13 +212,22 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
 }
 
 private let lastDismissedVersionKey = "lastDismissedVersion"
+private let lastNotifiedVersionKey = "lastNotifiedVersion"
 
 private func setLastDismissedVersion(version: SemanticVersion) {
   UserDefaults.standard.setValue(version, forKey: lastDismissedVersionKey)
 }
 
+private func setLastNotifiedVersion(version: SemanticVersion) {
+  UserDefaults.standard.setValue(version, forKey: lastNotifiedVersionKey)
+}
+
 private func getLastDismissedVersion() -> SemanticVersion? {
   return UserDefaults.standard.object(forKey: lastDismissedVersionKey) as? SemanticVersion
+}
+
+private func getLastNotifiedVersion() -> SemanticVersion? {
+  return UserDefaults.standard.object(forKey: lastNotifiedVersionKey) as? SemanticVersion
 }
 
 #endif
