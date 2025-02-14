@@ -2,7 +2,7 @@
 use anyhow::{Context, Result};
 use bimap::BiMap;
 use ip_packet::{DestUnreachable, FailedPacket, IpPacket, PacketBuilder, Protocol};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
@@ -20,25 +20,22 @@ use std::time::{Duration, Instant};
 pub(crate) struct NatTable {
     pub(crate) table: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
     pub(crate) last_seen: BTreeMap<(Protocol, IpAddr), Instant>,
+
+    // We don't bother with proactively freeing this because a single entry is only ~20 bytes and it gets cleanup once the connection to the client goes away.
+    expired: HashSet<(Protocol, IpAddr)>,
 }
 
-const TTL: Duration = Duration::from_secs(60);
+pub(crate) const TTL: Duration = Duration::from_secs(60);
 
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        let mut removed = Vec::new();
         for (outside, e) in self.last_seen.iter() {
             if now.duration_since(*e) >= TTL {
                 if let Some((inside, _)) = self.table.remove_by_right(outside) {
                     tracing::debug!(?inside, ?outside, "NAT session expired");
+                    self.expired.insert(*outside);
                 }
-
-                removed.push(*outside);
             }
-        }
-
-        for r in removed {
-            self.last_seen.remove(&r);
         }
     }
 
@@ -101,6 +98,10 @@ impl NatTable {
                 ));
             }
 
+            if self.expired.contains(&outside) {
+                return Ok(TranslateIncomingResult::ExpiredNatSession);
+            }
+
             tracing::trace!(?outside, "No active NAT session; skipping translation");
 
             return Ok(TranslateIncomingResult::NoNatSession);
@@ -110,6 +111,10 @@ impl NatTable {
 
         if let Some((proto, src)) = self.translate_incoming_inner(&outside, now) {
             return Ok(TranslateIncomingResult::Ok { proto, src });
+        }
+
+        if self.expired.contains(&outside) {
+            return Ok(TranslateIncomingResult::ExpiredNatSession);
         }
 
         tracing::trace!(?outside, "No active NAT session; skipping translation");
@@ -201,6 +206,7 @@ impl DestinationUnreachablePrototype {
 pub enum TranslateIncomingResult {
     Ok { proto: Protocol, src: IpAddr },
     DestinationUnreachable(DestinationUnreachablePrototype),
+    ExpiredNatSession,
     NoNatSession,
 }
 
@@ -246,7 +252,10 @@ mod tests {
 
         // Assert
         if response_delay >= Duration::from_secs(60) {
-            assert_eq!(translate_incoming, TranslateIncomingResult::NoNatSession);
+            assert_eq!(
+                translate_incoming,
+                TranslateIncomingResult::ExpiredNatSession
+            );
         } else {
             assert_eq!(
                 translate_incoming,
@@ -298,6 +307,7 @@ mod tests {
             match res {
                 TranslateIncomingResult::Ok { proto, src } => (proto, src),
                 TranslateIncomingResult::NoNatSession
+                | TranslateIncomingResult::ExpiredNatSession
                 | TranslateIncomingResult::DestinationUnreachable(_) => panic!("Wrong result"),
             }
         });

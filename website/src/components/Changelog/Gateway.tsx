@@ -22,7 +22,12 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="8124">
+          Fixes a bug in the routing of DNS resources that would lead to "Source
+          not allowed" errors in the Client logs.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.4" date={new Date("2025-02-11")}>
         <ChangeItem pull="7944">
           Fixes an edge case where a busy Gateway could experience a deadlock
