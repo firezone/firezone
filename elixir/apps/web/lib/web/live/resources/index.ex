@@ -7,7 +7,10 @@ defmodule Web.Resources.Index do
       :ok = Resources.subscribe_to_events_for_account(socket.assigns.account)
     end
 
-    {:ok, internet_site} = Domain.Gateways.fetch_internet_group(socket.assigns.account)
+    internet_site = case Domain.Gateways.fetch_internet_group(socket.assigns.account) do
+      {:ok, internet_site} -> internet_site
+      _ -> nil
+    end
 
     socket =
       socket
@@ -65,7 +68,7 @@ defmodule Web.Resources.Index do
           Resources define the subnets, hosts, and applications for which you want to manage access. You can manage Resources per Site
           in the <.link navigate={~p"/#{@account}/sites"} class={link_style()}>Sites</.link> section.
         </p>
-        <p :if={Domain.Accounts.internet_resource_enabled?(@account)}>
+        <p :if={Domain.Accounts.internet_resource_enabled?(@account) && @internet_site}>
           The Internet Resource can now be managed in the
           <.link navigate={~p"/#{@account}/sites/#{@internet_site}"} class={link_style()}>
             Internet Site.

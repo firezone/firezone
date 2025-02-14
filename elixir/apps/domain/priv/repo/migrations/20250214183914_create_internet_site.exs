@@ -22,6 +22,13 @@ defmodule Domain.Repo.Migrations.CreateInternetSite do
       NOW()
     FROM accounts
     WHERE deleted_at IS NULL
+    AND NOT EXISTS (
+      SELECT 1
+      FROM gateway_groups g
+      WHERE g.account_id = a.id
+        AND g.name = 'Internet'
+        AND g.created_by = 'system'
+        AND g.managed_by = 'system')
     """)
   end
 
