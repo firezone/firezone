@@ -52,13 +52,9 @@ async fn no_packet_loops_udp() {
         .await
         .unwrap();
 
-    let task = std::future::poll_fn(|cx| {
-        let result = std::task::ready!(socket.poll_recv_from(cx));
-
-        let _response = result.unwrap().next().unwrap();
-
-        std::task::Poll::Ready(())
-    });
+    let task = async {
+        socket.recv_from().await.unwrap().next().unwrap();
+    };
 
     tokio::time::timeout(Duration::from_secs(10), task)
         .await
