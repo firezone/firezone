@@ -7,19 +7,22 @@ defmodule Web.Resources.Index do
       :ok = Resources.subscribe_to_events_for_account(socket.assigns.account)
     end
 
+    {:ok, internet_site} = Domain.Gateways.fetch_internet_group(socket.assigns.account)
+
     socket =
       socket
       |> assign(page_title: "Resources")
+      |> assign(internet_site: internet_site)
       |> assign_live_table("resources",
         query_module: Resources.Resource.Query,
         sortable_fields: [
           {:resources, :name},
           {:resources, :address}
         ],
-        # TODO: uncomment when internet sites migration is executed
-        # enforce_filters: [
-        #   {:type, {:not_in, ["internet"]}}
-        # ],
+        enforce_filters: [
+          # The Internet Resource is shown in another section
+          {:type, {:not_in, ["internet"]}}
+        ],
         callback: &handle_resources_update!/2
       )
 
@@ -58,8 +61,16 @@ defmodule Web.Resources.Index do
         Resources
       </:title>
       <:help>
-        Resources define the subnets, hosts, and applications for which you want to manage access. You can manage Resources per Site
-        in the <.link navigate={~p"/#{@account}/sites"} class={link_style()}>Sites</.link> section.
+        <p class="mb-2">
+          Resources define the subnets, hosts, and applications for which you want to manage access. You can manage Resources per Site
+          in the <.link navigate={~p"/#{@account}/sites"} class={link_style()}>Sites</.link> section.
+        </p>
+        <p :if={Domain.Accounts.internet_resource_enabled?(@account)}>
+          The Internet Resource can now be managed in the
+          <.link navigate={~p"/#{@account}/sites/#{@internet_site}"} class={link_style()}>
+            Internet Site.
+          </.link>
+        </p>
       </:help>
       <:action>
         <.docs_action path="/deploy/resources" />

@@ -8,7 +8,8 @@ defmodule Web.Resources.Edit do
            Resources.fetch_resource_by_id(id, socket.assigns.subject,
              preload: :gateway_groups,
              filter: [
-               deleted?: false
+               deleted?: false,
+               type: [:dns, :ip, :cidr]
              ]
            ) do
       gateway_groups = Gateways.all_groups!(socket.assigns.subject)

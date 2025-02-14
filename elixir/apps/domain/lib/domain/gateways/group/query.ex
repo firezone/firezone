@@ -18,6 +18,14 @@ defmodule Domain.Gateways.Group.Query do
     where(queryable, [groups: groups], groups.account_id == ^account_id)
   end
 
+  def by_managed_by(queryable, managed_by) do
+    where(queryable, [groups: groups], groups.managed_by == ^managed_by)
+  end
+
+  def by_name(queryable, name) do
+    where(queryable, [groups: groups], groups.name == ^name)
+  end
+
   # Pagination
 
   @impl Domain.Repo.Query

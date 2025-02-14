@@ -1,7 +1,6 @@
 defmodule Web.Sites.Show do
   use Web, :live_view
-  import Web.Policies.Components
-  alias Domain.{Accounts, Gateways, Resources, Policies, Flows, Tokens}
+  alias Domain.{Gateways, Resources, Policies, Flows, Tokens}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
@@ -195,11 +194,10 @@ defmodule Web.Sites.Show do
       </:action>
 
       <:help :if={@group.managed_by == :system and @group.name == "Internet"}>
-        The Internet Site is a dedicated Site for Internet traffic that does not match any specific Resource.
-        Deploy Gateways here to secure access to the public Internet for your workforce.
+        Use this Site to manage secure, private access to the public internet for your workforce.
       </:help>
 
-      <:content>
+      <:content :if={@group.managed_by != :system and @group.name != "Internet"}>
         <.vertical_table id="group">
           <.vertical_table_row>
             <:label>Name</:label>
@@ -452,61 +450,9 @@ defmodule Web.Sites.Show do
                 >
                   Add a policy
                 </.link>
-                to allow usage of the Internet Site.
+                to configure access to the internet.
               </div>
             </div>
-          </:empty>
-        </.live_table>
-      </:content>
-    </.section>
-
-    <.section :if={@group.managed_by == :system and @group.name == "Internet"}>
-      <:title>Recent Connections</:title>
-      <:help>
-        Recent connections opened by Actors to the Internet.
-      </:help>
-      <:content>
-        <.live_table
-          id="flows"
-          rows={@flows}
-          row_id={&"flows-#{&1.id}"}
-          filters={@filters_by_table_id["flows"]}
-          filter={@filter_form_by_table_id["flows"]}
-          ordered_by={@order_by_table_id["flows"]}
-          metadata={@flows_metadata}
-        >
-          <:col :let={flow} label="authorized">
-            <.relative_datetime datetime={flow.inserted_at} />
-          </:col>
-          <:col :let={flow} label="policy">
-            <.link navigate={~p"/#{@account}/policies/#{flow.policy_id}"} class={[link_style()]}>
-              <.policy_name policy={flow.policy} />
-            </.link>
-          </:col>
-          <:col :let={flow} label="client, actor" class="w-3/12">
-            <.link navigate={~p"/#{@account}/clients/#{flow.client_id}"} class={[link_style()]}>
-              {flow.client.name}
-            </.link>
-            owned by
-            <.link navigate={~p"/#{@account}/actors/#{flow.client.actor_id}"} class={[link_style()]}>
-              {flow.client.actor.name}
-            </.link>
-            {flow.client_remote_ip}
-          </:col>
-          <:col :let={flow} label="gateway" class="w-3/12">
-            <.link navigate={~p"/#{@account}/gateways/#{flow.gateway_id}"} class={[link_style()]}>
-              {flow.gateway.group.name}-{flow.gateway.name}
-            </.link>
-            <br />
-            <code class="text-xs">{flow.gateway_remote_ip}</code>
-          </:col>
-          <:col :let={flow} :if={Accounts.flow_activities_enabled?(@account)} label="activity">
-            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
-              Show
-            </.link>
-          </:col>
-          <:empty>
-            <div class="text-center text-neutral-500 p-4">No activity to display.</div>
           </:empty>
         </.live_table>
       </:content>
