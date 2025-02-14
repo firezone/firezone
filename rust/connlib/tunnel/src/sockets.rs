@@ -162,13 +162,10 @@ impl ThreadedUdpSocket {
         let (error_tx, error_rx) = flume::bounded(0);
 
         std::thread::Builder::new()
-            .name(
-                match addr {
-                    SocketAddr::V4(_) => "UDP send/recv IPv4",
-                    SocketAddr::V6(_) => "UDP send/recv IPv6",
-                }
-                .to_owned(),
-            )
+            .name(match addr {
+                SocketAddr::V4(_) => "UDP IPv4".to_owned(),
+                SocketAddr::V6(_) => "UDP IPv6".to_owned(),
+            })
             .spawn(move || {
                 tokio::runtime::Builder::new_current_thread()
                     .enable_all()
