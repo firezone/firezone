@@ -13,6 +13,7 @@ firezone-logging = { workspace = true }
 firezone-tunnel = { workspace = true }
 ip_network = { workspace = true }
 phoenix-channel = { workspace = true }
+rayon = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["std", "derive"] }
 snownet = { workspace = true }
@@ -22,7 +23,6 @@ time = { workspace = true, features = ["formatting"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { workspace = true, features = ["std", "attributes"] }
 tun = { workspace = true }
-rayon = { workspace = true }
 url = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
