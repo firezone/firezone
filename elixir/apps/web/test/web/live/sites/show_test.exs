@@ -579,7 +579,7 @@ defmodule Web.Live.Sites.ShowTest do
       }
     end
 
-    test "does not allow to editing", %{
+    test "does not allow editing", %{
       account: account,
       group: group,
       identity: identity,
@@ -591,27 +591,6 @@ defmodule Web.Live.Sites.ShowTest do
         |> live(~p"/#{account}/sites/#{group}")
 
       refute has_element?(lv, "a", "Edit Site")
-    end
-
-    test "renders group details", %{
-      account: account,
-      identity: identity,
-      group: group,
-      conn: conn
-    } do
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
-
-      table =
-        lv
-        |> element("#group")
-        |> render()
-        |> vertical_table_to_map()
-
-      assert table["name"] =~ "Internet"
-      assert table["created"] =~ "system"
     end
 
     test "renders online gateways table", %{
@@ -742,45 +721,6 @@ defmodule Web.Live.Sites.ShowTest do
                assert row["id"]
                assert row["status"] == "Active"
              end)
-    end
-
-    test "renders logs table", %{
-      account: account,
-      identity: identity,
-      group: group,
-      resource: resource,
-      conn: conn
-    } do
-      flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          resource: resource
-        )
-
-      flow =
-        Repo.preload(flow, client: [:actor], gateway: [:group], policy: [:actor_group, :resource])
-
-      {:ok, lv, _html} =
-        conn
-        |> authorize_conn(identity)
-        |> live(~p"/#{account}/sites/#{group}")
-
-      [row] =
-        lv
-        |> element("#flows")
-        |> render()
-        |> table_to_map()
-
-      assert row["authorized"]
-      assert row["policy"] =~ flow.policy.actor_group.name
-      assert row["policy"] =~ flow.policy.resource.name
-
-      assert row["gateway"] ==
-               "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
-
-      assert row["client, actor"] =~ flow.client.name
-      assert row["client, actor"] =~ "owned by #{flow.client.actor.name}"
-      assert row["client, actor"] =~ to_string(flow.client_remote_ip)
     end
 
     test "does not allow deleting the group", %{

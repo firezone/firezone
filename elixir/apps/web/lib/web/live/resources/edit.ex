@@ -9,7 +9,7 @@ defmodule Web.Resources.Edit do
              preload: :gateway_groups,
              filter: [
                deleted?: false,
-               type: [:dns, :ip, :cidr]
+               type: ["cidr", "dns", "ip"]
              ]
            ) do
       gateway_groups = Gateways.all_groups!(socket.assigns.subject)
