@@ -2,7 +2,7 @@
 use anyhow::{Context, Result};
 use bimap::BiMap;
 use ip_packet::{DestUnreachable, FailedPacket, IpPacket, PacketBuilder, Protocol};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
@@ -21,7 +21,8 @@ pub(crate) struct NatTable {
     pub(crate) table: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
     pub(crate) last_seen: BTreeMap<(Protocol, IpAddr), Instant>,
 
-    expired: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
+    // We don't bother with proactively freeing this because a single entry is only ~20 bytes and it gets cleanup once the connection to the client goes away.
+    expired: HashSet<(Protocol, IpAddr)>,
 }
 
 pub(crate) const TTL: Duration = Duration::from_secs(60);
@@ -32,7 +33,7 @@ impl NatTable {
             if now.duration_since(*e) >= TTL {
                 if let Some((inside, _)) = self.table.remove_by_right(outside) {
                     tracing::debug!(?inside, ?outside, "NAT session expired");
-                    self.expired.insert(inside, *outside);
+                    self.expired.insert(*outside);
                 }
             }
         }
@@ -97,7 +98,7 @@ impl NatTable {
                 ));
             }
 
-            if self.expired.contains_right(&outside) {
+            if self.expired.contains(&outside) {
                 return Ok(TranslateIncomingResult::ExpiredNatSession);
             }
 
@@ -112,7 +113,7 @@ impl NatTable {
             return Ok(TranslateIncomingResult::Ok { proto, src });
         }
 
-        if self.expired.contains_right(&outside) {
+        if self.expired.contains(&outside) {
             return Ok(TranslateIncomingResult::ExpiredNatSession);
         }
 
