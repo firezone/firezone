@@ -1,5 +1,6 @@
 //! Main connlib library for clients.
 pub use crate::serde_routelist::{V4RouteList, V6RouteList};
+use callbacks::BackgroundCallbacks;
 pub use callbacks::{Callbacks, DisconnectError};
 pub use connlib_model::StaticSecret;
 pub use eventloop::Eventloop;
@@ -42,6 +43,8 @@ impl Session {
         portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         handle: tokio::runtime::Handle,
     ) -> Self {
+        let callbacks = BackgroundCallbacks::new(callbacks); // Run all callbacks on a background thread to avoid blocking the main connlib task.
+
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
         let connect_handle = handle.spawn(connect(
@@ -141,7 +144,7 @@ async fn connect_supervisor<CB>(
         Ok(Ok(())) => {
             tracing::info!("connlib exited gracefully");
         }
-        Ok(Err(e)) => callbacks.on_disconnect(&DisconnectError::PortalConnectionFailed(e)),
-        Err(e) => callbacks.on_disconnect(&DisconnectError::Crash(e)),
+        Ok(Err(e)) => callbacks.on_disconnect(DisconnectError::PortalConnectionFailed(e)),
+        Err(e) => callbacks.on_disconnect(DisconnectError::Crash(e)),
     }
 }

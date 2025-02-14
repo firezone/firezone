@@ -97,7 +97,7 @@ pub struct CallbackHandler {
 }
 
 impl Callbacks for CallbackHandler {
-    fn on_disconnect(&self, error: &connlib_client_shared::DisconnectError) {
+    fn on_disconnect(&self, error: connlib_client_shared::DisconnectError) {
         self.cb_tx
             .try_send(ConnlibMsg::OnDisconnect {
                 error_msg: error.to_string(),
