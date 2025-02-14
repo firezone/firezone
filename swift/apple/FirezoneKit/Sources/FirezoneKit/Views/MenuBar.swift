@@ -384,7 +384,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private func getStatusIcon(status: NEVPNStatus?, notification: Bool) -> NSImage? {
     if status == .connecting || status == .disconnecting || status == .reasserting {
-      return self.connectingAnimationImages.last!
+      return self.connectingAnimationImages.last ?? nil
     }
 
     switch status {
@@ -696,7 +696,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     } else {
       // Show Address first if addressDescription is missing
-      resourceAddressDescriptionItem.title = resource.address! // Address is none only for non-internet resource
+      resourceAddressDescriptionItem.title = resource.address ?? "" // Address is none only for internet resource
       resourceAddressDescriptionItem.action = #selector(resourceValueTapped(_:))
     }
     resourceAddressDescriptionItem.isEnabled = true
