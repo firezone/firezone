@@ -1,6 +1,7 @@
 use crate::{
-    device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
-    ConnlibMsg, LogFilterReloader,
+    device_id,
+    dns_control::{self, DnsController},
+    known_dirs, signals, CallbackHandler, CliCommon, ConnlibMsg, LogFilterReloader,
 };
 use anyhow::{bail, Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
@@ -114,6 +115,7 @@ pub enum ServerMsg {
         error_msg: String,
         is_authentication_error: bool,
     },
+    InstallationCorrupt(InstallationProblem),
     OnUpdateResources(Vec<ResourceView>),
     /// The IPC service is terminating, maybe due to a software update
     ///
@@ -123,6 +125,11 @@ pub enum ServerMsg {
     TerminatingGracefully,
     /// The interface and tunnel are ready for traffic.
     TunnelReady,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub enum InstallationProblem {
+    ResolveCtlNotFound,
 }
 
 // All variants are `String` because almost no error type implements `Serialize`
@@ -361,6 +368,15 @@ impl<'a> Handler<'a> {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Callback(x) => {
                     if let Err(error) = self.handle_connlib_cb(x).await {
+                        if error.root_cause().is::<dns_control::ResolveCtlNotFound>() {
+                            self.send_infallible(ServerMsg::InstallationCorrupt(
+                                InstallationProblem::ResolveCtlNotFound,
+                            ))
+                            .await;
+
+                            continue;
+                        }
+
                         tracing::error!("Error while handling connlib callback: {error:#}");
                         continue;
                     }
@@ -391,8 +407,7 @@ impl<'a> Handler<'a> {
                     tracing::info!(
                         "Caught SIGINT / SIGTERM / Ctrl+C while an IPC client is connected"
                     );
-                    // Ignore the result here because we're terminating anyway.
-                    let _ = self.ipc_tx.send(&ServerMsg::TerminatingGracefully).await;
+                    self.send_infallible(ServerMsg::TerminatingGracefully).await;
                     break HandlerOk::ServiceTerminating;
                 }
             }
@@ -639,6 +654,12 @@ impl<'a> Handler<'a> {
         self.session = Some(session);
 
         Ok(())
+    }
+
+    async fn send_infallible(&mut self, msg: ServerMsg) {
+        if let Err(e) = self.ipc_tx.send(&msg).await {
+            tracing::debug!(?msg, "Failed to send IPC message: {e}");
+        }
     }
 }
 

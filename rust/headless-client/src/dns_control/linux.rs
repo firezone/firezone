@@ -1,7 +1,9 @@
+use crate::dns_control::ResolveCtlNotFound;
+
 use super::DnsController;
 use anyhow::{bail, Context as _, Result};
 use firezone_bin_shared::{platform::DnsControlMethod, TunDeviceManager};
-use std::{net::IpAddr, process::Command, str::FromStr};
+use std::{io, net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
 
@@ -53,11 +55,38 @@ impl DnsController {
 /// Cancel safety: Cancelling the future may leave running subprocesses
 /// which should eventually exit on their own.
 async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
+    verify_resolvectl().await?;
+
     configure_dns_for_tun("dns", dns_config).await?;
     configure_dns_for_tun("domain", &["~."]).await?;
     configure_dns_for_tun("llmnr", &[false]).await?; // Must disable LLMNR to not interfere with local search domains.
 
     tracing::info!(?dns_config, "Configured DNS sentinels with `resolvectl`");
+
+    Ok(())
+}
+
+async fn verify_resolvectl() -> Result<()> {
+    match tokio::process::Command::new("resolvectl")
+        .arg("--version")
+        .output()
+        .await
+    {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let version = stdout.lines().next().unwrap_or_default();
+
+            tracing::debug!("`resolvectl --version` = {version}");
+        }
+        Err(e) if e.kind() == io::ErrorKind::NotFound => {
+            return Err(anyhow::Error::new(ResolveCtlNotFound))
+        }
+        Err(e) => {
+            return Err(
+                anyhow::Error::new(e).context("Failed to query `resolvectl` for its version")
+            )
+        }
+    }
 
     Ok(())
 }
@@ -134,7 +163,7 @@ fn parse_resolvectl_output(s: &str) -> Vec<IpAddr> {
 
 #[cfg(test)]
 mod tests {
-    use std::net::IpAddr;
+    use std::{io, net::IpAddr};
 
     #[test]
     fn parse_resolvectl_output() {
@@ -162,5 +191,12 @@ Link 2 (enp0s3): 192.168.1.1",
             let actual = super::parse_resolvectl_output(input);
             assert_eq!(actual, expected, "Case {i} failed");
         }
+    }
+
+    #[test]
+    fn no_such_file_or_directory_maps_to_os_error_2() {
+        let error = io::Error::from_raw_os_error(2);
+
+        assert_eq!(error.kind(), io::ErrorKind::NotFound)
     }
 }

@@ -49,3 +49,7 @@ impl DnsController {
 pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
     system_resolvers(DnsControlMethod::default())
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("The resolvectl binary could not be found")]
+pub struct ResolveCtlNotFound;

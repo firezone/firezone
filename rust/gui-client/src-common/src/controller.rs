@@ -10,6 +10,7 @@ use anyhow::{anyhow, Context, Result};
 use connlib_model::ResourceView;
 use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_headless_client::{
+    InstallationProblem,
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError, LogFilterReloader,
 };
@@ -565,6 +566,13 @@ impl<I: GuiIntegration> Controller<'_, I> {
                         .show_alert()
                         .context("Couldn't show Disconnected alert")?;
                 }
+            }
+            IpcServerMsg::InstallationCorrupt(InstallationProblem::ResolveCtlNotFound) => {
+                self.sign_out().await?;
+                self.integration.show_notification(
+                    "Firezone disconnected",
+                    "Unable to find `resolvectl`. Is `systemd-resolved` installed and set up correctly?",
+                )?;
             }
             IpcServerMsg::OnUpdateResources(resources) => {
                 if !self.status.needs_resource_updates() {
