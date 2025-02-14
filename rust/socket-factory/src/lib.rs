@@ -3,6 +3,7 @@ use bytes::Buf as _;
 use firezone_logging::err_with_src;
 use gat_lending_iterator::LendingIterator;
 use ip_packet::Ecn;
+use parking_lot::Mutex;
 use quinn_udp::{EcnCodepoint, Transmit};
 use std::collections::HashMap;
 use std::io;
@@ -147,7 +148,7 @@ pub struct UdpSocket {
         Box<dyn Fn(IpAddr) -> std::io::Result<Option<IpAddr>> + Send + Sync + 'static>,
 
     /// A cache of source IPs by their destination IPs.
-    src_by_dst_cache: HashMap<IpAddr, IpAddr>,
+    src_by_dst_cache: Mutex<HashMap<IpAddr, IpAddr>>,
 
     /// A buffer pool for batches of incoming UDP packets.
     buffer_pool: Arc<lockfree_object_pool::MutexObjectPool<Vec<u8>>>,
@@ -254,7 +255,7 @@ impl UdpSocket {
         self.inner.poll_send_ready(cx)
     }
 
-    pub async fn send<B>(&mut self, datagram: DatagramOut<B>) -> Result<()>
+    pub async fn send<B>(&self, datagram: DatagramOut<B>) -> Result<()>
     where
         B: Deref<Target: bytes::Buf>,
     {
@@ -341,7 +342,7 @@ impl UdpSocket {
     ///
     /// TODO: Should we make a type-safe API to ensure only one "mode" of the socket can be used?
     pub async fn handshake<const BUF_SIZE: usize>(
-        mut self,
+        self,
         dst: SocketAddr,
         payload: &[u8],
     ) -> io::Result<Vec<u8>> {
@@ -371,7 +372,7 @@ impl UdpSocket {
     }
 
     fn prepare_transmit<'a>(
-        &mut self,
+        &self,
         dst: SocketAddr,
         src_ip: Option<IpAddr>,
         packet: &'a [u8],
@@ -409,8 +410,8 @@ impl UdpSocket {
     }
 
     /// Attempt to resolve the source IP to use for sending to the given destination IP.
-    fn resolve_source_for(&mut self, dst: IpAddr) -> std::io::Result<Option<IpAddr>> {
-        let src = match self.src_by_dst_cache.entry(dst) {
+    fn resolve_source_for(&self, dst: IpAddr) -> std::io::Result<Option<IpAddr>> {
+        let src = match self.src_by_dst_cache.lock().entry(dst) {
             Entry::Occupied(occ) => *occ.get(),
             Entry::Vacant(vac) => {
                 // Caching errors could be a good idea to not incur in multiple calls for the resolver which can be costly

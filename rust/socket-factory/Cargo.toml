@@ -12,6 +12,7 @@ firezone-logging = { workspace = true }
 gat-lending-iterator = { workspace = true }
 ip-packet = { workspace = true }
 lockfree-object-pool = { workspace = true }
+parking_lot = { workspace = true }
 quinn-udp = { workspace = true }
 socket2 = { workspace = true }
 tokio = { workspace = true, features = ["net"] }
