@@ -270,9 +270,7 @@ defmodule Web.Sites.Index do
                 Migrating the Internet Resource will permanently
                 move it from the <strong>{@existing_internet_resource_group_name}</strong>
                 Site to the <strong>Internet</strong>
-                Site. This
-                cannot
-                be reversed.
+                Site. This cannot be reversed.
               </p>
               <p>
                 Any Clients connected to this Resource will be immediately disconnected. You will need to deploy new Gateways in the Internet Site
