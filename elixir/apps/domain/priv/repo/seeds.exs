@@ -863,7 +863,7 @@ IO.puts("")
 {:ok, ip_resource} =
   Resources.create_resource(
     %{
-      type: :dns,
+      type: :ip,
       name: "CloudFlare DNS",
       address: "1.1.1.1",
       address_description: "http://1.1.1.1:3000/",
