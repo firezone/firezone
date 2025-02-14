@@ -167,7 +167,7 @@ impl DestinationUnreachablePrototype {
         // First, translate the failed packet as if it would have directly originated from the client (without our NAT applied).
         let original_packet = self
             .failed_packet
-            .translate_destination(self.inside_dst, self.inside_proto, dst_v4, dst_v6)
+            .translate_destination(self.inside_dst, self.inside_proto)
             .context("Failed to translate unroutable packet within ICMP error")?;
 
         // Second, generate an ICMP error that originates from the originally addressed Resource.

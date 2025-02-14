@@ -169,7 +169,7 @@ impl GatewayState {
 
                 self.buffered_transmits.push_back(transmit);
 
-                return Ok(None);
+                Ok(None)
             }
             TranslateOutboundResult::Filtered => Ok(None),
         }

@@ -285,7 +285,7 @@ impl ClientOnGateway {
                 .translate_outgoing(&packet, state.resolved_ip, now)?;
 
         let mut packet = packet
-            .translate_destination(self.ipv4, self.ipv6, source_protocol, real_ip)
+            .translate_destination(source_protocol, real_ip)
             .context("Failed to translate packet to new destination")?;
         packet.update_checksum();
 
@@ -337,7 +337,7 @@ impl ClientOnGateway {
         };
 
         let mut packet = packet
-            .translate_source(self.ipv4, self.ipv6, proto, ip)
+            .translate_source(proto, ip)
             .context("Failed to translate packet to new source")?;
         packet.update_checksum();
 
@@ -554,22 +554,6 @@ fn ipv4_addresses(ip: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
 
 fn ipv6_addresses(ip: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
     ip.iter().filter(|ip| ip.is_ipv6()).copied().collect()
-}
-
-fn mapped_ipv4(ips: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
-    if !ipv4_addresses(ips).is_empty() {
-        ipv4_addresses(ips)
-    } else {
-        ipv6_addresses(ips)
-    }
-}
-
-fn mapped_ipv6(ips: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
-    if !ipv6_addresses(ips).is_empty() {
-        ipv6_addresses(ips)
-    } else {
-        ipv4_addresses(ips)
-    }
 }
 
 fn is_dns_addr(addr: IpAddr) -> bool {

@@ -10,7 +10,7 @@ use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use core::fmt;
 use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt;
-use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf};
+use ip_packet::{IpPacket, IpPacketBuf, Ipv4Packet, Ipv6Packet};
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{random, Rng, RngCore, SeedableRng};
@@ -2038,8 +2038,8 @@ where
             // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
             TunnResult::WriteToTunnelV4(packet, ip) => {
                 let packet_len = packet.len();
-                let ipv4_packet = ConvertibleIpv4Packet::new(ip_packet, packet_len)
-                    .expect("boringtun verifies validity");
+                let ipv4_packet =
+                    Ipv4Packet::new(ip_packet, packet_len).expect("boringtun verifies validity");
                 debug_assert_eq!(ipv4_packet.get_source(), ip);
 
                 ControlFlow::Continue(ipv4_packet.into())
@@ -2049,8 +2049,8 @@ where
                 // for ipv6 we just need this to convince the borrow-checker that `packet`'s lifetime isn't `'b`, otherwise it's taken
                 // as `'b` for all branches.
                 let packet_len = packet.len();
-                let ipv6_packet = ConvertibleIpv6Packet::new(ip_packet, packet_len)
-                    .expect("boringtun verifies validity");
+                let ipv6_packet =
+                    Ipv6Packet::new(ip_packet, packet_len).expect("boringtun verifies validity");
                 debug_assert_eq!(ipv6_packet.get_source(), ip);
 
                 ControlFlow::Continue(ipv6_packet.into())

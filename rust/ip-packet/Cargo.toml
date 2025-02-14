@@ -16,10 +16,6 @@ etherparse = { workspace = true }
 lockfree-object-pool = { workspace = true }
 proptest = { workspace = true, optional = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
-
-[dev-dependencies]
-test-strategy = { workspace = true }
 
 [lints]
 workspace = true

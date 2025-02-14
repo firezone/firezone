@@ -3232,9 +3232,7 @@ dependencies = [
  "etherparse",
  "lockfree-object-pool",
  "proptest",
- "test-strategy",
  "thiserror 1.0.69",
- "tracing",
 ]
 
 [[package]]
