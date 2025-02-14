@@ -24,11 +24,11 @@ defmodule Domain.Repo.Migrations.CreateInternetSite do
     WHERE deleted_at IS NULL
     AND NOT EXISTS (
       SELECT 1
-      FROM gateway_groups g
-      WHERE g.account_id = a.id
-        AND g.name = 'Internet'
-        AND g.created_by = 'system'
-        AND g.managed_by = 'system')
+      FROM gateway_groups
+      WHERE gateway_groups.account_id = accounts.id
+        AND gateway_groups.name = 'Internet'
+        AND gateway_groups.created_by = 'system'
+        AND gateway_groups.managed_by = 'system')
     """)
   end
 
