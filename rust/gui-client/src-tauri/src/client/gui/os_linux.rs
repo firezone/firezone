@@ -46,6 +46,8 @@ pub(crate) fn show_update_notification(
 
 /// Show a notification in the bottom right of the screen
 pub(crate) fn show_notification(app: &AppHandle, title: &str, body: &str) -> Result<()> {
+    tracing::debug!(?title, ?body, "show_notification");
+
     app.notification()
         .builder()
         .title(title)
