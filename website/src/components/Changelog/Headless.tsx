@@ -9,7 +9,13 @@ export default function Headless({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        {os === OS.Linux && (
+          <ChangeItem pull="8117">
+            Fixes an upload speed performance regression.
+          </ChangeItem>
+        )}
+      </Unreleased>
       <Entry version="1.4.3" date={new Date("2025-02-11")}>
         <ChangeItem pull="8055">
           Hides the <code>--check</code> and <code>--exit</code> CLI options
