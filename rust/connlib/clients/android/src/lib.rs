@@ -246,7 +246,7 @@ impl Callbacks for CallbackHandler {
         .expect("onUpdateResources callback failed")
     }
 
-    fn on_disconnect(&self, error: &DisconnectError) {
+    fn on_disconnect(&self, error: DisconnectError) {
         self.env(|mut env| {
             let error = env
                 .new_string(serde_json::to_string(&error.to_string())?)
