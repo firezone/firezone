@@ -367,8 +367,14 @@ impl<'a> Handler<'a> {
         loop {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Callback(x) => {
-                    if let Err(error) = self.handle_connlib_cb(x).await {
+                    if let Err(error) = self
+                        .handle_connlib_cb(x)
+                        .await
+                        .context("Failed to handle connlib message")
+                    {
                         if error.root_cause().is::<dns_control::ResolveCtlNotFound>() {
+                            tracing::info!("{error:#}");
+
                             self.send_infallible(ServerMsg::InstallationCorrupt(
                                 InstallationProblem::ResolveCtlNotFound,
                             ))
@@ -377,7 +383,7 @@ impl<'a> Handler<'a> {
                             continue;
                         }
 
-                        tracing::error!("Error while handling connlib callback: {error:#}");
+                        tracing::error!("{error:#}");
                         continue;
                     }
                 }
