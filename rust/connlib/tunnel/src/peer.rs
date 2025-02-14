@@ -287,7 +287,7 @@ impl ClientOnGateway {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<IpPacket> {
+    ) -> anyhow::Result<Option<IpPacket>> {
         let (proto, ip) = match self.nat_table.translate_incoming(&packet, now)? {
             TranslateIncomingResult::Ok { proto, src } => (proto, src),
             TranslateIncomingResult::DestinationUnreachable(prototype) => {
@@ -297,9 +297,17 @@ impl ClientOnGateway {
                     .into_packet(self.ipv4, self.ipv6)
                     .context("Failed to create `DestinationUnreachable` ICMP error")?;
 
-                return Ok(icmp_error);
+                return Ok(Some(icmp_error));
             }
-            TranslateIncomingResult::NoNatSession => return Ok(packet),
+            TranslateIncomingResult::ExpiredNatSession => {
+                tracing::debug!(
+                    ?packet,
+                    "Expired NAT session for inbound packet of DNS resource; dropping"
+                );
+
+                return Ok(None);
+            }
+            TranslateIncomingResult::NoNatSession => return Ok(Some(packet)),
         };
 
         let mut packet = packet
@@ -307,7 +315,7 @@ impl ClientOnGateway {
             .context("Failed to translate packet to new source")?;
         packet.update_checksum();
 
-        Ok(packet)
+        Ok(Some(packet))
     }
 
     pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {

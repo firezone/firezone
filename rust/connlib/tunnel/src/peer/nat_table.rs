@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 pub(crate) struct NatTable {
     pub(crate) table: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
     pub(crate) last_seen: BTreeMap<(Protocol, IpAddr), Instant>,
+
+    expired: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
 }
 
 pub(crate) const TTL: Duration = Duration::from_secs(60);
@@ -27,13 +29,19 @@ pub(crate) const TTL: Duration = Duration::from_secs(60);
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         let mut removed = Vec::new();
+
         for (outside, e) in self.last_seen.iter() {
             if now.duration_since(*e) >= TTL {
                 if let Some((inside, _)) = self.table.remove_by_right(outside) {
                     tracing::debug!(?inside, ?outside, "NAT session expired");
+                    self.expired.insert(inside, *outside);
                 }
+            }
 
-                removed.push(*outside);
+            if now.duration_since(*e) >= 5 * TTL {
+                if let Some((inside, _)) = self.expired.remove_by_right(outside) {
+                    removed.push(inside);
+                }
             }
         }
 
@@ -101,6 +109,10 @@ impl NatTable {
                 ));
             }
 
+            if self.expired.contains_right(&outside) {
+                return Ok(TranslateIncomingResult::ExpiredNatSession);
+            }
+
             tracing::trace!(?outside, "No active NAT session; skipping translation");
 
             return Ok(TranslateIncomingResult::NoNatSession);
@@ -110,6 +122,10 @@ impl NatTable {
 
         if let Some((proto, src)) = self.translate_incoming_inner(&outside, now) {
             return Ok(TranslateIncomingResult::Ok { proto, src });
+        }
+
+        if self.expired.contains_right(&outside) {
+            return Ok(TranslateIncomingResult::ExpiredNatSession);
         }
 
         tracing::trace!(?outside, "No active NAT session; skipping translation");
@@ -201,6 +217,7 @@ impl DestinationUnreachablePrototype {
 pub enum TranslateIncomingResult {
     Ok { proto: Protocol, src: IpAddr },
     DestinationUnreachable(DestinationUnreachablePrototype),
+    ExpiredNatSession,
     NoNatSession,
 }
 
@@ -298,6 +315,7 @@ mod tests {
             match res {
                 TranslateIncomingResult::Ok { proto, src } => (proto, src),
                 TranslateIncomingResult::NoNatSession
+                | TranslateIncomingResult::ExpiredNatSession
                 | TranslateIncomingResult::DestinationUnreachable(_) => panic!("Wrong result"),
             }
         });
