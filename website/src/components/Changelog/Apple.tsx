@@ -24,9 +24,6 @@ export default function Apple() {
           Fixes a rare crash that could occur when dismissing the update
           available notification.
         </ChangeItem>
-        <ChangeItem pull="8126">
-          Mitigates a crash in the error handling code of the Network Extension.
-        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.2" date={new Date("2025-02-13")}>
         <ChangeItem pull="8104">
