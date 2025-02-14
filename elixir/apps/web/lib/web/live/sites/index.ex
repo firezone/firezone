@@ -249,8 +249,12 @@ defmodule Web.Sites.Index do
       }>
         <div class="px-1 text-neutral-500">
           <p class="mb-2">
-            WARNING: You need to migrate your existing Internet Resource to this Site before <strong>March 15, 2025</strong>. After this date, it will be permanently migrated
-            for you. Click the button below to migrate now.
+            ACTION REQUIRED: Please migrate your existing Internet Resource to this Site before <strong>March 15, 2025</strong>.
+          </p>
+          <p class="mb-8 text-sm">
+            <.website_link path="/blog/internet-resource-migration">
+              Read more about why this is necessary.
+            </.website_link>
           </p>
           <.button_with_confirmation
             id="migrate_internet_resource"
