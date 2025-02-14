@@ -289,11 +289,6 @@ defmodule Web.Sites.Index do
             </:dialog_cancel_button>
             Migrate Internet Resource
           </.button_with_confirmation>
-          <p class="mt-2 text-sm">
-            <.website_link path="/blog/internet-resource-migration">
-              Read more about why this is necessary.
-            </.website_link>
-          </p>
         </div>
       </:content>
     </.section>
