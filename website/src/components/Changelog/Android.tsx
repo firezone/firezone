@@ -24,6 +24,9 @@ export default function Android() {
           Fixes a minor memory leak that could occur after being disconnected
           unexpectedly.
         </ChangeItem>
+        <ChangeItem pull="8117">
+          Fixes an upload speed performance regression.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.1" date={new Date("2025-01-28")}>
         <ChangeItem pull="7891">

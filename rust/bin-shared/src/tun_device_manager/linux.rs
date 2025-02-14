@@ -13,7 +13,9 @@ use libc::{
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
 use rtnetlink::{new_connection, Error::NetlinkError, Handle, RouteAddRequest, RuleAddRequest};
+use std::os::fd::{FromRawFd, OwnedFd};
 use std::path::Path;
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{
     collections::HashSet,
@@ -26,7 +28,6 @@ use std::{
 };
 use tokio::sync::mpsc;
 use tun::ioctl;
-use tun::unix::TunFd;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
 const TUN_DEV_MAJOR: u32 = 10;
@@ -308,17 +309,34 @@ impl Tun {
         let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
 
         for n in 0..num_threads {
-            let fd = open_tun()?;
+            let fd = Arc::new(open_tun()?);
             let outbound_rx = outbound_rx.clone().into_stream();
             let inbound_tx = inbound_tx.clone();
 
             std::thread::Builder::new()
-                .name(format!("TUN send/recv {n}/{num_threads}"))
-                .spawn(move || {
-                    firezone_logging::unwrap_or_warn!(
-                        tun::unix::send_recv_tun(fd, inbound_tx, outbound_rx, read, write),
-                        "Failed to send / recv from TUN device: {}"
-                    )
+                .name(format!("TUN send {n}/{num_threads}"))
+                .spawn({
+                    let fd = fd.clone();
+
+                    move || {
+                        firezone_logging::unwrap_or_warn!(
+                            tun::unix::tun_send(fd, outbound_rx, write),
+                            "Failed to send to TUN device: {}"
+                        )
+                    }
+                })
+                .map_err(io::Error::other)?;
+            std::thread::Builder::new()
+                .name(format!("TUN recv {n}/{num_threads}"))
+                .spawn({
+                    let fd = fd.clone();
+
+                    move || {
+                        firezone_logging::unwrap_or_warn!(
+                            tun::unix::tun_recv(fd, inbound_tx, read),
+                            "Failed to recv from TUN device: {}"
+                        )
+                    }
                 })
                 .map_err(io::Error::other)?;
         }
@@ -330,7 +348,7 @@ impl Tun {
     }
 }
 
-fn open_tun() -> Result<TunFd, io::Error> {
+fn open_tun() -> Result<OwnedFd, io::Error> {
     let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
         -1 => return Err(get_last_error()),
         fd => fd,
@@ -347,7 +365,7 @@ fn open_tun() -> Result<TunFd, io::Error> {
     set_non_blocking(fd)?;
 
     // Safety: We are not closing the FD.
-    let fd = unsafe { TunFd::new(fd) };
+    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
 
     Ok(fd)
 }
