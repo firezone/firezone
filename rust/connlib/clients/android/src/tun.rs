@@ -1,16 +1,17 @@
 use futures::SinkExt as _;
 use ip_packet::{IpPacket, IpPacketBuf};
+use std::os::fd::{FromRawFd, OwnedFd};
 use std::task::{Context, Poll};
 use std::{io, os::fd::RawFd};
 use tokio::sync::mpsc;
 use tun::ioctl;
-use tun::unix::TunFd;
 
 #[derive(Debug)]
 pub struct Tun {
     name: String,
     outbound_tx: flume::r#async::SendSink<'static, IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
+    _fd: OwnedFd,
 }
 
 impl tun::Tun for Tun {
@@ -52,26 +53,26 @@ impl Tun {
     pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
         let name = interface_name(fd)?;
 
-        // Safety: We are forwarding the safety requirements to the caller.
-        let fd = unsafe { TunFd::new(fd) };
-
         let (inbound_tx, inbound_rx) = mpsc::channel(1000);
         let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
 
         // TODO: Test whether we can set `IFF_MULTI_QUEUE` on Android devices.
 
         std::thread::Builder::new()
-            .name("TUN send/recv".to_owned())
-            .spawn(|| {
+            .name("TUN send".to_owned())
+            .spawn(move || {
                 firezone_logging::unwrap_or_warn!(
-                    tun::unix::send_recv_tun(
-                        fd,
-                        inbound_tx,
-                        outbound_rx.into_stream(),
-                        read,
-                        write,
-                    ),
-                    "Failed to send / recv from TUN device: {}"
+                    tun::unix::tun_send(fd, outbound_rx.into_stream(), write),
+                    "Failed to send to TUN device: {}"
+                )
+            })
+            .map_err(io::Error::other)?;
+        std::thread::Builder::new()
+            .name("TUN recv".to_owned())
+            .spawn(move || {
+                firezone_logging::unwrap_or_warn!(
+                    tun::unix::tun_recv(fd, inbound_tx, read),
+                    "Failed to recv from TUN device: {}"
                 )
             })
             .map_err(io::Error::other)?;
@@ -80,6 +81,7 @@ impl Tun {
             name,
             outbound_tx: outbound_tx.into_sink(),
             inbound_rx,
+            _fd: unsafe { OwnedFd::from_raw_fd(fd) }, // `OwnedFd` will close the fd on drop.
         })
     }
 }
