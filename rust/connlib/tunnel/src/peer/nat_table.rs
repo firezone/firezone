@@ -31,6 +31,7 @@ impl NatTable {
         let mut removed = Vec::new();
 
         for (outside, e) in self.last_seen.iter() {
+            // After TTL, we move the entry to the `expired` table.
             if now.duration_since(*e) >= TTL {
                 if let Some((inside, _)) = self.table.remove_by_right(outside) {
                     tracing::debug!(?inside, ?outside, "NAT session expired");
@@ -38,6 +39,7 @@ impl NatTable {
                 }
             }
 
+            // After 5 * TTL, we GC the entry to clean up memory.
             if now.duration_since(*e) >= 5 * TTL {
                 if let Some((inside, _)) = self.expired.remove_by_right(outside) {
                     removed.push(inside);
