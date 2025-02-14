@@ -141,7 +141,7 @@ async fn connect_supervisor<CB>(
         Ok(Ok(())) => {
             tracing::info!("connlib exited gracefully");
         }
-        Ok(Err(e)) => callbacks.on_disconnect(&DisconnectError::PortalConnectionFailed(e)),
-        Err(e) => callbacks.on_disconnect(&DisconnectError::Crash(e)),
+        Ok(Err(e)) => callbacks.on_disconnect(DisconnectError::PortalConnectionFailed(e)),
+        Err(e) => callbacks.on_disconnect(DisconnectError::Crash(e)),
     }
 }

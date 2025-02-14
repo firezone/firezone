@@ -163,7 +163,7 @@ impl Callbacks for CallbackHandler {
         self.inner.on_update_resources(resource_list);
     }
 
-    fn on_disconnect(&self, error: &DisconnectError) {
+    fn on_disconnect(&self, error: DisconnectError) {
         self.inner.on_disconnect(error.to_string());
     }
 }

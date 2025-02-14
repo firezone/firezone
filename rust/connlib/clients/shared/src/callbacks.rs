@@ -27,7 +27,7 @@ pub trait Callbacks: Clone + Send + Sync {
     fn on_update_resources(&self, _: Vec<ResourceView>) {}
 
     /// Called when the tunnel is disconnected.
-    fn on_disconnect(&self, _: &DisconnectError) {}
+    fn on_disconnect(&self, _: DisconnectError) {}
 }
 
 /// Unified error type to use across connlib.
