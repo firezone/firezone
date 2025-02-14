@@ -43,7 +43,7 @@ impl Session {
         portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         handle: tokio::runtime::Handle,
     ) -> Self {
-        let callbacks = BackgroundCallbacks::new(callbacks);
+        let callbacks = BackgroundCallbacks::new(callbacks); // Run all callbacks on a background thread to avoid blocking the main connlib task.
 
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
 
