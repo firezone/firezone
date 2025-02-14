@@ -554,8 +554,9 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use crate::messages::gateway::{
-        Filter, PortRange, ResourceDescription, ResourceDescriptionCidr,
+    use crate::{
+        messages::gateway::{Filter, PortRange, ResourceDescription, ResourceDescriptionCidr},
+        peer::nat_table,
     };
     use chrono::Utc;
     use connlib_model::{ClientId, ResourceId};
@@ -742,6 +743,68 @@ mod tests {
         .unwrap();
 
         assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
+    }
+
+    #[test]
+    fn dns_resource_packet_is_dropped_after_nat_session_expires() {
+        let _guard = firezone_logging::test("trace");
+
+        let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
+        peer.add_resource(foo_dns_resource(), None);
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            resource_id(),
+            BTreeSet::from([foo_real_ip().into()]),
+            BTreeSet::from([foo_proxy_ip().into()]),
+        )
+        .unwrap();
+
+        let request = ip_packet::make::udp_packet(
+            source_v4_addr(),
+            foo_proxy_ip(),
+            1,
+            foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        let mut now = Instant::now();
+
+        assert!(matches!(peer.translate_outbound(request, now), Ok(Some(_))));
+
+        let response = ip_packet::make::udp_packet(
+            foo_real_ip(),
+            source_v4_addr(),
+            foo_allowed_port(),
+            1,
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        now += Duration::from_secs(30);
+        peer.handle_timeout(now);
+
+        assert!(
+            matches!(peer.translate_inbound(response, now), Ok(Some(_))),
+            "After 30s remote should still be able to send a packet back"
+        );
+
+        let response = ip_packet::make::udp_packet(
+            foo_real_ip(),
+            source_v4_addr(),
+            foo_allowed_port(),
+            1,
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        now += nat_table::TTL;
+        peer.handle_timeout(now);
+
+        assert!(
+            matches!(peer.translate_inbound(response, now), Ok(None)),
+            "After 1 minute of inactivity, NAT session should be freed"
+        );
     }
 
     fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {

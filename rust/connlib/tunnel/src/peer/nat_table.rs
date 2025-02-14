@@ -22,7 +22,7 @@ pub(crate) struct NatTable {
     pub(crate) last_seen: BTreeMap<(Protocol, IpAddr), Instant>,
 }
 
-const TTL: Duration = Duration::from_secs(60);
+pub(crate) const TTL: Duration = Duration::from_secs(60);
 
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
