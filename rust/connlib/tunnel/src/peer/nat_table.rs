@@ -252,7 +252,10 @@ mod tests {
 
         // Assert
         if response_delay >= Duration::from_secs(60) {
-            assert_eq!(translate_incoming, TranslateIncomingResult::NoNatSession);
+            assert_eq!(
+                translate_incoming,
+                TranslateIncomingResult::ExpiredNatSession
+            );
         } else {
             assert_eq!(
                 translate_incoming,
