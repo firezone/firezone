@@ -570,7 +570,7 @@ defmodule Web.Live.Sites.ShowTest do
       gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
       gateway = Repo.preload(gateway, :group)
 
-      {:ok, resource} = Domain.Resources.create_internet_resource(account)
+      {:ok, resource} = Domain.Resources.create_internet_resource(account, group)
 
       %{
         group: group,

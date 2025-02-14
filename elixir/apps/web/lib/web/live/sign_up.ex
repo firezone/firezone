@@ -424,12 +424,6 @@ defmodule Web.SignUp do
       end
     )
     |> Ecto.Multi.run(
-      :internet_resource,
-      fn _repo, %{account: account} ->
-        Domain.Resources.create_internet_resource(account)
-      end
-    )
-    |> Ecto.Multi.run(
       :default_site,
       fn _repo, %{account: account} ->
         Domain.Gateways.create_group(account, %{name: "Default Site"})
@@ -439,6 +433,12 @@ defmodule Web.SignUp do
       :internet_site,
       fn _repo, %{account: account} ->
         Domain.Gateways.create_internet_group(account)
+      end
+    )
+    |> Ecto.Multi.run(
+      :internet_resource,
+      fn _repo, %{account: account, internet_site: internet_site} ->
+        Domain.Resources.create_internet_resource(account, internet_site)
       end
     )
     |> Ecto.Multi.run(

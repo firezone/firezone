@@ -231,8 +231,18 @@ defmodule Domain.Resources do
     end
   end
 
-  def create_internet_resource(%Accounts.Account{} = account) do
-    attrs = %{type: :internet, name: "Internet"}
+  def create_internet_resource(%Accounts.Account{} = account, %Gateways.Group{} = group) do
+    attrs = %{
+      type: :internet,
+      name: "Internet",
+      connections: %{
+        group.id => %{
+          gateway_group_id: group.id,
+          enabled: true
+        }
+      }
+    }
+
     changeset = Resource.Changeset.create(account, attrs)
 
     with {:ok, resource} <- Repo.insert(changeset) do
@@ -323,6 +333,11 @@ defmodule Domain.Resources do
 
   def delete_connections_for(%Gateways.Group{} = gateway_group, %Auth.Subject{} = subject) do
     Connection.Query.by_gateway_group_id(gateway_group.id)
+    |> delete_connections(subject)
+  end
+
+  def delete_connections_for(%Resource{} = resource, %Auth.Subject{} = subject) do
+    Connection.Query.by_resource_id(resource.id)
     |> delete_connections(subject)
   end
 
