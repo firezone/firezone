@@ -8,7 +8,13 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        {os === OS.Linux && (
+          <ChangeItem pull="8127">
+            Notifies the user in case `resolvectl` is not present.
+          </ChangeItem>
+        )}
+      </Unreleased>
       <Entry version="1.4.5" date={new Date("2025-02-12")}>
         <ChangeItem pull="8105">
           Fixes a visual regression where the Settings and About window lost
