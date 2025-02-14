@@ -434,6 +434,11 @@ impl<I: GuiIntegration> Controller<'_, I> {
                     Err(Error::Other(error)) if error.root_cause().downcast_ref::<auth::Error>().is_some_and(|e| matches!(e, auth::Error::NoInflightRequest)) => {
                         tracing::debug!("Ignoring deep-link; no local state");
                     }
+                    Err(Error::Other(error)) if error.chain().find_map(|e| e.downcast_ref::<keyring::error::Error>()).is_some_and(|e| matches!(e, keyring::Error::NoStorageAccess(_))) => {
+                        tracing::info!("Failed to handle token from deep-link: {error:#}");
+
+                        self.integration.show_notification("Failed to sign-in", "Unable to save token to local keyring")?;
+                    }
                     Err(error) => {
                         tracing::error!("`handle_deep_link` failed: {error:#}");
                     }
