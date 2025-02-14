@@ -18,20 +18,18 @@ defmodule Web.Sites.Index do
         ]
       )
 
-    {:ok, internet_resource} =
-      Domain.Resources.fetch_internet_resource(socket.assigns.subject,
-        preload: [connections: :gateway_group]
-      )
-
-    existing_connection =
-      Enum.find(internet_resource.connections, fn connection ->
-        connection.gateway_group.name != "Internet"
-      end)
-
-    existing_internet_resource_group_name =
-      case existing_connection do
-        nil -> nil
-        connection -> connection.gateway_group.name
+    {internet_resource, existing_group_name} =
+      with {:ok, internet_resource} <-
+             Domain.Resources.fetch_internet_resource(socket.assigns.subject,
+               preload: [connections: :gateway_group]
+             ),
+           connection when not is_nil(connection) <-
+             Enum.find(internet_resource.connections, fn connection ->
+               connection.gateway_group.name != "Internet" && connection.managed_by != "system"
+             end) do
+        {internet_resource, connection.gateway_group.name}
+      else
+        _ -> {nil, nil}
       end
 
     internet_gateway_group = Enum.find(managed_groups, fn group -> group.name == "Internet" end)
@@ -40,7 +38,7 @@ defmodule Web.Sites.Index do
       socket
       |> assign(page_title: "Sites")
       |> assign(internet_resource: internet_resource)
-      |> assign(existing_internet_resource_group_name: existing_internet_resource_group_name)
+      |> assign(existing_internet_resource_group_name: existing_group_name)
       |> assign(internet_gateway_group: internet_gateway_group)
       |> assign_live_table("groups",
         query_module: Gateways.Group.Query,
@@ -206,7 +204,7 @@ defmodule Web.Sites.Index do
       </:content>
     </.section>
 
-    <.section id="internet-site-banner">
+    <.section :if={@internet_gateway_group} id="internet-site-banner">
       <:title>
         <div class="flex items-center space-x-2.5">
           <span>Internet</span>
@@ -261,21 +259,25 @@ defmodule Web.Sites.Index do
             icon="hero-exclamation-triangle-solid"
             on_confirm="migrate_internet_resource"
           >
-            <:dialog_title>Confirm Internet Resource Migration from {@existing_internet_resource_group_name}</:dialog_title>
+            <:dialog_title>
+              Confirm Internet Resource Migration from {@existing_internet_resource_group_name}
+            </:dialog_title>
             <:dialog_content>
               <p class="text-center my-8">
                 <.icon name="hero-exclamation-triangle-solid" class="w-16 h-16 text-primary-500" />
               </p>
               <p class="mb-2">
-              Migrating the Internet Resource will permanentely
-              move it from the <strong>{@existing_internet_resource_group_name}</strong> Site to the <strong>Internet</strong> Site. This
-              cannot
-              be reversed.
-            </p>
-            <p>
-              Any clients connected to this Resource will be immediately disconnected. You will need to deploy new Gateways in the Internet Site
-              to reconnect them.
-            </p>
+                Migrating the Internet Resource will permanently
+                move it from the <strong>{@existing_internet_resource_group_name}</strong>
+                Site to the <strong>Internet</strong>
+                Site. This
+                cannot
+                be reversed.
+              </p>
+              <p>
+                Any Clients connected to this Resource will be immediately disconnected. You will need to deploy new Gateways in the Internet Site
+                to reconnect them.
+              </p>
             </:dialog_content>
             <:dialog_confirm_button>
               Migrate Internet Resource
@@ -306,13 +308,15 @@ defmodule Web.Sites.Index do
           gateways: [:online?]
         ],
         filter: [
-          name: "Internet",
           managed_by: "system"
         ]
       )
 
-    {:ok, internet_resource} =
-      Domain.Resources.fetch_internet_resource(socket.assigns.subject, preload: :connections)
+    internet_resource =
+      case Domain.Resources.fetch_internet_resource(socket.assigns.subject, preload: :connections) do
+        {:ok, internet_resource} -> internet_resource
+        _ -> nil
+      end
 
     internet_gateway_group = Enum.find(managed_groups, fn group -> group.name == "Internet" end)
 
@@ -338,8 +342,6 @@ defmodule Web.Sites.Index do
            socket.assigns.subject
          ) do
       {:ok, internet_resource} ->
-        dbg(internet_resource)
-
         socket =
           socket
           |> assign(internet_resource: internet_resource)
@@ -351,6 +353,8 @@ defmodule Web.Sites.Index do
         {:noreply, socket |> put_flash(:error, "Failed to migrate Internet Resource.")}
     end
   end
+
+  defp needs_internet_resource_migration?(nil, _), do: false
 
   defp needs_internet_resource_migration?(internet_resource, internet_gateway_group) do
     # can only be in the internet site now

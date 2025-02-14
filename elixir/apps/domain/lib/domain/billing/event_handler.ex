@@ -300,7 +300,8 @@ defmodule Domain.Billing.EventHandler do
 
           {:ok, internet_gateway_group} = Domain.Gateways.create_internet_group(account)
 
-          {:ok, _resource} = Domain.Resources.create_internet_resource(account, internet_gateway_group)
+          {:ok, _resource} =
+            Domain.Resources.create_internet_resource(account, internet_gateway_group)
 
           :ok
         else
