@@ -1,5 +1,6 @@
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
+use crate::peer::TranslateOutboundResult;
 use crate::utils::earliest;
 use crate::{GatewayEvent, IpConfig, p2p_control};
 use crate::{peer::ClientOnGateway, peer_store::PeerStore};
@@ -157,11 +158,14 @@ impl GatewayState {
             return Ok(None);
         }
 
-        let packet = peer
+        match peer
             .translate_outbound(packet, now)
-            .context("Failed to translate outbound packet")?;
+            .context("Failed to translate outbound packet")?
+        {
+            TranslateOutboundResult::Send(ip_packet) => Ok(Some(ip_packet)),
 
-        Ok(packet)
+            TranslateOutboundResult::Filtered => Ok(None),
+        }
     }
 
     pub fn cleanup_connection(&mut self, id: &ClientId) {
