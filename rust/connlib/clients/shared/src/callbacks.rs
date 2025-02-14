@@ -1,6 +1,9 @@
 use connlib_model::ResourceView;
 use ip_network::{Ipv4Network, Ipv6Network};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::{
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    sync::Arc,
+};
 
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
@@ -47,5 +50,68 @@ impl DisconnectError {
         };
 
         e.is_authentication_error()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BackgroundCallbacks<C> {
+    inner: C,
+    threadpool: Arc<rayon::ThreadPool>,
+}
+
+impl<C> BackgroundCallbacks<C> {
+    pub fn new(callbacks: C) -> Self {
+        Self {
+            inner: callbacks,
+            threadpool: Arc::new(
+                rayon::ThreadPoolBuilder::new()
+                    .num_threads(1)
+                    .thread_name(|_| "connlib callbacks".to_owned())
+                    .build()
+                    .expect("Unable to create thread-pool"),
+            ),
+        }
+    }
+}
+
+impl<C> Callbacks for BackgroundCallbacks<C>
+where
+    C: Callbacks + 'static,
+{
+    fn on_set_interface_config(
+        &self,
+        ipv4_addr: Ipv4Addr,
+        ipv6_addr: Ipv6Addr,
+        dns_addresses: Vec<IpAddr>,
+        route_list_4: Vec<Ipv4Network>,
+        route_list_6: Vec<Ipv6Network>,
+    ) {
+        let callbacks = self.inner.clone();
+
+        self.threadpool.spawn(move || {
+            callbacks.on_set_interface_config(
+                ipv4_addr,
+                ipv6_addr,
+                dns_addresses,
+                route_list_4,
+                route_list_6,
+            );
+        });
+    }
+
+    fn on_update_resources(&self, resources: Vec<ResourceView>) {
+        let callbacks = self.inner.clone();
+
+        self.threadpool.spawn(move || {
+            callbacks.on_update_resources(resources);
+        });
+    }
+
+    fn on_disconnect(&self, error: DisconnectError) {
+        let callbacks = self.inner.clone();
+
+        self.threadpool.spawn(move || {
+            callbacks.on_disconnect(error);
+        });
     }
 }

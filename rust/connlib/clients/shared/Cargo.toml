@@ -22,6 +22,7 @@ time = { workspace = true, features = ["formatting"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
 tracing = { workspace = true, features = ["std", "attributes"] }
 tun = { workspace = true }
+rayon = { workspace = true }
 url = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
