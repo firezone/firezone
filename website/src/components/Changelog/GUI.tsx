@@ -14,6 +14,9 @@ export default function GUI({ os }: { os: OS }) {
             Fixes an upload speed performance regression.
           </ChangeItem>
         )}
+        <ChangeItem pull="8129">
+          Allows signing-in without access to the local keyring.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.5" date={new Date("2025-02-12")}>
         <ChangeItem pull="8105">
