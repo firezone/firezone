@@ -6,6 +6,7 @@ use socket_factory::{DatagramIn, DatagramSegmentIter, SocketFactory, UdpSocket};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    pin::pin,
     sync::Arc,
     task::{Context, Poll, Waker},
 };
@@ -184,40 +185,37 @@ impl ThreadedUdpSocket {
                             }
                         };
 
-                        loop {
-                            match futures::future::select(
-                                outbound_rx.recv_async(),
-                                std::future::poll_fn(|cx| socket.poll_recv_from(cx)),
-                            )
-                            .await
-                            {
-                                futures::future::Either::Left((Ok(datagram), _)) => {
-                                    if let Err(e) = socket.send(datagram).await {
-                                        tracing::debug!("Failed to send datagram: {e:#}")
-                                    };
-                                }
-                                futures::future::Either::Left((
-                                    Err(flume::RecvError::Disconnected),
-                                    _,
-                                )) => {
-                                    tracing::debug!(
-                                        "Channel for outbound datagrams closed; exiting UDP thread"
-                                    );
-                                    break;
-                                }
-                                futures::future::Either::Right((Ok(datagrams), _)) => {
-                                    if inbound_tx.send_async(datagrams).await.is_err() {
-                                        tracing::debug!(
-                                        "Channel for inbound datagrams closed; exiting UDP thread"
-                                    );
-                                        break;
-                                    }
-                                }
-                                futures::future::Either::Right((Err(e), _)) => {
-                                    tracing::debug!("Failed to receive from socket: {e:#}")
+
+                        let send = pin!(async {
+                            while let Ok(datagram) = outbound_rx.recv_async().await {
+                                if let Err(e) = socket.send(datagram).await {
+                                    tracing::debug!("Failed to send datagram: {e:#}")
+                                };
+                            }
+
+                            tracing::debug!(
+                                "Channel for outbound datagrams closed; exiting UDP thread"
+                            );
+                        });
+                        let receive = pin!(async {
+                            loop {
+                                match socket.recv_from().await {
+                                    Ok(datagrams) => {
+                                        if inbound_tx.send_async(datagrams).await.is_err() {
+                                            tracing::debug!(
+                                            "Channel for inbound datagrams closed; exiting UDP thread"
+                                        );
+                                            break;
+                                        }
+                                    },
+                                    Err(e) => {
+                                        tracing::debug!("Failed to receive from socket: {e:#}")
+                                    },
                                 }
                             }
-                        }
+                        });
+
+                        futures::future::select(send, receive).await;
                     })
             })?;
 

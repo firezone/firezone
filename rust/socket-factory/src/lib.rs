@@ -226,7 +226,7 @@ impl UdpSocket {
         std::future::poll_fn(|cx| self.poll_recv_from(cx)).await
     }
 
-    pub fn poll_recv_from(&self, cx: &mut Context<'_>) -> Poll<Result<DatagramSegmentIter>> {
+    fn poll_recv_from(&self, cx: &mut Context<'_>) -> Poll<Result<DatagramSegmentIter>> {
         let Self {
             port, inner, state, ..
         } = self;
