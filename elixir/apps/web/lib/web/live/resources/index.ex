@@ -7,10 +7,11 @@ defmodule Web.Resources.Index do
       :ok = Resources.subscribe_to_events_for_account(socket.assigns.account)
     end
 
-    internet_site = case Domain.Gateways.fetch_internet_group(socket.assigns.account) do
-      {:ok, internet_site} -> internet_site
-      _ -> nil
-    end
+    internet_site =
+      case Domain.Gateways.fetch_internet_group(socket.assigns.account) do
+        {:ok, internet_site} -> internet_site
+        _ -> nil
+      end
 
     socket =
       socket
