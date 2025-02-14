@@ -172,7 +172,7 @@ impl ThreadedUdpSocket {
                     .build()
                     .expect("Failed to spawn tokio runtime on UDP thread")
                     .block_on(async move {
-                        let mut socket = match sf(&addr) {
+                        let socket = match sf(&addr) {
                             Ok(s) => {
                                 let _ = error_tx.send(Ok(()));
 
