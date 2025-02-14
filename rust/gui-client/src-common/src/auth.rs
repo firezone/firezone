@@ -1,6 +1,6 @@
 //! Fulfills <https://github.com/firezone/firezone/issues/2823>
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use firezone_headless_client::known_dirs;
 use firezone_logging::err_with_src;
 use rand::{thread_rng, RngCore};
@@ -201,7 +201,13 @@ impl Auth {
     fn save_session(&self, session: &Session, token: &SecretString) -> Result<(), Error> {
         // This MUST be the only place the GUI can call `set_password`, since
         // the actor name is also saved here.
-        self.token_store.set_password(token.expose_secret())?;
+        if let Err(e) = self
+            .token_store
+            .set_password(token.expose_secret())
+            .context("Failed to save token in keyring")
+        {
+            tracing::info!("{e:#}"); // Log that we couldn't save it and allow the user to continue anyway.
+        }
         save_file(&actor_name_path()?, session.actor_name.as_bytes())?;
         save_file(
             &session_data_path()?,
