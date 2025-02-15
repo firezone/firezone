@@ -25,7 +25,8 @@ defmodule Web.Sites.Index do
              ),
            connection when not is_nil(connection) <-
              Enum.find(internet_resource.connections, fn connection ->
-               connection.gateway_group.name != "Internet" && connection.managed_by != "system"
+               connection.gateway_group.name != "Internet" &&
+                 connection.gateway_group.managed_by != "system"
              end) do
         {internet_resource, connection.gateway_group.name}
       else
