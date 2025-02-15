@@ -3,6 +3,7 @@ defmodule Web.PageComponents do
   use Web, :verified_routes
   import Web.CoreComponents
 
+  attr :id, :string, default: nil, doc: "The id of the section"
   slot :title, required: true, doc: "The title of the section to be displayed"
   slot :action, required: false, doc: "A slot for action to the right from title"
 
@@ -14,10 +15,13 @@ defmodule Web.PageComponents do
 
   def section(assigns) do
     ~H"""
-    <div class={[
-      "mb-6 bg-white overflow-hidden shadow mx-5 rounded border px-6",
-      @content != [] && "pb-6"
-    ]}>
+    <div
+      id={@id}
+      class={[
+        "mb-6 bg-white shadow mx-5 rounded border px-6",
+        @content != [] && "pb-6"
+      ]}
+    >
       <.header>
         <:title>
           {render_slot(@title)}

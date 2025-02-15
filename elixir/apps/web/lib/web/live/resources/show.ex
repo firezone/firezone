@@ -114,7 +114,7 @@ defmodule Web.Resources.Show do
           (replaced)
         </span>
       </:title>
-      <:action :if={is_nil(@resource.deleted_at)}>
+      <:action :if={@resource.type != :internet && is_nil(@resource.deleted_at)}>
         <.edit_button navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}>
           Edit Resource
         </.edit_button>

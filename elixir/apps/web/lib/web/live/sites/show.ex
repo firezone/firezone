@@ -1,6 +1,6 @@
 defmodule Web.Sites.Show do
   use Web, :live_view
-  alias Domain.{Gateways, Resources, Tokens}
+  alias Domain.{Gateways, Resources, Policies, Flows, Tokens}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
@@ -20,6 +20,27 @@ defmodule Web.Sites.Show do
           page_title: "Site #{group.name}",
           group: group
         )
+
+      mount_page(socket, group)
+    else
+      {:error, _reason} -> raise Web.LiveErrors.NotFoundError
+    end
+  end
+
+  defp mount_page(socket, %{managed_by: :system, name: "Internet"} = group) do
+    with {:ok, resource} <-
+           Resources.fetch_internet_resource(socket.assigns.subject,
+             preload: [
+               :gateway_groups,
+               :created_by_actor,
+               created_by_identity: [:actor],
+               replaced_by_resource: [],
+               replaces_resource: []
+             ]
+           ) do
+      socket =
+        socket
+        |> assign(resource: resource)
         |> assign_live_table("gateways",
           query_module: Gateways.Gateway.Query,
           enforce_filters: [
@@ -30,22 +51,57 @@ defmodule Web.Sites.Show do
           ],
           callback: &handle_gateways_update!/2
         )
-        |> assign_live_table("resources",
-          query_module: Resources.Resource.Query,
+        |> assign_live_table("flows",
+          query_module: Flows.Flow.Query,
+          sortable_fields: [],
+          callback: &handle_flows_update!/2
+        )
+        |> assign_live_table("policies",
+          query_module: Policies.Policy.Query,
+          hide_filters: [
+            :actor_group_id,
+            :resource_name,
+            :group_or_resource_name
+          ],
           enforce_filters: [
-            {:gateway_group_id, group.id}
+            {:resource_id, resource.id}
           ],
-          sortable_fields: [
-            {:resources, :name},
-            {:resources, :address}
-          ],
-          callback: &handle_resources_update!/2
+          sortable_fields: [],
+          callback: &handle_policies_update!/2
         )
 
       {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
+  end
+
+  defp mount_page(socket, group) do
+    socket =
+      socket
+      |> assign_live_table("gateways",
+        query_module: Gateways.Gateway.Query,
+        enforce_filters: [
+          {:gateway_group_id, group.id}
+        ],
+        sortable_fields: [
+          {:gateways, :last_seen_at}
+        ],
+        callback: &handle_gateways_update!/2
+      )
+      |> assign_live_table("resources",
+        query_module: Resources.Resource.Query,
+        enforce_filters: [
+          {:gateway_group_id, group.id}
+        ],
+        sortable_fields: [
+          {:resources, :name},
+          {:resources, :address}
+        ],
+        callback: &handle_resources_update!/2
+      )
+
+    {:ok, socket}
   end
 
   def handle_params(params, uri, socket) do
@@ -86,6 +142,36 @@ defmodule Web.Sites.Show do
     end
   end
 
+  def handle_policies_update!(socket, list_opts) do
+    list_opts = Keyword.put(list_opts, :preload, actor_group: [:provider], resource: [])
+
+    with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         policies: policies,
+         policies_metadata: metadata
+       )}
+    end
+  end
+
+  def handle_flows_update!(socket, list_opts) do
+    list_opts =
+      Keyword.put(list_opts, :preload,
+        client: [:actor],
+        gateway: [:group],
+        policy: [:resource, :actor_group]
+      )
+
+    with {:ok, flows, metadata} <-
+           Flows.list_flows_for(socket.assigns.resource, socket.assigns.subject, list_opts) do
+      {:ok,
+       assign(socket,
+         flows: flows,
+         flows_metadata: metadata
+       )}
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <.breadcrumbs account={@account}>
@@ -100,13 +186,18 @@ defmodule Web.Sites.Show do
         Site: <code>{@group.name}</code>
         <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action :if={is_nil(@group.deleted_at)}>
+
+      <:action :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
         <.edit_button navigate={~p"/#{@account}/sites/#{@group}/edit"}>
           Edit Site
         </.edit_button>
       </:action>
 
-      <:content>
+      <:help :if={@group.managed_by == :system and @group.name == "Internet"}>
+        Use this Site to manage secure, private access to the public internet for your workforce.
+      </:help>
+
+      <:content :if={@group.managed_by != :system and @group.name != "Internet"}>
         <.vertical_table id="group">
           <.vertical_table_row>
             <:label>Name</:label>
@@ -158,7 +249,10 @@ defmodule Web.Sites.Show do
           Revoke All
         </.button_with_confirmation>
       </:action>
-      <:help :if={is_nil(@group.deleted_at)}>
+      <:help :if={@group.managed_by == :system and @group.name == "Internet"}>
+        Gateways deployed to the Internet Site are used to tunnel all traffic that doesn't match any specific Resource.
+      </:help>
+      <:help :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
         Deploy gateways to terminate connections to your site's resources. All
         gateways deployed within a site must be able to reach all
         its resources.
@@ -203,7 +297,15 @@ defmodule Web.Sites.Show do
               <div class="flex flex-col items-center justify-center text-center text-neutral-500 p-4">
                 <div class="pb-4">
                   No gateways to display.
-                  <span :if={is_nil(@group.deleted_at)}>
+                  <span :if={@group.managed_by == :system and @group.name == "Internet"}>
+                    <.link
+                      class={[link_style()]}
+                      navigate={~p"/#{@account}/sites/#{@group}/new_token"}
+                    >
+                      Deploy a Gateway to the Internet Site.
+                    </.link>
+                  </span>
+                  <span :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
                     <.link
                       class={[link_style()]}
                       navigate={~p"/#{@account}/sites/#{@group}/new_token"}
@@ -219,7 +321,7 @@ defmodule Web.Sites.Show do
       </:content>
     </.section>
 
-    <.section>
+    <.section :if={@group.managed_by == :account}>
       <:title>
         Resources
       </:title>
@@ -295,7 +397,68 @@ defmodule Web.Sites.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@group.deleted_at)}>
+    <.section :if={@group.managed_by == :system and @group.name == "Internet"}>
+      <:title>
+        Policies
+      </:title>
+      <:action>
+        <.add_button navigate={
+          ~p"/#{@account}/policies/new?resource_id=#{@resource}&site_id=#{@group}"
+        }>
+          Add Policy
+        </.add_button>
+      </:action>
+      <:content>
+        <.live_table
+          id="policies"
+          rows={@policies}
+          row_id={&"policies-#{&1.id}"}
+          filters={@filters_by_table_id["policies"]}
+          filter={@filter_form_by_table_id["policies"]}
+          ordered_by={@order_by_table_id["policies"]}
+          metadata={@policies_metadata}
+        >
+          <:col :let={policy} label="id">
+            <.link class={link_style()} navigate={~p"/#{@account}/policies/#{policy}"}>
+              {policy.id}
+            </.link>
+          </:col>
+          <:col :let={policy} label="group">
+            <.group account={@account} group={policy.actor_group} />
+          </:col>
+          <:col :let={policy} label="status">
+            <%= if is_nil(policy.deleted_at) do %>
+              <%= if is_nil(policy.disabled_at) do %>
+                Active
+              <% else %>
+                Disabled
+              <% end %>
+            <% else %>
+              Deleted
+            <% end %>
+          </:col>
+          <:empty>
+            <div class="flex justify-center text-center text-neutral-500 p-4">
+              <div class="pb-4 w-auto">
+                <.icon
+                  name="hero-exclamation-triangle-solid"
+                  class="inline-block w-3.5 h-3.5 mr-1 text-red-500"
+                /> No policies to display.
+                <.link
+                  class={[link_style()]}
+                  navigate={~p"/#{@account}/policies/new?resource_id=#{@resource}&site_id=#{@group}"}
+                >
+                  Add a policy
+                </.link>
+                to configure access to the internet.
+              </div>
+            </div>
+          </:empty>
+        </.live_table>
+      </:content>
+    </.section>
+
+    <.danger_zone :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
       <:action>
         <.button_with_confirmation
           id="delete_site"

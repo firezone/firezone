@@ -19,12 +19,5 @@ defmodule Domain.Repo.Migrations.AddInternetResources do
         name: "unique_internet_resource_per_account"
       )
     )
-
-    # Manual migration that needs to be run after deployment
-    # (Domain.Accounts.Account.Query.not_deleted()
-    # |> Domain.Repo.all()
-    # |> Enum.each(fn account ->
-    #   Domain.Resources.create_internet_resource(account)
-    # end))
   end
 end

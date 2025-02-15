@@ -296,9 +296,12 @@ defmodule Domain.Billing.EventHandler do
               provider_identifier_confirmation: metadata["account_admin_email"] || account_email
             })
 
-          {:ok, _resource} = Domain.Resources.create_internet_resource(account)
-
           {:ok, _gateway_group} = Domain.Gateways.create_group(account, %{name: "Default Site"})
+
+          {:ok, internet_gateway_group} = Domain.Gateways.create_internet_group(account)
+
+          {:ok, _resource} =
+            Domain.Resources.create_internet_resource(account, internet_gateway_group)
 
           :ok
         else

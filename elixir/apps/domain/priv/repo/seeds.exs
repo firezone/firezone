@@ -73,9 +73,16 @@ end
 
 IO.puts("")
 
-for account <- [account, other_account] do
-  Domain.Resources.create_internet_resource(account)
-end
+{:ok, internet_gateway_group} =
+  Gateways.create_internet_group(account)
+
+{:ok, other_internet_gateway_group} =
+  Gateways.create_internet_group(other_account)
+
+Domain.Resources.create_internet_resource(account, internet_gateway_group)
+Domain.Resources.create_internet_resource(other_account, other_internet_gateway_group)
+
+IO.puts("")
 
 {:ok, everyone_group} =
   Domain.Actors.create_managed_group(account, %{

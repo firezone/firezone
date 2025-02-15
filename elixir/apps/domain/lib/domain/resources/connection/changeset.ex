@@ -6,11 +6,16 @@ defmodule Domain.Resources.Connection.Changeset do
   @required_fields @fields
 
   def changeset(account_id, connection, attrs, %Auth.Subject{} = subject) do
-    changeset(account_id, connection, attrs)
+    base_changeset(account_id, connection, attrs)
     |> put_subject_trail(:created_by, subject)
   end
 
   def changeset(account_id, connection, attrs) do
+    base_changeset(account_id, connection, attrs)
+    |> put_change(:created_by, :system)
+  end
+
+  defp base_changeset(account_id, connection, attrs) do
     connection
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)

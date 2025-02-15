@@ -494,7 +494,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       cancel_bypass_expectations_check(bypass)
     end
 
-    test "sends email on failed directory sync", %{account: account} do
+    test "sends email on failed directory sync", %{account: account, provider: provider} do
       bypass = Bypass.open()
       MicrosoftEntraDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
 
@@ -510,10 +510,12 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
         end)
       end
 
-      for _n <- 1..10 do
-        {:ok, pid} = Task.Supervisor.start_link()
-        assert execute(%{task_supervisor: pid}) == :ok
-      end
+      provider
+      |> Ecto.Changeset.change(last_syncs_failed: 9)
+      |> Repo.update!()
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
 
       assert_email_sent(fn email ->
         assert email.subject == "Firezone Identity Provider Sync Error"
