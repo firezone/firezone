@@ -279,6 +279,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
           {:error, reason} ->
             Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
               reason: inspect(reason),
+              time_series: inspect(time_series),
               count: buffer_size
             )
         end
