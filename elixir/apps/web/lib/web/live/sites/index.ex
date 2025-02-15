@@ -276,9 +276,11 @@ defmodule Web.Sites.Index do
                 Site to the <strong>Internet</strong>
                 Site. This cannot be reversed.
               </p>
+              <p class="mb-2">
+                Any Clients connected to this Resource will be immediately disconnected.
+              </p>
               <p>
-                Any Clients connected to this Resource will be immediately disconnected. You will need to deploy new Gateways in the Internet Site
-                to reconnect them.
+                To minimize downtime, it is recommended to deploy new Gateways in the Internet Site before completing the migration of the Internet Resource.
               </p>
             </:dialog_content>
             <:dialog_confirm_button>
