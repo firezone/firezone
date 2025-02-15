@@ -24,6 +24,8 @@ jobs:
   update-release-draft:
     name: update-release-draft
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write # for updating the release draft
     env:
       # mark:next-android-version
       RELEASE_NAME: android-client-1.4.2
