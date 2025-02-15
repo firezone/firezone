@@ -250,3 +250,7 @@ tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach 
     inputs.dir(layout.buildDirectory.file("rustJniLibs/android"))
     dependsOn("cargoBuild")
 }
+
+tasks.matching { it.name == "appDistributionUploadRelease" }.configureEach {
+    dependsOn("processReleaseGoogleServices")
+}
