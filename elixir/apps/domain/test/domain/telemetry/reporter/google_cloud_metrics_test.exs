@@ -151,7 +151,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
                  %{
                    "metric" => %{
                      "type" => "custom.googleapis.com/elixir/foo/count",
-                     "labels" => %{"foo" => "bar", "app" => "myapp", "node" => "nonode@nohost"}
+                     "labels" => %{"foo" => "bar", "app" => "myapp"}
                    },
                    "resource" => %{"type" => "test"},
                    "unit" => "request",
@@ -244,7 +244,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
                  %{
                    "metric" => %{
                      "type" => "custom.googleapis.com/elixir/foo/distribution",
-                     "labels" => %{"foo" => "bar", "app" => "myapp", "node" => "nonode@nohost"}
+                     "labels" => %{"foo" => "bar", "app" => "myapp"}
                    },
                    "resource" => %{"type" => "test"},
                    "unit" => "request",
@@ -332,7 +332,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
                  %{
                    "metric" => %{
                      "type" => "custom.googleapis.com/elixir/foo/sum",
-                     "labels" => %{"foo" => "bar", "app" => "myapp", "node" => "nonode@nohost"}
+                     "labels" => %{"foo" => "bar", "app" => "myapp"}
                    },
                    "resource" => %{"type" => "test"},
                    "unit" => "request",
@@ -407,7 +407,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
                  %{
                    "metric" => %{
                      "type" => "custom.googleapis.com/elixir/foo/summary",
-                     "labels" => %{"foo" => "bar", "app" => "myapp", "node" => "nonode@nohost"}
+                     "labels" => %{"foo" => "bar", "app" => "myapp"}
                    },
                    "resource" => %{"type" => "test"},
                    "unit" => "request",
@@ -439,7 +439,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
                  },
                  %{
                    "metric" => %{
-                     "labels" => %{"app" => "myapp", "foo" => "bar", "node" => "nonode@nohost"},
+                     "labels" => %{"app" => "myapp", "foo" => "bar"},
                      "type" => "custom.googleapis.com/elixir/foo/min_val"
                    },
                    "metricKind" => "GAUGE",
@@ -457,7 +457,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
                  },
                  %{
                    "metric" => %{
-                     "labels" => %{"app" => "myapp", "foo" => "bar", "node" => "nonode@nohost"},
+                     "labels" => %{"app" => "myapp", "foo" => "bar"},
                      "type" => "custom.googleapis.com/elixir/foo/max_val"
                    },
                    "metricKind" => "GAUGE",
@@ -531,7 +531,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
                  %{
                    "metric" => %{
                      "type" => "custom.googleapis.com/elixir/foo/last_value",
-                     "labels" => %{"foo" => "bar", "app" => "myapp", "node" => "nonode@nohost"}
+                     "labels" => %{"foo" => "bar", "app" => "myapp"}
                    },
                    "resource" => %{"type" => "test"},
                    "unit" => "request",
