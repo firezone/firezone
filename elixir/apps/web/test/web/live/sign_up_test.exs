@@ -79,9 +79,13 @@ defmodule Web.Live.SignUpTest do
     assert internet_resource.name == "Internet"
     assert internet_resource.type == :internet
 
-    gateway_group = Repo.one(Domain.Gateways.Group)
-    assert gateway_group.account_id == account.id
-    assert gateway_group.name == "Default Site"
+    default_gateway_group = Repo.get_by(Domain.Gateways.Group, name: "Default Site")
+    assert default_gateway_group.account_id == account.id
+    assert default_gateway_group.managed_by == :account
+
+    internet_gateway_group = Repo.get_by(Domain.Gateways.Group, name: "Internet")
+    assert internet_gateway_group.account_id == account.id
+    assert internet_gateway_group.managed_by == :system
   end
 
   test "rate limits welcome emails", %{conn: conn} do

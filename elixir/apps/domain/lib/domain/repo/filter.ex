@@ -227,6 +227,10 @@ defmodule Domain.Repo.Filter do
       not (is_nil(from) and is_nil(to))
   end
 
+  defp value_type_valid?({:list, type}, {:not_in, values}) when is_list(values) do
+    Enum.all?(values, &value_type_valid?(type, &1))
+  end
+
   defp value_type_valid?({:list, type}, values) when is_list(values) do
     Enum.all?(values, &value_type_valid?(type, &1))
   end

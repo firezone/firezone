@@ -36,6 +36,14 @@ defmodule Domain.Gateways do
     end
   end
 
+  def fetch_internet_group(%Accounts.Account{} = account) do
+    Group.Query.not_deleted()
+    |> Group.Query.by_managed_by(:system)
+    |> Group.Query.by_account_id(account.id)
+    |> Group.Query.by_name("Internet")
+    |> Repo.fetch(Group.Query, [])
+  end
+
   def list_groups(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       Group.Query.not_deleted()
@@ -46,12 +54,14 @@ defmodule Domain.Gateways do
 
   def all_groups!(%Auth.Subject{} = subject) do
     Group.Query.not_deleted()
+    |> Group.Query.by_managed_by(:account)
     |> Authorizer.for_subject(subject)
     |> Repo.all()
   end
 
   def all_groups_for_account!(%Accounts.Account{} = account) do
     Group.Query.not_deleted()
+    |> Group.Query.by_managed_by(:account)
     |> Group.Query.by_account_id(account.id)
     |> Repo.all()
   end
@@ -78,13 +88,24 @@ defmodule Domain.Gateways do
     |> Repo.insert()
   end
 
+  def create_internet_group(%Accounts.Account{} = account) do
+    attrs = %{
+      "name" => "Internet",
+      "managed_by" => "system"
+    }
+
+    account
+    |> Group.Changeset.create(attrs)
+    |> Repo.insert()
+  end
+
   def change_group(%Group{} = group, attrs \\ %{}) do
     group
     |> Repo.preload(:account)
     |> Group.Changeset.update(attrs)
   end
 
-  def update_group(%Group{} = group, attrs, %Auth.Subject{} = subject) do
+  def update_group(%Group{managed_by: :account} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       Group.Query.not_deleted()
       |> Group.Query.by_id(group.id)
@@ -108,7 +129,7 @@ defmodule Domain.Gateways do
     end
   end
 
-  def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
+  def delete_group(%Group{managed_by: :account} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       Group.Query.not_deleted()
       |> Group.Query.by_id(group.id)
