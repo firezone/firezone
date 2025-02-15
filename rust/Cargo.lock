@@ -1069,7 +1069,7 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.4.2"
+version = "1.4.3"
 dependencies = [
  "anyhow",
  "backoff",
@@ -1111,6 +1111,7 @@ dependencies = [
  "firezone-tunnel",
  "ip_network",
  "phoenix-channel",
+ "rayon",
  "secrecy",
  "serde",
  "serde_json",
@@ -1264,6 +1265,25 @@ name = "crossbeam-channel"
 version = "0.5.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "33480d6946193aa8033910124896ca395333cae7e2d1113d1fef6c3272217df2"
+dependencies = [
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-deque"
+version = "0.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9dd111b7b7f7d55b72c0a6ae361660ee5853c9af73f70c3c2ef6858b950e2e51"
+dependencies = [
+ "crossbeam-epoch",
+ "crossbeam-utils",
+]
+
+[[package]]
+name = "crossbeam-epoch"
+version = "0.9.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5b82ac4a3c2ca9c3460964f020e1402edd5753411d7737aa39c3714ad1b5420e"
 dependencies = [
  "crossbeam-utils",
 ]
@@ -1981,7 +2001,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.4.4"
+version = "1.4.5"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2022,7 +2042,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.4.4"
+version = "1.4.6"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -2067,7 +2087,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client-common"
-version = "1.4.4"
+version = "1.4.6"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2108,7 +2128,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.4.3"
+version = "1.4.4"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -5123,6 +5143,26 @@ name = "raw-window-handle"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20675572f6f24e9e76ef639bc5552774ed45f1c30e2951e1e99c59888861c539"
+
+[[package]]
+name = "rayon"
+version = "1.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b418a60154510ca1a002a752ca9714984e21e4241e804d32555251faf8b78ffa"
+dependencies = [
+ "either",
+ "rayon-core",
+]
+
+[[package]]
+name = "rayon-core"
+version = "1.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
+dependencies = [
+ "crossbeam-deque",
+ "crossbeam-utils",
+]
 
 [[package]]
 name = "redox_syscall"

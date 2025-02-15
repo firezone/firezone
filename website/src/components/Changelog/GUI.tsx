@@ -9,6 +9,22 @@ export default function GUI({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        {os === OS.Linux && (
+          <ChangeItem pull="8117">
+            Fixes an upload speed performance regression.
+          </ChangeItem>
+        )}
+        <ChangeItem pull="8129">
+          Allows signing-in without access to the local keyring.
+        </ChangeItem>
+      </Unreleased>
+      <Entry version="1.4.5" date={new Date("2025-02-12")}>
+        <ChangeItem pull="8105">
+          Fixes a visual regression where the Settings and About window lost
+          their styling attributes.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.4.4" date={new Date("2025-02-11")}>
         <ChangeItem pull="8035">
           Shows a non-disruptive toast notification and quits the GUI client in
           case the IPC service gets shutdown through the service manager.
@@ -19,7 +35,7 @@ export default function GUI({ os }: { os: OS }) {
             on systems with a disabled IPv6 stack.
           </ChangeItem>
         )}
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.3" date={new Date("2025-02-05")}>
         {os === OS.Windows && (
           <ChangeItem pull="8003">

@@ -143,6 +143,11 @@ class TunnelService : VpnService() {
                 repo.clearToken()
                 repo.clearActorName()
 
+                // Free the connlib session
+                connlibSessionPtr?.let {
+                    ConnlibSession.disconnect(it)
+                }
+
                 shutdown()
                 if (startedByUser) {
                     updateStatusNotification(TunnelStatusNotification.SignedOut)

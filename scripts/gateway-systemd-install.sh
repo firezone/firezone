@@ -36,9 +36,17 @@ Documentation=https://www.firezone.dev/kb
 
 [Service]
 
-# DO NOT EDIT ANY OF THE BELOW BY HAND. USE `systemctl edit firezone-gateway` INSTEAD TO CUSTOMIZE.
+# DO NOT EDIT ANY OF THE BELOW BY HAND. USE "systemctl edit firezone-gateway" INSTEAD TO CUSTOMIZE.
 
 Type=simple
+User=firezone
+Group=firezone
+PermissionsStartOnly=true
+SyslogIdentifier=firezone-gateway
+StateDirectory=firezone
+StateDirectoryMode=0755
+
+# Environment variables
 Environment="FIREZONE_NAME=$FIREZONE_NAME"
 Environment="FIREZONE_ID=$FIREZONE_ID"
 Environment="FIREZONE_TOKEN=$FIREZONE_TOKEN"
@@ -48,16 +56,65 @@ Environment="RUST_LOG_STYLE=never"
 Environment="LOG_FORMAT=$FIREZONE_LOG_FORMAT"
 Environment="GOOGLE_CLOUD_PROJECT_ID=$FIREZONE_GOOGLE_CLOUD_PROJECT_ID"
 Environment="OTLP_GRPC_ENDPOINT=$FIREZONE_OTLP_GRPC_ENDPOINT"
+
+# ExecStartPre script to download the gateway binary
 ExecStartPre=/usr/local/bin/firezone-gateway-init
-ExecStart=/usr/bin/sudo \
-  --preserve-env=FIREZONE_NAME,FIREZONE_ID,FIREZONE_TOKEN,FIREZONE_API_URL,RUST_LOG,LOG_FORMAT,GOOGLE_CLOUD_PROJECT_ID,OTLP_GRPC_ENDPOINT \
-  -u firezone \
-  -g firezone \
-  /usr/local/bin/firezone-gateway
+
+# ExecStart script
+ExecStart=/usr/local/bin/firezone-gateway
+
+# Restart on failure
 TimeoutStartSec=3s
 TimeoutStopSec=15s
 Restart=always
 RestartSec=7
+
+#####################
+# HARDENING OPTIONS #
+#####################
+
+# Give the service its own private /tmp directory.
+PrivateTmp=true
+
+# Mount the system directories read-only (except those explicitly allowed).
+ProtectSystem=full
+
+# Make users' home directories read-only.
+ProtectHome=read-only
+
+# Disallow gaining new privileges (e.g. via execve() of setuid binaries).
+NoNewPrivileges=true
+
+# Disallow the creation of new namespaces.
+RestrictNamespaces=yes
+
+# Prevent memory from being both writable and executable.
+MemoryDenyWriteExecute=true
+
+# Prevent the service from calling personality(2) to change process execution domain.
+LockPersonality=true
+
+# Restrict the set of allowed address families.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
+
+# Allow the process to have CAP_NET_ADMIN (needed for network administration)
+# while restricting it to only that capability.
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+
+# Allow write access only to specific directories needed at runtime.
+ReadWriteDirectories=/var/lib/firezone
+
+# Make some sensitive paths inaccessible.
+InaccessiblePaths=/root /home
+
+# Set resource limits
+LimitNOFILE=4096
+LimitNPROC=512
+LimitCORE=0
+
+# Set a sane system call filter
+SystemCallFilter=@system-service
 
 [Install]
 WantedBy=multi-user.target
@@ -90,13 +147,8 @@ else
   echo "/usr/local/bin/firezone-gateway found. Skipping download."
 fi
 
-# Set proper capabilities and permissions on each start
-chgrp firezone /usr/local/bin/firezone-gateway
-chmod 0750 /usr/local/bin/firezone-gateway
-setcap 'cap_net_admin+eip' /usr/local/bin/firezone-gateway
-mkdir -p /var/lib/firezone
-chown firezone:firezone /var/lib/firezone
-chmod 0775 /var/lib/firezone
+# Set proper permissions on each start
+chmod 0755 /usr/local/bin/firezone-gateway
 
 # Enable masquerading for ethernet and wireless interfaces
 iptables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i tun-firezone -j ACCEPT

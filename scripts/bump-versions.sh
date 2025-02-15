@@ -46,8 +46,8 @@ function cargo_update_workspace() {
 # 7. Commit the changes and open a PR. Ensure the Changelog is correctly
 #    updated with the changes.
 function apple() {
-    current_apple_version="1.4.1"
-    next_apple_version="1.4.2"
+    current_apple_version="1.4.2"
+    next_apple_version="1.4.3"
 
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_version}"'/g;}' {} \;
@@ -107,8 +107,8 @@ function android() {
 # 5. Commit the changes and open a PR. Ensure the Changelog is correctly
 #    updated with the changes.
 function gui() {
-    current_gui_version="1.4.3"
-    next_gui_version="1.4.4"
+    current_gui_version="1.4.5"
+    next_gui_version="1.4.6"
 
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_version}"'/g;}' {} \;
@@ -131,8 +131,8 @@ function gui() {
 # 4. Commit the changes and open a PR. Ensure the Changelog is correctly
 #    updated with the changes.
 function headless() {
-    current_headless_version="1.4.2"
-    next_headless_version="1.4.3"
+    current_headless_version="1.4.3"
+    next_headless_version="1.4.4"
 
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_version}"'/g;}' {} \;
@@ -154,8 +154,8 @@ function headless() {
 # 4. Commit the changes and open a PR. Ensure the Changelog is correctly
 #    updated with the changes.
 function gateway() {
-    current_gateway_version="1.4.3"
-    next_gateway_version="1.4.4"
+    current_gateway_version="1.4.4"
+    next_gateway_version="1.4.5"
 
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gateway_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gateway_version}"'/g;}' {} \;

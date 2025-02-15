@@ -95,9 +95,12 @@ impl GatewayState {
         };
         let cid = peer.id();
 
-        let packet = peer
+        let Some(packet) = peer
             .translate_inbound(packet, now)
-            .context("Failed to translate inbound packet")?;
+            .context("Failed to translate inbound packet")?
+        else {
+            return Ok(None);
+        };
 
         let Some(encrypted_packet) = self
             .node
