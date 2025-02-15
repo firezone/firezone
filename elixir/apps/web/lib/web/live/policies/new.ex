@@ -110,16 +110,17 @@ defmodule Web.Policies.New do
                       </span>
                     <% else %>
                       {resource.name}
+
+                      <span
+                        :if={length(resource.gateway_groups) > 0}
+                        class="text-neutral-500 inline-flex"
+                      >
+                        (<.resource_gateway_groups gateway_groups={resource.gateway_groups} />)
+                      </span>
                     <% end %>
 
                     <span :if={resource.gateway_groups == []} class="text-red-800">
                       (not connected to any Site)
-                    </span>
-                    <span
-                      :if={length(resource.gateway_groups) > 0}
-                      class="text-neutral-500 inline-flex"
-                    >
-                      (<.resource_gateway_groups gateway_groups={resource.gateway_groups} />)
                     </span>
                   </:option>
 

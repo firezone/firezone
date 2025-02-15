@@ -230,6 +230,14 @@ defmodule Domain.GatewaysTest do
     end
   end
 
+  describe "create_internet_group/1" do
+    test "creates a group on empty attrs", %{account: account} do
+      assert {:ok, group} = create_internet_group(account)
+      assert group.name == "Internet"
+      assert group.managed_by == :system
+    end
+  end
+
   describe "change_group/1" do
     test "returns changeset with given changes" do
       group = Fixtures.Gateways.create_group()
