@@ -9,6 +9,7 @@ defmodule Web.Policies.Index do
 
     socket =
       socket
+      |> assign(stale: false)
       |> assign(page_title: "Policies")
       |> assign_live_table("policies",
         query_module: Policies.Policy.Query,
@@ -64,6 +65,7 @@ defmodule Web.Policies.Index do
       <:content>
         <.flash_group flash={@flash} />
         <.live_table
+          stale={@stale}
           id="policies"
           rows={@policies}
           row_id={&"policies-#{&1.id}"}
@@ -117,28 +119,11 @@ defmodule Web.Policies.Index do
     """
   end
 
-  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
-    do: handle_live_table_event(event, params, socket)
-
-  def handle_info({:create_policy, _policy_id}, socket) do
-    {:noreply, socket}
-  end
-
-  def handle_info({:delete_policy, policy_id}, socket) do
-    if Enum.find(socket.assigns.policies, fn policy -> policy.id == policy_id end) do
-      policies =
-        Enum.filter(socket.assigns.policies, fn
-          policy -> policy.id != policy_id
-        end)
-
-      {:noreply, assign(socket, policies: policies)}
-    else
-      {:noreply, socket}
-    end
-  end
+  def handle_event(event, params, socket)
+      when event in ["paginate", "order_by", "filter", "reload"],
+      do: handle_live_table_event(event, params, socket)
 
   def handle_info({_action, _policy_id}, socket) do
-    socket = reload_live_table!(socket, "policies")
-    {:noreply, socket}
+    {:noreply, assign(socket, stale: true)}
   end
 end
