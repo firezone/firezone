@@ -142,18 +142,34 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
 
   # Google Cloud Monitoring API does not support sampling intervals shorter than 5 seconds
   defp all_intervals_greater_than_5s?(buffer) do
-    Enum.all?(buffer, fn {{schema, _name, _tags, _unit}, measurements} ->
-      {started_at, ended_at, _} = measurements
+    Enum.all?(buffer, &interval_greater_than_5s?/1)
+  end
 
-      # Only Distribution and Summary metrics use intervals
-      case schema do
-        Metrics.Counter -> true
-        Metrics.Sum -> true
-        Metrics.LastValue -> true
-        Metrics.Distribution -> DateTime.diff(ended_at, started_at, :second) > 5
-        Metrics.Summary -> DateTime.diff(ended_at, started_at, :second) > 5
+  defp interval_greater_than_5s?({{schema, _name, _tags, _unit}, _measurements})
+       when schema in [Metrics.Counter, Metrics.Sum, Metrics.LastValue],
+       do: true
+
+  # Only Distribution and Summary metrics use intervals
+  defp interval_greater_than_5s?({{schema, _name, _tags, _unit}, {started_at, ended_at, _}})
+       when schema in [Metrics.Distribution, Metrics.Summary] do
+    # Sometimes we receive a DateTime struct, sometimes an ISO8601 string :-(
+    started_at =
+      if is_binary(started_at) do
+        {:ok, parsed, _} = DateTime.from_iso8601(started_at)
+        parsed
+      else
+        started_at
       end
-    end)
+
+    ended_at =
+      if is_binary(ended_at) do
+        {:ok, parsed, _} = DateTime.from_iso8601(ended_at)
+        parsed
+      else
+        ended_at
+      end
+
+    DateTime.diff(ended_at, started_at, :second) > 5
   end
 
   defp havent_flushed_in_over_5s?(nil), do: true
