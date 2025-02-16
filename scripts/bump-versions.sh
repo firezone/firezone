@@ -82,8 +82,8 @@ function apple() {
 # 7. Commit the changes and open a PR. Ensure the Changelog is correctly
 #    updated with the changes.
 function android() {
-    current_android_version="1.4.1"
-    next_android_version="1.4.2"
+    current_android_version="1.4.2"
+    next_android_version="1.4.3"
 
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_android_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_android_version}"'/g;}' {} \;
