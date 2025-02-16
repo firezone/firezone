@@ -111,6 +111,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
 
     {buffer_size, buffer} =
       if buffer_size >= @buffer_size do
+        # Flush immediately if the buffer is full
         flush(project_id, resource, labels, {buffer_size, buffer})
       else
         {buffer_size, buffer}
@@ -126,7 +127,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
       |> Repo.one()
 
     {buffer_size, buffer} =
-      if can_flush?(log) do
+      if all_intervals_greater_than_5s?(buffer) && havent_flushed_in_over_5s?(log) do
         flush(project_id, resource, labels, {buffer_size, buffer}, log)
       else
         {buffer_size, buffer}
@@ -139,9 +140,26 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
     {:noreply, {events, project_id, {resource, labels}, {buffer_size, buffer}}}
   end
 
-  defp can_flush?(nil), do: true
+  # Google Cloud Monitoring API does not support sampling intervals shorter than 5 seconds
+  defp all_intervals_greater_than_5s?(buffer) do
+    Enum.all?(buffer, fn {{schema, _name, _tags, _unit}, measurements} ->
+      {started_at, ended_at, _} = measurements
+      diff = DateTime.diff(ended_at, started_at, :second)
 
-  defp can_flush?(log) do
+      # Only Distribution and Summary metrics use intervals
+      case schema do
+        Metrics.Counter -> true
+        Metrics.Sum -> true
+        Metrics.LastValue -> true
+        Metrics.Distribution -> diff > 5
+        Metrics.Summary -> diff > 5
+      end
+    end)
+  end
+
+  defp havent_flushed_in_over_5s?(nil), do: true
+
+  defp havent_flushed_in_over_5s?(log) do
     last_flushed_at = log.last_flushed_at
     now = DateTime.utc_now()
     diff = DateTime.diff(now, last_flushed_at, :second)
