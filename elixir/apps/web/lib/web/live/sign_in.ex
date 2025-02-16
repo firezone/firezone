@@ -53,7 +53,7 @@ defmodule Web.SignIn do
             <.flash flash={@flash} kind={:info} />
 
             <.flash :if={not Accounts.account_active?(@account)} kind={:error} style="wide">
-              This account has been disabled, please contact your administrator.
+              This account has been disabled. Please contact your administrator to re-enable it.
             </.flash>
 
             <%= if trial_ends_at = get_in(@account.metadata.stripe.trial_ends_at) do %>

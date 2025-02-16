@@ -75,6 +75,8 @@ defmodule Web.SignInTest do
     {:ok, _account} = Domain.Accounts.update_account(account, %{disabled_at: DateTime.utc_now()})
     Fixtures.Auth.create_email_provider(account: account)
     {:ok, _lv, html} = live(conn, ~p"/#{account}")
-    assert html =~ "This account has been disabled, please contact your administrator."
+
+    assert html =~
+             "This account has been disabled. Please contact your administrator to re-enable it."
   end
 end
