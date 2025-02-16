@@ -144,15 +144,14 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
   defp all_intervals_greater_than_5s?(buffer) do
     Enum.all?(buffer, fn {{schema, _name, _tags, _unit}, measurements} ->
       {started_at, ended_at, _} = measurements
-      diff = DateTime.diff(ended_at, started_at, :second)
 
       # Only Distribution and Summary metrics use intervals
       case schema do
         Metrics.Counter -> true
         Metrics.Sum -> true
         Metrics.LastValue -> true
-        Metrics.Distribution -> diff > 5
-        Metrics.Summary -> diff > 5
+        Metrics.Distribution -> DateTime.diff(ended_at, started_at, :second) > 5
+        Metrics.Summary -> DateTime.diff(ended_at, started_at, :second) > 5
       end
     end)
   end
