@@ -197,7 +197,6 @@ pub struct Tun {
     inbound_rx: mpsc::Receiver<IpPacket>,
     send_thread: Option<std::thread::JoinHandle<()>>,
     recv_thread: Option<std::thread::JoinHandle<()>>,
-    session: Arc<wintun::Session>,
     luid: wintun::NET_LUID_LH,
 }
 
@@ -269,7 +268,6 @@ impl Tun {
             recv_thread: Some(recv_thread),
             outbound_tx: PollSender::new(outbound_tx),
             inbound_rx,
-            session: Arc::clone(&session),
         })
     }
 
