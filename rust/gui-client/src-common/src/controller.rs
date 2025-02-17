@@ -218,23 +218,7 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     pub async fn main_loop(mut self) -> Result<(), Error> {
-        let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
-
-        // Tell IPC service to start telemetry.
-        {
-            let environment = self.advanced_settings.api_url.to_string();
-            if let Some(account_slug) = account_slug.clone() {
-                Telemetry::set_account_slug(account_slug);
-            }
-
-            self.ipc_client
-                .send_msg(&IpcClientMsg::StartTelemetry {
-                    environment,
-                    release: crate::RELEASE.to_string(),
-                    account_slug,
-                })
-                .await?;
-        }
+        self.update_telemetry_context().await?;
 
         if let Some(token) = self
             .auth
@@ -368,6 +352,25 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
+    async fn update_telemetry_context(&mut self) -> Result<()> {
+        let environment = self.advanced_settings.api_url.to_string();
+        let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
+
+        if let Some(account_slug) = account_slug.clone() {
+            Telemetry::set_account_slug(account_slug);
+        }
+
+        self.ipc_client
+            .send_msg(&IpcClientMsg::StartTelemetry {
+                environment,
+                release: crate::RELEASE.to_string(),
+                account_slug,
+            })
+            .await?;
+
+        Ok(())
+    }
+
     async fn handle_deep_link(&mut self, url: &SecretString) -> Result<(), Error> {
         let auth_response =
             deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
@@ -379,7 +382,10 @@ impl<I: GuiIntegration> Controller<I> {
             .auth
             .handle_response(auth_response)
             .context("Couldn't handle auth response")?;
+
+        self.update_telemetry_context().await?;
         self.start_session(token).await?;
+
         Ok(())
     }
 
