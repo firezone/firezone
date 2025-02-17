@@ -384,34 +384,6 @@ module "relays" {
   token   = var.relay_token
 }
 
-# Allow SSH access using IAP for relays
-resource "google_compute_firewall" "relays-ssh-ipv4" {
-  count   = length(module.relays) > 0 ? 1 : 0
-  project = module.google-cloud-project.project.project_id
-  name    = "relays-ssh-ipv4"
-  network = google_compute_network.network.self_link
-  allow {
-    protocol = "tcp"
-    ports    = [22]
-  }
-  allow {
-    protocol = "udp"
-    ports    = [22]
-  }
-  allow {
-    protocol = "sctp"
-    ports    = [22]
-  }
-
-  log_config {
-    metadata = "INCLUDE_ALL_METADATA"
-  }
-
-  # Only allows connections using IAP
-  source_ranges = local.iap_ipv4_ranges
-  target_tags   = module.relays[0].target_tags
-}
-
 # Trigger an alert when there is at least one region without a healthy relay
 resource "google_monitoring_alert_policy" "connected_relays_count" {
   project = module.google-cloud-project.project.project_id
