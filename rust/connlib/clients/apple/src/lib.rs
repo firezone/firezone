@@ -11,6 +11,7 @@ use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
 use firezone_logging::err_with_src;
+use firezone_logging::sentry_layer;
 use firezone_telemetry::Telemetry;
 use firezone_telemetry::APPLE_DSN;
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -210,7 +211,8 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<()> {
                     "connlib",
                 )),
         )
-        .with(file_layer);
+        .with(file_layer)
+        .with(sentry_layer());
 
     firezone_logging::init(subscriber)?;
 
