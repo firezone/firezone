@@ -107,6 +107,7 @@ smbios-lib = "0.9.2"
 smoltcp = { version = "0.12", default-features = false }
 static_assertions = "1.1.0"
 str0m = { version = "0.6.3", default-features = false, features = ["sha1"] }
+strum = { version = "0.27.1", features = ["derive"] }
 stun_codec = "0.3.4"
 subprocess = "0.2.9"
 subtle = "2.5.0"
