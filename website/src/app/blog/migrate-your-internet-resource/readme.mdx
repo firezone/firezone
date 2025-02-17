@@ -2,7 +2,7 @@ import Image from "next/image";
 
 <Image
   src="/images/blog/migrate-your-internet-resource/migrate-internet-resource.svg"
-  alt="Migrate your internet resource"
+  alt="Migrate your Internet Resource"
   width={200}
   height={200}
   className="mx-auto shadow rounded"
@@ -12,11 +12,11 @@ import Image from "next/image";
 
 ## tl;dr
 
-We're making a change to the way the [Internet Resource](/kb/deploy/resources#the-internet-resource) works in Firezone to improve security and performance. Beginning **March 15, 2024**, the Internet Resource will exist exclusively in a new Site dedicated to routing internet traffic.
+We're making a change to the way the [Internet Resource](/kb/deploy/resources#the-internet-resource) works in Firezone to improve security and performance. Beginning **March 15, 2024**, the Internet Resource will exist exclusively in a new Site dedicated to routing Internet traffic.
 
 <Image
   src="/images/blog/migrate-your-internet-resource/button.png"
-  alt="Migrate your internet resource button"
+  alt="Migrate your Internet Resource button"
   className="mx-auto rounded"
   height={250}
   width={250}
@@ -36,8 +36,7 @@ Consider the case where the Internet Resource lives in a Site with other Resourc
 
 The Internet Resource will now exist in a dedicated Internet Site that only contains the Internet Resource. This means that the Internet Resource will no longer be able to route traffic to other Resources in your account. This change will be enforced beginning **March 15, 2024**.
 
-This also means you'll need to deploy dedicated Gateway(s) to the Internet Site to handle traffic for the Internet Resource. This ensures
-internet-bound traffic is properly isolated from other Resources in your account.
+This also means you'll need to deploy dedicated Gateway(s) to the Internet Site to handle traffic for the Internet Resource. This ensures Internet-bound traffic is properly isolated from other Resources in your account.
 
 ## What do I need to do?
 
