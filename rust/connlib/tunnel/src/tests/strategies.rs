@@ -11,6 +11,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
 use proptest::{collection, prelude::*};
+use std::iter;
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -72,25 +73,27 @@ pub(crate) fn latency(max: u64) -> impl Strategy<Value = Duration> {
 /// Similar as in production, the portal holds a list of DNS and CIDR resources (those are also sampled from the given sites).
 /// Via this site mapping, these resources are implicitly assigned to a gateway.
 pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
-    collection::btree_set(site(), 1..=3)
+    collection::btree_set(site(), 2..=4)
         .prop_flat_map(|sites| {
+            let (internet_site, regular_sites) = create_internet_site(sites);
+
             let cidr_resources = collection::btree_set(
-                cidr_resource_outside_reserved_ranges(any_site(sites.clone())),
+                cidr_resource_outside_reserved_ranges(any_site(regular_sites.clone())),
                 1..5,
             );
             let dns_resources = collection::btree_set(
                 prop_oneof![
-                    non_wildcard_dns_resource(any_site(sites.clone())),
-                    star_wildcard_dns_resource(any_site(sites.clone())),
-                    double_star_wildcard_dns_resource(any_site(sites.clone())),
+                    non_wildcard_dns_resource(any_site(regular_sites.clone())),
+                    star_wildcard_dns_resource(any_site(regular_sites.clone())),
+                    double_star_wildcard_dns_resource(any_site(regular_sites.clone())),
                 ],
                 1..5,
             );
-            let internet_resource = internet_resource(any_site(sites.clone()));
+            let internet_resource = internet_resource(Just(internet_site.clone()));
 
             // Assign between 1 and 3 gateways to each site.
-            let gateways_by_site = sites
-                .into_iter()
+            let gateways_by_site = iter::once(internet_site)
+                .chain(regular_sites)
                 .map(|site| (Just(site.id), collection::btree_set(gateway_id(), 1..=3)))
                 .collect::<Vec<_>>()
                 .prop_map(BTreeMap::from_iter);
@@ -122,6 +125,14 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 )
             },
         )
+}
+
+fn create_internet_site(mut sites: BTreeSet<Site>) -> (Site, BTreeSet<Site>) {
+    // Rebrand the first site as the Internet site. That way, we can guarantee to always have one.
+    let mut internet_site = sites.pop_first().unwrap();
+    internet_site.name = "Internet".to_owned();
+
+    (internet_site, sites)
 }
 
 pub(crate) fn relays(
