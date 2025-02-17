@@ -125,12 +125,6 @@ pub enum Failure {
 pub enum Status {
     /// Firezone is disconnected.
     Disconnected,
-    /// At least one connection request has failed, due to failing to reach the Portal, and we are waiting for a network change before we try again
-    RetryingConnection {
-        /// The token to log in to the Portal, for retrying the connection request.
-        #[debug(skip)]
-        token: SecretString,
-    },
     Quitting, // The user asked to quit and we're waiting for the tunnel daemon to gracefully disconnect so we can flush telemetry.
     /// Firezone is ready to use.
     TunnelReady {
@@ -141,9 +135,6 @@ pub enum Status {
     WaitingForPortal {
         /// The instant when we sent our most recent connect request.
         start_instant: Instant,
-        /// The token to log in to the Portal, in case we need to retry the connection request.
-        #[debug(skip)]
-        token: SecretString,
     },
     /// Firezone has connected to the Portal and is raising the tunnel.
     WaitingForTunnel {
@@ -162,10 +153,7 @@ impl Status {
     /// True if we should react to `OnUpdateResources`
     fn needs_resource_updates(&self) -> bool {
         match self {
-            Status::Disconnected
-            | Status::RetryingConnection { .. }
-            | Status::Quitting
-            | Status::WaitingForPortal { .. } => false,
+            Status::Disconnected | Status::Quitting | Status::WaitingForPortal { .. } => false,
             Status::TunnelReady { .. } | Status::WaitingForTunnel { .. } => true,
         }
     }
@@ -351,7 +339,7 @@ impl<I: GuiIntegration> Controller<I> {
 
     async fn start_session(&mut self, token: SecretString) -> Result<()> {
         match self.status {
-            Status::Disconnected | Status::RetryingConnection { .. } => {}
+            Status::Disconnected => {}
             Status::Quitting => Err(anyhow!("Can't connect to Firezone, we're quitting"))?,
             Status::TunnelReady { .. } => Err(anyhow!(
                 "Can't connect to Firezone, we're already connected."
@@ -373,10 +361,7 @@ impl<I: GuiIntegration> Controller<I> {
         .await?;
 
         // Change the status after we begin connecting
-        self.status = Status::WaitingForPortal {
-            start_instant,
-            token,
-        };
+        self.status = Status::WaitingForPortal { start_instant };
 
         let session = self.auth.session().context("Missing session")?;
 
@@ -527,9 +512,7 @@ impl<I: GuiIntegration> Controller<I> {
                 .set_text(s)
                 .context("Couldn't copy resource URL or other text to clipboard")?,
             SystemTrayMenu(system_tray::Event::CancelSignIn) => match &self.status {
-                Status::Disconnected
-                | Status::RetryingConnection { .. }
-                | Status::WaitingForPortal { .. } => {
+                Status::Disconnected | Status::WaitingForPortal { .. } => {
                     tracing::info!("Calling `sign_out` to cancel sign-in");
                     self.sign_out().await?;
                 }
@@ -549,9 +532,6 @@ impl<I: GuiIntegration> Controller<I> {
                     .favorite_resources
                     .remove(&resource_id);
                 self.refresh_favorite_resources().await?;
-            }
-            SystemTrayMenu(system_tray::Event::RetryPortalConnection) => {
-                self.try_retry_connection().await?
             }
             SystemTrayMenu(system_tray::Event::EnableInternetResource) => {
                 self.general_settings.internet_resource_enabled = Some(true);
@@ -742,15 +722,8 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn handle_connect_result(
-        &mut self,
-        result: Result<(), service::ConnectError>,
-    ) -> Result<()> {
-        let Status::WaitingForPortal {
-            start_instant,
-            token,
-        } = &self.status
-        else {
+    async fn handle_connect_result(&mut self, result: Result<(), String>) -> Result<()> {
+        let Status::WaitingForPortal { start_instant } = &self.status else {
             tracing::debug!(current_state = ?self.status, "Ignoring `ConnectResult`");
 
             return Ok(());
@@ -765,20 +738,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.refresh_ui_state();
                 Ok(())
             }
-            Err(service::ConnectError::Io(error)) => {
-                // This is typically something like, we don't have Internet access so we can't
-                // open the PhoenixChannel's WebSocket.
-                tracing::info!(
-                    error,
-                    "Failed to connect to Firezone Portal, will try again when the network changes"
-                );
-                self.status = Status::RetryingConnection {
-                    token: token.expose_secret().clone().into(),
-                };
-                self.refresh_ui_state();
-                Ok(())
-            }
-            Err(service::ConnectError::Other(error)) => {
+            Err(error) => {
                 // We log this here directly instead of forwarding it because errors hard-abort the event-loop and we still want to be able to export logs and stuff.
                 // See <https://github.com/firezone/firezone/issues/6547>.
                 tracing::error!("Failed to connect to Firezone: {error}");
@@ -866,10 +826,6 @@ impl<I: GuiIntegration> Controller<I> {
                     system_tray::ConnlibState::Quitting,
                     SessionViewModel::Loading,
                 ),
-                Status::RetryingConnection { .. } => (
-                    system_tray::ConnlibState::RetryingConnection,
-                    SessionViewModel::Loading,
-                ),
                 Status::TunnelReady { resources } => (
                     system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
                         actor_name: auth_session.actor_name.clone(),
@@ -923,28 +879,11 @@ impl<I: GuiIntegration> Controller<I> {
         }
     }
 
-    /// If we're in the `RetryingConnection` state, use the token to retry the Portal connection
-    async fn try_retry_connection(&mut self) -> Result<()> {
-        let token = match &self.status {
-            Status::Disconnected
-            | Status::Quitting
-            | Status::TunnelReady { .. }
-            | Status::WaitingForPortal { .. }
-            | Status::WaitingForTunnel { .. } => return Ok(()),
-            Status::RetryingConnection { token } => token,
-        };
-        tracing::debug!("Retrying Portal connection...");
-        self.start_session(token.expose_secret().clone().into())
-            .await?;
-        Ok(())
-    }
-
     /// Deletes the auth token, stops connlib, and refreshes the tray menu
     async fn sign_out(&mut self) -> Result<()> {
         match self.status {
             Status::Quitting => return Ok(()),
             Status::Disconnected
-            | Status::RetryingConnection { .. }
             | Status::TunnelReady { .. }
             | Status::WaitingForPortal { .. }
             | Status::WaitingForTunnel { .. } => {}
