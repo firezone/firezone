@@ -138,13 +138,18 @@ other Resource.
 </Alert>
 
 The Internet Resource is automatically enabled on Team and Enterprise plans. To
-use it, follow these steps:
+use it, head to the main `Sites` section in the admin portal, and look for the
+`Manage Internet Resource` in the section at the bottom of the page.
 
-1. Find the `Internet` Resource in the Resources section of the admin portal.
-   Edit it, and make sure it has at least one Site assigned to it.
-1. [Create a Policy](/kb/deploy/policies) using the Internet Resource.
-1. In the client app, remember to enable the Internet Resource by selecting
-   `Enable this resource` in the Resource list.
+This will take you to the Internet Site, a special system-managed Site dedicated
+to hosting the Internet Resource. Here you can deploy Gateways and manage
+Policies like any other Site.
+
+<Alert color="info">
+  <strong>Tip:</strong> Deploy geographically-dispersed Gateways to the Internet
+  Site to provide lower latency for a remote workforce. Firezone automatically
+  selects the closest Gateway to route traffic through.
+</Alert>
 
 <NextStep href="/kb/deploy/groups">Next: Create Groups</NextStep>
 
