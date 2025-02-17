@@ -328,7 +328,7 @@ fn connect(
 
     let mut telemetry = Telemetry::default();
     telemetry.start(&api_url, RELEASE, ANDROID_DSN);
-    telemetry.set_firezone_id(device_id.clone());
+    Telemetry::set_firezone_id(device_id.clone());
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
     install_rustls_crypto_provider();

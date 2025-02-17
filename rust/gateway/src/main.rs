@@ -61,7 +61,7 @@ fn main() -> ExitCode {
         .expect("Failed to create tokio runtime");
 
     match runtime
-        .block_on(try_main(cli, &mut telemetry))
+        .block_on(try_main(cli))
         .context("Failed to start Gateway")
     {
         Ok(ExitCode::SUCCESS) => {
@@ -97,13 +97,13 @@ fn has_necessary_permissions() -> bool {
     is_root || has_net_admin
 }
 
-async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
+async fn try_main(cli: Cli) -> Result<ExitCode> {
     firezone_logging::setup_global_subscriber(layer::Identity::default())
         .context("Failed to set up logging")?;
 
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
-    telemetry.set_firezone_id(firezone_id.clone());
+    Telemetry::set_firezone_id(firezone_id.clone());
 
     let login = LoginUrl::gateway(
         cli.api_url,

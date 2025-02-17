@@ -239,8 +239,8 @@ impl WrappedSession {
     ) -> Result<Self> {
         let mut telemetry = Telemetry::default();
         telemetry.start(&api_url, RELEASE, APPLE_DSN);
-        telemetry.set_firezone_id(device_id.clone());
-        telemetry.set_account_slug(account_slug);
+        Telemetry::set_firezone_id(device_id.clone());
+        Telemetry::set_account_slug(account_slug);
 
         init_logging(log_dir.into(), log_filter)?;
         install_rustls_crypto_provider();

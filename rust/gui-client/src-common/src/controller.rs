@@ -31,7 +31,7 @@ mod ran_before;
 
 pub type CtlrTx = mpsc::Sender<ControllerRequest>;
 
-pub struct Controller<'a, I: GuiIntegration> {
+pub struct Controller<I: GuiIntegration> {
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
     // Sign-in state with the portal / deep links
@@ -46,7 +46,6 @@ pub struct Controller<'a, I: GuiIntegration> {
     release: Option<updates::Release>,
     rx: ReceiverStream<ControllerRequest>,
     status: Status,
-    telemetry: &'a mut Telemetry,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: crate::uptime::Tracker,
 
@@ -179,14 +178,13 @@ enum EventloopTick {
     UpdateNotification(Option<Option<updates::Notification>>),
 }
 
-impl<I: GuiIntegration> Controller<'_, I> {
+impl<I: GuiIntegration> Controller<I> {
     pub async fn start(
         ctlr_tx: CtlrTx,
         integration: I,
         rx: mpsc::Receiver<ControllerRequest>,
         advanced_settings: AdvancedSettings,
         log_filter_reloader: LogFilterReloader,
-        telemetry: &mut Telemetry,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
     ) -> Result<(), Error> {
         tracing::debug!("Starting new instance of `Controller`");
@@ -208,7 +206,6 @@ impl<I: GuiIntegration> Controller<'_, I> {
             release: None,
             rx: ReceiverStream::new(rx),
             status: Default::default(),
-            telemetry,
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
             dns_notifier,
@@ -221,23 +218,7 @@ impl<I: GuiIntegration> Controller<'_, I> {
     }
 
     pub async fn main_loop(mut self) -> Result<(), Error> {
-        let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
-
-        // Tell IPC service to start telemetry.
-        {
-            let environment = self.advanced_settings.api_url.to_string();
-            if let Some(account_slug) = account_slug.clone() {
-                self.telemetry.set_account_slug(account_slug);
-            }
-
-            self.ipc_client
-                .send_msg(&IpcClientMsg::StartTelemetry {
-                    environment,
-                    release: crate::RELEASE.to_string(),
-                    account_slug,
-                })
-                .await?;
-        }
+        self.update_telemetry_context().await?;
 
         if let Some(token) = self
             .auth
@@ -371,6 +352,25 @@ impl<I: GuiIntegration> Controller<'_, I> {
         Ok(())
     }
 
+    async fn update_telemetry_context(&mut self) -> Result<()> {
+        let environment = self.advanced_settings.api_url.to_string();
+        let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
+
+        if let Some(account_slug) = account_slug.clone() {
+            Telemetry::set_account_slug(account_slug);
+        }
+
+        self.ipc_client
+            .send_msg(&IpcClientMsg::StartTelemetry {
+                environment,
+                release: crate::RELEASE.to_string(),
+                account_slug,
+            })
+            .await?;
+
+        Ok(())
+    }
+
     async fn handle_deep_link(&mut self, url: &SecretString) -> Result<(), Error> {
         let auth_response =
             deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
@@ -382,7 +382,10 @@ impl<I: GuiIntegration> Controller<'_, I> {
             .auth
             .handle_response(auth_response)
             .context("Couldn't handle auth response")?;
+
+        self.update_telemetry_context().await?;
         self.start_session(token).await?;
+
         Ok(())
     }
 

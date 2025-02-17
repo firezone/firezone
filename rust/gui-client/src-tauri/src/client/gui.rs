@@ -242,7 +242,6 @@ pub(crate) fn run(
                     ctlr_rx,
                     advanced_settings,
                     reloader,
-                    &mut telemetry,
                     updates_rx,
                 )).catch_unwind().await;
 
