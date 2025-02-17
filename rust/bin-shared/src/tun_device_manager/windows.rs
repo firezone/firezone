@@ -203,9 +203,6 @@ impl Drop for Tun {
             "Shutting down packet channel..."
         );
         self.inbound_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
-        if let Err(error) = self.session.shutdown() {
-            tracing::error!("wintun::Session::shutdown: {error:#}");
-        }
         if let Err(error) = self
             .recv_thread
             .take()
