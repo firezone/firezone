@@ -15,6 +15,7 @@ defmodule Web.Resources.Index do
 
     socket =
       socket
+      |> assign(stale: false)
       |> assign(page_title: "Resources")
       |> assign(internet_site: internet_site)
       |> assign_live_table("resources",
@@ -87,6 +88,7 @@ defmodule Web.Resources.Index do
       <:content>
         <.flash_group flash={@flash} />
         <.live_table
+          stale={@stale}
           id="resources"
           rows={@resources}
           row_id={&"resource-#{&1.id}"}
@@ -161,27 +163,11 @@ defmodule Web.Resources.Index do
     """
   end
 
-  def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
-    do: handle_live_table_event(event, params, socket)
-
-  def handle_info({:create_resource, _resource_id}, socket) do
-    {:noreply, socket}
-  end
-
-  def handle_info({:delete_resource, resource_id}, socket) do
-    if Enum.find(socket.assigns.policies, fn resource -> resource.id == resource_id end) do
-      policies =
-        Enum.filter(socket.assigns.policies, fn resource ->
-          resource.id != resource_id
-        end)
-
-      {:noreply, assign(socket, policies: policies)}
-    else
-      {:noreply, socket}
-    end
-  end
+  def handle_event(event, params, socket)
+      when event in ["paginate", "order_by", "filter", "reload"],
+      do: handle_live_table_event(event, params, socket)
 
   def handle_info({_action, _resource_id}, socket) do
-    {:noreply, reload_live_table!(socket, "resources")}
+    {:noreply, assign(socket, stale: true)}
   end
 end

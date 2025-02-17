@@ -205,4 +205,55 @@ defmodule Web.Live.Resources.IndexTest do
       assert row["authorized groups"] =~ "and 1 more"
     end)
   end
+
+  describe "handle_info/2" do
+    test "Shows reload button when resource is created", %{
+      account: account,
+      identity: identity,
+      conn: conn
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/resources")
+
+      refute html =~ "The table data has changed."
+      refute html =~ "reload-btn"
+
+      Fixtures.Resources.create_resource(account: account)
+
+      reload_btn =
+        lv
+        |> element("#resources-reload-btn")
+        |> render()
+
+      assert reload_btn
+    end
+
+    test "Shows reload button when resource is deleted", %{
+      account: account,
+      identity: identity,
+      conn: conn
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/resources")
+
+      refute html =~ "The table data has changed."
+      refute html =~ "reload-btn"
+
+      Domain.Resources.delete_resource(resource, subject)
+
+      reload_btn =
+        lv
+        |> element("#resources-reload-btn")
+        |> render()
+
+      assert reload_btn
+    end
+  end
 end
