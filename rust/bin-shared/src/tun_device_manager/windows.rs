@@ -207,8 +207,9 @@ impl Drop for Tun {
             "Shutting down packet channel..."
         );
 
+        // Close channels to avoid deadlocks, see <https://github.com/firezone/firezone/pull/5571>.
         self.outbound_tx.close();
-        self.inbound_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
+        self.inbound_rx.close();
 
         if let Err(error) = self
             .recv_thread
