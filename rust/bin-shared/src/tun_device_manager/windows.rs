@@ -8,6 +8,7 @@ use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
 use std::net::IpAddr;
 use std::task::ready;
+use std::time::Duration;
 use std::{
     collections::HashSet,
     io::{self, Read as _},
@@ -338,15 +339,15 @@ fn start_send_thread(
                     continue;
                 };
 
-                let mut pkt = 'allocate: loop {
+                let mut pkt = loop {
                     match session.allocate_send_packet(len) {
                         Ok(pkt) => break pkt,
-                        Err(e)
+                        Err(wintun::Error::Io(e))
                             if e.raw_os_error()
                                 .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
                         {
                             tracing::debug!("WinTUN ring buffer is full");
-                            std::thread::sleep(10); // Suspend for a bit to avoid busy-looping.
+                            std::thread::sleep(Duration::from_millis(10)); // Suspend for a bit to avoid busy-looping.
                         }
                         Err(e) => {
                             tracing::error!("Failed to allocate WinTUN packet: {e}");
