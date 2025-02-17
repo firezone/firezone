@@ -477,9 +477,13 @@ where
         };
 
         match *socket {
-            PeerSocket::Direct {
-                dest: remote,
+            PeerSocket::PeerToPeer {
                 source,
+                dest: remote,
+            }
+            | PeerSocket::PeerToRelay {
+                source,
+                dest: remote,
             } => Ok(Some(EncryptedPacket {
                 src: Some(source),
                 dst: remote,
@@ -487,7 +491,8 @@ where
                 packet_len,
                 buffer,
             })),
-            PeerSocket::Relay { relay, dest: peer } => {
+            PeerSocket::RelayToPeer { relay, dest: peer }
+            | PeerSocket::RelayToRelay { relay, dest: peer } => {
                 let Some(allocation) = self.allocations.get_mut(&relay) else {
                     tracing::warn!(%relay, "No allocation");
                     return Ok(None);
@@ -1235,8 +1240,10 @@ where
             };
 
             let relay = match peer_socket {
-                PeerSocket::Direct { .. } => continue, // Don't care if relay of direct connection disappears, we weren't using it anyway.
-                PeerSocket::Relay { relay, .. } => relay,
+                PeerSocket::PeerToPeer { .. } | PeerSocket::PeerToRelay { .. } => continue, // Don't care if relay of direct connection disappears, we weren't using it anyway.
+                PeerSocket::RelayToPeer { relay, .. } | PeerSocket::RelayToRelay { relay, .. } => {
+                    relay
+                }
             };
 
             if allocations.contains_key(relay) {
@@ -1727,11 +1734,19 @@ fn idle_at(last_incoming: Instant, last_outgoing: Instant) -> Instant {
 /// The socket of the peer we are connected to.
 #[derive(Debug, PartialEq, Clone, Copy)]
 enum PeerSocket<RId> {
-    Direct {
+    PeerToPeer {
         source: SocketAddr,
         dest: SocketAddr,
     },
-    Relay {
+    PeerToRelay {
+        source: SocketAddr,
+        dest: SocketAddr,
+    },
+    RelayToPeer {
+        relay: RId,
+        dest: SocketAddr,
+    },
+    RelayToRelay {
         relay: RId,
         dest: SocketAddr,
     },
@@ -1750,8 +1765,11 @@ where
         let from_nominated = match &self.state {
             ConnectionState::Idle { peer_socket }
             | ConnectionState::Connected { peer_socket, .. } => match peer_socket {
-                PeerSocket::Direct { dest, .. } => dest == addr,
-                PeerSocket::Relay { dest, .. } => dest == addr,
+                PeerSocket::PeerToPeer { dest, .. } | PeerSocket::PeerToRelay { dest, .. } => {
+                    dest == addr
+                }
+                PeerSocket::RelayToPeer { dest: remote, .. }
+                | PeerSocket::RelayToRelay { dest: remote, .. } => remote == addr,
             },
             ConnectionState::Failed | ConnectionState::Connecting { .. } => false,
         };
@@ -1839,19 +1857,33 @@ where
                     source,
                     ..
                 } => {
-                    let remote_socket = allocations
+                    let source_relay = allocations.iter().find_map(|(relay, allocation)| {
+                        allocation.has_socket(source).then_some(*relay)
+                    });
+                    let dest_is_relay = self
+                        .agent
+                        .remote_candidates()
                         .iter()
-                        .find_map(|(relay, allocation)| {
-                            allocation.has_socket(source).then_some(*relay)
-                        })
-                        .map(|relay| PeerSocket::Relay {
-                            relay,
-                            dest: destination,
-                        })
-                        .unwrap_or(PeerSocket::Direct {
+                        .any(|c| c.addr() == destination && c.kind() == CandidateKind::Relayed);
+
+                    let remote_socket = match (source_relay, dest_is_relay) {
+                        (None, false) => PeerSocket::PeerToPeer {
                             source,
                             dest: destination,
-                        });
+                        },
+                        (None, true) => PeerSocket::PeerToRelay {
+                            source,
+                            dest: destination,
+                        },
+                        (Some(relay), false) => PeerSocket::RelayToPeer {
+                            relay,
+                            dest: destination,
+                        },
+                        (Some(relay), true) => PeerSocket::RelayToRelay {
+                            relay,
+                            dest: destination,
+                        },
+                    };
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
                         ConnectionState::Connecting { buffered, .. } => {
@@ -2166,7 +2198,11 @@ where
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug,
 {
     let transmit = match socket {
-        PeerSocket::Direct {
+        PeerSocket::PeerToPeer {
+            dest: remote,
+            source,
+        }
+        | PeerSocket::PeerToRelay {
             dest: remote,
             source,
         } => Transmit {
@@ -2174,7 +2210,8 @@ where
             dst: remote,
             payload: Cow::Owned(message.into()),
         },
-        PeerSocket::Relay { relay, dest: peer } => {
+        PeerSocket::RelayToPeer { relay, dest: peer }
+        | PeerSocket::RelayToRelay { relay, dest: peer } => {
             let allocation = allocations.get_mut(&relay)?;
 
             let mut buffer = channel_data_packet_buffer(message);
