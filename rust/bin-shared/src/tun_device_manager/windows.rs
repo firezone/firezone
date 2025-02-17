@@ -7,6 +7,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
 use std::net::IpAddr;
+use std::task::ready;
 use std::{
     collections::HashSet,
     io::{self, Read as _},
@@ -16,6 +17,7 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::sync::mpsc;
+use tokio_util::sync::PollSender;
 use windows::Win32::NetworkManagement::IpHelper::{
     CreateUnicastIpAddressEntry, InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW,
 };
@@ -190,7 +192,7 @@ pub struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
-    inbound_tx: mpsc::Sender<IpPacket>,
+    outbound_tx: PollSender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
     send_thread: Option<std::thread::JoinHandle<()>>,
     recv_thread: Option<std::thread::JoinHandle<()>>,
@@ -204,9 +206,8 @@ impl Drop for Tun {
             channel_capacity = self.inbound_rx.capacity(),
             "Shutting down packet channel..."
         );
-        // Close channels to avoid deadlocks on joining the worker threads. See <https://github.com/firezone/firezone/pull/5571>.
-        self.outbound_tx.close();
-        self.inbound_rx.close();
+
+        self.inbound_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
 
         if let Err(error) = self
             .recv_thread
@@ -214,7 +215,15 @@ impl Drop for Tun {
             .expect("`recv_thread` should always be `Some` until `Tun` drops")
             .join()
         {
-            tracing::error!(?error, "`Tun::recv_thread` panicked");
+            tracing::error!("`Tun::recv_thread` panicked: {error:?}");
+        }
+        if let Err(error) = self
+            .send_thread
+            .take()
+            .expect("`send_thread` should always be `Some` until `Tun` drops")
+            .join()
+        {
+            tracing::error!("`Tun::send_thread` panicked: {error:?}");
         }
     }
 }
@@ -247,7 +256,7 @@ impl Tun {
         );
         let (outbound_tx, outbound_rx) = mpsc::channel(1000);
         let (inbound_tx, inbound_rx) = mpsc::channel(1000); // We want to be able to batch-receive from this.
-        let send_thread = start_send_thread(outbound_tx, Arc::clone(&session))
+        let send_thread = start_send_thread(outbound_rx, Arc::clone(&session))
             .context("Failed to start send thread")?;
         let recv_thread = start_recv_thread(inbound_tx, Arc::clone(&session))
             .context("Failed to start recv thread")?;
@@ -257,6 +266,7 @@ impl Tun {
             luid,
             send_thread: Some(send_thread),
             recv_thread: Some(recv_thread),
+            outbound_tx: PollSender::new(outbound_tx),
             inbound_rx,
             session: Arc::clone(&session),
         })
@@ -283,8 +293,11 @@ impl tun::Tun for Tun {
     }
 
     /// Check if more packets can be sent.
-    fn poll_send_ready(&mut self, _: &mut Context) -> Poll<io::Result<()>> {
-        ready!(self.outbound_tx.poll_send_ready()?);
+    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
+        ready!(self
+            .outbound_tx
+            .poll_reserve(cx)
+            .map_err(io::Error::other)?);
 
         Poll::Ready(Ok(()))
     }
@@ -292,7 +305,7 @@ impl tun::Tun for Tun {
     /// Send a packet.
     fn send(&mut self, packet: IpPacket) -> io::Result<()> {
         self.outbound_tx
-            .try_send(packet)
+            .send_item(packet)
             .map_err(io::Error::other)?;
 
         Ok(())
@@ -301,7 +314,7 @@ impl tun::Tun for Tun {
 
 // Moves packets from Internet towards the user
 fn start_send_thread(
-    packet_rx: mpsc::Receiver<IpPacket>,
+    mut packet_rx: mpsc::Receiver<IpPacket>,
     session: Arc<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
@@ -319,7 +332,7 @@ fn start_send_thread(
                 continue;
             };
 
-            let mut pkt = match self.session.allocate_send_packet(len) {
+            let mut pkt = match session.allocate_send_packet(len) {
                 Ok(pkt) => pkt,
                 Err(e) => {
                     tracing::warn!("Failed to allocate WinTUN packet: {e}");
@@ -330,7 +343,7 @@ fn start_send_thread(
             pkt.bytes_mut().copy_from_slice(bytes);
             // `send_packet` cannot fail to enqueue the packet, since we already allocated
             // space in the ring buffer.
-            self.session.send_packet(pkt);
+            session.send_packet(pkt);
         })
 }
 
