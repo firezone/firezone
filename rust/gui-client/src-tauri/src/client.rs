@@ -3,7 +3,7 @@ use clap::{Args, Parser};
 use firezone_gui_client_common::{
     self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
-use firezone_telemetry::{self as telemetry, Telemetry};
+use firezone_telemetry::Telemetry;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
@@ -60,11 +60,11 @@ pub(crate) fn run() -> Result<()> {
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
             let settings = common::settings::load_advanced_settings().unwrap_or_default();
-            let mut telemetry = telemetry::Telemetry::default();
+            let mut telemetry = Telemetry::default();
             telemetry.start(
                 settings.api_url.as_ref(),
                 firezone_gui_client_common::RELEASE,
-                telemetry::GUI_DSN,
+                firezone_telemetry::GUI_DSN,
             );
             // Don't fix the log filter for smoke tests
             let common::logging::Handles {
@@ -91,12 +91,12 @@ pub(crate) fn run() -> Result<()> {
 // Can't `instrument` this because logging isn't running when we enter it.
 fn run_gui(cli: Cli) -> Result<()> {
     let mut settings = common::settings::load_advanced_settings().unwrap_or_default();
-    let mut telemetry = telemetry::Telemetry::default();
+    let mut telemetry = Telemetry::default();
     // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
     telemetry.start(
         settings.api_url.as_ref(),
         firezone_gui_client_common::RELEASE,
-        telemetry::GUI_DSN,
+        firezone_telemetry::GUI_DSN,
     );
     // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
     // Technically this means we can fail to get the device ID on a newly-installed system, since the IPC service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
