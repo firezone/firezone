@@ -50,8 +50,6 @@ pub enum Event {
     Copy(String),
     /// Marks this Resource as non-favorite
     RemoveFavorite(ResourceId),
-    /// If a Portal connection has failed, try again immediately
-    RetryPortalConnection,
     /// Starts the sign-in flow
     SignIn,
     /// Signs the user out, without quitting the app
