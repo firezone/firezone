@@ -10,11 +10,10 @@ use crate::{
 };
 use anyhow::{Context, Result, anyhow, bail};
 use connlib_model::ResourceView;
-use firezone_bin_shared::DnsControlMethod;
 use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
 use futures::{
-    SinkExt, Stream, StreamExt,
+    SinkExt, StreamExt,
     stream::{self, BoxStream},
 };
 use secrecy::{ExposeSecret as _, SecretString};
@@ -59,9 +58,6 @@ pub struct Controller<I: GuiIntegration> {
             ipc::ServerWrite<gui::ServerMsg>,
         )>,
     >,
-
-    dns_notifier: BoxStream<'static, Result<()>>,
-    network_notifier: BoxStream<'static, Result<()>>,
 }
 
 pub trait GuiIntegration {
@@ -163,17 +159,6 @@ impl Default for Status {
 }
 
 impl Status {
-    /// True if we want to hear about DNS and network changes.
-    fn needs_network_changes(&self) -> bool {
-        match self {
-            Status::Disconnected | Status::RetryingConnection { .. } => false,
-            Status::Quitting => false,
-            Status::TunnelReady { .. }
-            | Status::WaitingForPortal { .. }
-            | Status::WaitingForTunnel { .. } => true,
-        }
-    }
-
     /// True if we should react to `OnUpdateResources`
     fn needs_resource_updates(&self) -> bool {
         match self {
@@ -197,8 +182,6 @@ impl Status {
 }
 
 enum EventloopTick {
-    NetworkChanged(Result<()>),
-    DnsChanged(Result<()>),
     IpcMsg(Option<Result<service::ServerMsg>>),
     ControllerRequest(Option<ControllerRequest>),
     UpdateNotification(Option<updates::Notification>),
@@ -238,9 +221,6 @@ impl<I: GuiIntegration> Controller<I> {
             .await
             .map_err(FailedToReceiveHello)?;
 
-        let dns_notifier = new_dns_notifier().await?.boxed();
-        let network_notifier = new_network_notifier().await?.boxed();
-
         let controller = Controller {
             general_settings,
             mdm_settings,
@@ -257,8 +237,6 @@ impl<I: GuiIntegration> Controller<I> {
             status: Default::default(),
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
-            dns_notifier,
-            network_notifier,
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
                 let result = gui_ipc.next_client_split().await;
 
@@ -298,31 +276,6 @@ impl<I: GuiIntegration> Controller<I> {
 
         loop {
             match self.tick().await {
-                EventloopTick::NetworkChanged(Ok(())) => {
-                    if self.status.needs_network_changes() {
-                        tracing::debug!("Internet up/down changed, calling `Session::reset`");
-                        self.send_ipc(&service::ClientMsg::Reset).await?
-                    }
-
-                    self.try_retry_connection().await?
-                }
-                EventloopTick::DnsChanged(Ok(())) => {
-                    if self.status.needs_network_changes() {
-                        let resolvers = firezone_bin_shared::system_resolvers_for_gui()?;
-                        tracing::debug!(
-                            ?resolvers,
-                            "New DNS resolvers, calling `Session::set_dns`"
-                        );
-                        self.send_ipc(&service::ClientMsg::SetDns(resolvers))
-                            .await?;
-                    }
-
-                    self.try_retry_connection().await?
-                }
-                EventloopTick::NetworkChanged(Err(e)) | EventloopTick::DnsChanged(Err(e)) => {
-                    return Err(e);
-                }
-
                 EventloopTick::IpcMsg(msg) => {
                     let msg = msg
                         .context("IPC closed")?
@@ -375,14 +328,6 @@ impl<I: GuiIntegration> Controller<I> {
 
     async fn tick(&mut self) -> EventloopTick {
         std::future::poll_fn(|cx| {
-            if let Poll::Ready(Some(res)) = self.dns_notifier.poll_next_unpin(cx) {
-                return Poll::Ready(EventloopTick::DnsChanged(res));
-            }
-
-            if let Poll::Ready(Some(res)) = self.network_notifier.poll_next_unpin(cx) {
-                return Poll::Ready(EventloopTick::NetworkChanged(res));
-            }
-
             if let Poll::Ready(maybe_ipc) = self.ipc_rx.poll_next_unpin(cx) {
                 return Poll::Ready(EventloopTick::IpcMsg(maybe_ipc));
             }
@@ -1057,34 +1002,6 @@ impl<I: GuiIntegration> Controller<I> {
             .connect_on_start
             .or(self.general_settings.connect_on_start)
     }
-}
-
-async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
-    let worker = firezone_bin_shared::new_dns_notifier(
-        tokio::runtime::Handle::current(),
-        DnsControlMethod::default(),
-    )
-    .await?;
-
-    Ok(stream::try_unfold(worker, |mut worker| async move {
-        let () = worker.notified().await?;
-
-        Ok(Some(((), worker)))
-    }))
-}
-
-async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
-    let worker = firezone_bin_shared::new_network_notifier(
-        tokio::runtime::Handle::current(),
-        DnsControlMethod::default(),
-    )
-    .await?;
-
-    Ok(stream::try_unfold(worker, |mut worker| async move {
-        let () = worker.notified().await?;
-
-        Ok(Some(((), worker)))
-    }))
 }
 
 async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<()> {
