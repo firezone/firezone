@@ -257,7 +257,7 @@ async fn ipc_listen(
         .context("Failed to read / create device ID")?
         .id;
 
-    telemetry.set_firezone_id(firezone_id);
+    Telemetry::set_firezone_id(firezone_id);
 
     let mut server = IpcServer::new(ServiceId::Prod).await?;
     let mut dns_controller = DnsController { dns_control_method };
@@ -564,7 +564,7 @@ impl<'a> Handler<'a> {
                     .start(&environment, &release, firezone_telemetry::GUI_DSN);
 
                 if let Some(account_slug) = account_slug {
-                    self.telemetry.set_account_slug(account_slug);
+                    Telemetry::set_account_slug(account_slug);
                 }
             }
         }
@@ -581,7 +581,7 @@ impl<'a> Handler<'a> {
 
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().context("Failed to get-or-create device ID")?;
-        self.telemetry.set_firezone_id(device_id.id.clone());
+        Telemetry::set_firezone_id(device_id.id.clone());
 
         let url = LoginUrl::client(
             Url::parse(api_url).context("Failed to parse URL")?,

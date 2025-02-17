@@ -3,7 +3,7 @@ use clap::{Args, Parser};
 use firezone_gui_client_common::{
     self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
-use firezone_telemetry as telemetry;
+use firezone_telemetry::{self as telemetry, Telemetry};
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
@@ -101,7 +101,7 @@ fn run_gui(cli: Cli) -> Result<()> {
     // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
     // Technically this means we can fail to get the device ID on a newly-installed system, since the IPC service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
     if let Ok(id) = firezone_headless_client::device_id::get() {
-        telemetry.set_firezone_id(id.id);
+        Telemetry::set_firezone_id(id.id);
     }
     fix_log_filter(&mut settings)?;
     let common::logging::Handles {
