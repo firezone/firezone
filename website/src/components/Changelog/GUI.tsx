@@ -17,6 +17,12 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull="8129">
           Allows signing-in without access to the local keyring.
         </ChangeItem>
+        {os === OS.Windows && (
+          <ChangeItem pull="8156">
+            Fixes a race condition that attempted to remove the WinTUN adapter
+            twice upon shutdown.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.4.5" date={new Date("2025-02-12")}>
         <ChangeItem pull="8105">
