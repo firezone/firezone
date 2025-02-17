@@ -319,9 +319,18 @@ impl<'a> Handler<'a> {
                                 continue;
                             }
 
+                            let msg = match result {
+                                Ok(session) => {
+                                    self.session = Some(session);
+
+                                    ServerMsg::connect_result(Ok(()))
+                                }
+                                Err(e) => ServerMsg::connect_result(Err(e)),
+                            };
+
                             let _ = self
                                 .ipc_tx
-                                .send(&ServerMsg::connect_result(result))
+                                .send(&msg)
                                 .await
                                 .context("Failed to send `ConnectResult`");
                         }
@@ -448,7 +457,16 @@ impl<'a> Handler<'a> {
                     return Ok(());
                 }
 
-                self.send_ipc(ServerMsg::connect_result(result)).await?;
+                let msg = match result {
+                    Ok(session) => {
+                        self.session = Some(session);
+
+                        ServerMsg::connect_result(Ok(()))
+                    }
+                    Err(e) => ServerMsg::connect_result(Err(e)),
+                };
+
+                self.send_ipc(msg).await?;
             }
             ClientMsg::Disconnect => {
                 if self.session.take().is_some() {
@@ -498,7 +516,7 @@ impl<'a> Handler<'a> {
     /// Connects connlib
     ///
     /// Panics if there's no Tokio runtime or if connlib is already connected.
-    fn try_connect(&mut self, api_url: &str, token: SecretString) -> Result<()> {
+    fn try_connect(&mut self, api_url: &str, token: SecretString) -> Result<Session> {
         let _connect_span = telemetry_span!("connect_to_firezone").entered();
 
         assert!(self.session.is_none());
@@ -558,13 +576,10 @@ impl<'a> Handler<'a> {
         };
         connlib.set_tun(tun);
 
-        let session = Session::Connected {
+        Ok(Session::Connected {
             event_stream,
             connlib,
-        };
-        self.session = Some(session);
-
-        Ok(())
+        })
     }
 
     async fn send_ipc(&mut self, msg: ServerMsg) -> Result<()> {
