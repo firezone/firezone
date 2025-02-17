@@ -80,6 +80,8 @@ mod platform {
                     panic!("Wrong request code");
                 }
 
+                poll_fn(|cx| tun.poll_send_ready(cx)).await.unwrap();
+
                 tun.send(
                     ip_packet::make::udp_packet(
                         original_pkt.destination(),
