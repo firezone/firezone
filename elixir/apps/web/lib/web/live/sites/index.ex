@@ -253,7 +253,7 @@ defmodule Web.Sites.Index do
             ACTION REQUIRED: Please migrate your existing Internet Resource to this Site before <strong>March 15, 2025</strong>.
           </p>
           <p class="mb-8 text-sm">
-            <.website_link path="/blog/internet-resource-migration">
+            <.website_link path="/blog/migrate-your-internet-resource">
               Read more about why this is necessary.
             </.website_link>
           </p>
