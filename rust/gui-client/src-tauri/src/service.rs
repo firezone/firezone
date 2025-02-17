@@ -16,8 +16,9 @@ use firezone_bin_shared::{
 use firezone_logging::{FilterReloadHandle, err_with_src, telemetry_span};
 use firezone_telemetry::{Telemetry, analytics};
 use futures::{
-    Future as _, SinkExt as _, Stream as _,
+    Future as _, SinkExt as _, Stream, StreamExt,
     future::poll_fn,
+    stream::{self, BoxStream},
     task::{Context, Poll},
 };
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
@@ -175,6 +176,8 @@ struct Handler<'a> {
     session: Option<Session>,
     telemetry: Telemetry,
     tun_device: TunDeviceManager,
+    dns_notifier: BoxStream<'static, Result<()>>,
+    network_notifier: BoxStream<'static, Result<()>>,
 }
 
 struct Session {
@@ -189,6 +192,8 @@ enum Event {
     IpcDisconnected,
     IpcError(anyhow::Error),
     Terminate,
+    NetworkChanged(Result<()>),
+    DnsChanged(Result<()>),
 }
 
 // Open to better names
@@ -218,6 +223,8 @@ impl<'a> Handler<'a> {
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
         let tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, 1)?;
+        let dns_notifier = new_dns_notifier().await?.boxed();
+        let network_notifier = new_network_notifier().await?.boxed();
 
         ipc_tx
             .send(&ServerMsg::Hello)
@@ -234,6 +241,8 @@ impl<'a> Handler<'a> {
             session: None,
             telemetry: Telemetry::default(),
             tun_device,
+            dns_notifier,
+            network_notifier,
         })
     }
 
@@ -282,6 +291,28 @@ impl<'a> Handler<'a> {
                     let _ = self.send_ipc(ServerMsg::TerminatingGracefully).await;
                     break HandlerOk::ServiceTerminating;
                 }
+                Event::NetworkChanged(Err(e)) => {
+                    tracing::warn!("Error while listening for network change events: {e:#}")
+                }
+                Event::DnsChanged(Err(e)) => {
+                    tracing::warn!("Error while listening for DNS change events: {e:#}")
+                }
+                Event::NetworkChanged(Ok(())) => {
+                    let Some(session) = self.session.as_ref() else {
+                        continue;
+                    };
+
+                    session.connlib.reset();
+                }
+                Event::DnsChanged(Ok(())) => {
+                    let Some(session) = self.session.as_ref() else {
+                        continue;
+                    };
+
+                    let resolvers = self.dns_controller.system_resolvers();
+
+                    session.connlib.set_dns(resolvers);
+                }
             }
         };
 
@@ -299,6 +330,15 @@ impl<'a> Handler<'a> {
         if let Poll::Ready(()) = signals.poll_recv(cx) {
             return Poll::Ready(Event::Terminate);
         }
+
+        if let Poll::Ready(Some(result)) = self.network_notifier.poll_next_unpin(cx) {
+            return Poll::Ready(Event::NetworkChanged(result));
+        }
+
+        if let Poll::Ready(Some(result)) = self.dns_notifier.poll_next_unpin(cx) {
+            return Poll::Ready(Event::DnsChanged(result));
+        }
+
         // `FramedRead::next` is cancel-safe.
         if let Poll::Ready(result) = pin!(&mut self.ipc_rx).poll_next(cx) {
             return Poll::Ready(match result {
@@ -307,6 +347,7 @@ impl<'a> Handler<'a> {
                 None => Event::IpcDisconnected,
             });
         }
+
         if let Some(session) = self.session.as_mut() {
             if let Poll::Ready(option) = session.event_stream.poll_next(cx) {
                 return Poll::Ready(match option {
@@ -315,6 +356,7 @@ impl<'a> Handler<'a> {
                 });
             }
         }
+
         Poll::Pending
     }
 
@@ -589,4 +631,32 @@ pub fn run_smoke_test() -> Result<()> {
 #[cfg(not(debug_assertions))]
 pub fn run_smoke_test() -> Result<()> {
     anyhow::bail!("Smoke test is not built for release binaries.");
+}
+
+async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
+    let worker = firezone_bin_shared::new_dns_notifier(
+        tokio::runtime::Handle::current(),
+        DnsControlMethod::default(),
+    )
+    .await?;
+
+    Ok(stream::try_unfold(worker, |mut worker| async move {
+        let () = worker.notified().await?;
+
+        Ok(Some(((), worker)))
+    }))
+}
+
+async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
+    let worker = firezone_bin_shared::new_network_notifier(
+        tokio::runtime::Handle::current(),
+        DnsControlMethod::default(),
+    )
+    .await?;
+
+    Ok(stream::try_unfold(worker, |mut worker| async move {
+        let () = worker.notified().await?;
+
+        Ok(Some(((), worker)))
+    }))
 }
