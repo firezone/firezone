@@ -392,7 +392,7 @@ impl<'a> Handler<'a> {
                         "Caught SIGINT / SIGTERM / Ctrl+C while an IPC client is connected"
                     );
                     // Ignore the result here because we're terminating anyway.
-                    let _ = self.send_ipc(&ServerMsg::TerminatingGracefully).await;
+                    let _ = self.send_ipc(ServerMsg::TerminatingGracefully).await;
                     break HandlerOk::ServiceTerminating;
                 }
             }
@@ -439,7 +439,7 @@ impl<'a> Handler<'a> {
                     session.connlib.disconnect();
                 }
                 self.dns_controller.deactivate()?;
-                self.send_ipc(&ServerMsg::OnDisconnect {
+                self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg,
                     is_authentication_error,
                 })
@@ -460,12 +460,12 @@ impl<'a> Handler<'a> {
                 self.tun_device.set_routes(ipv4_routes, ipv6_routes).await?;
                 self.dns_controller.flush()?;
 
-                self.send_ipc(&ServerMsg::TunnelReady).await?;
+                self.send_ipc(ServerMsg::TunnelReady).await?;
             }
             ConnlibMsg::OnUpdateResources(resources) => {
                 // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                 self.dns_controller.flush()?;
-                self.send_ipc(&ServerMsg::OnUpdateResources(resources))
+                self.send_ipc(ServerMsg::OnUpdateResources(resources))
                     .await?;
             }
         }
@@ -479,7 +479,7 @@ impl<'a> Handler<'a> {
                     &crate::known_dirs::ipc_service_logs().context("Can't compute logs dir")?,
                 )
                 .await;
-                self.send_ipc(&ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
+                self.send_ipc(ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
                     .await?
             }
             ClientMsg::Connect { api_url, token } => {
@@ -487,7 +487,7 @@ impl<'a> Handler<'a> {
                 let token = secrecy::SecretString::from(token);
                 let result = self.connect_to_firezone(&api_url, token);
 
-                self.send_ipc(&ServerMsg::ConnectResult(result)).await?
+                self.send_ipc(ServerMsg::ConnectResult(result)).await?
             }
             ClientMsg::Disconnect => {
                 if let Some(session) = self.session.take() {
@@ -497,7 +497,7 @@ impl<'a> Handler<'a> {
                 }
                 // Always send `DisconnectedGracefully` even if we weren't connected,
                 // so this will be idempotent.
-                self.send_ipc(&ServerMsg::DisconnectedGracefully).await?;
+                self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
             }
             ClientMsg::ApplyLogFilter { directives } => {
                 self.log_filter_reloader.reload(directives.clone())?;
@@ -626,9 +626,9 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    async fn send_ipc(&mut self, msg: &ServerMsg) -> Result<()> {
+    async fn send_ipc(&mut self, msg: ServerMsg) -> Result<()> {
         self.ipc_tx
-            .send(msg)
+            .send(&msg)
             .await
             .with_context(|| format!("Failed to send IPC message `{msg}`"))?;
 
