@@ -1,9 +1,9 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use anyhow::{Context as _, Result};
+use anyhow::{bail, Context as _, Result};
 use etherparse::{icmpv4, icmpv6, Icmpv4Type, Icmpv6Type, LaxIpv4Slice, LaxIpv6Slice};
 
-use crate::{nat46, nat64, Layer4Protocol, Protocol};
+use crate::{Layer4Protocol, Protocol};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DestUnreachable {
@@ -21,9 +21,8 @@ impl DestUnreachable {
     pub fn into_icmp_v4_type(self) -> Result<Icmpv4Type> {
         let header = match self {
             DestUnreachable::V4 { header, .. } => header,
-            DestUnreachable::V6Unreachable(code) => nat64::translate_dest_unreachable(code)
-                .with_context(|| format!("Cannot translate {code:?} to ICMPv4"))?,
-            DestUnreachable::V6PacketTooBig { mtu } => nat64::translate_packet_too_big(mtu),
+            DestUnreachable::V6Unreachable(_) => bail!("Cannot translate from IPv6 to IPv4"),
+            DestUnreachable::V6PacketTooBig { .. } => bail!("Cannot translate from IPv6 to IPv4"),
         };
 
         Ok(Icmpv4Type::DestinationUnreachable(header))
@@ -31,15 +30,8 @@ impl DestUnreachable {
 
     pub fn into_icmp_v6_type(self) -> Result<Icmpv6Type> {
         match self {
-            DestUnreachable::V4 {
-                header,
-                total_length,
-            } => {
-                let icmpv6_type =
-                    nat46::translate_icmp_unreachable(header.clone(), total_length)
-                        .with_context(|| format!("Cannot translate {header:?} to ICMPv6"))?;
-
-                Ok(icmpv6_type)
+            DestUnreachable::V4 { .. } => {
+                bail!("Cannot translate from IPv4 to IPv6")
             }
             DestUnreachable::V6Unreachable(code) => Ok(Icmpv6Type::DestinationUnreachable(code)),
             DestUnreachable::V6PacketTooBig { mtu } => Ok(Icmpv6Type::PacketTooBig { mtu }),
@@ -83,13 +75,7 @@ impl FailedPacket {
     /// Translates the failed packet to point to the new `destination` address and originating from the given `src_proto`.
     ///
     /// The new `dst` address may be a different IP version than the original packet in which case NAT64/NAT46 will be applied.
-    pub fn translate_destination(
-        mut self,
-        dst: IpAddr,
-        src_proto: Protocol,
-        src_v4: Ipv4Addr,
-        src_v6: Ipv6Addr,
-    ) -> Result<Vec<u8>> {
+    pub fn translate_destination(self, dst: IpAddr, src_proto: Protocol) -> Result<Vec<u8>> {
         match (self.failed_dst, dst) {
             (IpAddr::V4(_), IpAddr::V4(dst)) => {
                 translate_original_ipv4_packet(self.raw, dst, src_proto)
@@ -97,21 +83,11 @@ impl FailedPacket {
             (IpAddr::V6(_), IpAddr::V6(dst)) => {
                 translate_original_ipv6_packet(self.raw, dst, src_proto)
             }
-            (IpAddr::V6(_), IpAddr::V4(dst)) => {
-                nat64::translate_in_place(&mut self.raw, src_v4, dst)
-                    .context("Failed to translate unrouteable IPv6 packet to IPv4")?;
-                let packet = self.raw.split_off(20);
-
-                translate_original_ipv4_packet(packet, dst, src_proto)
+            (IpAddr::V6(_), IpAddr::V4(_)) => {
+                bail!("Can't translate from IPv6 to IPv4")
             }
-            (IpAddr::V4(_), IpAddr::V6(dst)) => {
-                let mut packet = [vec![0u8; 20], self.raw].concat();
-
-                let offset = nat46::translate_in_place(&mut packet, src_v6, dst)
-                    .context("Failed to translate unrouteable IPv4 packet to IPv6")?;
-                let packet = packet.split_off(offset);
-
-                translate_original_ipv6_packet(packet, dst, src_proto)
+            (IpAddr::V4(_), IpAddr::V6(_)) => {
+                bail!("Can't translate from IPv4 to IPv6")
             }
         }
     }

@@ -20,7 +20,7 @@ macro_rules! build {
 
         let packet = IpPacket::new(ip, size).context("Failed to create IP packet")?;
 
-        Ok(packet)
+        ::anyhow::Ok(packet)
     }};
 }
 
