@@ -190,7 +190,9 @@ pub struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
+    inbound_tx: mpsc::Sender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
+    send_thread: Option<std::thread::JoinHandle<()>>,
     recv_thread: Option<std::thread::JoinHandle<()>>,
     session: Arc<wintun::Session>,
     luid: wintun::NET_LUID_LH,
@@ -202,7 +204,10 @@ impl Drop for Tun {
             channel_capacity = self.inbound_rx.capacity(),
             "Shutting down packet channel..."
         );
-        self.inbound_rx.close(); // This avoids a deadlock when we join the worker thread, see PR 5571
+        // Close channels to avoid deadlocks on joining the worker threads. See <https://github.com/firezone/firezone/pull/5571>.
+        self.outbound_tx.close();
+        self.inbound_rx.close();
+
         if let Err(error) = self
             .recv_thread
             .take()
@@ -240,13 +245,17 @@ impl Tun {
                 .start_session(RING_BUFFER_SIZE)
                 .context("Failed to start session")?,
         );
+        let (outbound_tx, outbound_rx) = mpsc::channel(1000);
         let (inbound_tx, inbound_rx) = mpsc::channel(1000); // We want to be able to batch-receive from this.
+        let send_thread = start_send_thread(outbound_tx, Arc::clone(&session))
+            .context("Failed to start send thread")?;
         let recv_thread = start_recv_thread(inbound_tx, Arc::clone(&session))
             .context("Failed to start recv thread")?;
 
         Ok(Self {
             iface_idx,
             luid,
+            send_thread: Some(send_thread),
             recv_thread: Some(recv_thread),
             inbound_rx,
             session: Arc::clone(&session),
@@ -275,35 +284,56 @@ impl tun::Tun for Tun {
 
     /// Check if more packets can be sent.
     fn poll_send_ready(&mut self, _: &mut Context) -> Poll<io::Result<()>> {
-        // TODO: Figure out how we can do readiness checks on `wintun`.
+        ready!(self.outbound_tx.poll_send_ready()?);
 
         Poll::Ready(Ok(()))
     }
 
     /// Send a packet.
     fn send(&mut self, packet: IpPacket) -> io::Result<()> {
-        let bytes = packet.packet();
-
-        let len = bytes
-            .len()
-            .try_into()
-            .map_err(|_| io::Error::other("Packet too large; length does not fit into u16"))?;
-
-        let mut pkt = self
-            .session
-            .allocate_send_packet(len)
+        self.outbound_tx
+            .try_send(packet)
             .map_err(io::Error::other)?;
-
-        pkt.bytes_mut().copy_from_slice(bytes);
-        // `send_packet` cannot fail to enqueue the packet, since we already allocated
-        // space in the ring buffer.
-        self.session.send_packet(pkt);
 
         Ok(())
     }
 }
 
-// Moves packets from the user towards the Internet
+// Moves packets from Internet towards the user
+fn start_send_thread(
+    packet_rx: mpsc::Receiver<IpPacket>,
+    session: Arc<wintun::Session>,
+) -> io::Result<std::thread::JoinHandle<()>> {
+    std::thread::Builder::new()
+        .name("TUN send".into())
+        .spawn(move || loop {
+            let Some(packet) = packet_rx.blocking_recv() else {
+                tracing::info!("Stopping TUN send worker thread because the packet channel closed");
+                break;
+            };
+
+            let bytes = packet.packet();
+
+            let Ok(len) = bytes.len().try_into() else {
+                tracing::warn!("Packet too large; length does not fit into u16");
+                continue;
+            };
+
+            let mut pkt = match self.session.allocate_send_packet(len) {
+                Ok(pkt) => pkt,
+                Err(e) => {
+                    tracing::warn!("Failed to allocate WinTUN packet: {e}");
+                    continue;
+                }
+            };
+
+            pkt.bytes_mut().copy_from_slice(bytes);
+            // `send_packet` cannot fail to enqueue the packet, since we already allocated
+            // space in the ring buffer.
+            self.session.send_packet(pkt);
+        })
+}
+
 fn start_recv_thread(
     packet_tx: mpsc::Sender<IpPacket>,
     session: Arc<wintun::Session>,
