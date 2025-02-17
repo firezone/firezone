@@ -179,7 +179,7 @@ fn main() -> Result<()> {
         Some(id) => id,
         None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
-    telemetry.set_firezone_id(firezone_id.clone());
+    Telemetry::set_firezone_id(firezone_id.clone());
 
     let url = LoginUrl::client(
         cli.api_url,

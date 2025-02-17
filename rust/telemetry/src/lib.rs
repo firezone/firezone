@@ -143,26 +143,26 @@ impl Telemetry {
         .await;
     }
 
-    pub fn set_account_slug(&mut self, slug: String) {
-        self.update_user(|user| {
+    pub fn set_account_slug(slug: String) {
+        update_user(|user| {
             user.other.insert("account_slug".to_owned(), slug.into());
         });
     }
 
-    pub fn set_firezone_id(&mut self, id: String) {
-        self.update_user(|user| {
+    pub fn set_firezone_id(id: String) {
+        update_user(|user| {
             user.id = Some(id);
         });
     }
+}
 
-    fn update_user(&mut self, update: impl FnOnce(&mut sentry::User)) {
-        sentry::Hub::main().configure_scope(|scope| {
-            let mut user = scope.user().cloned().unwrap_or_default();
-            update(&mut user);
+fn update_user(update: impl FnOnce(&mut sentry::User)) {
+    sentry::Hub::main().configure_scope(|scope| {
+        let mut user = scope.user().cloned().unwrap_or_default();
+        update(&mut user);
 
-            scope.set_user(Some(user));
-        });
-    }
+        scope.set_user(Some(user));
+    });
 }
 
 fn set_current_user(user: Option<sentry::User>) {
