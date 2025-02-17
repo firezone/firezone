@@ -104,7 +104,7 @@ pub enum ClientMsg {
 }
 
 /// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, strum::Display)]
 pub enum ServerMsg {
     /// The IPC service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
@@ -392,7 +392,7 @@ impl<'a> Handler<'a> {
                         "Caught SIGINT / SIGTERM / Ctrl+C while an IPC client is connected"
                     );
                     // Ignore the result here because we're terminating anyway.
-                    let _ = self.ipc_tx.send(&ServerMsg::TerminatingGracefully).await;
+                    let _ = self.send_ipc(ServerMsg::TerminatingGracefully).await;
                     break HandlerOk::ServiceTerminating;
                 }
             }
@@ -439,13 +439,11 @@ impl<'a> Handler<'a> {
                     session.connlib.disconnect();
                 }
                 self.dns_controller.deactivate()?;
-                self.ipc_tx
-                    .send(&ServerMsg::OnDisconnect {
-                        error_msg,
-                        is_authentication_error,
-                    })
-                    .await
-                    .context("Error while sending IPC message `OnDisconnect`")?
+                self.send_ipc(ServerMsg::OnDisconnect {
+                    error_msg,
+                    is_authentication_error,
+                })
+                .await?
             }
             ConnlibMsg::OnSetInterfaceConfig {
                 ipv4,
@@ -462,18 +460,13 @@ impl<'a> Handler<'a> {
                 self.tun_device.set_routes(ipv4_routes, ipv6_routes).await?;
                 self.dns_controller.flush()?;
 
-                self.ipc_tx
-                    .send(&ServerMsg::TunnelReady)
-                    .await
-                    .context("Error while sending IPC message `TunnelReady`")?;
+                self.send_ipc(ServerMsg::TunnelReady).await?;
             }
             ConnlibMsg::OnUpdateResources(resources) => {
                 // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                 self.dns_controller.flush()?;
-                self.ipc_tx
-                    .send(&ServerMsg::OnUpdateResources(resources))
-                    .await
-                    .context("Error while sending IPC message `OnUpdateResources`")?;
+                self.send_ipc(ServerMsg::OnUpdateResources(resources))
+                    .await?;
             }
         }
         Ok(())
@@ -486,20 +479,15 @@ impl<'a> Handler<'a> {
                     &crate::known_dirs::ipc_service_logs().context("Can't compute logs dir")?,
                 )
                 .await;
-                self.ipc_tx
-                    .send(&ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
-                    .await
-                    .context("Error while sending IPC message")?
+                self.send_ipc(ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
+                    .await?
             }
             ClientMsg::Connect { api_url, token } => {
                 // Warning: Connection errors don't bubble to callers of `handle_ipc_msg`.
                 let token = secrecy::SecretString::from(token);
                 let result = self.connect_to_firezone(&api_url, token);
 
-                self.ipc_tx
-                    .send(&ServerMsg::ConnectResult(result))
-                    .await
-                    .context("Failed to send `ConnectResult`")?
+                self.send_ipc(ServerMsg::ConnectResult(result)).await?
             }
             ClientMsg::Disconnect => {
                 if let Some(session) = self.session.take() {
@@ -509,10 +497,7 @@ impl<'a> Handler<'a> {
                 }
                 // Always send `DisconnectedGracefully` even if we weren't connected,
                 // so this will be idempotent.
-                self.ipc_tx
-                    .send(&ServerMsg::DisconnectedGracefully)
-                    .await
-                    .context("Failed to send `DisconnectedGracefully`")?;
+                self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
             }
             ClientMsg::ApplyLogFilter { directives } => {
                 self.log_filter_reloader.reload(directives.clone())?;
@@ -637,6 +622,15 @@ impl<'a> Handler<'a> {
 
         let session = Session { cb_rx, connlib };
         self.session = Some(session);
+
+        Ok(())
+    }
+
+    async fn send_ipc(&mut self, msg: ServerMsg) -> Result<()> {
+        self.ipc_tx
+            .send(&msg)
+            .await
+            .with_context(|| format!("Failed to send IPC message `{msg}`"))?;
 
         Ok(())
     }
