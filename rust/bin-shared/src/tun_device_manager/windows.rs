@@ -317,33 +317,49 @@ fn start_send_thread(
     mut packet_rx: mpsc::Receiver<IpPacket>,
     session: Arc<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
+    // See <https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->.
+    const ERROR_BUFFER_OVERFLOW: i32 = 0x6F;
+
     std::thread::Builder::new()
         .name("TUN send".into())
-        .spawn(move || loop {
-            let Some(packet) = packet_rx.blocking_recv() else {
-                tracing::info!("Stopping TUN send worker thread because the packet channel closed");
-                break;
-            };
+        .spawn(move || {
+            'recv: loop {
+                let Some(packet) = packet_rx.blocking_recv() else {
+                    tracing::info!(
+                        "Stopping TUN send worker thread because the packet channel closed"
+                    );
+                    break;
+                };
 
-            let bytes = packet.packet();
+                let bytes = packet.packet();
 
-            let Ok(len) = bytes.len().try_into() else {
-                tracing::warn!("Packet too large; length does not fit into u16");
-                continue;
-            };
-
-            let mut pkt = match session.allocate_send_packet(len) {
-                Ok(pkt) => pkt,
-                Err(e) => {
-                    tracing::warn!("Failed to allocate WinTUN packet: {e}");
+                let Ok(len) = bytes.len().try_into() else {
+                    tracing::warn!("Packet too large; length does not fit into u16");
                     continue;
-                }
-            };
+                };
 
-            pkt.bytes_mut().copy_from_slice(bytes);
-            // `send_packet` cannot fail to enqueue the packet, since we already allocated
-            // space in the ring buffer.
-            session.send_packet(pkt);
+                let mut pkt = 'allocate: loop {
+                    match session.allocate_send_packet(len) {
+                        Ok(pkt) => break pkt,
+                        Err(e)
+                            if e.raw_os_error()
+                                .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
+                        {
+                            tracing::debug!("WinTUN ring buffer is full");
+                            std::thread::sleep(10); // Suspend for a bit to avoid busy-looping.
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to allocate WinTUN packet: {e}");
+                            continue 'recv;
+                        }
+                    }
+                };
+
+                pkt.bytes_mut().copy_from_slice(bytes);
+                // `send_packet` cannot fail to enqueue the packet, since we already allocated
+                // space in the ring buffer.
+                session.send_packet(pkt);
+            }
         })
 }
 
