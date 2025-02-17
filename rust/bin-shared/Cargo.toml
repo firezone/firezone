@@ -37,8 +37,8 @@ zbus = "4.4" # Can't use `zbus`'s `tokio` feature here, or it will break toast p
 known-folders = { workspace = true }
 ring = "0.17"
 uuid = { workspace = true, features = ["v4"] }
-windows-core = "0.58.0"
-windows-implement = "0.58.0"
+windows-core = "0.59.0"
+windows-implement = "0.59.0"
 wintun = "0.5.1"
 winreg = { workspace = true }
 
