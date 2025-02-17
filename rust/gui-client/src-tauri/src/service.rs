@@ -519,7 +519,9 @@ impl<'a> Handler<'a> {
                 self.send_ipc(msg).await?;
             }
             ClientMsg::Disconnect => {
+                self.session = Session::None;
                 self.dns_controller.deactivate()?;
+
                 // Always send `DisconnectedGracefully` even if we weren't connected,
                 // so this will be idempotent.
                 self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
