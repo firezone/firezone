@@ -13,6 +13,10 @@ locals {
     "35.235.240.0/20"
   ]
 
+  iap_ipv6_ranges = [
+    "2600:2d00:1:7::/64"
+  ]
+
   gateway_image_tag = var.gateway_image_tag != null ? var.gateway_image_tag : var.image_tag
   relay_image_tag   = var.relay_image_tag != null ? var.relay_image_tag : var.image_tag
   portal_image_tag  = var.portal_image_tag != null ? var.portal_image_tag : var.image_tag
@@ -232,16 +236,6 @@ resource "google_compute_firewall" "ssh-ipv4" {
     ports    = [22]
   }
 
-  allow {
-    protocol = "udp"
-    ports    = [22]
-  }
-
-  allow {
-    protocol = "sctp"
-    ports    = [22]
-  }
-
   log_config {
     metadata = "INCLUDE_ALL_METADATA"
   }
@@ -251,7 +245,32 @@ resource "google_compute_firewall" "ssh-ipv4" {
   target_tags = concat(
     module.web.target_tags,
     module.api.target_tags,
-    module.domain.target_tags
+    module.domain.target_tags,
+    module.relays[0].target_tags
+  )
+}
+
+resource "google_compute_firewall" "ssh-ipv6" {
+  project = module.google-cloud-project.project.project_id
+
+  name    = "iap-ssh-ipv6"
+  network = module.google-cloud-vpc.self_link
+
+  allow {
+    protocol = "tcp"
+    ports    = [22]
+  }
+
+  log_config {
+    metadata = "INCLUDE_ALL_METADATA"
+  }
+
+  source_ranges = local.iap_ipv6_ranges
+  target_tags = concat(
+    module.web.target_tags,
+    module.api.target_tags,
+    module.domain.target_tags,
+    module.relays[0].target_tags
   )
 }
 
