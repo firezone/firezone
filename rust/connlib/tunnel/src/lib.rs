@@ -85,6 +85,8 @@ impl ClientTunnel {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> Self {
+        tracing::warn!("This is a test");
+
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: ClientState::new(rand::random(), Instant::now()),
