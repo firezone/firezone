@@ -10,7 +10,7 @@ use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
-use firezone_logging::err_with_src;
+use firezone_logging::{err_with_src, sentry_layer};
 use firezone_telemetry::{Telemetry, ANDROID_DSN};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
@@ -155,7 +155,8 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
                         .without_level(),
                 )
                 .with_writer(make_writer::MakeWriter::new("connlib")),
-        );
+        )
+        .with(sentry_layer());
 
     firezone_logging::init(subscriber)?;
 
