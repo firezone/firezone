@@ -278,6 +278,19 @@ config :workos, WorkOS.Client,
   client_id: "client_123456789",
   baseurl: "https://api.workos.com"
 
+# Base Sentry config
+config :sentry,
+  before_send: {Domain.Telemetry.Sentry, :before_send},
+  # disable Sentry by default, enable in runtime.exs
+  dsn: nil,
+  environment_name: :unknown,
+  enable_source_code_context: true,
+  root_source_code_paths: [
+    Path.join(File.cwd!(), "apps/domain"),
+    Path.join(File.cwd!(), "apps/web"),
+    Path.join(File.cwd!(), "apps/api")
+  ]
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{Mix.env()}.exs"

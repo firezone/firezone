@@ -115,3 +115,6 @@ config :workos, WorkOS.Client,
   api_key: System.get_env("WORKOS_API_KEY"),
   client_id: System.get_env("WORKOS_CLIENT_ID"),
   baseurl: System.get_env("WORKOS_BASE_URL", "https://api.workos.com")
+
+config :sentry,
+  environment_name: :dev
