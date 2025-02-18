@@ -268,11 +268,11 @@ impl ClientOnGateway {
             return Ok(TranslateOutboundResult::Send(packet));
         }
 
-        let Some(resolved_ip) = self
-            .permanent_translations
-            .get_mut(&packet.destination())
-            .and_then(|s| s.resolved_ip)
-        else {
+        let Some(state) = self.permanent_translations.get(&packet.destination()) else {
+            bail!("No translation entry for {}", packet.destination())
+        };
+
+        let Some(resolved_ip) = state.resolved_ip else {
             let icmp_error = match packet.destination() {
                 IpAddr::V4(inside_dst) => {
                     let icmpv4 = PacketBuilder::ipv4(inside_dst.octets(), self.ipv4.octets(), 20)
@@ -553,6 +553,8 @@ struct TranslationState {
     /// Which (DNS) resource we belong to.
     resource_id: ResourceId,
     /// The IP we have resolved for the domain.
+    ///
+    /// `None` if we didn't resolve an IP (i.e. AAAA query didn't return any records).
     resolved_ip: Option<IpAddr>,
 }
 
