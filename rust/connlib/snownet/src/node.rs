@@ -54,6 +54,10 @@ pub struct Client {}
 trait Mode {
     fn new() -> Self;
     fn is_client(&self) -> bool;
+
+    fn is_server(&self) -> bool {
+        !self.is_client()
+    }
 }
 
 impl Mode for Server {
@@ -445,6 +449,12 @@ where
             .connections
             .get_established_mut(&connection)
             .ok_or(Error::NotConnected)?;
+
+        if self.mode.is_server() && !conn.state.has_nominated_socket() {
+            tracing::debug!(?packet, "ICE is still in progress; dropping packet because server should not initiate WireGuard sessions");
+
+            return Ok(None);
+        }
 
         let mut buffer = self.buffer_pool.pull_owned();
 
@@ -1722,6 +1732,10 @@ where
             last_incoming: now,
         };
         apply_default_stun_timings(agent);
+    }
+
+    fn has_nominated_socket(&self) -> bool {
+        matches!(self, Self::Connected { .. } | Self::Idle { .. })
     }
 }
 
