@@ -1,3 +1,4 @@
+exclude: '^terraform/environments/'
 repos:
   - repo: local
     hooks:

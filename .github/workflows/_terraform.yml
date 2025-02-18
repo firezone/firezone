@@ -17,6 +17,7 @@ jobs:
         with:
           submodules: true
           ssh-key: ${{ secrets.ENVIRONMENTS_REPO_DEPLOY_KEY }}
+      - run: ls -lR terraform/environments
       - name: Tool Versions
         id: versions
         uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
