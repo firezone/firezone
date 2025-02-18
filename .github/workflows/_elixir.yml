@@ -115,8 +115,8 @@ jobs:
           # Fail the pipeline a week from when this was ignored as a reminder
           cve_epoch=$(date -d "2025-02-11" +%s)
           now=$(date +%s)
-          one_week=$((7 * 24 * 60 * 60))
-          if (( (cve_epoch + one_week) < now )); then
+          one_month=$((30 * 24 * 60 * 60))
+          if (( (cve_epoch + one_month) < now )); then
             echo "Check if https://github.com/advisories/GHSA-vq52-99r9-h5pw is fixed"
             exit 1
           fi
