@@ -57,6 +57,7 @@ jobs:
       TF_API_TOKEN: "${{ secrets.TF_API_TOKEN }}"
       TF_WORKSPACE: "staging"
     steps:
+      # First, checkout the main ref for setting up Terraform
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           submodules: true
@@ -67,9 +68,12 @@ jobs:
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd # v3.1.2
         with:
           terraform_version: ${{ steps.versions.outputs.terraform }}
+      # Then, checkout the ref specified in the workflow run
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ github.event.workflow_run.head_branch }}
+          submodules: true
+          ssh-key: ${{ secrets.ENVIRONMENTS_REPO_DEPLOY_KEY }}
       - name: Upload Configuration
         uses: hashicorp/tfc-workflows-github/actions/upload-configuration@8e08d1ba957673f5fbf971a22b3219639dc45661 # v1.3.2
         id: apply-upload
