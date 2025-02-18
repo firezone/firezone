@@ -9,7 +9,7 @@ repos:
         pass_filenames: false
       - id: prettier-git-files
         name: Prettier (only git-tracked files)
-        entry: bash -c 'git ls-files -z | xargs -0 prettier --check --ignore-unknown'
+        entry: bash -c 'git grep --cached -z -l '' | xargs -0 prettier --check --ignore-unknown'
         language: system
         pass_filenames: false
 

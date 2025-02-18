@@ -1,0 +1,3 @@
+[submodule "terraform/environments"]
+	path = terraform/environments
+	url = git@github.com:firezone/environments.git
