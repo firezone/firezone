@@ -115,8 +115,9 @@ jobs:
       TF_WORKSPACE: "production"
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-        submodules: true
-        ssh-key: ${{ secrets.ENVIRONMENTS_REPO_DEPLOY_KEY }}
+        with:
+          submodules: true
+          ssh-key: ${{ secrets.ENVIRONMENTS_REPO_DEPLOY_KEY }}
       - name: Tool Versions
         id: versions
         uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
