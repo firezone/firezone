@@ -10,6 +10,7 @@ backoff = { workspace = true }
 base64 = { workspace = true }
 bytecodec = { workspace = true }
 bytes = { workspace = true }
+compio = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 derive_more = { workspace = true, features = ["from"] }
 firezone-bin-shared = { workspace = true }
@@ -18,7 +19,6 @@ firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 hex-display = { workspace = true }
-mio = { workspace = true, features = ["net"] }
 once_cell = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics"] }
@@ -44,6 +44,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter", "json", "fmt"
 trackable = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+lockfree-object-pool = { workspace = true }
 
 [dev-dependencies]
 difference = { workspace = true }

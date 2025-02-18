@@ -1,45 +1,60 @@
-use anyhow::{bail, Result};
+use anyhow::Result;
+use compio::{
+    buf::{IoBuf, IoBufMut, SetBufInit},
+    driver::{SharedFd, ToSharedFd},
+    runtime::Task,
+};
+use lockfree_object_pool::SpinLockOwnedReusable;
+use socket2::Socket;
 use std::{
-    borrow::Cow,
-    collections::{HashMap, VecDeque},
+    any::Any,
+    collections::HashMap,
     io,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    task::{ready, Context, Poll, Waker},
-    time::Duration,
+    sync::Arc,
+    task::{ready, Context, Poll},
 };
 use stun_codec::rfc8656::attributes::AddressFamily;
 use tokio::sync::mpsc;
 
 /// A dynamic collection of UDP sockets, listening on all interfaces of a particular IP family.
-///
-/// Internally, [`Sockets`] is powered by [`mio`] and uses a separate thread to poll for readiness of a socket.
-/// Whenever a socket is ready for reading, we send a message to the foreground task which then reads from the socket until it emits [`io::ErrorKind::WouldBlock`].
 pub struct Sockets {
+    buffer_pool: Arc<lockfree_object_pool::SpinLockObjectPool<Vec<u8>>>,
+
     /// All currently active sockets.
-    ///
-    /// [`mio`] operates with a concept of [`mio::Token`]s so we need to store our sockets indexed by those tokens.
-    inner: HashMap<mio::Token, mio::net::UdpSocket>,
-
-    /// Which socket we should still be reading from.
-    ///
-    /// [`mio`] sends us a signal when a socket is ready for reading.
-    /// We must read from it until it returns [`io::ErrorKind::WouldBlock`].
-    current_ready_socket: Option<mio::Token>,
-
-    /// If we are waiting to flush packets, this waker tracks the suspended task.
-    flush_waker: Option<Waker>,
+    inner: HashMap<
+        (u16, AddressFamily),
+        (
+            compio::runtime::Task<Result<(), Box<dyn Any + Send>>>,
+            SharedFd<Socket>,
+        ),
+    >,
 
     cmd_tx: mpsc::Sender<Command>,
     event_rx: mpsc::Receiver<Event>,
-
-    pending_packets: VecDeque<PendingPacket>,
 }
 
-/// A packet that could not be sent and is buffered until the socket is ready again.
-struct PendingPacket {
-    src: u16,
-    dst: SocketAddr,
-    payload: Vec<u8>,
+pub struct Packet {
+    inner: Buffer,
+    pub length: usize,
+}
+
+impl std::fmt::Debug for Packet {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Packet")
+            .field("length", &self.length)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Packet {
+    pub fn payload(&self) -> &[u8] {
+        &self.inner.0[..self.length]
+    }
+
+    pub fn inner_mut(&mut self) -> &mut Vec<u8> {
+        &mut self.inner.0
+    }
 }
 
 impl Default for Sockets {
@@ -50,22 +65,97 @@ impl Default for Sockets {
 
 impl Sockets {
     pub fn new() -> Self {
-        let (cmd_tx, cmd_rx) = mpsc::channel(1_000_000); // Commands are really small and this channel should really never fill up unless we have serious problems in the "mio" worker thread.
+        let (cmd_tx, mut cmd_rx) = mpsc::channel(1_000_000); // Commands are really small and this channel should really never fill up unless we have serious problems in the "mio" worker thread.
         let (event_tx, event_rx) = mpsc::channel(1_024);
 
-        std::thread::spawn(move || {
-            if let Err(e) = mio_worker_task(event_tx.clone(), cmd_rx) {
-                let _ = event_tx.blocking_send(Event::Crashed(e));
+        let buffer_pool = Arc::new(lockfree_object_pool::SpinLockObjectPool::new(
+            || Vec::<u8>::with_capacity(1500),
+            |b| b.fill(0),
+        ));
+
+        std::thread::spawn({
+            let buffer_pool = Arc::clone(&buffer_pool);
+
+            move || {
+                compio::runtime::Runtime::new()
+                    .unwrap()
+                    .block_on(async move {
+                        loop {
+                            let Some(cmd) = cmd_rx.recv().await else {
+                                break;
+                            };
+
+                            match cmd {
+                                Command::NewSocket((port, family)) => {
+                                    let udp_socket = compio::net::UdpSocket::from_std(
+                                        make_wildcard_socket(family, port).unwrap(),
+                                    )
+                                    .unwrap();
+                                    let fd = udp_socket.to_shared_fd();
+
+                                    let task = compio::runtime::spawn({
+                                        let buffer_pool = Arc::clone(&buffer_pool);
+                                        let event_tx = event_tx.clone();
+
+                                        async move {
+                                            loop {
+                                                let buffer = Buffer(buffer_pool.pull_owned());
+
+                                                let ((length, from), buffer) =
+                                                    udp_socket.recv_from(buffer).await.unwrap();
+
+                                                event_tx
+                                                    .send(Event::Received(Received {
+                                                        port,
+                                                        from,
+                                                        packet: Packet {
+                                                            inner: buffer,
+                                                            length,
+                                                        },
+                                                    }))
+                                                    .await
+                                                    .unwrap()
+                                            }
+                                        }
+                                    });
+
+                                    event_tx
+                                        .send(Event::NewSocket(port, family, task, fd))
+                                        .await;
+                                }
+                                Command::SendPacket {
+                                    fd,
+                                    dest,
+                                    mut packet,
+                                } => {
+                                    packet.inner.0.truncate(packet.length);
+
+                                    compio::runtime::spawn(compio::runtime::submit(
+                                        compio::driver::op::SendTo::new(
+                                            fd,
+                                            packet.inner,
+                                            dest.into(),
+                                        ),
+                                    ))
+                                    .detach();
+                                }
+                                Command::SendVec { fd, dest, packet } => {
+                                    compio::runtime::spawn(compio::runtime::submit(
+                                        compio::driver::op::SendTo::new(fd, packet, dest.into()),
+                                    ))
+                                    .detach();
+                                }
+                            }
+                        }
+                    })
             }
         });
 
         Self {
+            buffer_pool,
             inner: Default::default(),
             cmd_tx,
             event_rx,
-            current_ready_socket: None,
-            pending_packets: Default::default(),
-            flush_waker: None,
         }
     }
 
@@ -87,122 +177,63 @@ impl Sockets {
     ///  - full (not expected to happen in production)
     ///  - disconnected (we can't operate without the [`mio`] worker thread)
     pub fn unbind(&mut self, port: u16, address_family: AddressFamily) -> Result<()> {
-        let token = token_from_port_and_address_family(port, address_family);
+        // let token = token_from_port_and_address_family(port, address_family);
 
-        let Some(socket) = self.inner.remove(&token) else {
-            return Ok(());
-        };
+        // let Some(socket) = self.inner.remove(&token) else {
+        //     return Ok(());
+        // };
 
-        self.cmd_tx.try_send(Command::DisposeSocket(socket))?;
+        // self.cmd_tx.try_send(Command::DisposeSocket(socket))?;
 
         Ok(())
     }
 
-    /// Flush all buffered packets.
-    pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        while let Some(packet) = self.pending_packets.pop_front() {
-            match self.try_send_internal(packet.src, packet.dst, &packet.payload) {
-                Ok(()) => continue,
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                    self.flush_waker = Some(cx.waker().clone());
-                    self.pending_packets.push_front(packet);
-
-                    return Poll::Pending;
-                }
-                Err(e) => return Poll::Ready(Err(e)),
-            };
-        }
-
-        Poll::Ready(Ok(()))
-    }
-
-    pub fn try_send(&mut self, port: u16, dest: SocketAddr, msg: Cow<'_, [u8]>) -> io::Result<()> {
-        match self.try_send_internal(port, dest, msg.as_ref()) {
-            Ok(()) => Ok(()),
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                self.pending_packets.push_back(PendingPacket {
-                    src: port,
-                    dst: dest,
-                    payload: msg.into_owned(),
-                });
-
-                Ok(())
-            }
-            Err(e) => Err(e),
-        }
-    }
-
-    fn try_send_internal(&mut self, port: u16, dest: SocketAddr, msg: &[u8]) -> io::Result<()> {
+    pub fn send(&mut self, port: u16, dest: SocketAddr, packet: Packet) -> io::Result<()> {
         let address_family = match dest {
             SocketAddr::V4(_) => AddressFamily::V4,
             SocketAddr::V6(_) => AddressFamily::V6,
         };
-        let token = token_from_port_and_address_family(port, address_family);
 
-        let socket = self
-            .inner
-            .get(&token)
-            .ok_or_else(|| not_connected(port, address_family))?;
+        let (_, fd) = self.inner.get(&(port, address_family)).unwrap();
 
-        let num_sent = socket.send_to(msg, dest)?;
-
-        debug_assert_eq!(num_sent, msg.len());
+        self.cmd_tx
+            .try_send(Command::SendPacket {
+                fd: fd.clone(),
+                dest,
+                packet,
+            })
+            .unwrap();
 
         Ok(())
     }
 
-    pub fn poll_recv_from<'b>(
-        &mut self,
-        buf: &'b mut [u8],
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<Received<'b>, Error>> {
+    pub fn send_vec(&mut self, port: u16, dest: SocketAddr, packet: Vec<u8>) -> io::Result<()> {
+        let address_family = match dest {
+            SocketAddr::V4(_) => AddressFamily::V4,
+            SocketAddr::V6(_) => AddressFamily::V6,
+        };
+
+        let (_, fd) = self.inner.get(&(port, address_family)).unwrap();
+
+        self.cmd_tx
+            .try_send(Command::SendVec {
+                fd: fd.clone(),
+                dest,
+                packet,
+            })
+            .unwrap();
+
+        Ok(())
+    }
+
+    pub fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Result<Received, Error>> {
         loop {
-            if let Some(current) = self.current_ready_socket {
-                if let Some(socket) = self.inner.get(&current) {
-                    let (num_bytes, from) = match socket.recv_from(buf) {
-                        Ok(ok) => ok,
-                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                            self.current_ready_socket = None;
-                            continue;
-                        }
-                        Err(e) => {
-                            self.current_ready_socket = None;
-                            return Poll::Ready(Err(Error::Io(e)));
-                        }
-                    };
-
-                    let (port, _) = token_to_port_and_address_family(current);
-
-                    return Poll::Ready(Ok(Received {
-                        port,
-                        from,
-                        packet: &buf[..num_bytes],
-                    }));
-                }
-            }
-
             match ready!(self.event_rx.poll_recv(cx)) {
-                Some(Event::NewSocket(token, socket)) => {
-                    self.inner.insert(token, socket);
+                Some(Event::NewSocket(port, af, task, fd)) => {
+                    self.inner.insert((port, af), (task, fd));
                     continue;
                 }
-                Some(Event::SocketReady {
-                    token,
-                    readable,
-                    writeable,
-                }) => {
-                    if readable {
-                        self.current_ready_socket = Some(token);
-                    }
-
-                    if writeable {
-                        if let Some(waker) = self.flush_waker.take() {
-                            waker.wake();
-                        }
-                    }
-
-                    continue;
-                }
+                Some(Event::Received(received)) => return Poll::Ready(Ok(received)),
                 Some(Event::Crashed(error)) => {
                     return Poll::Ready(Err(Error::MioTaskCrashed(error)));
                 }
@@ -216,10 +247,10 @@ impl Sockets {
 
 /// A packet read from a socket.
 #[derive(Debug)]
-pub struct Received<'a> {
+pub struct Received {
     pub port: u16,
     pub from: SocketAddr,
-    pub packet: &'a [u8],
+    pub packet: Packet,
 }
 
 #[derive(Debug)]
@@ -230,16 +261,26 @@ pub enum Error {
 
 enum Command {
     NewSocket((u16, AddressFamily)),
-    DisposeSocket(mio::net::UdpSocket),
+    SendPacket {
+        fd: SharedFd<Socket>,
+        dest: SocketAddr,
+        packet: Packet,
+    },
+    SendVec {
+        fd: SharedFd<Socket>,
+        dest: SocketAddr,
+        packet: Vec<u8>,
+    },
 }
 
 enum Event {
-    NewSocket(mio::Token, mio::net::UdpSocket),
-    SocketReady {
-        token: mio::Token,
-        readable: bool,
-        writeable: bool,
-    },
+    NewSocket(
+        u16,
+        AddressFamily,
+        Task<Result<(), Box<dyn Any + Send>>>,
+        SharedFd<Socket>,
+    ),
+    Received(Received),
     Crashed(anyhow::Error),
 }
 
@@ -248,81 +289,6 @@ fn not_connected(port: u16, address_family: AddressFamily) -> io::Error {
         io::ErrorKind::NotConnected,
         format!("No socket for port {port} on address family {address_family}"),
     )
-}
-
-/// The [`mio`] worker task which checks for read-readiness on any of our sockets.
-///
-/// This task is connected with the main eventloop via two channels.
-fn mio_worker_task(
-    event_tx: mpsc::Sender<Event>,
-    mut cmd_rx: mpsc::Receiver<Command>,
-) -> Result<()> {
-    let mut poll = mio::Poll::new()?;
-    let mut events = mio::Events::with_capacity(1024);
-
-    loop {
-        poll.poll(&mut events, Some(Duration::from_secs(1)))?; // Suspend for up to 1 second to wait for IO events.
-
-        // Send all events into the channel, block as necessary.
-        for event in events.iter() {
-            event_tx.blocking_send(Event::SocketReady {
-                token: event.token(),
-                readable: event.is_readable(),
-                writeable: event.is_writable(),
-            })?;
-        }
-
-        loop {
-            match cmd_rx.try_recv() {
-                Err(mpsc::error::TryRecvError::Empty) => break, // Drain all events from the channel until it is empty.
-
-                Ok(Command::NewSocket((port, af))) => {
-                    let mut socket = mio::net::UdpSocket::from_std(make_wildcard_socket(af, port)?);
-                    let token = token_from_port_and_address_family(port, af);
-
-                    poll.registry().register(
-                        &mut socket,
-                        token,
-                        mio::Interest::READABLE | mio::Interest::WRITABLE,
-                    )?;
-
-                    event_tx.blocking_send(Event::NewSocket(token, socket))?;
-                }
-                Ok(Command::DisposeSocket(mut socket)) => {
-                    poll.registry().deregister(&mut socket)?;
-                }
-                Err(mpsc::error::TryRecvError::Disconnected) => {
-                    bail!("Command channel disconnected")
-                }
-            }
-        }
-    }
-}
-
-/// Encodes a port (u16) and an [`AddressFamily`] into an [`mio::Token`] by flipping the 17th bit of the internal [`usize`] based on the [`AddressFamily`].
-fn token_from_port_and_address_family(port: u16, address_family: AddressFamily) -> mio::Token {
-    let is_ipv6 = address_family == AddressFamily::V6;
-
-    let af_bit = (is_ipv6 as usize) << 16;
-
-    let token = port as usize | af_bit;
-
-    mio::Token(token)
-}
-
-/// Decodes an [`mio::Token`] into the port and [`AddressFamily`].
-fn token_to_port_and_address_family(token: mio::Token) -> (u16, AddressFamily) {
-    let port = (token.0 & 0xFFFF) as u16;
-
-    let is_ipv6 = (token.0 >> 16) & 1 != 0;
-
-    let address_family = if is_ipv6 {
-        AddressFamily::V6
-    } else {
-        AddressFamily::V4
-    };
-
-    (port, address_family)
 }
 
 /// Creates an [std::net::UdpSocket] via the [socket2] library that is configured for our needs.
@@ -349,4 +315,32 @@ fn make_wildcard_socket(family: AddressFamily, port: u16) -> io::Result<std::net
     socket.bind(&SockAddr::from(SocketAddr::new(address, port)))?;
 
     Ok(socket.into())
+}
+
+struct Buffer(SpinLockOwnedReusable<Vec<u8>>);
+
+impl SetBufInit for Buffer {
+    unsafe fn set_buf_init(&mut self, len: usize) {
+        self.0.set_buf_init(len);
+    }
+}
+
+unsafe impl IoBuf for Buffer {
+    fn as_buf_ptr(&self) -> *const u8 {
+        self.0.as_buf_ptr()
+    }
+
+    fn buf_len(&self) -> usize {
+        self.0.buf_len()
+    }
+
+    fn buf_capacity(&self) -> usize {
+        self.0.buf_capacity()
+    }
+}
+
+unsafe impl IoBufMut for Buffer {
+    fn as_buf_mut_ptr(&mut self) -> *mut u8 {
+        self.0.as_buf_mut_ptr()
+    }
 }

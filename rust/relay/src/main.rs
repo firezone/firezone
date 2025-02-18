@@ -339,8 +339,6 @@ struct Eventloop<R> {
     last_num_bytes_relayed: u64,
 
     last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
-
-    buffer: [u8; MAX_UDP_SIZE],
 }
 
 impl<R> Eventloop<R>
@@ -383,7 +381,6 @@ where
             stats_log_interval: tokio::time::interval(STATS_LOG_INTERVAL),
             last_num_bytes_relayed: 0,
             sockets,
-            buffer: [0u8; MAX_UDP_SIZE],
             last_heartbeat_sent,
             #[cfg(unix)]
             sigterm: tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?,
@@ -397,16 +394,14 @@ where
                 return Poll::Ready(Ok(()));
             }
 
-            ready!(self.sockets.flush(cx))?;
-
             // Priority 1: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
                     Command::SendMessage { payload, recipient } => {
-                        if let Err(e) = self.sockets.try_send(
+                        if let Err(e) = self.sockets.send_vec(
                             self.server.listen_port(),
                             recipient.into_socket(),
-                            Cow::Owned(payload),
+                            payload,
                         ) {
                             tracing::warn!(target: "relay", %recipient, "Failed to send message: {}", err_with_src(&e));
                         }
@@ -437,48 +432,27 @@ where
             }
 
             // Priority 2: Read from our sockets.
-            //
-            // We read the packet with an offset of 4 bytes so we can encode the channel-data header into that without re-allocating.
-            // This only matters for relaying from an allocation to a client because the data coming in on an allocation is "raw" (i.e. unwrapped) application data.
-            // To allow clients to correctly associate this data, we need to wrap it in a channel-data message as depicted below.
-            //
-            // For traffic coming from clients that needs to be forwarded to peers, this doesn't matter because we already a channel data message and only need to forward its payload.
-            //
-            // However, we don't know which socket we will be reading from when we call `poll_recv_from`, which is why we always offset the read-buffer by 4 bytes like this:
-            //
-            //  01│23│456789....
-            // ┌──┼──┼──────────────────────────┐
-            // │CN│LN│PAYLOAD...                │
-            // └──┴──┴──────────────────────────┘
-            //       ▲
-            //       │
-            //       Start of read-buffer.
-            //
-            //  CN: Channel number
-            //  LN: Length
-            let (header, payload) = self.buffer.split_at_mut(4);
 
-            match self.sockets.poll_recv_from(payload, cx) {
+            match self.sockets.poll_recv_from(cx) {
                 Poll::Ready(Ok(sockets::Received {
                     port, // Packets coming in on the TURN port are from clients.
                     from,
-                    packet,
+                    mut packet,
                 })) if port == self.server.listen_port() => {
                     if let Some((port, peer)) = self.server.handle_client_input(
-                        packet,
+                        packet.payload(),
                         ClientSocket::new(from),
                         Instant::now(),
                     ) {
                         // Re-parse as `ChannelData` if we should relay it.
-                        let payload = ChannelData::parse(packet)
+                        let payload = ChannelData::parse(packet.payload())
                             .expect("valid ChannelData if we should relay it")
                             .data(); // When relaying data from a client to peer, we need to forward only the channel-data's payload.
 
-                        if let Err(e) = self.sockets.try_send(
-                            port.value(),
-                            peer.into_socket(),
-                            Cow::Borrowed(payload),
-                        ) {
+                        packet.inner_mut().drain(..4);
+
+                        if let Err(e) = self.sockets.send(port.value(), peer.into_socket(), packet)
+                        {
                             tracing::warn!(target: "relay", %peer, "Failed to relay data to peer: {}", err_with_src(&e));
                         }
                     };
@@ -487,23 +461,29 @@ where
                 Poll::Ready(Ok(sockets::Received {
                     port, // Packets coming in on any other port are from peers.
                     from,
-                    packet,
+                    mut packet,
                 })) => {
                     if let Some((client, channel)) = self.server.handle_peer_traffic(
-                        packet,
+                        packet.payload(),
                         PeerSocket::new(from),
                         AllocationPort::new(port),
                     ) {
+                        packet.inner_mut().insert(0, 0);
+                        packet.inner_mut().insert(0, 0);
+                        packet.inner_mut().insert(0, 0);
+                        packet.inner_mut().insert(0, 0);
+
                         let total_length = ChannelData::encode_header_to_slice(
                             channel,
-                            packet.len() as u16,
-                            header,
+                            packet.payload().len() as u16,
+                            &mut packet.inner_mut()[..4],
                         );
+                        packet.length += 4;
 
-                        if let Err(e) = self.sockets.try_send(
+                        if let Err(e) = self.sockets.send(
                             self.server.listen_port(), // Packets coming in from peers always go out on the TURN port
                             client.into_socket(),
-                            Cow::Borrowed(&self.buffer[..total_length]),
+                            packet,
                         ) {
                             tracing::warn!(target: "relay", %client, "Failed to relay data to client: {}", err_with_src(&e));
                         };
