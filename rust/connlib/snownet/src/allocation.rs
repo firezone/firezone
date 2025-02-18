@@ -682,10 +682,10 @@ impl Allocation {
                 .remove(&timed_out_request)
                 .expect("ID is from list");
 
-            backoff.handle_timeout(now); // Must update timeout here to avoid an endless loop.
-
             let backoff_duration = backoff.interval();
             let method = request.method();
+
+            backoff.handle_timeout(now); // Must update timeout here to avoid an endless loop.
 
             tracing::debug!(id = ?request.transaction_id(), %method, %dst, "Request timed out after {backoff_duration:?}, re-sending");
 
