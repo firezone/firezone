@@ -106,26 +106,39 @@ impl ClientOnGateway {
 
         anyhow::ensure!(crate::dns::is_subdomain(&name, address));
 
-        let resolved_ipv4 = ipv4_addresses(&resolved_ips);
-        let resolved_ipv6 = ipv6_addresses(&resolved_ips);
+        fn into_optional_set(set: BTreeSet<IpAddr>) -> BTreeSet<Option<IpAddr>> {
+            if set.is_empty() {
+                return BTreeSet::from([None]);
+            }
 
-        let ipv4_maps = proxy_ips
-            .iter()
-            .filter(|ip| ip.is_ipv4())
+            set.into_iter().map(Some).collect()
+        }
+
+        let (proxy_ipv4, proxy_ipv6) = proxy_ips
+            .clone()
+            .into_iter()
+            .partition::<BTreeSet<_>, _>(|ip| ip.is_ipv4());
+        let (resolved_ipv4, resolved_ipv6) = resolved_ips
+            .clone()
+            .into_iter()
+            .partition::<BTreeSet<_>, _>(|ip| ip.is_ipv4());
+
+        let resolved_ipv4 = into_optional_set(resolved_ipv4);
+        let resolved_ipv6 = into_optional_set(resolved_ipv6);
+
+        let ipv4_maps = proxy_ipv4
+            .into_iter()
             .zip(resolved_ipv4.iter().cycle().copied());
 
-        let ipv6_maps = proxy_ips
-            .iter()
-            .filter(|ip| ip.is_ipv6())
+        let ipv6_maps = proxy_ipv6
+            .into_iter()
             .zip(resolved_ipv6.iter().cycle().copied());
 
-        let ip_maps = ipv4_maps.chain(ipv6_maps);
-
-        for (proxy_ip, real_ip) in ip_maps {
-            tracing::debug!(%name, %proxy_ip, %real_ip);
+        for (proxy_ip, real_ip) in ipv4_maps.chain(ipv6_maps) {
+            tracing::debug!(%name, %proxy_ip, ?real_ip);
 
             self.permanent_translations
-                .insert(*proxy_ip, TranslationState::new(resource_id, real_ip));
+                .insert(proxy_ip, TranslationState::new(resource_id, real_ip));
         }
 
         tracing::debug!(domain = %name, ?resolved_ips, ?proxy_ips, "Set up DNS resource NAT");
@@ -255,7 +268,11 @@ impl ClientOnGateway {
             return Ok(TranslateOutboundResult::Send(packet));
         }
 
-        let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
+        let Some(resolved_ip) = self
+            .permanent_translations
+            .get_mut(&packet.destination())
+            .and_then(|s| s.resolved_ip)
+        else {
             let icmp_error = match packet.destination() {
                 IpAddr::V4(inside_dst) => {
                     let icmpv4 = PacketBuilder::ipv4(inside_dst.octets(), self.ipv4.octets(), 20)
@@ -282,7 +299,7 @@ impl ClientOnGateway {
 
         let (source_protocol, real_ip) =
             self.nat_table
-                .translate_outgoing(&packet, state.resolved_ip, now)?;
+                .translate_outgoing(&packet, resolved_ip, now)?;
 
         let mut packet = packet
             .translate_destination(source_protocol, real_ip)
@@ -536,24 +553,16 @@ struct TranslationState {
     /// Which (DNS) resource we belong to.
     resource_id: ResourceId,
     /// The IP we have resolved for the domain.
-    resolved_ip: IpAddr,
+    resolved_ip: Option<IpAddr>,
 }
 
 impl TranslationState {
-    fn new(resource_id: ResourceId, resolved_ip: IpAddr) -> Self {
+    fn new(resource_id: ResourceId, resolved_ip: Option<IpAddr>) -> Self {
         Self {
             resource_id,
             resolved_ip,
         }
     }
-}
-
-fn ipv4_addresses(ip: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect()
-}
-
-fn ipv6_addresses(ip: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect()
 }
 
 fn is_dns_addr(addr: IpAddr) -> bool {
