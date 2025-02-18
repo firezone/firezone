@@ -393,6 +393,8 @@ where
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
         loop {
+            let mut ready = false;
+
             if self.shutting_down && self.channel.is_none() && self.server.num_allocations() == 0 {
                 return Poll::Ready(Ok(()));
             }
@@ -433,7 +435,7 @@ where
                     }
                 }
 
-                continue; // Attempt to process more commands.
+                ready = true;
             }
 
             // Priority 2: Read from our sockets.
@@ -482,7 +484,8 @@ where
                             tracing::warn!(target: "relay", %peer, "Failed to relay data to peer: {}", err_with_src(&e));
                         }
                     };
-                    continue;
+
+                    ready = true;
                 }
                 Poll::Ready(Ok(sockets::Received {
                     port, // Packets coming in on any other port are from peers.
@@ -508,11 +511,13 @@ where
                             tracing::warn!(target: "relay", %client, "Failed to relay data to client: {}", err_with_src(&e));
                         };
                     };
-                    continue;
+
+                    ready = true;
                 }
                 Poll::Ready(Err(sockets::Error::Io(e))) => {
                     tracing::warn!(target: "relay", "Error while receiving message: {}", err_with_src(&e));
-                    continue;
+
+                    ready = true;
                 }
                 Poll::Ready(Err(sockets::Error::MioTaskCrashed(e))) => return Poll::Ready(Err(e)), // Fail the event-loop. We can't operate without the `mio` worker-task.
                 Poll::Pending => {}
@@ -521,13 +526,14 @@ where
             // Priority 3: Check when we need to next be woken. This needs to happen after all state modifications.
             if let Some(timeout) = self.server.poll_timeout() {
                 Pin::new(&mut self.sleep).reset(timeout);
-                // Purposely no `continue` because we just change the state of `sleep` and we poll it below.
+                // Purposely no `ready = true` because we just change the state of `sleep` and we poll it below.
             }
 
             // Priority 4: Handle time-sensitive tasks:
             if let Poll::Ready(deadline) = self.sleep.poll_unpin(cx) {
                 self.server.handle_timeout(deadline);
-                continue; // Handle potentially new commands.
+
+                ready = true;
             }
 
             // Priority 5: Handle portal messages
@@ -536,7 +542,7 @@ where
                     let event = result.context("Portal connection failed")?;
                     self.handle_portal_event(event);
 
-                    continue;
+                    ready = true;
                 }
                 Some(Poll::Pending) | None => {}
             }
@@ -563,7 +569,7 @@ where
                         }
                     }
 
-                    continue;
+                    ready = true;
                 }
                 Poll::Ready(None) | Poll::Pending => {}
             }
@@ -580,10 +586,12 @@ where
 
                 tracing::info!(target: "relay", "Allocations = {num_allocations} Channels = {num_channels} Throughput = {}", fmt_human_throughput(avg_throughput as f64));
 
-                continue;
+                ready = true;
             }
 
-            return Poll::Pending;
+            if !ready {
+                break Poll::Pending;
+            }
         }
     }
 
