@@ -592,7 +592,7 @@ mod tests {
 
     use crate::{
         messages::gateway::{Filter, PortRange, ResourceDescription, ResourceDescriptionCidr},
-        peer::nat_table,
+        peer::{nat_table, TranslateOutboundResult},
     };
     use chrono::Utc;
     use connlib_model::{ClientId, ResourceId};
@@ -806,7 +806,10 @@ mod tests {
 
         let mut now = Instant::now();
 
-        assert!(matches!(peer.translate_outbound(request, now), Ok(Some(_))));
+        assert!(matches!(
+            peer.translate_outbound(request, now),
+            Ok(TranslateOutboundResult::Send(_))
+        ));
 
         let response = ip_packet::make::udp_packet(
             foo_real_ip(),
