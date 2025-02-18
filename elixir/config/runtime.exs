@@ -247,17 +247,10 @@ if config_env() == :prod do
 
   # Sentry
 
-  # Base Sentry config
+  # Enable Sentry by default in runtime prod env
   config :sentry,
     dsn:
-      "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152",
-    environment_name: :unknown,
-    enable_source_code_context: true,
-    root_source_code_paths: [
-      Path.join(File.cwd!(), "apps/domain"),
-      Path.join(File.cwd!(), "apps/web"),
-      Path.join(File.cwd!(), "apps/api")
-    ]
+      "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
 
   # Environment-specific Sentry overrides
   if api_external_url = compile_config!(:api_external_url) do

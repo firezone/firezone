@@ -25,7 +25,7 @@ defmodule Web.SignIn do
       {:ok, socket}
     else
       _other ->
-        raise Web.LiveErrors.NotFoundError
+        raise Web.LiveErrors.NotFoundError, report_to_sentry: false
     end
   end
 
