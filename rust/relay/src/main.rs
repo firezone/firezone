@@ -397,9 +397,70 @@ where
                 return Poll::Ready(Ok(()));
             }
 
+            // Priority 1: Handle portal messages. If we don't do this eagerly, we might disconnect under load due to a false-positive "missing heartbeat reply".
+            match self.channel.as_mut().map(|c| c.poll(cx)) {
+                Some(Poll::Ready(result)) => {
+                    let event = result.context("Portal connection failed")?;
+                    self.handle_portal_event(event);
+
+                    continue;
+                }
+                Some(Poll::Pending) | None => {}
+            }
+
+            // Priority 2: Handle time-sensitive tasks:
+            if let Poll::Ready(deadline) = self.sleep.poll_unpin(cx) {
+                self.server.handle_timeout(deadline);
+                continue; // Handle potentially new commands.
+            }
+
+            // Priority 3: Log stats.
+            if self.stats_log_interval.poll_tick(cx).is_ready() {
+                let num_allocations = self.server.num_allocations();
+                let num_channels = self.server.num_active_channels();
+
+                let bytes_relayed_since_last_tick =
+                    self.server.num_relayed_bytes() - self.last_num_bytes_relayed;
+                self.last_num_bytes_relayed = self.server.num_relayed_bytes();
+
+                let avg_throughput = bytes_relayed_since_last_tick / STATS_LOG_INTERVAL.as_secs();
+
+                tracing::info!(target: "relay", "Allocations = {num_allocations} Channels = {num_channels} Throughput = {}", fmt_human_throughput(avg_throughput as f64));
+
+                continue;
+            }
+
+            // Priority 4: Check for shutdown signal.
+            #[cfg(unix)]
+            match self.sigterm.poll_recv(cx) {
+                Poll::Ready(Some(())) => {
+                    if self.shutting_down {
+                        tracing::info!("Forcing shutdown on repeated SIGTERM");
+
+                        return Poll::Ready(Ok(()));
+                    }
+
+                    tracing::info!(active_allocations = %self.server.num_allocations(), "Received SIGTERM, initiating graceful shutdown");
+
+                    self.shutting_down = true;
+
+                    if let Some(portal) = self.channel.as_mut() {
+                        match portal.close() {
+                            Ok(()) => {}
+                            Err(phoenix_channel::Connecting) => {
+                                self.channel = None; // If we are still connecting, just discard the websocket connection.
+                            }
+                        }
+                    }
+
+                    continue;
+                }
+                Poll::Ready(None) | Poll::Pending => {}
+            }
+
             ready!(self.sockets.flush(cx))?;
 
-            // Priority 1: Execute the pending commands of the server.
+            // Priority 5: Execute the pending commands of the server.
             if let Some(next_command) = self.server.next_command() {
                 match next_command {
                     Command::SendMessage { payload, recipient } => {
@@ -436,7 +497,7 @@ where
                 continue; // Attempt to process more commands.
             }
 
-            // Priority 2: Read from our sockets.
+            // Priority 6: Read from our sockets.
             //
             // We read the packet with an offset of 4 bytes so we can encode the channel-data header into that without re-allocating.
             // This only matters for relaying from an allocation to a client because the data coming in on an allocation is "raw" (i.e. unwrapped) application data.
@@ -518,68 +579,9 @@ where
                 Poll::Pending => {}
             }
 
-            // Priority 3: Check when we need to next be woken. This needs to happen after all state modifications.
+            // Priority 7: Check when we need to next be woken. This needs to happen after all state modifications.
             if let Some(timeout) = self.server.poll_timeout() {
                 Pin::new(&mut self.sleep).reset(timeout);
-                // Purposely no `continue` because we just change the state of `sleep` and we poll it below.
-            }
-
-            // Priority 4: Handle time-sensitive tasks:
-            if let Poll::Ready(deadline) = self.sleep.poll_unpin(cx) {
-                self.server.handle_timeout(deadline);
-                continue; // Handle potentially new commands.
-            }
-
-            // Priority 5: Handle portal messages
-            match self.channel.as_mut().map(|c| c.poll(cx)) {
-                Some(Poll::Ready(result)) => {
-                    let event = result.context("Portal connection failed")?;
-                    self.handle_portal_event(event);
-
-                    continue;
-                }
-                Some(Poll::Pending) | None => {}
-            }
-
-            #[cfg(unix)]
-            match self.sigterm.poll_recv(cx) {
-                Poll::Ready(Some(())) => {
-                    if self.shutting_down {
-                        tracing::info!("Forcing shutdown on repeated SIGTERM");
-
-                        return Poll::Ready(Ok(()));
-                    }
-
-                    tracing::info!(active_allocations = %self.server.num_allocations(), "Received SIGTERM, initiating graceful shutdown");
-
-                    self.shutting_down = true;
-
-                    if let Some(portal) = self.channel.as_mut() {
-                        match portal.close() {
-                            Ok(()) => {}
-                            Err(phoenix_channel::Connecting) => {
-                                self.channel = None; // If we are still connecting, just discard the websocket connection.
-                            }
-                        }
-                    }
-
-                    continue;
-                }
-                Poll::Ready(None) | Poll::Pending => {}
-            }
-
-            if self.stats_log_interval.poll_tick(cx).is_ready() {
-                let num_allocations = self.server.num_allocations();
-                let num_channels = self.server.num_active_channels();
-
-                let bytes_relayed_since_last_tick =
-                    self.server.num_relayed_bytes() - self.last_num_bytes_relayed;
-                self.last_num_bytes_relayed = self.server.num_relayed_bytes();
-
-                let avg_throughput = bytes_relayed_since_last_tick / STATS_LOG_INTERVAL.as_secs();
-
-                tracing::info!(target: "relay", "Allocations = {num_allocations} Channels = {num_channels} Throughput = {}", fmt_human_throughput(avg_throughput as f64));
-
                 continue;
             }
 
