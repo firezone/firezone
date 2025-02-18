@@ -585,10 +585,7 @@ impl IpPacket {
                     l4_proto,
                     raw: icmpv4.payload().to_vec(),
                 },
-                DestUnreachable::V4 {
-                    header: error,
-                    total_length: header.total_len(),
-                },
+                DestUnreachable::V4Unreachable(error),
             )));
         }
 

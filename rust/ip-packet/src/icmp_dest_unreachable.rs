@@ -7,20 +7,15 @@ use crate::{Layer4Protocol, Protocol};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DestUnreachable {
-    V4 {
-        header: icmpv4::DestUnreachableHeader,
-        total_length: u16,
-    },
+    V4Unreachable(icmpv4::DestUnreachableHeader),
     V6Unreachable(icmpv6::DestUnreachableCode),
-    V6PacketTooBig {
-        mtu: u32,
-    },
+    V6PacketTooBig { mtu: u32 },
 }
 
 impl DestUnreachable {
     pub fn into_icmp_v4_type(self) -> Result<Icmpv4Type> {
         let header = match self {
-            DestUnreachable::V4 { header, .. } => header,
+            DestUnreachable::V4Unreachable(header) => header,
             DestUnreachable::V6Unreachable(_) => bail!("Cannot translate from IPv6 to IPv4"),
             DestUnreachable::V6PacketTooBig { .. } => bail!("Cannot translate from IPv6 to IPv4"),
         };
@@ -30,7 +25,7 @@ impl DestUnreachable {
 
     pub fn into_icmp_v6_type(self) -> Result<Icmpv6Type> {
         match self {
-            DestUnreachable::V4 { .. } => {
+            DestUnreachable::V4Unreachable(_) => {
                 bail!("Cannot translate from IPv4 to IPv6")
             }
             DestUnreachable::V6Unreachable(code) => Ok(Icmpv6Type::DestinationUnreachable(code)),
