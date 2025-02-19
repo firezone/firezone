@@ -12,6 +12,22 @@ export default function Posts() {
   const [filters, setFilters] = useState("All Posts");
   const posts = [
     {
+      title: "Migrate your Internet Resource by March 15, 2024",
+      date: "February 16, 2024",
+      href: "/blog/migrate-your-internet-resource",
+      authorName: "Jamil Bou Kheir",
+      authorAvatarSrc: gravatar("jamil@firezone.dev"),
+      type: "Announcement",
+      src: "/images/blog/migrate-your-internet-resource/migrate-internet-resource.svg",
+      description: (
+        <p className="mb-2">
+          We're making some changes to the way Internet Resources work to
+          improve security and performance. Migrate your Internet Resources by
+          <strong>March 15, 2024</strong> to avoid any interruptions.
+        </p>
+      ),
+    },
+    {
       title: "September 2024 update",
       date: "September 2, 2024",
       href: "/blog/sep-2024-update",
