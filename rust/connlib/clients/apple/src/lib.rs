@@ -324,12 +324,8 @@ impl WrappedSession {
     }
 }
 
-fn err_to_string(result: Result<WrappedSession>) -> Result<WrappedSession, String> {
-    result.map_err(|e| {
-        tracing::error!("Failed to create session: {e:#}");
-
-        format!("{e:#}")
-    })
+fn err_to_string<T>(result: Result<T>) -> Result<T, String> {
+    result.map_err(|e| format!("{e:#}"))
 }
 
 /// Installs the `ring` crypto provider for rustls.
