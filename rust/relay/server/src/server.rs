@@ -13,6 +13,7 @@ use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
 use firezone_logging::err_with_src;
+use firezone_relay_ebpf_shared::{ClientAndChannel, PortAndPeer};
 use hex_display::HexDisplayExt as _;
 use opentelemetry::metrics::{Counter, UpDownCounter};
 use opentelemetry::KeyValue;
@@ -51,7 +52,7 @@ use uuid::Uuid;
 ///
 /// Additionally, we assume to have complete ownership over the port range `lowest_port` - `highest_port`.
 #[derive(Debug)]
-pub struct Server<R> {
+pub struct Server<'a, R> {
     decoder: client_message::Decoder,
     encoder: auth::MessageEncoder,
 
@@ -72,6 +73,9 @@ pub struct Server<R> {
     channels_by_client_and_number: BTreeMap<(ClientSocket, ChannelNumber), Channel>,
     /// Channel numbers are unique between clients and peers, thus indexed by both.
     channel_numbers_by_client_and_peer: HashMap<(ClientSocket, PeerSocket), ChannelNumber>,
+
+    channel_data_to_udp:
+        aya::maps::HashMap<&'a mut aya::maps::MapData, ClientAndChannel, PortAndPeer>,
 
     pending_commands: VecDeque<Command>,
 
@@ -144,7 +148,7 @@ const CHANNEL_BINDING_DURATION: Duration = Duration::from_secs(600);
 /// See <https://www.rfc-editor.org/rfc/rfc8656#section-12-14>.
 const CHANNEL_REBIND_TIMEOUT: Duration = Duration::from_secs(300);
 
-impl<R> Server<R>
+impl<'a, R> Server<'a, R>
 where
     R: Rng,
 {
@@ -161,6 +165,11 @@ where
         mut rng: R,
         listen_port: u16,
         ports: RangeInclusive<u16>,
+        channel_data_to_udp: aya::maps::HashMap<
+            &'a mut aya::maps::MapData,
+            ClientAndChannel,
+            PortAndPeer,
+        >,
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
 
@@ -199,6 +208,7 @@ where
             data_relayed_counter,
             data_relayed: 0,
             channel_and_client_by_port_and_peer: Default::default(),
+            channel_data_to_udp,
         }
     }
 
@@ -911,6 +921,23 @@ where
                 bound: true,
             },
         );
+
+        match (client.0, peer.0) {
+            (SocketAddr::V4(client), SocketAddr::V4(peer)) => {
+                self.channel_data_to_udp
+                    .insert(
+                        ClientAndChannel(
+                            client.into(),
+                            firezone_relay_ebpf_shared::ChannelNumber(requested_channel.value()),
+                        ),
+                        PortAndPeer(id.0, peer.into()),
+                        0,
+                    )
+                    .expect("failed to insert into eBPF map");
+            }
+            _ => {}
+        }
+
         debug_assert!(existing.is_none());
 
         let existing = self

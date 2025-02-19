@@ -45,7 +45,9 @@ tracing-stackdriver = { workspace = true, features = ["opentelemetry"] }
 tracing-subscriber = { workspace = true, features = ["env-filter", "json", "fmt"] }
 trackable = { workspace = true }
 url = { workspace = true }
+libc = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
+firezone-relay-ebpf-shared = { workspace = true, features = ["userspace"] }
 
 [dev-dependencies]
 difference = { workspace = true }

@@ -2333,10 +2333,12 @@ dependencies = [
  "env_logger",
  "firezone-bin-shared",
  "firezone-logging",
+ "firezone-relay-ebpf-shared",
  "firezone-telemetry",
  "futures",
  "hex",
  "hex-display",
+ "libc",
  "mio",
  "once_cell",
  "opentelemetry",
@@ -2372,8 +2374,16 @@ version = "0.1.0"
 dependencies = [
  "aya-ebpf",
  "aya-log-ebpf",
+ "firezone-relay-ebpf-shared",
  "network-types",
  "which 7.0.2",
+]
+
+[[package]]
+name = "firezone-relay-ebpf-shared"
+version = "0.1.0"
+dependencies = [
+ "aya",
 ]
 
 [[package]]

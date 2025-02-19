@@ -1,0 +1,10 @@
+[package]
+name = "firezone-relay-ebpf-shared"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+userspace = ["aya"]
+
+[dependencies]
+aya = { git = "https://github.com/aya-rs/aya", optional = true }

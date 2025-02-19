@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use anyhow::{bail, Context, Result};
-use aya::programs::{Xdp, XdpFlags};
+use aya::programs::{SchedClassifier, TcAttachType};
 use aya_log::EbpfLogger;
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
@@ -12,6 +12,7 @@ use firezone_relay::{
     sockets, AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack,
     PeerSocket, Server, Sleep, VERSION,
 };
+use firezone_relay_ebpf_shared::{ClientAndChannel, PortAndPeer};
 use firezone_telemetry::{Telemetry, RELAY_DSN};
 use futures::{future, FutureExt};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel};
@@ -102,6 +103,17 @@ fn main() {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
+    // Bump the memlock rlimit. This is needed for older kernels that don't use the
+    // new memcg based accounting, see https://lwn.net/Articles/837122/
+    let rlim = libc::rlimit {
+        rlim_cur: libc::RLIM_INFINITY,
+        rlim_max: libc::RLIM_INFINITY,
+    };
+    let ret = unsafe { libc::setrlimit(libc::RLIMIT_MEMLOCK, &rlim) };
+    if ret != 0 {
+        tracing::debug!("remove limit on locked memory failed, ret is: {}", ret);
+    }
+
     let args = Args::parse();
 
     let mut telemetry = Telemetry::default();
@@ -136,11 +148,17 @@ async fn try_main(args: Args) -> Result<()> {
         env!("OUT_DIR"),
         "/firezone-relay-ebpf-main"
     )))?;
-    EbpfLogger::init(&mut bpf)?;
-    let program: &mut Xdp = bpf.program_mut("handle_turn").unwrap().try_into()?;
+    let _ = EbpfLogger::init(&mut bpf);
+    let program: &mut SchedClassifier = bpf
+        .program_mut("handle_turn")
+        .context("No program")?
+        .try_into()?;
     program.load()?;
-    program.attach("eth0", XdpFlags::default())
-            .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
+    program.attach("eth0", TcAttachType::Ingress)?;
+
+    let channel_data_to_udp = aya::maps::HashMap::<_, ClientAndChannel, PortAndPeer>::try_from(
+        bpf.map_mut("CHANNEL_DATA_TO_UDP").context("no map")?,
+    )?;
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
@@ -156,6 +174,7 @@ async fn try_main(args: Args) -> Result<()> {
         make_rng(args.rng_seed),
         args.listen_port,
         args.lowest_port..=args.highest_port,
+        channel_data_to_udp,
     );
 
     let last_heartbeat_sent = Arc::new(Mutex::new(Option::<Instant>::None));
@@ -336,10 +355,10 @@ fn make_rng(seed: Option<u64>) -> StdRng {
 
 const MAX_UDP_SIZE: usize = 65536;
 
-struct Eventloop<R> {
+struct Eventloop<'a, R> {
     sockets: Sockets,
 
-    server: Server<R>,
+    server: Server<'a, R>,
     channel: Option<PhoenixChannel<JoinMessage, IngressMessage, (), NoParams>>,
     sleep: Sleep,
 
@@ -355,12 +374,12 @@ struct Eventloop<R> {
     buffer: [u8; MAX_UDP_SIZE],
 }
 
-impl<R> Eventloop<R>
+impl<'a, R> Eventloop<'a, R>
 where
     R: Rng,
 {
     fn new(
-        server: Server<R>,
+        server: Server<'a, R>,
         channel: PhoenixChannel<JoinMessage, IngressMessage, (), NoParams>,
         public_address: IpStack,
         last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
