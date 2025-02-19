@@ -127,7 +127,9 @@ resource "google_compute_reservation" "relay_reservation" {
 
   project = var.project_id
 
+  # IMPORTANT: Keep the instance_group_manager reservation name in sync with this one
   name = "relays-${element(each.value.zones, length(each.value.zones) - 1)}-${each.value.type}-${var.naming_suffix}"
+
   zone = element(each.value.zones, length(each.value.zones) - 1)
 
   specific_reservation_required = true
@@ -172,8 +174,10 @@ resource "google_compute_instance_template" "application" {
     type = "SPECIFIC_RESERVATION"
 
     specific_reservation {
-      key    = "compute.googleapis.com/reservation-name"
-      values = ["relays-${element(each.value.zones, length(each.value.zones) - 1)}-${each.value.type}"]
+      key = "compute.googleapis.com/reservation-name"
+
+      # Keep this up to date with the relay reservation name
+      values = ["relays-${element(each.value.zones, length(each.value.zones) - 1)}-${each.value.type}-${var.naming_suffix}"]
     }
   }
 
