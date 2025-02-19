@@ -20,6 +20,10 @@ enum AdapterError: Error {
   /// connlib failed to start
   case connlibConnectError(String)
 
+  case setDnsError(String)
+
+  case setDisabledResourcesError(String)
+
   var localizedDescription: String {
     switch self {
     case .invalidSession(let session):
@@ -27,6 +31,10 @@ enum AdapterError: Error {
       return message
     case .connlibConnectError(let error):
       return "connlib failed to start: \(error)"
+    case .setDnsError(let error):
+      return "failed to set new DNS serversn: \(error)"
+    case .setDisabledResourcesError(let error):
+      return "failed to set new disabled resources: \(error)"
     }
   }
 }
@@ -137,11 +145,11 @@ class Adapter {
            let jsonResolvers = String(data: encoded, encoding: .utf8)?.intoRustString() {
 
           do {
-            session?.setDns(jsonResolvers)
+            try session?.setDns(jsonResolvers)
           } catch let error {
             // `toString` needed to deep copy the string and avoid a possible dangling pointer
             let msg = (error as? RustString)?.toString() ?? "Unknown error"
-            Log.error(error)
+            Log.error(AdapterError.setDnsError(msg))
           }
 
           // Update our state tracker
@@ -314,11 +322,11 @@ class Adapter {
     }
 
     do {
-      session?.setDisabledResources(toSet)
+      try session?.setDisabledResources(toSet)
     } catch let error {
       // `toString` needed to deep copy the string and avoid a possible dangling pointer
       let msg = (error as? RustString)?.toString() ?? "Unknown error"
-      Log.error(error)
+      Log.error(AdapterError.setDisabledResourcesError(msg))
     }
   }
 }
