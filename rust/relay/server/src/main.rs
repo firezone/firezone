@@ -137,7 +137,7 @@ async fn try_main(args: Args) -> Result<()> {
         "/firezone-relay-ebpf-main"
     )))?;
     EbpfLogger::init(&mut bpf)?;
-    let program: &mut Xdp = bpf.program_mut("xdp_hello").unwrap().try_into()?;
+    let program: &mut Xdp = bpf.program_mut("handle_turn").unwrap().try_into()?;
     program.load()?;
     program.attach("eth0", XdpFlags::default())
             .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
