@@ -376,7 +376,7 @@ resource "google_compute_region_instance_group_manager" "application" {
 resource "google_compute_firewall" "stun-turn-ipv4" {
   project = var.project_id
 
-  name    = "${local.application_name}-firewall-lb-to-instances-ipv4"
+  name    = "${local.application_name}-firewall-lb-to-instances-ipv4-${var.naming_suffix}"
   network = var.network
 
   source_ranges = ["0.0.0.0/0"]
