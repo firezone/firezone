@@ -249,10 +249,11 @@ if config_env() == :prod do
 
   with api_external_url <- compile_config!(:api_external_url),
        api_external_url_host <- URI.parse(api_external_url).host,
-       environment_name <-
+       environment_name when environment_name in [:staging, :production] <-
          (case api_external_url_host do
             "api.firezone.dev" -> :production
             "api.firez.one" -> :staging
+            _ -> :unknown
           end) do
     config :sentry,
       environment_name: environment_name,
