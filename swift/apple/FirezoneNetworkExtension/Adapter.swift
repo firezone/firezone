@@ -136,7 +136,13 @@ class Adapter {
            let encoded = try? JSONEncoder().encode(resolvers),
            let jsonResolvers = String(data: encoded, encoding: .utf8)?.intoRustString() {
 
-          session?.setDns(jsonResolvers)
+          do {
+            session?.setDns(jsonResolvers)
+          } catch let error {
+            // `toString` needed to deep copy the string and avoid a possible dangling pointer
+            let msg = (error as? RustString)?.toString() ?? "Unknown error"
+            Log.error(error)
+          }
 
           // Update our state tracker
           self.lastFetchedResolvers = resolvers
@@ -307,7 +313,13 @@ class Adapter {
       fatalError("Should be able to encode 'disablingResources'")
     }
 
-    session?.setDisabledResources(toSet)
+    do {
+      session?.setDisabledResources(toSet)
+    } catch let error {
+      // `toString` needed to deep copy the string and avoid a possible dangling pointer
+      let msg = (error as? RustString)?.toString() ?? "Unknown error"
+      Log.error(error)
+    }
   }
 }
 
