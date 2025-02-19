@@ -1,5 +1,9 @@
 [target.x86_64-unknown-linux-musl]
-rustflags="-C force-frame-pointers=yes"
+rustflags = "-C force-frame-pointers=yes"
 
 [target.x86_64-unknown-linux-gnu]
-rustflags="-C force-frame-pointers=yes"
+rustflags = "-C force-frame-pointers=yes"
+
+[unstable]
+build-std = ["core"]
+build-std-features = ["panic_immediate_abort"]

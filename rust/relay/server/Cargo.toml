@@ -50,6 +50,10 @@ difference = { workspace = true }
 env_logger = { workspace = true }
 test-strategy = { workspace = true }
 
+[build-dependencies]
+aya-build = { git = "https://github.com/aya-rs/aya" }
+anyhow = "1"
+
 [[test]]
 name = "regression"
 required-features = ["proptest"]
