@@ -62,9 +62,13 @@ data "google_compute_image" "coreos" {
 resource "google_service_account" "application" {
   project = var.project_id
 
-  account_id   = "app-${local.application_name}"
+  account_id   = "app-${local.application_name}-${var.naming_suffix}"
   display_name = "${local.application_name} app"
   description  = "Service account for ${local.application_name} application instances."
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 ## Allow application service account to pull images from the container registry
@@ -121,7 +125,6 @@ resource "google_project_iam_member" "cloudtrace" {
   member = "serviceAccount:${google_service_account.application.email}"
 }
 
-
 resource "google_compute_reservation" "relay_reservation" {
   for_each = var.instances
 
@@ -140,6 +143,10 @@ resource "google_compute_reservation" "relay_reservation" {
     instance_properties {
       machine_type = each.value.type
     }
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
@@ -357,6 +364,10 @@ resource "google_compute_region_instance_group_manager" "application" {
   depends_on = [
     google_compute_instance_template.application
   ]
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # TODO: Rate limit requests to the relays by source IP address
@@ -375,12 +386,16 @@ resource "google_compute_firewall" "stun-turn-ipv4" {
     protocol = "udp"
     ports    = ["3478", "49152-65535"]
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "google_compute_firewall" "stun-turn-ipv6" {
   project = var.project_id
 
-  name    = "${local.application_name}-firewall-lb-to-instances-ipv6"
+  name    = "${local.application_name}-firewall-lb-to-instances-ipv6-${var.naming_suffix}"
   network = var.network
 
   source_ranges = ["::/0"]
@@ -390,13 +405,17 @@ resource "google_compute_firewall" "stun-turn-ipv6" {
     protocol = "udp"
     ports    = ["3478", "49152-65535"]
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 ## Open metrics port for the health checks
 resource "google_compute_firewall" "http-health-checks" {
   project = var.project_id
 
-  name    = "${local.application_name}-healthcheck"
+  name    = "${local.application_name}-healthcheck-${var.naming_suffix}"
   network = var.network
 
   source_ranges = local.google_health_check_ip_ranges
@@ -406,13 +425,17 @@ resource "google_compute_firewall" "http-health-checks" {
     protocol = var.health_check.protocol
     ports    = [var.health_check.port]
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Allow outbound traffic
 resource "google_compute_firewall" "egress-ipv4" {
   project = var.project_id
 
-  name      = "${local.application_name}-egress-ipv4"
+  name      = "${local.application_name}-egress-ipv4-${var.naming_suffix}"
   network   = var.network
   direction = "EGRESS"
 
@@ -422,12 +445,16 @@ resource "google_compute_firewall" "egress-ipv4" {
   allow {
     protocol = "all"
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "google_compute_firewall" "egress-ipv6" {
   project = var.project_id
 
-  name      = "${local.application_name}-egress-ipv6"
+  name      = "${local.application_name}-egress-ipv6-${var.naming_suffix}"
   network   = var.network
   direction = "EGRESS"
 
@@ -436,5 +463,9 @@ resource "google_compute_firewall" "egress-ipv6" {
 
   allow {
     protocol = "all"
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
