@@ -473,6 +473,14 @@ services:
     networks:
       app:
         ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-172.28.0.101}
+    privileged: true
+    cap_add:
+      - SYS_ADMIN
+      - SYS_RESOURCE
+      - NET_ADMIN
+    volumes:
+      - /sys/kernel/debug:/sys/kernel/debug
+      - /sys/fs/bpf:/sys/fs/bpf
 
   relay-2:
     environment:

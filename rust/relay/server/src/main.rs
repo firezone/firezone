@@ -1,6 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use anyhow::{bail, Context, Result};
+use aya::programs::{Xdp, XdpFlags};
+use aya_log::EbpfLogger;
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::http_health_check;
@@ -129,6 +131,16 @@ fn main() {
 
 async fn try_main(args: Args) -> Result<()> {
     setup_tracing(&args)?;
+
+    let mut bpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
+        env!("OUT_DIR"),
+        "/firezone-relay-ebpf-main"
+    )))?;
+    EbpfLogger::init(&mut bpf)?;
+    let program: &mut Xdp = bpf.program_mut("xdp_hello").unwrap().try_into()?;
+    program.load()?;
+    program.attach("eth0", XdpFlags::default())
+            .context("failed to attach the XDP program with default flags - try changing XdpFlags::default() to XdpFlags::SKB_MODE")?;
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },

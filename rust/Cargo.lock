@@ -208,6 +208,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "assert_matches"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b34d609dfbaf33d6889b2b7106d3ca345eacad44200913df5ba02bfd31d2ba9"
+
+[[package]]
 name = "async-broadcast"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -470,6 +476,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "aya"
+version = "0.13.1"
+source = "git+https://github.com/aya-rs/aya#8724cc1b2d61a006f74bc0aab77a5df6dd6b60f3"
+dependencies = [
+ "assert_matches",
+ "aya-obj",
+ "bitflags 2.6.0",
+ "bytes",
+ "hashbrown 0.15.2",
+ "libc",
+ "log",
+ "object",
+ "once_cell",
+ "thiserror 2.0.6",
+ "tokio",
+]
+
+[[package]]
 name = "aya-build"
 version = "0.1.2"
 source = "git+https://github.com/aya-rs/aya#8724cc1b2d61a006f74bc0aab77a5df6dd6b60f3"
@@ -514,6 +538,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "aya-log"
+version = "0.2.1"
+source = "git+https://github.com/aya-rs/aya#8724cc1b2d61a006f74bc0aab77a5df6dd6b60f3"
+dependencies = [
+ "aya",
+ "aya-log-common",
+ "bytes",
+ "log",
+ "thiserror 2.0.6",
+ "tokio",
+]
+
+[[package]]
 name = "aya-log-common"
 version = "0.1.15"
 source = "git+https://github.com/aya-rs/aya#8724cc1b2d61a006f74bc0aab77a5df6dd6b60f3"
@@ -549,6 +586,18 @@ version = "0.1.13"
 source = "git+https://github.com/aya-rs/aya#8724cc1b2d61a006f74bc0aab77a5df6dd6b60f3"
 dependencies = [
  "aya-log-common",
+]
+
+[[package]]
+name = "aya-obj"
+version = "0.2.1"
+source = "git+https://github.com/aya-rs/aya#8724cc1b2d61a006f74bc0aab77a5df6dd6b60f3"
+dependencies = [
+ "bytes",
+ "hashbrown 0.15.2",
+ "log",
+ "object",
+ "thiserror 2.0.6",
 ]
 
 [[package]]
@@ -2271,7 +2320,9 @@ name = "firezone-relay"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aya",
  "aya-build",
+ "aya-log",
  "backoff",
  "base64 0.22.1",
  "bytecodec",
@@ -4219,7 +4270,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
 dependencies = [
- "proc-macro-crate 1.3.1",
+ "proc-macro-crate 2.0.0",
  "proc-macro2",
  "quote",
  "syn 2.0.87",
@@ -4420,6 +4471,9 @@ version = "0.36.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aedf0a2d09c573ed1d8d85b30c119153926a2b36dce0ab28322c09a117a4683e"
 dependencies = [
+ "crc32fast",
+ "hashbrown 0.15.2",
+ "indexmap 2.6.0",
  "memchr",
 ]
 
