@@ -127,7 +127,7 @@ resource "google_compute_reservation" "relay_reservation" {
 
   project = var.project_id
 
-  name = "relays-${element(each.value.zones, length(each.value.zones) - 1)}-${each.value.type}"
+  name = "relays-${element(each.value.zones, length(each.value.zones) - 1)}-${each.value.type}-${var.naming_suffix}"
   zone = element(each.value.zones, length(each.value.zones) - 1)
 
   specific_reservation_required = true
