@@ -247,29 +247,16 @@ if config_env() == :prod do
 
   # Sentry
 
-  # Enable Sentry by default in runtime prod env
-  config :sentry,
-    dsn:
-      "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
-
-  # Environment-specific Sentry overrides
-  if api_external_url = compile_config!(:api_external_url) do
-    api_external_url_host = URI.parse(api_external_url).host
-
-    # Set environment_name based on which API URL we're using
-    sentry_environment_name =
-      case api_external_url_host do
-        "api.firezone.dev" -> :production
-        "api.firez.one" -> :staging
-        _ -> :unknown
-      end
-
-    config :sentry, :environment_name, sentry_environment_name
-
-    # Disable Sentry for unknown environments
-    # Comment this out to enable Sentry in development and test environments
-    if sentry_environment_name == :unknown do
-      config :sentry, :dsn, nil
-    end
+  with api_external_url <- compile_config!(:api_external_url),
+       api_external_url_host <- URI.parse(api_external_url).host,
+       environment_name <-
+         (case api_external_url_host do
+            "api.firezone.dev" -> :production
+            "api.firez.one" -> :staging
+          end) do
+    config :sentry,
+      environment_name: environment_name,
+      dsn:
+        "https://29f4ab7c6c473c17bc01f8aeffb0ac16@o4507971108339712.ingest.us.sentry.io/4508756715569152"
   end
 end
