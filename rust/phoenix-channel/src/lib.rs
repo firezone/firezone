@@ -434,8 +434,6 @@ where
                         let user_agent = self.user_agent.clone();
                         let socket_factory = self.socket_factory.clone();
 
-                        tracing::debug!(?backoff, max_elapsed_time = ?reconnect_backoff.max_elapsed_time, "Reconnecting to portal on transient client error: {}", err_with_src(&e));
-
                         self.state = State::Connecting(Box::pin(async move {
                             tokio::time::sleep(backoff).await;
                             create_and_connect_websocket(
@@ -448,7 +446,12 @@ where
                             .await
                         }));
 
-                        continue;
+                        return Poll::Ready(Ok(Event::Hiccup {
+                            backoff,
+                            max_elapsed_time: reconnect_backoff.max_elapsed_time,
+                            error: anyhow::Error::new(e)
+                                .context("Reconnecting to portal on transient error"),
+                        }));
                     }
                     Poll::Pending => {
                         // Save a waker in case we want to reset the `Connecting` state while we are waiting.
@@ -690,6 +693,11 @@ pub enum Event<TInboundMsg, TOutboundRes> {
     InboundMessage {
         topic: String,
         msg: TInboundMsg,
+    },
+    Hiccup {
+        backoff: Duration,
+        max_elapsed_time: Option<Duration>,
+        error: anyhow::Error,
     },
     /// The connection was closed successfully.
     Closed,
