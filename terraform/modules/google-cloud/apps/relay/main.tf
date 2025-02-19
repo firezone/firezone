@@ -276,7 +276,7 @@ resource "google_compute_instance_template" "application" {
 resource "google_compute_health_check" "port" {
   project = var.project_id
 
-  name = "${local.application_name}-${var.health_check.name}"
+  name = "${local.application_name}-${var.health_check.name}-${var.naming_suffix}"
 
   check_interval_sec  = var.health_check.check_interval_sec != null ? var.health_check.check_interval_sec : 5
   timeout_sec         = var.health_check.timeout_sec != null ? var.health_check.timeout_sec : 5
