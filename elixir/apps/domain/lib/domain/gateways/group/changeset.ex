@@ -37,7 +37,7 @@ defmodule Domain.Gateways.Group.Changeset do
     |> put_default_value(:name, &Domain.NameGenerator.generate/0)
     |> validate_required(@fields)
     |> validate_length(:name, min: 1, max: 64)
-    |> unique_constraint(:name, name: :gateway_groups_account_id_name_index)
+    |> unique_constraint(:name, name: :gateway_groups_account_id_name_managed_by_index)
   end
 
   def delete(%Gateways.Group{} = group) do
