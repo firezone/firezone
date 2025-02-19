@@ -77,11 +77,12 @@ impl State {
     fn connect(
         url: Url,
         addresses: Vec<SocketAddr>,
+        host: String,
         user_agent: String,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> Self {
         Self::Connecting(
-            create_and_connect_websocket(url, addresses, user_agent, socket_factory).boxed(),
+            create_and_connect_websocket(url, addresses, host, user_agent, socket_factory).boxed(),
         )
     }
 }
@@ -89,17 +90,18 @@ impl State {
 async fn create_and_connect_websocket(
     url: Url,
     addresses: Vec<SocketAddr>,
+    host: String,
     user_agent: String,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 ) -> Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError> {
-    tracing::debug!(host = url.host().map(tracing::field::display), ?addresses, %user_agent, "Connecting to portal");
+    tracing::debug!(%host, ?addresses, %user_agent, "Connecting to portal");
 
     let duration = Duration::from_secs(5);
     let socket = tokio::time::timeout(duration, connect(addresses, &*socket_factory))
         .await
         .map_err(|_| InternalError::Timeout { duration })??;
 
-    let (stream, _) = client_async_tls(make_request(url, user_agent)?, socket)
+    let (stream, _) = client_async_tls(make_request(url, host, user_agent)?, socket)
         .await
         .map_err(InternalError::WebSocket)?;
 
@@ -158,7 +160,6 @@ enum InternalError {
     MissedHeartbeat,
     CloseMessage,
     StreamClosed,
-    InvalidUrl,
     FailedToBuildRequest(tokio_tungstenite::tungstenite::http::Error),
     SocketConnection(Vec<(SocketAddr, std::io::Error)>),
     Timeout { duration: Duration },
@@ -182,7 +183,6 @@ impl fmt::Display for InternalError {
             InternalError::MissedHeartbeat => write!(f, "portal did not respond to our heartbeat"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
             InternalError::StreamClosed => write!(f, "websocket stream was closed"),
-            InternalError::InvalidUrl => write!(f, "failed to resolve url"),
             InternalError::SocketConnection(errors) => {
                 write!(
                     f,
@@ -214,7 +214,6 @@ impl std::error::Error for InternalError {
             InternalError::MissedHeartbeat => None,
             InternalError::CloseMessage => None,
             InternalError::StreamClosed => None,
-            InternalError::InvalidUrl => None,
             InternalError::Timeout { .. } => None,
         }
     }
@@ -348,6 +347,7 @@ where
         self.state = State::connect(
             url.clone(),
             self.socket_addresses(),
+            self.host(),
             user_agent,
             self.socket_factory.clone(),
         );
@@ -418,6 +418,7 @@ where
                     }
                     Poll::Ready(Err(e)) => {
                         let socket_addresses = self.socket_addresses();
+                        let host = self.host();
 
                         // If we don't have a backoff yet, this is the first error so create one.
                         let reconnect_backoff = self
@@ -445,6 +446,7 @@ where
                             create_and_connect_websocket(
                                 secret_url,
                                 socket_addresses,
+                                host,
                                 user_agent,
                                 socket_factory,
                             )
@@ -662,6 +664,14 @@ where
             .map(|ip| SocketAddr::new(*ip, port))
             .collect()
     }
+
+    fn host(&self) -> String {
+        self.url_prototype
+            .expose_secret()
+            .host_and_port()
+            .0
+            .to_owned()
+    }
 }
 
 #[derive(Debug)]
@@ -804,17 +814,14 @@ impl<T, R> PhoenixMessage<T, R> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(url: Url, user_agent: String) -> Result<Request, InternalError> {
+fn make_request(url: Url, host: String, user_agent: String) -> Result<Request, InternalError> {
     let mut r = [0u8; 16];
     OsRng.fill_bytes(&mut r);
     let key = base64::engine::general_purpose::STANDARD.encode(r);
 
     let request = Request::builder()
         .method("GET")
-        .header(
-            "Host",
-            url.host().ok_or(InternalError::InvalidUrl)?.to_string(),
-        )
+        .header("Host", host)
         .header("Connection", "Upgrade")
         .header("Upgrade", "websocket")
         .header("Sec-WebSocket-Version", "13")
