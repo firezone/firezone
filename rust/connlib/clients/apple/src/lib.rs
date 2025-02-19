@@ -301,6 +301,8 @@ impl WrappedSession {
     }
 
     fn set_dns(&mut self, dns_servers: String) {
+        tracing::debug!(%dns_servers);
+
         let dns_servers =
             serde_json::from_str(&dns_servers).expect("Failed to deserialize DNS servers");
 
@@ -308,6 +310,8 @@ impl WrappedSession {
     }
 
     fn set_disabled_resources(&mut self, disabled_resources: String) {
+        tracing::debug!(%disabled_resources);
+
         let disabled_resources = serde_json::from_str(&disabled_resources)
             .expect("Failed to deserialize disabled resources");
 
