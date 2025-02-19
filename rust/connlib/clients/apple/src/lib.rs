@@ -73,11 +73,11 @@ mod ffi {
         //
         // `dns_servers` must not have any IPv6 scopes
         // <https://github.com/firezone/firezone/issues/4350>
-        #[swift_bridge(swift_name = "setDns")]
-        fn set_dns(&mut self, dns_servers: String);
+        #[swift_bridge(swift_name = "setDns", return_with = err_to_string)]
+        fn set_dns(&mut self, dns_servers: String) -> Result<(), String>;
 
-        #[swift_bridge(swift_name = "setDisabledResources")]
-        fn set_disabled_resources(&mut self, disabled_resources: String);
+        #[swift_bridge(swift_name = "setDisabledResources", return_with = err_to_string)]
+        fn set_disabled_resources(&mut self, disabled_resources: String) -> Result<(), String>;
         fn disconnect(self);
     }
 
@@ -300,22 +300,26 @@ impl WrappedSession {
         self.inner.reset()
     }
 
-    fn set_dns(&mut self, dns_servers: String) {
+    fn set_dns(&mut self, dns_servers: String) -> Result<()> {
         tracing::debug!(%dns_servers);
 
-        let dns_servers =
-            serde_json::from_str(&dns_servers).expect("Failed to deserialize DNS servers");
+        let dns_servers = serde_json::from_str(&dns_servers)
+            .context("Failed to deserialize DNS servers from JSON")?;
 
-        self.inner.set_dns(dns_servers)
+        self.inner.set_dns(dns_servers);
+
+        Ok(())
     }
 
-    fn set_disabled_resources(&mut self, disabled_resources: String) {
+    fn set_disabled_resources(&mut self, disabled_resources: String) -> Result<()> {
         tracing::debug!(%disabled_resources);
 
         let disabled_resources = serde_json::from_str(&disabled_resources)
-            .expect("Failed to deserialize disabled resources");
+            .context("Failed to deserialize disabled resources from JSON")?;
 
-        self.inner.set_disabled_resources(disabled_resources)
+        self.inner.set_disabled_resources(disabled_resources);
+
+        Ok(())
     }
 
     fn disconnect(mut self) {
