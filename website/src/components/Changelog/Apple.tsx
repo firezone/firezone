@@ -21,7 +21,7 @@ export default function Apple() {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="8202">
-          Fixes a crash when the system reports invalid DNS servers.
+          Fixes a crash that occurred if the system reports invalid DNS servers.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.4.3" date={new Date("2025-02-16")}>
