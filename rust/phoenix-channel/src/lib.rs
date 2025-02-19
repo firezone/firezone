@@ -101,7 +101,7 @@ async fn create_and_connect_websocket(
         .await
         .map_err(|_| InternalError::Timeout { duration })??;
 
-    let (stream, _) = client_async_tls(make_request(url, host, user_agent)?, socket)
+    let (stream, _) = client_async_tls(make_request(url, host, user_agent), socket)
         .await
         .map_err(InternalError::WebSocket)?;
 
@@ -160,7 +160,6 @@ enum InternalError {
     MissedHeartbeat,
     CloseMessage,
     StreamClosed,
-    FailedToBuildRequest(tokio_tungstenite::tungstenite::http::Error),
     SocketConnection(Vec<(SocketAddr, std::io::Error)>),
     Timeout { duration: Duration },
 }
@@ -196,9 +195,6 @@ impl fmt::Display for InternalError {
             InternalError::Timeout { duration, .. } => {
                 write!(f, "operation timed out after {duration:?}")
             }
-            InternalError::FailedToBuildRequest(_) => {
-                write!(f, "failed to build request")
-            }
         }
     }
 }
@@ -209,7 +205,6 @@ impl std::error::Error for InternalError {
             InternalError::WebSocket(tokio_tungstenite::tungstenite::Error::Http(_)) => None,
             InternalError::WebSocket(e) => Some(e),
             InternalError::Serde(e) => Some(e),
-            InternalError::FailedToBuildRequest(e) => Some(e),
             InternalError::SocketConnection(_) => None,
             InternalError::MissedHeartbeat => None,
             InternalError::CloseMessage => None,
@@ -814,12 +809,12 @@ impl<T, R> PhoenixMessage<T, R> {
 }
 
 // This is basically the same as tungstenite does but we add some new headers (namely user-agent)
-fn make_request(url: Url, host: String, user_agent: String) -> Result<Request, InternalError> {
+fn make_request(url: Url, host: String, user_agent: String) -> Request {
     let mut r = [0u8; 16];
     OsRng.fill_bytes(&mut r);
     let key = base64::engine::general_purpose::STANDARD.encode(r);
 
-    let request = Request::builder()
+    Request::builder()
         .method("GET")
         .header("Host", host)
         .header("Connection", "Upgrade")
@@ -829,9 +824,7 @@ fn make_request(url: Url, host: String, user_agent: String) -> Result<Request, I
         .header("User-Agent", user_agent)
         .uri(url.to_string())
         .body(())
-        .map_err(InternalError::FailedToBuildRequest)?;
-
-    Ok(request)
+        .expect("should always be able to build a request if we only pass strings to it")
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
