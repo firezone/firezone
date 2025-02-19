@@ -125,10 +125,6 @@ async fn connect(
         }
     }
 
-    if errors.is_empty() {
-        return Err(InternalError::InvalidUrl);
-    }
-
     Err(InternalError::SocketConnection(errors))
 }
 
