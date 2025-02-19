@@ -126,7 +126,7 @@ defmodule Web.Settings.DNS do
               </div>
               <p class="text-sm text-neutral-500">
                 <strong>Note:</strong>
-                It is highly recommended to to specify <strong>both</strong>
+                It is highly recommended to specify <strong>both</strong>
                 IPv4 and IPv6 addresses when adding upstream resolvers. Otherwise, Clients without IPv4
                 or IPv6 connectivity may not be able to resolve DNS queries.
               </p>
