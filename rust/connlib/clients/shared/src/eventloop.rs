@@ -193,6 +193,11 @@ where
             phoenix_channel::Event::Closed => {
                 unimplemented!("Client never actively closes the portal connection")
             }
+            phoenix_channel::Event::Hiccup {
+                backoff,
+                max_elapsed_time,
+                error,
+            } => tracing::debug!(?backoff, ?max_elapsed_time, "{error:#}"),
         }
     }
 

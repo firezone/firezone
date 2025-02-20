@@ -618,6 +618,11 @@ where
             Event::Closed => {
                 self.channel = None;
             }
+            Event::Hiccup {
+                backoff,
+                max_elapsed_time,
+                error,
+            } => tracing::warn!(?backoff, ?max_elapsed_time, "{error:#}"),
         }
     }
 }
