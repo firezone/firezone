@@ -4683,6 +4683,7 @@ dependencies = [
 name = "phoenix-channel"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "backoff",
  "base64 0.22.1",
  "firezone-logging",

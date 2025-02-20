@@ -376,6 +376,11 @@ impl Eventloop {
             phoenix_channel::Event::SuccessResponse { res: (), .. }
             | phoenix_channel::Event::HeartbeatSent
             | phoenix_channel::Event::JoinedRoom { .. } => {}
+            phoenix_channel::Event::Hiccup {
+                backoff,
+                max_elapsed_time,
+                error,
+            } => tracing::debug!(?backoff, ?max_elapsed_time, "{error:#}"),
         }
     }
 
