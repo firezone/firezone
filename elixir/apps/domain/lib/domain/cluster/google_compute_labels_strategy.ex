@@ -115,7 +115,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   # We use Google Compute API to fetch the list of instances in all regions of a project,
   # instances are filtered by cluster name and status, and then we use this instance labels
   # to figure out the actual node name (which is set in `rel/env.sh.eex` by also reading node metadata).
-  def fetch_nodes(state, remaining_retry_count \\ 3) do
+  def fetch_nodes(state, remaining_retry_count \\ 10) do
     with {:ok, nodes} <- list_google_cloud_cluster_nodes(state) do
       {:ok, nodes, state}
     else
@@ -132,13 +132,15 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
 
       {:error, reason} ->
         if remaining_retry_count == 0 do
-          Logger.error("Can't fetch list of nodes or access token: #{inspect(reason)}",
+          Logger.error("Can't fetch list of nodes or access token",
+            reason: inspect(reason),
             module: __MODULE__
           )
 
           {:error, reason}
         else
-          Logger.warning("Can't fetch list of nodes or access token: #{inspect(reason)}",
+          Logger.info("Can't fetch list of nodes or access token",
+            reason: inspect(reason),
             module: __MODULE__
           )
 
