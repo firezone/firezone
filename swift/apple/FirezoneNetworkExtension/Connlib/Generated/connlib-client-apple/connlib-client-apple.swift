@@ -46,12 +46,12 @@ extension WrappedSessionRefMut {
         __swift_bridge__$WrappedSession$reset(ptr)
     }
 
-    public func setDns<GenericIntoRustString: IntoRustString>(_ dns_servers: GenericIntoRustString) {
-        __swift_bridge__$WrappedSession$set_dns(ptr, { let rustString = dns_servers.intoRustString(); rustString.isOwned = false; return rustString.ptr }())
+    public func setDns<GenericIntoRustString: IntoRustString>(_ dns_servers: GenericIntoRustString) throws -> () {
+        try { let val = __swift_bridge__$WrappedSession$set_dns(ptr, { let rustString = dns_servers.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); if val != nil { throw RustString(ptr: val!) } else { return } }()
     }
 
-    public func setDisabledResources<GenericIntoRustString: IntoRustString>(_ disabled_resources: GenericIntoRustString) {
-        __swift_bridge__$WrappedSession$set_disabled_resources(ptr, { let rustString = disabled_resources.intoRustString(); rustString.isOwned = false; return rustString.ptr }())
+    public func setDisabledResources<GenericIntoRustString: IntoRustString>(_ disabled_resources: GenericIntoRustString) throws -> () {
+        try { let val = __swift_bridge__$WrappedSession$set_disabled_resources(ptr, { let rustString = disabled_resources.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); if val != nil { throw RustString(ptr: val!) } else { return } }()
     }
 }
 public class WrappedSessionRef {
