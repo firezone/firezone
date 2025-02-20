@@ -28,9 +28,10 @@ struct FirezoneApp: App {
     _store = StateObject(wrappedValue: store)
     _appViewModel = StateObject(wrappedValue: AppViewModel(favorites: favorites, store: store))
 
-    #if os(macOS)
-      appDelegate.store = store
-    #endif
+#if os(macOS)
+    appDelegate.store = store
+    appDelegate.favorites = favorites
+#endif
   }
 
   var body: some Scene {
@@ -58,7 +59,7 @@ struct FirezoneApp: App {
       "Settings",
       id: AppViewModel.WindowDefinition.settings.identifier
     ) {
-      SettingsView(favorites: appDelegate.favorites, model: SettingsViewModel(store: store))
+      SettingsView(favorites: favorites, model: SettingsViewModel(store: store))
     }
     .handlesExternalEvents(
       matching: [AppViewModel.WindowDefinition.settings.externalEventMatchString]
@@ -70,12 +71,13 @@ struct FirezoneApp: App {
 #if os(macOS)
   @MainActor
   final class AppDelegate: NSObject, NSApplicationDelegate {
-    var favorites: Favorites = Favorites()
+    var favorites: Favorites?
     var menuBar: MenuBar?
-    public var store: Store?
+    var store: Store?
 
     func applicationDidFinishLaunching(_: Notification) {
-      if let store = store {
+      if let store,
+         let favorites {
         menuBar = MenuBar(model: SessionViewModel(favorites: favorites, store: store))
       }
 
