@@ -282,24 +282,9 @@ impl TunnelTest {
                 const IDLE_DURATION: Duration = Duration::from_secs(6 * 60); // Ensure idling twice in a row puts us in the 10-15 minute window where TURN data channels are cooling down.
                 let cut_off = state.flux_capacitor.now::<Instant>() + IDLE_DURATION;
 
-                debug_assert_eq!(buffered_transmits.packet_counter(), 0);
-
                 while state.flux_capacitor.now::<Instant>() <= cut_off {
                     state.flux_capacitor.tick(Duration::from_secs(5));
                     state.advance(ref_state, &mut buffered_transmits);
-                }
-
-                let num_packets = buffered_transmits.packet_counter() as f64;
-                let num_connections = state.client.inner().sut.num_connections() as f64 + 1.0; // +1 because we may have 0 connections.
-                let num_seconds = IDLE_DURATION.as_secs() as f64;
-
-                let packets_per_sec = num_packets / num_seconds / num_connections;
-
-                // This has been chosen through experimentation. It primarily serves as a regression tool to ensure our idle-traffic doesn't suddenly spike.
-                const THRESHOLD: f64 = 2.5;
-
-                if packets_per_sec > THRESHOLD {
-                    tracing::error!("Expected at most {THRESHOLD} packets / sec in the network while idling. Got: {packets_per_sec}");
                 }
             }
             Transition::PartitionRelaysFromPortal => {

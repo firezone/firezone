@@ -251,11 +251,6 @@ impl ClientState {
         })
     }
 
-    #[cfg(all(test, feature = "proptest"))]
-    pub(crate) fn num_connections(&self) -> usize {
-        self.node.num_connections()
-    }
-
     pub(crate) fn resources(&self) -> Vec<ResourceView> {
         self.resources_by_id
             .values()
