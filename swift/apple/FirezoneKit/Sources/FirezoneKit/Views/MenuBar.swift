@@ -37,27 +37,39 @@ public final class MenuBar: NSObject, ObservableObject {
 
   @ObservedObject var model: SessionViewModel
 
-  private lazy var signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
-  private lazy var signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
-  private lazy var signedOutIconNotification = NSImage(named: "MenuBarIconSignedOutNotification")
-  private lazy var signedInConnectedIconNotification = NSImage(named: "MenuBarIconSignedInConnectedNotification")
-
-  private lazy var connectingAnimationImages = [
-    NSImage(named: "MenuBarIconConnecting1"),
-    NSImage(named: "MenuBarIconConnecting2"),
-    NSImage(named: "MenuBarIconConnecting3")
-  ]
+  private var signedOutIcon: NSImage?
+  private var signedInConnectedIcon: NSImage?
+  private var signedOutIconNotification: NSImage?
+  private var signedInConnectedIconNotification: NSImage?
+  private var siteOnlineIcon: NSImage?
+  private var siteOfflineIcon: NSImage?
+  private var siteUnknownIcon: NSImage?
+  private enum AnimationImageIndex: Int {
+    case first
+    case second
+    case last
+  }
+  private var connectingAnimationImages: [AnimationImageIndex: NSImage?] = [:]
   private var connectingAnimationImageIndex: Int = 0
   private var connectingAnimationTimer: Timer?
 
   public init(model: SessionViewModel) {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     self.model = model
+    self.signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
+    self.signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
+    self.signedOutIconNotification = NSImage(named: "MenuBarIconSignedOutNotification")
+    self.signedInConnectedIconNotification = NSImage(named: "MenuBarIconSignedInConnectedNotification")
+    self.siteOnlineIcon = NSImage(named: NSImage.statusAvailableName)
+    self.siteOfflineIcon = NSImage(named: NSImage.statusUnavailableName)
+    self.siteUnknownIcon = NSImage(named: NSImage.statusNoneName)
+    self.connectingAnimationImages[.first] = NSImage(named: "MenuBarIconConnecting1")
+    self.connectingAnimationImages[.second] = NSImage(named: "MenuBarIconConnecting2")
+    self.connectingAnimationImages[.last] = NSImage(named: "MenuBarIconConnecting3")
 
     super.init()
 
     updateStatusItemIcon()
-
     createMenu()
     setupObservers()
   }
@@ -349,7 +361,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private func getStatusIcon(status: NEVPNStatus?, notification: Bool) -> NSImage? {
     if status == .connecting || status == .disconnecting || status == .reasserting {
-      return self.connectingAnimationImages.last ?? nil
+      return self.connectingAnimationImages[.last] ?? nil
     }
 
     switch status {
@@ -382,9 +394,12 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func connectingAnimationShowNextFrame() {
-    statusItem.button?.image = connectingAnimationImages[connectingAnimationImageIndex]
-    connectingAnimationImageIndex =
-    (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
+    guard let currentKey = AnimationImageIndex(rawValue: connectingAnimationImageIndex),
+          let image = connectingAnimationImages[currentKey]
+    else { return }
+
+    statusItem.button?.image = image
+    connectingAnimationImageIndex = (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
   }
 
   private func updateSignInMenuItems(status: NEVPNStatus?) {
@@ -772,13 +787,9 @@ public final class MenuBar: NSObject, ObservableObject {
       siteStatusItem.state = statusToState(status: resource.status)
       siteStatusItem.isEnabled = true
       siteStatusItem.target = self
-      if let onImage = NSImage(named: NSImage.statusAvailableName),
-         let offImage = NSImage(named: NSImage.statusUnavailableName),
-         let mixedImage = NSImage(named: NSImage.statusNoneName) {
-        siteStatusItem.onStateImage = onImage
-        siteStatusItem.offStateImage = offImage
-        siteStatusItem.mixedStateImage = mixedImage
-      }
+      siteStatusItem.offStateImage = siteOfflineIcon
+      if let siteOnlineIcon { siteStatusItem.onStateImage = siteOnlineIcon }
+      if let siteUnknownIcon { siteStatusItem.mixedStateImage = siteUnknownIcon }
       subMenu.addItem(siteStatusItem)
     }
 
