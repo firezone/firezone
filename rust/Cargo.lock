@@ -2043,7 +2043,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -2088,7 +2088,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client-common"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "arboard",
