@@ -1,6 +1,6 @@
 use crate::{
     device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
-    ConnlibMsg, LogFilterReloader,
+    ConnlibMsg,
 };
 use anyhow::{bail, Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
@@ -10,7 +10,7 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
     TunDeviceManager, TOKEN_ENV_KEY,
 };
-use firezone_logging::{err_with_src, sentry_layer, telemetry_span};
+use firezone_logging::{err_with_src, sentry_layer, telemetry_span, FilterReloadHandle};
 use firezone_telemetry::Telemetry;
 use futures::{
     future::poll_fn,
@@ -30,7 +30,7 @@ use std::{
     time::Duration,
 };
 use tokio::{sync::mpsc, time::Instant};
-use tracing_subscriber::{layer::SubscriberExt, reload, EnvFilter, Layer, Registry};
+use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
 use url::Url;
 
 pub mod ipc;
@@ -247,7 +247,7 @@ fn run_smoke_test() -> Result<()> {
 /// client a hint about that before we exit.
 async fn ipc_listen(
     dns_control_method: DnsControlMethod,
-    log_filter_reloader: &LogFilterReloader,
+    log_filter_reloader: &FilterReloadHandle,
     signals: &mut signals::Terminate,
     telemetry: &mut Telemetry,
 ) -> Result<()> {
@@ -296,7 +296,7 @@ struct Handler<'a> {
     ipc_rx: ipc::ServerRead,
     ipc_tx: ipc::ServerWrite,
     last_connlib_start_instant: Option<Instant>,
-    log_filter_reloader: &'a LogFilterReloader,
+    log_filter_reloader: &'a FilterReloadHandle,
     session: Option<Session>,
     telemetry: &'a mut Telemetry, // Handle to the sentry.io telemetry module
     tun_device: TunDeviceManager,
@@ -328,7 +328,7 @@ impl<'a> Handler<'a> {
     async fn new(
         server: &mut IpcServer,
         dns_controller: &'a mut DnsController,
-        log_filter_reloader: &'a LogFilterReloader,
+        log_filter_reloader: &'a FilterReloadHandle,
         telemetry: &'a mut Telemetry,
     ) -> Result<Self> {
         dns_controller.deactivate()?;
@@ -500,7 +500,7 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
             }
             ClientMsg::ApplyLogFilter { directives } => {
-                self.log_filter_reloader.reload(directives.clone())?;
+                self.log_filter_reloader.reload(&directives)?;
 
                 let path = known_dirs::ipc_log_filter()?;
 
@@ -642,7 +642,10 @@ impl<'a> Handler<'a> {
 /// and flushes the log file.
 fn setup_logging(
     log_dir: Option<PathBuf>,
-) -> Result<(firezone_logging::file::Handle, LogFilterReloader)> {
+) -> Result<(
+    firezone_logging::file::Handle,
+    firezone_logging::FilterReloadHandle,
+)> {
     // If `log_dir` is Some, use that. Else call `ipc_service_logs`
     let log_dir = log_dir.map_or_else(
         || known_dirs::ipc_service_logs().context("Should be able to compute IPC service logs dir"),
@@ -654,7 +657,7 @@ fn setup_logging(
     let (layer, handle) = firezone_logging::file::layer(&log_dir, "ipc-service");
 
     let directives = get_log_filter().context("Couldn't read log filter")?;
-    let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(&directives)?);
+    let (filter, reloader) = firezone_logging::try_filter(&directives)?;
 
     let subscriber = Registry::default()
         .with(layer.with_filter(filter))

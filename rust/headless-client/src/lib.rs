@@ -14,12 +14,13 @@ use anyhow::{Context as _, Result};
 use connlib_client_shared::Callbacks;
 use connlib_model::ResourceView;
 use firezone_bin_shared::platform::DnsControlMethod;
+use firezone_logging::FilterReloadHandle;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     path::PathBuf,
 };
 use tokio::sync::mpsc;
-use tracing_subscriber::{fmt, layer::SubscriberExt as _, EnvFilter, Layer as _, Registry};
+use tracing_subscriber::{fmt, layer::SubscriberExt as _, Layer as _, Registry};
 
 mod clear_logs;
 /// Generate a persistent device ID, stores it to disk, and reads it back.
@@ -40,8 +41,6 @@ pub use ipc_service::{
 };
 
 use ip_network::{Ipv4Network, Ipv6Network};
-
-pub type LogFilterReloader = tracing_subscriber::reload::Handle<EnvFilter, Registry>;
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
@@ -134,10 +133,9 @@ impl Callbacks for CallbackHandler {
 }
 
 /// Sets up logging for stdout only, with INFO level by default
-pub fn setup_stdout_logging() -> Result<LogFilterReloader> {
+pub fn setup_stdout_logging() -> Result<FilterReloadHandle> {
     let directives = ipc_service::get_log_filter().context("Can't read log filter")?;
-    let (filter, reloader) =
-        tracing_subscriber::reload::Layer::new(firezone_logging::try_filter(&directives)?);
+    let (filter, reloader) = firezone_logging::try_filter(&directives)?;
     let layer = fmt::layer()
         .event_format(firezone_logging::Format::new())
         .with_filter(filter);

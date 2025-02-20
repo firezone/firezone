@@ -28,8 +28,6 @@ use std::{
 };
 use tokio::runtime::Runtime;
 use tracing_subscriber::prelude::*;
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::Registry;
 use tun::Tun;
 
 /// The Apple client implements reconnect logic in the upper layer using OS provided
@@ -178,21 +176,18 @@ impl Callbacks for CallbackHandler {
 fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<()> {
     static LOGGER_STATE: OnceLock<(
         firezone_logging::file::Handle,
-        tracing_subscriber::reload::Handle<EnvFilter, Registry>,
+        firezone_logging::FilterReloadHandle,
     )> = OnceLock::new();
-
-    let env_filter =
-        firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?;
 
     if let Some((_, reload_handle)) = LOGGER_STATE.get() {
         reload_handle
-            .reload(env_filter)
+            .reload(&log_filter)
             .context("Failed to apply new log-filter")?;
 
         return Ok(());
     }
 
-    let (env_filter, reload_handle) = tracing_subscriber::reload::Layer::new(env_filter);
+    let (env_filter, reload_handle) = firezone_logging::try_filter(&log_filter)?;
 
     let (file_layer, handle) = firezone_logging::file::layer(&log_dir, "connlib");
 
