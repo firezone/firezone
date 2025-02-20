@@ -654,13 +654,20 @@ fn setup_logging(
     std::fs::create_dir_all(&log_dir)
         .context("We should have permissions to create our log dir")?;
 
-    let (layer, handle) = firezone_logging::file::layer(&log_dir, "ipc-service");
-
     let directives = get_log_filter().context("Couldn't read log filter")?;
-    let (filter, reloader) = firezone_logging::try_filter(&directives)?;
+
+    let (file_filter, file_reloader) = firezone_logging::try_filter(&directives)?;
+    let (stdout_filter, stdout_reloader) = firezone_logging::try_filter(&directives)?;
+
+    let (file_layer, file_handle) = firezone_logging::file::layer(&log_dir, "ipc-service");
+
+    let stdout_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(firezone_logging::stdout_supports_ansi())
+        .event_format(firezone_logging::Format::new());
 
     let subscriber = Registry::default()
-        .with(layer.with_filter(filter))
+        .with(file_layer.with_filter(file_filter))
+        .with(stdout_layer.with_filter(stdout_filter))
         .with(sentry_layer());
     firezone_logging::init(subscriber)?;
 
@@ -671,7 +678,7 @@ fn setup_logging(
         %directives
     );
 
-    Ok((handle, reloader))
+    Ok((file_handle, file_reloader.merge(stdout_reloader)))
 }
 
 /// Reads the log filter for the IPC service or for debug commands
