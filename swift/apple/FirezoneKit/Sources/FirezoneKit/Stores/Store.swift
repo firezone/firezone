@@ -15,14 +15,18 @@ import AppKit
 
 @MainActor
 public final class Store: ObservableObject {
+  @Published private(set) var favorites = Favorites()
+  @Published private(set) var resourceList: ResourceList = .loading
   @Published private(set) var actorName: String?
 
   // Make our tunnel configuration convenient for SettingsView to consume
-  @Published private(set) var settings: Settings
+  @Published var settings: Settings
 
   // Enacapsulate Tunnel status here to make it easier for other components
   // to observe
   @Published private(set) var status: NEVPNStatus?
+
+  @Published private(set) var decision: UNAuthorizationStatus?
 
 #if os(macOS)
   // Track whether our system extension has been installed (macOS)
@@ -39,6 +43,44 @@ public final class Store: ObservableObject {
     self.settings = Settings.defaultValue
     self.sessionNotification = SessionNotification()
     self.vpnConfigurationManager = VPNConfigurationManager()
+
+    self.sessionNotification.signInHandler = {
+      Task {
+        do { try await WebAuthSession.signIn(store: self) } catch { Log.error(error) }
+      }
+    }
+
+    Task {
+      // Load user's decision whether to allow / disallow notifications
+      self.decision = await self.sessionNotification.loadAuthorizationStatus()
+
+      // Load VPN configuration and system extension status
+      do {
+        try await self.bindToVPNConfigurationUpdates()
+        let vpnConfigurationStatus = self.status
+
+#if os(macOS)
+        let systemExtensionStatus = try await self.checkedSystemExtensionStatus()
+
+        if systemExtensionStatus != .installed
+            || vpnConfigurationStatus == .invalid {
+
+          // Show the main Window if VPN permission needs to be granted
+          AppView.WindowDefinition.main.openWindow()
+        } else {
+          AppView.WindowDefinition.main.window()?.close()
+        }
+#endif
+
+        if vpnConfigurationStatus == .disconnected {
+
+          // Try to connect on start
+          try self.vpnConfigurationManager.start()
+        }
+      } catch {
+        Log.error(error)
+      }
+    }
   }
 
   public func internetResourceEnabled() -> Bool {
@@ -59,6 +101,17 @@ public final class Store: ObservableObject {
 
         if let actorName {
           self.actorName = actorName
+        }
+
+        if status == .connected {
+          self.beginUpdatingResources { resourceList in
+            self.resourceList = resourceList
+          }
+        }
+
+        if status == .disconnected {
+          self.endUpdatingResources()
+          self.resourceList = ResourceList.loading
         }
 
 #if os(macOS)
@@ -119,6 +172,10 @@ public final class Store: ObservableObject {
 
     // Reload our state
     try await bindToVPNConfigurationUpdates()
+  }
+
+  func grantNotifications() async throws {
+    self.decision = try await sessionNotification.askUserForNotificationPermissions()
   }
 
   func authURL() -> URL? {

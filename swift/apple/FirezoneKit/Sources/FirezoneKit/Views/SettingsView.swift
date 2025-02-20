@@ -22,31 +22,559 @@ enum SettingsViewError: Error {
   }
 }
 
-@MainActor
-public final class SettingsViewModel: ObservableObject {
-  let store: Store
+extension FileManager {
+  enum FileManagerError: Error {
+    case invalidURL(URL, Error)
 
-  @Published var settings: Settings
-
-  private var cancellables = Set<AnyCancellable>()
-
-  public init(store: Store) {
-    self.store = store
-    self.settings = store.settings
-
-    setupObservers()
+    var localizedDescription: String {
+      switch self {
+      case .invalidURL(let url, let error):
+        return "Unable to get resource value for '\(url)': \(error)"
+      }
+    }
   }
 
-  func setupObservers() {
-    // Load settings from saved VPN Configuration
-    store.$settings
-      .receive(on: DispatchQueue.main)
-      .sink { [weak self] settings in
-        guard let self = self else { return }
+  func forEachFileUnder(
+    _ dirURL: URL,
+    including resourceKeys: Set<URLResourceKey>,
+    handler: (URL, URLResourceValues) -> Void
+  ) {
+    // Deep-traverses the directory at dirURL
+    guard
+      let enumerator = self.enumerator(
+        at: dirURL,
+        includingPropertiesForKeys: [URLResourceKey](resourceKeys),
+        options: [],
+        errorHandler: nil
+      )
+    else {
+      return
+    }
 
-        self.settings = settings
+    for item in enumerator.enumerated() {
+      if Task.isCancelled { break }
+      guard let url = item.element as? URL else { continue }
+      do {
+        let resourceValues = try url.resourceValues(forKeys: resourceKeys)
+        handler(url, resourceValues)
+      } catch {
+        Log.error(FileManagerError.invalidURL(url, error))
       }
-      .store(in: &cancellables)
+    }
+  }
+}
+
+// TODO: Refactor body length
+// swiftlint:disable:next type_body_length
+public struct SettingsView: View {
+  @EnvironmentObject var store: Store
+  @Environment(\.dismiss) var dismiss
+  @State var settings = Settings.defaultValue
+
+  enum ConfirmationAlertContinueAction: Int {
+    case none
+    case saveSettings
+    case saveAllSettingsAndDismiss
+
+    func performAction(on view: SettingsView) {
+      switch self {
+      case .none:
+        break
+      case .saveSettings:
+        view.saveSettings()
+      case .saveAllSettingsAndDismiss:
+        view.saveAllSettingsAndDismiss()
+      }
+    }
+  }
+
+  @State private var isCalculatingLogsSize = false
+  @State private var calculatedLogsSize = "Unknown"
+  @State private var isClearingLogs = false
+  @State private var isExportingLogs = false
+  @State private var isShowingConfirmationAlert = false
+  @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
+
+  @State private var calculateLogSizeTask: Task<(), Never>?
+
+  #if os(iOS)
+    @State private var logTempZipFileURL: URL?
+    @State private var isPresentingExportLogShareSheet = false
+  #endif
+
+  struct PlaceholderText {
+    static let authBaseURL = "Admin portal base URL"
+    static let apiURL = "Control plane WebSocket URL"
+    static let logFilter = "RUST_LOG-style filter string"
+  }
+
+  struct FootnoteText {
+    static let forAdvanced = try? AttributedString(
+      markdown: """
+        **WARNING:** These settings are intended for internal debug purposes **only**. \
+        Changing these will disrupt access to your Firezone resources.
+        """
+    )
+  }
+
+  public init() {}
+
+  public var body: some View {
+    #if os(iOS)
+      NavigationView {
+        TabView {
+          advancedTab
+            .tabItem {
+              Image(systemName: "slider.horizontal.3")
+              Text("Advanced")
+            }
+            .badge(settings.isValid ? nil : "!")
+          logsTab
+            .tabItem {
+              Image(systemName: "doc.text")
+              Text("Diagnostic Logs")
+            }
+        }
+        .toolbar {
+          ToolbarItem(placement: .navigationBarTrailing) {
+            Button("Save") {
+              let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
+              if case .connected = store.status {
+                self.confirmationAlertContinueAction = action
+                self.isShowingConfirmationAlert = true
+              } else {
+                action.performAction(on: self)
+              }
+            }
+            .disabled(
+              (settings == store.settings || !settings.isValid)
+            )
+          }
+          ToolbarItem(placement: .navigationBarLeading) {
+            Button("Cancel") {
+              self.reloadSettings()
+            }
+          }
+        }
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+      }
+      .alert(
+        "Saving settings will sign you out",
+        isPresented: $isShowingConfirmationAlert,
+        presenting: confirmationAlertContinueAction,
+        actions: { confirmationAlertContinueAction in
+          Button("Cancel", role: .cancel) {
+            // Nothing to do
+          }
+          Button("Continue") {
+            confirmationAlertContinueAction.performAction(on: self)
+          }
+        },
+        message: { _ in
+          Text("Changing settings will sign you out and disconnect you from resources")
+        }
+      )
+      .onAppear {
+        settings = store.settings
+      }
+
+    #elseif os(macOS)
+      VStack {
+        TabView {
+          advancedTab
+            .tabItem {
+              Text("Advanced")
+            }
+          logsTab
+            .tabItem {
+              Text("Diagnostic Logs")
+            }
+        }
+        .padding(20)
+      }
+      .alert(
+        "Saving settings will sign you out",
+        isPresented: $isShowingConfirmationAlert,
+        presenting: confirmationAlertContinueAction,
+        actions: { confirmationAlertContinueAction in
+          Button("Cancel", role: .cancel) {
+            // Nothing to do
+          }
+          Button("Continue", role: .destructive) {
+            confirmationAlertContinueAction.performAction(on: self)
+          }
+        },
+        message: { _ in
+          Text("Changing settings will sign you out and disconnect you from resources")
+        }
+      )
+      .onAppear {
+        settings = store.settings
+      }
+      .onDisappear(perform: { self.reloadSettings() })
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
+
+  private var advancedTab: some View {
+    #if os(macOS)
+      VStack {
+        Spacer()
+        HStack {
+          Spacer()
+          Form {
+            TextField(
+              "Auth Base URL:",
+              text: Binding(
+                get: { settings.authBaseURL },
+                set: { settings.authBaseURL = $0 }
+              ),
+              prompt: Text(PlaceholderText.authBaseURL)
+            )
+
+            TextField(
+              "API URL:",
+              text: Binding(
+                get: { settings.apiURL },
+                set: { settings.apiURL = $0 }
+              ),
+              prompt: Text(PlaceholderText.apiURL)
+            )
+
+            TextField(
+              "Log Filter:",
+              text: Binding(
+                get: { settings.logFilter },
+                set: { settings.logFilter = $0 }
+              ),
+              prompt: Text(PlaceholderText.logFilter)
+            )
+
+            Text(FootnoteText.forAdvanced ?? "")
+              .foregroundStyle(.secondary)
+
+            HStack(spacing: 30) {
+              Button(
+                "Apply",
+                action: {
+                  let action = ConfirmationAlertContinueAction.saveSettings
+                  if [.connected, .connecting, .reasserting].contains(store.status) {
+                    self.confirmationAlertContinueAction = action
+                    self.isShowingConfirmationAlert = true
+                  } else {
+                    action.performAction(on: self)
+                  }
+                }
+              )
+              .disabled(settings == store.settings || !store.settings.isValid)
+
+              Button(
+                "Reset to Defaults",
+                action: {
+                  settings = Settings.defaultValue
+                  store.favorites.reset()
+                }
+              )
+              .disabled(store.favorites.isEmpty() && settings == Settings.defaultValue)
+            }
+            .padding(.top, 5)
+          }
+          .padding(10)
+          Spacer()
+        }
+        Spacer()
+        HStack {
+          Text("Build: \(BundleHelper.gitSha)")
+            .textSelection(.enabled)
+            .foregroundColor(.gray)
+          Spacer()
+        }.padding([.leading, .bottom], 20)
+      }
+    #elseif os(iOS)
+      VStack {
+        Form {
+          Section(
+            content: {
+              VStack(alignment: .leading, spacing: 2) {
+                Text("Auth Base URL")
+                  .foregroundStyle(.secondary)
+                  .font(.caption)
+                TextField(
+                  PlaceholderText.authBaseURL,
+                  text: Binding(
+                    get: { settings.authBaseURL },
+                    set: { settings.authBaseURL = $0 }
+                  )
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+              }
+              VStack(alignment: .leading, spacing: 2) {
+                Text("API URL")
+                  .foregroundStyle(.secondary)
+                  .font(.caption)
+                TextField(
+                  PlaceholderText.apiURL,
+                  text: Binding(
+                    get: { settings.apiURL },
+                    set: { settings.apiURL = $0 }
+                  )
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+              }
+              VStack(alignment: .leading, spacing: 2) {
+                Text("Log Filter")
+                  .foregroundStyle(.secondary)
+                  .font(.caption)
+                TextField(
+                  PlaceholderText.logFilter,
+                  text: Binding(
+                    get: { settings.logFilter },
+                    set: { settings.logFilter = $0 }
+                  )
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+              }
+              HStack {
+                Spacer()
+                Button(
+                  "Reset to Defaults",
+                  action: {
+                    settings = Settings.defaultValue
+                    store.favorites.reset()
+                  }
+                )
+                .disabled(store.favorites.isEmpty() && settings == Settings.defaultValue)
+                Spacer()
+              }
+            },
+            header: { Text("Advanced Settings") },
+            footer: { Text(FootnoteText.forAdvanced ?? "") }
+          )
+        }
+        Spacer()
+        HStack {
+          Text("Build: \(BundleHelper.gitSha)")
+            .textSelection(.enabled)
+            .foregroundColor(.gray)
+          Spacer()
+        }.padding([.leading, .bottom], 20)
+      }
+    #endif
+  }
+
+  private var logsTab: some View {
+    #if os(iOS)
+      VStack {
+        Form {
+          Section(header: Text("Logs")) {
+            LogDirectorySizeView(
+              isProcessing: $isCalculatingLogsSize,
+              sizeString: $calculatedLogsSize
+            )
+            .onAppear {
+              self.refreshLogSize()
+            }
+            .onDisappear {
+              self.cancelRefreshLogSize()
+            }
+            HStack {
+              Spacer()
+              ButtonWithProgress(
+                systemImageName: "trash",
+                title: "Clear Log Directory",
+                isProcessing: $isClearingLogs,
+                action: {
+                  self.clearLogFiles()
+                }
+              )
+              Spacer()
+            }
+          }
+          Section {
+            HStack {
+              Spacer()
+              ButtonWithProgress(
+                systemImageName: "arrow.up.doc",
+                title: "Export Logs",
+                isProcessing: $isExportingLogs,
+                action: {
+                  self.isExportingLogs = true
+                  Task.detached(priority: .background) {
+                    let archiveURL = LogExporter.tempFile()
+                    try await LogExporter.export(to: archiveURL)
+                    await MainActor.run {
+                      self.logTempZipFileURL = archiveURL
+                      self.isPresentingExportLogShareSheet = true
+                    }
+                  }
+                }
+              )
+              .sheet(isPresented: $isPresentingExportLogShareSheet) {
+                if let logfileURL = self.logTempZipFileURL {
+                  ShareSheetView(
+                    localFileURL: logfileURL,
+                    completionHandler: {
+                      self.isPresentingExportLogShareSheet = false
+                      self.isExportingLogs = false
+                      self.logTempZipFileURL = nil
+                    }
+                  )
+                  .onDisappear {
+                    self.isPresentingExportLogShareSheet = false
+                    self.isExportingLogs = false
+                    self.logTempZipFileURL = nil
+                  }
+                }
+              }
+              Spacer()
+            }
+          }
+        }
+      }
+    #elseif os(macOS)
+      VStack {
+        VStack(alignment: .leading, spacing: 10) {
+          LogDirectorySizeView(
+            isProcessing: $isCalculatingLogsSize,
+            sizeString: $calculatedLogsSize
+          )
+          .onAppear {
+            self.refreshLogSize()
+          }
+          .onDisappear {
+            self.cancelRefreshLogSize()
+          }
+          HStack(spacing: 30) {
+            ButtonWithProgress(
+              systemImageName: "trash",
+              title: "Clear Log Directory",
+              isProcessing: $isClearingLogs,
+              action: {
+                self.clearLogFiles()
+              }
+            )
+            ButtonWithProgress(
+              systemImageName: "arrow.up.doc",
+              title: "Export Logs",
+              isProcessing: $isExportingLogs,
+              action: {
+                self.exportLogsWithSavePanelOnMac()
+              }
+            )
+          }
+        }
+      }
+    #else
+      #error("Unsupported platform")
+    #endif
+  }
+
+  func saveAllSettingsAndDismiss() {
+    saveSettings()
+    dismiss()
+  }
+
+  func reloadSettings() {
+    settings = store.settings
+    dismiss()
+  }
+
+  #if os(macOS)
+    func exportLogsWithSavePanelOnMac() {
+      self.isExportingLogs = true
+
+      let savePanel = NSSavePanel()
+      savePanel.prompt = "Save"
+      savePanel.nameFieldLabel = "Save log archive to:"
+      let fileName = "firezone_logs_\(LogExporter.now()).aar"
+
+      savePanel.nameFieldStringValue = fileName
+
+      guard
+        let window = NSApp.windows.first(where: {
+          $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false
+        })
+      else {
+        self.isExportingLogs = false
+        Log.log("Settings window not found. Can't show save panel.")
+        return
+      }
+
+      savePanel.beginSheetModal(for: window) { response in
+        guard response == .OK else {
+          self.isExportingLogs = false
+          return
+        }
+        guard let destinationURL = savePanel.url else {
+          self.isExportingLogs = false
+          return
+        }
+
+        Task {
+          do {
+            try await LogExporter.export(
+              to: destinationURL,
+              with: store.vpnConfigurationManager
+            )
+
+            window.contentViewController?.presentingViewController?.dismiss(self)
+          } catch {
+            if let error = error as? VPNConfigurationManagerError,
+               case VPNConfigurationManagerError.noIPCData = error {
+              Log.warning("\(#function): Error exporting logs: \(error). Is the XPC service running?")
+            } else {
+              Log.error(error)
+            }
+
+            await macOSAlert.show(for: error)
+          }
+
+          self.isExportingLogs = false
+        }
+      }
+    }
+  #endif
+
+  func refreshLogSize() {
+    guard !self.isCalculatingLogsSize else {
+      return
+    }
+    self.isCalculatingLogsSize = true
+    self.calculateLogSizeTask =
+    Task.detached(priority: .background) {
+      let calculatedLogsSize = await calculateLogDirSize()
+      await MainActor.run {
+        self.calculatedLogsSize = calculatedLogsSize
+        self.isCalculatingLogsSize = false
+        self.calculateLogSizeTask = nil
+      }
+    }
+  }
+
+  func cancelRefreshLogSize() {
+    self.calculateLogSizeTask?.cancel()
+  }
+
+  func clearLogFiles() {
+    self.isClearingLogs = true
+    self.cancelRefreshLogSize()
+    Task.detached(priority: .background) {
+      do { try await clearAllLogs() } catch { Log.error(error) }
+      await MainActor.run {
+        self.isClearingLogs = false
+        if !self.isCalculatingLogsSize {
+          self.refreshLogSize()
+        }
+      }
+    }
   }
 
   func saveSettings() {
@@ -122,568 +650,6 @@ public final class SettingsViewModel: ObservableObject {
 #if os(macOS)
     try await store.vpnConfigurationManager.clearLogs()
 #endif
-  }
-}
-
-extension FileManager {
-  enum FileManagerError: Error {
-    case invalidURL(URL, Error)
-
-    var localizedDescription: String {
-      switch self {
-      case .invalidURL(let url, let error):
-        return "Unable to get resource value for '\(url)': \(error)"
-      }
-    }
-  }
-
-  func forEachFileUnder(
-    _ dirURL: URL,
-    including resourceKeys: Set<URLResourceKey>,
-    handler: (URL, URLResourceValues) -> Void
-  ) {
-    // Deep-traverses the directory at dirURL
-    guard
-      let enumerator = self.enumerator(
-        at: dirURL,
-        includingPropertiesForKeys: [URLResourceKey](resourceKeys),
-        options: [],
-        errorHandler: nil
-      )
-    else {
-      return
-    }
-
-    for item in enumerator.enumerated() {
-      if Task.isCancelled { break }
-      guard let url = item.element as? URL else { continue }
-      do {
-        let resourceValues = try url.resourceValues(forKeys: resourceKeys)
-        handler(url, resourceValues)
-      } catch {
-        Log.error(FileManagerError.invalidURL(url, error))
-      }
-    }
-  }
-}
-
-// TODO: Refactor body length
-// swiftlint:disable:next type_body_length
-public struct SettingsView: View {
-  @ObservedObject var favorites: Favorites
-  @ObservedObject var model: SettingsViewModel
-  @Environment(\.dismiss) var dismiss
-
-  enum ConfirmationAlertContinueAction: Int {
-    case none
-    case saveSettings
-    case saveAllSettingsAndDismiss
-
-    func performAction(on view: SettingsView) {
-      switch self {
-      case .none:
-        break
-      case .saveSettings:
-        view.saveSettings()
-      case .saveAllSettingsAndDismiss:
-        view.saveAllSettingsAndDismiss()
-      }
-    }
-  }
-
-  @State private var isCalculatingLogsSize = false
-  @State private var calculatedLogsSize = "Unknown"
-  @State private var isClearingLogs = false
-  @State private var isExportingLogs = false
-  @State private var isShowingConfirmationAlert = false
-  @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
-
-  @State private var calculateLogSizeTask: Task<(), Never>?
-
-  #if os(iOS)
-    @State private var logTempZipFileURL: URL?
-    @State private var isPresentingExportLogShareSheet = false
-  #endif
-
-  struct PlaceholderText {
-    static let authBaseURL = "Admin portal base URL"
-    static let apiURL = "Control plane WebSocket URL"
-    static let logFilter = "RUST_LOG-style filter string"
-  }
-
-  struct FootnoteText {
-    static let forAdvanced = try? AttributedString(
-      markdown: """
-        **WARNING:** These settings are intended for internal debug purposes **only**. \
-        Changing these will disrupt access to your Firezone resources.
-        """
-    )
-  }
-
-  public init(favorites: Favorites, model: SettingsViewModel) {
-    self.favorites = favorites
-    self.model = model
-  }
-
-  public var body: some View {
-    #if os(iOS)
-      NavigationView {
-        TabView {
-          advancedTab
-            .tabItem {
-              Image(systemName: "slider.horizontal.3")
-              Text("Advanced")
-            }
-            .badge(model.settings.isValid ? nil : "!")
-          logsTab
-            .tabItem {
-              Image(systemName: "doc.text")
-              Text("Diagnostic Logs")
-            }
-        }
-        .toolbar {
-          ToolbarItem(placement: .navigationBarTrailing) {
-            Button("Save") {
-              let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
-              if case .connected = model.store.status {
-                self.confirmationAlertContinueAction = action
-                self.isShowingConfirmationAlert = true
-              } else {
-                action.performAction(on: self)
-              }
-            }
-            .disabled(
-              (model.settings == model.store.settings || !model.settings.isValid)
-            )
-          }
-          ToolbarItem(placement: .navigationBarLeading) {
-            Button("Cancel") {
-              self.reloadSettings()
-            }
-          }
-        }
-        .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.inline)
-      }
-      .alert(
-        "Saving settings will sign you out",
-        isPresented: $isShowingConfirmationAlert,
-        presenting: confirmationAlertContinueAction,
-        actions: { confirmationAlertContinueAction in
-          Button("Cancel", role: .cancel) {
-            // Nothing to do
-          }
-          Button("Continue") {
-            confirmationAlertContinueAction.performAction(on: self)
-          }
-        },
-        message: { _ in
-          Text("Changing settings will sign you out and disconnect you from resources")
-        }
-      )
-
-    #elseif os(macOS)
-      VStack {
-        TabView {
-          advancedTab
-            .tabItem {
-              Text("Advanced")
-            }
-          logsTab
-            .tabItem {
-              Text("Diagnostic Logs")
-            }
-        }
-        .padding(20)
-      }
-      .alert(
-        "Saving settings will sign you out",
-        isPresented: $isShowingConfirmationAlert,
-        presenting: confirmationAlertContinueAction,
-        actions: { confirmationAlertContinueAction in
-          Button("Cancel", role: .cancel) {
-            // Nothing to do
-          }
-          Button("Continue", role: .destructive) {
-            confirmationAlertContinueAction.performAction(on: self)
-          }
-        },
-        message: { _ in
-          Text("Changing settings will sign you out and disconnect you from resources")
-        }
-      )
-      .onDisappear(perform: { self.reloadSettings() })
-    #else
-      #error("Unsupported platform")
-    #endif
-  }
-
-  private var advancedTab: some View {
-    #if os(macOS)
-      VStack {
-        Spacer()
-        HStack {
-          Spacer()
-          Form {
-            TextField(
-              "Auth Base URL:",
-              text: Binding(
-                get: { model.settings.authBaseURL },
-                set: { model.settings.authBaseURL = $0 }
-              ),
-              prompt: Text(PlaceholderText.authBaseURL)
-            )
-
-            TextField(
-              "API URL:",
-              text: Binding(
-                get: { model.settings.apiURL },
-                set: { model.settings.apiURL = $0 }
-              ),
-              prompt: Text(PlaceholderText.apiURL)
-            )
-
-            TextField(
-              "Log Filter:",
-              text: Binding(
-                get: { model.settings.logFilter },
-                set: { model.settings.logFilter = $0 }
-              ),
-              prompt: Text(PlaceholderText.logFilter)
-            )
-
-            Text(FootnoteText.forAdvanced ?? "")
-              .foregroundStyle(.secondary)
-
-            HStack(spacing: 30) {
-              Button(
-                "Apply",
-                action: {
-                  let action = ConfirmationAlertContinueAction.saveSettings
-                  if [.connected, .connecting, .reasserting].contains(model.store.status) {
-                    self.confirmationAlertContinueAction = action
-                    self.isShowingConfirmationAlert = true
-                  } else {
-                    action.performAction(on: self)
-                  }
-                }
-              )
-              .disabled(model.settings == model.store.settings || !model.settings.isValid)
-
-              Button(
-                "Reset to Defaults",
-                action: {
-                  model.settings = Settings.defaultValue
-                  favorites.reset()
-                }
-              )
-              .disabled(favorites.ids.isEmpty && model.settings == Settings.defaultValue)
-            }
-            .padding(.top, 5)
-          }
-          .padding(10)
-          Spacer()
-        }
-        Spacer()
-        HStack {
-          Text("Build: \(BundleHelper.gitSha)")
-            .textSelection(.enabled)
-            .foregroundColor(.gray)
-          Spacer()
-        }.padding([.leading, .bottom], 20)
-      }
-    #elseif os(iOS)
-      VStack {
-        Form {
-          Section(
-            content: {
-              VStack(alignment: .leading, spacing: 2) {
-                Text("Auth Base URL")
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
-                TextField(
-                  PlaceholderText.authBaseURL,
-                  text: Binding(
-                    get: { model.settings.authBaseURL },
-                    set: { model.settings.authBaseURL = $0 }
-                  )
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-              }
-              VStack(alignment: .leading, spacing: 2) {
-                Text("API URL")
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
-                TextField(
-                  PlaceholderText.apiURL,
-                  text: Binding(
-                    get: { model.settings.apiURL },
-                    set: { model.settings.apiURL = $0 }
-                  )
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-              }
-              VStack(alignment: .leading, spacing: 2) {
-                Text("Log Filter")
-                  .foregroundStyle(.secondary)
-                  .font(.caption)
-                TextField(
-                  PlaceholderText.logFilter,
-                  text: Binding(
-                    get: { model.settings.logFilter },
-                    set: { model.settings.logFilter = $0 }
-                  )
-                )
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.never)
-                .submitLabel(.done)
-              }
-              HStack {
-                Spacer()
-                Button(
-                  "Reset to Defaults",
-                  action: {
-                    model.settings = Settings.defaultValue
-                  }
-                )
-                .disabled(model.settings == Settings.defaultValue)
-                Spacer()
-              }
-            },
-            header: { Text("Advanced Settings") },
-            footer: { Text(FootnoteText.forAdvanced ?? "") }
-          )
-        }
-        Spacer()
-        HStack {
-          Text("Build: \(BundleHelper.gitSha)")
-            .textSelection(.enabled)
-            .foregroundColor(.gray)
-          Spacer()
-        }.padding([.leading, .bottom], 20)
-      }
-    #endif
-  }
-
-  private var logsTab: some View {
-    #if os(iOS)
-      VStack {
-        Form {
-          Section(header: Text("Logs")) {
-            LogDirectorySizeView(
-              isProcessing: $isCalculatingLogsSize,
-              sizeString: $calculatedLogsSize
-            )
-            .onAppear {
-              self.refreshLogSize()
-            }
-            .onDisappear {
-              self.cancelRefreshLogSize()
-            }
-            HStack {
-              Spacer()
-              ButtonWithProgress(
-                systemImageName: "trash",
-                title: "Clear Log Directory",
-                isProcessing: $isClearingLogs,
-                action: {
-                  self.clearLogFiles()
-                }
-              )
-              Spacer()
-            }
-          }
-          Section {
-            HStack {
-              Spacer()
-              ButtonWithProgress(
-                systemImageName: "arrow.up.doc",
-                title: "Export Logs",
-                isProcessing: $isExportingLogs,
-                action: {
-                  self.isExportingLogs = true
-                  Task.detached(priority: .background) { [weak model] in // self can't be weakly captured in views
-                    guard model != nil else { return }
-
-                    let archiveURL = LogExporter.tempFile()
-                    try await LogExporter.export(to: archiveURL)
-                    await MainActor.run {
-                      self.logTempZipFileURL = archiveURL
-                      self.isPresentingExportLogShareSheet = true
-                    }
-                  }
-                }
-              )
-              .sheet(isPresented: $isPresentingExportLogShareSheet) {
-                if let logfileURL = self.logTempZipFileURL {
-                  ShareSheetView(
-                    localFileURL: logfileURL,
-                    completionHandler: {
-                      self.isPresentingExportLogShareSheet = false
-                      self.isExportingLogs = false
-                      self.logTempZipFileURL = nil
-                    }
-                  )
-                  .onDisappear {
-                    self.isPresentingExportLogShareSheet = false
-                    self.isExportingLogs = false
-                    self.logTempZipFileURL = nil
-                  }
-                }
-              }
-              Spacer()
-            }
-          }
-        }
-      }
-    #elseif os(macOS)
-      VStack {
-        VStack(alignment: .leading, spacing: 10) {
-          LogDirectorySizeView(
-            isProcessing: $isCalculatingLogsSize,
-            sizeString: $calculatedLogsSize
-          )
-          .onAppear {
-            self.refreshLogSize()
-          }
-          .onDisappear {
-            self.cancelRefreshLogSize()
-          }
-          HStack(spacing: 30) {
-            ButtonWithProgress(
-              systemImageName: "trash",
-              title: "Clear Log Directory",
-              isProcessing: $isClearingLogs,
-              action: {
-                self.clearLogFiles()
-              }
-            )
-            ButtonWithProgress(
-              systemImageName: "arrow.up.doc",
-              title: "Export Logs",
-              isProcessing: $isExportingLogs,
-              action: {
-                self.exportLogsWithSavePanelOnMac()
-              }
-            )
-          }
-        }
-      }
-    #else
-      #error("Unsupported platform")
-    #endif
-  }
-
-  func saveSettings() {
-    model.saveSettings()
-  }
-
-  func saveAllSettingsAndDismiss() {
-    model.saveSettings()
-    dismiss()
-  }
-
-  func reloadSettings() {
-    model.settings = model.store.settings
-    dismiss()
-  }
-
-  #if os(macOS)
-    func exportLogsWithSavePanelOnMac() {
-      self.isExportingLogs = true
-
-      let savePanel = NSSavePanel()
-      savePanel.prompt = "Save"
-      savePanel.nameFieldLabel = "Save log archive to:"
-      let fileName = "firezone_logs_\(LogExporter.now()).aar"
-
-      savePanel.nameFieldStringValue = fileName
-
-      guard
-        let window = NSApp.windows.first(where: {
-          $0.identifier?.rawValue.hasPrefix("firezone-settings") ?? false
-        })
-      else {
-        self.isExportingLogs = false
-        Log.log("Settings window not found. Can't show save panel.")
-        return
-      }
-
-      savePanel.beginSheetModal(for: window) { response in
-        guard response == .OK else {
-          self.isExportingLogs = false
-          return
-        }
-        guard let destinationURL = savePanel.url else {
-          self.isExportingLogs = false
-          return
-        }
-
-        Task {
-          do {
-            try await LogExporter.export(
-              to: destinationURL,
-              with: model.store.vpnConfigurationManager
-            )
-
-            window.contentViewController?.presentingViewController?.dismiss(self)
-          } catch {
-            if let error = error as? VPNConfigurationManagerError,
-               case VPNConfigurationManagerError.noIPCData = error {
-              Log.warning("\(#function): Error exporting logs: \(error). Is the XPC service running?")
-            } else {
-              Log.error(error)
-            }
-
-            await macOSAlert.show(for: error)
-          }
-
-          self.isExportingLogs = false
-        }
-      }
-    }
-  #endif
-
-  func refreshLogSize() {
-    guard !self.isCalculatingLogsSize else {
-      return
-    }
-    self.isCalculatingLogsSize = true
-    self.calculateLogSizeTask =
-    Task.detached(priority: .background) { [weak model] in // self can't be weakly captured in views
-      guard let model else { return }
-
-      let calculatedLogsSize = await model.calculateLogDirSize()
-      await MainActor.run {
-        self.calculatedLogsSize = calculatedLogsSize
-        self.isCalculatingLogsSize = false
-        self.calculateLogSizeTask = nil
-      }
-    }
-  }
-
-  func cancelRefreshLogSize() {
-    self.calculateLogSizeTask?.cancel()
-  }
-
-  func clearLogFiles() {
-    self.isClearingLogs = true
-    self.cancelRefreshLogSize()
-    Task.detached(priority: .background) { [weak model] in // self can't be weakly captured in views
-      guard let model else { return }
-
-      do { try await model.clearAllLogs() } catch { Log.error(error) }
-      await MainActor.run {
-        self.isClearingLogs = false
-        if !self.isCalculatingLogsSize {
-          self.refreshLogSize()
-        }
-      }
-    }
   }
 }
 

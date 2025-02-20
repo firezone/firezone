@@ -18,123 +18,11 @@ import UserNotifications
 /// - macOS only shows the WelcomeView on first launch (like Windows/Linux)
 /// - iOS shows the WelcomeView as it main view for launching auth
 
-@MainActor
-public class AppViewModel: ObservableObject {
-  let favorites: Favorites
-  let store: Store
-  let sessionNotification: SessionNotification
-
-  @Published private(set) var status: NEVPNStatus?
-  @Published private(set) var decision: UNAuthorizationStatus?
-
-  private var cancellables = Set<AnyCancellable>()
-
-  public init(favorites: Favorites, store: Store) {
-    self.favorites = favorites
-    self.store = store
-    self.sessionNotification = SessionNotification()
-
-    self.sessionNotification.signInHandler = {
-      Task {
-        do { try await WebAuthSession.signIn(store: self.store) } catch { Log.error(error) }
-      }
-    }
-
-    Task {
-      // Load user's decision whether to allow / disallow notifications
-      let decision = await self.sessionNotification.loadAuthorizationStatus()
-      updateNotificationDecision(to: decision)
-
-      // Load VPN configuration and system extension status
-      do {
-        try await self.store.bindToVPNConfigurationUpdates()
-        let vpnConfigurationStatus = self.store.status
-
-#if os(macOS)
-        let systemExtensionStatus = try await self.store.checkedSystemExtensionStatus()
-
-        if systemExtensionStatus != .installed
-          || vpnConfigurationStatus == .invalid {
-
-          // Show the main Window if VPN permission needs to be granted
-          AppViewModel.WindowDefinition.main.openWindow()
-        } else {
-          AppViewModel.WindowDefinition.main.window()?.close()
-        }
-#endif
-
-        if vpnConfigurationStatus == .disconnected {
-
-          // Try to connect on start
-          try self.store.vpnConfigurationManager.start()
-        }
-      } catch {
-        Log.error(error)
-      }
-    }
-
-    store.$status
-      .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] status in
-        guard let self = self else { return }
-
-        self.status = status
-      })
-      .store(in: &cancellables)
-  }
-
-  func updateNotificationDecision(to newStatus: UNAuthorizationStatus) {
-    self.decision = newStatus
-  }
-}
-
 public struct AppView: View {
-  @ObservedObject var model: AppViewModel
-
-  public init(model: AppViewModel) {
-    self.model = model
-  }
-
-  @ViewBuilder
-  public var body: some View {
-#if os(iOS)
-    switch (model.status, model.decision) {
-    case (nil, _), (_, nil):
-      ProgressView()
-    case (.invalid, _):
-      GrantVPNView(model: GrantVPNViewModel(store: model.store))
-    case (_, .notDetermined):
-      GrantNotificationsView(model: GrantNotificationsViewModel(
-        sessionNotification: model.sessionNotification,
-        onDecisionChanged: { decision in
-          model.updateNotificationDecision(to: decision)
-        }
-      ))
-    case (.disconnected, _):
-      iOSNavigationView(model: model) {
-        WelcomeView(model: WelcomeViewModel(store: model.store))
-      }
-    case (_, _):
-      iOSNavigationView(model: model) {
-        SessionView(model: SessionViewModel(favorites: model.favorites, store: model.store))
-      }
-    }
-#elseif os(macOS)
-    switch (model.store.systemExtensionStatus, model.status) {
-    case (nil, nil):
-      ProgressView()
-    case (.needsInstall, _), (_, .invalid):
-      GrantVPNView(model: GrantVPNViewModel(store: model.store))
-    default:
-      FirstTimeView()
-    }
-#endif
-  }
-}
+  @EnvironmentObject var store: Store
 
 #if os(macOS)
-public extension AppViewModel {
-  enum WindowDefinition: String, CaseIterable {
+  public enum WindowDefinition: String, CaseIterable {
     case main
     case settings
 
@@ -164,5 +52,38 @@ public extension AppViewModel {
       }
     }
   }
-}
 #endif
+
+  public init() {}
+
+  @ViewBuilder
+  public var body: some View {
+#if os(iOS)
+    switch (store.status, store.decision) {
+    case (nil, _), (_, nil):
+      ProgressView()
+    case (.invalid, _):
+      GrantVPNView()
+    case (_, .notDetermined):
+      GrantNotificationsView()
+    case (.disconnected, _):
+      iOSNavigationView {
+        WelcomeView()
+      }
+    case (_, _):
+      iOSNavigationView {
+        SessionView()
+      }
+    }
+#elseif os(macOS)
+    switch (store.systemExtensionStatus, store.status) {
+    case (nil, nil):
+      ProgressView()
+    case (.needsInstall, _), (_, .invalid):
+      GrantVPNView()
+    default:
+      FirstTimeView()
+    }
+#endif
+  }
+}
