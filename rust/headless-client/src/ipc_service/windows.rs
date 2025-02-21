@@ -1,6 +1,7 @@
 use crate::CliCommon;
 use anyhow::{bail, Context as _, Result};
 use firezone_bin_shared::platform::DnsControlMethod;
+use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
 use futures::channel::mpsc;
 use std::{
@@ -214,7 +215,7 @@ fn service_run(arguments: Vec<OsString>) {
 fn fallible_service_run(
     arguments: Vec<OsString>,
     logging_handle: firezone_logging::file::Handle,
-    log_filter_reloader: crate::LogFilterReloader,
+    log_filter_reloader: FilterReloadHandle,
 ) -> Result<()> {
     tracing::info!(?arguments, "fallible_windows_service_run");
     if !elevation_check()? {
@@ -329,7 +330,7 @@ fn fallible_service_run(
 ///
 /// Logging must already be set up before calling this.
 async fn service_run_async(
-    log_filter_reloader: &crate::LogFilterReloader,
+    log_filter_reloader: &FilterReloadHandle,
     telemetry: &mut Telemetry,
     shutdown_rx: mpsc::Receiver<()>,
 ) -> Result<()> {

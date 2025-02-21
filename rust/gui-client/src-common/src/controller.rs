@@ -11,9 +11,10 @@ use connlib_model::ResourceView;
 use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
-    IpcServerMsg, IpcServiceError, LogFilterReloader,
+    IpcServerMsg, IpcServiceError,
 };
 
+use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
 use futures::{
     stream::{self, BoxStream},
@@ -41,7 +42,7 @@ pub struct Controller<I: GuiIntegration> {
     ipc_client: ipc::Client,
     ipc_rx: ipc::ClientRead,
     integration: I,
-    log_filter_reloader: LogFilterReloader,
+    log_filter_reloader: FilterReloadHandle,
     /// A release that's ready to download
     release: Option<updates::Release>,
     rx: ReceiverStream<ControllerRequest>,
@@ -184,7 +185,7 @@ impl<I: GuiIntegration> Controller<I> {
         integration: I,
         rx: mpsc::Receiver<ControllerRequest>,
         advanced_settings: AdvancedSettings,
-        log_filter_reloader: LogFilterReloader,
+        log_filter_reloader: FilterReloadHandle,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
     ) -> Result<(), Error> {
         tracing::debug!("Starting new instance of `Controller`");
@@ -392,13 +393,10 @@ impl<I: GuiIntegration> Controller<I> {
     async fn handle_request(&mut self, req: ControllerRequest) -> Result<(), Error> {
         match req {
             Req::ApplySettings(settings) => {
-                let filter = firezone_logging::try_filter(&settings.log_filter)
-                        .context("Couldn't parse new log filter directives")?;
+                self.log_filter_reloader.reload(&settings.log_filter).context("Couldn't reload log filter")?;
+
                 self.advanced_settings = *settings;
 
-                self.log_filter_reloader
-                    .reload(filter)
-                    .context("Couldn't reload log filter")?;
                 self.ipc_client.send_msg(&IpcClientMsg::ApplyLogFilter { directives: self.advanced_settings.log_filter.clone() }).await?;
 
                 tracing::debug!(

@@ -1,7 +1,7 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
 use anyhow::{bail, Context as _, Result};
-use firezone_headless_client::{known_dirs, LogFilterReloader};
+use firezone_headless_client::known_dirs;
 use serde::Serialize;
 use std::{
     fs,
@@ -9,14 +9,14 @@ use std::{
     path::{Path, PathBuf},
 };
 use tokio::task::spawn_blocking;
-use tracing_subscriber::{layer::SubscriberExt, reload, Layer, Registry};
+use tracing_subscriber::{layer::SubscriberExt, Layer, Registry};
 
 /// If you don't store `Handles` in a variable, the file logger handle will drop immediately,
 /// resulting in empty log files.
 #[must_use]
 pub struct Handles {
     pub logger: firezone_logging::file::Handle,
-    pub reloader: LogFilterReloader,
+    pub reloader: firezone_logging::FilterReloadHandle,
 }
 
 struct LogPath {
@@ -56,24 +56,29 @@ pub fn setup(directives: &str) -> Result<Handles> {
 
     // Logfilter for stdout cannot be reloaded. This is okay because we are using it only for local dev and debugging anyway.
     // Having multiple reload handles makes their type-signature quite complex so we don't bother with that.
+    let (stdout_filter, stdout_reloader) = firezone_logging::try_filter(directives)?;
+
     let stdout = tracing_subscriber::fmt::layer()
         .with_ansi(firezone_logging::stdout_supports_ansi())
         .event_format(firezone_logging::Format::new())
-        .with_filter(firezone_logging::try_filter(directives)?);
+        .with_filter(stdout_filter);
 
     std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
-    let (layer, logger) = firezone_logging::file::layer(&log_path, "gui-client");
-    let (filter, reloader) = reload::Layer::new(firezone_logging::try_filter(directives)?);
+    let (file_layer, logger) = firezone_logging::file::layer(&log_path, "gui-client");
+    let (file_filter, file_reloader) = firezone_logging::try_filter(directives)?;
 
     let subscriber = Registry::default()
-        .with(layer.with_filter(filter))
+        .with(file_layer.with_filter(file_filter))
         .with(stdout)
         .with(firezone_logging::sentry_layer());
     firezone_logging::init(subscriber)?;
 
     tracing::debug!(log_path = %log_path.display(), "Log path");
 
-    Ok(Handles { logger, reloader })
+    Ok(Handles {
+        logger,
+        reloader: stdout_reloader.merge(file_reloader),
+    })
 }
 
 #[derive(Clone, Default, Serialize)]
