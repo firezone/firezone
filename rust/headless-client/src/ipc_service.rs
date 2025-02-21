@@ -663,7 +663,7 @@ fn setup_logging(
 
     let stdout_layer = tracing_subscriber::fmt::layer()
         .with_ansi(firezone_logging::stdout_supports_ansi())
-        .event_format(firezone_logging::Format::new());
+        .event_format(firezone_logging::Format::new().without_timestamp());
 
     let subscriber = Registry::default()
         .with(file_layer.with_filter(file_filter))
