@@ -13,6 +13,7 @@ use secrecy::{ExposeSecret as _, Secret};
 use snownet::{Credentials, NoTurnServers, RelaySocket, ServerNode, Transmit};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub const IPV4_PEERS: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11) {
@@ -290,7 +291,7 @@ impl GatewayState {
     pub fn handle_domain_resolved(
         &mut self,
         req: ResolveDnsRequest,
-        resolve_result: Result<Vec<IpAddr>>,
+        resolve_result: Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         now: Instant,
     ) -> anyhow::Result<()> {
         use p2p_control::dns_resource_nat;
