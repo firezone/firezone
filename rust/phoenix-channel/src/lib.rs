@@ -457,6 +457,8 @@ where
                             Ok(()) => {
                                 tracing::trace!(target: "wire::api::send", %message);
 
+                                self.heartbeat.reset(); // Sending any message means we can postpone the heartbeat by another interval.
+
                                 match stream.poll_flush_unpin(cx) {
                                     Poll::Ready(Ok(())) => {
                                         tracing::trace!("Flushed websocket");
