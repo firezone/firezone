@@ -37,7 +37,7 @@
   "mainBinaryName": "firezone-client-gui",
   "identifier": "dev.firezone.client",
   "plugins": {},
-  "productName": "firezone-client-gui",
+  "productName": "Firezone",
   "app": {
     "withGlobalTauri": true,
     "security": {
