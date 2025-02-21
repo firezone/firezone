@@ -307,7 +307,11 @@ impl ClientOnGateway {
 
                 return Ok(None);
             }
-            TranslateIncomingResult::NoNatSession => return Ok(Some(packet)),
+            TranslateIncomingResult::NoNatSession => {
+                // No NAT session means packet is likely for Internet Resource or a CIDR resource.
+
+                return Ok(Some(packet));
+            }
         };
 
         let mut packet = packet

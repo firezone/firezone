@@ -102,8 +102,6 @@ impl NatTable {
                 return Ok(TranslateIncomingResult::ExpiredNatSession);
             }
 
-            tracing::trace!(?outside, "No active NAT session; skipping translation");
-
             return Ok(TranslateIncomingResult::NoNatSession);
         }
 
@@ -116,8 +114,6 @@ impl NatTable {
         if self.expired.contains(&outside) {
             return Ok(TranslateIncomingResult::ExpiredNatSession);
         }
-
-        tracing::trace!(?outside, "No active NAT session; skipping translation");
 
         Ok(TranslateIncomingResult::NoNatSession)
     }
