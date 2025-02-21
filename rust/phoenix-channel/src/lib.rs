@@ -1,7 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod get_user_agent;
-mod heartbeat;
 mod login_url;
 
 use std::collections::{HashSet, VecDeque};
@@ -18,7 +17,6 @@ use base64::Engine;
 use firezone_logging::{err_with_src, telemetry_span};
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
-use heartbeat::{Heartbeat, MissedLastHeartbeat};
 use itertools::Itertools as _;
 use rand_core::{OsRng, RngCore};
 use secrecy::{ExposeSecret, Secret};
@@ -45,7 +43,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes, TFinish> {
     next_request_id: Arc<AtomicU64>,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 
-    heartbeat: Heartbeat,
+    heartbeat: tokio::time::Interval,
 
     _phantom: PhantomData<(TInboundMsg, TOutboundRes)>,
 
@@ -157,7 +155,6 @@ impl Error {
 enum InternalError {
     WebSocket(tokio_tungstenite::tungstenite::Error),
     Serde(serde_json::Error),
-    MissedHeartbeat,
     CloseMessage,
     StreamClosed,
     SocketConnection(Vec<(SocketAddr, std::io::Error)>),
@@ -179,7 +176,6 @@ impl fmt::Display for InternalError {
             }
             InternalError::WebSocket(_) => write!(f, "websocket connection failed"),
             InternalError::Serde(_) => write!(f, "failed to deserialize message"),
-            InternalError::MissedHeartbeat => write!(f, "portal did not respond to our heartbeat"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
             InternalError::StreamClosed => write!(f, "websocket stream was closed"),
             InternalError::SocketConnection(errors) => {
@@ -206,7 +202,6 @@ impl std::error::Error for InternalError {
             InternalError::WebSocket(e) => Some(e),
             InternalError::Serde(e) => Some(e),
             InternalError::SocketConnection(_) => None,
-            InternalError::MissedHeartbeat => None,
             InternalError::CloseMessage => None,
             InternalError::StreamClosed => None,
             InternalError::Timeout { .. } => None,
@@ -287,11 +282,7 @@ where
             waker: None,
             pending_messages: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
             _phantom: PhantomData,
-            heartbeat: Heartbeat::new(
-                heartbeat::INTERVAL,
-                heartbeat::TIMEOUT,
-                next_request_id.clone(),
-            ),
+            heartbeat: tokio::time::interval(Duration::from_secs(30)),
             next_request_id,
             pending_join_requests: Default::default(),
             login,
@@ -563,10 +554,6 @@ where
                             }));
                         }
                         (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
-                            if self.heartbeat.maybe_handle_reply(req_id.copy()) {
-                                continue;
-                            }
-
                             tracing::trace!("Received empty reply for request {req_id:?}");
 
                             continue;
@@ -605,19 +592,11 @@ where
             }
 
             // Priority 3: Handle heartbeats.
-            match self.heartbeat.poll(cx) {
-                Poll::Ready(Ok(id)) => {
-                    self.pending_messages.push_back(serialize_msg(
-                        "phoenix",
-                        EgressControlMessage::<()>::Heartbeat(Empty {}),
-                        id.copy(),
-                    ));
+            match self.heartbeat.poll_tick(cx) {
+                Poll::Ready(_) => {
+                    self.send("phoenix", EgressControlMessage::<()>::Heartbeat(Empty {}));
 
                     return Poll::Ready(Ok(Event::HeartbeatSent));
-                }
-                Poll::Ready(Err(MissedLastHeartbeat {})) => {
-                    self.reconnect_on_transient_error(InternalError::MissedHeartbeat);
-                    continue;
                 }
                 Poll::Pending => {}
             }
