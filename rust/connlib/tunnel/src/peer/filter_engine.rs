@@ -1,4 +1,4 @@
-use ip_packet::IpPacket;
+use ip_packet::{Protocol, UnsupportedProtocol};
 use rangemap::RangeInclusiveSet;
 
 use crate::messages::gateway::{Filter, Filters};
@@ -24,13 +24,18 @@ pub(crate) enum Filtered {
     Udp,
     #[error("ICMP not allowed")]
     Icmp,
+    #[error(transparent)]
+    UnsupportedProtocol(#[from] UnsupportedProtocol),
 }
 
 impl FilterEngine {
-    pub(crate) fn apply(&self, packet: &IpPacket) -> Result<(), Filtered> {
+    pub(crate) fn apply(
+        &self,
+        protocol: Result<Protocol, UnsupportedProtocol>,
+    ) -> Result<(), Filtered> {
         match self {
             FilterEngine::PermitAll => Ok(()),
-            FilterEngine::PermitSome(filter_engine) => filter_engine.apply(packet),
+            FilterEngine::PermitSome(filter_engine) => filter_engine.apply(protocol),
         }
     }
 
@@ -58,32 +63,15 @@ impl AllowRules {
         }
     }
 
-    fn apply(&self, packet: &IpPacket) -> Result<(), Filtered> {
-        if let Some(dest_port) = packet.as_tcp().map(|tcp| tcp.destination_port()) {
-            if self.tcp.contains(&dest_port) {
-                return Ok(());
-            }
-
-            return Err(Filtered::Tcp);
+    fn apply(&self, protocol: Result<Protocol, UnsupportedProtocol>) -> Result<(), Filtered> {
+        match protocol? {
+            Protocol::Tcp(port) if self.tcp.contains(&port) => Ok(()),
+            Protocol::Udp(port) if self.udp.contains(&port) => Ok(()),
+            Protocol::Icmp(_) if self.icmp => Ok(()),
+            Protocol::Tcp(_) => Err(Filtered::Tcp),
+            Protocol::Udp(_) => Err(Filtered::Udp),
+            Protocol::Icmp(_) => Err(Filtered::Icmp),
         }
-
-        if let Some(dest_port) = packet.as_udp().map(|udp| udp.destination_port()) {
-            if self.udp.contains(&dest_port) {
-                return Ok(());
-            }
-
-            return Err(Filtered::Udp);
-        }
-
-        if packet.is_icmp() || packet.is_icmpv6() {
-            if self.icmp {
-                return Ok(());
-            }
-
-            return Err(Filtered::Icmp);
-        }
-
-        Ok(())
     }
 
     fn add_filters<'a>(&mut self, filters: impl IntoIterator<Item = &'a Filter>) {
