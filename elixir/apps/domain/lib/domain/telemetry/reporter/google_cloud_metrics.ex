@@ -350,7 +350,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
   defp update_last_flushed_at(log, true) do
     log
     |> Log.Changeset.changeset()
-    |> Log.Changeset.update_last_flushed_at(DateTime.utc_now())
+    |> Log.Changeset.update_last_flushed_at_with_lock(DateTime.utc_now())
     # No fields are updated, but we need to force the update for optimistic locking to work
     |> Repo.update(force: true)
   end
