@@ -337,8 +337,6 @@ fn install_rustls_crypto_provider() {
     let existing = rustls::crypto::ring::default_provider().install_default();
 
     if existing.is_err() {
-        // On Apple platforms, network extensions get terminated on disconnect and thus all memory is free'd.
-        // Therefore, this should not never happen unless the above is somehow no longer true.
-        tracing::warn!("Skipping install of crypto provider because we already have one.");
+        tracing::debug!("Skipping install of crypto provider because we already have one.");
     }
 }
