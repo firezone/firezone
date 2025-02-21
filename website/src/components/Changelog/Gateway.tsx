@@ -27,6 +27,9 @@ export default function Gateway() {
           Fixes a bug in the routing of DNS resources that would lead to "Source
           not allowed" errors in the Client logs.
         </ChangeItem>
+        <ChangeItem pull="8225">
+          Caches successful DNS queries for DNS resource domains for 5 minutes.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.4" date={new Date("2025-02-11")}>
         <ChangeItem pull="7944">
