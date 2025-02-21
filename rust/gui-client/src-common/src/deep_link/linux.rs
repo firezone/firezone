@@ -120,6 +120,7 @@ Terminal=false
 Type=Application
 MimeType=x-scheme-handler/{}
 Categories=Network;
+NoDisplay=true
 ",
         exe.display(),
         super::FZ_SCHEME
