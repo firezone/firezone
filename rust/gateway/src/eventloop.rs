@@ -31,7 +31,7 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Cache DNS responses for 5 minutes.
-const DNS_TTL: Duration = Duration::from_secs(10);
+const DNS_TTL: Duration = Duration::from_secs(5 * 60);
 
 // DNS resolution happens as part of every connection setup.
 // For a connection to succeed, DNS resolution must be less than `snownet`'s handshake timeout.
