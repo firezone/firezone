@@ -114,7 +114,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
         log = get_log()
 
         # Flush immediately if the buffer is full
-        flush(project_id, resource, labels, {buffer_size, buffer}, log)
+        flush(project_id, resource, labels, {buffer_size, buffer}, log, false)
       else
         {buffer_size, buffer}
       end
@@ -127,7 +127,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
 
     {buffer_size, buffer} =
       if all_intervals_greater_than_5s?(buffer) && havent_flushed_in_over_5s?(log) do
-        flush(project_id, resource, labels, {buffer_size, buffer}, log)
+        flush(project_id, resource, labels, {buffer_size, buffer}, log, true)
       else
         {buffer_size, buffer}
       end
@@ -299,7 +299,8 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
          resource,
          labels,
          {buffer_size, buffer},
-         log
+         log,
+         lock
        ) do
     time_series =
       buffer
@@ -308,7 +309,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
         format_time_series(schema, name, labels, resource, measurements, unit)
       end)
 
-    case update_last_flushed_at(log) do
+    case update_last_flushed_at(log, lock) do
       {:ok, _} ->
         case GoogleCloudPlatform.send_metrics(project_id, time_series) do
           :ok ->
@@ -334,13 +335,19 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
     end
   end
 
-  defp update_last_flushed_at(nil) do
+  defp update_last_flushed_at(nil, _) do
     %Log{last_flushed_at: DateTime.utc_now(), reporter_module: "#{__MODULE__}"}
     |> Log.Changeset.changeset()
     |> Repo.insert()
   end
 
-  defp update_last_flushed_at(log) do
+  defp update_last_flushed_at(log, false) do
+    log
+    |> Log.Changeset.changeset()
+    |> Repo.update(force: true)
+  end
+
+  defp update_last_flushed_at(log, true) do
     log
     |> Log.Changeset.changeset()
     |> Log.Changeset.update_last_flushed_at_with_lock(DateTime.utc_now())
