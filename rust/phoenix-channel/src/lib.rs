@@ -1,12 +1,10 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod get_user_agent;
-mod heartbeat;
 mod login_url;
 
 use std::collections::{HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, future, marker::PhantomData};
@@ -18,7 +16,6 @@ use base64::Engine;
 use firezone_logging::{err_with_src, telemetry_span};
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
-use heartbeat::{Heartbeat, MissedLastHeartbeat};
 use itertools::Itertools as _;
 use rand_core::{OsRng, RngCore};
 use secrecy::{ExposeSecret, Secret};
@@ -42,10 +39,10 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes, TFinish> {
     state: State,
     waker: Option<Waker>,
     pending_messages: VecDeque<String>,
-    next_request_id: Arc<AtomicU64>,
+    next_request_id: u64,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 
-    heartbeat: Heartbeat,
+    heartbeat: tokio::time::Interval,
 
     _phantom: PhantomData<(TInboundMsg, TOutboundRes)>,
 
@@ -157,7 +154,6 @@ impl Error {
 enum InternalError {
     WebSocket(tokio_tungstenite::tungstenite::Error),
     Serde(serde_json::Error),
-    MissedHeartbeat,
     CloseMessage,
     StreamClosed,
     SocketConnection(Vec<(SocketAddr, std::io::Error)>),
@@ -179,7 +175,6 @@ impl fmt::Display for InternalError {
             }
             InternalError::WebSocket(_) => write!(f, "websocket connection failed"),
             InternalError::Serde(_) => write!(f, "failed to deserialize message"),
-            InternalError::MissedHeartbeat => write!(f, "portal did not respond to our heartbeat"),
             InternalError::CloseMessage => write!(f, "portal closed the websocket connection"),
             InternalError::StreamClosed => write!(f, "websocket stream was closed"),
             InternalError::SocketConnection(errors) => {
@@ -206,7 +201,6 @@ impl std::error::Error for InternalError {
             InternalError::WebSocket(e) => Some(e),
             InternalError::Serde(e) => Some(e),
             InternalError::SocketConnection(_) => None,
-            InternalError::MissedHeartbeat => None,
             InternalError::CloseMessage => None,
             InternalError::StreamClosed => None,
             InternalError::Timeout { .. } => None,
@@ -264,8 +258,6 @@ where
         make_reconnect_backoff: impl Fn() -> ExponentialBackoff + Send + 'static,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> io::Result<Self> {
-        let next_request_id = Arc::new(AtomicU64::new(0));
-
         let host_and_port = url.expose_secret().host_and_port();
 
         let _span = telemetry_span!("resolve_portal_url", host = %host_and_port.0).entered();
@@ -287,12 +279,8 @@ where
             waker: None,
             pending_messages: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
             _phantom: PhantomData,
-            heartbeat: Heartbeat::new(
-                heartbeat::INTERVAL,
-                heartbeat::TIMEOUT,
-                next_request_id.clone(),
-            ),
-            next_request_id,
+            heartbeat: tokio::time::interval(Duration::from_secs(30)),
+            next_request_id: 0,
             pending_join_requests: Default::default(),
             login,
             init_req,
@@ -469,6 +457,8 @@ where
                             Ok(()) => {
                                 tracing::trace!(target: "wire::api::send", %message);
 
+                                self.heartbeat.reset(); // Sending any message means we can postpone the heartbeat by another interval.
+
                                 match stream.poll_flush_unpin(cx) {
                                     Poll::Ready(Ok(())) => {
                                         tracing::trace!("Flushed websocket");
@@ -563,10 +553,6 @@ where
                             }));
                         }
                         (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
-                            if self.heartbeat.maybe_handle_reply(req_id.copy()) {
-                                continue;
-                            }
-
                             tracing::trace!("Received empty reply for request {req_id:?}");
 
                             continue;
@@ -605,19 +591,11 @@ where
             }
 
             // Priority 3: Handle heartbeats.
-            match self.heartbeat.poll(cx) {
-                Poll::Ready(Ok(id)) => {
-                    self.pending_messages.push_back(serialize_msg(
-                        "phoenix",
-                        EgressControlMessage::<()>::Heartbeat(Empty {}),
-                        id.copy(),
-                    ));
+            match self.heartbeat.poll_tick(cx) {
+                Poll::Ready(_) => {
+                    self.send("phoenix", EgressControlMessage::<()>::Heartbeat(Empty {}));
 
                     return Poll::Ready(Ok(Event::HeartbeatSent));
-                }
-                Poll::Ready(Err(MissedLastHeartbeat {})) => {
-                    self.reconnect_on_transient_error(InternalError::MissedHeartbeat);
-                    continue;
                 }
                 Poll::Pending => {}
             }
@@ -647,11 +625,11 @@ where
     }
 
     fn fetch_add_request_id(&mut self) -> OutboundRequestId {
-        let next_id = self
-            .next_request_id
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = self.next_request_id;
 
-        OutboundRequestId(next_id)
+        self.next_request_id += 1;
+
+        OutboundRequestId(id)
     }
 
     fn socket_addresses(&self) -> Vec<SocketAddr> {
