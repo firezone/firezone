@@ -5,7 +5,6 @@ mod login_url;
 
 use std::collections::{HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
-use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{fmt, future, marker::PhantomData};
@@ -40,7 +39,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes, TFinish> {
     state: State,
     waker: Option<Waker>,
     pending_messages: VecDeque<String>,
-    next_request_id: Arc<AtomicU64>,
+    next_request_id: u64,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 
     heartbeat: tokio::time::Interval,
@@ -259,8 +258,6 @@ where
         make_reconnect_backoff: impl Fn() -> ExponentialBackoff + Send + 'static,
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> io::Result<Self> {
-        let next_request_id = Arc::new(AtomicU64::new(0));
-
         let host_and_port = url.expose_secret().host_and_port();
 
         let _span = telemetry_span!("resolve_portal_url", host = %host_and_port.0).entered();
@@ -283,7 +280,7 @@ where
             pending_messages: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
             _phantom: PhantomData,
             heartbeat: tokio::time::interval(Duration::from_secs(30)),
-            next_request_id,
+            next_request_id: 0,
             pending_join_requests: Default::default(),
             login,
             init_req,
@@ -626,11 +623,11 @@ where
     }
 
     fn fetch_add_request_id(&mut self) -> OutboundRequestId {
-        let next_id = self
-            .next_request_id
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let id = self.next_request_id;
 
-        OutboundRequestId(next_id)
+        self.next_request_id += 1;
+
+        OutboundRequestId(id)
     }
 
     fn socket_addresses(&self) -> Vec<SocketAddr> {
