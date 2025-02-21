@@ -111,8 +111,10 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
 
     {buffer_size, buffer} =
       if buffer_size >= @buffer_size do
+        log = get_log()
+
         # Flush immediately if the buffer is full
-        flush(project_id, resource, labels, {buffer_size, buffer})
+        flush(project_id, resource, labels, {buffer_size, buffer}, log)
       else
         {buffer_size, buffer}
       end
@@ -121,10 +123,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
   end
 
   def handle_info(:flush, {events, project_id, {resource, labels}, {buffer_size, buffer}}) do
-    log =
-      Log.Query.all()
-      |> Log.Query.by_reporter_module("#{__MODULE__}")
-      |> Repo.one()
+    log = get_log()
 
     {buffer_size, buffer} =
       if all_intervals_greater_than_5s?(buffer) && havent_flushed_in_over_5s?(log) do
@@ -138,6 +137,12 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
 
     Process.send_after(self(), :flush, @flush_timer + jitter)
     {:noreply, {events, project_id, {resource, labels}, {buffer_size, buffer}}}
+  end
+
+  defp get_log do
+    Log.Query.all()
+    |> Log.Query.by_reporter_module("#{__MODULE__}")
+    |> Repo.one()
   end
 
   # Google Cloud Monitoring API does not support sampling intervals shorter than 5 seconds
@@ -294,7 +299,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
          resource,
          labels,
          {buffer_size, buffer},
-         log \\ %Log{reporter_module: "#{__MODULE__}"}
+         log
        ) do
     time_series =
       buffer
@@ -330,14 +335,17 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
   end
 
   defp update_last_flushed_at(nil) do
-    update_last_flushed_at(%Log{reporter_module: "#{__MODULE__}"})
+    %Log{last_flushed_at: DateTime.utc_now(), reporter_module: "#{__MODULE__}"}
+    |> Log.Changeset.changeset()
+    |> Repo.insert()
   end
 
   defp update_last_flushed_at(log) do
     log
     |> Log.Changeset.changeset()
     |> Log.Changeset.update_last_flushed_at_with_lock(DateTime.utc_now())
-    |> Repo.insert_or_update()
+    # No fields are updated, but we need to force the update for optimistic locking to work
+    |> Repo.update(force: true)
   end
 
   defp truncate_labels(labels) do
