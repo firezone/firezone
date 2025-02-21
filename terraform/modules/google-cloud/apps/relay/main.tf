@@ -356,7 +356,7 @@ resource "google_compute_region_instance_group_manager" "application" {
   }
 
   timeouts {
-    create = "20m"
+    create = "30m"
     update = "30m"
     delete = "20m"
   }
