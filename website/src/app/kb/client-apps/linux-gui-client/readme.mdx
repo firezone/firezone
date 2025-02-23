@@ -153,6 +153,14 @@ To export or clear your logs:
 1. Click `Diagnostic Logs`.
 1. Click `Export Logs` or `Clear Log Directory`.
 
+The IPC service (`firezone-client-ipc.service`) also logs to stdout which is
+captured by systemd and sent to journald. To view the logs of the IPC service,
+use:
+
+```bash
+journalctl -efu firezone-client-ipc.service
+```
+
 ## Uninstalling
 
 1. Remove the auto-start link: `firezone-client-gui debug set-autostart false`

@@ -33,7 +33,7 @@ use std::{
 use std::{sync::OnceLock, time::Duration};
 use thiserror::Error;
 use tokio::runtime::Runtime;
-use tracing_subscriber::{prelude::*, reload, EnvFilter, Registry};
+use tracing_subscriber::prelude::*;
 
 mod make_writer;
 mod tun;
@@ -126,21 +126,18 @@ fn call_method(
 }
 
 fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
-    let log_filter =
-        firezone_logging::try_filter(&log_filter).context("Failed to parse log-filter")?;
-
     static LOGGER_STATE: OnceLock<(
         firezone_logging::file::Handle,
-        reload::Handle<EnvFilter, Registry>,
+        firezone_logging::FilterReloadHandle,
     )> = OnceLock::new();
     if let Some((_, reload_handle)) = LOGGER_STATE.get() {
         reload_handle
-            .reload(log_filter)
+            .reload(&log_filter)
             .context("Failed to apply new log-filter")?;
         return Ok(());
     }
 
-    let (log_filter, reload_handle) = reload::Layer::new(log_filter);
+    let (log_filter, reload_handle) = firezone_logging::try_filter(&log_filter)?;
     let (file_layer, handle) = firezone_logging::file::layer(log_dir, "connlib");
 
     let subscriber = tracing_subscriber::registry()

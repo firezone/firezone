@@ -7,12 +7,14 @@ mod unwrap_or;
 mod ansi;
 mod err_with_sources;
 
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use sentry_tracing::EventFilter;
 use tracing::{subscriber::DefaultGuard, Subscriber};
 use tracing_log::LogTracer;
 use tracing_subscriber::{
-    filter::ParseError, fmt, layer::SubscriberExt as _, registry::LookupSpan,
+    filter::ParseError, fmt, layer::SubscriberExt as _, registry::LookupSpan, reload,
     util::SubscriberInitExt, EnvFilter, Layer, Registry,
 };
 
@@ -21,7 +23,7 @@ pub use err_with_sources::{err_with_src, ErrorWithSources};
 pub use format::Format;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`
-pub fn setup_global_subscriber<L>(additional_layer: L) -> Result<()>
+pub fn setup_global_subscriber<L>(additional_layer: L) -> Result<FilterReloadHandle>
 where
     L: Layer<Registry> + Send + Sync,
 {
@@ -30,21 +32,24 @@ where
     }
 
     let directives = std::env::var("RUST_LOG").unwrap_or_default();
+
+    let (filter1, reload_handle1) =
+        try_filter(&directives).context("Failed to parse directives")?;
+    let (filter2, reload_handle2) =
+        try_filter(&directives).context("Failed to parse directives")?;
+
     let subscriber = Registry::default()
-        .with(
-            additional_layer
-                .with_filter(try_filter(&directives).context("Failed to parse directives")?),
-        )
+        .with(additional_layer.with_filter(filter1))
         .with(sentry_layer())
         .with(
             fmt::layer()
                 .with_ansi(stdout_supports_ansi())
                 .event_format(Format::new())
-                .with_filter(try_filter(&directives).context("Failed to parse directives")?),
+                .with_filter(filter2),
         );
     init(subscriber)?;
 
-    Ok(())
+    Ok(reload_handle1.merge(reload_handle2))
 }
 
 #[expect(
@@ -59,7 +64,23 @@ pub fn init(subscriber: impl Subscriber + Send + Sync + 'static) -> Result<()> {
 }
 
 /// Constructs an opinionated [`EnvFilter`] with some crates already silenced.
-pub fn try_filter(directives: &str) -> Result<EnvFilter, ParseError> {
+pub fn try_filter<S>(
+    directives: &str,
+) -> Result<(reload::Layer<EnvFilter, S>, FilterReloadHandle), ParseError>
+where
+    S: 'static,
+{
+    let env_filter = parse_filter(directives)?;
+
+    let (layer, reload_handle) = reload::Layer::new(env_filter);
+    let handle = FilterReloadHandle {
+        inner: Arc::new(reload_handle),
+    };
+
+    Ok((layer, handle))
+}
+
+fn parse_filter(directives: &str) -> Result<EnvFilter, ParseError> {
     /// A filter directive that silences noisy crates.
     ///
     /// For debugging, it is useful to set a catch-all log like `debug`.
@@ -70,11 +91,65 @@ pub fn try_filter(directives: &str) -> Result<EnvFilter, ParseError> {
     /// If necessary, you can still activate logs from these crates by restating them in your directive with a lower filter, i.e. `netlink_proto=debug`.
     const IRRELEVANT_CRATES: &str = "netlink_proto=warn,os_info=warn,rustls=warn";
 
-    if directives.is_empty() {
-        return EnvFilter::try_new(IRRELEVANT_CRATES);
+    let env_filter = if directives.is_empty() {
+        EnvFilter::try_new(IRRELEVANT_CRATES)?
+    } else {
+        EnvFilter::try_new(format!("{IRRELEVANT_CRATES},{directives}"))?
+    };
+
+    Ok(env_filter)
+}
+
+pub struct FilterReloadHandle {
+    inner: Arc<dyn Reload + Send + Sync>,
+}
+
+impl std::fmt::Debug for FilterReloadHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("FilterReloadHandle").finish_non_exhaustive()
+    }
+}
+
+impl FilterReloadHandle {
+    pub fn reload(&self, new_filter: &str) -> Result<()> {
+        self.inner.reload(new_filter)?;
+
+        Ok(())
     }
 
-    EnvFilter::try_new(format!("{IRRELEVANT_CRATES},{directives}"))
+    pub fn merge(self, other: FilterReloadHandle) -> Self {
+        Self {
+            inner: Arc::new((self, other)),
+        }
+    }
+}
+
+trait Reload {
+    fn reload(&self, new_filter: &str) -> Result<()>;
+}
+
+impl<S> Reload for tracing_subscriber::reload::Handle<EnvFilter, S>
+where
+    S: 'static,
+{
+    fn reload(&self, new_filter: &str) -> Result<()> {
+        let filter = parse_filter(new_filter).context("Failed to parse new filter")?;
+
+        self.reload(filter).context("Failed to reload filter")?;
+
+        Ok(())
+    }
+}
+
+impl Reload for (FilterReloadHandle, FilterReloadHandle) {
+    fn reload(&self, new_filter: &str) -> Result<()> {
+        let (a, b) = self;
+
+        a.reload(new_filter)?;
+        b.reload(new_filter)?;
+
+        Ok(())
+    }
 }
 
 /// Initialises a logger to be used in tests.
@@ -136,7 +211,8 @@ where
             )
         })
         .enable_span_attributes()
-        .with_filter(try_filter("trace").expect("static filter always parses")) // Filter out noisy crates but pass all events otherwise.
+        .with_filter(parse_filter("trace").expect("static filter always parses"))
+    // Filter out noisy crates but pass all events otherwise.
 }
 
 #[doc(hidden)]
