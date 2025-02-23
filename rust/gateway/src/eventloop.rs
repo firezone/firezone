@@ -30,8 +30,8 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 /// How long we allow a DNS resolution via `libc::get_addr_info`.
 const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Cache DNS responses for 5 minutes.
-const DNS_TTL: Duration = Duration::from_secs(5 * 60);
+/// Cache DNS responses for 30 seconds.
+const DNS_TTL: Duration = Duration::from_secs(30);
 
 // DNS resolution happens as part of every connection setup.
 // For a connection to succeed, DNS resolution must be less than `snownet`'s handshake timeout.

@@ -158,7 +158,7 @@ If the query matches a Resource, however, the following happens:
    a DNS name), the Client sends a message using Firezone's p2p control protocol
    to the Gateway, triggering a DNS query using the Gateway's system resolver
    for the DNS name. The result of this DNS query is stored on the Gateway in a
-   lookup table and cached for 5 minutes.
+   lookup table and cached for 30 seconds.
 1. Traffic from the application flows, and the Gateway translates the internal
    IP back to the actual IP address of the Resource, forwarding the traffic
    accordingly.
