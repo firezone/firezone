@@ -151,12 +151,14 @@ If the query matches a Resource, however, the following happens:
 1. When the Client sees traffic for the IP, it triggers connection setup. The
    Client sends a request to the Policy Engine for evaluation. If the request is
    allowed, the Policy Engine finds an appropriate Gateway to route the traffic.
-1. At the same time, the Gateway receives the request via the control plane and
-   resolves the DNS query using its system resolver, storing the result in a
-   lookup table.
 1. If the Policy Engine approves the Client's request, it sends the Client the
    WireGuard keys and NAT traversal information for the Gateway that will serve
    the Resource.
+1. Once the connection is established (and every time an application re-queries
+   a DNS name), the Client sends a message using Firezone's p2p control protocol
+   to the Gateway, triggering a DNS query using the Gateway's system resolver
+   for the DNS name. The result of this DNS query is stored on the Gateway in a
+   lookup table and cached for 5 minutes.
 1. Traffic from the application flows, and the Gateway translates the internal
    IP back to the actual IP address of the Resource, forwarding the traffic
    accordingly.
