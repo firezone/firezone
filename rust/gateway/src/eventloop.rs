@@ -16,6 +16,7 @@ use firezone_tunnel::{
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
 use std::convert::Infallible;
+use std::future::Future;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -28,6 +29,9 @@ pub const PHOENIX_TOPIC: &str = "gateway";
 
 /// How long we allow a DNS resolution via `libc::get_addr_info`.
 const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Cache DNS responses for 30 seconds.
+const DNS_TTL: Duration = Duration::from_secs(30);
 
 // DNS resolution happens as part of every connection setup.
 // For a connection to succeed, DNS resolution must be less than `snownet`'s handshake timeout.
@@ -47,7 +51,10 @@ pub struct Eventloop {
     portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     tun_device_manager: Arc<Mutex<TunDeviceManager>>,
 
-    resolve_tasks: futures_bounded::FuturesTupleSet<Result<Vec<IpAddr>>, ResolveTrigger>,
+    resolve_tasks:
+        futures_bounded::FuturesTupleSet<Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveTrigger>,
+    dns_cache: moka::future::Cache<DomainName, Vec<IpAddr>>,
+
     set_interface_tasks: futures_bounded::FuturesSet<Result<()>>,
 
     logged_permission_denied: bool,
@@ -68,6 +75,13 @@ impl Eventloop {
             resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 1000),
             set_interface_tasks: futures_bounded::FuturesSet::new(Duration::from_secs(5), 10),
             logged_permission_denied: false,
+            dns_cache: moka::future::Cache::builder()
+                .name("DNS queries")
+                .time_to_live(DNS_TTL)
+                .eviction_listener(|domain, ips, cause| {
+                    tracing::debug!(%domain, ?ips, ?cause, "DNS cache entry evicted");
+                })
+                .build(),
         }
     }
 }
@@ -118,7 +132,9 @@ impl Eventloop {
             match self.resolve_tasks.poll_unpin(cx).map(|(r, trigger)| {
                 (
                     r.unwrap_or_else(|e| {
-                        Err(anyhow::Error::new(e).context("DNS resolution timed out"))
+                        Err(Arc::new(
+                            anyhow::Error::new(e).context("DNS resolution timed out"),
+                        ))
                     }),
                     trigger,
                 )
@@ -196,7 +212,7 @@ impl Eventloop {
                 if self
                     .resolve_tasks
                     .try_push(
-                        resolve(Some(setup_nat.domain().clone())),
+                        self.resolve(setup_nat.domain().clone()),
                         ResolveTrigger::SetupNat(setup_nat),
                     )
                     .is_err()
@@ -244,12 +260,15 @@ impl Eventloop {
                 msg: IngressMessages::RequestConnection(req),
                 ..
             } => {
+                let Some(domain) = req.client.payload.domain.as_ref().map(|r| r.name.clone())
+                else {
+                    self.accept_connection(Ok(vec![]), req);
+                    return;
+                };
+
                 if self
                     .resolve_tasks
-                    .try_push(
-                        resolve(req.client.payload.domain.as_ref().map(|r| r.name.clone())),
-                        ResolveTrigger::RequestConnection(req),
-                    )
+                    .try_push(self.resolve(domain), ResolveTrigger::RequestConnection(req))
                     .is_err()
                 {
                     tracing::warn!("Too many connections requests, dropping existing one");
@@ -259,12 +278,14 @@ impl Eventloop {
                 msg: IngressMessages::AllowAccess(req),
                 ..
             } => {
+                let Some(domain) = req.payload.as_ref().map(|r| r.name.clone()) else {
+                    self.allow_access(Ok(vec![]), req);
+                    return;
+                };
+
                 if self
                     .resolve_tasks
-                    .try_push(
-                        resolve(req.payload.as_ref().map(|r| r.name.clone())),
-                        ResolveTrigger::AllowAccess(req),
-                    )
+                    .try_push(self.resolve(domain), ResolveTrigger::AllowAccess(req))
                     .is_err()
                 {
                     tracing::warn!("Too many allow access requests, dropping existing one");
@@ -384,7 +405,11 @@ impl Eventloop {
         }
     }
 
-    pub fn accept_connection(&mut self, result: Result<Vec<IpAddr>>, req: RequestConnection) {
+    pub fn accept_connection(
+        &mut self,
+        result: Result<Vec<IpAddr>, Arc<anyhow::Error>>,
+        req: RequestConnection,
+    ) {
         let addresses = match result {
             Ok(addresses) => addresses,
             Err(e) => {
@@ -444,7 +469,11 @@ impl Eventloop {
         );
     }
 
-    pub fn allow_access(&mut self, result: Result<Vec<IpAddr>>, req: AllowAccess) {
+    pub fn allow_access(
+        &mut self,
+        result: Result<Vec<IpAddr>, Arc<anyhow::Error>>,
+        req: AllowAccess,
+    ) {
         // "allow access" doesn't have a response so we can't tell the client that things failed.
         // It is legacy code so don't bother ...
         let addresses = match result {
@@ -467,6 +496,16 @@ impl Eventloop {
             tracing::warn!(client = %req.client_id, "Allow access request failed: {e:#}");
         };
     }
+
+    fn resolve(
+        &self,
+        domain: DomainName,
+    ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> {
+        let do_resolve = resolve(domain.clone());
+        let cache = self.dns_cache.clone();
+
+        async move { cache.try_get_with(domain, do_resolve).await }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -477,10 +516,8 @@ pub enum Error {
     UpdateTun(#[from] anyhow::Error),
 }
 
-async fn resolve(domain: Option<DomainName>) -> Result<Vec<IpAddr>> {
-    let Some(domain) = domain.clone() else {
-        return Ok(vec![]);
-    };
+async fn resolve(domain: DomainName) -> Result<Vec<IpAddr>> {
+    tracing::debug!(%domain, "Resolving DNS");
 
     let dname = domain.to_string();
 
