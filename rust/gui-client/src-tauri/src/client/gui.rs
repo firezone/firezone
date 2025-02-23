@@ -16,7 +16,6 @@ use firezone_gui_client_common::{
     settings::AdvancedSettings,
     updates,
 };
-use firezone_headless_client::LogFilterReloader;
 use firezone_logging::err_with_src;
 use firezone_telemetry as telemetry;
 use futures::FutureExt;
@@ -120,7 +119,7 @@ impl GuiIntegration for TauriIntegration {
 pub(crate) fn run(
     cli: client::Cli,
     advanced_settings: AdvancedSettings,
-    reloader: LogFilterReloader,
+    reloader: firezone_logging::FilterReloadHandle,
     mut telemetry: telemetry::Telemetry,
 ) -> Result<()> {
     // Needed for the deep link server
