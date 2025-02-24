@@ -979,4 +979,9 @@ mod tests {
 
         assert_eq!(actual, expected)
     }
+
+    #[tokio::test]
+    async fn can_sleep_0_ms() {
+        tokio::time::sleep(Duration::ZERO).await
+    }
 }
