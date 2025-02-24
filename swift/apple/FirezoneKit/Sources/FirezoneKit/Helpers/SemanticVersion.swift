@@ -6,7 +6,7 @@
 
 import Foundation
 
-struct SemanticVersion: Comparable, CustomStringConvertible {
+struct SemanticVersion: Comparable, CustomStringConvertible, Codable {
   var description: String {
     return "\(major).\(minor).\(patch)"
   }
