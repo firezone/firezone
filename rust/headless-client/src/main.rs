@@ -350,19 +350,6 @@ fn get_token(
 ///
 /// Sync because we do blocking file I/O
 fn read_token_file(path: &Path) -> Result<Option<SecretString>> {
-    if let Ok(token) = std::env::var(TOKEN_ENV_KEY) {
-        std::env::remove_var(TOKEN_ENV_KEY);
-
-        let token = SecretString::from(token);
-        // Token was provided in env var
-        tracing::info!(
-            ?path,
-            ?TOKEN_ENV_KEY,
-            "Found token in env var, ignoring any token that may be on disk."
-        );
-        return Ok(Some(token));
-    }
-
     if std::fs::metadata(path).is_err() {
         return Ok(None);
     }
