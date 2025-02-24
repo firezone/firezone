@@ -42,6 +42,7 @@ zip = { workspace = true, features = ["deflate", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = { workspace = true }
+tracing-journald = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = { workspace = true }
