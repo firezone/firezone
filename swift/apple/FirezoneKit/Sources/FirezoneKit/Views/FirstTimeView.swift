@@ -31,13 +31,13 @@ struct FirstTimeView: View {
         Spacer()
         HStack {
           Button("Close this window") {
-            AppViewModel.WindowDefinition.main.window()?.close()
+            AppView.WindowDefinition.main.window()?.close()
           }
           .buttonStyle(.borderedProminent)
           .controlSize(.large)
           Button("Open menu") {
             menuBar.showMenu()
-            AppViewModel.WindowDefinition.main.window()?.close()
+            AppView.WindowDefinition.main.window()?.close()
           }
           .buttonStyle(.borderedProminent)
           .controlSize(.large)

@@ -8,82 +8,8 @@
 import SwiftUI
 import Combine
 
-@MainActor
-final class GrantVPNViewModel: ObservableObject {
-  @Published var isInstalled: Bool = false
-
-  private let store: Store
-  private var cancellables: Set<AnyCancellable> = []
-
-  init(store: Store) {
-    self.store = store
-
-#if os(macOS)
-    store.$systemExtensionStatus
-      .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] status in
-        self?.isInstalled = status == .installed
-      }).store(in: &cancellables)
-#endif
-  }
-
-#if os(macOS)
-  func installSystemExtensionButtonTapped() {
-    Task {
-      do {
-        try await store.installSystemExtension()
-
-        // The window has a tendency to go to the background after installing
-        // the system extension
-        NSApp.activate(ignoringOtherApps: true)
-
-      } catch {
-        Log.error(error)
-        await macOSAlert.show(for: error)
-      }
-    }
-  }
-
-  func grantPermissionButtonTapped() {
-    Log.log("\(#function)")
-    Task {
-      do {
-        try await store.grantVPNPermission()
-
-        // The window has a tendency to go to the background after allowing the
-        // VPN configuration
-        NSApp.activate(ignoringOtherApps: true)
-      } catch {
-        Log.error(error)
-        await macOSAlert.show(for: error)
-      }
-    }
-  }
-#endif
-
-#if os(iOS)
-  func grantPermissionButtonTapped(errorHandler: GlobalErrorHandler) {
-    Log.log("\(#function)")
-    Task {
-      do {
-        try await store.grantVPNPermission()
-      } catch {
-        Log.error(error)
-
-        errorHandler.handle(
-          ErrorAlert(
-            title: "Error installing VPN configuration",
-            error: error
-          )
-        )
-      }
-    }
-  }
-#endif
-}
-
 struct GrantVPNView: View {
-  @ObservedObject var model: GrantVPNViewModel
+  @EnvironmentObject var store: Store
   @EnvironmentObject var errorHandler: GlobalErrorHandler
 
   var body: some View {
@@ -110,7 +36,7 @@ struct GrantVPNView: View {
           .imageScale(.large)
         Spacer()
         Button("Grant VPN Permission") {
-          model.grantPermissionButtonTapped(errorHandler: errorHandler)
+          grantVPNPermission()
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
@@ -146,7 +72,7 @@ struct GrantVPNView: View {
           VStack(alignment: .center) {
             Text("Step 1: Enable the system extension")
               .font(.title)
-              .strikethrough(model.isInstalled, color: .primary)
+              .strikethrough(isInstalled(), color: .primary)
             Text("""
             1. Click the "Enable System Extension" button below.
             2. Click "Open System Settings" in the dialog that appears.
@@ -155,11 +81,11 @@ struct GrantVPNView: View {
             """)
             .font(.body)
             .padding(.vertical, 10)
-            .opacity(model.isInstalled ? 0.5 : 1.0)
+            .opacity(isInstalled() ? 0.5 : 1.0)
             Spacer()
             Button(
               action: {
-                model.installSystemExtensionButtonTapped()
+                installSystemExtension()
               },
               label: {
                 Label("Enable System Extension", systemImage: "gearshape")
@@ -167,7 +93,7 @@ struct GrantVPNView: View {
             )
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(model.isInstalled)
+            .disabled(isInstalled())
           }
           Spacer()
           VStack(alignment: .center) {
@@ -182,7 +108,7 @@ struct GrantVPNView: View {
             Spacer()
             Button(
               action: {
-                model.grantPermissionButtonTapped()
+                grantVPNPermission()
               },
               label: {
                 Label("Grant VPN Permission", systemImage: "network.badge.shield.half.filled")
@@ -190,8 +116,8 @@ struct GrantVPNView: View {
             )
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(!model.isInstalled)
-          }.opacity(model.isInstalled ? 1.0 : 0.5)
+            .disabled(!isInstalled())
+          }.opacity(isInstalled() ? 1.0 : 0.5)
           Spacer()
         }
         Spacer()
@@ -201,4 +127,53 @@ struct GrantVPNView: View {
     Spacer()
 #endif
   }
+
+#if os(macOS)
+  func installSystemExtension() {
+    Task {
+      do {
+        try await store.installSystemExtension()
+
+        // The window has a tendency to go to the background after installing
+        // the system extension
+        NSApp.activate(ignoringOtherApps: true)
+      } catch {
+        Log.error(error)
+        await macOSAlert.show(for: error)
+      }
+    }
+  }
+
+  func grantVPNPermission() {
+    Task {
+      do {
+        try await store.grantVPNPermission()
+      } catch {
+        Log.error(error)
+        await macOSAlert.show(for: error)
+      }
+    }
+  }
+
+  func isInstalled() -> Bool {
+    return store.systemExtensionStatus == .installed
+  }
+#endif
+
+#if os(iOS)
+  func grantVPNPermission() {
+    Task {
+      do {
+        try await store.grantVPNPermission()
+      } catch {
+        Log.error(error)
+
+        errorHandler.handle(ErrorAlert(
+          title: "Error granting VPN permission",
+          error: error
+        ))
+      }
+    }
+  }
+#endif
 }

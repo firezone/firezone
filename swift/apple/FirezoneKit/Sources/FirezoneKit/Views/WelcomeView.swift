@@ -8,18 +8,9 @@ import AuthenticationServices
 import Combine
 import SwiftUI
 
-@MainActor
-final class WelcomeViewModel: ObservableObject {
-  let store: Store
-
-  init(store: Store) {
-    self.store = store
-  }
-}
-
 struct WelcomeView: View {
   @EnvironmentObject var errorHandler: GlobalErrorHandler
-  @ObservedObject var model: WelcomeViewModel
+  @EnvironmentObject var store: Store
 
   var body: some View {
     VStack(
@@ -40,7 +31,7 @@ struct WelcomeView: View {
         Button("Sign in") {
           Task {
             do {
-              try await WebAuthSession.signIn(store: model.store)
+              try await WebAuthSession.signIn(store: store)
             } catch {
               Log.error(error)
 

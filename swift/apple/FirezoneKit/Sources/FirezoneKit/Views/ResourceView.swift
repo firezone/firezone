@@ -14,16 +14,16 @@ private func copyToClipboard(_ value: String) {
 }
 
 struct ResourceView: View {
-  @ObservedObject var model: SessionViewModel
+  @EnvironmentObject var store: Store
   var resource: Resource
   @Environment(\.openURL) var openURL
 
   var body: some View {
     List {
       if resource.isInternetResource() {
-        InternetResourceHeader(model: model, resource: resource)
+        InternetResourceHeader(resource: resource)
       } else {
-        NonInternetResourceHeader(model: model, resource: resource)
+        NonInternetResourceHeader(resource: resource)
       }
 
       if let site = resource.sites.first {
@@ -98,7 +98,7 @@ struct ResourceView: View {
 }
 
 struct NonInternetResourceHeader: View {
-  @ObservedObject var model: SessionViewModel
+  @EnvironmentObject var store: Store
   var resource: Resource
   @Environment(\.openURL) var openURL
 
@@ -170,10 +170,10 @@ struct NonInternetResourceHeader: View {
         }
       }
 
-      if model.favorites.ids.contains(resource.id) {
+      if store.favorites.contains(resource.id) {
         Button(
           action: {
-            model.favorites.remove(resource.id)
+            store.favorites.remove(resource.id)
           },
           label: {
             HStack {
@@ -186,7 +186,7 @@ struct NonInternetResourceHeader: View {
       } else {
         Button(
           action: {
-            model.favorites.add(resource.id)
+            store.favorites.add(resource.id)
           }, label: {
             HStack {
               Image(systemName: "star.fill")
@@ -201,7 +201,7 @@ struct NonInternetResourceHeader: View {
 }
 
 struct InternetResourceHeader: View {
-  @ObservedObject var model: SessionViewModel
+  @EnvironmentObject var store: Store
   var resource: Resource
 
   var body: some View {
@@ -225,17 +225,17 @@ struct InternetResourceHeader: View {
         Text("All network traffic")
       }
 
-      ToggleInternetResourceButton(resource: resource, model: model)
+      ToggleInternetResourceButton(resource: resource)
     }
   }
 }
 
 struct ToggleInternetResourceButton: View {
   var resource: Resource
-  @ObservedObject var model: SessionViewModel
+  @EnvironmentObject var store: Store
 
   private func toggleResourceEnabledText() -> String {
-    if model.isInternetResourceEnabled() {
+    if store.internetResourceEnabled() {
       "Disable this resource"
     } else {
       "Enable this resource"
@@ -247,7 +247,7 @@ struct ToggleInternetResourceButton: View {
       action: {
         Task {
           do {
-            try await model.store.toggleInternetResource(enabled: !model.isInternetResourceEnabled())
+            try await store.toggleInternetResource(enabled: !store.internetResourceEnabled())
           } catch {
             Log.error(error)
           }

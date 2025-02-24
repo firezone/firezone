@@ -30,12 +30,10 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private var cancellables: Set<AnyCancellable> = []
 
-  private var vpnStatus: NEVPNStatus?
-
   private var updateChecker: UpdateChecker = UpdateChecker()
   private var updateMenuDisplayed: Bool = false
 
-  @ObservedObject var model: SessionViewModel
+  let store: Store
 
   private var signedOutIcon: NSImage?
   private var signedInConnectedIcon: NSImage?
@@ -53,9 +51,9 @@ public final class MenuBar: NSObject, ObservableObject {
   private var connectingAnimationImageIndex: Int = 0
   private var connectingAnimationTimer: Timer?
 
-  public init(model: SessionViewModel) {
+  public init(store: Store) {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-    self.model = model
+    self.store = store
     self.signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
     self.signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
     self.signedOutIconNotification = NSImage(named: "MenuBarIconSignedOutNotification")
@@ -79,38 +77,43 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func setupObservers() {
-    model.favorites.$ids
+    // Favorites explicitly sends objectWillChange for lifecycle events. The instance in Store never changes.
+    store.favorites.objectWillChange
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
+
         // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole
         // menu. This avoids complex logic when changing in and out of the "nothing is favorited" special case.
         self.populateResourceMenus([])
-        self.populateResourceMenus(model.resources.asArray())
+        self.populateResourceMenus(store.resourceList.asArray())
       }).store(in: &cancellables)
 
-    model.$resources
+    store.$resourceList
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
-        self.populateResourceMenus(model.resources.asArray())
+
+        self.populateResourceMenus(store.resourceList.asArray())
         self.handleTunnelStatusOrResourcesChanged()
       }).store(in: &cancellables)
 
-    model.$status
+    store.$status
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
-        self.vpnStatus = model.status
+
         self.updateStatusItemIcon()
+        self.handleTunnelStatusOrResourcesChanged()
       }).store(in: &cancellables)
 
     updateChecker.$updateAvailable
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: {[weak self] _ in
-            guard  let self = self else { return }
-            self.updateStatusItemIcon()
-            self.refreshUpdateItem()
+      .sink(receiveValue: { [weak self] _ in
+        guard  let self = self else { return }
+
+        self.updateStatusItemIcon()
+        self.refreshUpdateItem()
       }).store(in: &cancellables)
   }
 
@@ -243,7 +246,7 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.addItem(resourcesUnavailableReasonMenuItem)
     menu.addItem(resourcesSeparatorMenuItem)
 
-    if !model.favorites.ids.isEmpty {
+    if !store.favorites.isEmpty() {
       menu.addItem(otherResourcesMenuItem)
       menu.addItem(otherResourcesSeparatorMenuItem)
     }
@@ -279,7 +282,7 @@ public final class MenuBar: NSObject, ObservableObject {
   @objc private func signInButtonTapped() {
     Task {
       do {
-        try await WebAuthSession.signIn(store: self.model.store)
+        try await WebAuthSession.signIn(store: store)
       } catch {
         Log.error(error)
         await macOSAlert.show(for: error)
@@ -288,7 +291,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func signOutButtonTapped() {
-    do { try self.model.store.signOut() } catch { Log.error(error) }
+    do { try store.signOut() } catch { Log.error(error) }
   }
 
   @objc private func grantPermissionMenuItemTapped() {
@@ -298,8 +301,8 @@ public final class MenuBar: NSObject, ObservableObject {
         // our VPN configuration got removed. Since we don't know which, reinstall
         // the system extension here too just in case. It's a no-op if already
         // installed.
-        try await model.store.installSystemExtension()
-        try await model.store.grantVPNPermission()
+        try await store.installSystemExtension()
+        try await store.grantVPNPermission()
       } catch {
         Log.error(error)
         await macOSAlert.show(for: error)
@@ -308,11 +311,11 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc private func settingsButtonTapped() {
-    AppViewModel.WindowDefinition.settings.openWindow()
+    AppView.WindowDefinition.settings.openWindow()
   }
 
   @objc private func adminPortalButtonTapped() {
-    guard let url = URL(string: model.store.settings.authBaseURL)
+    guard let url = URL(string: store.settings.authBaseURL)
     else { return }
 
     Task { await NSWorkspace.shared.openAsync(url) }
@@ -341,7 +344,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
   @objc private func quitButtonTapped() {
     Task {
-      do { try self.model.store.stop() } catch { Log.error(error) }
+      do { try store.stop() } catch { Log.error(error) }
       NSApp.terminate(self)
     }
   }
@@ -375,8 +378,8 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func updateStatusItemIcon() {
-    updateAnimation(status: vpnStatus)
-    statusItem.button?.image = getStatusIcon(status: vpnStatus, notification: updateChecker.updateAvailable)
+    updateAnimation(status: store.status)
+    statusItem.button?.image = getStatusIcon(status: store.status, notification: updateChecker.updateAvailable)
   }
 
   private func startConnectingAnimation() {
@@ -402,9 +405,9 @@ public final class MenuBar: NSObject, ObservableObject {
     connectingAnimationImageIndex = (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
   }
 
-  private func updateSignInMenuItems(status: NEVPNStatus?) {
+  private func updateSignInMenuItems() {
     // Update "Sign In" / "Sign Out" menu items
-    switch status {
+    switch store.status {
     case nil:
       signInMenuItem.title = "Loading VPN configurations from system settings…"
       signInMenuItem.action = nil
@@ -431,7 +434,7 @@ public final class MenuBar: NSObject, ObservableObject {
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = self
     case .connected, .reasserting, .connecting:
-      let title = "Signed in as \(model.store.actorName ?? "Unknown User")"
+      let title = "Signed in as \(store.actorName ?? "Unknown User")"
       signInMenuItem.title = title
       signInMenuItem.target = nil
       signOutMenuItem.isHidden = false
@@ -441,9 +444,9 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func updateResourcesMenuItems(status: NEVPNStatus?, resources: ResourceList) {
+  private func updateResourcesMenuItems() {
     // Update resources "header" menu items
-    switch status {
+    switch store.status {
     case .connecting:
       resourcesTitleMenuItem.isHidden = true
       resourcesUnavailableMenuItem.isHidden = false
@@ -455,7 +458,7 @@ public final class MenuBar: NSObject, ObservableObject {
       resourcesTitleMenuItem.isHidden = false
       resourcesUnavailableMenuItem.isHidden = true
       resourcesUnavailableReasonMenuItem.isHidden = true
-      resourcesTitleMenuItem.title = resourceMenuTitle(resources)
+      resourcesTitleMenuItem.title = resourceMenuTitle(store.resourceList)
       resourcesSeparatorMenuItem.isHidden = false
     case .reasserting:
       resourcesTitleMenuItem.isHidden = true
@@ -486,14 +489,11 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func handleTunnelStatusOrResourcesChanged() {
-    let resources = model.resources
-    let status = model.status
-
-    updateSignInMenuItems(status: status)
-    updateResourcesMenuItems(status: status, resources: resources)
+    updateSignInMenuItems()
+    updateResourcesMenuItems()
 
     quitMenuItem.title = {
-      switch status {
+      switch store.status {
       case .connected, .connecting:
         return "Disconnect and Quit"
       default:
@@ -517,14 +517,14 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private func populateResourceMenus(_ newResources: [Resource]) {
     // If we have no favorites, then everything is a favorite
-    let hasAnyFavorites = newResources.contains { model.favorites.contains($0.id) }
+    let hasAnyFavorites = newResources.contains { store.favorites.contains($0.id) }
     let newFavorites = if hasAnyFavorites {
-      newResources.filter { model.favorites.contains($0.id) || $0.isInternetResource() }
+      newResources.filter { store.favorites.contains($0.id) || $0.isInternetResource() }
     } else {
       newResources
     }
     let newOthers: [Resource] = if hasAnyFavorites {
-      newResources.filter { !model.favorites.contains($0.id) && !$0.isInternetResource() }
+      newResources.filter { !store.favorites.contains($0.id) && !$0.isInternetResource() }
     } else {
       []
     }
@@ -538,7 +538,7 @@ public final class MenuBar: NSObject, ObservableObject {
       return false
     }
 
-    return wasInternetResourceEnabled != model.store.internetResourceEnabled()
+    return wasInternetResourceEnabled != store.internetResourceEnabled()
   }
 
   private func refreshUpdateItem() {
@@ -571,7 +571,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownFavorites = newFavorites
-    wasInternetResourceEnabled = model.store.internetResourceEnabled()
+    wasInternetResourceEnabled = store.internetResourceEnabled()
   }
 
   private func populateOtherResourcesMenu(_ newOthers: [Resource]) {
@@ -599,7 +599,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownOthers = newOthers
-    wasInternetResourceEnabled = model.store.internetResourceEnabled()
+    wasInternetResourceEnabled = store.internetResourceEnabled()
 
   }
 
@@ -624,7 +624,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func internetResourceTitle(resource: Resource) -> String {
-    let status = model.store.internetResourceEnabled() ? StatusSymbol.enabled : StatusSymbol.disabled
+    let status = store.internetResourceEnabled() ? StatusSymbol.enabled : StatusSymbol.disabled
 
     return status + " " + resource.name
   }
@@ -647,7 +647,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   private func internetResourceToggleTitle() -> String {
-    model.isInternetResourceEnabled() ? "Disable this resource" : "Enable this resource"
+    store.internetResourceEnabled() ? "Disable this resource" : "Enable this resource"
   }
 
   // TODO: Refactor this when refactoring for macOS 13
@@ -710,7 +710,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
     let toggleFavoriteItem = NSMenuItem()
 
-    if model.favorites.contains(resource.id) {
+    if store.favorites.contains(resource.id) {
       toggleFavoriteItem.action = #selector(removeFavoriteTapped(_:))
       toggleFavoriteItem.title = "Remove from favorites"
       toggleFavoriteItem.toolTip = "Click to remove this Resource from Favorites"
@@ -805,7 +805,7 @@ public final class MenuBar: NSObject, ObservableObject {
   @objc private func internetResourceToggle(_ sender: NSMenuItem) {
     Task {
       do {
-        try await self.model.store.toggleInternetResource(enabled: !model.store.internetResourceEnabled())
+        try await store.toggleInternetResource(enabled: !store.internetResourceEnabled())
       } catch {
         Log.error(error)
       }
@@ -837,9 +837,9 @@ public final class MenuBar: NSObject, ObservableObject {
 
   private func setFavorited(id: String, favorited: Bool) {
     if favorited {
-      model.favorites.add(id)
+      store.favorites.add(id)
     } else {
-      model.favorites.remove(id)
+      store.favorites.remove(id)
     }
   }
 

@@ -13,8 +13,6 @@ struct FirezoneApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
   #endif
 
-  @StateObject var favorites: Favorites
-  @StateObject var appViewModel: AppViewModel
   @StateObject var store: Store
   @StateObject private var errorHandler = GlobalErrorHandler()
 
@@ -22,47 +20,47 @@ struct FirezoneApp: App {
     // Initialize Telemetry as early as possible
     Telemetry.start()
 
-    let favorites = Favorites()
     let store = Store()
-    _favorites = StateObject(wrappedValue: favorites)
     _store = StateObject(wrappedValue: store)
-    _appViewModel = StateObject(wrappedValue: AppViewModel(favorites: favorites, store: store))
 
 #if os(macOS)
     appDelegate.store = store
-    appDelegate.favorites = favorites
 #endif
   }
 
   var body: some Scene {
 #if os(iOS)
     WindowGroup {
-      AppView(model: appViewModel).environmentObject(errorHandler)
+      AppView()
+        .environmentObject(errorHandler)
+        .environmentObject(store)
     }
 #elseif os(macOS)
     WindowGroup(
       "Welcome to Firezone",
-      id: AppViewModel.WindowDefinition.main.identifier
+      id: AppView.WindowDefinition.main.identifier
     ) {
-      if let menuBar = appDelegate.menuBar {
-        // menuBar will be initialized by this point
-        AppView(model: appViewModel).environmentObject(menuBar)
-      } else {
+      if appDelegate.menuBar == nil {
         ProgressView("Loading...")
+      } else {
+        // menuBar will be initialized by this point
+        AppView()
+          .environmentObject(store)
       }
     }
     .handlesExternalEvents(
-      matching: [AppViewModel.WindowDefinition.main.externalEventMatchString]
+      matching: [AppView.WindowDefinition.main.externalEventMatchString]
     )
     // macOS doesn't have Sheets, need to use another Window group to show settings
     WindowGroup(
       "Settings",
-      id: AppViewModel.WindowDefinition.settings.identifier
+      id: AppView.WindowDefinition.settings.identifier
     ) {
-      SettingsView(favorites: favorites, model: SettingsViewModel(store: store))
+      SettingsView()
+        .environmentObject(store)
     }
     .handlesExternalEvents(
-      matching: [AppViewModel.WindowDefinition.settings.externalEventMatchString]
+      matching: [AppView.WindowDefinition.settings.externalEventMatchString]
     )
 #endif
   }
@@ -71,18 +69,16 @@ struct FirezoneApp: App {
 #if os(macOS)
   @MainActor
   final class AppDelegate: NSObject, NSApplicationDelegate {
-    var favorites: Favorites?
     var menuBar: MenuBar?
     var store: Store?
 
     func applicationDidFinishLaunching(_: Notification) {
-      if let store,
-         let favorites {
-        menuBar = MenuBar(model: SessionViewModel(favorites: favorites, store: store))
+      if let store {
+        menuBar = MenuBar(store: store)
       }
 
       // SwiftUI will show the first window group, so close it on launch
-      _ = AppViewModel.WindowDefinition.allCases.map { $0.window()?.close() }
+      _ = AppView.WindowDefinition.allCases.map { $0.window()?.close() }
 
       // Show alert for macOS 15.0.x which has issues with Network Extensions.
       maybeShowOutdatedAlert()
