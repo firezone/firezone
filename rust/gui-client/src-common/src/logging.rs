@@ -67,7 +67,7 @@ pub fn setup(directives: &str) -> Result<Handles> {
     #[cfg(target_os = "linux")]
     let syslog_identifier = Some(system_layer.syslog_identifier().to_owned());
     #[cfg(not(target_os = "linux"))]
-    let syslog_identifier = None;
+    let syslog_identifier = Option::<String>::None;
 
     let (file_layer, logger) = firezone_logging::file::layer(&log_path, "gui-client");
     let (file_filter, file_reloader) = firezone_logging::try_filter(directives)?;
