@@ -13,6 +13,7 @@ import AuthenticationServices
 @MainActor
 struct WebAuthSession {
   private static let scheme = "firezone-fd0020211111"
+  static let anchor = PresentationAnchor()
 
   static func signIn(store: Store) async throws {
     guard let authURL = store.authURL(),
@@ -22,8 +23,6 @@ struct WebAuthSession {
       // Should never get here because we perform URL validation on input, but handle this just in case
       throw AuthClientError.invalidAuthURL
     }
-
-    let anchor = PresentationAnchor()
 
     let authResponse: AuthResponse? = try await withCheckedThrowingContinuation { continuation in
       let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { returnedURL, error in
@@ -62,7 +61,7 @@ struct WebAuthSession {
 }
 
 // Required shim to use as "presentationAnchor" for the Webview. Why Apple?
-private final class PresentationAnchor: NSObject, ASWebAuthenticationPresentationContextProviding {
+final class PresentationAnchor: NSObject, ASWebAuthenticationPresentationContextProviding {
   @MainActor
   func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
     ASPresentationAnchor()
