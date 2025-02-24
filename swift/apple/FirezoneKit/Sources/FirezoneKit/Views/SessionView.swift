@@ -9,96 +9,30 @@ import NetworkExtension
 import OSLog
 import SwiftUI
 
-@MainActor
-public final class SessionViewModel: ObservableObject {
-  @Published private(set) var actorName: String?
-  @Published private(set) var favorites: Favorites
-  @Published private(set) var resources: ResourceList = ResourceList.loading
-  @Published private(set) var status: NEVPNStatus?
-
-  let store: Store
-
-  private var cancellables: Set<AnyCancellable> = []
-
-  public init(favorites: Favorites, store: Store) {
-    self.favorites = favorites
-    self.store = store
-
-    favorites.$ids
-      .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] _ in
-        guard let self = self else { return }
-        self.objectWillChange.send()
-      })
-      .store(in: &cancellables)
-
-    store.$actorName
-      .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] actorName in
-        guard let self = self else { return }
-
-        self.actorName = actorName
-      })
-      .store(in: &cancellables)
-
-    store.$status
-      .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] status in
-        guard let self = self else { return }
-        self.status = status
-
-        if status == .connected {
-          store.beginUpdatingResources { resources in
-            self.resources = resources
-          }
-        } else {
-          store.endUpdatingResources()
-          self.resources = ResourceList.loading
-        }
-
-      })
-      .store(in: &cancellables)
-  }
-
-  public func isInternetResourceEnabled() -> Bool {
-    store.internetResourceEnabled()
-  }
-}
-
 #if os(iOS)
 @MainActor
 struct SessionView: View {
-  @ObservedObject var model: SessionViewModel
+  @EnvironmentObject var store: Store
 
   var body: some View {
-    switch model.status {
+    switch store.status {
     case .connected:
-      switch model.resources {
+      switch store.resourceList {
       case .loaded(let resources):
         if resources.isEmpty {
           Text("No Resources. Contact your admin to be granted access.")
         } else {
           List {
-            let hasAnyFavorites = resources.contains { model.favorites.contains($0.id) }
-            if hasAnyFavorites {
+            if !store.favorites.isEmpty() {
               Section("Favorites") {
-                ResourceSection(
-                  resources: resources.filter { model.favorites.contains($0.id) },
-                  model: model
-                )
+                ResourceSection(resources: favoriteResources())
               }
 
               Section("Other Resources") {
-                ResourceSection(
-                  resources: resources.filter { !model.favorites.contains($0.id) },
-                  model: model
-                )
+                ResourceSection(resources: nonFavoriteResources())
               }
             } else {
-              ResourceSection(
-                resources: resources,
-                model: model
-              )
+              ResourceSection(resources: resources)
             }
           }
           .listStyle(GroupedListStyle())
@@ -122,14 +56,32 @@ struct SessionView: View {
       Text("Unknown status. Please report this and attach your logs.")
     }
   }
+
+  func favoriteResources() -> [Resource] {
+    switch store.resourceList {
+    case .loaded(let resources):
+      return resources.filter { store.favorites.contains($0.id) }
+    default:
+      return []
+    }
+  }
+
+  func nonFavoriteResources() -> [Resource] {
+    switch store.resourceList {
+    case .loaded(let resources):
+      return resources.filter { !store.favorites.contains($0.id) }
+    default:
+      return []
+    }
+  }
 }
 
 struct ResourceSection: View {
   let resources: [Resource]
-  @ObservedObject var model: SessionViewModel
+  @EnvironmentObject var store: Store
 
   private func internetResourceTitle(resource: Resource) -> String {
-    let status = model.store.internetResourceEnabled() ? StatusSymbol.enabled : StatusSymbol.disabled
+    let status = store.internetResourceEnabled() ? StatusSymbol.enabled : StatusSymbol.disabled
 
     return status + " " + resource.name
   }
@@ -145,7 +97,7 @@ struct ResourceSection: View {
   var body: some View {
     ForEach(resources) { resource in
       HStack {
-          NavigationLink { ResourceView(model: model, resource: resource) }
+          NavigationLink { ResourceView(resource: resource) }
           label: {
             Text(resourceTitle(resource: resource))
           }

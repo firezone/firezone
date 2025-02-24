@@ -11,14 +11,13 @@ import SwiftUI
 #if os(iOS)
 struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_name
   @State private var isSettingsPresented = false
-  @ObservedObject var model: AppViewModel
+  @EnvironmentObject var store: Store
   @Environment(\.openURL) var openURL
   @EnvironmentObject var errorHandler: GlobalErrorHandler
 
   let content: Content
 
-  init(model: AppViewModel, @ViewBuilder content: () -> Content) {
-    self.model = model
+  init(@ViewBuilder content: () -> Content) {
     self.content = content()
   }
 
@@ -41,7 +40,7 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
         )
     }
     .sheet(isPresented: $isSettingsPresented) {
-      SettingsView(favorites: model.favorites, model: SettingsViewModel(store: model.store))
+      SettingsView()
     }
     .navigationViewStyle(StackNavigationViewStyle())
   }
@@ -55,13 +54,13 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
         Label("Settings", systemImage: "gear")
       }
     )
-    .disabled(model.status == .invalid)
+    .disabled(store.status == .invalid)
   }
 
   private var authMenu: some View {
     Menu {
-      if model.status == .connected {
-        Text("Signed in as \(model.store.actorName ?? "Unknown user")")
+      if store.status == .connected {
+        Text("Signed in as \(store.actorName ?? "Unknown user")")
         Button(
           action: {
             signOutButtonTapped()
@@ -73,20 +72,8 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
       } else {
         Button(
           action: {
-            Task {
-              do {
-                try await WebAuthSession.signIn(store: model.store)
-              } catch {
-                Log.error(error)
+            signInButtonTapped()
 
-                self.errorHandler.handle(
-                  ErrorAlert(
-                    title: "Error signing in",
-                    error: error
-                  )
-                )
-              }
-            }
           },
           label: {
             Label("Sign in", systemImage: "person.crop.circle.fill.badge.plus")
@@ -115,8 +102,36 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
     }
   }
 
-  private func signOutButtonTapped() {
-    do { try model.store.signOut() } catch { Log.error(error) }
+  func signInButtonTapped() {
+    Task {
+      do {
+        try await WebAuthSession.signIn(store: store)
+      } catch {
+        Log.error(error)
+
+        self.errorHandler.handle(
+          ErrorAlert(
+            title: "Error signing in",
+            error: error
+          )
+        )
+      }
+    }
+  }
+
+  func signOutButtonTapped() {
+    do {
+      try store.signOut()
+    } catch {
+      Log.error(error)
+
+      self.errorHandler.handle(
+        ErrorAlert(
+          title: "Error signing out",
+          error: error
+        )
+      )
+    }
   }
 }
 #endif

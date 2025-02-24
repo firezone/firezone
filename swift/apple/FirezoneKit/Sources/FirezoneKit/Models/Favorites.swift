@@ -1,8 +1,8 @@
 import Foundation
 
-public class Favorites: ObservableObject {
+public final class Favorites: ObservableObject {
   private static let key = "favoriteResourceIDs"
-  @Published private(set) var ids: Set<String>
+  private var ids: Set<String>
 
   public init() {
     ids = Favorites.load()
@@ -28,6 +28,10 @@ public class Favorites: ObservableObject {
     objectWillChange.send()
     ids.remove(id)
     save()
+  }
+
+  func isEmpty() -> Bool {
+    return ids.isEmpty
   }
 
   private func save() {
