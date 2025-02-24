@@ -1,5 +1,5 @@
 [toolchain]
 # Keep synced with `Dockerfile`
-channel = "1.84.0"
+channel = "1.85.0"
 components = ["rust-src", "rust-analyzer", "clippy"]
 targets = ["x86_64-unknown-linux-musl"]

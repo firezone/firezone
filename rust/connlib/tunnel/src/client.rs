@@ -167,7 +167,7 @@ impl DnsResourceNatState {
         }
     }
 
-    fn confirm(&mut self) -> impl Iterator<Item = IpPacket> {
+    fn confirm(&mut self) -> impl Iterator<Item = IpPacket> + use<> {
         let buffered_packets = match std::mem::replace(self, DnsResourceNatState::Confirmed) {
             DnsResourceNatState::Pending {
                 buffered_packets, ..
