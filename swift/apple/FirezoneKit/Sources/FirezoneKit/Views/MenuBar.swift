@@ -20,36 +20,149 @@ import SwiftUI
 // https://developer.apple.com/documentation/swiftui/menubarextra
 // swiftlint:disable:next type_body_length
 public final class MenuBar: NSObject, ObservableObject {
-  private var statusItem: NSStatusItem
-
-  // Wish these could be `[String]` but diffing between different types is tricky
-  private var lastShownFavorites: [Resource] = []
-  private var lastShownOthers: [Resource] = []
-
-  private var wasInternetResourceEnabled: Bool = false
-
-  private var cancellables: Set<AnyCancellable> = []
-
-  private var updateChecker: UpdateChecker = UpdateChecker()
-  private var updateMenuDisplayed: Bool = false
-
-  let store: Store
-
-  private var signedOutIcon: NSImage?
-  private var signedInConnectedIcon: NSImage?
-  private var signedOutIconNotification: NSImage?
-  private var signedInConnectedIconNotification: NSImage?
-  private var siteOnlineIcon: NSImage?
-  private var siteOfflineIcon: NSImage?
-  private var siteUnknownIcon: NSImage?
-  private enum AnimationImageIndex: Int {
+  var statusItem: NSStatusItem
+  var lastShownFavorites: [Resource] = []
+  var lastShownOthers: [Resource] = []
+  var wasInternetResourceEnabled: Bool = false
+  var cancellables: Set<AnyCancellable> = []
+  var updateChecker: UpdateChecker = UpdateChecker()
+  var updateMenuDisplayed: Bool = false
+  var signedOutIcon: NSImage?
+  var signedInConnectedIcon: NSImage?
+  var signedOutIconNotification: NSImage?
+  var signedInConnectedIconNotification: NSImage?
+  var siteOnlineIcon: NSImage?
+  var siteOfflineIcon: NSImage?
+  var siteUnknownIcon: NSImage?
+  enum AnimationImageIndex: Int {
     case first
     case second
     case last
   }
-  private var connectingAnimationImages: [AnimationImageIndex: NSImage?] = [:]
-  private var connectingAnimationImageIndex: Int = 0
-  private var connectingAnimationTimer: Timer?
+  var connectingAnimationImages: [AnimationImageIndex: NSImage?] = [:]
+  var connectingAnimationImageIndex: Int = 0
+  var connectingAnimationTimer: Timer?
+
+  let store: Store
+
+  lazy var menu = NSMenu()
+
+  lazy var signInMenuItem = createMenuItem(
+    menu,
+    title: "Sign in",
+    action: #selector(signInButtonTapped),
+    target: self
+  )
+  lazy var signOutMenuItem = createMenuItem(
+    menu,
+    title: "Sign out",
+    action: #selector(signOutButtonTapped),
+    isHidden: true,
+    target: self
+  )
+  lazy var resourcesTitleMenuItem = createMenuItem(
+    menu,
+    title: "Loading Resources...",
+    action: nil,
+    isHidden: true,
+    target: self
+  )
+  lazy var resourcesUnavailableMenuItem = createMenuItem(
+    menu,
+    title: "Resources unavailable",
+    action: nil,
+    isHidden: true,
+    target: self
+  )
+  lazy var resourcesUnavailableReasonMenuItem = createMenuItem(
+    menu,
+    title: "",
+    action: nil,
+    isHidden: true,
+    target: self
+  )
+  lazy var resourcesSeparatorMenuItem = NSMenuItem.separator()
+  lazy var otherResourcesMenu: NSMenu = NSMenu()
+  lazy var otherResourcesMenuItem: NSMenuItem = {
+    let menuItem = NSMenuItem(title: "Other Resources", action: nil, keyEquivalent: "")
+    menuItem.submenu = otherResourcesMenu
+    return menuItem
+  }()
+  lazy var otherResourcesSeparatorMenuItem = NSMenuItem.separator()
+  lazy var aboutMenuItem: NSMenuItem = {
+    let menuItem = createMenuItem(
+      menu,
+      title: "About",
+      action: #selector(aboutButtonTapped),
+      target: self
+    )
+    if let appName = Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String {
+      menuItem.title = "About \(appName)"
+    }
+    return menuItem
+  }()
+  lazy var adminPortalMenuItem: NSMenuItem = {
+    let menuItem = createMenuItem(
+      menu,
+      title: "Admin Portal...",
+      action: #selector(adminPortalButtonTapped),
+      target: self
+    )
+    return menuItem
+  }()
+  lazy var updateAvailableMenu: NSMenuItem = {
+    let menuItem = createMenuItem(
+      menu,
+      title: "Update available...",
+      action: #selector(updateAvailableButtonTapped),
+      target: self
+    )
+    return menuItem
+  }()
+  lazy var documentationMenuItem: NSMenuItem = {
+    let menuItem = createMenuItem(
+      menu,
+      title: "Documentation...",
+      action: #selector(documentationButtonTapped),
+      target: self
+    )
+    return menuItem
+  }()
+  lazy var supportMenuItem = createMenuItem(
+    menu,
+    title: "Support...",
+    action: #selector(supportButtonTapped),
+    target: self
+  )
+  lazy var helpMenuItem: NSMenuItem = {
+    let menuItem = NSMenuItem(title: "Help", action: nil, keyEquivalent: "")
+    let subMenu = NSMenu()
+    subMenu.addItem(documentationMenuItem)
+    subMenu.addItem(supportMenuItem)
+    menuItem.submenu = subMenu
+    return menuItem
+  }()
+
+  lazy var settingsMenuItem = createMenuItem(
+    menu,
+    title: "Settings",
+    action: #selector(settingsButtonTapped),
+    key: ",",
+    target: self
+  )
+  lazy var quitMenuItem: NSMenuItem = {
+    let menuItem = createMenuItem(
+      menu,
+      title: "Quit",
+      action: #selector(quitButtonTapped),
+      key: "q",
+      target: self
+    )
+    if let appName = Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String {
+      menuItem.title = "Quit \(appName)"
+    }
+    return menuItem
+  }()
 
   public init(store: Store) {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
@@ -72,340 +185,143 @@ public final class MenuBar: NSObject, ObservableObject {
     setupObservers()
   }
 
-  func showMenu() {
-    statusItem.button?.performClick(nil)
-  }
+  // MARK: Responding to state updates
 
-  private func setupObservers() {
+  func setupObservers() {
     // Favorites explicitly sends objectWillChange for lifecycle events. The instance in Store never changes.
     store.favorites.objectWillChange
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
-
-        // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole
-        // menu. This avoids complex logic when changing in and out of the "nothing is favorited" special case.
-        self.populateResourceMenus([])
-        self.populateResourceMenus(store.resourceList.asArray())
+        self.handleFavoritesChanged()
       }).store(in: &cancellables)
 
     store.$resourceList
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
-
-        self.populateResourceMenus(store.resourceList.asArray())
-        self.handleTunnelStatusOrResourcesChanged()
+        self.handleResourceListChanged()
       }).store(in: &cancellables)
 
     store.$status
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
-
-        self.updateStatusItemIcon()
-        self.handleTunnelStatusOrResourcesChanged()
+        self.handleStatusChanged()
       }).store(in: &cancellables)
 
     updateChecker.$updateAvailable
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
         guard  let self = self else { return }
-
-        self.updateStatusItemIcon()
-        self.refreshUpdateItem()
+        self.handleUpdateAvailableChanged()
       }).store(in: &cancellables)
   }
 
-  private lazy var menu = NSMenu()
-
-  private lazy var signInMenuItem = createMenuItem(
-    menu,
-    title: "Sign in",
-    action: #selector(signInButtonTapped),
-    target: self
-  )
-  private lazy var signOutMenuItem = createMenuItem(
-    menu,
-    title: "Sign out",
-    action: #selector(signOutButtonTapped),
-    isHidden: true,
-    target: self
-  )
-  private lazy var resourcesTitleMenuItem = createMenuItem(
-    menu,
-    title: "Loading Resources...",
-    action: nil,
-    isHidden: true,
-    target: self
-  )
-  private lazy var resourcesUnavailableMenuItem = createMenuItem(
-    menu,
-    title: "Resources unavailable",
-    action: nil,
-    isHidden: true,
-    target: self
-  )
-  private lazy var resourcesUnavailableReasonMenuItem = createMenuItem(
-    menu,
-    title: "",
-    action: nil,
-    isHidden: true,
-    target: self
-  )
-  private lazy var resourcesSeparatorMenuItem = NSMenuItem.separator()
-  private lazy var otherResourcesMenu: NSMenu = NSMenu()
-  private lazy var otherResourcesMenuItem: NSMenuItem = {
-    let menuItem = NSMenuItem(title: "Other Resources", action: nil, keyEquivalent: "")
-    menuItem.submenu = otherResourcesMenu
-    return menuItem
-  }()
-  private lazy var otherResourcesSeparatorMenuItem = NSMenuItem.separator()
-  private lazy var aboutMenuItem: NSMenuItem = {
-    let menuItem = createMenuItem(
-      menu,
-      title: "About",
-      action: #selector(aboutButtonTapped),
-      target: self
-    )
-    if let appName = Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String {
-      menuItem.title = "About \(appName)"
-    }
-    return menuItem
-  }()
-  private lazy var adminPortalMenuItem: NSMenuItem = {
-    let menuItem = createMenuItem(
-      menu,
-      title: "Admin Portal...",
-      action: #selector(adminPortalButtonTapped),
-      target: self
-    )
-    return menuItem
-  }()
-  private lazy var updateAvailableMenu: NSMenuItem = {
-    let menuItem = createMenuItem(
-      menu,
-      title: "Update available...",
-      action: #selector(updateAvailableButtonTapped),
-      target: self
-    )
-    return menuItem
-  }()
-  private lazy var documentationMenuItem: NSMenuItem = {
-    let menuItem = createMenuItem(
-      menu,
-      title: "Documentation...",
-      action: #selector(documentationButtonTapped),
-      target: self
-    )
-    return menuItem
-  }()
-  private lazy var supportMenuItem = createMenuItem(
-    menu,
-    title: "Support...",
-    action: #selector(supportButtonTapped),
-    target: self
-  )
-  private lazy var helpMenuItem: NSMenuItem = {
-    let menuItem = NSMenuItem(title: "Help", action: nil, keyEquivalent: "")
-    let subMenu = NSMenu()
-    subMenu.addItem(documentationMenuItem)
-    subMenu.addItem(supportMenuItem)
-    menuItem.submenu = subMenu
-    return menuItem
-  }()
-
-  private lazy var settingsMenuItem = createMenuItem(
-    menu,
-    title: "Settings",
-    action: #selector(settingsButtonTapped),
-    key: ",",
-    target: self
-  )
-  private lazy var quitMenuItem: NSMenuItem = {
-    let menuItem = createMenuItem(
-      menu,
-      title: "Quit",
-      action: #selector(quitButtonTapped),
-      key: "q",
-      target: self
-    )
-    if let appName = Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String {
-      menuItem.title = "Quit \(appName)"
-    }
-    return menuItem
-  }()
-
-  private func createMenu() {
-    menu.addItem(signInMenuItem)
-    menu.addItem(signOutMenuItem)
-    menu.addItem(NSMenuItem.separator())
-
-    menu.addItem(resourcesTitleMenuItem)
-    menu.addItem(resourcesUnavailableMenuItem)
-    menu.addItem(resourcesUnavailableReasonMenuItem)
-    menu.addItem(resourcesSeparatorMenuItem)
-
-    if !store.favorites.isEmpty() {
-      menu.addItem(otherResourcesMenuItem)
-      menu.addItem(otherResourcesSeparatorMenuItem)
-    }
-
-    menu.addItem(aboutMenuItem)
-    menu.addItem(adminPortalMenuItem)
-    menu.addItem(helpMenuItem)
-    menu.addItem(settingsMenuItem)
-    menu.addItem(NSMenuItem.separator())
-    menu.addItem(quitMenuItem)
-
-    menu.delegate = self
-    statusItem.menu = menu
+  func handleFavoritesChanged() {
+    // When the user clicks to add or remove a favorite, the menu will close anyway, so just recreate the whole
+    // menu. This avoids complex logic when changing in and out of the "nothing is favorited" special case.
+    populateResourceMenus([])
+    populateResourceMenus(store.resourceList.asArray())
+    updateResourcesMenuItems()
   }
 
-  private func createMenuItem(
-    _: NSMenu,
-    title: String,
-    action: Selector?,
-    isHidden: Bool = false,
-    key: String = "",
-    target: AnyObject?
-  ) -> NSMenuItem {
-    let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
-
-    item.isHidden = isHidden
-    item.target = target
-    item.isEnabled = (action != nil)
-
-    return item
+  func handleResourceListChanged() {
+    populateResourceMenus(store.resourceList.asArray())
+    updateResourcesMenuItems()
   }
 
-  @objc private func signInButtonTapped() {
-    Task {
-      do {
-        try await WebAuthSession.signIn(store: store)
-      } catch {
-        Log.error(error)
-        await macOSAlert.show(for: error)
+  func handleStatusChanged() {
+    updateStatusItemIcon()
+    updateSignInMenuItems()
+    quitMenuItem.title = {
+      switch store.status {
+      case .connected, .connecting:
+        return "Disconnect and Quit"
+      default:
+        return "Quit"
+      }
+    }()
+  }
+
+  func handleUpdateAvailableChanged() {
+    updateStatusItemIcon()
+    refreshUpdateItem()
+  }
+
+  func populateResourceMenus(_ newResources: [Resource]) {
+    // If we have no favorites, then everything is a favorite
+    let hasAnyFavorites = newResources.contains { store.favorites.contains($0.id) }
+    let newFavorites = if hasAnyFavorites {
+      newResources.filter { store.favorites.contains($0.id) || $0.isInternetResource() }
+    } else {
+      newResources
+    }
+    let newOthers: [Resource] = if hasAnyFavorites {
+      newResources.filter { !store.favorites.contains($0.id) && !$0.isInternetResource() }
+    } else {
+      []
+    }
+
+    populateFavoriteResourcesMenu(newFavorites)
+    populateOtherResourcesMenu(newOthers)
+  }
+
+  func populateFavoriteResourcesMenu(_ newFavorites: [Resource]) {
+    // Update the menu in place so everything won't vanish if it's open when it updates
+    let diff = (newFavorites).difference(
+      from: lastShownFavorites,
+      by: { $0 == $1 && !displayNameChanged($0) }
+    )
+
+    let index = menu.index(of: resourcesTitleMenuItem) + 1
+    for change in diff {
+      switch change {
+      case .insert(let offset, let element, associatedWith: _):
+        let menuItem = createResourceMenuItem(resource: element)
+        menu.insertItem(menuItem, at: index + offset)
+      case .remove(let offset, element: _, associatedWith: _):
+        menu.removeItem(at: index + offset)
       }
     }
+    lastShownFavorites = newFavorites
+    wasInternetResourceEnabled = store.internetResourceEnabled()
   }
 
-  @objc private func signOutButtonTapped() {
-    do { try store.signOut() } catch { Log.error(error) }
-  }
+  func populateOtherResourcesMenu(_ newOthers: [Resource]) {
+    if newOthers.isEmpty {
+      removeItemFromMenu(menu: menu, item: otherResourcesMenuItem)
+      removeItemFromMenu(menu: menu, item: otherResourcesSeparatorMenuItem)
+    } else {
+      let idx = menu.index(of: aboutMenuItem)
+      addItemToMenu(menu: menu, item: otherResourcesMenuItem, location: idx)
+      addItemToMenu(menu: menu, item: otherResourcesSeparatorMenuItem, location: idx + 1)
+    }
 
-  @objc private func grantPermissionMenuItemTapped() {
-    Task {
-      do {
-        // If we get here, it means either system extension got disabled or
-        // our VPN configuration got removed. Since we don't know which, reinstall
-        // the system extension here too just in case. It's a no-op if already
-        // installed.
-        try await store.installSystemExtension()
-        try await store.grantVPNPermission()
-      } catch {
-        Log.error(error)
-        await macOSAlert.show(for: error)
+    // Update the menu in place so everything won't vanish if it's open when it updates
+    let diff = (newOthers).difference(
+      from: lastShownOthers,
+      by: { $0 == $1 && !displayNameChanged($0) }
+    )
+    for change in diff {
+      switch change {
+      case .insert(let offset, let element, associatedWith: _):
+        let menuItem = createResourceMenuItem(resource: element)
+        otherResourcesMenu.insertItem(menuItem, at: offset)
+      case .remove(let offset, element: _, associatedWith: _):
+        otherResourcesMenu.removeItem(at: offset)
       }
     }
+    lastShownOthers = newOthers
+    wasInternetResourceEnabled = store.internetResourceEnabled()
   }
 
-  @objc private func settingsButtonTapped() {
-    AppView.WindowDefinition.settings.openWindow()
-  }
-
-  @objc private func adminPortalButtonTapped() {
-    guard let url = URL(string: store.settings.authBaseURL)
-    else { return }
-
-    Task { await NSWorkspace.shared.openAsync(url) }
-  }
-
-  @objc private func updateAvailableButtonTapped() {
-    Task { await NSWorkspace.shared.openAsync(UpdateChecker.downloadURL()) }
-  }
-
-  @objc private func documentationButtonTapped() {
-    let url = URL(string: "https://www.firezone.dev/kb?utm_source=macos-client")!
-
-    Task { await NSWorkspace.shared.openAsync(url) }
-  }
-
-  @objc private func supportButtonTapped() {
-    let url = URL(string: "https://www.firezone.dev/support?utm_source=macos-client")!
-
-    Task { await NSWorkspace.shared.openAsync(url) }
-  }
-
-  @objc private func aboutButtonTapped() {
-    NSApp.activate(ignoringOtherApps: true)
-    NSApp.orderFrontStandardAboutPanel(self)
-  }
-
-  @objc private func quitButtonTapped() {
-    Task {
-      do { try store.stop() } catch { Log.error(error) }
-      NSApp.terminate(self)
-    }
-  }
-
-  private func updateAnimation(status: NEVPNStatus?) {
-    switch status {
-    case nil, .invalid, .disconnected:
-      self.stopConnectingAnimation()
-    case .connected:
-      self.stopConnectingAnimation()
-    case .connecting, .disconnecting, .reasserting:
-      self.startConnectingAnimation()
-    @unknown default:
-      return
-    }
-  }
-
-  private func getStatusIcon(status: NEVPNStatus?, notification: Bool) -> NSImage? {
-    if status == .connecting || status == .disconnecting || status == .reasserting {
-      return self.connectingAnimationImages[.last] ?? nil
-    }
-
-    switch status {
-    case nil, .invalid, .disconnected:
-      return notification ? self.signedOutIconNotification : self.signedOutIcon
-    case .connected:
-      return notification ? self.signedInConnectedIconNotification : self.signedInConnectedIcon
-    default:
-      return nil
-    }
-  }
-
-  private func updateStatusItemIcon() {
+  func updateStatusItemIcon() {
     updateAnimation(status: store.status)
     statusItem.button?.image = getStatusIcon(status: store.status, notification: updateChecker.updateAvailable)
   }
 
-  private func startConnectingAnimation() {
-    guard connectingAnimationTimer == nil else { return }
-    let timer = Timer(timeInterval: 0.25, repeats: true) { _ in
-      Task { await MainActor.run { self.connectingAnimationShowNextFrame() } }
-    }
-    RunLoop.main.add(timer, forMode: .common)
-    connectingAnimationTimer = timer
-  }
-
-  private func stopConnectingAnimation() {
-    connectingAnimationTimer?.invalidate()
-    connectingAnimationTimer = nil
-  }
-
-  private func connectingAnimationShowNextFrame() {
-    guard let currentKey = AnimationImageIndex(rawValue: connectingAnimationImageIndex),
-          let image = connectingAnimationImages[currentKey]
-    else { return }
-
-    statusItem.button?.image = image
-    connectingAnimationImageIndex = (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
-  }
-
-  private func updateSignInMenuItems() {
+  func updateSignInMenuItems() {
     // Update "Sign In" / "Sign Out" menu items
     switch store.status {
     case nil:
@@ -444,7 +360,7 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func updateResourcesMenuItems() {
+  func updateResourcesMenuItems() {
     // Update resources "header" menu items
     switch store.status {
     case .connecting:
@@ -488,21 +404,52 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func handleTunnelStatusOrResourcesChanged() {
-    updateSignInMenuItems()
-    updateResourcesMenuItems()
+  // MARK: Menu object lifecycle helpers
 
-    quitMenuItem.title = {
-      switch store.status {
-      case .connected, .connecting:
-        return "Disconnect and Quit"
-      default:
-        return "Quit"
-      }
-    }()
+  func createMenu() {
+    menu.addItem(signInMenuItem)
+    menu.addItem(signOutMenuItem)
+    menu.addItem(NSMenuItem.separator())
+
+    menu.addItem(resourcesTitleMenuItem)
+    menu.addItem(resourcesUnavailableMenuItem)
+    menu.addItem(resourcesUnavailableReasonMenuItem)
+    menu.addItem(resourcesSeparatorMenuItem)
+
+    if !store.favorites.isEmpty() {
+      menu.addItem(otherResourcesMenuItem)
+      menu.addItem(otherResourcesSeparatorMenuItem)
+    }
+
+    menu.addItem(aboutMenuItem)
+    menu.addItem(adminPortalMenuItem)
+    menu.addItem(helpMenuItem)
+    menu.addItem(settingsMenuItem)
+    menu.addItem(NSMenuItem.separator())
+    menu.addItem(quitMenuItem)
+
+    menu.delegate = self
+    statusItem.menu = menu
   }
 
-  private func resourceMenuTitle(_ resources: ResourceList) -> String {
+  func createMenuItem(
+    _: NSMenu,
+    title: String,
+    action: Selector?,
+    isHidden: Bool = false,
+    key: String = "",
+    target: AnyObject?
+  ) -> NSMenuItem {
+    let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+
+    item.isHidden = isHidden
+    item.target = target
+    item.isEnabled = (action != nil)
+
+    return item
+  }
+
+  func resourceMenuTitle(_ resources: ResourceList) -> String {
     switch resources {
     case .loading:
       return "Loading Resources..."
@@ -515,25 +462,7 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func populateResourceMenus(_ newResources: [Resource]) {
-    // If we have no favorites, then everything is a favorite
-    let hasAnyFavorites = newResources.contains { store.favorites.contains($0.id) }
-    let newFavorites = if hasAnyFavorites {
-      newResources.filter { store.favorites.contains($0.id) || $0.isInternetResource() }
-    } else {
-      newResources
-    }
-    let newOthers: [Resource] = if hasAnyFavorites {
-      newResources.filter { !store.favorites.contains($0.id) && !$0.isInternetResource() }
-    } else {
-      []
-    }
-
-    populateFavoriteResourcesMenu(newFavorites)
-    populateOtherResourcesMenu(newOthers)
-  }
-
-  private func displayNameChanged(_ resource: Resource) -> Bool {
+  func displayNameChanged(_ resource: Resource) -> Bool {
     if !resource.isInternetResource() {
       return false
     }
@@ -541,69 +470,19 @@ public final class MenuBar: NSObject, ObservableObject {
     return wasInternetResourceEnabled != store.internetResourceEnabled()
   }
 
-  private func refreshUpdateItem() {
-      // We don't ever need to remove this as the whole menu will be recreated
-      // if the user updates, and there's no reason for the update to no longer be available
-      // versions should be monotonically increased.
-      if updateChecker.updateAvailable && !updateMenuDisplayed {
-        updateMenuDisplayed = true
-        let index = menu.index(of: settingsMenuItem) + 1
-        menu.insertItem(NSMenuItem.separator(), at: index)
-        menu.insertItem(updateAvailableMenu, at: index + 1)
-      }
+  func refreshUpdateItem() {
+    // We don't ever need to remove this as the whole menu will be recreated
+    // if the user updates, and there's no reason for the update to no longer be available
+    // versions should be monotonically increased.
+    if updateChecker.updateAvailable && !updateMenuDisplayed {
+      updateMenuDisplayed = true
+      let index = menu.index(of: settingsMenuItem) + 1
+      menu.insertItem(NSMenuItem.separator(), at: index)
+      menu.insertItem(updateAvailableMenu, at: index + 1)
+    }
   }
 
-  private func populateFavoriteResourcesMenu(_ newFavorites: [Resource]) {
-    // Update the menu in place so everything won't vanish if it's open when it updates
-    let diff = (newFavorites).difference(
-      from: lastShownFavorites,
-      by: { $0 == $1 && !displayNameChanged($0) }
-    )
-
-    let index = menu.index(of: resourcesTitleMenuItem) + 1
-    for change in diff {
-      switch change {
-      case .insert(let offset, let element, associatedWith: _):
-        let menuItem = createResourceMenuItem(resource: element)
-        menu.insertItem(menuItem, at: index + offset)
-      case .remove(let offset, element: _, associatedWith: _):
-        menu.removeItem(at: index + offset)
-      }
-    }
-    lastShownFavorites = newFavorites
-    wasInternetResourceEnabled = store.internetResourceEnabled()
-  }
-
-  private func populateOtherResourcesMenu(_ newOthers: [Resource]) {
-    if newOthers.isEmpty {
-      removeItemFromMenu(menu: menu, item: otherResourcesMenuItem)
-      removeItemFromMenu(menu: menu, item: otherResourcesSeparatorMenuItem)
-    } else {
-      let idx = menu.index(of: aboutMenuItem)
-      addItemToMenu(menu: menu, item: otherResourcesMenuItem, location: idx)
-      addItemToMenu(menu: menu, item: otherResourcesSeparatorMenuItem, location: idx + 1)
-    }
-
-    // Update the menu in place so everything won't vanish if it's open when it updates
-    let diff = (newOthers).difference(
-      from: lastShownOthers,
-      by: { $0 == $1 && !displayNameChanged($0) }
-    )
-    for change in diff {
-      switch change {
-      case .insert(let offset, let element, associatedWith: _):
-        let menuItem = createResourceMenuItem(resource: element)
-        otherResourcesMenu.insertItem(menuItem, at: offset)
-      case .remove(let offset, element: _, associatedWith: _):
-        otherResourcesMenu.removeItem(at: offset)
-      }
-    }
-    lastShownOthers = newOthers
-    wasInternetResourceEnabled = store.internetResourceEnabled()
-
-  }
-
-  private func addItemToMenu(menu: NSMenu, item: NSMenuItem, location: Int) {
+  func addItemToMenu(menu: NSMenu, item: NSMenuItem, location: Int) {
     // Adding an item that already exists will crash the process, so check for it first.
     let idx = menu.index(of: otherResourcesMenuItem)
     if idx != -1 {
@@ -613,7 +492,7 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.insertItem(otherResourcesMenuItem, at: location)
   }
 
-  private func removeItemFromMenu(menu: NSMenu, item: NSMenuItem) {
+  func removeItemFromMenu(menu: NSMenu, item: NSMenuItem) {
     // Removing an item that doesn't exist will crash the process, so check for it first.
     let idx = menu.index(of: item)
     if idx == -1 {
@@ -623,13 +502,13 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.removeItem(item)
   }
 
-  private func internetResourceTitle(resource: Resource) -> String {
+  func internetResourceTitle(resource: Resource) -> String {
     let status = store.internetResourceEnabled() ? StatusSymbol.enabled : StatusSymbol.disabled
 
     return status + " " + resource.name
   }
 
-  private func resourceTitle(resource: Resource) -> String {
+  func resourceTitle(resource: Resource) -> String {
     if resource.isInternetResource() {
       return internetResourceTitle(resource: resource)
     }
@@ -637,7 +516,7 @@ public final class MenuBar: NSObject, ObservableObject {
     return resource.name
   }
 
-  private func createResourceMenuItem(resource: Resource) -> NSMenuItem {
+  func createResourceMenuItem(resource: Resource) -> NSMenuItem {
     let item = NSMenuItem(title: resourceTitle(resource: resource), action: nil, keyEquivalent: "")
 
     item.isHidden = false
@@ -646,13 +525,13 @@ public final class MenuBar: NSObject, ObservableObject {
     return item
   }
 
-  private func internetResourceToggleTitle() -> String {
+  func internetResourceToggleTitle() -> String {
     store.internetResourceEnabled() ? "Disable this resource" : "Enable this resource"
   }
 
   // TODO: Refactor this when refactoring for macOS 13
   // swiftlint:disable:next function_body_length
-  private func nonInternetResourceHeader(resource: Resource) -> NSMenu {
+  func nonInternetResourceHeader(resource: Resource) -> NSMenu {
     let subMenu = NSMenu()
 
     // Show addressDescription first if it's present
@@ -727,7 +606,7 @@ public final class MenuBar: NSObject, ObservableObject {
     return subMenu
   }
 
-  private func internetResourceHeader(resource: Resource) -> NSMenu {
+  func internetResourceHeader(resource: Resource) -> NSMenu {
     let subMenu = NSMenu()
     let description = NSMenuItem()
 
@@ -749,7 +628,7 @@ public final class MenuBar: NSObject, ObservableObject {
     return subMenu
   }
 
-  private func resourceHeader(resource: Resource) -> NSMenu {
+  func resourceHeader(resource: Resource) -> NSMenu {
     if resource.isInternetResource() {
       internetResourceHeader(resource: resource)
     } else {
@@ -757,7 +636,7 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func createSubMenu(resource: Resource) -> NSMenu {
+  func createSubMenu(resource: Resource) -> NSMenu {
     let siteSectionItem = NSMenuItem()
     let siteNameItem = NSMenuItem()
     let siteStatusItem = NSMenuItem()
@@ -796,13 +675,85 @@ public final class MenuBar: NSObject, ObservableObject {
     return subMenu
   }
 
-  @objc private func resourceValueTapped(_ sender: AnyObject?) {
+  // MARK: Responding to click events
+
+  @objc func signInButtonTapped() {
+    Task {
+      do {
+        try await WebAuthSession.signIn(store: store)
+      } catch {
+        Log.error(error)
+        await macOSAlert.show(for: error)
+      }
+    }
+  }
+
+  @objc func signOutButtonTapped() {
+    do { try store.signOut() } catch { Log.error(error) }
+  }
+
+  @objc func grantPermissionMenuItemTapped() {
+    Task {
+      do {
+        // If we get here, it means either system extension got disabled or
+        // our VPN configuration got removed. Since we don't know which, reinstall
+        // the system extension here too just in case. It's a no-op if already
+        // installed.
+        try await store.installSystemExtension()
+        try await store.grantVPNPermission()
+      } catch {
+        Log.error(error)
+        await macOSAlert.show(for: error)
+      }
+    }
+  }
+
+  @objc func settingsButtonTapped() {
+    AppView.WindowDefinition.settings.openWindow()
+  }
+
+  @objc func adminPortalButtonTapped() {
+    guard let url = URL(string: store.settings.authBaseURL)
+    else { return }
+
+    Task { await NSWorkspace.shared.openAsync(url) }
+  }
+
+  @objc func updateAvailableButtonTapped() {
+    Task { await NSWorkspace.shared.openAsync(UpdateChecker.downloadURL()) }
+  }
+
+  @objc func documentationButtonTapped() {
+    let url = URL(string: "https://www.firezone.dev/kb?utm_source=macos-client")!
+
+    Task { await NSWorkspace.shared.openAsync(url) }
+  }
+
+  @objc func supportButtonTapped() {
+    let url = URL(string: "https://www.firezone.dev/support?utm_source=macos-client")!
+
+    Task { await NSWorkspace.shared.openAsync(url) }
+  }
+
+  @objc func aboutButtonTapped() {
+    NSApp.activate(ignoringOtherApps: true)
+    NSApp.orderFrontStandardAboutPanel(self)
+  }
+
+  @objc func quitButtonTapped() {
+    Task {
+      do { try store.stop() } catch { Log.error(error) }
+      NSApp.terminate(self)
+    }
+  }
+
+  @objc func resourceValueTapped(_ sender: AnyObject?) {
     if let value = (sender as? NSMenuItem)?.title {
       copyToClipboard(value)
     }
   }
 
-  @objc private func internetResourceToggle(_ sender: NSMenuItem) {
+  @objc func internetResourceToggle(_ sender: NSMenuItem) {
     Task {
       do {
         try await store.toggleInternetResource(enabled: !store.internetResourceEnabled())
@@ -814,28 +765,83 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  @objc private func resourceURLTapped(_ sender: AnyObject?) {
+  @objc func resourceURLTapped(_ sender: AnyObject?) {
     if let value = (sender as? NSMenuItem)?.title,
        let url = URL(string: value) {
       Task { await NSWorkspace.shared.openAsync(url) }
     }
   }
 
-  @objc private func addFavoriteTapped(_ sender: NSMenuItem) {
+  @objc func addFavoriteTapped(_ sender: NSMenuItem) {
     guard let id = sender.representedObject as? String
     else { fatalError("Expected to receive a String") }
 
     setFavorited(id: id, favorited: true)
   }
 
-  @objc private func removeFavoriteTapped(_ sender: NSMenuItem) {
+  @objc func removeFavoriteTapped(_ sender: NSMenuItem) {
     guard let id = sender.representedObject as? String
     else { fatalError("Expected to receive a String") }
 
     setFavorited(id: id, favorited: false)
   }
 
-  private func setFavorited(id: String, favorited: Bool) {
+  // MARK: MenuBar icon animation
+
+  func updateAnimation(status: NEVPNStatus?) {
+    switch status {
+    case nil, .invalid, .disconnected:
+      self.stopConnectingAnimation()
+    case .connected:
+      self.stopConnectingAnimation()
+    case .connecting, .disconnecting, .reasserting:
+      self.startConnectingAnimation()
+    @unknown default:
+      return
+    }
+  }
+
+  func getStatusIcon(status: NEVPNStatus?, notification: Bool) -> NSImage? {
+    if status == .connecting || status == .disconnecting || status == .reasserting {
+      return self.connectingAnimationImages[.last] ?? nil
+    }
+
+    switch status {
+    case nil, .invalid, .disconnected:
+      return notification ? self.signedOutIconNotification : self.signedOutIcon
+    case .connected:
+      return notification ? self.signedInConnectedIconNotification : self.signedInConnectedIcon
+    default:
+      return nil
+    }
+  }
+
+  func startConnectingAnimation() {
+    guard connectingAnimationTimer == nil else { return }
+    let timer = Timer(timeInterval: 0.25, repeats: true) { _ in
+      Task { await MainActor.run { self.connectingAnimationShowNextFrame() } }
+    }
+    RunLoop.main.add(timer, forMode: .common)
+    connectingAnimationTimer = timer
+  }
+
+  func stopConnectingAnimation() {
+    connectingAnimationTimer?.invalidate()
+    connectingAnimationTimer = nil
+  }
+
+  func connectingAnimationShowNextFrame() {
+    guard let currentKey = AnimationImageIndex(rawValue: connectingAnimationImageIndex),
+          let image = connectingAnimationImages[currentKey]
+    else { return }
+
+    statusItem.button?.image = image
+    connectingAnimationImageIndex = (connectingAnimationImageIndex + 1) % connectingAnimationImages.count
+  }
+
+  // MARK: Other utility functions
+
+  func setFavorited(id: String, favorited: Bool) {
     if favorited {
       store.favorites.add(id)
     } else {
@@ -843,13 +849,17 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
-  private func copyToClipboard(_ string: String) {
+  func copyToClipboard(_ string: String) {
     let pasteBoard = NSPasteboard.general
     pasteBoard.clearContents()
     pasteBoard.writeObjects([string as NSString])
   }
 
-  private func statusToState(status: ResourceStatus) -> NSControl.StateValue {
+  func showMenu() {
+    statusItem.button?.performClick(nil)
+  }
+
+  func statusToState(status: ResourceStatus) -> NSControl.StateValue {
     switch status {
     case .offline:
       return .off
