@@ -270,12 +270,14 @@ async fn ipc_listen(
         ));
         let Some(handler) = poll_fn(|cx| {
             if let Poll::Ready(()) = signals.poll_recv(cx) {
-                Poll::Ready(None)
-            } else if let Poll::Ready(handler) = handler_fut.as_mut().poll(cx) {
-                Poll::Ready(Some(handler))
-            } else {
-                Poll::Pending
+                return Poll::Ready(None);
             }
+
+            if let Poll::Ready(handler) = handler_fut.as_mut().poll(cx) {
+                return Poll::Ready(Some(handler));
+            }
+
+            Poll::Pending
         })
         .await
         else {
