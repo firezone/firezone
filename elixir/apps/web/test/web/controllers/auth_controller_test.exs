@@ -905,6 +905,18 @@ defmodule Web.AuthControllerTest do
       }
     end
 
+    test "redirects with an error when params aren't provided", %{
+      account: account,
+      provider: provider,
+      conn: conn
+    } do
+      conn =
+        get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback")
+
+      assert redirected_to(conn) == ~p"/#{account.id}"
+      assert flash(conn, :error) == "Invalid request."
+    end
+
     test "redirects with an error when state cookie does not exist", %{
       account: account,
       provider: provider,
