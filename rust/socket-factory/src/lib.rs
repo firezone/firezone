@@ -213,7 +213,7 @@ impl UdpSocket {
         &self,
         buffer: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>> + fmt::Debug>> {
+    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>> + fmt::Debug + use<'b>>> {
         let Self {
             port, inner, state, ..
         } = self;

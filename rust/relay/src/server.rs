@@ -191,7 +191,7 @@ where
             channels_by_client_and_number: Default::default(),
             channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
-            auth_secret: SecretString::from(hex::encode(rng.gen::<[u8; 32]>())),
+            auth_secret: SecretString::from(hex::encode(rng.r#gen::<[u8; 32]>())),
             rng,
             nonces: Default::default(),
             allocations_up_down_counter,
@@ -1077,7 +1077,7 @@ where
     }
 
     fn new_nonce_attribute(&mut self) -> Nonce {
-        let new_nonce = Uuid::from_u128(self.rng.gen());
+        let new_nonce = Uuid::from_u128(self.rng.r#gen());
 
         self.add_nonce(new_nonce);
 

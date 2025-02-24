@@ -86,7 +86,7 @@ impl Sockets {
         ip4_buffer: &'b mut [u8],
         ip6_buffer: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>>>> {
+    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>> + use<'b>>> {
         let mut iter = PacketIter::new();
 
         if let Some(Poll::Ready(packets)) = self

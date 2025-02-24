@@ -534,7 +534,7 @@ impl Eventloop {
     fn resolve(
         &self,
         domain: DomainName,
-    ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> {
+    ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> + use<> {
         let do_resolve = resolve(domain.clone());
         let cache = self.dns_cache.clone();
 

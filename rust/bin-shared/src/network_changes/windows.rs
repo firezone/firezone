@@ -628,7 +628,7 @@ mod async_dns {
     // many API calls are illegal, so try not to do anything in here. Right now
     // all we do is wake up our Tokio task.
     unsafe extern "system" fn callback(ctx: *mut c_void, _: BOOLEAN) {
-        let tx = &*(ctx as *const mpsc::Sender<()>);
+        let tx = unsafe { &*(ctx as *const mpsc::Sender<()>) };
         // It's not a problem if sending fails. It either means the `Listener`
         // is closing down, or it's already been notified.
         tx.try_send(()).ok();

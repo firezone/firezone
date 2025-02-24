@@ -396,7 +396,7 @@ fn connect(
 /// # Safety
 /// Pointers must be valid
 /// fd must be a valid file descriptor
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_connect(
     mut env: JNIEnv,
     _class: JClass,
@@ -452,16 +452,16 @@ pub struct SessionWrapper {
 
 /// # Safety
 /// session_ptr should have been obtained from `connect` function
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_disconnect(
     mut env: JNIEnv,
     _: JClass,
     session_ptr: jlong,
 ) {
-    let session = session_ptr as *mut SessionWrapper;
-    catch_and_throw(&mut env, |_| {
-        let mut session = Box::from_raw(session); // Creating an owned `Box` from this will properly drop this at the end of the scope.
+    // Creating an owned `Box` from this will properly drop this at the end of the scope.
+    let mut session = unsafe { Box::from_raw(session_ptr as *mut SessionWrapper) };
 
+    catch_and_throw(&mut env, |_| {
         session.runtime.block_on(session.telemetry.stop());
     });
 }
@@ -469,13 +469,15 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDisabledResources(
     mut env: JNIEnv,
     _: JClass,
     session_ptr: jlong,
     disabled_resources: JString,
 ) {
+    let session = unsafe { &*(session_ptr as *const SessionWrapper) };
+
     let disabled_resources = String::from(
         env.get_string(&disabled_resources)
             .expect("Invalid string returned from android client"),
@@ -484,7 +486,6 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
         .expect("Failed to deserialize disabled resource IDs");
 
     tracing::debug!("disabled resource: {disabled_resources:?}");
-    let session = &*(session_ptr as *const SessionWrapper);
     session.inner.set_disabled_resources(disabled_resources);
 }
 
@@ -497,50 +498,55 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDns(
     mut env: JNIEnv,
     _: JClass,
     session_ptr: jlong,
     dns_list: JString,
 ) {
+    let session = unsafe { &*(session_ptr as *const SessionWrapper) };
+
     let dns = String::from(
         env.get_string(&dns_list)
             .expect("Invalid string returned from android client"),
     );
     let dns = serde_json::from_str::<Vec<IpAddr>>(&dns).expect("Failed to deserialize DNS IPs");
-    let session = &*(session_ptr as *const SessionWrapper);
+
     session.inner.set_dns(dns);
 }
 
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reset(
     _: JNIEnv,
     _: JClass,
     session_ptr: jlong,
 ) {
-    let session = &*(session_ptr as *const SessionWrapper);
+    let session = unsafe { &*(session_ptr as *const SessionWrapper) };
+
     session.inner.reset();
 }
 
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setTun(
     mut env: JNIEnv,
     _: JClass,
     session_ptr: jlong,
     fd: RawFd,
 ) {
-    let session = &*(session_ptr as *const SessionWrapper);
+    let session = unsafe { &*(session_ptr as *const SessionWrapper) };
 
     // Enter tokio RT context to construct `Tun`.
     let _enter = session.runtime.enter();
-    let tun = match Tun::from_fd(fd) {
+    let tun_result = unsafe { Tun::from_fd(fd) };
+
+    let tun = match tun_result {
         Ok(t) => t,
         Err(e) => {
             throw(&mut env, "java/lang/Exception", e.to_string());

@@ -429,12 +429,20 @@ fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
 
 // SAFETY: si_family must be always set in the union, which will be the case for a valid SOCKADDR_INET
 unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
-    match (addr.si_family, dst) {
+    let family = unsafe { addr.si_family };
+
+    match (family, dst) {
         (ADDRESS_FAMILY(0), IpAddr::V4(_)) | (ADDRESS_FAMILY(2), _) => {
-            Some(Ipv4Addr::from(addr.Ipv4.sin_addr).into())
+            // SAFETY: We checked the family.
+            let ipv4 = unsafe { addr.Ipv4 };
+
+            Some(Ipv4Addr::from(ipv4.sin_addr).into())
         }
         (ADDRESS_FAMILY(0), IpAddr::V6(_)) | (ADDRESS_FAMILY(23), _) => {
-            Some(Ipv6Addr::from(addr.Ipv6.sin6_addr).into())
+            // SAFETY: We checked the family.
+            let ipv6 = unsafe { addr.Ipv6 };
+
+            Some(Ipv6Addr::from(ipv6.sin6_addr).into())
         }
         _ => None,
     }
