@@ -23,6 +23,9 @@ export default function Apple() {
         <ChangeItem pull="8248">
           Fixes a crash on macOS that could occur when an application update
           become available.
+        <ChangeItem pull="8249">
+          Fixes a regression that caused a crash if "Open menu" was clicked in
+          the Welcome screen.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.4.4" date={new Date("2025-02-24")}>
