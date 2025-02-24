@@ -64,7 +64,10 @@ pub fn setup(directives: &str) -> Result<Handles> {
 
     let (system_filter, system_reloader) = firezone_logging::try_filter(directives)?;
     let system_layer = system_layer().context("Failed to init system logger")?;
-    let syslog_identifier = system_layer.syslog_identifier().to_owned();
+    #[cfg(target_os = "linux")]
+    let syslog_identifier = Some(system_layer.syslog_identifier().to_owned());
+    #[cfg(not(target_os = "linux"))]
+    let syslog_identifier = None;
 
     let (file_layer, logger) = firezone_logging::file::layer(&log_path, "gui-client");
     let (file_filter, file_reloader) = firezone_logging::try_filter(directives)?;
@@ -76,7 +79,7 @@ pub fn setup(directives: &str) -> Result<Handles> {
         .with(firezone_logging::sentry_layer());
     firezone_logging::init(subscriber)?;
 
-    tracing::debug!(log_path = %log_path.display(), %syslog_identifier);
+    tracing::debug!(log_path = %log_path.display(), syslog_identifier = syslog_identifier.map(tracing::field::display));
 
     Ok(Handles {
         logger,
