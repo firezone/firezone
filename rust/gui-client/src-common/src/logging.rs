@@ -95,6 +95,7 @@ fn system_layer() -> Result<tracing_journald::Layer> {
 }
 
 #[cfg(not(target_os = "linux"))]
+#[expect(clippy::unnecessary_wraps, reason = "Linux signature needs `Result`")]
 fn system_layer() -> Result<tracing_subscriber::layer::Identity> {
     Ok(tracing_subscriber::layer::Identity::new())
 }
