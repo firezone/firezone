@@ -27,7 +27,7 @@ class UpdateChecker {
   private let versionCheckUrl: URL
   private let marketingVersion: SemanticVersion
 
-  @Published public var updateAvailable: Bool = false
+  @MainActor @Published private(set) var updateAvailable: Bool = false
 
   init() {
     guard let versionCheckUrl = URL(string: "https://www.firezone.dev/api/releases"),
@@ -92,13 +92,17 @@ class UpdateChecker {
       }
 
       if latestVersion > marketingVersion {
-        self.updateAvailable = true
+        Task {
+          await MainActor.run {
+            self.updateAvailable = true
 
-        if let lastDismissedVersion = getLastDismissedVersion(), lastDismissedVersion >= latestVersion {
-          return
+            if let lastDismissedVersion = getLastDismissedVersion(), lastDismissedVersion >= latestVersion {
+              return
+            }
+
+            self.notificationAdapter.showUpdateNotification(version: latestVersion)
+          }
         }
-
-        self.notificationAdapter.showUpdateNotification(version: latestVersion)
       }
     }
 
@@ -151,7 +155,7 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
 
   }
 
-  func showUpdateNotification(version: SemanticVersion) {
+  @MainActor func showUpdateNotification(version: SemanticVersion) {
     let content = UNMutableNotificationContent()
     setLastNotifiedVersion(version: version)
     content.title = "Update Firezone"
