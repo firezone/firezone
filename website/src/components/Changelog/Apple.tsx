@@ -23,6 +23,9 @@ export default function Apple() {
         <ChangeItem pull="8202">
           Fixes a crash that occurred if the system reports invalid DNS servers.
         </ChangeItem>
+        <ChangeItem pull="8237">
+          Fixes a minor memory leak that would occur each time you sign in.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.3" date={new Date("2025-02-16")}>
         <ChangeItem pull="8122">
