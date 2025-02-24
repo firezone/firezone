@@ -1003,6 +1003,26 @@ defmodule Domain.ResourcesTest do
   end
 
   describe "create_resource/2" do
+    test "prevents adding other resources to the internet site", %{
+      account: account,
+      subject: subject
+    } do
+      {:ok, gateway_group} = Domain.Gateways.create_internet_group(account)
+
+      attrs =
+        Fixtures.Resources.resource_attrs(
+          type: :dns,
+          address: "example.com",
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      assert {:error, changeset} = create_resource(attrs, subject)
+
+      assert %{resource: ["type must be 'internet' for the Internet site"]} in errors_on(
+               changeset
+             ).connections
+    end
+
     test "returns changeset error on empty attrs", %{subject: subject} do
       assert {:error, changeset} = create_resource(%{}, subject)
 
