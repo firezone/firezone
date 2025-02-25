@@ -168,12 +168,14 @@ defmodule Web.LiveTable do
           </.button>
         </div>
 
-        <.filter
-          :for={filter <- @filters}
-          live_table_id={@live_table_id}
-          form={@form}
-          filter={filter}
-        />
+        <div class="space-y-2 md:space-y-0 md:gap-1 md:flex">
+          <.filter
+            :for={filter <- @filters}
+            live_table_id={@live_table_id}
+            form={@form}
+            filter={filter}
+          />
+        </div>
       </div>
     </.form>
     """
