@@ -126,6 +126,31 @@ jobs:
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
           TESTCASES_DIR: "connlib/tunnel/testcases"
 
+  test-nightly:
+    name: test-${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # TODO: https://github.com/rust-lang/cargo/issues/5220
+        runs-on: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: ./.github/actions/setup-rust
+        id: setup-rust
+      - run: rustup default nightly-2025-02-24 # The exact nightly version doesn't matter, just pin a random one so we get some caching.
+      - uses: ./.github/actions/setup-tauri-v2
+      - name: "cargo test"
+        shell: bash
+        run: cargo test -Zbuild-std --all-features ${{ steps.setup-rust.outputs.packages }} -- --include-ignored
+        env:
+          # <https://github.com/rust-lang/cargo/issues/5999>
+          # Needed to create tunnel interfaces in unit tests
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_RUNNER: "sudo --preserve-env"
+          PROPTEST_VERBOSE: 0 # Otherwise the output is very long.
+          CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
+          RUSTFLAGS: "${{ env.RUSTFLAGS }} -Z sanitizer=thread"
+
   # Runs the Tauri client smoke test, built in debug mode. We can't run it in release
   # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
   gui-smoke-test:
