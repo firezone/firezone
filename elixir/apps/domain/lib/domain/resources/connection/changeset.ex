@@ -22,6 +22,10 @@ defmodule Domain.Resources.Connection.Changeset do
     |> assoc_constraint(:resource)
     |> assoc_constraint(:gateway_group)
     |> assoc_constraint(:account)
+    |> check_constraint(:resource,
+      name: :internet_resource_in_internet_site,
+      message: "type must be 'internet' for the Internet site"
+    )
     |> put_change(:account_id, account_id)
   end
 end
