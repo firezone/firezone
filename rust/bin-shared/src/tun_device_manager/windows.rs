@@ -226,7 +226,7 @@ impl Drop for Tun {
             .take()
             .expect("`send_thread` should always be `Some` until `Tun` drops");
 
-        let _ = self.state.take();
+        let _ = self.state.take(); // Drop all channel / tunnel state, allowing the worker threads to exit gracefully.
 
         let start = Instant::now();
 
