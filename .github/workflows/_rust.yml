@@ -138,7 +138,10 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-rust
         id: setup-rust
-      - run: rustup override set nightly-2025-02-24 # The exact nightly version doesn't matter, just pin a random one so we get some caching.
+      - name: Install Rust nightly
+        run: |
+          rustup toolchain install nightly-2025-02-24
+          rustup override set nightly-2025-02-24
       - uses: ./.github/actions/setup-tauri-v2
       - name: "cargo test"
         shell: bash
