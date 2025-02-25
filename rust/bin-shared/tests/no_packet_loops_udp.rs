@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use firezone_bin_shared::{platform::udp_socket_factory, TunDeviceManager};
 use ip_network::Ipv4Network;
 use socket_factory::DatagramOut;
