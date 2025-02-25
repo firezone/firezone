@@ -196,6 +196,14 @@ pub struct Tun {
     iface_idx: u32,
     luid: wintun::NET_LUID_LH,
 
+    state: Option<TunState>,
+
+    send_thread: Option<std::thread::JoinHandle<()>>,
+    recv_thread: Option<std::thread::JoinHandle<()>>,
+}
+
+/// All state relevant to the WinTUN device.
+struct TunState {
     #[expect(
         dead_code,
         reason = "The send/recv threads have `Weak` references to this which we need to keep alive"
@@ -204,18 +212,10 @@ pub struct Tun {
 
     outbound_tx: PollSender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
-
-    send_thread: Option<std::thread::JoinHandle<()>>,
-    recv_thread: Option<std::thread::JoinHandle<()>>,
 }
 
 impl Drop for Tun {
     fn drop(&mut self) {
-        tracing::debug!(
-            channel_capacity = self.inbound_rx.capacity(),
-            "Shutting down packet channel..."
-        );
-
         let recv_thread = self
             .recv_thread
             .take()
@@ -226,28 +226,27 @@ impl Drop for Tun {
             .take()
             .expect("`send_thread` should always be `Some` until `Tun` drops");
 
-        // Join threads in a new thread to avoid any deadlocks.
-        // By fully dropping `Tun`, we are definitely releasing all resources associated with the TUN device.
-        std::thread::spawn(|| {
-            let start = Instant::now();
-            let mut logged_warn = false;
+        let _ = self.state.take();
 
-            while !recv_thread.is_finished() || !send_thread.is_finished() {
-                std::thread::sleep(Duration::from_millis(100));
+        let start = Instant::now();
 
-                if start.elapsed() > Duration::from_secs(5) && !logged_warn {
-                    tracing::warn!(recv_thread_finished = %recv_thread.is_finished(), send_thread_finished = %send_thread.is_finished(), "TUN worker threads are failing to exit");
-                    logged_warn = true
-                }
-            }
+        while !recv_thread.is_finished() || !send_thread.is_finished() {
+            std::thread::sleep(Duration::from_millis(100));
 
-            if let Err(error) = recv_thread.join() {
-                tracing::error!("`Tun::recv_thread` panicked: {error:?}");
+            if start.elapsed() > Duration::from_secs(5) {
+                tracing::warn!(recv_thread_finished = %recv_thread.is_finished(), send_thread_finished = %send_thread.is_finished(), "TUN worker threads did not exit gracefully in 5s");
+                return;
             }
-            if let Err(error) = send_thread.join() {
-                tracing::error!("`Tun::send_thread` panicked: {error:?}");
-            }
-        });
+        }
+
+        tracing::debug!("Worker threads exited gracefully after {:?}", start.elapsed());
+
+        if let Err(error) = recv_thread.join() {
+            tracing::error!("`Tun::recv_thread` panicked: {error:?}");
+        }
+        if let Err(error) = send_thread.join() {
+            tracing::error!("`Tun::send_thread` panicked: {error:?}");
+        }
     }
 }
 
@@ -287,11 +286,13 @@ impl Tun {
         Ok(Self {
             iface_idx,
             luid,
-            session,
+            state: Some(TunState {
+                session,
+                outbound_tx: PollSender::new(outbound_tx),
+                inbound_rx,
+            }),
             send_thread: Some(send_thread),
             recv_thread: Some(recv_thread),
-            outbound_tx: PollSender::new(outbound_tx),
-            inbound_rx,
         })
     }
 
@@ -308,7 +309,11 @@ impl tun::Tun for Tun {
         buf: &mut Vec<IpPacket>,
         max: usize,
     ) -> Poll<usize> {
-        self.inbound_rx.poll_recv_many(cx, buf, max)
+        self.state
+            .as_mut()
+            .expect("`tun_state` to always be `Some` until we drop")
+            .inbound_rx
+            .poll_recv_many(cx, buf, max)
     }
 
     fn name(&self) -> &str {
@@ -318,6 +323,9 @@ impl tun::Tun for Tun {
     /// Check if more packets can be sent.
     fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
         ready!(self
+            .state
+            .as_mut()
+            .expect("`tun_state` to always be `Some` until we drop")
             .outbound_tx
             .poll_reserve(cx)
             .map_err(io::Error::other)?);
@@ -327,7 +335,10 @@ impl tun::Tun for Tun {
 
     /// Send a packet.
     fn send(&mut self, packet: IpPacket) -> io::Result<()> {
-        self.outbound_tx
+        self.state
+            .as_mut()
+            .expect("`tun_state` to always be `Some` until we drop")
+            .outbound_tx
             .send_item(packet)
             .map_err(io::Error::other)?;
 
