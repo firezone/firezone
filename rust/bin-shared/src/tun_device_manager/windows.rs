@@ -7,6 +7,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
 use std::net::IpAddr;
+use std::sync::Weak;
 use std::task::ready;
 use std::time::Duration;
 use std::{
@@ -193,11 +194,19 @@ pub struct Tun {
     /// The index of our network adapter, we can use this when asking Windows to add / remove routes / DNS rules
     /// It's stable across app restarts and I'm assuming across system reboots too.
     iface_idx: u32,
+    luid: wintun::NET_LUID_LH,
+
+    #[expect(
+        dead_code,
+        reason = "The send/recv threads have `Weak` references to this which we need to keep alive"
+    )]
+    session: Arc<wintun::Session>,
+
     outbound_tx: PollSender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
+
     send_thread: Option<std::thread::JoinHandle<()>>,
     recv_thread: Option<std::thread::JoinHandle<()>>,
-    luid: wintun::NET_LUID_LH,
 }
 
 impl Drop for Tun {
@@ -207,27 +216,26 @@ impl Drop for Tun {
             "Shutting down packet channel..."
         );
 
-        // Close channels to avoid deadlocks, see <https://github.com/firezone/firezone/pull/5571>.
-        self.outbound_tx.close();
-        self.outbound_tx.abort_send();
-        self.inbound_rx.close();
-
-        if let Err(error) = self
+        let recv_thread = self
             .recv_thread
             .take()
-            .expect("`recv_thread` should always be `Some` until `Tun` drops")
-            .join()
-        {
-            tracing::error!("`Tun::recv_thread` panicked: {error:?}");
-        }
-        if let Err(error) = self
+            .expect("`recv_thread` should always be `Some` until `Tun` drops");
+
+        let send_thread = self
             .send_thread
             .take()
-            .expect("`send_thread` should always be `Some` until `Tun` drops")
-            .join()
-        {
-            tracing::error!("`Tun::send_thread` panicked: {error:?}");
-        }
+            .expect("`send_thread` should always be `Some` until `Tun` drops");
+
+        // Join threads in a new thread to avoid any deadlocks.
+        // By fully dropping `Tun`, we are definitely releasing all resources associated with the TUN device.
+        std::thread::spawn(|| {
+            if let Err(error) = recv_thread.join() {
+                tracing::error!("`Tun::recv_thread` panicked: {error:?}");
+            }
+            if let Err(error) = send_thread.join() {
+                tracing::error!("`Tun::send_thread` panicked: {error:?}");
+            }
+        });
     }
 }
 
@@ -259,14 +267,15 @@ impl Tun {
         );
         let (outbound_tx, outbound_rx) = mpsc::channel(1000);
         let (inbound_tx, inbound_rx) = mpsc::channel(1000); // We want to be able to batch-receive from this.
-        let send_thread = start_send_thread(outbound_rx, Arc::clone(&session))
+        let send_thread = start_send_thread(outbound_rx, Arc::downgrade(&session))
             .context("Failed to start send thread")?;
-        let recv_thread = start_recv_thread(inbound_tx, Arc::clone(&session))
+        let recv_thread = start_recv_thread(inbound_tx, Arc::downgrade(&session))
             .context("Failed to start recv thread")?;
 
         Ok(Self {
             iface_idx,
             luid,
+            session,
             send_thread: Some(send_thread),
             recv_thread: Some(recv_thread),
             outbound_tx: PollSender::new(outbound_tx),
@@ -317,7 +326,7 @@ impl tun::Tun for Tun {
 // Moves packets from Internet towards the user
 fn start_send_thread(
     mut packet_rx: mpsc::Receiver<IpPacket>,
-    session: Arc<wintun::Session>,
+    session: Weak<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     // See <https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->.
     const ERROR_BUFFER_OVERFLOW: i32 = 0x6F;
@@ -327,7 +336,7 @@ fn start_send_thread(
         .spawn(move || {
             'recv: loop {
                 let Some(packet) = packet_rx.blocking_recv() else {
-                    tracing::info!(
+                    tracing::debug!(
                         "Stopping TUN send worker thread because the packet channel closed"
                     );
                     break;
@@ -338,6 +347,11 @@ fn start_send_thread(
                 let Ok(len) = bytes.len().try_into() else {
                     tracing::warn!("Packet too large; length does not fit into u16");
                     continue;
+                };
+
+                let Some(session) = session.upgrade() else {
+                    tracing::debug!("Stopping TUN send worker thread `wintun::Session` was closed");
+                    break;
                 };
 
                 let mut pkt = loop {
@@ -367,17 +381,20 @@ fn start_send_thread(
 
 fn start_recv_thread(
     packet_tx: mpsc::Sender<IpPacket>,
-    session: Arc<wintun::Session>,
+    session: Weak<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
         .name("TUN recv".into())
         .spawn(move || loop {
+            let Some(session) = session.upgrade() else {
+                tracing::debug!("Stopping TUN recv worker thread `wintun::Session` was closed");
+                break;
+            };
+
             let pkt = match session.receive_blocking() {
                 Ok(pkt) => pkt,
                 Err(wintun::Error::ShuttingDown) => {
-                    tracing::info!(
-                        "Stopping outbound worker thread because Wintun is shutting down"
-                    );
+                    tracing::info!("Stopping recv worker thread because Wintun is shutting down");
                     break;
                 }
                 Err(e) => {
