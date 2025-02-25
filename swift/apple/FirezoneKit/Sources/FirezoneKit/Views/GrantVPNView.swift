@@ -36,7 +36,7 @@ struct GrantVPNView: View {
           .imageScale(.large)
         Spacer()
         Button("Grant VPN Permission") {
-          grantVPNPermission()
+          installVPNConfiguration()
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
@@ -108,7 +108,7 @@ struct GrantVPNView: View {
             Spacer()
             Button(
               action: {
-                grantVPNPermission()
+                installVPNConfiguration()
               },
               label: {
                 Label("Grant VPN Permission", systemImage: "network.badge.shield.half.filled")
@@ -144,10 +144,10 @@ struct GrantVPNView: View {
     }
   }
 
-  func grantVPNPermission() {
+  func installVPNConfiguration() {
     Task {
       do {
-        try await store.grantVPNPermission()
+        try await store.installVPNConfiguration()
       } catch {
         Log.error(error)
         await macOSAlert.show(for: error)
@@ -161,10 +161,10 @@ struct GrantVPNView: View {
 #endif
 
 #if os(iOS)
-  func grantVPNPermission() {
+  func installVPNConfiguration() {
     Task {
       do {
-        try await store.grantVPNPermission()
+        try await store.installVPNConfiguration()
       } catch {
         Log.error(error)
 

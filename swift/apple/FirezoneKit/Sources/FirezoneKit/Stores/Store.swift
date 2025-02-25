@@ -20,7 +20,7 @@ public final class Store: ObservableObject {
   @Published private(set) var actorName: String?
 
   // Make our tunnel configuration convenient for SettingsView to consume
-  @Published var settings: Settings
+  @Published var settings = Settings.defaultValue
 
   // Enacapsulate Tunnel status here to make it easier for other components
   // to observe
@@ -33,17 +33,13 @@ public final class Store: ObservableObject {
   @Published private(set) var systemExtensionStatus: SystemExtensionStatus?
 #endif
 
-  let vpnConfigurationManager: VPNConfigurationManager
-  private var sessionNotification: SessionNotification
   private var cancellables: Set<AnyCancellable> = []
   private var resourcesTimer: Timer?
 
-  public init() {
-    // Initialize all stored properties
-    self.settings = Settings.defaultValue
-    self.sessionNotification = SessionNotification()
-    self.vpnConfigurationManager = VPNConfigurationManager()
+  let vpnConfigurationManager = VPNConfigurationManager()
+  let sessionNotification = SessionNotification()
 
+  public init() {
     self.sessionNotification.signInHandler = {
       Task {
         do { try await WebAuthSession.signIn(store: self) } catch { Log.error(error) }
@@ -166,7 +162,7 @@ public final class Store: ObservableObject {
   }
 #endif
 
-  func grantVPNPermission() async throws {
+  func installVPNConfiguration() async throws {
     // Create a new VPN configuration in system settings.
     try await self.vpnConfigurationManager.create()
 

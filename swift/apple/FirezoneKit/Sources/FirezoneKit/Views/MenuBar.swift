@@ -700,7 +700,7 @@ public final class MenuBar: NSObject, ObservableObject {
         // the system extension here too just in case. It's a no-op if already
         // installed.
         try await store.installSystemExtension()
-        try await store.grantVPNPermission()
+        try await store.installVPNConfiguration()
       } catch {
         Log.error(error)
         await macOSAlert.show(for: error)
