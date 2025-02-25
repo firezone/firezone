@@ -150,7 +150,6 @@ defmodule Web.Resources.New do
               </p>
               <div :if={@form[:type].value == :dns}>
                 <div class="mt-2 text-xs text-neutral-500">
-                  <.badge type="info" class="p-0 mr-2">NEW</.badge>
                   Wildcard matching is supported:
                 </div>
                 <div class="mt-2 text-xs text-neutral-500">
