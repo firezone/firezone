@@ -310,7 +310,10 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         }
     }
 
-    fn sample_unique_ports(&mut self, num_ports: usize) -> Result<impl Iterator<Item = u16>> {
+    fn sample_unique_ports(
+        &mut self,
+        num_ports: usize,
+    ) -> Result<impl Iterator<Item = u16> + use<MIN_PORT, MAX_PORT>> {
         let mut ports = HashSet::with_capacity(num_ports);
         let range = MIN_PORT..=MAX_PORT;
 
