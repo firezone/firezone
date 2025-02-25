@@ -345,50 +345,48 @@ fn start_send_thread(
 
     std::thread::Builder::new()
         .name("TUN send".into())
-        .spawn(move || {
-            'recv: loop {
-                let Some(packet) = packet_rx.blocking_recv() else {
-                    tracing::debug!(
-                        "Stopping TUN send worker thread because the packet channel closed"
-                    );
-                    break;
-                };
+        .spawn(move || loop {
+            let Some(packet) = packet_rx.blocking_recv() else {
+                tracing::debug!(
+                    "Stopping TUN send worker thread because the packet channel closed"
+                );
+                break;
+            };
 
-                let bytes = packet.packet();
+            let bytes = packet.packet();
 
-                let Ok(len) = bytes.len().try_into() else {
-                    tracing::warn!("Packet too large; length does not fit into u16");
-                    continue;
-                };
+            let Ok(len) = bytes.len().try_into() else {
+                tracing::warn!("Packet too large; length does not fit into u16");
+                continue;
+            };
 
+            loop {
                 let Some(session) = session.upgrade() else {
                     tracing::debug!(
                         "Stopping TUN send worker thread because the `wintun::Session` was dropped"
                     );
-                    break;
+                    return;
                 };
 
-                let mut pkt = loop {
-                    match session.allocate_send_packet(len) {
-                        Ok(pkt) => break pkt,
-                        Err(wintun::Error::Io(e))
-                            if e.raw_os_error()
-                                .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
-                        {
-                            tracing::debug!("WinTUN ring buffer is full");
-                            std::thread::sleep(Duration::from_millis(10)); // Suspend for a bit to avoid busy-looping.
-                        }
-                        Err(e) => {
-                            tracing::error!("Failed to allocate WinTUN packet: {e}");
-                            continue 'recv;
-                        }
+                match session.allocate_send_packet(len) {
+                    Ok(pkt) => {
+                        pkt.bytes_mut().copy_from_slice(bytes);
+                        // `send_packet` cannot fail to enqueue the packet, since we already allocated
+                        // space in the ring buffer.
+                        session.send_packet(pkt);
                     }
-                };
-
-                pkt.bytes_mut().copy_from_slice(bytes);
-                // `send_packet` cannot fail to enqueue the packet, since we already allocated
-                // space in the ring buffer.
-                session.send_packet(pkt);
+                    Err(wintun::Error::Io(e))
+                        if e.raw_os_error()
+                            .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
+                    {
+                        tracing::debug!("WinTUN ring buffer is full");
+                        std::thread::sleep(Duration::from_millis(10)); // Suspend for a bit to avoid busy-looping.
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to allocate WinTUN packet: {e}");
+                        break;
+                    }
+                }
             }
         })
 }
@@ -400,14 +398,14 @@ fn start_recv_thread(
     std::thread::Builder::new()
         .name("TUN recv".into())
         .spawn(move || loop {
-            let Some(session) = session.upgrade() else {
+            let Some(receive_result) = session.upgrade().map(|s| s.receive_blocking()) else {
                 tracing::debug!(
                     "Stopping TUN recv worker thread because the `wintun::Session` was dropped"
                 );
                 break;
             };
 
-            let pkt = match session.receive_blocking() {
+            let pkt = match receive_result {
                 Ok(pkt) => pkt,
                 Err(wintun::Error::ShuttingDown) => {
                     tracing::debug!("Stopping recv worker thread because Wintun is shutting down");
