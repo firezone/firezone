@@ -239,7 +239,10 @@ impl Drop for Tun {
             }
         }
 
-        tracing::debug!("Worker threads exited gracefully after {:?}", start.elapsed());
+        tracing::debug!(
+            "Worker threads exited gracefully after {:?}",
+            start.elapsed()
+        );
 
         if let Err(error) = recv_thread.join() {
             tracing::error!("`Tun::recv_thread` panicked: {error:?}");

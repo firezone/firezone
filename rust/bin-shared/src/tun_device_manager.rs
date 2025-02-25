@@ -12,4 +12,3 @@ pub use windows as platform;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use platform::TunDeviceManager;
-
