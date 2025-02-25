@@ -209,6 +209,7 @@ impl Drop for Tun {
 
         // Close channels to avoid deadlocks, see <https://github.com/firezone/firezone/pull/5571>.
         self.outbound_tx.close();
+        self.outbound_tx.abort_send();
         self.inbound_rx.close();
 
         if let Err(error) = self
