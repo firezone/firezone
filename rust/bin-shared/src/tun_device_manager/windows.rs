@@ -9,7 +9,7 @@ use ring::digest;
 use std::net::IpAddr;
 use std::sync::Weak;
 use std::task::ready;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{
     collections::HashSet,
     io::{self, Read as _},
@@ -229,6 +229,18 @@ impl Drop for Tun {
         // Join threads in a new thread to avoid any deadlocks.
         // By fully dropping `Tun`, we are definitely releasing all resources associated with the TUN device.
         std::thread::spawn(|| {
+            let start = Instant::now();
+            let mut logged_warn = false;
+
+            while !recv_thread.is_finished() || !send_thread.is_finished() {
+                std::thread::sleep(Duration::from_millis(100));
+
+                if start.elapsed() > Duration::from_secs(5) && !logged_warn {
+                    tracing::warn!(recv_thread_finished = %recv_thread.is_finished(), send_thread_finished = %send_thread.is_finished(), "TUN worker threads are failing to exit");
+                    logged_warn = true
+                }
+            }
+
             if let Err(error) = recv_thread.join() {
                 tracing::error!("`Tun::recv_thread` panicked: {error:?}");
             }
