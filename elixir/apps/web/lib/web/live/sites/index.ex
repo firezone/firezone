@@ -378,7 +378,7 @@ defmodule Web.Sites.Index do
     Domain.Repo.transaction(fn ->
       with {:ok, _count} <- Domain.Resources.delete_connections_for(internet_resource, subject),
            {:updated, resource} <-
-             Domain.Resources.update_or_replace_resource(internet_resource, attrs, subject) do
+             Domain.Resources.update_resource(internet_resource, attrs, subject) do
         resource
       else
         {:error, changeset} ->

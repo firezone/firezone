@@ -269,7 +269,7 @@ defmodule API.Gateway.ChannelTest do
       assert_push "allow_access", %{}
 
       {:updated, resource} =
-        Domain.Resources.update_or_replace_resource(
+        Domain.Resources.update_resource(
           resource,
           %{"name" => Ecto.UUID.generate()},
           subject
@@ -664,7 +664,7 @@ defmodule API.Gateway.ChannelTest do
       assert_push "request_connection", %{}, 200
 
       {:updated, resource} =
-        Domain.Resources.update_or_replace_resource(
+        Domain.Resources.update_resource(
           resource,
           %{"name" => Ecto.UUID.generate()},
           subject
@@ -884,7 +884,7 @@ defmodule API.Gateway.ChannelTest do
       assert_push "authorize_flow", %{}
 
       {:updated, resource} =
-        Domain.Resources.update_or_replace_resource(
+        Domain.Resources.update_resource(
           resource,
           %{"name" => Ecto.UUID.generate()},
           subject

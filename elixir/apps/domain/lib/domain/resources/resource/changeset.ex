@@ -209,7 +209,7 @@ defmodule Domain.Resources.Resource.Changeset do
     end
   end
 
-  def update_or_replace(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
+  def update(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     resource
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
@@ -218,36 +218,18 @@ defmodule Domain.Resources.Resource.Changeset do
       with: &Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
       required: true
     )
-    |> maybe_replace(resource, subject)
+    |> maybe_breaking_change()
   end
 
-  defp maybe_replace(%{valid?: false} = changeset, _policy, _subject),
-    do: {changeset, nil}
+  defp maybe_breaking_change(%{valid?: false} = changeset),
+    do: {changeset, false}
 
-  defp maybe_replace(changeset, resource, subject) do
+  # NOTE: Kept for backwards compatibility.
+  defp maybe_breaking_change(changeset) do
     if any_field_changed?(changeset, @replace_fields) do
-      resource = Domain.Repo.preload(resource, :account)
-
-      new_attrs =
-        changeset
-        |> apply_changes()
-        |> Map.from_struct()
-        |> Map.update(:connections, [], fn connections ->
-          Enum.map(connections, &Map.from_struct/1)
-        end)
-        |> Map.update(:filters, [], fn filters ->
-          Enum.map(filters, &Map.from_struct/1)
-        end)
-
-      new_changeset =
-        create(resource.account, new_attrs, subject)
-        |> put_change(:persistent_id, resource.persistent_id)
-
-      changeset = delete(resource)
-
-      {changeset, new_changeset}
+      {changeset, true}
     else
-      {changeset, nil}
+      {changeset, false}
     end
   end
 

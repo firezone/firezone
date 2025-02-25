@@ -188,7 +188,7 @@ defmodule Web.Live.Policies.EditTest do
     assert policy.description == attrs.description
   end
 
-  test "replaces a policy on valid attrs", %{
+  test "updates a policy on valid breaking change attrs", %{
     account: account,
     identity: identity,
     policy: policy,
@@ -206,14 +206,8 @@ defmodule Web.Live.Policies.EditTest do
     |> form("form", policy: attrs)
     |> render_submit()
 
-    assert policy = Repo.get_by(Domain.Policies.Policy, id: policy.id)
-    assert policy.replaced_by_policy_id
+    assert updated_policy = Repo.get_by(Domain.Policies.Policy, id: policy.id)
 
-    assert_redirected(lv, ~p"/#{account}/policies/#{policy.replaced_by_policy_id}")
-
-    assert replacement_policy =
-             Repo.get_by(Domain.Policies.Policy, id: policy.replaced_by_policy_id)
-
-    assert replacement_policy.resource_id == new_resource.id
+    assert_redirected(lv, ~p"/#{account}/policies/#{updated_policy.id}")
   end
 end
