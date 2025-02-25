@@ -49,75 +49,6 @@ public enum VPNConfigurationManagerKeys {
   public static let internetResourceEnabled = "internetResourceEnabled"
 }
 
-public enum TunnelMessage: Codable {
-  case getResourceList(Data)
-  case signOut
-  case internetResourceEnabled(Bool)
-  case clearLogs
-  case getLogFolderSize
-  case exportLogs
-  case consumeStopReason
-
-  enum CodingKeys: String, CodingKey {
-    case type
-    case value
-  }
-
-  enum MessageType: String, Codable {
-    case getResourceList
-    case signOut
-    case internetResourceEnabled
-    case clearLogs
-    case getLogFolderSize
-    case exportLogs
-    case consumeStopReason
-  }
-
-  public init(from decoder: Decoder) throws {
-    let container = try decoder.container(keyedBy: CodingKeys.self)
-    let type = try container.decode(MessageType.self, forKey: .type)
-    switch type {
-    case .internetResourceEnabled:
-      let value = try container.decode(Bool.self, forKey: .value)
-      self = .internetResourceEnabled(value)
-    case .getResourceList:
-      let value = try container.decode(Data.self, forKey: .value)
-      self = .getResourceList(value)
-    case .signOut:
-      self = .signOut
-    case .clearLogs:
-      self = .clearLogs
-    case .getLogFolderSize:
-      self = .getLogFolderSize
-    case .exportLogs:
-      self = .exportLogs
-    case .consumeStopReason:
-      self = .consumeStopReason
-    }
-  }
-  public func encode(to encoder: Encoder) throws {
-    var container = encoder.container(keyedBy: CodingKeys.self)
-    switch self {
-    case .internetResourceEnabled(let value):
-      try container.encode(MessageType.internetResourceEnabled, forKey: .type)
-      try container.encode(value, forKey: .value)
-    case .getResourceList(let value):
-      try container.encode(MessageType.getResourceList, forKey: .type)
-      try container.encode(value, forKey: .value)
-    case .signOut:
-      try container.encode(MessageType.signOut, forKey: .type)
-    case .clearLogs:
-      try container.encode(MessageType.clearLogs, forKey: .type)
-    case .getLogFolderSize:
-      try container.encode(MessageType.getLogFolderSize, forKey: .type)
-    case .exportLogs:
-      try container.encode(MessageType.exportLogs, forKey: .type)
-    case .consumeStopReason:
-      try container.encode(MessageType.consumeStopReason, forKey: .type)
-    }
-  }
-}
-
 // TODO: Refactor this to remove the lint ignore
 // swiftlint:disable:next type_body_length
 public class VPNConfigurationManager {
@@ -300,7 +231,7 @@ public class VPNConfigurationManager {
 
   func signOut() throws {
     try session([.connected, .connecting, .reasserting]).stopTunnel()
-    try session().sendProviderMessage(encoder.encode(TunnelMessage.signOut))
+    try session().sendProviderMessage(encoder.encode(ProviderMessage.signOut))
   }
 
   func stop() throws {
@@ -309,7 +240,7 @@ public class VPNConfigurationManager {
 
   func updateInternetResourceState() throws {
     try session([.connected]).sendProviderMessage(
-      encoder.encode(TunnelMessage.internetResourceEnabled(internetResourceEnabled)))
+      encoder.encode(ProviderMessage.internetResourceEnabled(internetResourceEnabled)))
   }
 
   func toggleInternetResource(enabled: Bool) throws {
@@ -323,7 +254,7 @@ public class VPNConfigurationManager {
         // Request list of resources from the provider. We send the hash of the resource list we already have.
         // If it differs, we'll get the full list in the callback. If not, we'll get nil.
         try session([.connected]).sendProviderMessage(
-          encoder.encode(TunnelMessage.getResourceList(resourceListHash))) { data in
+          encoder.encode(ProviderMessage.getResourceList(resourceListHash))) { data in
 
           guard let data = data
           else {
@@ -357,7 +288,7 @@ public class VPNConfigurationManager {
   func clearLogs() async throws {
     return try await withCheckedThrowingContinuation { continuation in
       do {
-        try session().sendProviderMessage(encoder.encode(TunnelMessage.clearLogs)) { _ in
+        try session().sendProviderMessage(encoder.encode(ProviderMessage.clearLogs)) { _ in
           continuation.resume()
         }
       } catch {
@@ -371,7 +302,7 @@ public class VPNConfigurationManager {
 
       do {
         try session().sendProviderMessage(
-          encoder.encode(TunnelMessage.getLogFolderSize)
+          encoder.encode(ProviderMessage.getLogFolderSize)
         ) { data in
 
           guard let data = data
@@ -403,7 +334,7 @@ public class VPNConfigurationManager {
     func loop() {
       do {
         try session().sendProviderMessage(
-          encoder.encode(TunnelMessage.exportLogs)
+          encoder.encode(ProviderMessage.exportLogs)
         ) { data in
           guard let data = data
           else {
@@ -441,7 +372,7 @@ public class VPNConfigurationManager {
     return try await withCheckedThrowingContinuation { continuation in
       do {
         try session().sendProviderMessage(
-          encoder.encode(TunnelMessage.consumeStopReason)
+          encoder.encode(ProviderMessage.consumeStopReason)
         ) { data in
 
           guard let data = data,

@@ -165,11 +165,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   // It would be helpful to be able to encapsulate Errors here. To do that
-  // we need to update TunnelMessage to encode/decode Result to and from Data.
+  // we need to update ProviderMessage to encode/decode Result to and from Data.
   override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
-    guard let tunnelMessage =  try? PropertyListDecoder().decode(TunnelMessage.self, from: message) else { return }
+    guard let providerMessage = try? PropertyListDecoder().decode(ProviderMessage.self, from: message) else { return }
 
-    switch tunnelMessage {
+    switch providerMessage {
     case .internetResourceEnabled(let value):
       adapter?.setInternetResourceEnabled(value)
     case .signOut:
