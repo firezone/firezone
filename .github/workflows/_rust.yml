@@ -140,8 +140,7 @@ jobs:
         id: setup-rust
       - name: Install Rust nightly
         run: |
-          rustup toolchain install nightly-2025-02-24
-          rustup component add rust-src --toolchain nightly-2025-02-24
+          rustup toolchain install nightly-2025-02-24 --component rust-src
           rustup override set nightly-2025-02-24
       - uses: ./.github/actions/setup-tauri-v2
       - name: "cargo test"
