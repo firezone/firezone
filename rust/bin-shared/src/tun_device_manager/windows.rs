@@ -350,7 +350,7 @@ fn start_send_thread(
                 };
 
                 let Some(session) = session.upgrade() else {
-                    tracing::debug!("Stopping TUN send worker thread `wintun::Session` was closed");
+                    tracing::debug!("Stopping TUN send worker thread because the `wintun::Session` was dropped");
                     break;
                 };
 
@@ -387,14 +387,14 @@ fn start_recv_thread(
         .name("TUN recv".into())
         .spawn(move || loop {
             let Some(session) = session.upgrade() else {
-                tracing::debug!("Stopping TUN recv worker thread `wintun::Session` was closed");
+                tracing::debug!("Stopping TUN recv worker thread because the `wintun::Session` was dropped");
                 break;
             };
 
             let pkt = match session.receive_blocking() {
                 Ok(pkt) => pkt,
                 Err(wintun::Error::ShuttingDown) => {
-                    tracing::info!("Stopping recv worker thread because Wintun is shutting down");
+                    tracing::debug!("Stopping recv worker thread because Wintun is shutting down");
                     break;
                 }
                 Err(e) => {
@@ -431,8 +431,8 @@ fn start_recv_thread(
             match packet_tx.blocking_send(pkt) {
                 Ok(()) => {}
                 Err(_) => {
-                    tracing::info!(
-                        "Stopping outbound worker thread because the packet channel closed"
+                    tracing::debug!(
+                        "Stopping TUN recv worker thread because the packet channel closed"
                     );
                     break;
                 }
