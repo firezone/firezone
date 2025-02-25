@@ -69,27 +69,4 @@ defmodule Domain.Fixtures.Policies do
     {:ok, policy} = Policies.delete_policy(policy, subject)
     policy
   end
-
-  def replace_policy(policy, attrs \\ %{}) do
-    attrs = policy_attrs(attrs)
-    policy = Repo.preload(policy, :account)
-
-    subject =
-      Fixtures.Auth.create_subject(
-        account: policy.account,
-        actor: [type: :account_admin_user]
-      )
-
-    {resource_id, attrs} =
-      pop_assoc_fixture_id(attrs, :resource, fn ->
-        Fixtures.Resources.create_resource(account: policy.account, subject: subject)
-      end)
-
-    attrs = Map.put(attrs, :resource_id, resource_id)
-
-    {:replaced, replaced_policy, replacement_policy} =
-      Policies.update_or_replace_policy(policy, attrs, subject)
-
-    {replaced_policy, replacement_policy}
-  end
 end

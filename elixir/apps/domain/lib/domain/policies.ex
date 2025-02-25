@@ -79,30 +79,25 @@ defmodule Domain.Policies do
     end
   end
 
-  def change_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
-    case Policy.Changeset.update_or_replace(policy, attrs, subject) do
-      {update_changeset, nil} -> update_changeset
-      {_update_changeset, create_changeset} -> create_changeset
+  def change_policy(%Policy{} = policy, attrs) do
+    case Policy.Changeset.update(policy, attrs) do
+      {update_changeset, _} -> update_changeset
     end
   end
 
-  def update_or_replace_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
+  def update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()),
          :ok <- ensure_has_access_to(subject, policy) do
       Policy.Query.not_deleted()
       |> Policy.Query.by_id(policy.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update_or_replace(Policy.Query,
-        with: &Policy.Changeset.update_or_replace(&1, attrs, subject),
-        on_replace: fn repo, updated_policy, created_policy ->
-          Ecto.Changeset.change(updated_policy, replaced_by_policy_id: created_policy.id)
-          |> repo.update()
-        end,
+      |> Repo.fetch_and_update_breakable(Policy.Query,
+        with: &Policy.Changeset.update(&1, attrs),
         after_update_commit: &broadcast_policy_events(:update, &1),
-        after_replace_commit: fn {replaced_policy, created_policy}, _changesets ->
-          {:ok, _flows} = Flows.expire_flows_for(replaced_policy, subject)
-          :ok = broadcast_policy_events(:delete, replaced_policy)
-          :ok = broadcast_policy_events(:create, created_policy)
+        after_breaking_update_commit: fn updated_policy, _changeset ->
+          {:ok, _flows} = Flows.expire_flows_for(updated_policy, subject)
+          :ok = broadcast_policy_events(:delete, updated_policy)
+          :ok = broadcast_policy_events(:create, updated_policy)
         end
       )
     end
