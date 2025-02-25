@@ -362,7 +362,9 @@ fn start_send_thread(
                 };
 
                 let Some(session) = session.upgrade() else {
-                    tracing::debug!("Stopping TUN send worker thread because the `wintun::Session` was dropped");
+                    tracing::debug!(
+                        "Stopping TUN send worker thread because the `wintun::Session` was dropped"
+                    );
                     break;
                 };
 
@@ -399,7 +401,9 @@ fn start_recv_thread(
         .name("TUN recv".into())
         .spawn(move || loop {
             let Some(session) = session.upgrade() else {
-                tracing::debug!("Stopping TUN recv worker thread because the `wintun::Session` was dropped");
+                tracing::debug!(
+                    "Stopping TUN recv worker thread because the `wintun::Session` was dropped"
+                );
                 break;
             };
 
