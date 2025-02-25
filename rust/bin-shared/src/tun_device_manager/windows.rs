@@ -369,7 +369,7 @@ fn start_send_thread(
                 };
 
                 match session.allocate_send_packet(len) {
-                    Ok(pkt) => {
+                    Ok(mut pkt) => {
                         pkt.bytes_mut().copy_from_slice(bytes);
                         // `send_packet` cannot fail to enqueue the packet, since we already allocated
                         // space in the ring buffer.
