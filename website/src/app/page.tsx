@@ -41,7 +41,7 @@ export default function Page() {
       <section className="bg-neutral-950">
         <div className="mx-auto max-w-screen-2xl bg-hero bg-no-repeat bg-center sm:bg-cover pt-28 mb-16">
           <div className="flex flex-col items-center mx-auto md:px-0 px-4 max-w-screen-md">
-            <Banner href="/blog/sep-2024-update" active>
+            <Banner href="/blog/sep-2024-update" active={false}>
               <Badge
                 text="New"
                 bgColor="accent-700"
