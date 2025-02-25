@@ -42,6 +42,8 @@ services:
       - /var/lib/firezone:/var/lib/firezone
     cap_add:
       - NET_ADMIN
+    # Needed to properly handle signals for restarting
+    init: true
     sysctls:
       # Enable IP forwarding
       - net.ipv4.ip_forward=1
