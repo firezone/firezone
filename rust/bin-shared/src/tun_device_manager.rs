@@ -28,7 +28,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "Needs admin / sudo and Internet"]
     async fn tunnel() {
-        let _guard = firezone_logging::test("debug");
+        firezone_logging::test_global("debug");
 
         no_packet_loops_tcp().await;
         no_packet_loops_udp().await;
