@@ -8,7 +8,7 @@
 use anyhow::{Context as _, Result};
 use firezone_gui_client_common::{
     compositor::{self, Image},
-    system_tray::{AppState, ConnlibState, Entry, Event, Icon, IconBase, Item, Menu},
+    system_tray::{AppState, ConnlibState, Entry, Icon, IconBase, Item, Menu},
 };
 use tauri::AppHandle;
 
@@ -52,10 +52,7 @@ fn image_to_tauri_icon(val: Image) -> tauri::image::Image<'static> {
 }
 
 impl Tray {
-    pub(crate) fn new(
-        app: AppHandle,
-        on_event: impl Fn(&AppHandle, Event) + Send + Sync + 'static,
-    ) -> Result<Self> {
+    pub(crate) fn new(app: AppHandle) -> Result<Self> {
         let tray = tauri::tray::TrayIconBuilder::new()
             .icon(icon_to_tauri_icon(
                 &firezone_gui_client_common::system_tray::Icon::default(),
@@ -64,19 +61,6 @@ impl Tray {
                 &app,
                 &firezone_gui_client_common::system_tray::AppState::default().into_menu(),
             )?)
-            .on_menu_event(move |app, event| {
-                let id = &event.id.0;
-                tracing::debug!(?id, "SystemTrayEvent::MenuItemClick");
-                let event = match serde_json::from_str::<Event>(id) {
-                    Ok(x) => x,
-                    Err(e) => {
-                        tracing::error!("{e}");
-                        return;
-                    }
-                };
-
-                on_event(app, event);
-            })
             .tooltip("Firezone")
             .build(&app)
             .context("Cannot build Tauri tray icon")?;
