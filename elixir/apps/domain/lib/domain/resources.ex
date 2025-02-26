@@ -276,7 +276,8 @@ defmodule Domain.Resources do
           broadcast_resource_events(:update, resource)
         end,
         after_breaking_update_commit: fn updated_resource, _changeset ->
-          # TODO: Does this still need to happen?
+          # The :delete resource event broadcast is a no-op.
+          # This is used to reset the resource on the client and gateway in case filters, conditions, etc are changed.
           {:ok, _flows} = Flows.expire_flows_for(updated_resource, subject)
 
           :ok = broadcast_resource_events(:delete, updated_resource)
