@@ -1328,7 +1328,7 @@ defmodule Domain.ResourcesTest do
     end
   end
 
-  describe "update_or_replace_resource/3" do
+  describe "update_resource/3" do
     setup context do
       resource =
         Fixtures.Resources.create_resource(
@@ -1340,7 +1340,7 @@ defmodule Domain.ResourcesTest do
     end
 
     test "does nothing on empty attrs", %{resource: resource, subject: subject} do
-      assert {:updated, _resource} = update_or_replace_resource(resource, %{}, subject)
+      assert {:updated, _resource} = update_resource(resource, %{}, subject)
     end
 
     test "returns error on invalid attrs", %{resource: resource, subject: subject} do
@@ -1351,7 +1351,7 @@ defmodule Domain.ResourcesTest do
         "connections" => :bar
       }
 
-      assert {:error, changeset} = update_or_replace_resource(resource, attrs, subject)
+      assert {:error, changeset} = update_resource(resource, attrs, subject)
 
       assert errors_on(changeset) == %{
                name: ["should be at most 255 character(s)"],
@@ -1369,7 +1369,7 @@ defmodule Domain.ResourcesTest do
       :ok = subscribe_to_events_for_account(account)
 
       attrs = %{"name" => "foo"}
-      assert {:updated, resource} = update_or_replace_resource(resource, attrs, subject)
+      assert {:updated, resource} = update_resource(resource, attrs, subject)
 
       assert_receive {:update_resource, resource_id}
       assert resource_id == resource.id
@@ -1382,7 +1382,7 @@ defmodule Domain.ResourcesTest do
       :ok = subscribe_to_events_for_resource(resource)
 
       attrs = %{"name" => "foo"}
-      assert {:updated, resource} = update_or_replace_resource(resource, attrs, subject)
+      assert {:updated, resource} = update_resource(resource, attrs, subject)
 
       assert_receive {:update_resource, resource_id}
       assert resource_id == resource.id
@@ -1390,13 +1390,13 @@ defmodule Domain.ResourcesTest do
 
     test "allows to update name", %{resource: resource, subject: subject} do
       attrs = %{"name" => "foo"}
-      assert {:updated, resource} = update_or_replace_resource(resource, attrs, subject)
+      assert {:updated, resource} = update_resource(resource, attrs, subject)
       assert resource.name == "foo"
     end
 
     test "allows to update client address", %{resource: resource, subject: subject} do
       attrs = %{"address_description" => "http://#{resource.address}:1234/foo"}
-      assert {:updated, resource} = update_or_replace_resource(resource, attrs, subject)
+      assert {:updated, resource} = update_resource(resource, attrs, subject)
       assert resource.address_description == attrs["address_description"]
     end
 
@@ -1409,7 +1409,7 @@ defmodule Domain.ResourcesTest do
       :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
 
       attrs = %{"name" => "foo"}
-      assert {:updated, _resource} = update_or_replace_resource(resource, attrs, subject)
+      assert {:updated, _resource} = update_resource(resource, attrs, subject)
 
       refute_receive {:expire_flow, _flow_id, _client_id, _resource_id}
     end
@@ -1419,7 +1419,7 @@ defmodule Domain.ResourcesTest do
       gateway1 = Fixtures.Gateways.create_gateway(account: account, group: group)
 
       attrs = %{"connections" => [%{gateway_group_id: gateway1.group_id}]}
-      assert {:updated, resource} = update_or_replace_resource(resource, attrs, subject)
+      assert {:updated, resource} = update_resource(resource, attrs, subject)
       gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
       assert gateway_group_ids == [gateway1.group_id]
 
@@ -1435,12 +1435,12 @@ defmodule Domain.ResourcesTest do
         ]
       }
 
-      assert {:updated, resource} = update_or_replace_resource(resource, attrs, subject)
+      assert {:updated, resource} = update_resource(resource, attrs, subject)
       gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
       assert Enum.sort(gateway_group_ids) == Enum.sort([gateway1.group_id, gateway2.group_id])
 
       attrs = %{"connections" => [%{gateway_group_id: gateway2.group_id}]}
-      assert {:updated, resource} = update_or_replace_resource(resource, attrs, subject)
+      assert {:updated, resource} = update_resource(resource, attrs, subject)
       gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
       assert gateway_group_ids == [gateway2.group_id]
 
@@ -1451,24 +1451,24 @@ defmodule Domain.ResourcesTest do
 
     test "does not allow to remove all connections", %{resource: resource, subject: subject} do
       attrs = %{"connections" => []}
-      assert {:error, changeset} = update_or_replace_resource(resource, attrs, subject)
+      assert {:error, changeset} = update_resource(resource, attrs, subject)
 
       assert errors_on(changeset) == %{
                connections: ["can't be blank"]
              }
     end
 
-    test "replaces the resource when address is changed", %{resource: resource, subject: subject} do
+    test "updates the resource when address is changed", %{resource: resource, subject: subject} do
       attrs = %{"address" => "foo"}
 
-      assert {:replaced, updated_resource, created_resource} =
-               update_or_replace_resource(resource, attrs, subject)
+      assert {:updated, updated_resource} =
+               update_resource(resource, attrs, subject)
 
-      assert updated_resource.address == resource.address
-      assert created_resource.address == attrs["address"]
+      assert updated_resource.address == attrs["address"]
+      refute updated_resource.address == resource.address
     end
 
-    test "broadcasts events and expires flows when resource is replaced", %{
+    test "broadcasts events and expires flows when resource is updated", %{
       account: account,
       resource: resource,
       subject: subject
@@ -1479,71 +1479,36 @@ defmodule Domain.ResourcesTest do
 
       attrs = %{"address" => "foo"}
 
-      assert {:replaced, updated_resource, created_resource} =
-               update_or_replace_resource(resource, attrs, subject)
+      assert {:updated, updated_resource} =
+               update_resource(resource, attrs, subject)
 
       flow_id = flow.id
       updated_resource_id = updated_resource.id
       assert_receive {:expire_flow, ^flow_id, _client_id, ^updated_resource_id}
       assert_receive {:delete_resource, ^updated_resource_id}
-
-      created_resource_id = created_resource.id
-      assert_receive {:create_resource, ^created_resource_id}
+      assert_receive {:create_resource, ^updated_resource_id}
     end
 
-    test "replaces resource policies when resource is replaced", %{
-      account: account,
-      resource: resource,
-      subject: subject
-    } do
-      policy1 = Fixtures.Policies.create_policy(account: account, resource: resource)
-      policy2 = Fixtures.Policies.create_policy(account: account, resource: resource)
-
-      :ok = Domain.Policies.subscribe_to_events_for_account(account)
-
-      attrs = %{"address" => "foo"}
-
-      assert {:replaced, _updated_resource, created_resource} =
-               update_or_replace_resource(resource, attrs, subject)
-
-      assert Repo.get_by(Domain.Policies.Policy, id: policy1.id).deleted_at
-      assert Repo.get_by(Domain.Policies.Policy, id: policy2.id).deleted_at
-
-      assert_receive {:delete_policy, deleted_policy_id}
-      assert deleted_policy_id in [policy1.id, policy2.id]
-
-      assert_receive {:delete_policy, deleted_policy_id}
-      assert deleted_policy_id in [policy1.id, policy2.id]
-
-      assert_receive {:create_policy, created_policy_id}
-
-      assert Repo.get_by(Domain.Policies.Policy, id: created_policy_id).resource_id ==
-               created_resource.id
-
-      assert_receive {:create_policy, created_policy_id}
-
-      assert Repo.get_by(Domain.Policies.Policy, id: created_policy_id).resource_id ==
-               created_resource.id
-    end
-
-    test "replaces the resource when type is changed", %{resource: resource, subject: subject} do
+    test "updates the resource when type is changed", %{resource: resource, subject: subject} do
       attrs = %{"type" => "ip", "address" => "10.0.10.1"}
 
-      assert {:replaced, updated_resource, created_resource} =
-               update_or_replace_resource(resource, attrs, subject)
+      assert {:updated, updated_resource} =
+               update_resource(resource, attrs, subject)
 
-      assert updated_resource.type == resource.type
-      assert created_resource.type == :ip
+      assert updated_resource.id == resource.id
+      refute updated_resource.type == resource.type
+      assert updated_resource.type == :ip
+      assert updated_resource.address == attrs["address"]
     end
 
-    test "replaces the resource when filters are changed", %{resource: resource, subject: subject} do
+    test "updates the resource when filters are changed", %{resource: resource, subject: subject} do
       attrs = %{"filters" => []}
 
-      assert {:replaced, updated_resource, created_resource} =
-               update_or_replace_resource(resource, attrs, subject)
+      assert {:updated, updated_resource} =
+               update_resource(resource, attrs, subject)
 
-      assert updated_resource.filters == resource.filters
-      assert created_resource.filters == attrs["filters"]
+      refute updated_resource.filters == resource.filters
+      assert updated_resource.filters == attrs["filters"]
     end
 
     test "returns error when subject has no permission to create resources", %{
@@ -1552,7 +1517,7 @@ defmodule Domain.ResourcesTest do
     } do
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert update_or_replace_resource(resource, %{}, subject) ==
+      assert update_resource(resource, %{}, subject) ==
                {:error,
                 {:unauthorized,
                  reason: :missing_permissions,

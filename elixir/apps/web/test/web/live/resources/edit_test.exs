@@ -209,7 +209,7 @@ defmodule Web.Live.Resources.EditTest do
            }
   end
 
-  test "replaces a resource on valid attrs", %{
+  test "updates a resource on valid breaking change attrs", %{
     account: account,
     identity: identity,
     resource: resource,
@@ -238,20 +238,22 @@ defmodule Web.Live.Resources.EditTest do
       |> render_submit()
       |> follow_redirect(conn, ~p"/#{account}/resources")
 
-    assert_receive {:create_resource, created_resource_id}
+    assert_receive {:delete_resource, delete_msg_resource_id}
+    assert_receive {:create_resource, create_msg_resource_id}
+    assert delete_msg_resource_id == create_msg_resource_id
 
-    assert saved_resource = Repo.get_by(Domain.Resources.Resource, id: created_resource_id)
-    assert saved_resource.name == attrs.name
-    assert html =~ "New version of resource #{saved_resource.name} is created successfully."
+    assert updated_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
+    assert updated_resource.name == attrs.name
+    assert html =~ "Resource #{updated_resource.name} updated successfully"
 
-    saved_filters =
-      for filter <- saved_resource.filters, into: %{} do
+    updated_filters =
+      for filter <- updated_resource.filters, into: %{} do
         {filter.protocol, %{ports: Enum.join(filter.ports, ", ")}}
       end
 
-    assert Map.keys(saved_filters) == Map.keys(attrs.filters)
-    assert saved_filters.tcp == attrs.filters.tcp
-    assert saved_filters.udp == attrs.filters.udp
+    assert Map.keys(updated_filters) == Map.keys(attrs.filters)
+    assert updated_filters.tcp == attrs.filters.tcp
+    assert updated_filters.udp == attrs.filters.udp
   end
 
   test "redirects to a site when site_id query param is set", %{
@@ -282,7 +284,7 @@ defmodule Web.Live.Resources.EditTest do
       |> render_submit()
       |> follow_redirect(conn, ~p"/#{account}/sites/#{group}")
 
-    assert html =~ "New version of resource #{attrs.name} is created successfully."
+    assert html =~ "Resource #{attrs.name} updated successfully"
   end
 
   test "shows disabled traffic filter form when traffic filters disabled", %{

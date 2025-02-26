@@ -92,12 +92,9 @@ defmodule API.PolicyController do
     subject = conn.assigns.subject
 
     with {:ok, policy} <- Policies.fetch_policy_by_id_or_persistent_id(id, subject) do
-      case Policies.update_or_replace_policy(policy, params, subject) do
+      case Policies.update_policy(policy, params, subject) do
         {:updated, updated_policy} ->
           render(conn, :show, policy: updated_policy)
-
-        {:replaced, _replaced_policy, replacement_policy} ->
-          render(conn, :show, policy: replacement_policy)
 
         {:error, reason} ->
           {:error, reason}
