@@ -234,17 +234,25 @@ mod tests {
         });
 
         let client_result = client_task.await;
-        if let Err(panic) = &client_result {
-            tracing::error!(?panic, "Client panic");
-        } else if let Ok(Err(error)) = &client_result {
-            tracing::error!("Client error: {error:#}");
+        match &client_result {
+            Err(panic) => {
+                tracing::error!(?panic, "Client panic");
+            }
+            Ok(Err(error)) => {
+                tracing::error!("Client error: {error:#}");
+            }
+            _ => (),
         }
 
         let server_result = server_task.await;
-        if let Err(panic) = &server_result {
-            tracing::error!(?panic, "Server panic");
-        } else if let Ok(Err(error)) = &server_result {
-            tracing::error!("Server error: {error:#}");
+        match &server_result {
+            Err(panic) => {
+                tracing::error!(?panic, "Server panic");
+            }
+            Ok(Err(error)) => {
+                tracing::error!("Server error: {error:#}");
+            }
+            _ => (),
         }
 
         if client_result.is_err() || server_result.is_err() {
