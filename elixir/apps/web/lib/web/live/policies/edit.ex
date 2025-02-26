@@ -13,7 +13,7 @@ defmodule Web.Policies.Edit do
 
       form =
         policy
-        |> Policies.change_policy(%{}, socket.assigns.subject)
+        |> Policies.change_policy(%{})
         |> to_form()
 
       socket =
@@ -206,7 +206,7 @@ defmodule Web.Policies.Edit do
       |> maybe_drop_unsupported_conditions(socket)
 
     changeset =
-      Policies.change_policy(socket.assigns.policy, params, socket.assigns.subject)
+      Policies.change_policy(socket.assigns.policy, params)
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -218,14 +218,10 @@ defmodule Web.Policies.Edit do
       |> map_condition_params(empty_values: :drop)
       |> maybe_drop_unsupported_conditions(socket)
 
-    case Policies.update_or_replace_policy(socket.assigns.policy, params, socket.assigns.subject) do
+    case Policies.update_policy(socket.assigns.policy, params, socket.assigns.subject) do
       {:updated, updated_policy} ->
         {:noreply,
          push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{updated_policy}")}
-
-      {:replaced, _replaced_policy, created_policy} ->
-        {:noreply,
-         push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{created_policy}")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}

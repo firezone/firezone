@@ -258,30 +258,13 @@ defmodule Web.Resources.Edit do
       |> map_connections_form_attrs()
       |> maybe_delete_connections(socket.assigns.params)
 
-    case Resources.update_or_replace_resource(
+    case Resources.update_resource(
            socket.assigns.resource,
            attrs,
            socket.assigns.subject
          ) do
       {:updated, resource} ->
         socket = put_flash(socket, :info, "Resource #{resource.name} updated successfully.")
-
-        if site_id = socket.assigns.params["site_id"] do
-          {:noreply,
-           push_navigate(socket,
-             to: ~p"/#{socket.assigns.account}/sites/#{site_id}"
-           )}
-        else
-          {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/resources")}
-        end
-
-      {:replaced, _updated_resource, created_resource} ->
-        socket =
-          put_flash(
-            socket,
-            :info,
-            "New version of resource #{created_resource.name} is created successfully."
-          )
 
         if site_id = socket.assigns.params["site_id"] do
           {:noreply,

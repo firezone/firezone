@@ -19,38 +19,23 @@ defmodule Domain.Policies.Policy.Changeset do
     |> put_change(:persistent_id, Ecto.UUID.generate())
   end
 
-  def update_or_replace(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
+  def update(%Policy{} = policy, attrs) do
     policy
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
     |> cast_embed(:conditions, with: &Domain.Policies.Condition.Changeset.changeset/3)
     |> changeset()
-    |> maybe_replace(policy, subject)
+    |> maybe_breaking_update()
   end
 
-  defp maybe_replace(%{valid?: false} = changeset, _policy, _subject),
-    do: {changeset, nil}
+  defp maybe_breaking_update(%{valid?: false} = changeset),
+    do: {changeset, false}
 
-  defp maybe_replace(changeset, policy, subject) do
+  defp maybe_breaking_update(changeset) do
     if any_field_changed?(changeset, @replace_fields) do
-      new_changeset =
-        changeset
-        |> apply_changes()
-        |> Map.from_struct()
-        |> Map.update(:conditions, [], fn conditions ->
-          Enum.map(conditions, &Map.from_struct/1)
-        end)
-        |> create(subject)
-        |> put_change(:persistent_id, policy.persistent_id)
-        |> put_change(:disabled_at, if(policy.disabled_at, do: DateTime.utc_now()))
-
-      changeset =
-        policy
-        |> change(deleted_at: DateTime.utc_now())
-
-      {changeset, new_changeset}
+      {changeset, true}
     else
-      {changeset, nil}
+      {changeset, false}
     end
   end
 
