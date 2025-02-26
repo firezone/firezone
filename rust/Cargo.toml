@@ -120,7 +120,7 @@ tauri-build = "2.0.1"
 tauri-plugin-dialog = "2.2.0"
 tauri-plugin-notification = "2.2.0"
 tauri-plugin-shell = "2.2.0"
-tauri-plugin-opener = "2.2.0"
+tauri-plugin-opener = "2.2.5"
 tauri-runtime = "2.3.0"
 tauri-utils = "2.1.1"
 tempfile = "3.13.0"
@@ -148,7 +148,7 @@ uuid = "1.14.0"
 windows = "0.58.0"
 winreg = "0.52.0"
 zip = { version = "2", default-features = false }
-zbus = "4.4"
+zbus = "5.5.0"
 
 connlib-client-android = { path = "connlib/clients/android" }
 connlib-client-apple = { path = "connlib/clients/apple" }
