@@ -12,14 +12,26 @@ impl UniquePacketBuffer {
         }
     }
 
-    pub fn push(&mut self, packet: IpPacket) {
-        if self.buffer.contains(&packet) {
-            tracing::trace!(?packet, "Skipping duplicate packet");
+    pub fn push(&mut self, new: IpPacket) {
+        if self.buffer.contains(&new) {
+            tracing::trace!(packet = ?new, "Not buffering byte-for-byte duplicate packet");
 
             return;
         }
 
-        self.buffer.push(packet);
+        if self
+            .buffer
+            .iter()
+            .any(|buffered| is_tcp_retransmit(buffered, &new))
+        {
+            tracing::trace!(packet = ?new, "Not buffering TCP retransmission");
+
+            return;
+        }
+
+        tracing::debug!(num_buffered = %self.len(), packet = ?new, "Buffering packet");
+
+        self.buffer.push(new);
     }
 
     pub fn len(&self) -> usize {
@@ -40,4 +52,26 @@ impl IntoIterator for UniquePacketBuffer {
     fn into_iter(self) -> Self::IntoIter {
         self.buffer.into_iter()
     }
+}
+
+fn is_tcp_retransmit(buffered: &IpPacket, new: &IpPacket) -> bool {
+    if buffered.source() != new.source() {
+        return false;
+    }
+
+    if buffered.destination() != new.destination() {
+        return false;
+    }
+
+    let Some(buffered) = buffered.as_tcp() else {
+        return false;
+    };
+
+    let Some(new) = new.as_tcp() else {
+        return false;
+    };
+
+    buffered.source_port() == new.source_port()
+        && buffered.destination_port() == new.destination_port()
+        && buffered.sequence_number() == new.sequence_number()
 }

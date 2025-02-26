@@ -820,9 +820,6 @@ impl ClientState {
             Entry::Occupied(mut o) => {
                 let pending_flow = o.get_mut();
                 pending_flow.packets.push(packet);
-                let num_buffered = pending_flow.packets.len();
-
-                tracing::debug!(%num_buffered, "Buffering packet in `PendingFlow`");
 
                 let time_since_last_intent = now.duration_since(pending_flow.last_intent_sent_at);
 
