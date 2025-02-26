@@ -80,9 +80,8 @@ defmodule Domain.Policies do
   end
 
   def change_policy(%Policy{} = policy, attrs) do
-    case Policy.Changeset.update(policy, attrs) do
-      {update_changeset, _} -> update_changeset
-    end
+    {update_changeset, _breaking_update} = Policy.Changeset.update(policy, attrs)
+    update_changeset
   end
 
   def update_policy(%Policy{} = policy, attrs, %Auth.Subject{} = subject) do
