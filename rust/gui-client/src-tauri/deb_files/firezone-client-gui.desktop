@@ -1,8 +1,8 @@
 [Desktop Entry]
 Categories=
 Comment=Firezone
-Exec=firezone-client-gui
-Icon=firezone-client-gui
+Exec={{exec}}
+Icon={{icon}}
 Name=Firezone Client
 Terminal=false
 Type=Application

@@ -80,13 +80,13 @@ already work properly.
    This puts `systemd-resolved`, and therefore Firezone, in control of the
    system's DNS. `systemd-resolved` does not do this automatically, since it's
    under `/etc`.
-9. Run `firezone-client-gui` from the app menu.
+9. Run `Firezone Client` from the app menu.
 
 ## Usage
 
 ### Signing in
 
-1. Start the GUI by running `firezone-client-gui` from your desktop
+1. Start the GUI by running `Firezone Client` from your desktop
    environment's application menu or from an interactive shell.
 1. At the Welcome screen, click `Sign in`. This will open the Firezone sign-in
    page in your default web browser.
@@ -135,10 +135,10 @@ will use its normal DNS and Internet behavior.
 
 1. Download the latest `.deb` or `.rpm` installer package from
    [GitHub Releases](https://www.github.com/firezone/firezone/releases).
-1. Quit `firezone-client-gui` if it's running.
+1. Quit `Firezone Client` if it's running.
 1. Install the new package:
    `sudo apt-get install ./firezone-client-gui-linux_<VERSION>_<ARCH>.(deb|rpm)`
-1. Restart `firezone-client-gui`.
+1. Restart `Firezone Client`.
 
 ## Diagnostic logs
 
@@ -171,7 +171,7 @@ journalctl --pager-end --follow --identifier firezone-client-gui
 ## Uninstalling
 
 1. Remove the auto-start link: `firezone-client-gui debug set-autostart false`
-1. Quit `firezone-client-gui` if it's running.
+1. Quit `Firezone Client` if it's running.
 1. Remove the package: `sudo apt-get remove firezone-client-gui`
 
 ## Troubleshooting
