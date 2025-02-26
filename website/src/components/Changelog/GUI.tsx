@@ -14,6 +14,12 @@ export default function GUI({ os }: { os: OS }) {
             Configures the IPC service to log to journald.
           </ChangeItem>
         )}
+        {os === OS.Windows && (
+          <ChangeItem pull="8268">
+            Fixes a dead-lock that could occur during shutdown of the TUN
+            device if there were still packets queued for sending.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.4.6" date={new Date("2025-02-20")}>
         {os === OS.Linux && (
