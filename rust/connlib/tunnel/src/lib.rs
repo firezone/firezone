@@ -36,6 +36,7 @@ mod sockets;
 #[cfg(all(test, feature = "proptest"))]
 #[allow(clippy::unwrap_in_result)]
 mod tests;
+mod unique_packet_buffer;
 mod utils;
 
 const REALM: &str = "firezone";
