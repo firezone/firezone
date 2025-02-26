@@ -190,6 +190,7 @@ str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.26" } # Waiting for release.
+secret-service = { git = "https://github.com/hwchen/secret-service-rs", branch = "master" }
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
