@@ -13,6 +13,12 @@ impl UniquePacketBuffer {
     }
 
     pub fn push(&mut self, packet: IpPacket) {
+        if self.buffer.contains(&packet) {
+            tracing::trace!(?packet, "Skipping duplicate packet");
+
+            return;
+        }
+
         self.buffer.push(packet);
     }
 
