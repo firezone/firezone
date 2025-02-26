@@ -43,6 +43,7 @@ bytecodec = "0.4.15"
 bytes = { version = "1.9.0", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 clap = "4.5.28"
+compio = "0.13.2"
 derive_more = "1.0.0"
 difference = "2.0.0"
 dirs = "5.0.1"
