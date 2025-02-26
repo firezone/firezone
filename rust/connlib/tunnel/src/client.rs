@@ -3,12 +3,12 @@ mod resource;
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
-use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::dns::StubResolver;
 use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
+use crate::unique_packet_buffer::UniquePacketBuffer;
 use crate::{dns, p2p_control, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
@@ -152,7 +152,7 @@ pub struct ClientState {
 enum DnsResourceNatState {
     Pending {
         sent_at: Instant,
-        buffered_packets: AllocRingBuffer<IpPacket>,
+        buffered_packets: UniquePacketBuffer,
     },
     Confirmed,
 }
@@ -181,7 +181,7 @@ impl DnsResourceNatState {
 
 struct PendingFlow {
     last_intent_sent_at: Instant,
-    packets: AllocRingBuffer<IpPacket>,
+    packets: UniquePacketBuffer,
 }
 
 impl PendingFlow {
@@ -192,7 +192,7 @@ impl PendingFlow {
     const CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
     fn new(now: Instant, packet: IpPacket) -> Self {
-        let mut packets = AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2);
+        let mut packets = UniquePacketBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2);
         packets.push(packet);
 
         Self {
@@ -375,7 +375,7 @@ impl ClientState {
                 Entry::Vacant(v) => {
                     self.peers
                         .add_ips_with_resource(gid, proxy_ips.iter().copied(), rid);
-                    let mut buffered_packets = AllocRingBuffer::with_capacity_power_of_2(5); // 2^5 = 32
+                    let mut buffered_packets = UniquePacketBuffer::with_capacity_power_of_2(5); // 2^5 = 32
                     buffered_packets.extend(packets_for_domain);
 
                     v.insert(DnsResourceNatState::Pending {
@@ -820,9 +820,6 @@ impl ClientState {
             Entry::Occupied(mut o) => {
                 let pending_flow = o.get_mut();
                 pending_flow.packets.push(packet);
-                let num_buffered = pending_flow.packets.len();
-
-                tracing::debug!(%num_buffered, "Buffering packet in `PendingFlow`");
 
                 let time_since_last_intent = now.duration_since(pending_flow.last_intent_sent_at);
 

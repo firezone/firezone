@@ -19,14 +19,29 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.5" date={new Date("2025-02-24")}>
+        <ChangeItem pull="8251">
+          Fixes an issue where the update checker would not properly notify the
+          user about new updates available on macOS.
+        </ChangeItem>
+        <ChangeItem pull="8248">
+          Fixes a crash on macOS that could occur when an application update
+          become available.
+        </ChangeItem>
+        <ChangeItem pull="8249">
+          Fixes a regression that caused a crash if "Open menu" was clicked in
+          the Welcome screen.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.4.4" date={new Date("2025-02-24")}>
         <ChangeItem pull="8202">
           Fixes a crash that occurred if the system reports invalid DNS servers.
         </ChangeItem>
         <ChangeItem pull="8237">
           Fixes a minor memory leak that would occur each time you sign in.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.3" date={new Date("2025-02-16")}>
         <ChangeItem pull="8122">
           Fixes a rare crash that could occur when dismissing the update

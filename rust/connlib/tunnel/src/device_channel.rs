@@ -55,7 +55,7 @@ impl Device {
                 tracing::warn!("Packet matches heuristics of FZ-internal p2p control protocol");
             }
 
-            tracing::trace!(target: "wire::dev::recv", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
+            tracing::trace!(target: "wire::dev::recv", ?packet);
         }
 
         Poll::Ready(n)
@@ -77,7 +77,7 @@ impl Device {
             }
         }
 
-        tracing::trace!(target: "wire::dev::send", dst = %packet.destination(), src = %packet.source(), bytes = %packet.packet().len());
+        tracing::trace!(target: "wire::dev::send", ?packet);
 
         debug_assert!(
             !packet.is_fz_p2p_control(),

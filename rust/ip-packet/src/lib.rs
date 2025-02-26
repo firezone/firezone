@@ -163,10 +163,19 @@ impl std::fmt::Debug for IpPacket {
 
         if let Some(tcp) = self.as_tcp() {
             dbg.field("src_port", &tcp.source_port())
-                .field("dst_port", &tcp.destination_port());
+                .field("dst_port", &tcp.destination_port())
+                .field("seq", &tcp.sequence_number());
 
             if tcp.syn() {
                 dbg.field("syn", &true);
+            }
+
+            if tcp.rst() {
+                dbg.field("rst", &true);
+            }
+
+            if tcp.fin() {
+                dbg.field("fin", &true);
             }
         }
 

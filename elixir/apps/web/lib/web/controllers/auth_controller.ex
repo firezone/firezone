@@ -350,6 +350,14 @@ defmodule Web.AuthController do
     end
   end
 
+  def handle_idp_callback(conn, %{
+        "account_id_or_slug" => account_id
+      }) do
+    conn
+    |> put_flash(:error, "Invalid request.")
+    |> redirect(to: ~p"/#{account_id}")
+  end
+
   def verify_idp_state_and_fetch_verifier(conn, provider_id, state) do
     with {:ok, {redirect_params, persisted_state, persisted_verifier}, conn} <-
            fetch_auth_state(conn, provider_id),

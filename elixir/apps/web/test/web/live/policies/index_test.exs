@@ -77,4 +77,55 @@ defmodule Web.Live.Policies.IndexTest do
     assert rendered_policy["group"] =~ policy.actor_group.name
     assert rendered_policy["resource"] =~ policy.resource.name
   end
+
+  describe "handle_info/2" do
+    test "Shows reload button when policy is created", %{
+      account: account,
+      identity: identity,
+      conn: conn
+    } do
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/policies")
+
+      refute html =~ "The table data has changed."
+      refute html =~ "reload-btn"
+
+      Fixtures.Policies.create_policy(account: account, description: "foo bar")
+
+      reload_btn =
+        lv
+        |> element("#policies-reload-btn")
+        |> render()
+
+      assert reload_btn
+    end
+
+    test "Shows reload button when policy is deleted", %{
+      account: account,
+      identity: identity,
+      conn: conn
+    } do
+      policy = Fixtures.Policies.create_policy(account: account, description: "foo bar")
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      {:ok, lv, html} =
+        conn
+        |> authorize_conn(identity)
+        |> live(~p"/#{account}/policies")
+
+      refute html =~ "The table data has changed."
+      refute html =~ "reload-btn"
+
+      Domain.Policies.delete_policy(policy, subject)
+
+      reload_btn =
+        lv
+        |> element("#policies-reload-btn")
+        |> render()
+
+      assert reload_btn
+    end
+  end
 end

@@ -40,12 +40,13 @@ struct FirezoneApp: App {
       "Welcome to Firezone",
       id: AppView.WindowDefinition.main.identifier
     ) {
-      if appDelegate.menuBar == nil {
-        ProgressView("Loading...")
-      } else {
+      if let menuBar = appDelegate.menuBar {
         // menuBar will be initialized by this point
         AppView()
           .environmentObject(store)
+          .environmentObject(menuBar)
+      } else {
+        ProgressView("Loading...")
       }
     }
     .handlesExternalEvents(

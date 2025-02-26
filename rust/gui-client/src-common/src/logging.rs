@@ -53,32 +53,51 @@ pub fn setup(directives: &str) -> Result<Handles> {
     }
 
     let log_path = known_dirs::logs().context("Can't compute app log dir")?;
+    std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
 
     // Logfilter for stdout cannot be reloaded. This is okay because we are using it only for local dev and debugging anyway.
     // Having multiple reload handles makes their type-signature quite complex so we don't bother with that.
     let (stdout_filter, stdout_reloader) = firezone_logging::try_filter(directives)?;
-
-    let stdout = tracing_subscriber::fmt::layer()
+    let stdout_layer = tracing_subscriber::fmt::layer()
         .with_ansi(firezone_logging::stdout_supports_ansi())
-        .event_format(firezone_logging::Format::new())
-        .with_filter(stdout_filter);
+        .event_format(firezone_logging::Format::new());
 
-    std::fs::create_dir_all(&log_path).map_err(Error::CreateDirAll)?;
+    let (system_filter, system_reloader) = firezone_logging::try_filter(directives)?;
+    let system_layer = system_layer().context("Failed to init system logger")?;
+    #[cfg(target_os = "linux")]
+    let syslog_identifier = Some(system_layer.syslog_identifier().to_owned());
+    #[cfg(not(target_os = "linux"))]
+    let syslog_identifier = Option::<String>::None;
+
     let (file_layer, logger) = firezone_logging::file::layer(&log_path, "gui-client");
     let (file_filter, file_reloader) = firezone_logging::try_filter(directives)?;
 
     let subscriber = Registry::default()
         .with(file_layer.with_filter(file_filter))
-        .with(stdout)
+        .with(stdout_layer.with_filter(stdout_filter))
+        .with(system_layer.with_filter(system_filter))
         .with(firezone_logging::sentry_layer());
     firezone_logging::init(subscriber)?;
 
-    tracing::debug!(log_path = %log_path.display(), "Log path");
+    tracing::debug!(log_path = %log_path.display(), syslog_identifier = syslog_identifier.map(tracing::field::display));
 
     Ok(Handles {
         logger,
-        reloader: stdout_reloader.merge(file_reloader),
+        reloader: stdout_reloader.merge(file_reloader).merge(system_reloader),
     })
+}
+
+#[cfg(target_os = "linux")]
+fn system_layer() -> Result<tracing_journald::Layer> {
+    let layer = tracing_journald::layer()?;
+
+    Ok(layer)
+}
+
+#[cfg(not(target_os = "linux"))]
+#[expect(clippy::unnecessary_wraps, reason = "Linux signature needs `Result`")]
+fn system_layer() -> Result<tracing_subscriber::layer::Identity> {
+    Ok(tracing_subscriber::layer::Identity::new())
 }
 
 #[derive(Clone, Default, Serialize)]

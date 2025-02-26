@@ -46,8 +46,8 @@ function cargo_update_workspace() {
 # 7. Commit the changes and open a PR. Ensure the Changelog is correctly
 #    updated with the changes.
 function apple() {
-    current_apple_version="1.4.3"
-    next_apple_version="1.4.4"
+    current_apple_version="1.4.5"
+    next_apple_version="1.4.6"
 
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_version}"'/g;}' {} \;
@@ -107,8 +107,8 @@ function android() {
 # 5. Commit the changes and open a PR. Ensure the Changelog is correctly
 #    updated with the changes.
 function gui() {
-    current_gui_version="1.4.6"
-    next_gui_version="1.4.7"
+    current_gui_version="1.4.7"
+    next_gui_version="1.4.8"
 
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_version}"'/g;}' {} \;

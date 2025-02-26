@@ -15,6 +15,7 @@ defmodule Web.LiveTable do
   attr :ordered_by, :any, required: true, doc: "the current order for the table"
   attr :filters, :list, required: true, doc: "the query filters enabled for the table"
   attr :filter, :map, required: true, doc: "the filter form for the table"
+  attr :stale, :boolean, default: false, doc: "hint to the UI that the table data is stale"
 
   attr :metadata, :map,
     required: true,
@@ -40,7 +41,7 @@ defmodule Web.LiveTable do
 
   def live_table(assigns) do
     ~H"""
-    <.resource_filter live_table_id={@id} form={@filter} filters={@filters} />
+    <.resource_filter stale={@stale} live_table_id={@id} form={@filter} filters={@filters} />
     <div class="overflow-x-auto">
       <table class={["w-full text-sm text-left text-neutral-500 table-fixed"]} id={@id}>
         <.table_header table_id={@id} columns={@col} actions={@action} ordered_by={@ordered_by} />
@@ -152,13 +153,29 @@ defmodule Web.LiveTable do
     >
       <.input type="hidden" name="table_id" value={@live_table_id} />
 
-      <div class="mb-2 space-y-2 md:space-y-0 md:gap-2 md:flex md:justify-end">
-        <.filter
-          :for={filter <- @filters}
-          live_table_id={@live_table_id}
-          form={@form}
-          filter={filter}
-        />
+      <div class="mb-2 space-y-2 md:space-y-0 md:gap-2 md:flex md:justify-between">
+        <div>
+          <.button
+            :if={@stale}
+            id={"#{@live_table_id}-reload-btn"}
+            type="button"
+            style="info"
+            title="The table data has changed."
+            phx-click="reload"
+            phx-value-table_id={@live_table_id}
+          >
+            <.icon name="hero-arrow-path" class="mr-1 w-3.5 h-3.5" /> Reload
+          </.button>
+        </div>
+
+        <div class="space-y-2 md:space-y-0 md:gap-1 md:flex">
+          <.filter
+            :for={filter <- @filters}
+            live_table_id={@live_table_id}
+            form={@form}
+            filter={filter}
+          />
+        </div>
       </div>
     </.form>
     """
@@ -536,6 +553,8 @@ defmodule Web.LiveTable do
     callback = Map.fetch!(socket.assigns.callback_by_table_id, id)
     list_opts = Map.get(socket.assigns[:list_opts_by_table_id] || %{}, id, [])
 
+    socket = assign(socket, stale: false)
+
     case callback.(socket, list_opts) do
       {:error, _reason} ->
         uri = URI.parse(socket.assigns.uri)
@@ -774,6 +793,10 @@ defmodule Web.LiveTable do
     else
       _other -> nil
     end
+  end
+
+  def handle_live_table_event("reload", %{"table_id" => id}, socket) do
+    {:noreply, reload_live_table!(socket, id)}
   end
 
   def handle_live_table_event("paginate", %{"table_id" => id, "cursor" => cursor}, socket) do
