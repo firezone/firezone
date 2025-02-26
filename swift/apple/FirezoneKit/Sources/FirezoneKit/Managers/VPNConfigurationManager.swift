@@ -7,82 +7,41 @@
 //  Abstracts the nitty gritty of loading and saving to our
 //  VPN configuration in system preferences.
 
-// TODO: Refactor to fix file length
-// swiftlint:disable file_length
-
-import CryptoKit
 import Foundation
 import NetworkExtension
 
-enum VPNConfigurationManagerError: Error {
-  case managerNotInitialized
-  case cannotLoad
-  case decodeIPCDataFailed
-  case invalidNotification
-  case noIPCData
-  case invalidStatus(NEVPNStatus)
+public class VPNConfigurationManager {
+  enum Error: Swift.Error {
+    case managerNotInitialized
+    case savedProtocolConfigurationIsInvalid
 
-  var localizedDescription: String {
-    switch self {
-    case .managerNotInitialized:
-      return "Manager doesn't seem initialized."
-    case .decodeIPCDataFailed:
-      return "Decoding IPC data failed."
-    case .invalidNotification:
-      return "NEVPNStatusDidChange notification doesn't seem to be valid."
-    case .cannotLoad:
-      return "Could not load VPN configurations!"
-    case .noIPCData:
-      return "No IPC data returned from the XPC connection!"
-    case .invalidStatus(let status):
-      return "The IPC operation couldn't complete because the VPN status is \(status)."
+    var localizedDescription: String {
+      switch self {
+      case .managerNotInitialized:
+        return "NETunnelProviderManager is not yet initialized. Race condition?"
+      case .savedProtocolConfigurationIsInvalid:
+        return "Saved protocol configuration is invalid. Check types?"
+      }
     }
   }
-}
 
-public enum VPNConfigurationManagerKeys {
-  static let actorName = "actorName"
-  static let authBaseURL = "authBaseURL"
-  static let apiURL = "apiURL"
-  public static let accountSlug = "accountSlug"
-  public static let logFilter = "logFilter"
-  public static let internetResourceEnabled = "internetResourceEnabled"
-}
-
-// TODO: Refactor this to remove the lint ignore
-// swiftlint:disable:next type_body_length
-public class VPNConfigurationManager {
-
-  // Connect status updates with our listeners
-  private var tunnelObservingTasks: [Task<Void, Never>] = []
-
-  // Track the "version" of the resource list so we can more efficiently
-  // retrieve it from the Provider
-  private var resourceListHash = Data()
-
-  // Cache resources on this side of the IPC barrier so we can
-  // return them to callers when they haven't changed.
-  private var resourcesListCache: ResourceList = ResourceList.loading
+  public enum Keys {
+    static let actorName = "actorName"
+    static let authBaseURL = "authBaseURL"
+    static let apiURL = "apiURL"
+    public static let accountSlug = "accountSlug"
+    public static let logFilter = "logFilter"
+    public static let internetResourceEnabled = "internetResourceEnabled"
+  }
 
   // Persists our tunnel settings
-  private var manager: NETunnelProviderManager?
-
-  // Indicates if the internet resource is currently enabled
-  public var internetResourceEnabled: Bool = false
-
-  // Encoder used to send messages to the tunnel
-  private let encoder = {
-    let encoder = PropertyListEncoder()
-    encoder.outputFormat = .binary
-
-    return encoder
-  }()
+  var manager: NETunnelProviderManager?
 
   public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
-  private let bundleDescription = "Firezone"
+  static let bundleDescription = "Firezone"
 
   // Initialize and save a new VPN configuration in system Preferences
-  func create() async throws {
+  static func create() async throws -> NETunnelProviderManager {
     let protocolConfiguration = NETunnelProviderProtocol()
     let manager = NETunnelProviderManager()
     let settings = Settings.defaultValue
@@ -93,116 +52,113 @@ public class VPNConfigurationManager {
     manager.localizedDescription = bundleDescription
     manager.protocolConfiguration = protocolConfiguration
 
-    // Save the new VPN configuration to System Preferences and reload it,
-    // which should update our status from nil -> disconnected.
-    // If the user denied the operation, the status will be .invalid
-    do {
-      try await manager.saveToPreferences()
-      try await manager.loadFromPreferences()
-      self.manager = manager
-    } catch let error as NSError {
-      if error.domain == "NEVPNErrorDomain" && error.code == 5 {
-        // Silence error when the user doesn't click "Allow" on the VPN
-        // permission dialog
-        Log.info("VPN permission was denied by the user")
+    try await manager.saveToPreferences()
+    try await manager.loadFromPreferences()
 
-        return
-      }
-
-      throw error
-    }
+    return manager
   }
 
-  func loadFromPreferences(
-    vpnStateUpdateHandler: @escaping @MainActor (NEVPNStatus, Settings?, String?, NEProviderStopReason?) async -> Void
-  ) async throws {
+  static func loadFromPreferences() async throws -> NETunnelProviderManager? {
     // loadAllFromPreferences() returns list of VPN configurations created by our main app's bundle ID.
     // Since our bundle ID can change (by us), find the one that's current and ignore the others.
     let managers = try await NETunnelProviderManager.loadAllFromPreferences()
 
     Log.log("\(#function): \(managers.count) tunnel managers found")
     for manager in managers where manager.localizedDescription == bundleDescription {
-      guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-            let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
-      else {
-        throw VPNConfigurationManagerError.cannotLoad
-      }
-
-      // Update our state
-      self.manager = manager
-
-      let settings = Settings.fromProviderConfiguration(providerConfiguration)
-      let actorName = providerConfiguration[VPNConfigurationManagerKeys.actorName]
-      if let internetResourceEnabled = providerConfiguration[
-        VPNConfigurationManagerKeys.internetResourceEnabled
-      ]?.data(using: .utf8) {
-
-        self.internetResourceEnabled = (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabled)) ?? false
-
-      }
-      let status = manager.connection.status
-
-      // Configure our Telemetry environment
-      Telemetry.setEnvironmentOrClose(settings.apiURL)
-      Telemetry.accountSlug = providerConfiguration[VPNConfigurationManagerKeys.accountSlug]
-
-      // Share what we found with our caller
-      await vpnStateUpdateHandler(status, settings, actorName, nil)
-
-      // Stop looking for our tunnel
-      break
+      return manager
     }
 
-    // If no tunnel configuration was found, update state to
-    // prompt user to create one.
-    if manager == nil {
-      await vpnStateUpdateHandler(.invalid, nil, nil, nil)
-    }
-
-    // Hook up status updates
-    subscribeToVPNStatusUpdates(handler: vpnStateUpdateHandler)
+    return nil
   }
 
-  func saveAuthResponse(_ authResponse: AuthResponse) async throws {
-    guard let manager = manager,
-          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-          var providerConfiguration = protocolConfiguration.providerConfiguration
+  func actorName() throws -> String? {
+    guard let manager
     else {
-      throw VPNConfigurationManagerError.managerNotInitialized
+      throw Error.managerNotInitialized
     }
 
-    providerConfiguration[VPNConfigurationManagerKeys.actorName] = authResponse.actorName
-    providerConfiguration[VPNConfigurationManagerKeys.accountSlug] = authResponse.accountSlug
+    guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+          let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
+    else {
+      throw Error.savedProtocolConfigurationIsInvalid
+    }
+
+    return providerConfiguration[Keys.actorName]
+  }
+
+  func internetResourceEnabled() throws -> Bool? {
+    guard let manager
+    else {
+      throw Error.managerNotInitialized
+    }
+
+    guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+          let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
+    else {
+      throw Error.savedProtocolConfigurationIsInvalid
+    }
+
+    // TODO: Store Bool directly in VPN Configuration
+    if providerConfiguration[Keys.internetResourceEnabled] == "true" {
+      return true
+    }
+
+    if providerConfiguration[Keys.internetResourceEnabled] == "false" {
+      return false
+    }
+
+    return nil
+  }
+
+  func save(authResponse: AuthResponse) async throws {
+    guard let manager
+    else {
+      throw Error.managerNotInitialized
+    }
+
+    guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+          var providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
+    else {
+      throw Error.savedProtocolConfigurationIsInvalid
+    }
+
+    providerConfiguration[Keys.actorName] = authResponse.actorName
+    providerConfiguration[Keys.accountSlug] = authResponse.accountSlug
+
+    // Configure our Telemetry environment, closing if we're definitely not running against Firezone infrastructure.
+    Telemetry.accountSlug = providerConfiguration[Keys.accountSlug]
+
     protocolConfiguration.providerConfiguration = providerConfiguration
     manager.protocolConfiguration = protocolConfiguration
 
-    // We always set this to true when starting the tunnel in case our tunnel
-    // was disabled by the system for some reason.
+    // Always set this to true when starting the tunnel in case our tunnel was disabled by the system.
     manager.isEnabled = true
 
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
   }
 
-  func saveSettings(_ settings: Settings) async throws {
-    guard let manager = manager,
-          let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+  func save(settings: Settings) async throws {
+    guard let manager
+    else {
+      throw Error.managerNotInitialized
+    }
+
+    guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {
-      throw VPNConfigurationManagerError.managerNotInitialized
+      throw Error.savedProtocolConfigurationIsInvalid
     }
 
     var newProviderConfiguration = settings.toProviderConfiguration()
 
     // Don't clobber existing actorName
-    newProviderConfiguration[VPNConfigurationManagerKeys.actorName] =
-    providerConfiguration[VPNConfigurationManagerKeys.actorName]
+    newProviderConfiguration[Keys.actorName] = providerConfiguration[Keys.actorName]
+
     protocolConfiguration.providerConfiguration = newProviderConfiguration
     protocolConfiguration.serverAddress = settings.apiURL
     manager.protocolConfiguration = protocolConfiguration
 
-    // We always set this to true when starting the tunnel in case our tunnel
-    // was disabled by the system for some reason.
     manager.isEnabled = true
 
     try await manager.saveToPreferences()
@@ -210,238 +166,5 @@ public class VPNConfigurationManager {
 
     // Reconfigure our Telemetry environment in case it changed
     Telemetry.setEnvironmentOrClose(settings.apiURL)
-  }
-
-  func start(token: String? = nil) throws {
-    var options: [String: NSObject] = [:]
-
-    // Pass token if provided
-    if let token = token {
-      options.merge(["token": token as NSObject]) { _, new in new }
-    }
-
-    // Pass pre-1.4.0 Firezone ID if it exists. Pre 1.4.0 clients will have this
-    // persisted to the app side container URL.
-    if let id = FirezoneId.load(.pre140) {
-      options.merge(["id": id as NSObject]) { _, new in new }
-    }
-
-    try session().startTunnel(options: options)
-  }
-
-  func signOut() throws {
-    try session([.connected, .connecting, .reasserting]).stopTunnel()
-    try session().sendProviderMessage(encoder.encode(ProviderMessage.signOut))
-  }
-
-  func stop() throws {
-    try session([.connected, .connecting, .reasserting]).stopTunnel()
-  }
-
-  func updateInternetResourceState() throws {
-    try session([.connected]).sendProviderMessage(
-      encoder.encode(ProviderMessage.internetResourceEnabled(internetResourceEnabled)))
-  }
-
-  func toggleInternetResource(enabled: Bool) throws {
-    internetResourceEnabled = enabled
-    try updateInternetResourceState()
-  }
-
-  func fetchResources() async throws -> ResourceList {
-    return try await withCheckedThrowingContinuation { continuation in
-      do {
-        // Request list of resources from the provider. We send the hash of the resource list we already have.
-        // If it differs, we'll get the full list in the callback. If not, we'll get nil.
-        try session([.connected]).sendProviderMessage(
-          encoder.encode(ProviderMessage.getResourceList(resourceListHash))) { data in
-
-          guard let data = data
-          else {
-            // No data returned; Resources haven't changed
-            continuation.resume(returning: self.resourcesListCache)
-
-            return
-          }
-
-          // Save hash to compare against
-          self.resourceListHash = Data(SHA256.hash(data: data))
-
-          let decoder = JSONDecoder()
-          decoder.keyDecodingStrategy = .convertFromSnakeCase
-
-          do {
-            let decoded = try decoder.decode([Resource].self, from: data)
-            self.resourcesListCache = ResourceList.loaded(decoded)
-
-            continuation.resume(returning: self.resourcesListCache)
-          } catch {
-            continuation.resume(throwing: error)
-          }
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
-  }
-
-  func clearLogs() async throws {
-    return try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session().sendProviderMessage(encoder.encode(ProviderMessage.clearLogs)) { _ in
-          continuation.resume()
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
-  }
-
-  func getLogFolderSize() async throws -> Int64 {
-    return try await withCheckedThrowingContinuation { continuation in
-
-      do {
-        try session().sendProviderMessage(
-          encoder.encode(ProviderMessage.getLogFolderSize)
-        ) { data in
-
-          guard let data = data
-          else {
-            continuation
-              .resume(throwing: VPNConfigurationManagerError.noIPCData)
-
-            return
-          }
-          data.withUnsafeBytes { rawBuffer in
-            continuation.resume(returning: rawBuffer.load(as: Int64.self))
-          }
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
-  }
-
-  // Call this with a closure that will append each chunk to a buffer
-  // of some sort, like a file. The completed buffer is a valid Apple Archive
-  // in AAR format.
-  func exportLogs(
-    appender: @escaping (LogChunk) -> Void,
-    errorHandler: @escaping (VPNConfigurationManagerError) -> Void
-  ) {
-    let decoder = PropertyListDecoder()
-
-    func loop() {
-      do {
-        try session().sendProviderMessage(
-          encoder.encode(ProviderMessage.exportLogs)
-        ) { data in
-          guard let data = data
-          else {
-            errorHandler(VPNConfigurationManagerError.noIPCData)
-
-            return
-          }
-
-          guard let chunk = try? decoder.decode(
-            LogChunk.self, from: data
-          )
-          else {
-            errorHandler(VPNConfigurationManagerError.decodeIPCDataFailed)
-
-            return
-          }
-
-          appender(chunk)
-
-          if !chunk.done {
-            // Continue
-            loop()
-          }
-        }
-      } catch {
-        Log.error(error)
-      }
-    }
-
-    // Start exporting
-    loop()
-  }
-
-  func consumeStopReason() async throws -> NEProviderStopReason? {
-    return try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session().sendProviderMessage(
-          encoder.encode(ProviderMessage.consumeStopReason)
-        ) { data in
-
-          guard let data = data,
-                let reason = String(data: data, encoding: .utf8),
-                let rawValue = Int(reason)
-          else {
-            continuation.resume(returning: nil)
-
-            return
-          }
-
-          continuation.resume(returning: NEProviderStopReason(rawValue: rawValue))
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
-  }
-
-  private func session(_ requiredStatuses: Set<NEVPNStatus> = []) throws -> NETunnelProviderSession {
-    guard let session = manager?.connection as? NETunnelProviderSession
-    else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-
-    if requiredStatuses.isEmpty || requiredStatuses.contains(session.status) {
-      return session
-    }
-
-    throw VPNConfigurationManagerError.invalidStatus(session.status)
-  }
-
-  // Subscribe to system notifications about our VPN status changing
-  // and let our handler know about them.
-  private func subscribeToVPNStatusUpdates(
-    handler: @escaping @MainActor (NEVPNStatus, Settings?, String?, NEProviderStopReason?
-    ) async -> Void) {
-    Log.log("\(#function)")
-
-    for task in tunnelObservingTasks {
-      task.cancel()
-    }
-    tunnelObservingTasks.removeAll()
-
-    tunnelObservingTasks.append(
-      Task {
-        for await notification in NotificationCenter.default.notifications(
-          named: .NEVPNStatusDidChange
-        ) {
-          guard let session = notification.object as? NETunnelProviderSession
-          else {
-            Log.error(VPNConfigurationManagerError.invalidNotification)
-            return
-          }
-
-          var reason: NEProviderStopReason?
-
-          if session.status == .disconnected {
-            // Reset resource list
-            resourceListHash = Data()
-            resourcesListCache = ResourceList.loading
-
-            // Attempt to consume the last stopped reason
-            do { reason = try await consumeStopReason() } catch { Log.error(error) }
-          }
-
-          await handler(session.status, nil, nil, reason)
-        }
-      }
-    )
   }
 }

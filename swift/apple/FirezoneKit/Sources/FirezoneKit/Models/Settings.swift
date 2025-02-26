@@ -31,14 +31,14 @@ struct Settings: Equatable {
   static func fromProviderConfiguration(_ providerConfiguration: [String: Any]?) -> Settings {
     if let providerConfiguration = providerConfiguration as? [String: String] {
       return Settings(
-        authBaseURL: providerConfiguration[VPNConfigurationManagerKeys.authBaseURL]
+        authBaseURL: providerConfiguration[VPNConfigurationManager.Keys.authBaseURL]
           ?? Settings.defaultValue.authBaseURL,
-        apiURL: providerConfiguration[VPNConfigurationManagerKeys.apiURL]
+        apiURL: providerConfiguration[VPNConfigurationManager.Keys.apiURL]
           ?? Settings.defaultValue.apiURL,
-        logFilter: providerConfiguration[VPNConfigurationManagerKeys.logFilter]
+        logFilter: providerConfiguration[VPNConfigurationManager.Keys.logFilter]
           ?? Settings.defaultValue.logFilter,
         internetResourceEnabled: getInternetResourceEnabled(
-          internetResourceEnabled: providerConfiguration[VPNConfigurationManagerKeys.internetResourceEnabled])
+          internetResourceEnabled: providerConfiguration[VPNConfigurationManager.Keys.internetResourceEnabled])
       )
     } else {
       return Settings.defaultValue
@@ -62,10 +62,10 @@ struct Settings: Equatable {
     }
 
     return [
-      VPNConfigurationManagerKeys.authBaseURL: authBaseURL,
-      VPNConfigurationManagerKeys.apiURL: apiURL,
-      VPNConfigurationManagerKeys.logFilter: logFilter,
-      VPNConfigurationManagerKeys.internetResourceEnabled: string
+      VPNConfigurationManager.Keys.authBaseURL: authBaseURL,
+      VPNConfigurationManager.Keys.apiURL: apiURL,
+      VPNConfigurationManager.Keys.logFilter: logFilter,
+      VPNConfigurationManager.Keys.internetResourceEnabled: string
     ]
   }
 

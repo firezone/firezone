@@ -8,6 +8,10 @@
 import SwiftUI
 import Combine
 
+#if os(macOS)
+import SystemExtensions
+#endif
+
 struct GrantVPNView: View {
   @EnvironmentObject var store: Store
   @EnvironmentObject var errorHandler: GlobalErrorHandler
@@ -148,6 +152,17 @@ struct GrantVPNView: View {
     Task {
       do {
         try await store.installVPNConfiguration()
+      } catch let error as NSError {
+        if error.domain == "NEVPNErrorDomain" && error.code == 5 {
+          // Warn when the user doesn't click "Allow" on the VPN dialog
+          let alert = NSAlert()
+          alert.messageText = "Permission required."
+          alert.informativeText =
+          "Firezone requires permission to install VPN configurations. Without it, all functionality will be disabled."
+          _ = alert.runModal()
+        } else {
+          throw error
+        }
       } catch {
         Log.error(error)
         await macOSAlert.show(for: error)

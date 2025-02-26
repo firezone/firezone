@@ -22,6 +22,28 @@ public struct AppView: View {
   @EnvironmentObject var store: Store
 
 #if os(macOS)
+  // This is a static function because the Environment Object is not present at initialization time when we want to
+  // subscribe the AppView to certain Store properties to control the main window lifecycle which SwiftUI doesn't
+  // handle.
+  private static var cancellables: Set<AnyCancellable> = []
+  public static func subscribeToGlobalEvents(store: Store) {
+    store.$status
+      .combineLatest(store.$systemExtensionStatus)
+      .receive(on: DispatchQueue.main)
+      .sink(receiveValue: { status, systemExtensionStatus in
+        // Open window in case permissions are revoked
+        if status == .invalid || systemExtensionStatus != .installed {
+          WindowDefinition.main.openWindow()
+        }
+
+        // Close window upon launch for day-to-day use
+        if status != .invalid && systemExtensionStatus == .installed && FirezoneId.load(.pre140) != nil {
+          WindowDefinition.main.window()?.close()
+        }
+      })
+      .store(in: &cancellables)
+  }
+
   public enum WindowDefinition: String, CaseIterable {
     case main
     case settings

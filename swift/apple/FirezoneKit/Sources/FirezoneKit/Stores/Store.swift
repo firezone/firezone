@@ -20,7 +20,7 @@ public final class Store: ObservableObject {
   @Published private(set) var actorName: String?
 
   // Make our tunnel configuration convenient for SettingsView to consume
-  @Published var settings = Settings.defaultValue
+  @Published private(set) var settings = Settings.defaultValue
 
   // Enacapsulate Tunnel status here to make it easier for other components
   // to observe
@@ -28,15 +28,18 @@ public final class Store: ObservableObject {
 
   @Published private(set) var decision: UNAuthorizationStatus?
 
+  @Published private(set) var internetResourceEnabled: Bool?
+
 #if os(macOS)
   // Track whether our system extension has been installed (macOS)
   @Published private(set) var systemExtensionStatus: SystemExtensionStatus?
 #endif
 
-  private var cancellables: Set<AnyCancellable> = []
   private var resourcesTimer: Timer?
+  private var resourceUpdateTask: Task<Void, Never>?
 
   let vpnConfigurationManager = VPNConfigurationManager()
+  let ipcClient = IPCClient()
   let sessionNotification = SessionNotification()
 
   public init() {
@@ -46,32 +49,38 @@ public final class Store: ObservableObject {
       }
     }
 
+    // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
+    initNotifications()
+    initSystemExtension()
+    initVPNConfiguration()
+  }
+
+  func initNotifications() {
     Task {
-      // Load user's decision whether to allow / disallow notifications
       self.decision = await self.sessionNotification.loadAuthorizationStatus()
+    }
+  }
 
-      // Load VPN configuration and system extension status
-      do {
-        try await self.bindToVPNConfigurationUpdates()
-        let vpnConfigurationStatus = self.status
-
+  func initSystemExtension() {
 #if os(macOS)
-        let systemExtensionStatus = try await self.checkedSystemExtensionStatus()
-
-        if systemExtensionStatus != .installed
-            || vpnConfigurationStatus == .invalid {
-
-          // Show the main Window if VPN permission needs to be granted
-          AppView.WindowDefinition.main.openWindow()
-        } else {
-          AppView.WindowDefinition.main.window()?.close()
-        }
+    Task {
+      do {
+        self.systemExtensionStatus = try await self.checkSystemExtensionStatus()
+      } catch {
+        Log.error(error)
+      }
+    }
 #endif
+  }
 
-        if vpnConfigurationStatus == .disconnected {
-
-          // Try to connect on start
-          try self.vpnConfigurationManager.start()
+  func initVPNConfiguration() {
+    Task {
+      do {
+        // Try to load existing configuration
+        if let neTunnelProviderManager = try await VPNConfigurationManager.loadFromPreferences() {
+          try await setupTunnelObservers(from: neTunnelProviderManager, autoStart: true)
+        } else {
+          status = .invalid
         }
       } catch {
         Log.error(error)
@@ -79,56 +88,71 @@ public final class Store: ObservableObject {
     }
   }
 
-  public func internetResourceEnabled() -> Bool {
-    self.vpnConfigurationManager.internetResourceEnabled
+  func setupTunnelObservers(from manager: NETunnelProviderManager, autoStart: Bool = false) async throws {
+    guard let session = manager.connection as? NETunnelProviderSession
+    else { return }
+
+    vpnConfigurationManager.manager = manager
+    ipcClient.session = session
+
+    let statusChangeHandler: (NEVPNStatus) async throws -> Void = { [weak self] status in
+      try await self?.handleStatusChange(newStatus: status)
+    }
+
+    ipcClient.subscribeToVPNStatusUpdates(handler: statusChangeHandler)
+
+    if autoStart && status == .disconnected {
+      // Try to connect on start
+      try ipcClient.start()
+    }
+
+    try await handleStatusChange(newStatus: session.status)
   }
 
-  func bindToVPNConfigurationUpdates() async throws {
-    // Load our existing VPN configuration and set an update handler
-    try await self.vpnConfigurationManager.loadFromPreferences(
-      vpnStateUpdateHandler: { @MainActor [weak self] status, settings, actorName, stopReason in
-        guard let self else { return }
+  func handleStatusChange(newStatus: NEVPNStatus) async throws {
+    status = newStatus
 
-        self.status = status
+    if status == .connected {
+      // Load saved actorName
+      actorName = try? vpnConfigurationManager.actorName()
 
-        if let settings {
-          self.settings = settings
-        }
+      // Load saved internet resource status
+      internetResourceEnabled = try? vpnConfigurationManager.internetResourceEnabled()
 
-        if let actorName {
-          self.actorName = actorName
-        }
-
-        if status == .connected {
-          self.beginUpdatingResources { resourceList in
-            self.resourceList = resourceList
-          }
-        }
-
-        if status == .disconnected {
-          self.endUpdatingResources()
-          self.resourceList = ResourceList.loading
-        }
+      // Load Resources
+      beginUpdatingResources()
+    } else {
+      endUpdatingResources()
+    }
 
 #if os(macOS)
-        // On macOS we must show notifications from the UI process. On iOS, we've already initiated the notification
-        // from the tunnel process, because the UI process is not guaranteed to be alive.
-        if status == .disconnected,
-           stopReason == .authenticationCanceled {
+    // On macOS we must show notifications from the UI process. On iOS, we've already initiated the notification
+    // from the tunnel process, because the UI process is not guaranteed to be alive.
+    if status == .disconnected {
+      do {
+        let reason = try await ipcClient.consumeStopReason()
+        if reason == .authenticationCanceled {
           await self.sessionNotification.showSignedOutAlertmacOS()
         }
-#endif
+      } catch {
+        Log.error(error)
       }
-    )
+    }
+
+    // When this happens, it's because either our VPN configuration or System Extension (or both) were removed.
+    // So load the system extension status again to determine which view to load.
+    if status == .invalid {
+      self.systemExtensionStatus = try await checkSystemExtensionStatus()
+    }
+#endif
   }
 
 #if os(macOS)
-  func checkedSystemExtensionStatus() async throws -> SystemExtensionStatus {
+  func checkSystemExtensionStatus() async throws -> SystemExtensionStatus {
     let checker = SystemExtensionManager()
 
     let status =
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
-
       checker.checkStatus(
         identifier: VPNConfigurationManager.bundleIdentifier,
         continuation: continuation
@@ -141,8 +165,6 @@ public final class Store: ObservableObject {
       try await installSystemExtension()
     }
 
-    self.systemExtensionStatus = status
-
     return status
   }
 
@@ -153,7 +175,6 @@ public final class Store: ObservableObject {
     // See https://developer.apple.com/documentation/systemextensions/installing-system-extensions-and-drivers
     self.systemExtensionStatus =
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
-
       installer.installSystemExtension(
         identifier: VPNConfigurationManager.bundleIdentifier,
         continuation: continuation
@@ -164,10 +185,9 @@ public final class Store: ObservableObject {
 
   func installVPNConfiguration() async throws {
     // Create a new VPN configuration in system settings.
-    try await self.vpnConfigurationManager.create()
+    let nETunnelProviderManager = try await VPNConfigurationManager.create()
 
-    // Reload our state
-    try await bindToVPNConfigurationUpdates()
+    try await setupTunnelObservers(from: nETunnelProviderManager)
   }
 
   func grantNotifications() async throws {
@@ -178,34 +198,48 @@ public final class Store: ObservableObject {
     return URL(string: settings.authBaseURL)
   }
 
-  private func start(token: String? = nil) throws {
-    try self.vpnConfigurationManager.start(token: token)
-  }
-
   func stop() throws {
-    try self.vpnConfigurationManager.stop()
+    try ipcClient.stop()
   }
 
   func signIn(authResponse: AuthResponse) async throws {
     // Save actorName
     self.actorName = authResponse.actorName
 
-    try await self.vpnConfigurationManager.saveSettings(settings)
-    try await self.vpnConfigurationManager.saveAuthResponse(authResponse)
+    try await vpnConfigurationManager.save(authResponse: authResponse)
 
     // Bring the tunnel up and send it a token to start
-    try self.vpnConfigurationManager.start(token: authResponse.token)
+    try ipcClient.start(token: authResponse.token)
   }
 
   func signOut() throws {
-    try self.vpnConfigurationManager.signOut()
+    try ipcClient.signOut()
+  }
+
+  func clearLogs() async throws {
+    try await ipcClient.clearLogs()
+  }
+
+  func saveSettings(_ newSettings: Settings) async throws {
+    try await vpnConfigurationManager.save(settings: newSettings)
+    self.settings = newSettings
+  }
+
+  func toggleInternetResource() async throws {
+    internetResourceEnabled = !(internetResourceEnabled ?? false)
+    settings.internetResourceEnabled = internetResourceEnabled
+
+    try ipcClient.toggleInternetResource(enabled: internetResourceEnabled == true)
+    try await vpnConfigurationManager.save(settings: settings)
+  }
+
+  private func start(token: String? = nil) throws {
+    try ipcClient.start(token: token)
   }
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
-  func beginUpdatingResources(callback: @escaping @MainActor (ResourceList) -> Void) {
-    Log.log("\(#function)")
-
+  private func beginUpdatingResources() {
     if self.resourcesTimer != nil {
       // Prevent duplicate timer scheduling. This will happen if the system sends us two .connected status updates
       // in a row, which can happen occasionally.
@@ -215,11 +249,17 @@ public final class Store: ObservableObject {
     // Define the Timer's closure
     let updateResources: @Sendable (Timer) -> Void = { _ in
       Task {
-        do {
-          let resources = try await self.vpnConfigurationManager.fetchResources()
-          await callback(resources)
-        } catch {
-          Log.error(error)
+        await MainActor.run {
+          self.resourceUpdateTask?.cancel()
+          self.resourceUpdateTask = Task {
+            if !Task.isCancelled {
+              do {
+                self.resourceList = try await self.ipcClient.fetchResources()
+              } catch {
+                Log.error(error)
+              }
+            }
+          }
         }
       }
     }
@@ -236,20 +276,10 @@ public final class Store: ObservableObject {
     updateResources(timer)
   }
 
-  func endUpdatingResources() {
+  private func endUpdatingResources() {
+    resourceUpdateTask?.cancel()
     resourcesTimer?.invalidate()
     resourcesTimer = nil
-  }
-
-  func save(_ newSettings: Settings) async throws {
-    try await self.vpnConfigurationManager.saveSettings(newSettings)
-    self.settings = newSettings
-  }
-
-  func toggleInternetResource(enabled: Bool) async throws {
-    try self.vpnConfigurationManager.toggleInternetResource(enabled: enabled)
-    var newSettings = settings
-    newSettings.internetResourceEnabled = self.vpnConfigurationManager.internetResourceEnabled
-    try await save(newSettings)
+    resourceList = ResourceList.loading
   }
 }
