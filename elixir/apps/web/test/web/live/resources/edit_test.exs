@@ -238,8 +238,9 @@ defmodule Web.Live.Resources.EditTest do
       |> render_submit()
       |> follow_redirect(conn, ~p"/#{account}/resources")
 
-    assert_receive {:delete_resource, _resource_id}
-    assert_receive {:create_resource, _resource_id}
+    assert_receive {:delete_resource, delete_msg_resource_id}
+    assert_receive {:create_resource, create_msg_resource_id}
+    assert delete_msg_resource_id == create_msg_resource_id
 
     assert updated_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
     assert updated_resource.name == attrs.name

@@ -1495,6 +1495,7 @@ defmodule Domain.ResourcesTest do
       assert {:updated, updated_resource} =
                update_resource(resource, attrs, subject)
 
+      assert updated_resource.id == resource.id
       refute updated_resource.type == resource.type
       assert updated_resource.type == :ip
       assert updated_resource.address == attrs["address"]

@@ -530,6 +530,7 @@ defmodule Domain.PoliciesTest do
       assert {:updated, updated_policy} =
                update_policy(policy, attrs, subject)
 
+      assert updated_policy.id == policy.id
       assert updated_policy.resource_id == policy.resource_id
       assert updated_policy.actor_group_id != policy.actor_group_id
       assert updated_policy.actor_group_id == attrs[:actor_group_id]
