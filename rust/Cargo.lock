@@ -192,9 +192,9 @@ checksum = "d92bec98840b8f03a5ff5413de5293bfcd8bf96467cf5452609f939ec6f5de16"
 
 [[package]]
 name = "ashpd"
-version = "0.9.2"
+version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4d43c03d9e36dd40cab48435be0b09646da362c278223ca535493877b2c1dee9"
+checksum = "e9c39d707614dbcc6bed00015539f488d8e3fe3e66ed60961efc0c90f4b380b3"
 dependencies = [
  "enumflags2",
  "futures-channel",
@@ -208,7 +208,7 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
  "wayland-protocols",
- "zbus 4.4.0",
+ "zbus 5.5.0",
 ]
 
 [[package]]
@@ -1663,7 +1663,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading 0.8.5",
+ "libloading 0.7.4",
 ]
 
 [[package]]
@@ -3564,7 +3564,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.48.5",
+ "windows-targets 0.52.6",
 ]
 
 [[package]]
@@ -5373,12 +5373,14 @@ dependencies = [
 
 [[package]]
 name = "rfd"
-version = "0.15.0"
+version = "0.15.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8af382a047821a08aa6bfc09ab0d80ff48d45d8726f7cd8e44891f7cb4a4278e"
+checksum = "6a24763657bff09769a8ccf12c8b8a50416fb035fe199263b4c5071e4e3f006f"
 dependencies = [
  "ashpd",
  "block2",
+ "core-foundation 0.10.0",
+ "core-foundation-sys",
  "glib-sys",
  "gobject-sys",
  "gtk-sys",
@@ -5391,7 +5393,7 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8103,7 +8105,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -8702,7 +8704,6 @@ dependencies = [
  "serde_repr",
  "sha1",
  "static_assertions",
- "tokio",
  "tracing",
  "uds_windows",
  "windows-sys 0.52.0",
@@ -8738,6 +8739,7 @@ dependencies = [
  "serde",
  "serde_repr",
  "static_assertions",
+ "tokio",
  "tracing",
  "uds_windows",
  "windows-sys 0.59.0",
@@ -8882,7 +8884,6 @@ dependencies = [
  "enumflags2",
  "serde",
  "static_assertions",
- "url",
  "zvariant_derive 4.2.0",
 ]
 
@@ -8896,6 +8897,7 @@ dependencies = [
  "enumflags2",
  "serde",
  "static_assertions",
+ "url",
  "winnow 0.7.3",
  "zvariant_derive 5.4.0",
  "zvariant_utils 3.2.0",
