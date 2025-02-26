@@ -388,6 +388,8 @@ fn start_send_thread(
                         // `send_packet` cannot fail to enqueue the packet, since we already allocated
                         // space in the ring buffer.
                         session.send_packet(pkt);
+
+                        break;
                     }
                     Err(wintun::Error::Io(e))
                         if e.raw_os_error()
