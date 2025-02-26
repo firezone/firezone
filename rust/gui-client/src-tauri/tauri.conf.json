@@ -12,7 +12,8 @@
         "files": {
           "/usr/lib/systemd/system/firezone-client-ipc.service": "./deb_files/firezone-client-ipc.service",
           "/usr/lib/sysusers.d/firezone-client-ipc.conf": "./deb_files/sysusers.conf"
-        }
+        },
+        "desktopTemplate": "./deb_files/firezone-client-gui.desktop"
       }
     },
     "targets": ["deb", "msi"],
@@ -37,7 +38,7 @@
   "mainBinaryName": "firezone-client-gui",
   "identifier": "dev.firezone.client",
   "plugins": {},
-  "productName": "Firezone",
+  "productName": "firezone-client-gui",
   "app": {
     "withGlobalTauri": true,
     "security": {
