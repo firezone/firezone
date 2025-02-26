@@ -8,7 +8,8 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.7" date={new Date("2025-02-26")}>
         {os === OS.Linux && (
           <ChangeItem pull="8219">
             Configures the IPC service to log to journald.
@@ -16,11 +17,12 @@ export default function GUI({ os }: { os: OS }) {
         )}
         {os === OS.Windows && (
           <ChangeItem pull="8268">
-            Fixes a dead-lock that could occur during shutdown of the TUN
-            device if there were still packets queued for sending.
+            Fixes a hang that could occur after signing out which could prevent
+            future sign ins and other actions, possibly with an{" "}
+            <code>os error 231</code> code.
           </ChangeItem>
         )}
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.6" date={new Date("2025-02-20")}>
         {os === OS.Linux && (
           <ChangeItem pull="8117">
