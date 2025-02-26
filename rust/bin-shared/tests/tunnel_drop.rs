@@ -4,9 +4,9 @@ use firezone_bin_shared::TunDeviceManager;
 
 /// Checks for regressions in issue #4765, un-initializing Wintun
 /// Redundant but harmless on Linux.
-#[test]
+#[tokio::test] // Needs a runtime.
 #[ignore = "Needs admin / sudo and Internet"]
-fn tunnel_drop() {
+async fn tunnel_drop() {
     firezone_logging::test_global("debug"); // `Tun` uses threads and we want to see the logs of all threads.
 
     let mut tun_device_manager = TunDeviceManager::new(1280, 1).unwrap();
