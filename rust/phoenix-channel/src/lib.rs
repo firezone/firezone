@@ -403,16 +403,18 @@ where
                         let socket_addresses = self.socket_addresses();
                         let host = self.host();
 
-                        // If we don't have a backoff yet, this is the first error so create one.
-                        let reconnect_backoff = self
-                            .reconnect_backoff
-                            .get_or_insert_with(|| (self.make_reconnect_backoff)());
+                        let backoff = match self.reconnect_backoff.as_mut() {
+                            Some(reconnect_backoff) => reconnect_backoff
+                                .next_backoff()
+                                .ok_or_else(|| Error::MaxRetriesReached {
+                                    final_error: err_with_src(&e).to_string(),
+                                })?,
+                            None => {
+                                self.reconnect_backoff = Some((self.make_reconnect_backoff)());
 
-                        let backoff = reconnect_backoff.next_backoff().ok_or_else(|| {
-                            Error::MaxRetriesReached {
-                                final_error: err_with_src(&e).to_string(),
+                                Duration::ZERO
                             }
-                        })?;
+                        };
 
                         let secret_url = self
                             .last_url
@@ -436,7 +438,10 @@ where
 
                         return Poll::Ready(Ok(Event::Hiccup {
                             backoff,
-                            max_elapsed_time: reconnect_backoff.max_elapsed_time,
+                            max_elapsed_time: self
+                                .reconnect_backoff
+                                .as_ref()
+                                .and_then(|b| b.max_elapsed_time),
                             error: anyhow::Error::new(e)
                                 .context("Reconnecting to portal on transient error"),
                         }));
@@ -973,5 +978,10 @@ mod tests {
         let expected = PhoenixMessage::new_err_reply("client", ErrorReply::Disabled, None);
 
         assert_eq!(actual, expected)
+    }
+
+    #[tokio::test]
+    async fn can_sleep_0_ms() {
+        tokio::time::sleep(Duration::ZERO).await
     }
 }
