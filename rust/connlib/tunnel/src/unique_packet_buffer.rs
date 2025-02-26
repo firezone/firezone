@@ -22,9 +22,9 @@ impl UniquePacketBuffer {
         if self
             .buffer
             .iter()
-            .any(|buffered| is_tcp_retransmit(buffered, &new))
+            .any(|buffered| is_tcp_syn_retransmit(buffered, &new))
         {
-            tracing::trace!(packet = ?new, "Not buffering TCP retransmission");
+            tracing::trace!(packet = ?new, "Not buffering TCP SYN retransmission");
 
             return;
         }
@@ -54,7 +54,7 @@ impl IntoIterator for UniquePacketBuffer {
     }
 }
 
-fn is_tcp_retransmit(buffered: &IpPacket, new: &IpPacket) -> bool {
+fn is_tcp_syn_retransmit(buffered: &IpPacket, new: &IpPacket) -> bool {
     if buffered.source() != new.source() {
         return false;
     }
@@ -71,7 +71,9 @@ fn is_tcp_retransmit(buffered: &IpPacket, new: &IpPacket) -> bool {
         return false;
     };
 
-    buffered.source_port() == new.source_port()
+    buffered.syn()
+        && new.syn()
+        && buffered.source_port() == new.source_port()
         && buffered.destination_port() == new.destination_port()
         && buffered.sequence_number() == new.sequence_number()
 }
