@@ -168,6 +168,14 @@ impl std::fmt::Debug for IpPacket {
             if tcp.syn() {
                 dbg.field("syn", &true);
             }
+
+            if tcp.rst() {
+                dbg.field("rst", &true);
+            }
+
+            if tcp.fin() {
+                dbg.field("fin", &true);
+            }
         }
 
         if let Some(udp) = self.as_udp() {
