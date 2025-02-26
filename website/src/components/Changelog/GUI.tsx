@@ -17,8 +17,9 @@ export default function GUI({ os }: { os: OS }) {
         )}
         {os === OS.Windows && (
           <ChangeItem pull="8268">
-            Fixes a dead-lock that could occur during shutdown of the TUN device
-            if there were still packets queued for sending.
+            Fixes a hang that could occur after signing out which could prevent
+            future sign ins and other actions, possibly with an{" "}
+            <code>os error 231</code> code.
           </ChangeItem>
         )}
       </Entry>
