@@ -446,6 +446,15 @@ defmodule API.Gateway.ChannelTest do
     end
   end
 
+  describe "handle_info/2 :create_resource" do
+    test "does nothing", %{
+      resource: resource,
+      socket: socket
+    } do
+      send(socket.channel_pid, {:create_resource, resource.id})
+    end
+  end
+
   describe "handle_info/2 :delete_resource" do
     test "does nothing", %{
       resource: resource,
