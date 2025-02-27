@@ -1,6 +1,7 @@
 mod gso_queue;
 
-use crate::{device_channel::Device, dns, sockets::Sockets};
+use crate::{device_channel::Device, dns, dns_sockets::DnsSockets, sockets::Sockets};
+use anyhow::Result;
 use domain::base::Message;
 use firezone_logging::{telemetry_event, telemetry_span};
 use futures_bounded::FuturesTupleSet;
@@ -43,6 +44,8 @@ pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
     gso_queue: GsoQueue,
+
+    dns_sockets: DnsSockets,
 
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -107,7 +110,16 @@ impl Io {
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
             gso_queue: GsoQueue::new(),
             tun: Device::new(),
+            dns_sockets: DnsSockets::default(),
         }
+    }
+
+    pub fn rebind_dns_ipv4(&mut self, ipv4: Ipv4Addr) -> Result<()> {
+        self.dns_sockets.rebind_ipv4(ipv4)
+    }
+
+    pub fn rebind_dns_ipv6(&mut self, ipv6: Ipv6Addr) -> Result<()> {
+        self.dns_sockets.rebind_ipv6(ipv6)
     }
 
     pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {

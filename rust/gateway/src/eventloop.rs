@@ -9,7 +9,7 @@ use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
 };
-use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
+use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
 use firezone_tunnel::{
     DnsResourceNatEntry, GatewayTunnel, IpConfig, ResolveDnsRequest, IPV4_PEERS, IPV6_PEERS,
 };
@@ -55,7 +55,7 @@ pub struct Eventloop {
         futures_bounded::FuturesTupleSet<Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveTrigger>,
     dns_cache: moka::future::Cache<DomainName, Vec<IpAddr>>,
 
-    set_interface_tasks: futures_bounded::FuturesSet<Result<()>>,
+    set_interface_tasks: futures_bounded::FuturesSet<Result<Interface>>,
 
     logged_permission_denied: bool,
 }
@@ -163,9 +163,16 @@ impl Eventloop {
 
             match self.set_interface_tasks.poll_unpin(cx) {
                 Poll::Ready(result) => {
-                    result
+                    let interface = result
                         .unwrap_or_else(|e| Err(anyhow::Error::new(e)))
                         .context("Failed to update TUN interface")?;
+
+                    if let Err(e) = self.tunnel.rebind_dns_ipv4(interface.ipv4) {
+                        tracing::warn!("Failed to bind IPv4 DNS server: {e:#}")
+                    }
+                    if let Err(e) = self.tunnel.rebind_dns_ipv6(interface.ipv6) {
+                        tracing::warn!("Failed to bind IPv6 DNS server: {e:#}")
+                    }
                 }
                 Poll::Pending => {}
             }
@@ -378,7 +385,7 @@ impl Eventloop {
                                 .await
                                 .context("Failed to set TUN routes")?;
 
-                            Ok(())
+                            Ok(init.interface)
                         }
                     })
                     .is_err()

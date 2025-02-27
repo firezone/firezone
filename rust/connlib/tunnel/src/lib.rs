@@ -5,6 +5,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use anyhow::Result;
 use bimap::BiMap;
 use chrono::Utc;
 use connlib_model::{ClientId, DomainName, GatewayId, PublicKey, ResourceId, ResourceView};
@@ -24,6 +25,7 @@ use tun::Tun;
 mod client;
 mod device_channel;
 mod dns;
+mod dns_sockets;
 mod gateway;
 mod io;
 pub mod messages;
@@ -78,6 +80,14 @@ impl<TRoleState> Tunnel<TRoleState> {
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.set_tun(tun);
+    }
+
+    pub fn rebind_dns_ipv4(&mut self, ipv4: Ipv4Addr) -> Result<()> {
+        self.io.rebind_dns_ipv4(ipv4)
+    }
+
+    pub fn rebind_dns_ipv6(&mut self, ipv6: Ipv6Addr) -> Result<()> {
+        self.io.rebind_dns_ipv6(ipv6)
     }
 }
 
