@@ -2,6 +2,8 @@ use anyhow::{Context, Result};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use tokio::net::{TcpListener, UdpSocket};
 
+pub const PORT: u16 = 5353;
+
 #[derive(Debug, Default)]
 pub struct DnsSockets {
     udp_v4: Option<UdpSocket>,
@@ -36,7 +38,7 @@ impl DnsSockets {
 fn make_udp_socket(ip: impl Into<IpAddr>) -> Result<UdpSocket> {
     let ip = ip.into();
 
-    let udp_socket = std::net::UdpSocket::bind((ip, 53)).context("Failed to bind UDP socket")?;
+    let udp_socket = std::net::UdpSocket::bind((ip, PORT)).context("Failed to bind UDP socket")?;
     udp_socket
         .set_nonblocking(true)
         .context("Failed to set socket as non-blocking")?;
@@ -51,7 +53,7 @@ fn make_tcp_listener(ip: impl Into<IpAddr>) -> Result<TcpListener> {
     let ip = ip.into();
 
     let tcp_listener =
-        std::net::TcpListener::bind((ip, 53)).context("Failed to bind TCP listener")?;
+        std::net::TcpListener::bind((ip, PORT)).context("Failed to bind TCP listener")?;
     tcp_listener
         .set_nonblocking(true)
         .context("Failed to set listener to non-blocking")?;
