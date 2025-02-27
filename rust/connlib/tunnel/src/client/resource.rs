@@ -8,6 +8,7 @@ use connlib_model::{
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools as _;
+use serde::Deserialize;
 
 use crate::messages::client::{
     ResourceDescription, ResourceDescriptionCidr, ResourceDescriptionDns,
@@ -68,9 +69,31 @@ pub struct InternetResource {
 impl Resource {
     pub fn from_description(resource: ResourceDescription) -> Option<Self> {
         match resource {
-            ResourceDescription::Dns(i) => Some(Resource::Dns(DnsResource::from_description(i))),
-            ResourceDescription::Cidr(i) => Some(Resource::Cidr(CidrResource::from_description(i))),
-            ResourceDescription::Internet(i) => {
+            ResourceDescription::Dns(json) => {
+                let i = ResourceDescriptionDns::deserialize(&json)
+                    .inspect_err(
+                        |e| tracing::warn!(%json, "Failed to deserialise `ResourceDescriptionDns`: {e}"),
+                    )
+                    .ok()?;
+
+                Some(Resource::Dns(DnsResource::from_description(i)))
+            }
+            ResourceDescription::Cidr(json) => {
+                let i = ResourceDescriptionCidr::deserialize(&json)
+                    .inspect_err(|e| {
+                        tracing::warn!(%json, "Failed to deserialise `ResourceDescriptionCidr`: {e}")
+                    })
+                    .ok()?;
+
+                Some(Resource::Cidr(CidrResource::from_description(i)))
+            }
+            ResourceDescription::Internet(json) => {
+                let i = ResourceDescriptionInternet::deserialize(&json)
+                    .inspect_err(|e| {
+                        tracing::warn!(%json, "Failed to deserialise `ResourceDescriptionInternet`: {e}")
+                    })
+                    .ok()?;
+
                 Some(Resource::Internet(InternetResource::from_description(i)))
             }
             ResourceDescription::Unknown => None,
