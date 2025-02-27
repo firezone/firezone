@@ -8,8 +8,7 @@ defmodule Domain.Resources.Resource.Changeset do
   @replace_fields ~w[type address filters]a
   @required_fields ~w[name type]a
 
-  # This list is based on the list of TLDs from the IANA but only contains
-  # all the country zones and most common generic zones.
+  # Reference list of common TLDs from IANA
   @common_tlds ~w[
     com org net edu gov mil biz info name mobi pro
     ac ad ae af ag ai al am ao ar as at au aw ax az
@@ -26,9 +25,7 @@ defmodule Domain.Resources.Resource.Changeset do
     va vc ve vg vi vn vu wf ws ye yt za zm zw
   ]
 
-  @prohibited_tlds ~w[
-    localhost
-  ]
+  @prohibited_tlds ~w[localhost]
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Resource{connections: []}
@@ -58,6 +55,25 @@ defmodule Domain.Resources.Resource.Changeset do
     |> cast_assoc(:connections,
       with: &Connection.Changeset.changeset(account.id, &1, &2)
     )
+  end
+
+  def update(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
+    resource
+    |> cast(attrs, @update_fields)
+    |> validate_required(@required_fields)
+    |> validate_address(subject.account)
+    |> changeset()
+    |> cast_assoc(:connections,
+      with: &Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
+      required: true
+    )
+    |> maybe_breaking_change()
+  end
+
+  def delete(%Resource{} = resource) do
+    resource
+    |> change()
+    |> put_default_value(:deleted_at, DateTime.utc_now())
   end
 
   defp validate_address(changeset, account) do
@@ -92,34 +108,45 @@ defmodule Domain.Resources.Resource.Changeset do
   defp validate_dns_address(changeset) do
     changeset
     |> validate_length(:address, min: 1, max: 253)
-    |> validate_format(:address, ~r/^[\p{L}\*\?0-9-]{1,63}(\.[\p{L}\*\?0-9-]{1,63})*$/iu)
-    |> validate_format(:address, ~r/^[^\.]/, message: "must start with a letter or number")
-    |> validate_format(:address, ~r/[^\.]$/, message: "must end with a letter or number")
-    |> validate_format(:address, ~r/[\w]/iu, message: "must contain at least one letter")
+    # Reject IPs (IPv4 and IPv6)
+    |> validate_change(:address, fn field, address ->
+      if String.match?(address, ~r/^(?:(\d+\.){3}\d+|[0-9a-fA-F:]+)(\/\d+)?$/) do
+        [{field, "IP addresses are not allowed, use a hostname"}]
+      else
+        []
+      end
+    end)
+    # Simplified hostname regex
+    |> validate_format(
+      :address,
+      ~r/^[a-zA-Z0-9\p{L}\-*?]+(?:\.[a-zA-Z0-9\p{L}\-*?]+)*$/u,
+      message:
+        "must be a valid hostname (letters, digits, hyphens, dots; wildcards *, ?, ** allowed)"
+    )
     |> validate_change(:address, fn field, dns_address ->
-      {tld, domain} =
-        dns_address
-        |> String.split(".")
-        |> Enum.reverse()
-        |> case do
-          [tld, domain | _rest] -> {String.downcase(tld), String.downcase(domain)}
-          [tld | _rest] -> {String.downcase(tld), ""}
-          [] -> {"", ""}
+      parts = String.split(dns_address, ".")
+
+      {tld, domain_parts} =
+        case Enum.reverse(parts) do
+          [tld | rest] -> {String.downcase(tld), rest}
+          [] -> {"", []}
         end
 
       cond do
         String.contains?(tld, ["*", "?"]) ->
-          [{field, {"TLD cannot contain wildcards", []}}]
+          [{field, "TLD cannot contain wildcards"}]
 
         tld in @prohibited_tlds ->
           [
             {field,
-             {"#{tld} cannot be used as a TLD. " <>
-                "Try adding a DNS alias to /etc/hosts on the Gateway(s) instead", []}}
+             "#{tld} cannot be used as a TLD. Try adding a DNS alias to /etc/hosts on the Gateway(s) instead"}
           ]
 
-        tld in @common_tlds and String.contains?(domain, ["*", "?"]) ->
-          [{field, {"second level domain for IANA TLDs cannot contain wildcards", []}}]
+        Enum.all?(parts, &(&1 == "*")) ->
+          [{field, "wildcard pattern must include a valid domain"}]
+
+        tld in @common_tlds and Enum.all?(domain_parts, &String.match?(&1, ~r/^[\*\?]+$/)) ->
+          [{field, "domain for IANA TLDs cannot consist solely of wildcards"}]
 
         true ->
           []
@@ -145,18 +172,12 @@ defmodule Domain.Resources.Resource.Changeset do
     )
     |> validate_not_in_cidr(
       :address,
-      %Postgrex.INET{
-        address: {0, 0, 0, 0, 0, 0, 0, 0},
-        netmask: 128
-      },
+      %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 128},
       message: internet_resource_message
     )
     |> validate_not_in_cidr(
       :address,
-      %Postgrex.INET{
-        address: {0, 0, 0, 0, 0, 0, 0, 1},
-        netmask: 128
-      },
+      %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128},
       message: "cannot contain loopback addresses"
     )
     |> validate_address_is_not_in_private_range()
@@ -173,18 +194,12 @@ defmodule Domain.Resources.Resource.Changeset do
     )
     |> validate_not_in_cidr(
       :address,
-      %Postgrex.INET{
-        address: {0, 0, 0, 0, 0, 0, 0, 0},
-        netmask: 128
-      },
+      %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 0}, netmask: 128},
       message: "cannot contain all IPv6 addresses"
     )
     |> validate_not_in_cidr(
       :address,
-      %Postgrex.INET{
-        address: {0, 0, 0, 0, 0, 0, 0, 1},
-        netmask: 128
-      },
+      %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: 128},
       message: "cannot contain loopback addresses"
     )
     |> validate_address_is_not_in_private_range()
@@ -209,22 +224,8 @@ defmodule Domain.Resources.Resource.Changeset do
     end
   end
 
-  def update(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
-    resource
-    |> cast(attrs, @update_fields)
-    |> validate_required(@required_fields)
-    |> changeset()
-    |> cast_assoc(:connections,
-      with: &Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
-      required: true
-    )
-    |> maybe_breaking_change()
-  end
+  defp maybe_breaking_change(%{valid?: false} = changeset), do: {changeset, false}
 
-  defp maybe_breaking_change(%{valid?: false} = changeset),
-    do: {changeset, false}
-
-  # NOTE: Kept for backwards compatibility.
   defp maybe_breaking_change(changeset) do
     if any_field_changed?(changeset, @replace_fields) do
       {changeset, true}
@@ -241,12 +242,6 @@ defmodule Domain.Resources.Resource.Changeset do
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
     |> unique_constraint(:type, name: :unique_internet_resource_per_account)
-  end
-
-  def delete(%Resource{} = resource) do
-    resource
-    |> change()
-    |> put_default_value(:deleted_at, DateTime.utc_now())
   end
 
   defp cast_filter(%Resource.Filter{} = filter, attrs) do

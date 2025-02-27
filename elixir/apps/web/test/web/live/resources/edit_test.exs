@@ -456,6 +456,29 @@ defmodule Web.Live.Resources.EditTest do
     assert_redirect(lv, ~p"/#{account}/resources")
   end
 
+  test "prevents editing resource type to ip when address is not an IP address", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    attrs = %{
+      "type" => "ip"
+    }
+
+    assert lv
+           |> form("form", resource: attrs)
+           |> render_submit()
+           |> form_validation_errors() == %{
+             "resource[address]" => ["is not a valid IP address"]
+           }
+  end
+
   test "redirects to resources page when resource address is edited", %{
     account: account,
     identity: identity,

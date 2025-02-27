@@ -9,7 +9,6 @@ defmodule Domain.Repo.Migrations.AppendDefaultNetmaskToEmptyCidr do
       WHERE type = 'cidr'
         AND address !~ '/'
         AND address ~ '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'
-        AND deleted_at IS NULL
     """)
 
     # Update the netmask of all empty IPv6 CIDR columns to 128
@@ -19,7 +18,6 @@ defmodule Domain.Repo.Migrations.AppendDefaultNetmaskToEmptyCidr do
       WHERE type = 'cidr'
         AND address !~ '/'
         AND address ~ '^[0-9a-fA-F:]+$'
-        AND deleted_at IS NULL
     """)
   end
 end
