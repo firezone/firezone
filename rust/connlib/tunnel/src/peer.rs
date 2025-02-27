@@ -1,6 +1,6 @@
 use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::IpAddr;
 use std::time::Instant;
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
@@ -14,7 +14,7 @@ use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
 use crate::utils::network_contains_network;
-use crate::GatewayEvent;
+use crate::{GatewayEvent, IpConfig};
 
 use anyhow::{bail, Context, Result};
 use nat_table::{NatTable, TranslateIncomingResult};
@@ -50,8 +50,10 @@ impl GatewayOnClient {
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
     id: ClientId,
-    ipv4: Ipv4Addr,
-    ipv6: Ipv6Addr,
+
+    client_tun: IpConfig,
+    gateway_tun: IpConfig,
+
     resources: HashMap<ResourceId, ResourceOnGateway>,
     /// Caches the existence of internet resource
     internet_resource_enabled: bool,
@@ -62,11 +64,15 @@ pub struct ClientOnGateway {
 }
 
 impl ClientOnGateway {
-    pub(crate) fn new(id: ClientId, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> ClientOnGateway {
+    pub(crate) fn new(
+        id: ClientId,
+        client_tun: IpConfig,
+        gateway_tun: IpConfig,
+    ) -> ClientOnGateway {
         ClientOnGateway {
             id,
-            ipv4,
-            ipv6,
+            client_tun,
+            gateway_tun,
             resources: HashMap::new(),
             filters: IpNetworkTable::new(),
             permanent_translations: Default::default(),
@@ -80,7 +86,10 @@ impl ClientOnGateway {
     ///
     /// Failure to enforce this would allow one client to send traffic masquarading as a different client.
     fn allowed_ips(&self) -> [IpAddr; 2] {
-        [IpAddr::from(self.ipv4), IpAddr::from(self.ipv6)]
+        [
+            IpAddr::from(self.client_tun.v4),
+            IpAddr::from(self.client_tun.v6),
+        ]
     }
 
     /// Setup the NAT for a particular domain within a wildcard DNS resource.
@@ -259,7 +268,12 @@ impl ClientOnGateway {
                 .translate_outgoing(&packet, state.resolved_ip, now)?;
 
         let mut packet = packet
-            .translate_destination(self.ipv4, self.ipv6, source_protocol, real_ip)
+            .translate_destination(
+                self.client_tun.v4,
+                self.client_tun.v6,
+                source_protocol,
+                real_ip,
+            )
             .context("Failed to translate packet to new destination")?;
         packet.update_checksum();
 
@@ -271,6 +285,13 @@ impl ClientOnGateway {
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<IpPacket>> {
+        // Traffic to our own IP is allowed.
+        match packet.destination() {
+            IpAddr::V4(dst) if dst == self.gateway_tun.v4 => return Ok(Some(packet)),
+            IpAddr::V6(dst) if dst == self.gateway_tun.v6 => return Ok(Some(packet)),
+            IpAddr::V4(_) | IpAddr::V6(_) => {}
+        }
+
         // Filtering a packet is not an error.
         if let Err(e) = self.ensure_allowed_dst(&packet) {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
@@ -288,6 +309,13 @@ impl ClientOnGateway {
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<IpPacket>> {
+        // Traffic from our own IP is allowed.
+        match packet.source() {
+            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(Some(packet)),
+            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(Some(packet)),
+            IpAddr::V4(_) | IpAddr::V6(_) => {}
+        }
+
         let Some(packet) = self.transform_tun_to_network(packet, now)? else {
             return Ok(None);
         };
@@ -316,7 +344,7 @@ impl ClientOnGateway {
                 tracing::debug!(dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), error = ?prototype.error(), "Destination is unreachable");
 
                 let icmp_error = prototype
-                    .into_packet(self.ipv4, self.ipv6)
+                    .into_packet(self.client_tun.v4, self.client_tun.v6)
                     .context("Failed to create `DestinationUnreachable` ICMP error")?;
 
                 return Ok(Some(icmp_error));
@@ -337,7 +365,7 @@ impl ClientOnGateway {
         };
 
         let mut packet = packet
-            .translate_source(self.ipv4, self.ipv6, proto, ip)
+            .translate_source(self.client_tun.v4, self.client_tun.v6, proto, ip)
             .context("Failed to translate packet to new source")?;
         packet.update_checksum();
 
@@ -590,6 +618,7 @@ mod tests {
     use crate::{
         messages::gateway::{Filter, PortRange, ResourceDescription, ResourceDescriptionCidr},
         peer::nat_table,
+        IpConfig,
     };
     use chrono::Utc;
     use connlib_model::{ClientId, ResourceId};
@@ -599,7 +628,7 @@ mod tests {
 
     #[test]
     fn gateway_filters_expire_individually() {
-        let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         let now = Utc::now();
         let then = now + Duration::from_secs(10);
         let after_then = then + Duration::from_secs(10);
@@ -629,7 +658,7 @@ mod tests {
         );
 
         let tcp_packet = ip_packet::make::tcp_packet(
-            source_v4_addr(),
+            client_tun_ipv4(),
             cidr_v4_resource().hosts().next().unwrap(),
             5401,
             80,
@@ -638,7 +667,7 @@ mod tests {
         .unwrap();
 
         let udp_packet = ip_packet::make::udp_packet(
-            source_v4_addr(),
+            client_tun_ipv4(),
             cidr_v4_resource().hosts().next().unwrap(),
             5401,
             80,
@@ -676,7 +705,7 @@ mod tests {
 
     #[test]
     fn dns_and_cidr_filters_dot_mix() {
-        let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None);
         peer.add_resource(bar_cidr_resource(), None);
         peer.setup_nat(
@@ -690,7 +719,7 @@ mod tests {
         assert_eq!(bar_contained_ip(), foo_real_ip());
 
         let pkt = ip_packet::make::udp_packet(
-            source_v4_addr(),
+            client_tun_ipv4(),
             bar_contained_ip(),
             1,
             bar_allowed_port(),
@@ -701,7 +730,7 @@ mod tests {
         assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
 
         let pkt = ip_packet::make::udp_packet(
-            source_v4_addr(),
+            client_tun_ipv4(),
             bar_contained_ip(),
             1,
             foo_allowed_port(),
@@ -715,7 +744,7 @@ mod tests {
             .is_none());
 
         let pkt = ip_packet::make::udp_packet(
-            source_v4_addr(),
+            client_tun_ipv4(),
             foo_proxy_ip(),
             1,
             bar_allowed_port(),
@@ -729,7 +758,7 @@ mod tests {
             .is_none());
 
         let pkt = ip_packet::make::udp_packet(
-            source_v4_addr(),
+            client_tun_ipv4(),
             foo_proxy_ip(),
             1,
             foo_allowed_port(),
@@ -742,7 +771,7 @@ mod tests {
 
     #[test]
     fn internet_resource_doesnt_allow_all_traffic_for_dns_resources() {
-        let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None);
         peer.add_resource(internet_resource(), None);
         peer.setup_nat(
@@ -754,7 +783,7 @@ mod tests {
         .unwrap();
 
         let pkt = ip_packet::make::udp_packet(
-            source_v4_addr(),
+            client_tun_ipv4(),
             foo_proxy_ip(),
             1,
             foo_allowed_port(),
@@ -765,7 +794,7 @@ mod tests {
         assert!(peer.translate_outbound(pkt, Instant::now()).is_ok());
 
         let pkt = ip_packet::make::udp_packet(
-            source_v4_addr(),
+            client_tun_ipv4(),
             foo_proxy_ip(),
             1,
             600,
@@ -779,7 +808,7 @@ mod tests {
             .is_none());
 
         let pkt = ip_packet::make::udp_packet(
-            source_v4_addr(),
+            client_tun_ipv4(),
             "1.1.1.1".parse().unwrap(),
             1,
             600,
@@ -794,7 +823,7 @@ mod tests {
     fn dns_resource_packet_is_dropped_after_nat_session_expires() {
         let _guard = firezone_logging::test("trace");
 
-        let mut peer = ClientOnGateway::new(client_id(), source_v4_addr(), source_v6_addr());
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None);
         peer.setup_nat(
             foo_name().parse().unwrap(),
@@ -805,7 +834,7 @@ mod tests {
         .unwrap();
 
         let request = ip_packet::make::udp_packet(
-            source_v4_addr(),
+            client_tun_ipv4(),
             foo_proxy_ip(),
             1,
             foo_allowed_port(),
@@ -819,7 +848,7 @@ mod tests {
 
         let response = ip_packet::make::udp_packet(
             foo_real_ip(),
-            source_v4_addr(),
+            client_tun_ipv4(),
             foo_allowed_port(),
             1,
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -836,7 +865,7 @@ mod tests {
 
         let response = ip_packet::make::udp_packet(
             foo_real_ip(),
-            source_v4_addr(),
+            client_tun_ipv4(),
             foo_allowed_port(),
             1,
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -916,12 +945,34 @@ mod tests {
         "10.0.0.0/24".parse().unwrap()
     }
 
-    fn source_v4_addr() -> Ipv4Addr {
+    fn client_tun() -> IpConfig {
+        IpConfig {
+            v4: client_tun_ipv4(),
+            v6: client_tun_ipv6(),
+        }
+    }
+
+    fn client_tun_ipv4() -> Ipv4Addr {
         "100.64.0.1".parse().unwrap()
     }
 
-    fn source_v6_addr() -> Ipv6Addr {
+    fn client_tun_ipv6() -> Ipv6Addr {
         "fd00:2021:1111::1".parse().unwrap()
+    }
+
+    pub fn gateway_tun() -> IpConfig {
+        IpConfig {
+            v4: gateway_tun_ipv4(),
+            v6: gateway_tun_ipv6(),
+        }
+    }
+
+    pub fn gateway_tun_ipv4() -> Ipv4Addr {
+        "100.64.0.2".parse().unwrap()
+    }
+
+    pub fn gateway_tun_ipv6() -> Ipv6Addr {
+        "fd00:2021:1111::2".parse().unwrap()
     }
 
     fn cidr_v4_resource() -> Ipv4Network {
@@ -943,6 +994,7 @@ mod tests {
 
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
+    use super::tests::*;
     use super::*;
     use crate::messages::gateway::{
         Filter, PortRange, ResourceDescription, ResourceDescriptionCidr,
@@ -957,6 +1009,7 @@ mod proptests {
         strategy::{Just, Strategy},
     };
     use rangemap::RangeInclusiveSet;
+    use std::net::{Ipv4Addr, Ipv6Addr};
     use std::{collections::BTreeSet, ops::RangeInclusive};
     use test_strategy::Arbitrary;
 
@@ -968,22 +1021,29 @@ mod proptests {
             Protocol,
             IpAddr,
         )>,
-        #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
-        #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
+        #[strategy(any::<Ipv4Addr>())] client_v4: Ipv4Addr,
+        #[strategy(any::<Ipv6Addr>())] client_v6: Ipv6Addr,
         #[strategy(any::<u16>())] sport: u16,
         #[strategy(any::<Vec<u8>>())] payload: Vec<u8>,
     ) {
         // This test could be extended to test multiple src
-        let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
+        let mut peer = ClientOnGateway::new(
+            client_id,
+            IpConfig {
+                v4: client_v4,
+                v6: client_v6,
+            },
+            gateway_tun(),
+        );
         for (resource, _, _) in &resources {
             peer.add_resource(resource.clone(), None);
         }
 
         for (_, protocol, dest) in &resources {
             let src = if dest.is_ipv4() {
-                src_v4.into()
+                client_v4.into()
             } else {
-                src_v6.into()
+                client_v6.into()
             };
 
             let packet = match protocol {
@@ -1002,8 +1062,8 @@ mod proptests {
     fn gateway_accepts_different_resources_with_same_ip_packet(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(collection::btree_set(resource_id(), 10))] resources_ids: BTreeSet<ResourceId>,
-        #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
-        #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
+        #[strategy(any::<Ipv4Addr>())] client_v4: Ipv4Addr,
+        #[strategy(any::<Ipv6Addr>())] client_v6: Ipv6Addr,
         #[strategy(cidr_with_host())] config: (IpNetwork, IpAddr),
         #[strategy(collection::vec(filters_with_allowed_protocol(), 1..=10))] protocol_config: Vec<
             (Filters, Protocol),
@@ -1013,11 +1073,18 @@ mod proptests {
     ) {
         let (resource_addr, dest) = config;
         let src = if dest.is_ipv4() {
-            src_v4.into()
+            client_v4.into()
         } else {
-            src_v6.into()
+            client_v6.into()
         };
-        let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
+        let mut peer = ClientOnGateway::new(
+            client_id,
+            IpConfig {
+                v4: client_v4,
+                v6: client_v6,
+            },
+            gateway_tun(),
+        );
 
         for ((filters, _), resource_id) in std::iter::zip(&protocol_config, resources_ids) {
             // This test could be extended to test multiple src
@@ -1050,8 +1117,8 @@ mod proptests {
     fn gateway_reject_unallowed_packet(
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id: ResourceId,
-        #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
-        #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
+        #[strategy(any::<Ipv4Addr>())] client_v4: Ipv4Addr,
+        #[strategy(any::<Ipv6Addr>())] client_v6: Ipv6Addr,
         #[strategy(cidr_with_host())] config: (IpNetwork, IpAddr),
         #[strategy(filters_with_rejected_protocol())] protocol_config: (Filters, Protocol),
         #[strategy(any::<u16>())] sport: u16,
@@ -1059,13 +1126,20 @@ mod proptests {
     ) {
         let (resource_addr, dest) = config;
         let src = if dest.is_ipv4() {
-            src_v4.into()
+            client_v4.into()
         } else {
-            src_v6.into()
+            client_v6.into()
         };
         let (filters, protocol) = protocol_config;
         // This test could be extended to test multiple src
-        let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
+        let mut peer = ClientOnGateway::new(
+            client_id,
+            IpConfig {
+                v4: client_v4,
+                v6: client_v6,
+            },
+            gateway_tun(),
+        );
         let packet = match protocol {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
@@ -1093,8 +1167,8 @@ mod proptests {
         #[strategy(client_id())] client_id: ClientId,
         #[strategy(resource_id())] resource_id_allowed: ResourceId,
         #[strategy(resource_id())] resource_id_removed: ResourceId,
-        #[strategy(any::<Ipv4Addr>())] src_v4: Ipv4Addr,
-        #[strategy(any::<Ipv6Addr>())] src_v6: Ipv6Addr,
+        #[strategy(any::<Ipv4Addr>())] client_v4: Ipv4Addr,
+        #[strategy(any::<Ipv6Addr>())] client_v6: Ipv6Addr,
         #[strategy(cidr_with_host())] config: (IpNetwork, IpAddr),
         #[strategy(non_overlapping_non_empty_filters_with_allowed_protocol())] protocol_config: (
             (Filters, Protocol),
@@ -1105,14 +1179,21 @@ mod proptests {
     ) {
         let (resource_addr, dest) = config;
         let src = if dest.is_ipv4() {
-            src_v4.into()
+            client_v4.into()
         } else {
-            src_v6.into()
+            client_v6.into()
         };
         let ((filters_allowed, protocol_allowed), (filters_removed, protocol_removed)) =
             protocol_config;
         // This test could be extended to test multiple src
-        let mut peer = ClientOnGateway::new(client_id, src_v4, src_v6);
+        let mut peer = ClientOnGateway::new(
+            client_id,
+            IpConfig {
+                v4: client_v4,
+                v6: client_v6,
+            },
+            gateway_tun(),
+        );
 
         let packet_allowed = match protocol_allowed {
             Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
