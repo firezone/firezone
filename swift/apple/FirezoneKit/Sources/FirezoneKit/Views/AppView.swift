@@ -30,6 +30,7 @@ public struct AppView: View {
     store.$status
       .combineLatest(store.$systemExtensionStatus)
       .receive(on: DispatchQueue.main)
+      .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main) // Prevents flurry of windows from opening
       .sink(receiveValue: { status, systemExtensionStatus in
         // Open window in case permissions are revoked
         if status == .invalid || systemExtensionStatus != .installed {
