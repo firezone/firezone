@@ -304,8 +304,7 @@ pub enum ClientEvent {
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq)]
 pub struct TunConfig {
-    pub ip4: Ipv4Addr,
-    pub ip6: Ipv6Addr,
+    pub ip: IpConfig,
     /// The map of DNS servers that connlib will use.
     ///
     /// - The "left" values are the connlib-assigned, proxy (or "sentinel") IPs.
@@ -318,6 +317,12 @@ pub struct TunConfig {
     pub ipv4_routes: BTreeSet<Ipv4Network>,
     #[debug("{}", DisplaySet(ipv6_routes))]
     pub ipv6_routes: BTreeSet<Ipv6Network>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IpConfig {
+    pub v4: Ipv4Addr,
+    pub v6: Ipv6Addr,
 }
 
 #[derive(Debug)]
