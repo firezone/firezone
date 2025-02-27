@@ -48,6 +48,7 @@ defmodule Domain.Resources.Resource.Changeset do
     |> cast(attrs, @fields)
     |> changeset()
     |> validate_required(@required_fields)
+    |> update_change(:address, &String.trim/1)
     |> validate_address(account)
     |> put_change(:persistent_id, Ecto.UUID.generate())
     |> put_change(:account_id, account.id)
@@ -80,6 +81,20 @@ defmodule Domain.Resources.Resource.Changeset do
     if has_errors?(changeset, :type) do
       changeset
     else
+      # Force address revalidation if type has changed
+      changeset =
+        if Map.has_key?(changeset.changes, :type) do
+          case fetch_field(changeset, :address) do
+            {_, address} when not is_nil(address) ->
+              force_change(changeset, :address, address)
+
+            _ ->
+              changeset
+          end
+        else
+          changeset
+        end
+
       case fetch_field(changeset, :type) do
         {_data_or_changes, :dns} ->
           changeset
@@ -110,13 +125,20 @@ defmodule Domain.Resources.Resource.Changeset do
     |> validate_length(:address, min: 1, max: 253)
     # Reject IPs (IPv4 and IPv6)
     |> validate_change(:address, fn field, address ->
-      if String.match?(address, ~r/^(?:(\d+\.){3}\d+|[0-9a-fA-F:]+)(\/\d+)?$/) do
-        [{field, "IP addresses are not allowed, use a hostname"}]
-      else
-        []
+      cond do
+        String.match?(address, ~r/^(\d+\.){3}\d+(\/\d+)?$/) ->
+          [{field, "IP addresses are not allowed, use an IP Resource instead"}]
+
+        String.match?(
+          address,
+          ~r/^([0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}(\/\d+)?$|^::([0-9a-fA-F]{0,4}:){0,6}[0-9a-fA-F]{0,4}(\/\d+)?$/
+        ) ->
+          [{field, "IP addresses are not allowed, use an IP Resource instead"}]
+
+        true ->
+          []
       end
     end)
-    # Simplified hostname regex
     |> validate_format(
       :address,
       ~r/^[a-zA-Z0-9\p{L}\-*?]+(?:\.[a-zA-Z0-9\p{L}\-*?]+)*$/u,

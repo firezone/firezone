@@ -456,7 +456,7 @@ defmodule Web.Live.Resources.EditTest do
     assert_redirect(lv, ~p"/#{account}/resources")
   end
 
-  test "prevents editing resource type to ip when address is not an IP address", %{
+  test "prevents updating resource type to ip when address is not an IP address", %{
     account: account,
     identity: identity,
     resource: resource,
@@ -476,6 +476,58 @@ defmodule Web.Live.Resources.EditTest do
            |> render_submit()
            |> form_validation_errors() == %{
              "resource[address]" => ["is not a valid IP address"]
+           }
+  end
+
+  test "prevents updating resource type to dns when address is an IP", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    resource = Fixtures.Resources.create_resource(account: account, type: :ip, address: "1.1.1.1")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    attrs = %{
+      "type" => "dns"
+    }
+
+    assert lv
+           |> form("form", resource: attrs)
+           |> render_submit()
+           |> form_validation_errors() == %{
+             "resource[address]" => ["IP addresses are not allowed, use an IP Resource instead"]
+           }
+  end
+
+  test "prevents updating resource type to dns when address is a CIDR", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    resource =
+      Fixtures.Resources.create_resource(account: account, type: :cidr, address: "1.1.1.1/32")
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    attrs = %{
+      "type" => "dns"
+    }
+
+    assert lv
+           |> form("form", resource: attrs)
+           |> render_submit()
+           |> form_validation_errors() == %{
+             "resource[address]" => [
+               "must be a valid hostname (letters, digits, hyphens, dots; wildcards *, ?, ** allowed)",
+               "IP addresses are not allowed, use an IP Resource instead"
+             ]
            }
   end
 

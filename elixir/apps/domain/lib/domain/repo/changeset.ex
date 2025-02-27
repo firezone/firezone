@@ -320,7 +320,7 @@ defmodule Domain.Repo.Changeset do
       put_change(changeset, field, to_string(cidr))
     else
       :error ->
-        add_error(changeset, field, "is not a valid CIDR range")
+        changeset
 
       {:error, _reason} ->
         add_error(changeset, field, "is not a valid CIDR range")
@@ -333,7 +333,7 @@ defmodule Domain.Repo.Changeset do
       put_change(changeset, field, to_string(ip))
     else
       :error ->
-        add_error(changeset, field, "is not a valid IP address")
+        changeset
 
       {:error, _reason} ->
         add_error(changeset, field, "is not a valid IP address")
