@@ -135,10 +135,18 @@ defmodule Domain.Types.CIDR do
         {:ok, {binary_address, binary_netmask}}
 
       [binary_address] ->
-        {:ok, {binary_address, "32"}}
+        {:ok, {binary_address, default_netmask(binary_address)}}
 
       _other ->
         :error
+    end
+  end
+
+  defp default_netmask(address) do
+    if String.contains?(address, ".") do
+      "32"
+    else
+      "128"
     end
   end
 

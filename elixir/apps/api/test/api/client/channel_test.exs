@@ -42,6 +42,14 @@ defmodule API.Client.ChannelTest do
         connections: [%{gateway_group_id: gateway_group.id}]
       )
 
+    cidr_ip_resource =
+      Fixtures.Resources.create_resource(
+        type: :cidr,
+        address: "1.2.3.4",
+        account: account,
+        connections: [%{gateway_group_id: gateway_group.id}]
+      )
+
     ip_resource =
       Fixtures.Resources.create_resource(
         type: :ip,
@@ -85,6 +93,12 @@ defmodule API.Client.ChannelTest do
       account: account,
       actor_group: actor_group,
       resource: cidr_resource
+    )
+
+    Fixtures.Policies.create_policy(
+      account: account,
+      actor_group: actor_group,
+      resource: cidr_ip_resource
     )
 
     Fixtures.Policies.create_policy(
@@ -144,6 +158,7 @@ defmodule API.Client.ChannelTest do
       gateway: gateway,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
+      cidr_ip_resource: cidr_ip_resource,
       ip_resource: ip_resource,
       internet_resource: internet_resource,
       unauthorized_resource: unauthorized_resource,
@@ -258,6 +273,7 @@ defmodule API.Client.ChannelTest do
       gateway_group: gateway_group,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
+      cidr_ip_resource: cidr_ip_resource,
       ip_resource: ip_resource,
       nonconforming_resource: nonconforming_resource,
       internet_resource: internet_resource,
@@ -269,7 +285,7 @@ defmodule API.Client.ChannelTest do
         relays: relays
       }
 
-      assert length(resources) == 4
+      assert length(resources) == 5
       assert length(relays) == 0
 
       assert %{
@@ -298,6 +314,26 @@ defmodule API.Client.ChannelTest do
                name: cidr_resource.name,
                address: cidr_resource.address,
                address_description: cidr_resource.address_description,
+               gateway_groups: [
+                 %{
+                   id: gateway_group.id,
+                   name: gateway_group.name
+                 }
+               ],
+               filters: [
+                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
+                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
+                 %{protocol: :udp, port_range_end: 200, port_range_start: 100},
+                 %{protocol: :icmp}
+               ]
+             } in resources
+
+      assert %{
+               id: cidr_ip_resource.id,
+               type: :cidr,
+               name: cidr_ip_resource.name,
+               address: "1.2.3.4/32",
+               address_description: cidr_ip_resource.address_description,
                gateway_groups: [
                  %{
                    id: gateway_group.id,

@@ -39,6 +39,17 @@ defmodule Domain.Config.ValidatorTest do
 
       type = {:one_of, [Types.IP, Types.CIDR]}
 
+      assert validate(:key, "::1", type, []) ==
+               {:ok, %Postgrex.INET{address: {0, 0, 0, 0, 0, 0, 0, 1}, netmask: nil}}
+
+      assert validate(:key, "::1/foo", type, []) ==
+               {:error,
+                {"::1/foo",
+                 [
+                   "must be one of: Elixir.Domain.Types.IP, Elixir.Domain.Types.CIDR",
+                   "CIDR netmask is invalid"
+                 ]}}
+
       assert validate(:key, "1.1.1.1", type, []) ==
                {:ok, %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}}
 
