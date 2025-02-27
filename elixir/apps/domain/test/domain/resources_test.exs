@@ -1129,7 +1129,7 @@ defmodule Domain.ResourcesTest do
 
       attrs = Fixtures.Resources.resource_attrs(address: "*.com")
       assert {:error, changeset} = create_resource(attrs, subject)
-      error = "second level domain for IANA TLDs cannot contain wildcards"
+      error = "domain for IANA TLDs cannot consist solely of wildcards"
       assert error in errors_on(changeset).address
 
       attrs = Fixtures.Resources.resource_attrs(address: "foo.*")
