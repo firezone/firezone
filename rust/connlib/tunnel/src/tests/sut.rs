@@ -233,8 +233,8 @@ impl TunnelTest {
             Transition::UpdateUpstreamDnsServers(servers) => {
                 state.client.exec_mut(|c| {
                     c.sut.update_interface_config(Interface {
-                        ipv4: c.sut.tunnel_ip4().unwrap(),
-                        ipv6: c.sut.tunnel_ip6().unwrap(),
+                        ipv4: c.sut.tunnel_ip_config().unwrap().v4,
+                        ipv6: c.sut.tunnel_ip_config().unwrap().v6,
                         upstream_dns: servers,
                     })
                 });
@@ -256,8 +256,8 @@ impl TunnelTest {
                 });
             }
             Transition::ReconnectPortal => {
-                let ipv4 = state.client.inner().sut.tunnel_ip4().unwrap();
-                let ipv6 = state.client.inner().sut.tunnel_ip6().unwrap();
+                let ipv4 = state.client.inner().sut.tunnel_ip_config().unwrap().v4;
+                let ipv6 = state.client.inner().sut.tunnel_ip_config().unwrap().v6;
                 let upstream_dns = ref_state.client.inner().upstream_dns_resolvers();
                 let all_resources = ref_state.client.inner().all_resources();
 
@@ -715,8 +715,7 @@ impl TunnelTest {
                             preshared_key.clone(),
                             client_ice.clone(),
                             gateway_ice.clone(),
-                            self.client.inner().sut.tunnel_ip4().unwrap(),
-                            self.client.inner().sut.tunnel_ip6().unwrap(),
+                            self.client.inner().sut.tunnel_ip_config().unwrap(),
                             None,
                             resource,
                             now,

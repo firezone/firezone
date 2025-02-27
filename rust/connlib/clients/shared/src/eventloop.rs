@@ -169,8 +169,8 @@ where
                 let dns_servers = config.dns_by_sentinel.left_values().copied().collect();
 
                 self.callbacks.on_set_interface_config(
-                    config.ip4,
-                    config.ip6,
+                    config.ip.v4,
+                    config.ip.v6,
                     dns_servers,
                     Vec::from_iter(config.ipv4_routes),
                     Vec::from_iter(config.ipv6_routes),

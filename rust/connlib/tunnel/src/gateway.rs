@@ -1,7 +1,7 @@
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
 use crate::utils::earliest;
-use crate::{p2p_control, GatewayEvent};
+use crate::{p2p_control, GatewayEvent, IpConfig};
 use crate::{peer::ClientOnGateway, peer_store::PeerStore};
 use anyhow::{Context, Result};
 use boringtun::x25519::PublicKey;
@@ -42,6 +42,8 @@ pub struct GatewayState {
     /// When to next check whether a resource-access policy has expired.
     next_expiry_resources_check: Option<Instant>,
 
+    tun_ip_config: Option<IpConfig>,
+
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: VecDeque<Transmit<'static>>,
 }
@@ -71,6 +73,7 @@ impl GatewayState {
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
+            tun_ip_config: None,
         }
     }
 
@@ -227,8 +230,7 @@ impl GatewayState {
         preshared_key: SecretKey,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
+        client_tun: IpConfig,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
         now: Instant,
@@ -248,7 +250,7 @@ impl GatewayState {
             now,
         )?;
 
-        let result = self.allow_access(client_id, ipv4, ipv6, expires_at, resource, None);
+        let result = self.allow_access(client_id, client_tun, expires_at, resource, None);
         debug_assert!(
             result.is_ok(),
             "`allow_access` should never fail without a `DnsResourceEntry`"
@@ -260,16 +262,17 @@ impl GatewayState {
     pub fn allow_access(
         &mut self,
         client: ClientId,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
+        client_tun: IpConfig,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
         dns_resource_nat: Option<DnsResourceNatEntry>,
     ) -> anyhow::Result<()> {
+        let gateway_tun = self.tun_ip_config.context("TUN device not configured")?;
+
         let peer = self
             .peers
             .entry(client)
-            .or_insert_with(|| ClientOnGateway::new(client, ipv4, ipv6));
+            .or_insert_with(|| ClientOnGateway::new(client, client_tun, gateway_tun));
 
         peer.add_resource(resource.clone(), expires_at);
 
@@ -282,8 +285,8 @@ impl GatewayState {
             )?;
         }
 
-        self.peers.add_ip(&client, &ipv4.into());
-        self.peers.add_ip(&client, &ipv6.into());
+        self.peers.add_ip(&client, &client_tun.v4.into());
+        self.peers.add_ip(&client, &client_tun.v6.into());
 
         Ok(())
     }
@@ -427,6 +430,10 @@ impl GatewayState {
     ) {
         self.node.update_relays(to_remove, &to_add, now);
         self.drain_node_events()
+    }
+
+    pub fn update_tun_device(&mut self, config: IpConfig) {
+        self.tun_ip_config = Some(config);
     }
 }
 
