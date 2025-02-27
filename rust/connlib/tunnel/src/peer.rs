@@ -704,6 +704,38 @@ mod tests {
     }
 
     #[test]
+    fn allows_packets_for_and_from_gateway_tun_ip() {
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+
+        let request = ip_packet::make::tcp_packet(
+            client_tun_ipv4(),
+            gateway_tun_ipv4(),
+            5401,
+            80,
+            vec![0; 100],
+        )
+        .unwrap();
+
+        let response = ip_packet::make::tcp_packet(
+            gateway_tun_ipv4(),
+            client_tun_ipv4(),
+            80,
+            5401,
+            vec![0; 100],
+        )
+        .unwrap();
+
+        assert!(peer
+            .translate_outbound(request, Instant::now())
+            .unwrap()
+            .is_some());
+        assert!(peer
+            .translate_inbound(response, Instant::now())
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
     fn dns_and_cidr_filters_dot_mix() {
         let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
         peer.add_resource(foo_dns_resource(), None);
