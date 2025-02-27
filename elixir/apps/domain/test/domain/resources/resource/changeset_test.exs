@@ -5,6 +5,7 @@ defmodule Domain.Resources.Resource.ChangesetTest do
   describe "create/2" do
     test "validates and normalizes CIDR ranges" do
       for {string, cidr} <- [
+            {"1.1.1.1", "1.1.1.1/32"},
             {"192.168.1.1/24", "192.168.1.0/24"},
             {"101.100.100.0/28", "101.100.100.0/28"},
             {"192.168.1.255/28", "192.168.1.240/28"},
