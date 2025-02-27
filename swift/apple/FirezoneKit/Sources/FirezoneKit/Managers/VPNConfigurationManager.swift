@@ -10,21 +10,21 @@
 import Foundation
 import NetworkExtension
 
-public class VPNConfigurationManager {
-  enum Error: Swift.Error {
-    case managerNotInitialized
-    case savedProtocolConfigurationIsInvalid
+enum VPNConfigurationManagerError: Error {
+  case managerNotInitialized
+  case savedProtocolConfigurationIsInvalid
 
-    var localizedDescription: String {
-      switch self {
-      case .managerNotInitialized:
-        return "NETunnelProviderManager is not yet initialized. Race condition?"
-      case .savedProtocolConfigurationIsInvalid:
-        return "Saved protocol configuration is invalid. Check types?"
-      }
+  var localizedDescription: String {
+    switch self {
+    case .managerNotInitialized:
+      return "NETunnelProviderManager is not yet initialized. Race condition?"
+    case .savedProtocolConfigurationIsInvalid:
+      return "Saved protocol configuration is invalid. Check types?"
     }
   }
+}
 
+public class VPNConfigurationManager {
   public enum Keys {
     static let actorName = "actorName"
     static let authBaseURL = "authBaseURL"
@@ -35,13 +35,13 @@ public class VPNConfigurationManager {
   }
 
   // Persists our tunnel settings
-  var manager: NETunnelProviderManager?
+  let manager: NETunnelProviderManager
 
   public static let bundleIdentifier: String = "\(Bundle.main.bundleIdentifier!).network-extension"
   static let bundleDescription = "Firezone"
 
   // Initialize and save a new VPN configuration in system Preferences
-  static func create() async throws -> NETunnelProviderManager {
+  init() async throws {
     let protocolConfiguration = NETunnelProviderProtocol()
     let manager = NETunnelProviderManager()
     let settings = Settings.defaultValue
@@ -49,53 +49,47 @@ public class VPNConfigurationManager {
     protocolConfiguration.providerConfiguration = settings.toProviderConfiguration()
     protocolConfiguration.providerBundleIdentifier = VPNConfigurationManager.bundleIdentifier
     protocolConfiguration.serverAddress = settings.apiURL
-    manager.localizedDescription = bundleDescription
+    manager.localizedDescription = VPNConfigurationManager.bundleDescription
     manager.protocolConfiguration = protocolConfiguration
 
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
 
-    return manager
+    self.manager = manager
   }
 
-  static func loadFromPreferences() async throws -> NETunnelProviderManager? {
+  init(from manager: NETunnelProviderManager) {
+    self.manager = manager
+  }
+
+  static func load() async throws -> VPNConfigurationManager? {
     // loadAllFromPreferences() returns list of VPN configurations created by our main app's bundle ID.
     // Since our bundle ID can change (by us), find the one that's current and ignore the others.
     let managers = try await NETunnelProviderManager.loadAllFromPreferences()
 
     Log.log("\(#function): \(managers.count) tunnel managers found")
     for manager in managers where manager.localizedDescription == bundleDescription {
-      return manager
+      return VPNConfigurationManager(from: manager)
     }
 
     return nil
   }
 
   func actorName() throws -> String? {
-    guard let manager
-    else {
-      throw Error.managerNotInitialized
-    }
-
     guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {
-      throw Error.savedProtocolConfigurationIsInvalid
+      throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
     }
 
     return providerConfiguration[Keys.actorName]
   }
 
   func internetResourceEnabled() throws -> Bool? {
-    guard let manager
-    else {
-      throw Error.managerNotInitialized
-    }
-
     guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {
-      throw Error.savedProtocolConfigurationIsInvalid
+      throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
     }
 
     // TODO: Store Bool directly in VPN Configuration
@@ -111,15 +105,10 @@ public class VPNConfigurationManager {
   }
 
   func save(authResponse: AuthResponse) async throws {
-    guard let manager
-    else {
-      throw Error.managerNotInitialized
-    }
-
     guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           var providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {
-      throw Error.savedProtocolConfigurationIsInvalid
+      throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
     }
 
     providerConfiguration[Keys.actorName] = authResponse.actorName
@@ -139,15 +128,10 @@ public class VPNConfigurationManager {
   }
 
   func save(settings: Settings) async throws {
-    guard let manager
-    else {
-      throw Error.managerNotInitialized
-    }
-
     guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {
-      throw Error.savedProtocolConfigurationIsInvalid
+      throw VPNConfigurationManagerError.savedProtocolConfigurationIsInvalid
     }
 
     var newProviderConfiguration = settings.toProviderConfiguration()
@@ -166,5 +150,9 @@ public class VPNConfigurationManager {
 
     // Reconfigure our Telemetry environment in case it changed
     Telemetry.setEnvironmentOrClose(settings.apiURL)
+  }
+
+  func session() -> NETunnelProviderSession? {
+    return manager.connection as? NETunnelProviderSession
   }
 }

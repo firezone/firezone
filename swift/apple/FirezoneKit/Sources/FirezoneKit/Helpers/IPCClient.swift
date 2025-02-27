@@ -11,7 +11,6 @@ import NetworkExtension
 class IPCClient {
   enum Error: Swift.Error {
     case invalidNotification
-    case sessionNotInitialized
     case decodeIPCDataFailed
     case noIPCData
     case invalidStatus(NEVPNStatus)
@@ -20,8 +19,6 @@ class IPCClient {
       switch self {
       case .invalidNotification:
         return "NEVPNStatusDidChange notification doesn't seem to be valid."
-      case .sessionNotInitialized:
-        return "The NETunnelProviderSession isn't initialized."
       case .decodeIPCDataFailed:
         return "Decoding IPC data failed."
       case .noIPCData:
@@ -32,6 +29,10 @@ class IPCClient {
     }
   }
 
+  // IPC only makes sense if there's a valid session. Session in this case refers to the `connection` field of
+  // the NETunnelProviderManager instance.
+  let session: NETunnelProviderSession
+
   // Track the "version" of the resource list so we can more efficiently
   // retrieve it from the Provider
   var resourceListHash = Data()
@@ -40,7 +41,9 @@ class IPCClient {
   // return them to callers when they haven't changed.
   var resourcesListCache: ResourceList = ResourceList.loading
 
-  var session: NETunnelProviderSession?
+  init(session: NETunnelProviderSession) {
+    self.session = session
+  }
 
   // Encoder used to send messages to the tunnel
   let encoder = {
@@ -246,12 +249,11 @@ class IPCClient {
     }
   }
 
-  private func session(_ requiredStatuses: Set<NEVPNStatus> = []) throws -> NETunnelProviderSession {
-    guard let session
-    else {
-      throw Error.sessionNotInitialized
-    }
+  func sessionStatus() -> NEVPNStatus {
+    return session.status
+  }
 
+  private func session(_ requiredStatuses: Set<NEVPNStatus> = []) throws -> NETunnelProviderSession {
     if requiredStatuses.isEmpty || requiredStatuses.contains(session.status) {
       return session
     }
