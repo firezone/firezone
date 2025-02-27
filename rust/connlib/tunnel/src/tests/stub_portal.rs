@@ -24,7 +24,10 @@ use std::{
 /// Stub implementation of the portal.
 #[derive(Clone, derive_more::Debug)]
 pub(crate) struct StubPortal {
-    gateways_by_site: BTreeMap<SiteId, BTreeSet<GatewayId>>,
+    client_tunnel_ipv4: Ipv4Addr,
+    client_tunnel_ipv6: Ipv6Addr,
+
+    gateways_by_site: BTreeMap<SiteId, BTreeSet<(GatewayId, Ipv4Addr, Ipv6Addr)>>,
 
     #[debug(skip)]
     sites_by_resource: BTreeMap<ResourceId, SiteId>,
@@ -85,7 +88,32 @@ impl StubPortal {
                 .id,
         ));
 
+        let mut tunnel_ip4s = tunnel_ip4s();
+        let mut tunnel_ip6s = tunnel_ip6s();
+
+        let client_tunnel_ipv4 = tunnel_ip4s.next().unwrap();
+        let client_tunnel_ipv6 = tunnel_ip6s.next().unwrap();
+
+        let gateways_by_site = gateways_by_site
+            .into_iter()
+            .map(|(site, gateways)| {
+                let gateways = gateways
+                    .into_iter()
+                    .map(|gateway| {
+                        let ipv4_addr = tunnel_ip4s.next().unwrap();
+                        let ipv6_addr = tunnel_ip6s.next().unwrap();
+
+                        (gateway, ipv4_addr, ipv6_addr)
+                    })
+                    .collect();
+
+                (site, gateways)
+            })
+            .collect();
+
         Self {
+            client_tunnel_ipv4,
+            client_tunnel_ipv6,
             gateways_by_site,
             gateway_selector,
             sites_by_resource: BTreeMap::from_iter(
@@ -126,7 +154,7 @@ impl StubPortal {
             .expect("resource to be known");
 
         let gateways = self.gateways_by_site.get(site_id).unwrap();
-        let gateway = self.gateway_selector.select(gateways);
+        let (gateway, _, _) = self.gateway_selector.select(gateways);
 
         (*gateway, *site_id)
     }
@@ -182,7 +210,7 @@ impl StubPortal {
 
         let sid = cidr_site.or(dns_site).or(internet_site)?;
         let gateways = self.gateways_by_site.get(&sid)?;
-        let gid = self.gateway_selector.try_select(gateways)?;
+        let (gid, _, _) = self.gateway_selector.try_select(gateways)?;
 
         Some(gid)
     }
@@ -191,7 +219,12 @@ impl StubPortal {
         self.gateways_by_site
             .values()
             .flatten()
-            .map(|gid| (Just(*gid), ref_gateway_host())) // Map each ID to a strategy that samples a gateway.
+            .map(|(gid, ipv4_addr, ipv6_addr)| {
+                (
+                    Just(*gid),
+                    ref_gateway_host(Just(*ipv4_addr), Just(*ipv6_addr)),
+                )
+            }) // Map each ID to a strategy that samples a gateway.
             .collect::<Vec<_>>() // A `Vec<Strategy>` implements `Strategy<Value = Vec<_>>`
             .prop_map(BTreeMap::from_iter)
     }
@@ -201,12 +234,9 @@ impl StubPortal {
         system_dns: impl Strategy<Value = Vec<IpAddr>>,
         upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
     ) -> impl Strategy<Value = Host<RefClient>> {
-        let client_tunnel_ip4 = tunnel_ip4s().next().unwrap();
-        let client_tunnel_ip6 = tunnel_ip6s().next().unwrap();
-
         ref_client_host(
-            Just(client_tunnel_ip4),
-            Just(client_tunnel_ip6),
+            Just(self.client_tunnel_ipv4),
+            Just(self.client_tunnel_ipv6),
             system_dns,
             upstream_dns,
         )

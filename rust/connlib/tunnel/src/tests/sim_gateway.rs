@@ -7,7 +7,7 @@ use super::{
     strategies::latency,
     unreachable_hosts::{IcmpError, UnreachableHosts},
 };
-use crate::GatewayState;
+use crate::{GatewayState, IpConfig};
 use anyhow::{bail, Result};
 use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId};
@@ -16,7 +16,7 @@ use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, HashMap},
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
 };
 
@@ -253,6 +253,8 @@ impl SimGateway {
 #[derive(Debug, Clone)]
 pub struct RefGateway {
     pub(crate) key: PrivateKey,
+    pub(crate) tunnel_ip4: Ipv4Addr,
+    pub(crate) tunnel_ip6: Ipv6Addr,
 }
 
 impl RefGateway {
@@ -260,21 +262,39 @@ impl RefGateway {
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(self, id: GatewayId, now: Instant) -> SimGateway {
-        SimGateway::new(id, GatewayState::new(self.key.0, now)) // Cheating a bit here by reusing the key as seed.
+        let mut sut = GatewayState::new(self.key.0, now);
+        sut.update_tun_device(IpConfig {
+            v4: self.tunnel_ip4,
+            v6: self.tunnel_ip6,
+        });
+
+        SimGateway::new(id, sut) // Cheating a bit here by reusing the key as seed.
     }
 }
 
-pub(crate) fn ref_gateway_host() -> impl Strategy<Value = Host<RefGateway>> {
+pub(crate) fn ref_gateway_host(
+    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
+    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
+) -> impl Strategy<Value = Host<RefGateway>> {
     host(
         dual_ip_stack(),
         any_port(),
-        ref_gateway(),
+        ref_gateway(tunnel_ip4s, tunnel_ip6s),
         latency(200), // We assume gateways have a somewhat decent Internet connection.
     )
 }
 
-fn ref_gateway() -> impl Strategy<Value = RefGateway> {
-    private_key().prop_map(move |key| RefGateway { key })
+fn ref_gateway(
+    tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
+    tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
+) -> impl Strategy<Value = RefGateway> {
+    (private_key(), tunnel_ip4s, tunnel_ip6s).prop_map(move |(key, tunnel_ip4, tunnel_ip6)| {
+        RefGateway {
+            key,
+            tunnel_ip4,
+            tunnel_ip6,
+        }
+    })
 }
 
 fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {
