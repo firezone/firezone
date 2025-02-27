@@ -127,6 +127,14 @@ impl Resource {
         }
     }
 
+    pub fn address_description(&self) -> Option<&str> {
+        match self {
+            Resource::Dns(r) => r.address_description.as_deref(),
+            Resource::Cidr(r) => r.address_description.as_deref(),
+            Resource::Internet(_) => None,
+        }
+    }
+
     pub fn has_different_address(&self, other: &Resource) -> bool {
         match (self, other) {
             (Resource::Dns(dns_a), Resource::Dns(dns_b)) => dns_a.address != dns_b.address,
