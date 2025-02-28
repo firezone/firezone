@@ -522,13 +522,13 @@ public struct SettingsView: View {
           do {
             try await LogExporter.export(
               to: destinationURL,
-              with: store.vpnConfigurationManager
+              with: store.ipcClient()
             )
 
             window.contentViewController?.presentingViewController?.dismiss(self)
           } catch {
-            if let error = error as? VPNConfigurationManagerError,
-               case VPNConfigurationManagerError.noIPCData = error {
+            if let error = error as? IPCClient.Error,
+               case IPCClient.Error.noIPCData = error {
               Log.warning("\(#function): Error exporting logs: \(error). Is the XPC service running?")
             } else {
               Log.error(error)
@@ -584,7 +584,7 @@ public struct SettingsView: View {
           try self.store.signOut()
         }
 
-        try await store.save(settings)
+        try await store.saveSettings(settings)
       } catch {
         Log.error(error)
       }
@@ -613,7 +613,7 @@ public struct SettingsView: View {
 
     do {
 #if os(macOS)
-      let providerLogFolderSize = try await store.vpnConfigurationManager.getLogFolderSize()
+      let providerLogFolderSize = try await store.ipcClient().getLogFolderSize()
       let totalSize = logFolderSize + providerLogFolderSize
 #else
       let totalSize = logFolderSize
@@ -627,8 +627,8 @@ public struct SettingsView: View {
       return byteCountFormatter.string(fromByteCount: Int64(totalSize))
 
     } catch {
-      if let error = error as? VPNConfigurationManagerError,
-         case VPNConfigurationManagerError.noIPCData = error {
+      if let error = error as? IPCClient.Error,
+         case IPCClient.Error.noIPCData = error {
         // Will happen if the extension is not enabled
         Log.warning("\(#function): Unable to count logs: \(error). Is the XPC service running?")
       } else {
@@ -648,7 +648,7 @@ public struct SettingsView: View {
     try Log.clear(in: SharedAccess.logFolderURL)
 
 #if os(macOS)
-    try await store.vpnConfigurationManager.clearLogs()
+    try await store.clearLogs()
 #endif
   }
 }

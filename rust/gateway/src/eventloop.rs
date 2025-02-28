@@ -11,7 +11,7 @@ use firezone_tunnel::messages::gateway::{
 };
 use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
 use firezone_tunnel::{
-    DnsResourceNatEntry, GatewayTunnel, ResolveDnsRequest, IPV4_PEERS, IPV6_PEERS,
+    DnsResourceNatEntry, GatewayTunnel, IpConfig, ResolveDnsRequest, IPV4_PEERS, IPV6_PEERS,
 };
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
@@ -235,8 +235,10 @@ impl Eventloop {
                     msg.client.preshared_key,
                     msg.client_ice_credentials,
                     msg.gateway_ice_credentials,
-                    msg.client.ipv4,
-                    msg.client.ipv6,
+                    IpConfig {
+                        v4: msg.client.ipv4,
+                        v6: msg.client.ipv6,
+                    },
                     msg.expires_at,
                     msg.resource,
                     Instant::now(),
@@ -354,6 +356,10 @@ impl Eventloop {
                     firezone_tunnel::turn(&init.relays),
                     Instant::now(),
                 );
+                self.tunnel.state_mut().update_tun_device(IpConfig {
+                    v4: init.interface.ipv4,
+                    v6: init.interface.ipv6,
+                });
 
                 if self
                     .set_interface_tasks
@@ -442,8 +448,10 @@ impl Eventloop {
 
         if let Err(e) = self.tunnel.state_mut().allow_access(
             req.client.id,
-            req.client.peer.ipv4,
-            req.client.peer.ipv6,
+            IpConfig {
+                v4: req.client.peer.ipv4,
+                v6: req.client.peer.ipv6,
+            },
             req.expires_at,
             req.resource,
             req.client
@@ -487,8 +495,10 @@ impl Eventloop {
 
         if let Err(e) = self.tunnel.state_mut().allow_access(
             req.client_id,
-            req.client_ipv4,
-            req.client_ipv6,
+            IpConfig {
+                v4: req.client_ipv4,
+                v6: req.client_ipv6,
+            },
             req.expires_at,
             req.resource,
             req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),

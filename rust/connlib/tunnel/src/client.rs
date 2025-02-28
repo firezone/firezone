@@ -9,7 +9,7 @@ use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::unique_packet_buffer::UniquePacketBuffer;
-use crate::{dns, p2p_control, TunConfig};
+use crate::{dns, p2p_control, IpConfig, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_model::{
@@ -234,20 +234,15 @@ impl ClientState {
     }
 
     #[cfg(all(test, feature = "proptest"))]
-    pub(crate) fn tunnel_ip4(&self) -> Option<Ipv4Addr> {
-        Some(self.tun_config.as_ref()?.ip4)
-    }
-
-    #[cfg(all(test, feature = "proptest"))]
-    pub(crate) fn tunnel_ip6(&self) -> Option<Ipv6Addr> {
-        Some(self.tun_config.as_ref()?.ip6)
+    pub(crate) fn tunnel_ip_config(&self) -> Option<crate::IpConfig> {
+        Some(self.tun_config.as_ref()?.ip)
     }
 
     #[cfg(all(test, feature = "proptest"))]
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> Option<IpAddr> {
         Some(match dst {
-            IpAddr::V4(_) => self.tunnel_ip4()?.into(),
-            IpAddr::V6(_) => self.tunnel_ip6()?.into(),
+            IpAddr::V4(_) => self.tunnel_ip_config()?.v4.into(),
+            IpAddr::V6(_) => self.tunnel_ip_config()?.v6.into(),
         })
     }
 
@@ -865,7 +860,7 @@ impl ClientState {
         };
 
         self.tcp_dns_client
-            .set_source_interface(tun_config.ip4, tun_config.ip6);
+            .set_source_interface(tun_config.ip.v4, tun_config.ip.v6);
 
         let upstream_resolvers = self
             .dns_mapping
@@ -991,8 +986,8 @@ impl ClientState {
         match self.tun_config.as_mut() {
             Some(existing) => {
                 // We don't really expect these to change but let's update them anyway.
-                existing.ip4 = config.ipv4;
-                existing.ip6 = config.ipv6;
+                existing.ip.v4 = config.ipv4;
+                existing.ip.v6 = config.ipv6;
             }
             None => {
                 let (ipv4_routes, ipv6_routes) = self.routes().partition_map(|route| match route {
@@ -1000,8 +995,10 @@ impl ClientState {
                     IpNetwork::V6(v6) => itertools::Either::Right(v6),
                 });
                 let new_tun_config = TunConfig {
-                    ip4: config.ipv4,
-                    ip6: config.ipv6,
+                    ip: IpConfig {
+                        v4: config.ipv4,
+                        v6: config.ipv6,
+                    },
                     dns_by_sentinel: Default::default(),
                     ipv4_routes,
                     ipv6_routes,
@@ -1441,8 +1438,16 @@ impl ClientState {
         };
 
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
-            if resource.has_different_address(&new_resource) {
-                self.remove_resource(resource.id());
+            let resource_id = resource.id();
+            let display_fields_changed = resource.display_fields_changed(&new_resource);
+            let address_changed = resource.has_different_address(&new_resource);
+
+            if display_fields_changed {
+                self.emit_resources_changed();
+            }
+
+            if address_changed {
+                self.remove_resource(resource_id);
             }
         }
 
@@ -1596,8 +1601,7 @@ impl ClientState {
         });
 
         let new_tun_config = TunConfig {
-            ip4: config.ip4,
-            ip6: config.ip6,
+            ip: config.ip,
             dns_by_sentinel: dns_mapping
                 .iter()
                 .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
