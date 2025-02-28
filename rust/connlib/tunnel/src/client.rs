@@ -9,7 +9,7 @@ use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::unique_packet_buffer::UniquePacketBuffer;
-use crate::{dns, p2p_control, IpConfig, TunConfig};
+use crate::{dns, is_peer, p2p_control, IpConfig, TunConfig};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_model::{
@@ -598,15 +598,27 @@ impl ClientState {
             return None;
         }
 
-        let Some(resource) = self.get_resource_by_destination(dst) else {
-            tracing::trace!(?packet, "Unknown resource");
-            return None;
-        };
+        let peer = if is_peer(dst) {
+            let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
+                tracing::trace!(?packet, "Unknown peer");
+                return None;
+            };
 
-        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
-        else {
-            self.on_not_connected_resource(resource, packet, now);
-            return None;
+            peer
+        } else {
+            let Some(resource) = self.get_resource_by_destination(dst) else {
+                tracing::trace!(?packet, "Unknown resource");
+                return None;
+            };
+
+            let Some(peer) =
+                peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+            else {
+                self.on_not_connected_resource(resource, packet, now);
+                return None;
+            };
+
+            peer
         };
 
         // TODO: Check DNS resource NAT state for the domain that the destination IP belongs to.
