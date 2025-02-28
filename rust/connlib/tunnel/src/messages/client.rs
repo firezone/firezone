@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn can_deserialize_flow_created() {
-        let json = r#"{"event":"flow_created","ref":null,"topic":"client","payload":{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"},"gateway_ice_credentials":{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY="}}"#;
+        let json = r#"{"event":"flow_created","ref":null,"topic":"client","payload":{"gateway_group_id":"ef42a07f-87d0-40da-baa7-e881e619ea1c","gateway_id":"d263d490-a0bb-452a-8990-01d27a1f1144","resource_id":"733e8d14-c18d-4931-af30-3639fa09c0c0","preshared_key":"anX2T9RH9mimT5Xd5+HqNGV0bfCodWDHQch1DLiFNls=","client_ice_credentials":{"username":"resc","password":"rqi3ibvfikfaxj3wgp7muh"},"gateway_ice_credentials":{"username":"jbi4","password":"a6oeevhlutevykcifd5r2a"},"gateway_public_key":"uMBCkAxTewfSgypIyxdQ18uCi84HLtKmQJy0wvQrYWY=","gateway_ipv4":"100.72.145.83","gateway_ipv6":"fd00:2021:1111::5:bcfd"}}"#;
 
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
