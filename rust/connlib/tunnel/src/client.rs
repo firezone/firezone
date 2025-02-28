@@ -1438,16 +1438,8 @@ impl ClientState {
         };
 
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
-            let resource_id = resource.id();
-            let display_fields_changed = resource.display_fields_changed(&new_resource);
-            let address_changed = resource.has_different_address(&new_resource);
-
-            if display_fields_changed {
-                self.emit_resources_changed();
-            }
-
-            if address_changed {
-                self.remove_resource(resource_id);
+            if resource.has_different_address(&new_resource) {
+                self.remove_resource(resource.id());
             }
         }
 
@@ -1459,7 +1451,7 @@ impl ClientState {
             return;
         }
 
-        let added = match &new_resource {
+        let activated = match &new_resource {
             Resource::Dns(dns) => self.stub_resolver.add_resource(dns.id, dns.address.clone()),
             Resource::Cidr(cidr) => {
                 let existing = self.active_cidr_resources.exact_match(cidr.address);
@@ -1474,15 +1466,13 @@ impl ClientState {
             }
         };
 
-        if !added {
-            return;
+        if activated {
+            let name = new_resource.name();
+            let address = new_resource.address_string().map(tracing::field::display);
+            let sites = new_resource.sites_string();
+
+            tracing::info!(%name, address, %sites, "Activating resource");
         }
-
-        let name = new_resource.name();
-        let address = new_resource.address_string().map(tracing::field::display);
-        let sites = new_resource.sites_string();
-
-        tracing::info!(%name, address, %sites, "Activating resource");
 
         if matches!(new_resource, Resource::Cidr(_)) {
             self.maybe_update_cidr_resources();
