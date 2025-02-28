@@ -376,7 +376,7 @@ where
     }
 }
 
-pub fn is_client(dst: IpAddr) -> bool {
+pub fn is_peer(dst: IpAddr) -> bool {
     match dst {
         IpAddr::V4(v4) => IPV4_TUNNEL.contains(v4),
         IpAddr::V6(v6) => IPV6_TUNNEL.contains(v6),
@@ -388,7 +388,7 @@ mod unittests {
     use super::*;
 
     #[test]
-    fn mldv2_routers_are_not_clients() {
-        assert!(!is_client("ff02::16".parse().unwrap()))
+    fn mldv2_routers_are_not_peers() {
+        assert!(!is_peer("ff02::16".parse().unwrap()))
     }
 }

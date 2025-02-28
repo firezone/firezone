@@ -83,7 +83,7 @@ impl GatewayState {
     ) -> Result<Option<snownet::EncryptedPacket>> {
         let dst = packet.destination();
 
-        if !crate::is_client(dst) {
+        if !crate::is_peer(dst) {
             return Ok(None);
         }
 
