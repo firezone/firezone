@@ -152,7 +152,7 @@ public class VPNConfigurationManager {
     Telemetry.setEnvironmentOrClose(settings.apiURL)
   }
 
-  func asSettings() throws -> Settings {
+  func settings() throws -> Settings {
     guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
           let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {

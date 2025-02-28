@@ -79,7 +79,7 @@ public final class Store: ObservableObject {
         // Try to load existing configuration
         if let manager = try await VPNConfigurationManager.load() {
           self.vpnConfigurationManager = manager
-          self.settings = try manager.asSettings()
+          self.settings = try manager.settings()
           try await setupTunnelObservers(autoStart: true)
         } else {
           status = .invalid
