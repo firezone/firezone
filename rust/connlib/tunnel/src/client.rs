@@ -2279,6 +2279,8 @@ mod proptests {
         HashSet::from_iter(
             resource_routes
                 .into_iter()
+                .chain(iter::once(IPV4_TUNNEL.into()))
+                .chain(iter::once(IPV6_TUNNEL.into()))
                 .chain(iter::once(IPV4_RESOURCES.into()))
                 .chain(iter::once(IPV6_RESOURCES.into()))
                 .chain(iter::once(DNS_SENTINELS_V4.into()))
