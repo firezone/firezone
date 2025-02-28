@@ -1432,8 +1432,6 @@ impl ClientState {
     }
 
     pub fn add_resource(&mut self, new_resource: impl TryInto<Resource, Error: std::error::Error>) {
-        let mut display_fields_changed = false;
-
         let new_resource = match new_resource.try_into() {
             Ok(r) => r,
             Err(e) => {
@@ -1443,12 +1441,16 @@ impl ClientState {
         };
 
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
-            display_fields_changed = resource.name() != new_resource.name()
-                || resource.address_description() != new_resource.address_description()
-                || resource.sites() != new_resource.sites();
+            let resource_id = resource.id();
+            let display_fields_changed = resource.display_fields_changed(&new_resource);
+            let address_changed = resource.has_different_address(&new_resource);
 
-            if resource.has_different_address(&new_resource) {
-                self.remove_resource(resource.id());
+            if display_fields_changed {
+                self.emit_resources_changed();
+            }
+
+            if address_changed {
+                self.remove_resource(resource_id);
             }
         }
 
@@ -1476,10 +1478,6 @@ impl ClientState {
         };
 
         if !added {
-            if display_fields_changed {
-                self.emit_resources_changed();
-            }
-
             return;
         }
 
