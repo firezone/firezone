@@ -23,7 +23,7 @@ public final class MenuBar: NSObject, ObservableObject {
   var statusItem: NSStatusItem
   var lastShownFavorites: [Resource] = []
   var lastShownOthers: [Resource] = []
-  var wasInternetResourceEnabled: Bool = false
+  var wasInternetResourceEnabled: Bool?
   var cancellables: Set<AnyCancellable> = []
   var updateChecker: UpdateChecker = UpdateChecker()
   var updateMenuDisplayed: Bool = false
@@ -285,7 +285,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownFavorites = newFavorites
-    wasInternetResourceEnabled = store.internetResourceEnabled()
+    wasInternetResourceEnabled = store.internetResourceEnabled
   }
 
   func populateOtherResourcesMenu(_ newOthers: [Resource]) {
@@ -313,7 +313,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownOthers = newOthers
-    wasInternetResourceEnabled = store.internetResourceEnabled()
+    wasInternetResourceEnabled = store.internetResourceEnabled
   }
 
   func updateStatusItemIcon() {
@@ -467,7 +467,7 @@ public final class MenuBar: NSObject, ObservableObject {
       return false
     }
 
-    return wasInternetResourceEnabled != store.internetResourceEnabled()
+    return wasInternetResourceEnabled != store.internetResourceEnabled
   }
 
   func refreshUpdateItem() {
@@ -503,7 +503,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   func internetResourceTitle(resource: Resource) -> String {
-    let status = store.internetResourceEnabled() ? StatusSymbol.enabled : StatusSymbol.disabled
+    let status = store.internetResourceEnabled == true ? StatusSymbol.enabled : StatusSymbol.disabled
 
     return status + " " + resource.name
   }
@@ -526,7 +526,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   func internetResourceToggleTitle() -> String {
-    store.internetResourceEnabled() ? "Disable this resource" : "Enable this resource"
+    store.internetResourceEnabled == true ? "Disable this resource" : "Enable this resource"
   }
 
   // TODO: Refactor this when refactoring for macOS 13
@@ -700,7 +700,17 @@ public final class MenuBar: NSObject, ObservableObject {
         // the system extension here too just in case. It's a no-op if already
         // installed.
         try await store.installSystemExtension()
-        try await store.grantVPNPermission()
+        try await store.installVPNConfiguration()
+      } catch let error as NSError {
+        if error.domain == "NEVPNErrorDomain" && error.code == 5 {
+          // Warn when the user doesn't click "Allow" on the VPN dialog
+          let alert = NSAlert()
+          alert.messageText =
+          "Firezone requires permission to install VPN configurations. Without it, all functionality will be disabled."
+          _ = alert.runModal()
+        } else {
+          throw error
+        }
       } catch {
         Log.error(error)
         await macOSAlert.show(for: error)
@@ -756,7 +766,7 @@ public final class MenuBar: NSObject, ObservableObject {
   @objc func internetResourceToggle(_ sender: NSMenuItem) {
     Task {
       do {
-        try await store.toggleInternetResource(enabled: !store.internetResourceEnabled())
+        try await store.toggleInternetResource()
       } catch {
         Log.error(error)
       }

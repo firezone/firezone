@@ -67,14 +67,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       guard
         let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?
           .providerConfiguration as? [String: String],
-        let logFilter = providerConfiguration[VPNConfigurationManagerKeys.logFilter]
+        let logFilter = providerConfiguration[VPNConfigurationManager.Keys.logFilter]
       else {
         throw PacketTunnelProviderError
           .savedProtocolConfigurationIsInvalid("providerConfiguration.logFilter")
       }
 
       // Hydrate telemetry account slug
-      guard let accountSlug = providerConfiguration[VPNConfigurationManagerKeys.accountSlug]
+      guard let accountSlug = providerConfiguration[VPNConfigurationManager.Keys.accountSlug]
       else {
         // This can happen if the user deletes the VPN configuration while it's
         // connected. The system will try to restart us with a fresh config
@@ -88,7 +88,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       let internetResourceEnabled: Bool =
       if let internetResourceEnabledJSON = providerConfiguration[
-        VPNConfigurationManagerKeys.internetResourceEnabled]?.data(using: .utf8) {
+        VPNConfigurationManager.Keys.internetResourceEnabled]?.data(using: .utf8) {
         (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabledJSON )) ?? false
       } else {
         false
@@ -165,11 +165,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   // It would be helpful to be able to encapsulate Errors here. To do that
-  // we need to update TunnelMessage to encode/decode Result to and from Data.
+  // we need to update ProviderMessage to encode/decode Result to and from Data.
   override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
-    guard let tunnelMessage =  try? PropertyListDecoder().decode(TunnelMessage.self, from: message) else { return }
+    guard let providerMessage = try? PropertyListDecoder().decode(ProviderMessage.self, from: message) else { return }
 
-    switch tunnelMessage {
+    switch providerMessage {
     case .internetResourceEnabled(let value):
       adapter?.setInternetResourceEnabled(value)
     case .signOut:
