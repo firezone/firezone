@@ -21,7 +21,7 @@ export default function Android() {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="8286">
-          Fixes a bug that prevent certain Resource fields from being updated
+          Fixes a bug that prevented certain Resource fields from being updated
           when they were updated in the admin portal.
         </ChangeItem>
       </Unreleased>
