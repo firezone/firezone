@@ -1,3 +1,4 @@
+use core::fmt;
 use std::collections::{hash_map::Entry, HashMap};
 use std::hash::Hash;
 use std::net::IpAddr;
@@ -41,7 +42,7 @@ impl PeerStore<GatewayId, GatewayOnClient> {
 
 impl<TId, P> PeerStore<TId, P>
 where
-    TId: Hash + Eq + Copy,
+    TId: Hash + Eq + Copy + fmt::Debug + fmt::Display,
     P: Peer<Id = TId>,
 {
     pub(crate) fn retain(&mut self, f: impl Fn(&TId, &mut P) -> bool) {
@@ -52,7 +53,12 @@ where
 
     pub(crate) fn add_ip(&mut self, id: &TId, ip: &IpNetwork) -> Option<&mut P> {
         let peer = self.peer_by_id.get_mut(id)?;
-        self.id_by_ip.insert(*ip, *id);
+        let previous = self.id_by_ip.insert(*ip, *id);
+
+        if previous.is_some_and(|prev| prev != *id) {
+            tracing::warn!(%ip, %id, ?previous, "Broken invariant: IP was already assigned to another peer");
+        }
+
         Some(peer)
     }
 

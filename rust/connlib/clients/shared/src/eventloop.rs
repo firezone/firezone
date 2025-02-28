@@ -7,7 +7,7 @@ use firezone_tunnel::messages::client::{
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
 use firezone_tunnel::messages::RelaysPresence;
-use firezone_tunnel::ClientTunnel;
+use firezone_tunnel::{ClientTunnel, IpConfig};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
 use std::time::Instant;
 use std::{
@@ -263,6 +263,8 @@ where
                 gateway_id,
                 site_id,
                 gateway_public_key,
+                gateway_ipv4,
+                gateway_ipv6,
                 preshared_key,
                 client_ice_credentials,
                 gateway_ice_credentials,
@@ -271,6 +273,10 @@ where
                     resource_id,
                     gateway_id,
                     PublicKey::from(gateway_public_key.0),
+                    IpConfig {
+                        v4: gateway_ipv4,
+                        v6: gateway_ipv6,
+                    },
                     site_id,
                     preshared_key,
                     client_ice_credentials,

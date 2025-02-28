@@ -49,11 +49,21 @@ const REALM: &str = "firezone";
 /// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
 const MAX_EVENTLOOP_ITERS: u32 = 5000;
 
+pub const IPV4_TUNNEL: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
+pub const IPV6_TUNNEL: Ipv6Network =
+    match Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
+
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
-pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest, IPV4_PEERS, IPV6_PEERS};
+pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use utils::turn;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
@@ -325,6 +335,15 @@ pub struct IpConfig {
     pub v6: Ipv6Addr,
 }
 
+impl IpConfig {
+    pub fn is_ip(&self, ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(v4) => v4 == self.v4,
+            IpAddr::V6(v6) => v6 == self.v6,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum GatewayEvent {
     AddedIceCandidates {
@@ -354,5 +373,22 @@ where
         }
 
         list.finish()
+    }
+}
+
+pub fn is_peer(dst: IpAddr) -> bool {
+    match dst {
+        IpAddr::V4(v4) => IPV4_TUNNEL.contains(v4),
+        IpAddr::V6(v6) => IPV6_TUNNEL.contains(v6),
+    }
+}
+
+#[cfg(test)]
+mod unittests {
+    use super::*;
+
+    #[test]
+    fn mldv2_routers_are_not_peers() {
+        assert!(!is_peer("ff02::16".parse().unwrap()))
     }
 }

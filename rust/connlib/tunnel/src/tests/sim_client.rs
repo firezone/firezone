@@ -430,7 +430,7 @@ pub struct RefClient {
 
     /// The CIDR resources the client is connected to.
     #[debug(skip)]
-    pub(crate) connected_cidr_resources: HashSet<ResourceId>,
+    pub(crate) connected_cidr_resources: BTreeSet<ResourceId>,
 
     /// Actively disabled resources by the UI
     #[debug(skip)]
@@ -500,6 +500,13 @@ impl RefClient {
         self.resources.retain(|r| r.id() != *resource);
 
         self.cidr_resources = self.recalculate_cidr_routes();
+    }
+
+    pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
+        self.connected_cidr_resources.iter().copied().chain(
+            self.internet_resource
+                .filter(|_| self.connected_internet_resource),
+        )
     }
 
     fn recalculate_cidr_routes(&mut self) -> IpNetworkTable<ResourceId> {
@@ -615,6 +622,7 @@ impl RefClient {
         }
     }
 
+    #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     pub(crate) fn on_icmp_packet(
         &mut self,
         src: IpAddr,
@@ -623,6 +631,7 @@ impl RefClient {
         identifier: Identifier,
         payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+        gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
     ) {
         self.on_packet(
             src,
@@ -631,9 +640,11 @@ impl RefClient {
             |ref_client| &mut ref_client.expected_icmp_handshakes,
             payload,
             gateway_by_resource,
+            gateway_by_ip,
         );
     }
 
+    #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     pub(crate) fn on_udp_packet(
         &mut self,
         src: IpAddr,
@@ -642,6 +653,7 @@ impl RefClient {
         dport: DPort,
         payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+        gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
     ) {
         self.on_packet(
             src,
@@ -650,9 +662,11 @@ impl RefClient {
             |ref_client| &mut ref_client.expected_udp_handshakes,
             payload,
             gateway_by_resource,
+            gateway_by_ip,
         );
     }
 
+    #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     pub(crate) fn on_tcp_packet(
         &mut self,
         src: IpAddr,
@@ -661,6 +675,7 @@ impl RefClient {
         dport: DPort,
         payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+        gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
     ) {
         self.on_packet(
             src,
@@ -669,9 +684,11 @@ impl RefClient {
             |ref_client| &mut ref_client.expected_tcp_exchanges,
             payload,
             gateway_by_resource,
+            gateway_by_ip,
         );
     }
 
+    #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource, gateway))]
     fn on_packet<E>(
         &mut self,
@@ -681,29 +698,42 @@ impl RefClient {
         map: impl FnOnce(&mut Self) -> &mut BTreeMap<GatewayId, BTreeMap<u64, E>>,
         payload: u64,
         gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
+        gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
     ) {
-        let Some(resource) = self.resource_by_dst(&dst) else {
-            tracing::warn!("Unknown resource");
-            return;
+        let gateway = if dst.ip_addr().is_some_and(crate::is_peer) {
+            let Some(gateway) = gateway_by_ip(dst.ip_addr().unwrap()) else {
+                tracing::error!("Unknown gateway");
+                return;
+            };
+            tracing::Span::current().record("gateway", tracing::field::display(gateway));
+
+            gateway
+        } else {
+            let Some(resource) = self.resource_by_dst(&dst) else {
+                tracing::warn!("Unknown resource");
+                return;
+            };
+
+            tracing::Span::current().record("resource", tracing::field::display(resource));
+
+            let Some(gateway) = gateway_by_resource(resource) else {
+                tracing::error!("No gateway for resource");
+                return;
+            };
+
+            tracing::Span::current().record("gateway", tracing::field::display(gateway));
+
+            self.connect_to_resource(resource, dst);
+            self.set_resource_online(resource);
+
+            gateway
         };
-
-        tracing::Span::current().record("resource", tracing::field::display(resource));
-
-        let Some(gateway) = gateway_by_resource(resource) else {
-            tracing::error!("No gateway for resource");
-            return;
-        };
-
-        tracing::Span::current().record("gateway", tracing::field::display(gateway));
-
-        self.connect_to_resource(resource, dst);
-        self.set_resource_online(resource);
 
         if !self.is_tunnel_ip(src) {
             return;
         }
 
-        tracing::debug!(%payload, "Sending packet to resource");
+        tracing::debug!(%payload, "Sending packet");
 
         map(self)
             .entry(gateway)
@@ -1110,6 +1140,7 @@ fn ref_client(
 
 fn default_routes_v4() -> Vec<Ipv4Network> {
     vec![
+        Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11).unwrap(),
         Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap(),
         Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap(),
     ]
@@ -1117,6 +1148,7 @@ fn default_routes_v4() -> Vec<Ipv4Network> {
 
 fn default_routes_v6() -> Vec<Ipv6Network> {
     vec![
+        Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107).unwrap(),
         Ipv6Network::new(
             Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
             107,

@@ -9,7 +9,7 @@ use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::unique_packet_buffer::UniquePacketBuffer;
-use crate::{dns, p2p_control, IpConfig, TunConfig};
+use crate::{dns, is_peer, p2p_control, IpConfig, TunConfig, IPV4_TUNNEL, IPV6_TUNNEL};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_model::{
@@ -598,15 +598,27 @@ impl ClientState {
             return None;
         }
 
-        let Some(resource) = self.get_resource_by_destination(dst) else {
-            tracing::trace!(?packet, "Unknown resource");
-            return None;
-        };
+        let peer = if is_peer(dst) {
+            let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
+                tracing::trace!(?packet, "Unknown peer");
+                return None;
+            };
 
-        let Some(peer) = peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
-        else {
-            self.on_not_connected_resource(resource, packet, now);
-            return None;
+            peer
+        } else {
+            let Some(resource) = self.get_resource_by_destination(dst) else {
+                tracing::trace!(?packet, "Unknown resource");
+                return None;
+            };
+
+            let Some(peer) =
+                peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+            else {
+                self.on_not_connected_resource(resource, packet, now);
+                return None;
+            };
+
+            peer
         };
 
         // TODO: Check DNS resource NAT state for the domain that the destination IP belongs to.
@@ -684,6 +696,7 @@ impl ClientState {
         resource_id: ResourceId,
         gateway_id: GatewayId,
         gateway_key: PublicKey,
+        gateway_tun: IpConfig,
         site_id: SiteId,
         preshared_key: SecretKey,
         client_ice: IceCredentials,
@@ -731,8 +744,14 @@ impl ClientState {
         self.recently_connected_gateways.put(gateway_id, ());
 
         if self.peers.get(&gateway_id).is_none() {
-            self.peers.insert(GatewayOnClient::new(gateway_id), &[]);
+            self.peers
+                .insert(GatewayOnClient::new(gateway_id, gateway_tun), &[]);
         };
+
+        // Allow looking up the Gateway via its TUN IP.
+        // Resources are not allowed to be in our CG-NAT range, therefore in practise this cannot overlap with resources.
+        self.peers.add_ip(&gateway_id, &gateway_tun.v4.into());
+        self.peers.add_ip(&gateway_id, &gateway_tun.v6.into());
 
         let buffered_packets = pending_flow.packets;
 
@@ -924,6 +943,8 @@ impl ClientState {
         self.active_cidr_resources
             .iter()
             .map(|(ip, _)| ip)
+            .chain(iter::once(IPV4_TUNNEL.into()))
+            .chain(iter::once(IPV6_TUNNEL.into()))
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
             .chain(iter::once(DNS_SENTINELS_V4.into()))
@@ -2248,6 +2269,8 @@ mod proptests {
         HashSet::from_iter(
             resource_routes
                 .into_iter()
+                .chain(iter::once(IPV4_TUNNEL.into()))
+                .chain(iter::once(IPV6_TUNNEL.into()))
                 .chain(iter::once(IPV4_RESOURCES.into()))
                 .chain(iter::once(IPV6_RESOURCES.into()))
                 .chain(iter::once(DNS_SENTINELS_V4.into()))
