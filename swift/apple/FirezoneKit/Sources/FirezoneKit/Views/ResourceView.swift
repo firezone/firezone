@@ -235,7 +235,7 @@ struct ToggleInternetResourceButton: View {
   @EnvironmentObject var store: Store
 
   private func toggleResourceEnabledText() -> String {
-    if store.internetResourceEnabled() {
+    if store.internetResourceEnabled == true {
       "Disable this resource"
     } else {
       "Enable this resource"
@@ -247,7 +247,7 @@ struct ToggleInternetResourceButton: View {
       action: {
         Task {
           do {
-            try await store.toggleInternetResource(enabled: !store.internetResourceEnabled())
+            try await store.toggleInternetResource()
           } catch {
             Log.error(error)
           }

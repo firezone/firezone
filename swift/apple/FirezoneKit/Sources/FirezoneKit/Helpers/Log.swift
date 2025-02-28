@@ -105,8 +105,8 @@ public final class Log {
   // because these happen often due to code signing requirements.
   private static func shouldCaptureError(_ err: Error) -> Bool {
 #if DEBUG
-    if let err = err as? VPNConfigurationManagerError,
-       case VPNConfigurationManagerError.noIPCData = err {
+    if let err = err as? IPCClient.Error,
+       case IPCClient.Error.noIPCData = err {
       return false
     }
 #endif
