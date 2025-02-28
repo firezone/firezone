@@ -931,6 +931,8 @@ defmodule API.Gateway.ChannelTest do
       gateway_group_id = gateway.group_id
       gateway_id = gateway.id
       gateway_public_key = gateway.public_key
+      gateway_ipv4 = gateway.ipv4
+      gateway_ipv6 = gateway.ipv6
       resource_id = resource.id
 
       ice_credentials = %{
@@ -965,6 +967,8 @@ defmodule API.Gateway.ChannelTest do
         ^gateway_group_id,
         ^gateway_id,
         ^gateway_public_key,
+        ^gateway_ipv4,
+        ^gateway_ipv6,
         ^preshared_key,
         ^ice_credentials,
         {_opentelemetry_ctx, opentelemetry_span_ctx}
