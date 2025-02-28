@@ -534,7 +534,8 @@ defmodule API.Client.Channel do
 
   def handle_info(
         {:connect, _socket_ref, resource_id, gateway_group_id, gateway_id, gateway_public_key,
-         preshared_key, ice_credentials, {opentelemetry_ctx, opentelemetry_span_ctx}},
+         gateway_ipv4, gateway_ipv6, preshared_key, ice_credentials,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
         socket
       ) do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
@@ -548,6 +549,8 @@ defmodule API.Client.Channel do
         gateway_group_id: gateway_group_id,
         gateway_id: gateway_id,
         gateway_public_key: gateway_public_key,
+        gateway_ipv4: gateway_ipv4,
+        gateway_ipv6: gateway_ipv6,
         gateway_ice_credentials: ice_credentials.gateway
       }
 

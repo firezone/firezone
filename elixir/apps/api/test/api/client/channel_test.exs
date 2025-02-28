@@ -1377,15 +1377,19 @@ defmodule API.Client.ChannelTest do
       send(
         channel_pid,
         {:connect, socket_ref, resource_id, gateway.group_id, gateway.id, gateway.public_key,
-         preshared_key, ice_credentials, otel_ctx}
+         gateway.ipv4, gateway.ipv6, preshared_key, ice_credentials, otel_ctx}
       )
 
       gateway_group_id = gateway.group_id
       gateway_id = gateway.id
       gateway_public_key = gateway.public_key
+      gateway_ipv4 = gateway.ipv4
+      gateway_ipv6 = gateway.ipv6
 
       assert_push "flow_created", %{
         gateway_public_key: ^gateway_public_key,
+        gateway_ipv4: ^gateway_ipv4,
+        gateway_ipv6: ^gateway_ipv6,
         resource_id: ^resource_id,
         client_ice_credentials: %{username: client_ice_username, password: client_ice_password},
         gateway_group_id: ^gateway_group_id,

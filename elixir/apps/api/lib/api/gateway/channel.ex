@@ -495,6 +495,8 @@ defmodule API.Gateway.Channel do
               socket.assigns.gateway.group_id,
               socket.assigns.gateway.id,
               socket.assigns.gateway.public_key,
+              socket.assigns.gateway.ipv4,
+              socket.assigns.gateway.ipv6,
               preshared_key,
               ice_credentials,
               {opentelemetry_ctx, opentelemetry_span_ctx}
