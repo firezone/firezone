@@ -20,6 +20,10 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="8282">
+          Shows friendlier and more-human alert messages when something goes
+          wrong.
+        </ChangeItem>
         <ChangeItem pull="8286">
           Fixes a bug that prevented certain Resource fields from being updated
           when they were updated in the admin portal.

@@ -534,7 +534,7 @@ public struct SettingsView: View {
               Log.error(error)
             }
 
-            await macOSAlert.show(for: error)
+            macOSAlert.show(for: error)
           }
 
           self.isExportingLogs = false

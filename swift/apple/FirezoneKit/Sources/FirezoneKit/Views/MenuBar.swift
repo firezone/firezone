@@ -683,7 +683,7 @@ public final class MenuBar: NSObject, ObservableObject {
         try await WebAuthSession.signIn(store: store)
       } catch {
         Log.error(error)
-        await macOSAlert.show(for: error)
+        macOSAlert.show(for: error)
       }
     }
   }
@@ -713,7 +713,7 @@ public final class MenuBar: NSObject, ObservableObject {
         }
       } catch {
         Log.error(error)
-        await macOSAlert.show(for: error)
+        macOSAlert.show(for: error)
       }
     }
   }
