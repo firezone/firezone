@@ -150,19 +150,6 @@ defmodule Web.Resources.Edit do
                 required
               />
 
-              <p
-                :if={
-                  to_string(@form[:type].value) == "dns" and
-                    is_binary(@form[:address].value) and
-                    @form[:address].value
-                    |> String.codepoints()
-                    |> Resources.map_resource_address() == :drop
-                }
-                class="flex items-center gap-2 text-sm leading-6 text-accent-600 mt-2 w-full"
-              >
-                <.icon name="hero-exclamation-triangle" class="w-4 h-4" />
-                This is an advanced address format. This Resource will be available to Clients and Gateways v1.2.0 and higher only.
-              </p>
               <div :if={to_string(@form[:type].value) == "dns"}>
                 <div class="mt-2 text-xs text-neutral-500">
                   Wildcard matching is supported:
