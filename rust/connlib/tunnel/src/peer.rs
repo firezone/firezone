@@ -25,6 +25,7 @@ mod nat_table;
 /// The state of one gateway on a client.
 pub(crate) struct GatewayOnClient {
     id: GatewayId,
+    gateway_tun: IpConfig,
     pub allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
 }
 
@@ -39,10 +40,11 @@ impl GatewayOnClient {
 }
 
 impl GatewayOnClient {
-    pub(crate) fn new(id: GatewayId) -> GatewayOnClient {
+    pub(crate) fn new(id: GatewayId, gateway_tun: IpConfig) -> GatewayOnClient {
         GatewayOnClient {
             id,
             allowed_ips: IpNetworkTable::new(),
+            gateway_tun,
         }
     }
 }
@@ -421,8 +423,12 @@ impl GatewayOnClient {
     pub(crate) fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
         let src = packet.source();
 
+        if self.gateway_tun.is_ip(src) {
+            return Ok(());
+        }
+
         if self.allowed_ips.longest_match(src).is_none() {
-            return Err(anyhow::Error::new(NotClientIp(src)));
+            return Err(anyhow::Error::new(NotAllowedResource(src)));
         }
 
         Ok(())

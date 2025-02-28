@@ -77,6 +77,11 @@ impl GatewayState {
         }
     }
 
+    #[cfg(all(test, feature = "proptest"))]
+    pub(crate) fn tunnel_ip_config(&self) -> Option<IpConfig> {
+        self.tun_ip_config
+    }
+
     pub(crate) fn public_key(&self) -> PublicKey {
         self.node.public_key()
     }

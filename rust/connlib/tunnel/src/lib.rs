@@ -325,6 +325,15 @@ pub struct IpConfig {
     pub v6: Ipv6Addr,
 }
 
+impl IpConfig {
+    pub fn is_ip(&self, ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(v4) => v4 == self.v4,
+            IpAddr::V6(v6) => v6 == self.v6,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum GatewayEvent {
     AddedIceCandidates {

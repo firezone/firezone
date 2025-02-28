@@ -727,6 +727,7 @@ impl TunnelTest {
                         resource_id,
                         gateway_id,
                         gateway_key,
+                        gateway.inner().sut.tunnel_ip_config().unwrap(),
                         site_id,
                         preshared_key,
                         client_ice,

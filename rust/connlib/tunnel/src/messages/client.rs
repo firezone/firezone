@@ -4,7 +4,10 @@ use crate::messages::{IceCredentials, Interface, Key, Relay, RelaysPresence, Sec
 use connlib_model::{GatewayId, ResourceId, Site, SiteId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::{
+    collections::BTreeSet,
+    net::{Ipv4Addr, Ipv6Addr},
+};
 
 /// Description of a resource that maps to a DNS record.
 #[derive(Debug, Deserialize)]
@@ -88,6 +91,8 @@ pub struct FlowCreated {
     pub resource_id: ResourceId,
     pub gateway_id: GatewayId,
     pub gateway_public_key: Key,
+    pub gateway_ipv4: Ipv4Addr,
+    pub gateway_ipv6: Ipv6Addr,
     #[serde(rename = "gateway_group_id")]
     pub site_id: SiteId,
     pub preshared_key: SecretKey,

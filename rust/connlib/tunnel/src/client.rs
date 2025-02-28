@@ -684,6 +684,7 @@ impl ClientState {
         resource_id: ResourceId,
         gateway_id: GatewayId,
         gateway_key: PublicKey,
+        gateway_tun: IpConfig,
         site_id: SiteId,
         preshared_key: SecretKey,
         client_ice: IceCredentials,
@@ -731,8 +732,14 @@ impl ClientState {
         self.recently_connected_gateways.put(gateway_id, ());
 
         if self.peers.get(&gateway_id).is_none() {
-            self.peers.insert(GatewayOnClient::new(gateway_id), &[]);
+            self.peers
+                .insert(GatewayOnClient::new(gateway_id, gateway_tun), &[]);
         };
+
+        // Allow looking up the Gateway via its TUN IP.
+        // Resources are not allowed to be in our CG-NAT range, therefore in practise this cannot overlap with resources.
+        self.peers.add_ip(&gateway_id, &gateway_tun.v4.into());
+        self.peers.add_ip(&gateway_id, &gateway_tun.v6.into());
 
         let buffered_packets = pending_flow.packets;
 
