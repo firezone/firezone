@@ -13,18 +13,21 @@ use futures::{
 use std::{
     io,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs},
-    sync::Arc,
+    sync::{Arc, Weak},
     task::{Context, Poll},
 };
 use tokio::net::UdpSocket;
 
 pub struct Server {
+    // Strong references to the UDP sockets.
     udp_v4: Option<Arc<UdpSocket>>,
     udp_v6: Option<Arc<UdpSocket>>,
 
+    // Streams that read incoming queries from the UDP sockets.
     reading_udp_v4_queries: BoxStream<'static, Result<(SocketAddr, Message<Vec<u8>>)>>,
     reading_udp_v6_queries: BoxStream<'static, Result<(SocketAddr, Message<Vec<u8>>)>>,
 
+    // Futures that send responses on the UDP sockets.
     sending_udp_responses: FuturesUnordered<BoxFuture<'static, Result<()>>>,
 
     waker: AtomicWaker,
@@ -34,10 +37,7 @@ impl Server {
     pub fn rebind_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
         let udp_socket = Arc::new(make_udp_socket(socket)?);
 
-        self.reading_udp_v4_queries = stream::repeat(Arc::downgrade(&udp_socket))
-            .filter_map(|udp_socket| async move { udp_socket.upgrade() })
-            .then(read_udp_query)
-            .boxed();
+        self.reading_udp_v4_queries = udp_dns_query_stream(Arc::downgrade(&udp_socket));
         self.udp_v4 = Some(udp_socket);
 
         self.waker.wake();
@@ -48,10 +48,7 @@ impl Server {
     pub fn rebind_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
         let udp_socket = Arc::new(make_udp_socket(socket)?);
 
-        self.reading_udp_v6_queries = stream::repeat(Arc::downgrade(&udp_socket))
-            .filter_map(|udp_socket| async move { udp_socket.upgrade() })
-            .then(read_udp_query)
-            .boxed();
+        self.reading_udp_v6_queries = udp_dns_query_stream(Arc::downgrade(&udp_socket));
         self.udp_v6 = Some(udp_socket);
 
         self.waker.wake();
@@ -118,6 +115,16 @@ impl Server {
             return Poll::Pending;
         }
     }
+}
+
+/// Produces a stream of incoming DNS queries from a UDP socket for as long as there is at least one strong reference to the socket.
+fn udp_dns_query_stream(
+    udp_socket: Weak<UdpSocket>,
+) -> BoxStream<'static, Result<(SocketAddr, Message<Vec<u8>>)>> {
+    stream::repeat(udp_socket) // We start with an infinite stream of weak references to the UDP socket.
+        .filter_map(|udp_socket| async move { udp_socket.upgrade() }) // For each item pulled from the stream, we first try to upgrade to a strong reference.
+        .then(read_udp_query) // And then read single DNS query from the socket.
+        .boxed()
 }
 
 fn anyhow_to_io(e: anyhow::Error) -> io::Error {

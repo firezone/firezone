@@ -23,12 +23,17 @@ pub struct Server {
     tcp_v4: Option<TcpListener>,
     tcp_v6: Option<TcpListener>,
 
+    /// Tracks open TCP streams by their remote address.
+    ///
+    /// After reading a query from the stream, we keep the stream around in here to send a response back.
     tcp_streams_by_remote: HashMap<SocketAddr, TcpStream>,
 
+    /// A set of futures that read DNS queries from TCP streams.
     #[expect(clippy::type_complexity, reason = "We don't care.")]
     reading_tcp_queries: FuturesUnordered<
         BoxFuture<'static, Result<Option<(SocketAddr, Message<Vec<u8>>, TcpStream)>>>,
     >,
+    /// A set of futures that send DNS responses over TCP streams.
     sending_tcp_responses: FuturesUnordered<BoxFuture<'static, Result<(TcpStream, SocketAddr)>>>,
 
     waker: AtomicWaker,
@@ -89,8 +94,11 @@ impl Server {
                 let (stream, from) = result
                     .context("Failed to send TCP DNS response")
                     .map_err(anyhow_to_io)?;
+
+                // We've successfully sent a response back, try to read another query. (Clients may reuse TCP streams for multiple queries.)
                 self.reading_tcp_queries
                     .push(read_tcp_query(stream, from).boxed());
+
                 continue;
             }
 
@@ -102,7 +110,7 @@ impl Server {
                     continue;
                 };
 
-                self.tcp_streams_by_remote.insert(from, stream);
+                self.tcp_streams_by_remote.insert(from, stream); // Store the stream so we can send a response back later.
                 return Poll::Ready(Ok(Query {
                     source: from,
                     message,
@@ -135,6 +143,7 @@ fn anyhow_to_io(e: anyhow::Error) -> io::Error {
     io::Error::other(format!("{e:#}"))
 }
 
+/// Read a TCP query from a stream, returning the source address, the message and stream so we can later send a response back.
 async fn read_tcp_query(
     mut stream: TcpStream,
     from: SocketAddr,
