@@ -17,7 +17,7 @@ use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
 use std::convert::Infallible;
 use std::future::Future;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddrV4, SocketAddrV6};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -167,10 +167,16 @@ impl Eventloop {
                         .unwrap_or_else(|e| Err(anyhow::Error::new(e)))
                         .context("Failed to update TUN interface")?;
 
-                    if let Err(e) = self.tunnel.rebind_dns_ipv4(interface.ipv4) {
+                    if let Err(e) = self
+                        .tunnel
+                        .rebind_dns_ipv4(SocketAddrV4::new(interface.ipv4, 53535))
+                    {
                         tracing::warn!("Failed to bind IPv4 DNS server: {e:#}")
                     }
-                    if let Err(e) = self.tunnel.rebind_dns_ipv6(interface.ipv6) {
+                    if let Err(e) =
+                        self.tunnel
+                            .rebind_dns_ipv6(SocketAddrV6::new(interface.ipv6, 53535, 0, 0))
+                    {
                         tracing::warn!("Failed to bind IPv6 DNS server: {e:#}")
                     }
                 }

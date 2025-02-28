@@ -15,7 +15,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
     fmt,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::Arc,
     task::{ready, Context, Poll},
     time::Instant,
@@ -82,12 +82,12 @@ impl<TRoleState> Tunnel<TRoleState> {
         self.io.set_tun(tun);
     }
 
-    pub fn rebind_dns_ipv4(&mut self, ipv4: Ipv4Addr) -> Result<()> {
-        self.io.rebind_dns_ipv4(ipv4)
+    pub fn rebind_dns_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
+        self.io.rebind_dns_ipv4(socket)
     }
 
-    pub fn rebind_dns_ipv6(&mut self, ipv6: Ipv6Addr) -> Result<()> {
-        self.io.rebind_dns_ipv6(ipv6)
+    pub fn rebind_dns_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
+        self.io.rebind_dns_ipv6(socket)
     }
 }
 
