@@ -1,6 +1,5 @@
 defmodule API.Client.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.Mocks.GoogleCloudPlatform
 
   setup do
     account =
@@ -1020,67 +1019,6 @@ defmodule API.Client.ChannelTest do
                  %{protocol: :icmp}
                ]
              }
-    end
-  end
-
-  # TODO: This has been disabled on clients. Remove this when no more clients are requesting log sinks.
-  describe "handle_in/3 create_log_sink" do
-    test "returns error when feature is disabled", %{socket: socket} do
-      Domain.Config.put_env_override(Domain.Instrumentation, client_logs_enabled: false)
-
-      ref = push(socket, "create_log_sink", %{})
-      assert_reply ref, :error, %{reason: :disabled}
-    end
-
-    test "returns error when google api is not available", %{socket: socket} do
-      bypass = Bypass.open()
-
-      GoogleCloudPlatform.override_endpoint_url(
-        :metadata_endpoint_url,
-        "http://localhost:#{bypass.port}/"
-      )
-
-      GoogleCloudPlatform.override_endpoint_url(
-        :sign_endpoint_url,
-        "http://localhost:#{bypass.port}/service_accounts/"
-      )
-
-      Bypass.down(bypass)
-
-      ref = push(socket, "create_log_sink", %{})
-      assert_reply ref, :error, %{reason: :retry_later}
-    end
-
-    test "returns a signed URL which can be used to upload the logs", %{
-      account: account,
-      socket: socket,
-      client: client
-    } do
-      bypass = Bypass.open()
-      GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
-      GoogleCloudPlatform.mock_sign_blob_endpoint(bypass, "foo")
-
-      actor = Repo.get(Domain.Actors.Actor, client.actor_id)
-
-      actor_name =
-        actor.name
-        |> String.downcase()
-        |> String.replace(" ", "_")
-        |> String.replace(~r/[^a-zA-Z0-9_-]/iu, "")
-
-      ref = push(socket, "create_log_sink", %{})
-      assert_reply ref, :ok, signed_url
-
-      assert signed_uri = URI.parse(signed_url)
-      assert signed_uri.scheme == "https"
-      assert signed_uri.host == "storage.googleapis.com"
-
-      assert String.starts_with?(
-               signed_uri.path,
-               "/logs/clients/#{account.slug}/#{actor_name}/#{client.id}/"
-             )
-
-      assert String.ends_with?(signed_uri.path, ".json")
     end
   end
 

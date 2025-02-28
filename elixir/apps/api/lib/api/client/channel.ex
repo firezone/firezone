@@ -1,7 +1,6 @@
 defmodule API.Client.Channel do
   use API, :channel
   alias API.Client.Views
-  alias Domain.Instrumentation
   alias Domain.{Accounts, Clients, Actors, Resources, Gateways, Relays, Policies, Flows}
   require Logger
   require OpenTelemetry.Tracer
@@ -565,40 +564,6 @@ defmodule API.Client.Channel do
   ####################################
   ##### Client-initiated actions #####
   ####################################
-
-  # This message sent by the client to create a GSC signed url for uploading logs and debug artifacts
-  # TODO: This has been disabled on clients. Remove this when no more clients are requesting log sinks.
-  @impl true
-  def handle_in("create_log_sink", _attrs, socket) do
-    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-
-    account_slug = socket.assigns.subject.account.slug
-
-    actor_name =
-      socket.assigns.subject.actor.name
-      |> String.downcase()
-      |> String.replace(" ", "_")
-      |> String.replace(~r/[^a-zA-Z0-9_-]/iu, "")
-
-    OpenTelemetry.Tracer.with_span "client.create_log_sink" do
-      case Instrumentation.create_remote_log_sink(socket.assigns.client, actor_name, account_slug) do
-        {:ok, signed_url} ->
-          {:reply, {:ok, signed_url}, socket}
-
-        {:error, :disabled} ->
-          {:reply, {:error, %{reason: :disabled}}, socket}
-
-        {:error, reason} ->
-          Logger.error("Failed to create log sink for client",
-            client_id: socket.assigns.client.id,
-            reason: inspect(reason)
-          )
-
-          {:reply, {:error, %{reason: :retry_later}}, socket}
-      end
-    end
-  end
 
   # This message is sent to the client to request a network flow with a gateway that can serve given resource.
   #
