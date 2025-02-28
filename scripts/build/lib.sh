@@ -12,9 +12,6 @@ function setup_runner() {
     keychain_pass=$(openssl rand -base64 32)
     keychain_path="$(mktemp -d)/app-signing.keychain-db"
 
-    # Select Xcode specified by the workflow
-    sudo xcode-select -s "/Applications/Xcode_$XCODE_VERSION.app"
-
     # Install provisioning profiles
     mkdir -p "$profiles_path"
     base64_decode "$app_profile" "$profiles_path/$app_profile_file"

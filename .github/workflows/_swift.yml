@@ -30,8 +30,6 @@ jobs:
     permissions:
       contents: write # for attaching the build artifacts to the release
       id-token: write
-    env:
-      XCODE_VERSION: "16.2"
     strategy:
       fail-fast: false
       matrix:
