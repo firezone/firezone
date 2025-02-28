@@ -35,12 +35,12 @@ public final class Store: ObservableObject {
   @Published private(set) var systemExtensionStatus: SystemExtensionStatus?
 #endif
 
+  let sessionNotification = SessionNotification()
+
   private var resourcesTimer: Timer?
   private var resourceUpdateTask: Task<Void, Never>?
 
-  let vpnConfigurationManager = VPNConfigurationManager()
-  let ipcClient = IPCClient()
-  let sessionNotification = SessionNotification()
+  private var vpnConfigurationManager: VPNConfigurationManager?
 
   public init() {
     self.sessionNotification.signInHandler = {
@@ -77,8 +77,10 @@ public final class Store: ObservableObject {
     Task {
       do {
         // Try to load existing configuration
-        if let neTunnelProviderManager = try await VPNConfigurationManager.loadFromPreferences() {
-          try await setupTunnelObservers(from: neTunnelProviderManager, autoStart: true)
+        if let manager = try await VPNConfigurationManager.load() {
+          self.vpnConfigurationManager = manager
+          self.settings = try manager.settings()
+          try await setupTunnelObservers(autoStart: true)
         } else {
           status = .invalid
         }
@@ -88,25 +90,19 @@ public final class Store: ObservableObject {
     }
   }
 
-  func setupTunnelObservers(from manager: NETunnelProviderManager, autoStart: Bool = false) async throws {
-    guard let session = manager.connection as? NETunnelProviderSession
-    else { return }
-
-    vpnConfigurationManager.manager = manager
-    ipcClient.session = session
-
+  func setupTunnelObservers(autoStart: Bool = false) async throws {
     let statusChangeHandler: (NEVPNStatus) async throws -> Void = { [weak self] status in
       try await self?.handleStatusChange(newStatus: status)
     }
 
-    ipcClient.subscribeToVPNStatusUpdates(handler: statusChangeHandler)
+    try ipcClient().subscribeToVPNStatusUpdates(handler: statusChangeHandler)
 
     if autoStart && status == .disconnected {
       // Try to connect on start
-      try ipcClient.start()
+      try ipcClient().start()
     }
 
-    try await handleStatusChange(newStatus: session.status)
+    try await handleStatusChange(newStatus: ipcClient().sessionStatus())
   }
 
   func handleStatusChange(newStatus: NEVPNStatus) async throws {
@@ -114,10 +110,10 @@ public final class Store: ObservableObject {
 
     if status == .connected {
       // Load saved actorName
-      actorName = try? vpnConfigurationManager.actorName()
+      actorName = try? manager().actorName()
 
       // Load saved internet resource status
-      internetResourceEnabled = try? vpnConfigurationManager.internetResourceEnabled()
+      internetResourceEnabled = try? manager().internetResourceEnabled()
 
       // Load Resources
       beginUpdatingResources()
@@ -130,7 +126,7 @@ public final class Store: ObservableObject {
     // from the tunnel process, because the UI process is not guaranteed to be alive.
     if status == .disconnected {
       do {
-        let reason = try await ipcClient.consumeStopReason()
+        let reason = try await ipcClient().consumeStopReason()
         if reason == .authenticationCanceled {
           await self.sessionNotification.showSignedOutAlertmacOS()
         }
@@ -185,9 +181,27 @@ public final class Store: ObservableObject {
 
   func installVPNConfiguration() async throws {
     // Create a new VPN configuration in system settings.
-    let nETunnelProviderManager = try await VPNConfigurationManager.create()
+    self.vpnConfigurationManager = try await VPNConfigurationManager()
 
-    try await setupTunnelObservers(from: nETunnelProviderManager)
+    try await setupTunnelObservers()
+  }
+
+  func ipcClient() throws -> IPCClient {
+    guard let session = try manager().session()
+    else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+
+    return IPCClient(session: session)
+  }
+
+  func manager() throws -> VPNConfigurationManager {
+    guard let vpnConfigurationManager
+    else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+
+    return vpnConfigurationManager
   }
 
   func grantNotifications() async throws {
@@ -199,29 +213,29 @@ public final class Store: ObservableObject {
   }
 
   func stop() throws {
-    try ipcClient.stop()
+    try ipcClient().stop()
   }
 
   func signIn(authResponse: AuthResponse) async throws {
     // Save actorName
     self.actorName = authResponse.actorName
 
-    try await vpnConfigurationManager.save(authResponse: authResponse)
+    try await manager().save(authResponse: authResponse)
 
     // Bring the tunnel up and send it a token to start
-    try ipcClient.start(token: authResponse.token)
+    try ipcClient().start(token: authResponse.token)
   }
 
   func signOut() throws {
-    try ipcClient.signOut()
+    try ipcClient().signOut()
   }
 
   func clearLogs() async throws {
-    try await ipcClient.clearLogs()
+    try await ipcClient().clearLogs()
   }
 
   func saveSettings(_ newSettings: Settings) async throws {
-    try await vpnConfigurationManager.save(settings: newSettings)
+    try await manager().save(settings: newSettings)
     self.settings = newSettings
   }
 
@@ -229,12 +243,12 @@ public final class Store: ObservableObject {
     internetResourceEnabled = !(internetResourceEnabled ?? false)
     settings.internetResourceEnabled = internetResourceEnabled
 
-    try ipcClient.toggleInternetResource(enabled: internetResourceEnabled == true)
-    try await vpnConfigurationManager.save(settings: settings)
+    try ipcClient().toggleInternetResource(enabled: internetResourceEnabled == true)
+    try await manager().save(settings: settings)
   }
 
   private func start(token: String? = nil) throws {
-    try ipcClient.start(token: token)
+    try ipcClient().start(token: token)
   }
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
@@ -254,7 +268,7 @@ public final class Store: ObservableObject {
           self.resourceUpdateTask = Task {
             if !Task.isCancelled {
               do {
-                self.resourceList = try await self.ipcClient.fetchResources()
+                self.resourceList = try await self.ipcClient().fetchResources()
               } catch {
                 Log.error(error)
               }

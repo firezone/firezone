@@ -155,6 +155,13 @@ extension OSSystemExtensionError: UserFriendlyError {
         You must enable the FirezoneNetworkExtension System Extension in System Settings to continue. Until you do,
         all functionality will be disabled.
 
+        // Code 12
+      case .requestSuperseded:
+        // This will happen if the user repeatedly clicks "Enable ..."
+        return """
+        You must enable the FirezoneNetworkExtension System Extension in System Settings to continue. Until you do,
+        all functionality will be disabled.
+
         For more information and troubleshooting, please contact your administrator.
         """
 

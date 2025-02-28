@@ -72,6 +72,12 @@ defmodule API.Gateway.Channel do
   ##### Reacting to domain events ####
   ####################################
 
+  # Resource create message is a no-op for the Gateway as the Resource
+  # details will be sent to the Gateway on an :authorize_flow message
+  def handle_info({:create_resource, _resource_id}, socket) do
+    {:norely, socket}
+  end
+
   # Resource is updated, eg. traffic filters are changed
   def handle_info({:update_resource, resource_id}, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
@@ -489,6 +495,8 @@ defmodule API.Gateway.Channel do
               socket.assigns.gateway.group_id,
               socket.assigns.gateway.id,
               socket.assigns.gateway.public_key,
+              socket.assigns.gateway.ipv4,
+              socket.assigns.gateway.ipv6,
               preshared_key,
               ice_credentials,
               {opentelemetry_ctx, opentelemetry_span_ctx}

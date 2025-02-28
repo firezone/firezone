@@ -522,7 +522,7 @@ public struct SettingsView: View {
           do {
             try await LogExporter.export(
               to: destinationURL,
-              with: store.ipcClient
+              with: store.ipcClient()
             )
 
             window.contentViewController?.presentingViewController?.dismiss(self)
@@ -613,7 +613,7 @@ public struct SettingsView: View {
 
     do {
 #if os(macOS)
-      let providerLogFolderSize = try await store.ipcClient.getLogFolderSize()
+      let providerLogFolderSize = try await store.ipcClient().getLogFolderSize()
       let totalSize = logFolderSize + providerLogFolderSize
 #else
       let totalSize = logFolderSize

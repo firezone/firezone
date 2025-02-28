@@ -62,9 +62,9 @@ pub struct ResourceDescriptionInternet {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ResourceDescription {
-    Dns(ResourceDescriptionDns),
-    Cidr(ResourceDescriptionCidr),
-    Internet(ResourceDescriptionInternet),
+    Dns(serde_json::Value),
+    Cidr(serde_json::Value),
+    Internet(serde_json::Value),
     #[serde(other)]
     Unknown, // Important for forwards-compatibility with future resource types.
 }
@@ -345,6 +345,48 @@ mod tests {
                         "name": "gitlab.mycorp.com",
                         "address_description": "dns resource",
                         "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "type": "dns"
+                    },
+                    {
+                        "address": "github.mycorp.com",
+                        "id": "03000143-e25e-45c7-aafb-144990e57dce",
+                        "name": "github.mycorp.com",
+                        "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+                        "type": "dns"
+                    }
+                ]
+            },
+            "ref": null,
+            "topic": "client"
+        }"#;
+
+        let message = serde_json::from_str::<IngressMessages>(json).unwrap();
+
+        assert!(matches!(message, IngressMessages::Init(_)));
+    }
+
+    #[test]
+    fn can_deserialize_bad_resources() {
+        let json = r#"{
+            "event": "init",
+            "payload": {
+                "interface": {
+                    "ipv4": "100.72.112.111",
+                    "ipv6": "fd00:2021:1111::13:efb9",
+                    "upstream_dns": []
+                },
+                "resources": [
+                    {
+                        "address_foobar": "172.172.0.0/16",
+                        "id": "73037362-715d-4a83-a749-f18eadd970e6",
+                        "type": "cidr"
+                    },
+                    {
+                        "i_am_not_a_valid_field": null,
+                        "type": "cidr"
+                    },
+                    {
+                        "what": "gitlab.mycorp.com",
                         "type": "dns"
                     },
                     {
