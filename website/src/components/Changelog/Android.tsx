@@ -19,7 +19,12 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="8286">
+          Fixes a bug that prevented certain Resource fields from being updated
+          when they were updated in the admin portal.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.2" date={new Date("2025-02-16")}>
         <ChangeItem pull="8117">
           Fixes an upload speed performance regression.
