@@ -1,6 +1,6 @@
 mod gso_queue;
 
-use crate::{device_channel::Device, dns, dns_sockets::DnsSockets, sockets::Sockets};
+use crate::{device_channel::Device, dns, sockets::Sockets};
 use anyhow::Result;
 use domain::base::Message;
 use firezone_logging::{telemetry_event, telemetry_span};
@@ -45,7 +45,8 @@ pub struct Io {
     sockets: Sockets,
     gso_queue: GsoQueue,
 
-    dns_sockets: DnsSockets,
+    udp_dns_server: l4_udp_dns_server::Server,
+    tcp_dns_server: l4_tcp_dns_server::Server,
 
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -110,16 +111,23 @@ impl Io {
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
             gso_queue: GsoQueue::new(),
             tun: Device::new(),
-            dns_sockets: DnsSockets::default(),
+            udp_dns_server: Default::default(),
+            tcp_dns_server: Default::default(),
         }
     }
 
     pub fn rebind_dns_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
-        self.dns_sockets.rebind_ipv4(socket)
+        self.udp_dns_server.rebind_ipv4(socket)?;
+        self.tcp_dns_server.rebind_ipv4(socket)?;
+
+        Ok(())
     }
 
     pub fn rebind_dns_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
-        self.dns_sockets.rebind_ipv6(socket)
+        self.udp_dns_server.rebind_ipv6(socket)?;
+        self.tcp_dns_server.rebind_ipv6(socket)?;
+
+        Ok(())
     }
 
     pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {

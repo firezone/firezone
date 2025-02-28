@@ -26,6 +26,8 @@ ip-packet = { workspace = true }
 ip_network = { workspace = true }
 ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
+l4-tcp-dns-server = { workspace = true }
+l4-udp-dns-server = { workspace = true }
 lockfree-object-pool = { workspace = true }
 lru = { workspace = true }
 proptest = { workspace = true, optional = true }

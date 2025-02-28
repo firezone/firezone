@@ -25,7 +25,6 @@ use tun::Tun;
 mod client;
 mod device_channel;
 mod dns;
-mod dns_sockets;
 mod gateway;
 mod io;
 pub mod messages;
