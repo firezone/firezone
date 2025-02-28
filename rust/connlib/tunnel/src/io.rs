@@ -86,6 +86,8 @@ pub enum Input<D, I> {
     Timeout(Instant),
     Device(D),
     Network(I),
+    TcpDnsQuery(l4_tcp_dns_server::Query),
+    UdpDnsQuery(l4_udp_dns_server::Query),
     DnsResponse(dns::RecursiveResponse),
 }
 
@@ -157,6 +159,14 @@ impl Io {
                 .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
         {
             return Poll::Ready(Ok(Input::Device(buffers.ip.drain(..num_packets))));
+        }
+
+        if let Poll::Ready(query) = self.udp_dns_server.poll(cx)? {
+            return Poll::Ready(Ok(Input::UdpDnsQuery(query)));
+        }
+
+        if let Poll::Ready(query) = self.tcp_dns_server.poll(cx)? {
+            return Poll::Ready(Ok(Input::TcpDnsQuery(query)));
         }
 
         match self.dns_queries.poll_unpin(cx) {
@@ -348,6 +358,22 @@ impl Io {
                 }
             }
         }
+    }
+
+    pub(crate) fn send_udp_dns_response(
+        &mut self,
+        to: SocketAddr,
+        message: Message<Vec<u8>>,
+    ) -> io::Result<()> {
+        self.udp_dns_server.send_response(to, message)
+    }
+
+    pub(crate) fn send_tcp_dns_response(
+        &mut self,
+        to: SocketAddr,
+        message: Message<Vec<u8>>,
+    ) -> io::Result<()> {
+        self.tcp_dns_server.send_response(to, message)
     }
 }
 

@@ -182,6 +182,13 @@ impl ClientTunnel {
                     self.role_state.handle_timeout(Instant::now());
                     continue;
                 }
+                Poll::Ready(io::Input::UdpDnsQuery(_) | io::Input::TcpDnsQuery(_)) => {
+                    debug_assert!(
+                        false,
+                        "Client does not (yet) use userspace DNS server sockets"
+                    );
+                    continue;
+                }
                 Poll::Pending => {}
             }
 
@@ -278,6 +285,14 @@ impl GatewayTunnel {
 
                     continue;
                 }
+                Poll::Ready(io::Input::UdpDnsQuery(query)) => self.io.send_udp_dns_response(
+                    query.source,
+                    dns::servfail(query.message.for_slice_ref()),
+                )?,
+                Poll::Ready(io::Input::TcpDnsQuery(query)) => self.io.send_tcp_dns_response(
+                    query.source,
+                    dns::servfail(query.message.for_slice_ref()),
+                )?,
                 Poll::Pending => {}
             }
 
