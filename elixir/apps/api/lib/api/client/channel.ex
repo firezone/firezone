@@ -935,6 +935,13 @@ defmodule API.Client.Channel do
     end
   end
 
+  # Catch-all for unknown messages
+  def handle_in(message, payload, socket) do
+    Logger.error("Unknown client message", message: message, payload: payload)
+
+    {:reply, {:error, %{reason: :unknown_message}}, socket}
+  end
+
   defp select_relays(socket, except_ids \\ []) do
     {:ok, relays} =
       Relays.all_connected_relays_for_account(socket.assigns.subject.account, except_ids)
