@@ -430,7 +430,7 @@ pub struct RefClient {
 
     /// The CIDR resources the client is connected to.
     #[debug(skip)]
-    pub(crate) connected_cidr_resources: HashSet<ResourceId>,
+    pub(crate) connected_cidr_resources: BTreeSet<ResourceId>,
 
     /// Actively disabled resources by the UI
     #[debug(skip)]
@@ -500,6 +500,13 @@ impl RefClient {
         self.resources.retain(|r| r.id() != *resource);
 
         self.cidr_resources = self.recalculate_cidr_routes();
+    }
+
+    pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
+        self.connected_cidr_resources.iter().copied().chain(
+            self.internet_resource
+                .filter(|_| self.connected_internet_resource),
+        )
     }
 
     fn recalculate_cidr_routes(&mut self) -> IpNetworkTable<ResourceId> {
