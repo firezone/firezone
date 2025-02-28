@@ -10,7 +10,6 @@ use std::{
     collections::HashMap,
     io,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs},
-    process::ExitStatus,
     sync::Arc,
     task::{Context, Poll},
 };
@@ -161,9 +160,8 @@ impl DnsSockets {
                 };
 
                 self.tcp_streams_by_remote.insert(from, stream);
-                return Poll::Ready(Ok(Query {
+                return Poll::Ready(Ok(Query::Tcp {
                     source: from,
-                    transport: Transport::Tcp,
                     message,
                 }));
             }
@@ -173,9 +171,8 @@ impl DnsSockets {
                     .context("Failed to read UDPv4 DNS query")
                     .map_err(anyhow_to_io)?;
 
-                return Poll::Ready(Ok(Query {
+                return Poll::Ready(Ok(Query::Udp {
                     source: from,
-                    transport: Transport::Udp,
                     message,
                 }));
             }
@@ -185,9 +182,8 @@ impl DnsSockets {
                     .context("Failed to read UDPv6 DNS query")
                     .map_err(anyhow_to_io)?;
 
-                return Poll::Ready(Ok(Query {
+                return Poll::Ready(Ok(Query::Udp {
                     source: from,
-                    transport: Transport::Udp,
                     message,
                 }));
             }
@@ -260,15 +256,15 @@ async fn read_tcp_query(
     Ok(Some((from, message, stream)))
 }
 
-pub struct Query {
-    pub source: SocketAddr,
-    pub transport: Transport,
-    pub message: Message<Vec<u8>>,
-}
-
-pub enum Transport {
-    Udp,
-    Tcp,
+pub enum Query {
+    Udp {
+        source: SocketAddr,
+        message: Message<Vec<u8>>,
+    },
+    Tcp {
+        source: SocketAddr,
+        message: Message<Vec<u8>>,
+    },
 }
 
 fn make_udp_socket(socket: impl ToSocketAddrs) -> Result<UdpSocket> {
@@ -319,6 +315,7 @@ mod tests {
     use domain::base::{iana::Rcode, MessageBuilder};
     use std::future::poll_fn;
     use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::process::ExitStatus;
 
     use super::*;
 
@@ -334,22 +331,15 @@ mod tests {
             dns_sockets.rebind_ipv6(v6_socket).unwrap();
 
             loop {
-                let query = poll_fn(|cx| dns_sockets.poll(cx)).await.unwrap();
-
-                let response = MessageBuilder::new_vec()
-                    .start_answer(&query.message, Rcode::NOERROR)
-                    .unwrap()
-                    .into_message();
-
-                match query.transport {
-                    Transport::Udp => {
+                match poll_fn(|cx| dns_sockets.poll(cx)).await.unwrap() {
+                    Query::Udp { source, message } => {
                         dns_sockets
-                            .queue_udp_response(query.source, response)
+                            .queue_udp_response(source, empty_dns_response(message))
                             .unwrap();
                     }
-                    Transport::Tcp => {
+                    Query::Tcp { source, message } => {
                         dns_sockets
-                            .queue_tcp_response(query.source, response)
+                            .queue_tcp_response(source, empty_dns_response(message))
                             .unwrap();
                     }
                 }
@@ -374,28 +364,35 @@ mod tests {
 
         server_task.abort();
     }
-}
 
-async fn dig_udp(server: SocketAddr) -> ExitStatus {
-    tokio::process::Command::new("dig")
-        .arg(format!("@{}", server.ip()))
-        .arg("+notcp")
-        .arg("-p")
-        .arg(server.port().to_string())
-        .arg("foobar.com")
-        .status()
-        .await
-        .unwrap()
-}
+    fn empty_dns_response(message: Message<Vec<u8>>) -> Message<Vec<u8>> {
+        MessageBuilder::new_vec()
+            .start_answer(&message, Rcode::NOERROR)
+            .unwrap()
+            .into_message()
+    }
 
-async fn dig_tcp(server: SocketAddr) -> ExitStatus {
-    tokio::process::Command::new("dig")
-        .arg(format!("@{}", server.ip()))
-        .arg("+tcp")
-        .arg("-p")
-        .arg(server.port().to_string())
-        .arg("foobar.com")
-        .status()
-        .await
-        .unwrap()
+    async fn dig_udp(server: SocketAddr) -> ExitStatus {
+        tokio::process::Command::new("dig")
+            .arg(format!("@{}", server.ip()))
+            .arg("+notcp")
+            .arg("-p")
+            .arg(server.port().to_string())
+            .arg("foobar.com")
+            .status()
+            .await
+            .unwrap()
+    }
+
+    async fn dig_tcp(server: SocketAddr) -> ExitStatus {
+        tokio::process::Command::new("dig")
+            .arg(format!("@{}", server.ip()))
+            .arg("+tcp")
+            .arg("-p")
+            .arg(server.port().to_string())
+            .arg("foobar.com")
+            .status()
+            .await
+            .unwrap()
+    }
 }
