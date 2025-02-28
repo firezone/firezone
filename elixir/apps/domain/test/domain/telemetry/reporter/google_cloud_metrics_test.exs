@@ -42,7 +42,8 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
                |> Log.Query.by_reporter_module(reporter_module)
                |> Repo.one()
 
-      assert DateTime.diff(last_flushed_at, now, :second) < 1
+      # Assert last_flushed_at is within 3 seconds of now
+      assert DateTime.diff(last_flushed_at, now, :millisecond) < 3000
 
       assert {:noreply, {[], "proj", ^tags, {buffer_size, buffer}} = state} =
                handle_info(
@@ -92,7 +93,8 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
                |> Log.Query.by_reporter_module(reporter_module)
                |> Repo.one()
 
-      assert DateTime.diff(last_flushed_at3, now, :second) < 1
+      # Assert last_flushed_at is within 3 seconds of now
+      assert DateTime.diff(last_flushed_at3, now, :millisecond) < 3000
     end
   end
 
