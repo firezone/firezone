@@ -1,4 +1,4 @@
-//! A UDP-based DNS server that operates on layer 4, i.e. uses user-space sockets to send and receive packets.
+//! A TCP-based DNS server that operates on layer 4, i.e. uses user-space sockets to send and receive packets.
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
