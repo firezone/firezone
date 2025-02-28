@@ -1438,8 +1438,16 @@ impl ClientState {
         };
 
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
-            if resource.has_different_address(&new_resource) {
-                self.remove_resource(resource.id());
+            let resource_id = resource.id();
+            let display_fields_changed = resource.display_fields_changed(&new_resource);
+            let address_changed = resource.has_different_address(&new_resource);
+
+            if display_fields_changed {
+                self.emit_resources_changed();
+            }
+
+            if address_changed {
+                self.remove_resource(resource_id);
             }
         }
 
