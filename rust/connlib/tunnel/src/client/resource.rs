@@ -167,12 +167,6 @@ impl Resource {
         }
     }
 
-    pub fn display_fields_changed(&self, other: &Resource) -> bool {
-        self.name() != other.name()
-            || self.address_description() != other.address_description()
-            || self.sites() != other.sites()
-    }
-
     pub fn addresses(&self) -> Vec<IpNetwork> {
         match self {
             Resource::Dns(_) => vec![],
