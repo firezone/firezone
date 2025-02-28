@@ -1437,7 +1437,6 @@ impl ClientState {
             }
         };
 
-        // Resource already exists
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
             if resource.has_different_address(&new_resource) {
                 self.remove_resource(resource.id());
@@ -1452,26 +1451,32 @@ impl ClientState {
             return;
         }
 
-        match &new_resource {
-            Resource::Dns(dns) => {
-                // No-op if address is already in the resolver
-                let _ = self.stub_resolver.add_resource(dns.id, dns.address.clone());
-            }
-            Resource::Cidr(_cidr) => {
-                // No-op if address is already in the table
-                self.maybe_update_cidr_resources();
+        let activated = match &new_resource {
+            Resource::Dns(dns) => self.stub_resolver.add_resource(dns.id, dns.address.clone()),
+            Resource::Cidr(cidr) => {
+                let existing = self.active_cidr_resources.exact_match(cidr.address);
+
+                match existing {
+                    Some(existing) => existing.id != cidr.id,
+                    None => true,
+                }
             }
             Resource::Internet(resource) => {
-                // No-op if resource ID hasn't changed
-                let _ = self.internet_resource.replace(resource.id);
+                self.internet_resource.replace(resource.id) != Some(resource.id)
             }
         };
 
-        let name = new_resource.name();
-        let address = new_resource.address_string().map(tracing::field::display);
-        let sites = new_resource.sites_string();
+        if activated {
+            let name = new_resource.name();
+            let address = new_resource.address_string().map(tracing::field::display);
+            let sites = new_resource.sites_string();
 
-        tracing::info!(%name, address, %sites, "Activating resource");
+            tracing::info!(%name, address, %sites, "Activating resource");
+        }
+
+        if matches!(new_resource, Resource::Cidr(_)) {
+            self.maybe_update_cidr_resources();
+        }
 
         self.maybe_update_tun_routes();
         self.emit_resources_changed();
