@@ -52,6 +52,7 @@ rand = { workspace = true }
 sha2 = { workspace = true }
 test-case = { workspace = true }
 test-strategy = { workspace = true }
+tokio = { workspace = true, features = ["process"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [[bench]]

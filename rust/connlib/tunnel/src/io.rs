@@ -12,7 +12,7 @@ use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::VecDeque,
     io,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
@@ -115,11 +115,12 @@ impl Io {
     }
 
     pub fn rebind_dns_ipv4(&mut self, ipv4: Ipv4Addr) -> Result<()> {
-        self.dns_sockets.rebind_ipv4(ipv4)
+        self.dns_sockets.rebind_ipv4(SocketAddrV4::new(ipv4, 5353))
     }
 
     pub fn rebind_dns_ipv6(&mut self, ipv6: Ipv6Addr) -> Result<()> {
-        self.dns_sockets.rebind_ipv6(ipv6)
+        self.dns_sockets
+            .rebind_ipv6(SocketAddrV6::new(ipv6, 5353, 0, 0))
     }
 
     pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {
