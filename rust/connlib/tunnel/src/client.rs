@@ -9,7 +9,7 @@ use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::unique_packet_buffer::UniquePacketBuffer;
-use crate::{dns, is_peer, p2p_control, IpConfig, TunConfig};
+use crate::{dns, is_peer, p2p_control, IpConfig, TunConfig, IPV4_TUNNEL, IPV6_TUNNEL};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_model::{
@@ -943,6 +943,8 @@ impl ClientState {
         self.active_cidr_resources
             .iter()
             .map(|(ip, _)| ip)
+            .chain(iter::once(IPV4_TUNNEL.into()))
+            .chain(iter::once(IPV6_TUNNEL.into()))
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
             .chain(iter::once(DNS_SENTINELS_V4.into()))

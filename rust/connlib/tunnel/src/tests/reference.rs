@@ -392,13 +392,17 @@ impl ReferenceState {
                 seq,
                 identifier,
                 payload,
-            } => {
-                state.client.exec_mut(|client| {
-                    client.on_icmp_packet(*src, dst.clone(), *seq, *identifier, *payload, |r| {
-                        state.portal.gateway_for_resource(r).copied()
-                    })
-                });
-            }
+            } => state.client.exec_mut(|client| {
+                client.on_icmp_packet(
+                    *src,
+                    dst.clone(),
+                    *seq,
+                    *identifier,
+                    *payload,
+                    |r| state.portal.gateway_for_resource(r).copied(),
+                    |ip| state.portal.gateway_by_ip(ip),
+                )
+            }),
             Transition::SendUdpPacket {
                 src,
                 dst,
@@ -407,9 +411,15 @@ impl ReferenceState {
                 payload,
             } => {
                 state.client.exec_mut(|client| {
-                    client.on_udp_packet(*src, dst.clone(), *sport, *dport, *payload, |r| {
-                        state.portal.gateway_for_resource(r).copied()
-                    })
+                    client.on_udp_packet(
+                        *src,
+                        dst.clone(),
+                        *sport,
+                        *dport,
+                        *payload,
+                        |r| state.portal.gateway_for_resource(r).copied(),
+                        |ip| state.portal.gateway_by_ip(ip),
+                    )
                 });
             }
             Transition::SendTcpPayload {
@@ -420,9 +430,15 @@ impl ReferenceState {
                 payload,
             } => {
                 state.client.exec_mut(|client| {
-                    client.on_tcp_packet(*src, dst.clone(), *sport, *dport, *payload, |r| {
-                        state.portal.gateway_for_resource(r).copied()
-                    })
+                    client.on_tcp_packet(
+                        *src,
+                        dst.clone(),
+                        *sport,
+                        *dport,
+                        *payload,
+                        |r| state.portal.gateway_for_resource(r).copied(),
+                        |ip| state.portal.gateway_by_ip(ip),
+                    )
                 });
             }
             Transition::UpdateSystemDnsServers(servers) => {
@@ -644,6 +660,15 @@ impl ReferenceState {
             // As long as the packet is valid it's always valid to send to a non-resource
             return true;
         };
+
+        // If the dst is a peer, the packet will only be routed if we are connected.
+        if crate::is_peer(dst) {
+            return match dst {
+                IpAddr::V4(dst) => self.connected_gateway_ipv4_ips().contains(&(dst.into())),
+                IpAddr::V6(dst) => self.connected_gateway_ipv6_ips().contains(&(dst.into())),
+            };
+        }
+
         let Some(gateway) = self.portal.gateway_for_resource(rid) else {
             return false;
         };

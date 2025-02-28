@@ -125,6 +125,15 @@ pub(crate) enum Destination {
     IpAddr(IpAddr),
 }
 
+impl Destination {
+    pub(crate) fn ip_addr(&self) -> Option<IpAddr> {
+        match self {
+            Destination::DomainName { .. } => None,
+            Destination::IpAddr(addr) => Some(*addr),
+        }
+    }
+}
+
 /// Helper enum
 #[derive(Debug, Clone)]
 enum PacketDestination {

@@ -214,6 +214,14 @@ impl StubPortal {
         Some(gid)
     }
 
+    pub(crate) fn gateway_by_ip(&self, ip: IpAddr) -> Option<GatewayId> {
+        self.gateways_by_site
+            .values()
+            .flatten()
+            .find(|(_, ipv4_addr, ipv6_addr)| *ipv4_addr == ip || *ipv6_addr == ip)
+            .map(|(gid, _, _)| *gid)
+    }
+
     pub(crate) fn gateways(&self) -> impl Strategy<Value = BTreeMap<GatewayId, Host<RefGateway>>> {
         self.gateways_by_site
             .values()
