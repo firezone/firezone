@@ -115,12 +115,12 @@ impl Io {
     }
 
     pub fn rebind_dns_ipv4(&mut self, ipv4: Ipv4Addr) -> Result<()> {
-        self.dns_sockets.rebind_ipv4(SocketAddrV4::new(ipv4, 5353))
+        self.dns_sockets.rebind_ipv4(SocketAddrV4::new(ipv4, 53535))
     }
 
     pub fn rebind_dns_ipv6(&mut self, ipv6: Ipv6Addr) -> Result<()> {
         self.dns_sockets
-            .rebind_ipv6(SocketAddrV6::new(ipv6, 5353, 0, 0))
+            .rebind_ipv6(SocketAddrV6::new(ipv6, 53535, 0, 0))
     }
 
     pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {
