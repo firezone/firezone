@@ -448,7 +448,7 @@ impl GatewayOnClient {
 pub(crate) struct NotClientIp(IpAddr);
 
 #[derive(Debug, thiserror::Error)]
-#[error("Accessing this resource IP is not allowed: {0}")]
+#[error("Traffic to/from this resource IP is not allowed: {0}")]
 pub(crate) struct NotAllowedResource(IpAddr);
 
 #[derive(Debug)]
