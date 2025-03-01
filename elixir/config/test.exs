@@ -68,6 +68,9 @@ config :api, API.Endpoint,
   url: [port: 13_101],
   server: true
 
+config :api,
+  relays_presence_debounce_timeout: 100 # shorten debounce timeout for tests
+
 ###############################
 ##### Third-party configs #####
 ###############################

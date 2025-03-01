@@ -504,10 +504,10 @@ defmodule API.Client.ChannelTest do
 
     test "subscribes for relays presence", %{client: client, subject: subject} do
       relay_group = Fixtures.Relays.create_global_group()
-      stamp_secret = Ecto.UUID.generate()
 
       relay1 = Fixtures.Relays.create_relay(group: relay_group)
-      :ok = Domain.Relays.connect_relay(relay1, stamp_secret)
+      stamp_secret1 = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1)
 
       Fixtures.Relays.update_relay(relay1,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
@@ -516,7 +516,8 @@ defmodule API.Client.ChannelTest do
       )
 
       relay2 = Fixtures.Relays.create_relay(group: relay_group)
-      :ok = Domain.Relays.connect_relay(relay2, stamp_secret)
+      stamp_secret2 = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay2, stamp_secret2)
 
       Fixtures.Relays.update_relay(relay2,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-100, :second),
@@ -551,11 +552,10 @@ defmodule API.Client.ChannelTest do
 
       assert_push "relays_presence", %{
         disconnected_ids: [relay1_id],
-        connected: [relay_view1, relay_view2]
-      }
+        connected: [relay_view1]
+      }, relays_presence_timeout()
 
       assert relay_view1.id == relay2.id
-      assert relay_view2.id == relay2.id
       assert relay1_id == relay1.id
     end
 
@@ -590,7 +590,7 @@ defmodule API.Client.ChannelTest do
       assert_push "relays_presence", %{
         disconnected_ids: [],
         connected: [relay_view, _relay_view]
-      }
+      }, relays_presence_timeout()
 
       assert %{
                addr: _,
@@ -615,7 +615,7 @@ defmodule API.Client.ChannelTest do
       refute_push "relays_presence", %{
         disconnected_ids: [],
         connected: [%{id: ^other_relay_id} | _]
-      }
+      }, relays_presence_timeout()
     end
 
     test "does not return the relay that is disconnected as online one", %{
@@ -661,7 +661,7 @@ defmodule API.Client.ChannelTest do
       assert_push "relays_presence", %{
         disconnected_ids: [relay1_id],
         connected: []
-      }
+      }, relays_presence_timeout()
 
       assert relay1_id == relay1.id
     end
@@ -2383,5 +2383,9 @@ defmodule API.Client.ChannelTest do
       assert_receive {:invalidate_ice_candidates, client_id, ^candidates, _opentelemetry_ctx}, 200
       assert client.id == client_id
     end
+  end
+
+  defp relays_presence_timeout do
+    Application.fetch_env!(:api, :relays_presence_debounce_timeout) + 100
   end
 end

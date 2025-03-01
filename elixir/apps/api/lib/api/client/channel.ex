@@ -100,6 +100,16 @@ defmodule API.Client.Channel do
       resources =
         map_and_filter_compatible_resources(resources, socket.assigns.client.last_seen_version)
 
+      # Cache new stamp secrets
+      stamp_secrets = Map.get(socket.assigns, :stamp_secrets, %{})
+
+      stamp_secrets =
+        Enum.reduce(relays, stamp_secrets, fn relay, acc ->
+          Map.put(acc, relay.id, relay.stamp_secret)
+        end)
+
+      socket = assign(socket, :stamp_secrets, stamp_secrets)
+
       push(socket, "init", %{
         resources: Views.Resource.render_many(resources),
         relays: Views.Relay.render_many(relays, socket.assigns.subject.expires_at),
@@ -109,6 +119,8 @@ defmodule API.Client.Channel do
             | account: socket.assigns.subject.account
           })
       })
+
+      {:ok, socket}
     end
   end
 
@@ -131,8 +143,42 @@ defmodule API.Client.Channel do
       :ok = Enum.each(actor_group_ids, &Policies.subscribe_to_events_for_actor_group/1)
       :ok = Policies.subscribe_to_events_for_actor(socket.assigns.subject.actor)
 
-      :ok = init(socket)
+      {:ok, socket} = init(socket)
 
+      {:noreply, socket}
+    end
+  end
+
+  # Called to actually push relays_presence with a disconnected relay to the client
+  def handle_info({:push_leave, relay_id, stamp_secret}, socket) do
+    pending_leaves = Map.get(socket.assigns, :pending_leaves, MapSet.new())
+
+    if MapSet.member?(pending_leaves, stamp_secret) do
+      OpenTelemetry.Tracer.with_span "client.relays_presence",
+        attributes: %{
+          relay_id: relay_id
+        } do
+        :ok = Relays.unsubscribe_from_relay_presence(relay_id)
+
+        {:ok, relays} = select_relays(socket, [relay_id])
+        :ok = maybe_subscribe_for_relays_presence(relays, socket)
+
+        :ok =
+          Enum.each(relays, fn relay ->
+            :ok = Relays.unsubscribe_from_relay_presence(relay)
+            :ok = Relays.subscribe_to_relay_presence(relay)
+          end)
+
+        push(socket, "relays_presence", %{
+          disconnected_ids: [relay_id],
+          connected: relays
+        })
+
+        socket = assign(socket, :pending_leaves, MapSet.delete(pending_leaves, stamp_secret))
+
+        {:noreply, socket}
+      end
+    else
       {:noreply, socket}
     end
   end
@@ -393,28 +439,7 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     if Map.has_key?(leaves, relay_id) do
-      OpenTelemetry.Tracer.with_span "client.relays_presence",
-        attributes: %{
-          relay_id: relay_id
-        } do
-        :ok = Relays.unsubscribe_from_relay_presence(relay_id)
-
-        {:ok, relays} = select_relays(socket, [relay_id])
-        :ok = maybe_subscribe_for_relays_presence(relays, socket)
-
-        :ok =
-          Enum.each(relays, fn relay ->
-            :ok = Relays.unsubscribe_from_relay_presence(relay)
-            :ok = Relays.subscribe_to_relay_presence(relay)
-          end)
-
-        push(socket, "relays_presence", %{
-          disconnected_ids: [relay_id],
-          connected: Views.Relay.render_many(relays, socket.assigns.subject.expires_at)
-        })
-
-        {:noreply, socket}
-      end
+      {:noreply, queue_leave(socket, relay_id)}
     else
       {:noreply, socket}
     end
@@ -444,13 +469,34 @@ defmodule API.Client.Channel do
               :ok = Relays.subscribe_to_relay_presence(relay)
             end)
 
+          # Cache new stamp secrets
+          stamp_secrets = Map.get(socket.assigns, :stamp_secrets, %{})
+
+          stamp_secrets =
+            Enum.reduce(relays, stamp_secrets, fn relay, acc ->
+              Map.put(acc, relay.id, relay.stamp_secret)
+            end)
+
+          # Cancel any pending leaves for reconnected relays
+          pending_leaves = Map.get(socket.assigns, :pending_leaves, MapSet.new())
+
+          pending_leaves =
+            Enum.reduce(relays, pending_leaves, fn relay, acc ->
+              MapSet.delete(acc, relay.stamp_secret)
+            end)
+
+          socket =
+            socket
+            |> assign(:stamp_secrets, stamp_secrets)
+            |> assign(:pending_leaves, pending_leaves)
+
           push(socket, "relays_presence", %{
             disconnected_ids: [],
             connected: Views.Relay.render_many(relays, socket.assigns.subject.expires_at)
           })
-        end
 
-        {:noreply, socket}
+          {:noreply, socket}
+        end
       end
     else
       {:noreply, socket}
@@ -900,6 +946,26 @@ defmodule API.Client.Channel do
     end
   end
 
+  # Schedule the disconnected relays_presence message to be sent
+  defp queue_leave(socket, relay_id) do
+    stamp_secrets = Map.get(socket.assigns, :stamp_secrets, %{})
+    stamp_secret = Map.get(stamp_secrets, relay_id)
+
+    if is_nil(stamp_secret) do
+      socket
+    else
+      Process.send_after(
+        self(),
+        {:push_leave, relay_id, stamp_secret},
+        relays_presence_debounce_timeout()
+      )
+
+      pending_leaves = Map.get(socket.assigns, :pending_leaves, MapSet.new())
+
+      assign(socket, :pending_leaves, MapSet.put(pending_leaves, stamp_secret))
+    end
+  end
+
   defp select_relays(socket, except_ids \\ []) do
     {:ok, relays} =
       Relays.all_connected_relays_for_account(socket.assigns.subject.account, except_ids)
@@ -1051,5 +1117,9 @@ defmodule API.Client.Channel do
       client: %{username: client_username, password: client_password},
       gateway: %{username: gateway_username, password: gateway_password}
     }
+  end
+
+  defp relays_presence_debounce_timeout do
+    Application.fetch_env!(:api, :relays_presence_debounce_timeout)
   end
 end
