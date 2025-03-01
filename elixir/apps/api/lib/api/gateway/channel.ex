@@ -2,6 +2,7 @@ defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
   alias Domain.{Clients, Resources, Relays, Gateways, Flows}
+  alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
 
@@ -56,8 +57,16 @@ defmodule API.Gateway.Channel do
         }
       })
 
+      # Cache new stamp secrets
+      socket = Debouncer.cache_stamp_secrets(socket, relays)
+
       {:noreply, socket}
     end
+  end
+
+  # Called to actually push relays_presence with a disconnected relay to the gateway
+  def handle_info({:push_leave, relay_id, stamp_secret, payload}, socket) do
+    {:noreply, Debouncer.handle_leave(socket, relay_id, stamp_secret, payload, &push/3)}
   end
 
   def handle_info("disconnect", socket) do
@@ -166,10 +175,12 @@ defmodule API.Gateway.Channel do
             :ok = Domain.Relays.subscribe_to_relay_presence(relay)
           end)
 
-        push(socket, "relays_presence", %{
+        payload = %{
           disconnected_ids: [relay_id],
           connected: Views.Relay.render_many(relays, relay_credentials_expire_at)
-        })
+        }
+
+        socket = Debouncer.queue_leave(self(), socket, relay_id, payload)
 
         {:noreply, socket}
       end
@@ -205,13 +216,26 @@ defmodule API.Gateway.Channel do
               :ok = Relays.subscribe_to_relay_presence(relay)
             end)
 
+          # Cache new stamp secrets
+          socket = Debouncer.cache_stamp_secrets(socket, relays)
+
+          # If a relay reconnects with a different stamp_secret, disconnect them immediately
+          joined_ids = Map.keys(joins)
+
+          {socket, disconnected_ids} =
+            Debouncer.cancel_leaves_or_disconnect_immediately(
+              socket,
+              joined_ids,
+              socket.assigns.gateway.account_id
+            )
+
           push(socket, "relays_presence", %{
-            disconnected_ids: [],
+            disconnected_ids: disconnected_ids,
             connected: Views.Relay.render_many(relays, relay_credentials_expire_at)
           })
-        end
 
-        {:noreply, socket}
+          {:noreply, socket}
+        end
       end
     else
       {:noreply, socket}
