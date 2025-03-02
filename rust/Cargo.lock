@@ -2280,6 +2280,8 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "itertools 0.13.0",
+ "l4-tcp-dns-server",
+ "l4-udp-dns-server",
  "lockfree-object-pool",
  "lru",
  "proptest",
@@ -3500,6 +3502,26 @@ dependencies = [
  "indexmap 1.9.3",
  "matches",
  "selectors",
+]
+
+[[package]]
+name = "l4-tcp-dns-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "domain",
+ "futures",
+ "tokio",
+]
+
+[[package]]
+name = "l4-udp-dns-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "domain",
+ "futures",
+ "tokio",
 ]
 
 [[package]]

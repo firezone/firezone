@@ -9,7 +9,7 @@ use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
 };
-use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
+use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
 use firezone_tunnel::{
     DnsResourceNatEntry, GatewayTunnel, IpConfig, ResolveDnsRequest, IPV4_PEERS, IPV6_PEERS,
 };
@@ -17,7 +17,7 @@ use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
 use std::convert::Infallible;
 use std::future::Future;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddrV4, SocketAddrV6};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -55,7 +55,7 @@ pub struct Eventloop {
         futures_bounded::FuturesTupleSet<Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveTrigger>,
     dns_cache: moka::future::Cache<DomainName, Vec<IpAddr>>,
 
-    set_interface_tasks: futures_bounded::FuturesSet<Result<()>>,
+    set_interface_tasks: futures_bounded::FuturesSet<Result<Interface>>,
 
     logged_permission_denied: bool,
 }
@@ -163,9 +163,22 @@ impl Eventloop {
 
             match self.set_interface_tasks.poll_unpin(cx) {
                 Poll::Ready(result) => {
-                    result
+                    let interface = result
                         .unwrap_or_else(|e| Err(anyhow::Error::new(e)))
                         .context("Failed to update TUN interface")?;
+
+                    if let Err(e) = self
+                        .tunnel
+                        .rebind_dns_ipv4(SocketAddrV4::new(interface.ipv4, 53535))
+                    {
+                        tracing::warn!("Failed to bind IPv4 DNS server: {e:#}")
+                    }
+                    if let Err(e) =
+                        self.tunnel
+                            .rebind_dns_ipv6(SocketAddrV6::new(interface.ipv6, 53535, 0, 0))
+                    {
+                        tracing::warn!("Failed to bind IPv6 DNS server: {e:#}")
+                    }
                 }
                 Poll::Pending => {}
             }
@@ -378,7 +391,7 @@ impl Eventloop {
                                 .await
                                 .context("Failed to set TUN routes")?;
 
-                            Ok(())
+                            Ok(init.interface)
                         }
                     })
                     .is_err()
