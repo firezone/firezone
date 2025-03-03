@@ -46,11 +46,18 @@ where
         self.expiration.keys().next().cloned()
     }
 
+    #[cfg(test)]
+    pub fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
     pub fn handle_timeout(&mut self, now: Instant) {
-        let not_yet_expired = self.expiration.split_off(&now);
+        let mut not_yet_expired = self.expiration.split_off(&now);
+        let now_entry = not_yet_expired.remove(&now);
 
         for key in mem::replace(&mut self.expiration, not_yet_expired)
             .into_values()
+            .chain(now_entry)
             .flatten()
         {
             let Some(value) = self.inner.remove(&key) else {
@@ -87,7 +94,7 @@ mod tests {
         map.insert("key1", "value1", now + Duration::from_secs(1));
         map.insert("key2", "value2", now + Duration::from_secs(2));
 
-        map.handle_timeout(now + Duration::from_millis(1001)); // Just after key1 expires
+        map.handle_timeout(now + Duration::from_secs(1));
 
         assert_eq!(map.get(&"key1"), None);
         assert_eq!(map.get(&"key2"), Some(&"value2"));
@@ -104,5 +111,37 @@ mod tests {
         map.remove(&"key1");
 
         assert_eq!(map.poll_timeout(), Some(now + Duration::from_secs(2)));
+    }
+
+    #[test]
+    fn expiring_all_items_empties_map() {
+        let mut map = ExpiringMap::default();
+        let now = Instant::now();
+
+        map.insert("key1", "value1", now + Duration::from_secs(1));
+        map.insert("key2", "value2", now + Duration::from_secs(1));
+        map.insert("key3", "value3", now + Duration::from_secs(1));
+        map.insert("key4", "value4", now + Duration::from_secs(1));
+        map.insert("key5", "value5", now + Duration::from_secs(1));
+
+        while let Some(timeout) = map.poll_timeout() {
+            map.handle_timeout(timeout);
+        }
+
+        assert!(map.is_empty())
+    }
+
+    #[test]
+    fn can_handle_multiple_items_at_same_timestamp() {
+        let mut map = ExpiringMap::default();
+        let now = Instant::now();
+
+        map.insert("key1", "value1", now + Duration::from_secs(1));
+        map.insert("key2", "value2", now + Duration::from_secs(1));
+        map.insert("key3", "value3", now + Duration::from_secs(1));
+
+        map.handle_timeout(now + Duration::from_secs(1));
+
+        assert!(map.is_empty())
     }
 }
