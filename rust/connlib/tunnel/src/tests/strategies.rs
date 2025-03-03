@@ -7,7 +7,7 @@ use crate::client::{
 use crate::messages::DnsServer;
 use crate::{proptest::*, IPV4_TUNNEL, IPV6_TUNNEL};
 use connlib_model::{DomainRecord, RelayId, Site};
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
 use proptest::{collection, prelude::*};
