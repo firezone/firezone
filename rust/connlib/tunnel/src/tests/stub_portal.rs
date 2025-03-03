@@ -9,7 +9,6 @@ use crate::messages::{gateway, DnsServer};
 use crate::{client, proptest::*};
 use connlib_model::GatewayId;
 use connlib_model::{ResourceId, SiteId};
-use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use proptest::{
     sample::Selector,
@@ -215,6 +214,14 @@ impl StubPortal {
         Some(gid)
     }
 
+    pub(crate) fn gateway_by_ip(&self, ip: IpAddr) -> Option<GatewayId> {
+        self.gateways_by_site
+            .values()
+            .flatten()
+            .find(|(_, ipv4_addr, ipv6_addr)| *ipv4_addr == ip || *ipv6_addr == ip)
+            .map(|(gid, _, _)| *gid)
+    }
+
     pub(crate) fn gateways(&self) -> impl Strategy<Value = BTreeMap<GatewayId, Host<RefGateway>>> {
         self.gateways_by_site
             .values()
@@ -276,29 +283,19 @@ impl StubPortal {
     }
 }
 
-const IPV4_TUNNEL: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11) {
-    Ok(n) => n,
-    Err(_) => unreachable!(),
-};
-const IPV6_TUNNEL: Ipv6Network =
-    match Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107) {
-        Ok(n) => n,
-        Err(_) => unreachable!(),
-    };
-
 /// An [`Iterator`] over the possible IPv4 addresses of a tunnel interface.
 ///
 /// We use the CG-NAT range for IPv4.
 /// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L7>.
 fn tunnel_ip4s() -> impl Iterator<Item = Ipv4Addr> {
-    IPV4_TUNNEL.hosts()
+    crate::IPV4_TUNNEL.hosts()
 }
 
 /// An [`Iterator`] over the possible IPv6 addresses of a tunnel interface.
 ///
 /// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L8>.
 fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
-    IPV6_TUNNEL
+    crate::IPV6_TUNNEL
         .subnets_with_prefix(128)
         .map(|n| n.network_address())
 }

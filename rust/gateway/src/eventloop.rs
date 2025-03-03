@@ -11,7 +11,7 @@ use firezone_tunnel::messages::gateway::{
 };
 use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
 use firezone_tunnel::{
-    DnsResourceNatEntry, GatewayTunnel, IpConfig, ResolveDnsRequest, IPV4_PEERS, IPV6_PEERS,
+    DnsResourceNatEntry, GatewayTunnel, IpConfig, ResolveDnsRequest, IPV4_TUNNEL, IPV6_TUNNEL,
 };
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
@@ -374,7 +374,7 @@ impl Eventloop {
                                 .await
                                 .context("Failed to set TUN interface IPs")?;
                             tun_device_manager
-                                .set_routes(vec![IPV4_PEERS], vec![IPV6_PEERS])
+                                .set_routes(vec![IPV4_TUNNEL], vec![IPV6_TUNNEL])
                                 .await
                                 .context("Failed to set TUN routes")?;
 
