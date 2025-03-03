@@ -169,11 +169,21 @@ impl Eventloop {
                         .map_err(Error::UpdateTun)?;
 
                     let ipv4_socket = SocketAddrV4::new(interface.ipv4, 53535);
+                    let ipv6_socket = SocketAddrV6::new(interface.ipv6, 53535, 0, 0);
 
-                    self.tunnel
+                    let ipv4_result = self
+                        .tunnel
                         .rebind_dns_ipv4(ipv4_socket)
                         .with_context(|| format!("Failed to bind DNS server at {ipv4_socket}"))
-                        .map_err(Error::BindDnsSockets)?;
+                        .map_err(Error::BindDnsSockets);
+
+                    let ipv6_result = self
+                        .tunnel
+                        .rebind_dns_ipv6(ipv6_socket)
+                        .with_context(|| format!("Failed to bind DNS server at {ipv6_socket}"))
+                        .map_err(Error::BindDnsSockets);
+
+                    ipv4_result.or(ipv6_result)?;
                 }
                 Poll::Pending => {}
             }
