@@ -174,6 +174,7 @@ fn non_reserved_ipv4() -> impl Strategy<Value = Ipv4Addr> {
         Ipv4Network::new(Ipv4Addr::new(224, 0, 0, 0), 4).unwrap(), // Multicast
         DNS_SENTINELS_V4,
         IPV4_RESOURCES,
+        IPV4_TUNNEL,
     ];
 
     any::<Ipv4Addr>().prop_map(move |mut ip| {
@@ -192,6 +193,7 @@ fn non_reserved_ipv6() -> impl Strategy<Value = Ipv6Addr> {
         Ipv6Network::new(Ipv6Addr::UNSPECIFIED, 32).unwrap(),
         DNS_SENTINELS_V6,
         IPV6_RESOURCES,
+        IPV6_TUNNEL,
         Ipv6Network::new(Ipv6Addr::new(0xff00, 0, 0, 0, 0, 0, 0, 0), 8).unwrap(), // Multicast
     ];
 
