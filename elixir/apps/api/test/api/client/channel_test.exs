@@ -2384,4 +2384,11 @@ defmodule API.Client.ChannelTest do
       assert client.id == client_id
     end
   end
+
+  describe "handle_in/3 for unknown messages" do
+    test "it doesn't crash", %{socket: socket} do
+      ref = push(socket, "unknown_message", %{})
+      assert_reply ref, :error, %{reason: :unknown_message}
+    end
+  end
 end
