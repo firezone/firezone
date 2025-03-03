@@ -504,10 +504,10 @@ defmodule API.Client.ChannelTest do
 
     test "subscribes for relays presence", %{client: client, subject: subject} do
       relay_group = Fixtures.Relays.create_global_group()
-      stamp_secret = Ecto.UUID.generate()
 
       relay1 = Fixtures.Relays.create_relay(group: relay_group)
-      :ok = Domain.Relays.connect_relay(relay1, stamp_secret)
+      stamp_secret1 = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1)
 
       Fixtures.Relays.update_relay(relay1,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
@@ -516,7 +516,8 @@ defmodule API.Client.ChannelTest do
       )
 
       relay2 = Fixtures.Relays.create_relay(group: relay_group)
-      :ok = Domain.Relays.connect_relay(relay2, stamp_secret)
+      stamp_secret2 = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay2, stamp_secret2)
 
       Fixtures.Relays.update_relay(relay2,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-100, :second),
@@ -549,10 +550,12 @@ defmodule API.Client.ChannelTest do
 
       Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
 
-      assert_push "relays_presence", %{
-        disconnected_ids: [relay1_id],
-        connected: [relay_view1, relay_view2]
-      }
+      assert_push "relays_presence",
+                  %{
+                    disconnected_ids: [relay1_id],
+                    connected: [relay_view1, relay_view2]
+                  },
+                  relays_presence_timeout()
 
       assert relay_view1.id == relay2.id
       assert relay_view2.id == relay2.id
@@ -587,10 +590,12 @@ defmodule API.Client.ChannelTest do
 
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
-      assert_push "relays_presence", %{
-        disconnected_ids: [],
-        connected: [relay_view, _relay_view]
-      }
+      assert_push "relays_presence",
+                  %{
+                    disconnected_ids: [],
+                    connected: [relay_view, _relay_view]
+                  },
+                  relays_presence_timeout()
 
       assert %{
                addr: _,
@@ -612,10 +617,12 @@ defmodule API.Client.ChannelTest do
       :ok = Domain.Relays.connect_relay(other_relay, stamp_secret)
       other_relay_id = other_relay.id
 
-      refute_push "relays_presence", %{
-        disconnected_ids: [],
-        connected: [%{id: ^other_relay_id} | _]
-      }
+      refute_push "relays_presence",
+                  %{
+                    disconnected_ids: [],
+                    connected: [%{id: ^other_relay_id} | _]
+                  },
+                  relays_presence_timeout()
     end
 
     test "does not return the relay that is disconnected as online one", %{
@@ -658,10 +665,12 @@ defmodule API.Client.ChannelTest do
 
       Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay1.id}", relay1.id)
 
-      assert_push "relays_presence", %{
-        disconnected_ids: [relay1_id],
-        connected: []
-      }
+      assert_push "relays_presence",
+                  %{
+                    disconnected_ids: [relay1_id],
+                    connected: []
+                  },
+                  relays_presence_timeout()
 
       assert relay1_id == relay1.id
     end
@@ -2383,5 +2392,117 @@ defmodule API.Client.ChannelTest do
       assert_receive {:invalidate_ice_candidates, client_id, ^candidates, _opentelemetry_ctx}, 200
       assert client.id == client_id
     end
+  end
+
+  # Debouncer tests
+  describe "handle_info/3 :push_leave" do
+    test "cancels leave if reconnecting with the same stamp secret" do
+      relay_group = Fixtures.Relays.create_global_group()
+
+      relay1 = Fixtures.Relays.create_relay(group: relay_group)
+      stamp_secret1 = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1)
+
+      assert_push "relays_presence",
+                  %{
+                    connected: [relay_view1, relay_view2],
+                    disconnected_ids: []
+                  },
+                  relays_presence_timeout() + 10
+
+      assert relay1.id == relay_view1.id
+      assert relay1.id == relay_view2.id
+
+      Fixtures.Relays.disconnect_relay(relay1)
+
+      # presence_diff isn't immediate
+      Process.sleep(1)
+
+      # Reconnect with the same stamp secret
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1)
+
+      # Should not receive any disconnect
+      relay_id = relay1.id
+
+      refute_push "relays_presence",
+                  %{
+                    connected: [],
+                    disconnected_ids: [^relay_id]
+                  },
+                  relays_presence_timeout() + 10
+    end
+
+    test "disconnects immediately if reconnecting with a different stamp secret" do
+      relay_group = Fixtures.Relays.create_global_group()
+
+      relay1 = Fixtures.Relays.create_relay(group: relay_group)
+      stamp_secret1 = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1)
+
+      assert_push "relays_presence",
+                  %{
+                    connected: [relay_view1, relay_view2],
+                    disconnected_ids: []
+                  },
+                  relays_presence_timeout() + 10
+
+      assert relay1.id == relay_view1.id
+      assert relay1.id == relay_view2.id
+
+      Fixtures.Relays.disconnect_relay(relay1)
+
+      # presence_diff isn't immediate
+      Process.sleep(1)
+
+      # Reconnect with a different stamp secret
+      stamp_secret2 = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret2)
+
+      # Should receive disconnect "immediately"
+      assert_push "relays_presence",
+                  %{
+                    connected: [relay_view1, relay_view2],
+                    disconnected_ids: [relay_id]
+                  },
+                  relays_presence_timeout() + 10
+
+      assert relay_view1.id == relay1.id
+      assert relay_view2.id == relay1.id
+      assert relay_id == relay1.id
+    end
+
+    test "disconnects after the debounce timeout expires" do
+      relay_group = Fixtures.Relays.create_global_group()
+
+      relay1 = Fixtures.Relays.create_relay(group: relay_group)
+      stamp_secret1 = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1)
+
+      assert_push "relays_presence",
+                  %{
+                    connected: [relay_view1, relay_view2],
+                    disconnected_ids: []
+                  },
+                  relays_presence_timeout() + 10
+
+      assert relay1.id == relay_view1.id
+      assert relay1.id == relay_view2.id
+
+      Fixtures.Relays.disconnect_relay(relay1)
+
+      # Should receive disconnect after timeout
+      assert_push "relays_presence",
+                  %{
+                    connected: [],
+                    disconnected_ids: [relay_id]
+                  },
+                  relays_presence_timeout() + 10
+
+      assert relay_id == relay1.id
+    end
+  end
+
+  defp relays_presence_timeout do
+    Application.fetch_env!(:api, :relays_presence_debounce_timeout) + 10
   end
 end
