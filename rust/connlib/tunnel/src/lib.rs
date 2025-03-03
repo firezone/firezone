@@ -5,6 +5,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use anyhow::Result;
 use bimap::BiMap;
 use chrono::Utc;
 use connlib_model::{ClientId, DomainName, GatewayId, PublicKey, ResourceId, ResourceView};
@@ -14,7 +15,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
     fmt,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::Arc,
     task::{ready, Context, Poll},
     time::Instant,
@@ -89,6 +90,14 @@ impl<TRoleState> Tunnel<TRoleState> {
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.set_tun(tun);
+    }
+
+    pub fn rebind_dns_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
+        self.io.rebind_dns_ipv4(socket)
+    }
+
+    pub fn rebind_dns_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
+        self.io.rebind_dns_ipv6(socket)
     }
 }
 
@@ -182,6 +191,13 @@ impl ClientTunnel {
                 Poll::Ready(io::Input::DnsResponse(packet)) => {
                     self.role_state.handle_dns_response(packet);
                     self.role_state.handle_timeout(Instant::now());
+                    continue;
+                }
+                Poll::Ready(io::Input::UdpDnsQuery(_) | io::Input::TcpDnsQuery(_)) => {
+                    debug_assert!(
+                        false,
+                        "Client does not (yet) use userspace DNS server sockets"
+                    );
                     continue;
                 }
                 Poll::Pending => {}
@@ -280,6 +296,14 @@ impl GatewayTunnel {
 
                     continue;
                 }
+                Poll::Ready(io::Input::UdpDnsQuery(query)) => self.io.send_udp_dns_response(
+                    query.source,
+                    dns::servfail(query.message.for_slice_ref()),
+                )?,
+                Poll::Ready(io::Input::TcpDnsQuery(query)) => self.io.send_tcp_dns_response(
+                    query.source,
+                    dns::servfail(query.message.for_slice_ref()),
+                )?,
                 Poll::Pending => {}
             }
 
