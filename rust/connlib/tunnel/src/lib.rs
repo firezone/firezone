@@ -24,6 +24,7 @@ use tun::Tun;
 mod client;
 mod device_channel;
 mod dns;
+mod expiring_map;
 mod gateway;
 mod io;
 pub mod messages;
