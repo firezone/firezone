@@ -41,6 +41,8 @@ pub struct Server {
 
 impl Server {
     pub fn rebind_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
+        self.tcp_v4 = None;
+
         let tcp_listener = make_tcp_listener(socket)?;
 
         self.tcp_v4 = Some(tcp_listener);
@@ -53,6 +55,8 @@ impl Server {
     }
 
     pub fn rebind_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
+        self.tcp_v6 = None;
+
         let tcp_listener = make_tcp_listener(socket)?;
 
         self.tcp_v6 = Some(tcp_listener);

@@ -28,13 +28,18 @@ pub struct Server {
     reading_udp_v6_queries: BoxStream<'static, Result<(SocketAddr, Message<Vec<u8>>)>>,
 
     // Futures that send responses on the UDP sockets.
-    sending_udp_responses: FuturesUnordered<BoxFuture<'static, Result<()>>>,
+    sending_udp_v4_responses: FuturesUnordered<BoxFuture<'static, Result<()>>>,
+    sending_udp_v6_responses: FuturesUnordered<BoxFuture<'static, Result<()>>>,
 
     waker: AtomicWaker,
 }
 
 impl Server {
     pub fn rebind_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
+        self.udp_v4 = None;
+        self.reading_udp_v4_queries = stream::empty().boxed();
+        self.sending_udp_v4_responses.clear();
+
         let udp_socket = Arc::new(make_udp_socket(socket)?);
 
         self.reading_udp_v4_queries = udp_dns_query_stream(Arc::downgrade(&udp_socket));
@@ -48,6 +53,10 @@ impl Server {
     }
 
     pub fn rebind_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
+        self.udp_v6 = None;
+        self.reading_udp_v6_queries = stream::empty().boxed();
+        self.sending_udp_v6_responses.clear();
+
         let udp_socket = Arc::new(make_udp_socket(socket)?);
 
         self.reading_udp_v6_queries = udp_dns_query_stream(Arc::downgrade(&udp_socket));
@@ -61,14 +70,14 @@ impl Server {
     }
 
     pub fn send_response(&mut self, to: SocketAddr, response: Message<Vec<u8>>) -> io::Result<()> {
-        let udp_socket = match (to, self.udp_v4.clone(), self.udp_v6.clone()) {
-            (SocketAddr::V4(_), Some(socket), _) => socket,
-            (SocketAddr::V6(_), _, Some(socket)) => socket,
+        let (udp_socket, workers) = match (to, self.udp_v4.clone(), self.udp_v6.clone()) {
+            (SocketAddr::V4(_), Some(socket), _) => (socket, &mut self.sending_udp_v4_responses),
+            (SocketAddr::V6(_), _, Some(socket)) => (socket, &mut self.sending_udp_v6_responses),
             (SocketAddr::V4(_), None, _) => return Err(io::Error::other("No UDPv4 socket")),
             (SocketAddr::V6(_), _, None) => return Err(io::Error::other("No UDPv6 socket")),
         };
 
-        self.sending_udp_responses.push(
+        workers.push(
             async move {
                 udp_socket
                     .send_to(response.as_slice(), to)
@@ -85,9 +94,17 @@ impl Server {
 
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<Query>> {
         loop {
-            if let Poll::Ready(Some(result)) = self.sending_udp_responses.poll_next_unpin(cx) {
+            if let Poll::Ready(Some(result)) = self.sending_udp_v4_responses.poll_next_unpin(cx) {
                 result
-                    .context("Failed to send UDP DNS response")
+                    .context("Failed to send UDPv4 DNS response")
+                    .map_err(anyhow_to_io)?;
+
+                continue;
+            }
+
+            if let Poll::Ready(Some(result)) = self.sending_udp_v4_responses.poll_next_unpin(cx) {
+                result
+                    .context("Failed to send UDPv6 DNS response")
                     .map_err(anyhow_to_io)?;
 
                 continue;
@@ -175,7 +192,8 @@ impl Default for Server {
             udp_v6: None,
             reading_udp_v4_queries: stream::empty().boxed(),
             reading_udp_v6_queries: stream::empty().boxed(),
-            sending_udp_responses: FuturesUnordered::new(),
+            sending_udp_v4_responses: FuturesUnordered::new(),
+            sending_udp_v6_responses: FuturesUnordered::new(),
             waker: AtomicWaker::new(),
         }
     }
