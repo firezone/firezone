@@ -2,10 +2,19 @@ use core::fmt;
 use std::{collections::BTreeMap, mem, time::Instant};
 
 /// A map that automatically removes entries after a given expiration time.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct ExpiringMap<K, V> {
     inner: BTreeMap<K, V>,
     expiration: BTreeMap<Instant, Vec<K>>,
+}
+
+impl<K, V> Default for ExpiringMap<K, V> {
+    fn default() -> Self {
+        Self {
+            inner: BTreeMap::new(),
+            expiration: BTreeMap::new(),
+        }
+    }
 }
 
 impl<K, V> ExpiringMap<K, V>
@@ -20,6 +29,7 @@ where
         old_value
     }
 
+    #[cfg(test)]
     pub fn get(&self, key: &K) -> Option<&V> {
         self.inner.get(key)
     }
