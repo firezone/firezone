@@ -272,6 +272,10 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
         self.query_results
             .extend(aborted_pending_queries.chain(aborted_sent_queries));
+
+        self.sockets = SocketSet::new(vec![]);
+        self.sockets_by_remote.clear();
+        self.local_ports_by_socket.clear();
     }
 
     fn sample_new_unique_port(&mut self) -> Result<u16> {
