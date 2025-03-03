@@ -5,6 +5,7 @@ pub(crate) use resource::{CidrResource, Resource};
 pub(crate) use resource::{DnsResource, InternetResource};
 
 use crate::dns::StubResolver;
+use crate::expiring_map::ExpiringMap;
 use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
@@ -23,7 +24,6 @@ use ip_packet::{IpPacket, UdpSlice, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::earliest;
 use crate::ClientEvent;
 use domain::base::Message;
 use lru::LruCache;
@@ -119,10 +119,8 @@ pub struct ClientState {
 
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     dns_mapping: BiMap<IpAddr, DnsServer>,
-    /// DNS queries that had their destination IP mangled because the servers is a CIDR resource.
-    ///
-    /// The [`Instant`] tracks when the DNS query expires.
-    mangled_dns_queries: HashMap<(SocketAddr, u16), Instant>,
+    /// UDP DNS queries that had their destination IP mangled to redirect them to another DNS resolver through the tunnel.
+    udp_dns_sockets_by_upstream_and_query_id: ExpiringMap<(SocketAddr, u16), SocketAddr>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
 
@@ -217,7 +215,7 @@ impl ClientState {
             system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
-            mangled_dns_queries: Default::default(),
+            udp_dns_sockets_by_upstream_and_query_id: Default::default(),
             stub_resolver: Default::default(),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
@@ -528,9 +526,7 @@ impl ClientState {
 
         let packet = maybe_mangle_dns_response_from_cidr_resource(
             packet,
-            &self.dns_mapping,
-            &mut self.mangled_dns_queries,
-            now,
+            &mut self.udp_dns_sockets_by_upstream_and_query_id,
         );
 
         Some(packet)
@@ -870,7 +866,6 @@ impl ClientState {
 
     fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
         self.dns_mapping = new_mapping;
-        self.mangled_dns_queries.clear();
     }
 
     fn initialise_tcp_dns_client(&mut self) {
@@ -1041,24 +1036,20 @@ impl ClientState {
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        // The number of mangled DNS queries is expected to be fairly small because we only track them whilst connecting to a CIDR resource that is a DNS server.
-        // Thus, sorting these values on-demand even within `poll_timeout` is expected to be performant enough.
-        let next_dns_query_expiry = self.mangled_dns_queries.values().min().copied();
-
-        earliest(
-            earliest(
-                self.tcp_dns_client.poll_timeout(),
-                self.tcp_dns_server.poll_timeout(),
-            ),
-            earliest(self.node.poll_timeout(), next_dns_query_expiry),
-        )
+        iter::empty()
+            .chain(self.udp_dns_sockets_by_upstream_and_query_id.poll_timeout())
+            .chain(self.tcp_dns_client.poll_timeout())
+            .chain(self.tcp_dns_server.poll_timeout())
+            .chain(self.node.poll_timeout())
+            .min()
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.drain_node_events();
 
-        self.mangled_dns_queries.retain(|_, exp| now < *exp);
+        self.udp_dns_sockets_by_upstream_and_query_id
+            .handle_timeout(now);
 
         self.advance_dns_tcp_sockets(now);
     }
@@ -1155,9 +1146,18 @@ impl ClientState {
                 if self.should_forward_dns_query_to_gateway(upstream.ip()) {
                     tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query via tunnel");
 
-                    self.mangled_dns_queries
-                        .insert((upstream, message.header().id()), now + IDS_EXPIRE);
+                    self.udp_dns_sockets_by_upstream_and_query_id.insert(
+                        (upstream, message.header().id()),
+                        SocketAddr::new(packet.destination(), dns::DNS_PORT),
+                        now + IDS_EXPIRE,
+                    );
                     packet.set_dst(upstream.ip());
+                    // TODO: Remove this once we disallow non-standard DNS ports: https://github.com/firezone/firezone/issues/8330
+                    packet
+                        .as_udp_mut()
+                        .expect("we parsed it as a UDP packet earlier")
+                        .set_destination_port(upstream.port());
+
                     packet.update_checksum();
 
                     return ControlFlow::Continue(packet);
@@ -1802,9 +1802,7 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
 
 fn maybe_mangle_dns_response_from_cidr_resource(
     mut packet: IpPacket,
-    dns_mapping: &BiMap<IpAddr, DnsServer>,
-    mangeled_dns_queries: &mut HashMap<(SocketAddr, u16), Instant>,
-    now: Instant,
+    udp_dns_sockets_by_upstream_and_query_id: &mut ExpiringMap<(SocketAddr, u16), SocketAddr>,
 ) -> IpPacket {
     let src_ip = packet.source();
 
@@ -1815,22 +1813,15 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     let src_port = udp.source_port();
     let src_socket = SocketAddr::new(src_ip, src_port);
 
-    let Some(sentinel) = dns_mapping.get_by_right(&DnsServer::from(src_socket)) else {
-        return packet;
-    };
-
     let Ok(message) = domain::base::Message::from_slice(udp.payload()) else {
         return packet;
     };
 
-    let Some(query_sent_at) = mangeled_dns_queries
-        .remove(&(src_socket, message.header().id()))
-        .map(|expires_at| expires_at - IDS_EXPIRE)
+    let Some(original_dst) =
+        udp_dns_sockets_by_upstream_and_query_id.remove(&(src_socket, message.header().id()))
     else {
         return packet;
     };
-
-    let rtt = now.duration_since(query_sent_at);
 
     let domain = message
         .sole_question()
@@ -1838,9 +1829,14 @@ fn maybe_mangle_dns_response_from_cidr_resource(
         .map(|q| q.into_qname())
         .map(tracing::field::display);
 
-    tracing::trace!(server = %src_ip, query_id = %message.header().id(), ?rtt, domain, "Received UDP DNS response via tunnel");
+    tracing::trace!(server = %src_ip, query_id = %message.header().id(), domain, "Received UDP DNS response via tunnel");
 
-    packet.set_src(*sentinel);
+    packet.set_src(original_dst.ip());
+    packet
+        .as_udp_mut()
+        .expect("we parsed it as a UDP packet earlier")
+        .set_source_port(original_dst.port());
+
     packet.update_checksum();
 
     packet
