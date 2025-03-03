@@ -85,45 +85,37 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         self.source_ips = Some((v4, v6));
     }
 
-    /// Connect to the specified DNS resolvers.
-    ///
-    /// All currently pending queries will be reported as failed.
-    pub fn set_resolvers(&mut self, resolvers: BTreeSet<SocketAddr>) -> Result<()> {
-        let (ipv4_source, ipv6_source) = self.source_ips.context("Missing source IPs")?;
-
-        // First, clear all local state.
-        self.sockets = SocketSet::new(vec![]);
-        self.sockets_by_remote.clear();
-        self.local_ports_by_socket.clear();
-        self.abort_all_pending_and_sent_queries();
-
-        // Second, try to allocate a unique port per resolver.
-        let unique_ports = self.sample_unique_ports(resolvers.len())?;
-
-        // Third, initialise the sockets.
-        self.init_sockets(
-            std::iter::zip(unique_ports, resolvers),
-            ipv4_source,
-            ipv6_source,
-        );
-
-        Ok(())
-    }
-
     /// Send the given DNS query to the target server.
     ///
     /// This only queues the message. You need to call [`Client::handle_timeout`] to actually send them.
     pub fn send_query(&mut self, server: SocketAddr, message: Message<Vec<u8>>) -> Result<()> {
         anyhow::ensure!(!message.header().qr(), "Message is a DNS response!");
-        anyhow::ensure!(
-            self.sockets_by_remote.contains_key(&server),
-            "Unknown DNS resolver"
-        );
 
         self.pending_queries_by_remote
             .entry(server)
             .or_default()
             .push_back(message);
+
+        if self.sockets_by_remote.contains_key(&server) {
+            return Ok(());
+        };
+
+        let local_port = self.sample_new_unique_port()?;
+
+        let (ipv4_source, ipv6_source) = self
+            .source_ips
+            .ok_or_else(|| anyhow!("No source interface set"))?;
+
+        let local_endpoint = match server {
+            SocketAddr::V4(_) => SocketAddr::new(ipv4_source.into(), local_port),
+            SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), local_port),
+        };
+
+        let handle = self.sockets.add(create_tcp_socket());
+
+        self.sockets_by_remote.insert(server, handle);
+        self.local_ports_by_socket
+            .insert(handle, local_endpoint.port());
 
         Ok(())
     }
@@ -264,7 +256,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         Some(self.last_now + Duration::from(poll_in))
     }
 
-    fn abort_all_pending_and_sent_queries(&mut self) {
+    pub fn reset(&mut self) {
         let aborted_pending_queries =
             self.pending_queries_by_remote
                 .drain()
@@ -282,50 +274,26 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             .extend(aborted_pending_queries.chain(aborted_sent_queries));
     }
 
-    fn init_sockets(
-        &mut self,
-        ports_and_resolvers: impl IntoIterator<Item = (u16, SocketAddr)>,
-        ipv4_source: Ipv4Addr,
-        ipv6_source: Ipv6Addr,
-    ) {
-        let new_sockets = ports_and_resolvers
-            .into_iter()
-            .map(|(port, server)| {
-                let local_endpoint = match server {
-                    SocketAddr::V4(_) => SocketAddr::new(ipv4_source.into(), port),
-                    SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), port),
-                };
-                let socket = create_tcp_socket();
+    fn sample_new_unique_port(&mut self) -> Result<u16> {
+        let used_ports = self
+            .local_ports_by_socket
+            .values()
+            .copied()
+            .collect::<HashSet<_>>();
 
-                (server, local_endpoint, socket)
-            })
-            .collect::<Vec<_>>();
-
-        for (server, local_endpoint, socket) in new_sockets {
-            let handle = self.sockets.add(socket);
-
-            self.sockets_by_remote.insert(server, handle);
-            self.local_ports_by_socket
-                .insert(handle, local_endpoint.port());
-        }
-    }
-
-    fn sample_unique_ports(&mut self, num_ports: usize) -> Result<impl Iterator<Item = u16>> {
-        let mut ports = HashSet::with_capacity(num_ports);
         let range = MIN_PORT..=MAX_PORT;
 
-        if num_ports > range.len() {
-            bail!(
-                "Port range only provides {} values but we need {num_ports}",
-                range.len()
-            )
+        if used_ports.len() == range.len() {
+            bail!("All ports exhausted")
         }
 
-        while ports.len() < num_ports {
-            ports.insert(self.rng.gen_range(range.clone()));
-        }
+        loop {
+            let port = self.rng.gen_range(range.clone());
 
-        Ok(ports.into_iter())
+            if !used_ports.contains(&port) {
+                return Ok(port);
+            }
+        }
     }
 }
 
