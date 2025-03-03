@@ -1229,7 +1229,7 @@ impl ClientState {
                     match self.tcp_dns_client.send_query(server, message.clone()) {
                         Ok(()) => {}
                         Err(e) => {
-                            tracing::warn!("Failed to send recursive TCP DNS query: {e:#}");
+                            tracing::warn!("Failed to send recursive TCP DNS query to upstream resolver: {e:#}");
 
                             unwrap_or_debug!(
                                 self.tcp_dns_server.send_message(
@@ -1257,7 +1257,44 @@ impl ClientState {
                     .push_back(dns::RecursiveQuery::via_tcp(query.socket, server, message));
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
-                todo!()
+                let Some(gateway) =
+                    peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+                else {
+                    // TODO: Buffer IP packet or query?
+                    // If we buffer the IP packet, we need to mangle it to the gateway's IP.
+                    // If we buffer the query, it is more obvious that it needs to be turned into an IP packet.
+
+                    // self.on_not_connected_resource(resource, packet, now);
+                    return;
+                };
+
+                let new_dst_ip = gateway.gateway_tun().v4.into(); // For TCP DNS queries, we simply always use the IPv4 address because we create new packets anyway.
+                let new_dst_port = crate::gateway::TUN_DNS_PORT;
+
+                let server = SocketAddr::new(new_dst_ip, new_dst_port);
+
+                let qid = message.header().id();
+
+                // FIXME: This will fail because we haven't added the Gateway as a resolver.
+                match self.tcp_dns_client.send_query(server, message.clone()) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        tracing::warn!(%server, "Failed to send recursive TCP DNS query to Gateway: {e:#}");
+
+                        unwrap_or_debug!(
+                            self.tcp_dns_server
+                                .send_message(query.socket, dns::servfail(message.for_slice_ref())),
+                            "Failed to send TCP DNS response: {}"
+                        );
+                        return;
+                    }
+                };
+
+                let existing = self
+                    .tcp_dns_sockets_by_upstream_and_query_id
+                    .insert((server, qid), query.socket);
+
+                debug_assert!(existing.is_none(), "Query IDs should be unique");
             }
         };
     }
