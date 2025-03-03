@@ -24,7 +24,6 @@ use ip_packet::{IpPacket, UdpSlice, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
-use crate::utils::earliest;
 use crate::ClientEvent;
 use domain::base::Message;
 use lru::LruCache;
@@ -1016,15 +1015,12 @@ impl ClientState {
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        let next_dns_query_expiry = self.udp_dns_sockets_by_upstream_and_query_id.poll_timeout();
-
-        earliest(
-            earliest(
-                self.tcp_dns_client.poll_timeout(),
-                self.tcp_dns_server.poll_timeout(),
-            ),
-            earliest(self.node.poll_timeout(), next_dns_query_expiry),
-        )
+        iter::empty()
+            .chain(self.udp_dns_sockets_by_upstream_and_query_id.poll_timeout())
+            .chain(self.tcp_dns_client.poll_timeout())
+            .chain(self.tcp_dns_server.poll_timeout())
+            .chain(self.node.poll_timeout())
+            .min()
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
