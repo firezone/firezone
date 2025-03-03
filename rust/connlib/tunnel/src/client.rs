@@ -875,6 +875,7 @@ impl ClientState {
 
         self.tcp_dns_client
             .set_source_interface(tun_config.ip.v4, tun_config.ip.v6);
+        self.tcp_dns_client.reset();
     }
 
     fn initialise_tcp_dns_server(&mut self) {
