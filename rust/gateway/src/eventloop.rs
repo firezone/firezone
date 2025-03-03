@@ -175,15 +175,15 @@ impl Eventloop {
                         .tunnel
                         .rebind_dns_ipv4(ipv4_socket)
                         .with_context(|| format!("Failed to bind DNS server at {ipv4_socket}"))
-                        .map_err(Error::BindDnsSockets);
+                        .inspect_err(|e| tracing::debug!("{e:#}"));
 
                     let ipv6_result = self
                         .tunnel
                         .rebind_dns_ipv6(ipv6_socket)
                         .with_context(|| format!("Failed to bind DNS server at {ipv6_socket}"))
-                        .map_err(Error::BindDnsSockets);
+                        .inspect_err(|e| tracing::debug!("{e:#}"));
 
-                    ipv4_result.or(ipv6_result)?;
+                    ipv4_result.or(ipv6_result).map_err(Error::BindDnsSockets)?;
                 }
                 Poll::Pending => {}
             }
