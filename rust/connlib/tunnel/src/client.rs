@@ -1162,6 +1162,15 @@ impl ClientState {
                     .push_back(dns::RecursiveQuery::via_udp(source, upstream, message));
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
+                let Some(gateway) = self.gateway_by_resource(&resource) else {
+                    // TODO: Buffer IP packet or query?
+                    // If we buffer the IP packet, we need to mangle it to the gateway's IP.
+                    // If we buffer the query, it is more obvious that it needs to be turned into an IP packet.
+
+                    // self.on_not_connected_resource(resource, packet, now);
+                    return ControlFlow::Break(());
+                };
+
                 todo!()
             }
         }
