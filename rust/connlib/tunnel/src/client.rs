@@ -875,16 +875,7 @@ impl ClientState {
 
         self.tcp_dns_client
             .set_source_interface(tun_config.ip.v4, tun_config.ip.v6);
-
-        let upstream_resolvers = self
-            .dns_mapping
-            .right_values()
-            .map(|s| s.address())
-            .collect();
-
-        if let Err(e) = self.tcp_dns_client.set_resolvers(upstream_resolvers) {
-            tracing::warn!("Failed to connect to upstream DNS resolvers over TCP: {e:#}");
-        }
+        self.tcp_dns_client.reset();
     }
 
     fn initialise_tcp_dns_server(&mut self) {
@@ -1393,8 +1384,7 @@ impl ClientState {
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.
         // Failed queries get translated into `SERVFAIL` responses to the client.
-        // This will also allocate new local ports for our outgoing TCP connections.
-        self.initialise_tcp_dns_client();
+        self.tcp_dns_client.reset();
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {

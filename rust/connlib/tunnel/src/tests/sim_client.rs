@@ -102,18 +102,8 @@ impl SimClient {
     }
 
     pub(crate) fn set_new_dns_servers(&mut self, mapping: BiMap<IpAddr, SocketAddr>) {
-        if self.dns_by_sentinel != mapping {
-            self.tcp_dns_client
-                .set_resolvers(
-                    mapping
-                        .left_values()
-                        .map(|ip| SocketAddr::new(*ip, 53))
-                        .collect(),
-                )
-                .unwrap();
-        }
-
         self.dns_by_sentinel = mapping;
+        self.tcp_dns_client.reset();
     }
 
     pub(crate) fn dns_mapping(&self) -> &BiMap<IpAddr, SocketAddr> {
