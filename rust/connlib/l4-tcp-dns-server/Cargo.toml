@@ -11,11 +11,11 @@ path = "lib.rs"
 anyhow = { workspace = true }
 domain = { workspace = true }
 futures = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["net", "io-util"] }
 tracing = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["process"] }
+tokio = { workspace = true, features = ["process", "macros", "rt"] }
 
 [lints]
 workspace = true
