@@ -5,9 +5,9 @@ use crate::client::{
     IPV4_RESOURCES, IPV6_RESOURCES,
 };
 use crate::messages::DnsServer;
-use crate::proptest::*;
+use crate::{proptest::*, IPV4_TUNNEL, IPV6_TUNNEL};
 use connlib_model::{DomainRecord, RelayId, Site};
-use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
+use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
 use proptest::{collection, prelude::*};
@@ -174,6 +174,7 @@ fn non_reserved_ipv4() -> impl Strategy<Value = Ipv4Addr> {
         Ipv4Network::new(Ipv4Addr::new(224, 0, 0, 0), 4).unwrap(), // Multicast
         DNS_SENTINELS_V4,
         IPV4_RESOURCES,
+        IPV4_TUNNEL,
     ];
 
     any::<Ipv4Addr>().prop_map(move |mut ip| {
@@ -192,6 +193,7 @@ fn non_reserved_ipv6() -> impl Strategy<Value = Ipv6Addr> {
         Ipv6Network::new(Ipv6Addr::UNSPECIFIED, 32).unwrap(),
         DNS_SENTINELS_V6,
         IPV6_RESOURCES,
+        IPV6_TUNNEL,
         Ipv6Network::new(Ipv6Addr::new(0xff00, 0, 0, 0, 0, 0, 0, 0), 8).unwrap(), // Multicast
     ];
 
@@ -213,19 +215,8 @@ fn any_site(sites: BTreeSet<Site>) -> impl Strategy<Value = Site> {
 fn cidr_resource_outside_reserved_ranges(
     sites: impl Strategy<Value = Site>,
 ) -> impl Strategy<Value = CidrResource> {
-    cidr_resource(any_ip_network(8), sites.prop_map(|s| vec![s]))
-        .prop_filter(
-            "tests doesn't support CIDR resources overlapping DNS resources",
-            |r| {
-                // This works because CIDR resources' host mask is always <8 while IP resource is 21
-                let is_ip4_reserved = IpNetwork::V4(IPV4_RESOURCES)
-                    .contains(r.address.network_address());
-                let is_ip6_reserved = IpNetwork::V6(IPV6_RESOURCES)
-                    .contains(r.address.network_address());
-
-                !is_ip4_reserved && !is_ip6_reserved
-            },
-        )
+    cidr_resource(
+        non_reserved_ip().prop_flat_map(move |ip| ip_network(ip, 8)), sites.prop_map(|s| vec![s]))
         .prop_filter("resource must not be in the documentation range because we use those for host addresses and DNS IPs", |r| !r.address.is_documentation())
 }
 
