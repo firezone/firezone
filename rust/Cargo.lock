@@ -3512,6 +3512,7 @@ dependencies = [
  "domain",
  "futures",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -3522,6 +3523,7 @@ dependencies = [
  "domain",
  "futures",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

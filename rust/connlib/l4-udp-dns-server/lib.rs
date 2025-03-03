@@ -42,6 +42,8 @@ impl Server {
 
         self.waker.wake();
 
+        tracing::info!(%socket, "Listening for UDP DNS queries");
+
         Ok(())
     }
 
@@ -52,6 +54,8 @@ impl Server {
         self.udp_v6 = Some(udp_socket);
 
         self.waker.wake();
+
+        tracing::info!(%socket, "Listening for UDP DNS queries");
 
         Ok(())
     }

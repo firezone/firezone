@@ -47,6 +47,8 @@ impl Server {
 
         self.waker.wake();
 
+        tracing::info!(%socket, "Listening for TCP DNS queries");
+
         Ok(())
     }
 
@@ -56,6 +58,8 @@ impl Server {
         self.tcp_v6 = Some(tcp_listener);
 
         self.waker.wake();
+
+        tracing::info!(%socket, "Listening for TCP DNS queries");
 
         Ok(())
     }
