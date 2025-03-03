@@ -1131,7 +1131,7 @@ impl ClientState {
                     "Failed to queue UDP DNS response: {}"
                 );
             }
-            dns::ResolveStrategy::Recurse => {
+            dns::ResolveStrategy::RecurseLocal => {
                 let query_id = message.header().id();
 
                 if self.should_forward_dns_query_to_gateway(upstream.ip()) {
@@ -1161,6 +1161,9 @@ impl ClientState {
                 self.buffered_dns_queries
                     .push_back(dns::RecursiveQuery::via_udp(source, upstream, message));
             }
+            dns::ResolveStrategy::RecurseSite(resource) => {
+                todo!()
+            }
         }
 
         ControlFlow::Break(())
@@ -1185,7 +1188,7 @@ impl ClientState {
                     "Failed to send TCP DNS response: {}"
                 );
             }
-            dns::ResolveStrategy::Recurse => {
+            dns::ResolveStrategy::RecurseLocal => {
                 let query_id = message.header().id();
 
                 if self.should_forward_dns_query_to_gateway(server.ip()) {
@@ -1218,6 +1221,9 @@ impl ClientState {
 
                 self.buffered_dns_queries
                     .push_back(dns::RecursiveQuery::via_tcp(query.socket, server, message));
+            }
+            dns::ResolveStrategy::RecurseSite(resource) => {
+                todo!()
             }
         };
     }
