@@ -153,7 +153,7 @@ fn anyhow_to_io(e: anyhow::Error) -> io::Error {
 }
 
 async fn read_udp_query(socket: Arc<UdpSocket>) -> Result<(SocketAddr, Message<Vec<u8>>)> {
-    let mut buffer = vec![0u8; 2000];
+    let mut buffer = vec![0u8; 2000]; // On the public Internet, any MTU > 1500 is very unlikely so 2000 is a safe bet.
 
     let (len, from) = socket
         .recv_from(&mut buffer)
