@@ -9,6 +9,7 @@ use crate::{dns::is_subdomain, proptest::relay_id};
 use connlib_model::{GatewayId, RelayId, StaticSecret};
 use domain::base::Rtype;
 use ip_network::{Ipv4Network, Ipv6Network};
+use itertools::Itertools;
 use prop::sample::select;
 use proptest::{prelude::*, sample};
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -321,6 +322,24 @@ impl ReferenceState {
                     ]
                 },
             )
+            .with_if_not_empty(1, state.connected_gateway_ipv4_ips(), |gateway_ips| {
+                let tunnel_ip4 = state.client.inner().tunnel_ip4;
+
+                prop_oneof![
+                    icmp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&gateway_ips)),
+                    udp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&gateway_ips)),
+                    tcp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&gateway_ips)),
+                ]
+            })
+            .with_if_not_empty(1, state.connected_gateway_ipv6_ips(), |gateway_ips| {
+                let tunnel_ip4 = state.client.inner().tunnel_ip6;
+
+                prop_oneof![
+                    icmp_packet(packet_source_v6(tunnel_ip4), select_host_v6(&gateway_ips)),
+                    udp_packet(packet_source_v6(tunnel_ip4), select_host_v6(&gateway_ips)),
+                    tcp_packet(packet_source_v6(tunnel_ip4), select_host_v6(&gateway_ips)),
+                ]
+            })
             .boxed()
     }
 
@@ -373,13 +392,17 @@ impl ReferenceState {
                 seq,
                 identifier,
                 payload,
-            } => {
-                state.client.exec_mut(|client| {
-                    client.on_icmp_packet(*src, dst.clone(), *seq, *identifier, *payload, |r| {
-                        state.portal.gateway_for_resource(r).copied()
-                    })
-                });
-            }
+            } => state.client.exec_mut(|client| {
+                client.on_icmp_packet(
+                    *src,
+                    dst.clone(),
+                    *seq,
+                    *identifier,
+                    *payload,
+                    |r| state.portal.gateway_for_resource(r).copied(),
+                    |ip| state.portal.gateway_by_ip(ip),
+                )
+            }),
             Transition::SendUdpPacket {
                 src,
                 dst,
@@ -388,9 +411,15 @@ impl ReferenceState {
                 payload,
             } => {
                 state.client.exec_mut(|client| {
-                    client.on_udp_packet(*src, dst.clone(), *sport, *dport, *payload, |r| {
-                        state.portal.gateway_for_resource(r).copied()
-                    })
+                    client.on_udp_packet(
+                        *src,
+                        dst.clone(),
+                        *sport,
+                        *dport,
+                        *payload,
+                        |r| state.portal.gateway_for_resource(r).copied(),
+                        |ip| state.portal.gateway_by_ip(ip),
+                    )
                 });
             }
             Transition::SendTcpPayload {
@@ -401,9 +430,15 @@ impl ReferenceState {
                 payload,
             } => {
                 state.client.exec_mut(|client| {
-                    client.on_tcp_packet(*src, dst.clone(), *sport, *dport, *payload, |r| {
-                        state.portal.gateway_for_resource(r).copied()
-                    })
+                    client.on_tcp_packet(
+                        *src,
+                        dst.clone(),
+                        *sport,
+                        *dport,
+                        *payload,
+                        |r| state.portal.gateway_for_resource(r).copied(),
+                        |ip| state.portal.gateway_by_ip(ip),
+                    )
                 });
             }
             Transition::UpdateSystemDnsServers(servers) => {
@@ -625,6 +660,15 @@ impl ReferenceState {
             // As long as the packet is valid it's always valid to send to a non-resource
             return true;
         };
+
+        // If the dst is a peer, the packet will only be routed if we are connected.
+        if crate::is_peer(dst) {
+            return match dst {
+                IpAddr::V4(dst) => self.connected_gateway_ipv4_ips().contains(&(dst.into())),
+                IpAddr::V6(dst) => self.connected_gateway_ipv6_ips().contains(&(dst.into())),
+            };
+        }
+
         let Some(gateway) = self.portal.gateway_for_resource(rid) else {
             return false;
         };
@@ -680,6 +724,34 @@ impl ReferenceState {
         all_resources.retain(|r| !self.client.inner().has_resource(r.id()));
 
         all_resources
+    }
+
+    fn connected_gateway_ipv4_ips(&self) -> Vec<Ipv4Network> {
+        self.client
+            .inner()
+            .connected_resources()
+            .filter_map(|r| {
+                let gateway = self.portal.gateway_for_resource(r)?;
+                let gateway_host = self.gateways.get(gateway)?;
+
+                Some(gateway_host.inner().tunnel_ip4.into())
+            })
+            .unique()
+            .collect()
+    }
+
+    fn connected_gateway_ipv6_ips(&self) -> Vec<Ipv6Network> {
+        self.client
+            .inner()
+            .connected_resources()
+            .filter_map(|r| {
+                let gateway = self.portal.gateway_for_resource(r)?;
+                let gateway_host = self.gateways.get(gateway)?;
+
+                Some(gateway_host.inner().tunnel_ip6.into())
+            })
+            .unique()
+            .collect()
     }
 
     fn deploy_new_relays(&mut self, new_relays: &BTreeMap<RelayId, Host<u64>>) {
