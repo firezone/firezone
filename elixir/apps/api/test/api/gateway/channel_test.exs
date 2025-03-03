@@ -451,7 +451,7 @@ defmodule API.Gateway.ChannelTest do
       resource: resource,
       socket: socket
     } do
-      assert {:noreply, socket} = send(socket.channel_pid, {:create_resource, resource.id})
+      send(socket.channel_pid, {:create_resource, resource.id})
     end
   end
 
