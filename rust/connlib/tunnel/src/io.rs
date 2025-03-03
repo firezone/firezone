@@ -1,17 +1,18 @@
 mod gso_queue;
 
 use crate::{device_channel::Device, dns, sockets::Sockets};
+use anyhow::Result;
 use domain::base::Message;
 use firezone_logging::{telemetry_event, telemetry_span};
+use futures::FutureExt as _;
 use futures_bounded::FuturesTupleSet;
-use futures_util::FutureExt as _;
 use gso_queue::GsoQueue;
 use ip_packet::{IpPacket, MAX_FZ_PAYLOAD};
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::VecDeque,
     io,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
@@ -43,6 +44,9 @@ pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
     gso_queue: GsoQueue,
+
+    udp_dns_server: l4_udp_dns_server::Server,
+    tcp_dns_server: l4_tcp_dns_server::Server,
 
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -82,6 +86,8 @@ pub enum Input<D, I> {
     Timeout(Instant),
     Device(D),
     Network(I),
+    TcpDnsQuery(l4_tcp_dns_server::Query),
+    UdpDnsQuery(l4_udp_dns_server::Query),
     DnsResponse(dns::RecursiveResponse),
 }
 
@@ -107,7 +113,23 @@ impl Io {
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
             gso_queue: GsoQueue::new(),
             tun: Device::new(),
+            udp_dns_server: Default::default(),
+            tcp_dns_server: Default::default(),
         }
+    }
+
+    pub fn rebind_dns_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
+        self.udp_dns_server.rebind_ipv4(socket)?;
+        self.tcp_dns_server.rebind_ipv4(socket)?;
+
+        Ok(())
+    }
+
+    pub fn rebind_dns_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
+        self.udp_dns_server.rebind_ipv6(socket)?;
+        self.tcp_dns_server.rebind_ipv6(socket)?;
+
+        Ok(())
     }
 
     pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {
@@ -137,6 +159,14 @@ impl Io {
                 .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
         {
             return Poll::Ready(Ok(Input::Device(buffers.ip.drain(..num_packets))));
+        }
+
+        if let Poll::Ready(query) = self.udp_dns_server.poll(cx)? {
+            return Poll::Ready(Ok(Input::UdpDnsQuery(query)));
+        }
+
+        if let Poll::Ready(query) = self.tcp_dns_server.poll(cx)? {
+            return Poll::Ready(Ok(Input::TcpDnsQuery(query)));
         }
 
         match self.dns_queries.poll_unpin(cx) {
@@ -328,6 +358,22 @@ impl Io {
                 }
             }
         }
+    }
+
+    pub(crate) fn send_udp_dns_response(
+        &mut self,
+        to: SocketAddr,
+        message: Message<Vec<u8>>,
+    ) -> io::Result<()> {
+        self.udp_dns_server.send_response(to, message)
+    }
+
+    pub(crate) fn send_tcp_dns_response(
+        &mut self,
+        to: SocketAddr,
+        message: Message<Vec<u8>>,
+    ) -> io::Result<()> {
+        self.tcp_dns_server.send_response(to, message)
     }
 }
 

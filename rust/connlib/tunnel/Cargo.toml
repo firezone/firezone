@@ -17,15 +17,16 @@ divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
 domain = { workspace = true }
 firezone-logging = { workspace = true }
-futures = { workspace = true, features = ["std", "async-await", "executor"] }
+futures = { workspace = true }
 futures-bounded = { workspace = true }
-futures-util = { workspace = true, features = ["std", "async-await", "async-await-macro"] }
 glob = { workspace = true }
 hex = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
+l4-tcp-dns-server = { workspace = true }
+l4-udp-dns-server = { workspace = true }
 lockfree-object-pool = { workspace = true }
 lru = { workspace = true }
 proptest = { workspace = true, optional = true }
@@ -52,6 +53,7 @@ rand = { workspace = true }
 sha2 = { workspace = true }
 test-case = { workspace = true }
 test-strategy = { workspace = true }
+tokio = { workspace = true, features = ["process"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
 [[bench]]

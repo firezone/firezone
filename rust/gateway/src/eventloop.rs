@@ -9,7 +9,7 @@ use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
 };
-use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
+use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
 use firezone_tunnel::{
     DnsResourceNatEntry, GatewayTunnel, IpConfig, ResolveDnsRequest, IPV4_TUNNEL, IPV6_TUNNEL,
 };
@@ -17,7 +17,7 @@ use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
 use std::convert::Infallible;
 use std::future::Future;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddrV4, SocketAddrV6};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -55,7 +55,7 @@ pub struct Eventloop {
         futures_bounded::FuturesTupleSet<Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveTrigger>,
     dns_cache: moka::future::Cache<DomainName, Vec<IpAddr>>,
 
-    set_interface_tasks: futures_bounded::FuturesSet<Result<()>>,
+    set_interface_tasks: futures_bounded::FuturesSet<Result<Interface>>,
 
     logged_permission_denied: bool,
 }
@@ -163,9 +163,27 @@ impl Eventloop {
 
             match self.set_interface_tasks.poll_unpin(cx) {
                 Poll::Ready(result) => {
-                    result
+                    let interface = result
                         .unwrap_or_else(|e| Err(anyhow::Error::new(e)))
-                        .context("Failed to update TUN interface")?;
+                        .context("Failed to update TUN interface")
+                        .map_err(Error::UpdateTun)?;
+
+                    let ipv4_socket = SocketAddrV4::new(interface.ipv4, 53535);
+                    let ipv6_socket = SocketAddrV6::new(interface.ipv6, 53535, 0, 0);
+
+                    let ipv4_result = self
+                        .tunnel
+                        .rebind_dns_ipv4(ipv4_socket)
+                        .with_context(|| format!("Failed to bind DNS server at {ipv4_socket}"))
+                        .inspect_err(|e| tracing::debug!("{e:#}"));
+
+                    let ipv6_result = self
+                        .tunnel
+                        .rebind_dns_ipv6(ipv6_socket)
+                        .with_context(|| format!("Failed to bind DNS server at {ipv6_socket}"))
+                        .inspect_err(|e| tracing::debug!("{e:#}"));
+
+                    ipv4_result.or(ipv6_result).map_err(Error::BindDnsSockets)?;
                 }
                 Poll::Pending => {}
             }
@@ -378,7 +396,7 @@ impl Eventloop {
                                 .await
                                 .context("Failed to set TUN routes")?;
 
-                            Ok(())
+                            Ok(init.interface)
                         }
                     })
                     .is_err()
@@ -523,7 +541,9 @@ pub enum Error {
     #[error("Failed to login to portal: {0}")]
     PhoenixChannel(#[from] phoenix_channel::Error),
     #[error("Failed to update TUN device: {0:#}")]
-    UpdateTun(#[from] anyhow::Error),
+    UpdateTun(#[source] anyhow::Error),
+    #[error("{0:#}")]
+    BindDnsSockets(#[source] anyhow::Error),
 }
 
 async fn resolve(domain: DomainName) -> Result<Vec<IpAddr>> {
