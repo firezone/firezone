@@ -1127,10 +1127,16 @@ impl ClientState {
 
                     self.udp_dns_sockets_by_upstream_and_query_id.insert(
                         (upstream, message.header().id()),
-                        SocketAddr::new(packet.destination(), 53),
+                        SocketAddr::new(packet.destination(), dns::DNS_PORT),
                         now + IDS_EXPIRE,
                     );
                     packet.set_dst(upstream.ip());
+                    // TODO: Remove this once we disallow non-standard DNS ports: https://github.com/firezone/firezone/issues/8330
+                    packet
+                        .as_udp_mut()
+                        .expect("we parsed it as a UDP packet earlier")
+                        .set_destination_port(upstream.port());
+
                     packet.update_checksum();
 
                     return ControlFlow::Continue(packet);
@@ -1805,6 +1811,11 @@ fn maybe_mangle_dns_response_from_cidr_resource(
     tracing::trace!(server = %src_ip, query_id = %message.header().id(), domain, "Received UDP DNS response via tunnel");
 
     packet.set_src(original_dst.ip());
+    packet
+        .as_udp_mut()
+        .expect("we parsed it as a UDP packet earlier")
+        .set_source_port(original_dst.port());
+
     packet.update_checksum();
 
     packet
