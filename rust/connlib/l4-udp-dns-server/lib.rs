@@ -102,7 +102,7 @@ impl Server {
                 continue;
             }
 
-            if let Poll::Ready(Some(result)) = self.sending_udp_v4_responses.poll_next_unpin(cx) {
+            if let Poll::Ready(Some(result)) = self.sending_udp_v6_responses.poll_next_unpin(cx) {
                 result
                     .context("Failed to send UDPv6 DNS response")
                     .map_err(anyhow_to_io)?;
