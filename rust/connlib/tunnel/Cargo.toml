@@ -17,9 +17,8 @@ divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
 domain = { workspace = true }
 firezone-logging = { workspace = true }
-futures = { workspace = true, features = ["std", "async-await", "executor"] }
+futures = { workspace = true }
 futures-bounded = { workspace = true }
-futures-util = { workspace = true, features = ["std", "async-await", "async-await-macro"] }
 glob = { workspace = true }
 hex = { workspace = true }
 ip-packet = { workspace = true }

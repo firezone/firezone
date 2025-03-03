@@ -2273,7 +2273,6 @@ dependencies = [
  "firezone-relay",
  "futures",
  "futures-bounded",
- "futures-util",
  "glob",
  "hex",
  "ip-packet",
