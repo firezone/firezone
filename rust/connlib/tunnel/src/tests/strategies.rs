@@ -5,7 +5,7 @@ use crate::client::{
     IPV4_RESOURCES, IPV6_RESOURCES,
 };
 use crate::messages::DnsServer;
-use crate::proptest::*;
+use crate::{proptest::*, IPV4_TUNNEL, IPV6_TUNNEL};
 use connlib_model::{DomainRecord, RelayId, Site};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
@@ -215,15 +215,11 @@ fn cidr_resource_outside_reserved_ranges(
 ) -> impl Strategy<Value = CidrResource> {
     cidr_resource(any_ip_network(8), sites.prop_map(|s| vec![s]))
         .prop_filter(
-            "tests doesn't support CIDR resources overlapping DNS resources",
+            "CIDR resources must not be in the CG-NAT range",
             |r| {
-                // This works because CIDR resources' host mask is always <8 while IP resource is 21
-                let is_ip4_reserved = IpNetwork::V4(IPV4_RESOURCES)
-                    .contains(r.address.network_address());
-                let is_ip6_reserved = IpNetwork::V6(IPV6_RESOURCES)
-                    .contains(r.address.network_address());
+                let reserved_ranges = [IpNetwork::V4(IPV4_RESOURCES), IpNetwork::V4(IPV4_TUNNEL), IpNetwork::V6(IPV6_RESOURCES), IpNetwork::V6(IPV6_TUNNEL)];
 
-                !is_ip4_reserved && !is_ip6_reserved
+                reserved_ranges.iter().all(|range| !range.contains(r.address.network_address()))
             },
         )
         .prop_filter("resource must not be in the documentation range because we use those for host addresses and DNS IPs", |r| !r.address.is_documentation())
