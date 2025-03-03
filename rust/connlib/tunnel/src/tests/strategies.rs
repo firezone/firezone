@@ -215,15 +215,8 @@ fn any_site(sites: BTreeSet<Site>) -> impl Strategy<Value = Site> {
 fn cidr_resource_outside_reserved_ranges(
     sites: impl Strategy<Value = Site>,
 ) -> impl Strategy<Value = CidrResource> {
-    cidr_resource(any_ip_network(8), sites.prop_map(|s| vec![s]))
-        .prop_filter(
-            "CIDR resources must not be in the CG-NAT range",
-            |r| {
-                let reserved_ranges = [IpNetwork::V4(IPV4_RESOURCES), IpNetwork::V4(IPV4_TUNNEL), IpNetwork::V6(IPV6_RESOURCES), IpNetwork::V6(IPV6_TUNNEL)];
-
-                reserved_ranges.iter().all(|range| !range.contains(r.address.network_address()))
-            },
-        )
+    cidr_resource(
+        non_reserved_ip().prop_flat_map(move |ip| ip_network(ip, 8)), sites.prop_map(|s| vec![s]))
         .prop_filter("resource must not be in the documentation range because we use those for host addresses and DNS IPs", |r| !r.address.is_documentation())
 }
 
