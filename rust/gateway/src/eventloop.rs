@@ -165,20 +165,21 @@ impl Eventloop {
                 Poll::Ready(result) => {
                     let interface = result
                         .unwrap_or_else(|e| Err(anyhow::Error::new(e)))
-                        .context("Failed to update TUN interface")?;
+                        .context("Failed to update TUN interface")
+                        .map_err(Error::UpdateTun)?;
 
-                    if let Err(e) = self
-                        .tunnel
-                        .rebind_dns_ipv4(SocketAddrV4::new(interface.ipv4, 53535))
-                    {
-                        tracing::warn!("Failed to bind IPv4 DNS server: {e:#}")
-                    }
-                    if let Err(e) =
-                        self.tunnel
-                            .rebind_dns_ipv6(SocketAddrV6::new(interface.ipv6, 53535, 0, 0))
-                    {
-                        tracing::warn!("Failed to bind IPv6 DNS server: {e:#}")
-                    }
+                    let ipv4_socket = SocketAddrV4::new(interface.ipv4, 53535);
+                    let ipv6_socket = SocketAddrV6::new(interface.ipv6, 53535, 0, 0);
+
+                    self.tunnel
+                        .rebind_dns_ipv4(ipv4_socket)
+                        .with_context(|| format!("Failed to bind DNS server at {ipv6_socket}"))
+                        .map_err(Error::BindDnsSockets)?;
+
+                    self.tunnel
+                        .rebind_dns_ipv6(ipv6_socket)
+                        .with_context(|| format!("Failed to bind DNS server at {ipv6_socket}"))
+                        .map_err(Error::BindDnsSockets)?;
                 }
                 Poll::Pending => {}
             }
@@ -536,7 +537,9 @@ pub enum Error {
     #[error("Failed to login to portal: {0}")]
     PhoenixChannel(#[from] phoenix_channel::Error),
     #[error("Failed to update TUN device: {0:#}")]
-    UpdateTun(#[from] anyhow::Error),
+    UpdateTun(#[source] anyhow::Error),
+    #[error("{0:#}")]
+    BindDnsSockets(#[source] anyhow::Error),
 }
 
 async fn resolve(domain: DomainName) -> Result<Vec<IpAddr>> {
