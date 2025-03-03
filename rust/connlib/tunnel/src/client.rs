@@ -1120,6 +1120,7 @@ impl ClientState {
         };
 
         let source = SocketAddr::new(packet.source(), datagram.source_port());
+        let dst = SocketAddr::new(packet.destination(), datagram.destination_port());
 
         match self.stub_resolver.handle(message) {
             dns::ResolveStrategy::LocalResponse(response) => {
@@ -1139,7 +1140,7 @@ impl ClientState {
 
                     self.udp_dns_sockets_by_upstream_and_query_id.insert(
                         (upstream, message.header().id()),
-                        SocketAddr::new(packet.destination(), dns::DNS_PORT),
+                        dst,
                         now + IDS_EXPIRE,
                     );
                     packet.set_dst(upstream.ip());
@@ -1162,7 +1163,9 @@ impl ClientState {
                     .push_back(dns::RecursiveQuery::via_udp(source, upstream, message));
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
-                let Some(gateway) = self.gateway_by_resource(&resource) else {
+                let Some(gateway) =
+                    peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+                else {
                     // TODO: Buffer IP packet or query?
                     // If we buffer the IP packet, we need to mangle it to the gateway's IP.
                     // If we buffer the query, it is more obvious that it needs to be turned into an IP packet.
@@ -1171,7 +1174,29 @@ impl ClientState {
                     return ControlFlow::Break(());
                 };
 
-                todo!()
+                let gateway_tun = gateway.gateway_tun();
+
+                let new_dst_ip = match dst {
+                    SocketAddr::V4(_) => gateway_tun.v4.into(),
+                    SocketAddr::V6(_) => gateway_tun.v6.into(),
+                };
+                let new_dst_port = crate::gateway::TUN_DNS_PORT;
+                let qid = message.header().id();
+
+                packet.set_dst(new_dst_ip);
+                packet
+                    .as_udp_mut()
+                    .expect("we parsed it as UDP packet already")
+                    .set_destination_port(new_dst_port);
+                packet.update_checksum();
+
+                self.udp_dns_sockets_by_upstream_and_query_id.insert(
+                    (SocketAddr::new(new_dst_ip, new_dst_port), qid),
+                    dst,
+                    now + IDS_EXPIRE,
+                );
+
+                return ControlFlow::Continue(packet);
             }
         }
 

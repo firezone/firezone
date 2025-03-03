@@ -37,6 +37,10 @@ impl GatewayOnClient {
             self.allowed_ips.insert(*ip, HashSet::from([*id]));
         }
     }
+
+    pub(crate) fn gateway_tun(&self) -> IpConfig {
+        self.gateway_tun
+    }
 }
 
 impl GatewayOnClient {
