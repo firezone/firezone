@@ -158,7 +158,7 @@ dependencies {
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.preference:preference-ktx:1.2.1")
-    implementation("androidx.constraintlayout:constraintlayout:2.2.0")
+    implementation("androidx.constraintlayout:constraintlayout:2.2.1")
 
     // Material
     implementation("com.google.android.material:material:1.12.0")
@@ -170,8 +170,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.8.7")
 
     // Navigation
-    implementation("androidx.navigation:navigation-fragment-ktx:2.8.6")
-    implementation("androidx.navigation:navigation-ui-ktx:2.8.6")
+    implementation("androidx.navigation:navigation-fragment-ktx:2.8.8")
+    implementation("androidx.navigation:navigation-ui-ktx:2.8.8")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.55")
@@ -184,7 +184,7 @@ dependencies {
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.55")
     kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.55")
     androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation("androidx.navigation:navigation-testing:2.8.6")
+    androidTestImplementation("androidx.navigation:navigation-testing:2.8.8")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.6.1")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
@@ -212,7 +212,7 @@ dependencies {
     // JUnit
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
-    androidTestImplementation("androidx.fragment:fragment-testing:1.8.5")
+    androidTestImplementation("androidx.fragment:fragment-testing:1.8.6")
 
     // Import the BoM for the Firebase platform
     implementation(platform("com.google.firebase:firebase-bom:33.8.0"))

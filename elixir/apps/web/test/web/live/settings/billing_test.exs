@@ -92,6 +92,20 @@ defmodule Web.Live.Settings.BillingTest do
     assert html =~ "Billing portal is temporarily unavailable, please try again later."
   end
 
+  test "renders Contact sales link", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/billing")
+
+    assert has_element?(lv, "a[href*='mailto:support']")
+    assert html =~ "Contact sales"
+  end
+
   test "renders billing portal button", %{
     account: account,
     identity: identity,

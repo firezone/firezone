@@ -50,7 +50,7 @@ jobs:
         id: setup-rust
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 5
-      - uses: taiki-e/install-action@65835784ace7c5a78745b6dbeb9bf85346430497 # v2.47.32
+      - uses: taiki-e/install-action@0b63bc859f7224657cf7e39426848cabaa36f456 # v2.49.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -90,7 +90,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         id: setup-rust
       - uses: ./.github/actions/setup-tauri-v2
-      - uses: taiki-e/install-action@65835784ace7c5a78745b6dbeb9bf85346430497 # v2.47.32
+      - uses: taiki-e/install-action@0b63bc859f7224657cf7e39426848cabaa36f456 # v2.49.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -116,6 +116,7 @@ jobs:
           rg --count --no-ignore "Performed IP-NAT64" $TESTCASES_DIR
           rg --count --no-ignore "Too big DNS response, truncating" $TESTCASES_DIR
           rg --count --no-ignore "Destination is unreachable" $TESTCASES_DIR
+          rg --count --no-ignore "Forwarding query for DNS resource to corresponding site" $TESTCASES_DIR
 
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
@@ -159,7 +160,7 @@ jobs:
         run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
-      - uses: taiki-e/install-action@65835784ace7c5a78745b6dbeb9bf85346430497 # v2.47.32
+      - uses: taiki-e/install-action@0b63bc859f7224657cf7e39426848cabaa36f456 # v2.49.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:

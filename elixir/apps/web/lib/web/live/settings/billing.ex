@@ -42,15 +42,6 @@ defmodule Web.Settings.Billing do
         <.button icon="hero-pencil" phx-click="redirect_to_billing_portal">
           Manage
         </.button>
-        <.button navigate={
-          mailto_support(
-            @account,
-            @subject,
-            "Billing question: #{@account.name}"
-          )
-        }>
-          Contact Sales Team
-        </.button>
       </:action>
       <:content>
         <.flash :if={@error} kind={:error}>
@@ -75,6 +66,21 @@ defmodule Web.Settings.Billing do
             <:label>Current Plan</:label>
             <:value>
               {@account.metadata.stripe.product_name}
+              <span class="ml-1">
+                <.link
+                  class={link_style()}
+                  target="_blank"
+                  href={
+                    mailto_support(
+                      @account,
+                      @subject,
+                      "Billing question: #{@account.name}"
+                    )
+                  }
+                >
+                  Contact sales
+                </.link>
+              </span>
             </:value>
           </.vertical_table_row>
 
@@ -248,6 +254,7 @@ defmodule Web.Settings.Billing do
           <span :if={Accounts.account_active?(@account)}>disable your account and</span>
           schedule it for deletion, please <.link
             class={link_style()}
+            target="_blank"
             href={mailto_support(@account, @subject, "Account termination request: #{@account.name}")}
           >contact support</.link>.
         </p>

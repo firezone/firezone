@@ -70,7 +70,7 @@ config :api, API.Endpoint,
 
 config :api,
   # shorten debounce timeout for tests
-  relays_presence_debounce_timeout: 100
+  relays_presence_debounce_timeout_ms: 100
 
 ###############################
 ##### Third-party configs #####

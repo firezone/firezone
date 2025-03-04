@@ -81,6 +81,6 @@ defmodule Domain.Relays.Presence.Debouncer do
   end
 
   def timeout do
-    Application.fetch_env!(:api, :relays_presence_debounce_timeout)
+    Application.fetch_env!(:api, :relays_presence_debounce_timeout_ms)
   end
 end

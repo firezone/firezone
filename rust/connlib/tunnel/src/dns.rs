@@ -102,8 +102,10 @@ pub(crate) enum Transport {
 pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
     LocalResponse(Message<Vec<u8>>),
-    /// The query is for a non-Resource, forward it to an upstream or system resolver.
-    Recurse,
+    /// The query is for a non-Resource, forward it locally to an upstream or system resolver.
+    RecurseLocal,
+    /// The query is for a DNS resource but for a type that we don't intercept (i.e. SRV, TXT, ...), forward it to the site that hosts the DNS resource and resolve it there.
+    RecurseSite(ResourceId),
 }
 
 impl Default for StubResolver {
@@ -274,9 +276,14 @@ impl StubResolver {
             (Rtype::AAAA, Some(resource)) => {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)
             }
+            (Rtype::SRV | Rtype::TXT, Some(resource)) => {
+                tracing::debug!(%qtype, %resource, "Forwarding query for DNS resource to corresponding site");
+
+                return Ok(ResolveStrategy::RecurseSite(resource));
+            }
             (Rtype::PTR, _) => {
                 let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {
-                    return Ok(ResolveStrategy::Recurse);
+                    return Ok(ResolveStrategy::RecurseLocal);
                 };
 
                 vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
@@ -288,7 +295,7 @@ impl StubResolver {
                 let response = build_dns_with_answer(message, domain, Vec::default())?;
                 return Ok(ResolveStrategy::LocalResponse(response));
             }
-            _ => return Ok(ResolveStrategy::Recurse),
+            _ => return Ok(ResolveStrategy::RecurseLocal),
         };
 
         tracing::trace!(%qtype, %domain, records = ?resource_records, "Forming DNS response");

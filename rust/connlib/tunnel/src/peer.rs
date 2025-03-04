@@ -1,6 +1,6 @@
 use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
@@ -25,6 +25,7 @@ mod nat_table;
 /// The state of one gateway on a client.
 pub(crate) struct GatewayOnClient {
     id: GatewayId,
+    gateway_tun: IpConfig,
     pub allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
 }
 
@@ -36,13 +37,25 @@ impl GatewayOnClient {
             self.allowed_ips.insert(*ip, HashSet::from([*id]));
         }
     }
+
+    /// For a given destination IP, return the endpoint to which the DNS query should be sent.
+    pub(crate) fn tun_dns_server_endpoint(&self, dst: IpAddr) -> SocketAddr {
+        let new_dst_ip = match dst {
+            IpAddr::V4(_) => self.gateway_tun.v4.into(),
+            IpAddr::V6(_) => self.gateway_tun.v6.into(),
+        };
+        let new_dst_port = crate::gateway::TUN_DNS_PORT;
+
+        SocketAddr::new(new_dst_ip, new_dst_port)
+    }
 }
 
 impl GatewayOnClient {
-    pub(crate) fn new(id: GatewayId) -> GatewayOnClient {
+    pub(crate) fn new(id: GatewayId, gateway_tun: IpConfig) -> GatewayOnClient {
         GatewayOnClient {
             id,
             allowed_ips: IpNetworkTable::new(),
+            gateway_tun,
         }
     }
 }
@@ -259,6 +272,11 @@ impl ClientOnGateway {
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<IpPacket> {
+        // Packets to the TUN interface don't get transformed.
+        if self.gateway_tun.is_ip(packet.destination()) {
+            return Ok(packet);
+        }
+
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             return Ok(packet);
         };
@@ -285,15 +303,8 @@ impl ClientOnGateway {
         packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<IpPacket>> {
-        // Traffic to our own IP is allowed.
-        match packet.destination() {
-            IpAddr::V4(dst) if dst == self.gateway_tun.v4 => return Ok(Some(packet)),
-            IpAddr::V6(dst) if dst == self.gateway_tun.v6 => return Ok(Some(packet)),
-            IpAddr::V4(_) | IpAddr::V6(_) => {}
-        }
-
         // Filtering a packet is not an error.
-        if let Err(e) = self.ensure_allowed_dst(&packet) {
+        if let Err(e) = self.ensure_allowed_src_and_dst(&packet) {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
             return Ok(None);
         }
@@ -376,8 +387,14 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
-    fn ensure_allowed_dst(&self, packet: &IpPacket) -> anyhow::Result<()> {
+    fn ensure_allowed_src_and_dst(&self, packet: &IpPacket) -> anyhow::Result<()> {
         self.ensure_client_ip(packet.source())?;
+
+        // Traffic to our own IP is allowed.
+        if self.gateway_tun.is_ip(packet.destination()) {
+            return Ok(());
+        }
+
         self.ensure_allowed_resource(packet.destination(), packet.destination_protocol())?;
 
         Ok(())
@@ -421,8 +438,12 @@ impl GatewayOnClient {
     pub(crate) fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
         let src = packet.source();
 
+        if self.gateway_tun.is_ip(src) {
+            return Ok(());
+        }
+
         if self.allowed_ips.longest_match(src).is_none() {
-            return Err(anyhow::Error::new(NotClientIp(src)));
+            return Err(anyhow::Error::new(NotAllowedResource(src)));
         }
 
         Ok(())
@@ -438,7 +459,7 @@ impl GatewayOnClient {
 pub(crate) struct NotClientIp(IpAddr);
 
 #[derive(Debug, thiserror::Error)]
-#[error("Accessing this resource IP is not allowed: {0}")]
+#[error("Traffic to/from this resource IP is not allowed: {0}")]
 pub(crate) struct NotAllowedResource(IpAddr);
 
 #[derive(Debug)]

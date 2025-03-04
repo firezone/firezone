@@ -2502,7 +2502,14 @@ defmodule API.Client.ChannelTest do
     end
   end
 
+  describe "handle_in/3 for unknown messages" do
+    test "it doesn't crash", %{socket: socket} do
+      ref = push(socket, "unknown_message", %{})
+      assert_reply ref, :error, %{reason: :unknown_message}
+    end
+  end
+
   defp relays_presence_timeout do
-    Application.fetch_env!(:api, :relays_presence_debounce_timeout) + 10
+    Application.fetch_env!(:api, :relays_presence_debounce_timeout_ms) + 10
   end
 end

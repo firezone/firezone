@@ -5,6 +5,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use anyhow::Result;
 use bimap::BiMap;
 use chrono::Utc;
 use connlib_model::{ClientId, DomainName, GatewayId, PublicKey, ResourceId, ResourceView};
@@ -14,7 +15,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
     fmt,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::Arc,
     task::{ready, Context, Poll},
     time::Instant,
@@ -24,6 +25,7 @@ use tun::Tun;
 mod client;
 mod device_channel;
 mod dns;
+mod expiring_map;
 mod gateway;
 mod io;
 pub mod messages;
@@ -49,11 +51,21 @@ const REALM: &str = "firezone";
 /// Thus, it is chosen as a safe, upper boundary that is not meant to be hit (and thus doesn't affect performance), yet acts as a safe guard, just in case.
 const MAX_EVENTLOOP_ITERS: u32 = 5000;
 
+pub const IPV4_TUNNEL: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11) {
+    Ok(n) => n,
+    Err(_) => unreachable!(),
+};
+pub const IPV6_TUNNEL: Ipv6Network =
+    match Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107) {
+        Ok(n) => n,
+        Err(_) => unreachable!(),
+    };
+
 pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
-pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest, IPV4_PEERS, IPV6_PEERS};
+pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use utils::turn;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
@@ -78,6 +90,14 @@ impl<TRoleState> Tunnel<TRoleState> {
 
     pub fn set_tun(&mut self, tun: Box<dyn Tun>) {
         self.io.set_tun(tun);
+    }
+
+    pub fn rebind_dns_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
+        self.io.rebind_dns_ipv4(socket)
+    }
+
+    pub fn rebind_dns_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
+        self.io.rebind_dns_ipv6(socket)
     }
 }
 
@@ -171,6 +191,13 @@ impl ClientTunnel {
                 Poll::Ready(io::Input::DnsResponse(packet)) => {
                     self.role_state.handle_dns_response(packet);
                     self.role_state.handle_timeout(Instant::now());
+                    continue;
+                }
+                Poll::Ready(io::Input::UdpDnsQuery(_) | io::Input::TcpDnsQuery(_)) => {
+                    debug_assert!(
+                        false,
+                        "Client does not (yet) use userspace DNS server sockets"
+                    );
                     continue;
                 }
                 Poll::Pending => {}
@@ -269,6 +296,14 @@ impl GatewayTunnel {
 
                     continue;
                 }
+                Poll::Ready(io::Input::UdpDnsQuery(query)) => self.io.send_udp_dns_response(
+                    query.source,
+                    dns::servfail(query.message.for_slice_ref()),
+                )?,
+                Poll::Ready(io::Input::TcpDnsQuery(query)) => self.io.send_tcp_dns_response(
+                    query.source,
+                    dns::servfail(query.message.for_slice_ref()),
+                )?,
                 Poll::Pending => {}
             }
 
@@ -325,6 +360,15 @@ pub struct IpConfig {
     pub v6: Ipv6Addr,
 }
 
+impl IpConfig {
+    pub fn is_ip(&self, ip: IpAddr) -> bool {
+        match ip {
+            IpAddr::V4(v4) => v4 == self.v4,
+            IpAddr::V6(v6) => v6 == self.v6,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum GatewayEvent {
     AddedIceCandidates {
@@ -354,5 +398,22 @@ where
         }
 
         list.finish()
+    }
+}
+
+pub fn is_peer(dst: IpAddr) -> bool {
+    match dst {
+        IpAddr::V4(v4) => IPV4_TUNNEL.contains(v4),
+        IpAddr::V6(v6) => IPV6_TUNNEL.contains(v6),
+    }
+}
+
+#[cfg(test)]
+mod unittests {
+    use super::*;
+
+    #[test]
+    fn mldv2_routers_are_not_peers() {
+        assert!(!is_peer("ff02::16".parse().unwrap()))
     }
 }

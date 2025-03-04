@@ -15,17 +15,17 @@
     "tauri": "tauri"
   },
   "dependencies": {
-    "@tailwindcss/cli": "^4.0.3",
-    "@tauri-apps/api": "^2.2.0",
+    "@tailwindcss/cli": "^4.0.9",
+    "@tauri-apps/api": "^2.3.0",
     "flowbite": "^3.1.1"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.2.7",
-    "@types/node": "^22.13.0",
+    "@tauri-apps/cli": "^2.3.1",
+    "@types/node": "^22.13.9",
     "http-server": "^14.1.1",
     "run-script-os": "^1.1.6",
-    "tailwindcss": "^4.0.3",
+    "tailwindcss": "^4.0.9",
     "typescript": "^5.7.3",
-    "vite": "^6.0.11"
+    "vite": "^6.2.0"
   }
 }

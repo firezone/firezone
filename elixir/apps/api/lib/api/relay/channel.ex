@@ -2,6 +2,7 @@ defmodule API.Relay.Channel do
   use API, :channel
   alias Domain.Relays
   require OpenTelemetry.Tracer
+  require Logger
 
   @impl true
   def join("relay", %{"stamp_secret" => stamp_secret}, socket) do
@@ -44,5 +45,13 @@ defmodule API.Relay.Channel do
       :ok = Relays.connect_relay(socket.assigns.relay, stamp_secret)
       {:noreply, socket}
     end
+  end
+
+  # Catch-all for unknown messages
+  @impl true
+  def handle_in(message, payload, socket) do
+    Logger.error("Unknown relay message", message: message, payload: payload)
+
+    {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
 end

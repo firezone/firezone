@@ -150,9 +150,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.95"
+version = "1.0.97"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34ac096ce696dc2fcabef30516bb13c0a68a11d30131d3df6f04711467681b04"
+checksum = "dcfed56ad506cb2c684a14971b8861fdc3baaaae314b9e5f9bb532cbe3ba7a4f"
 
 [[package]]
 name = "arbitrary"
@@ -2273,13 +2273,14 @@ dependencies = [
  "firezone-relay",
  "futures",
  "futures-bounded",
- "futures-util",
  "glob",
  "hex",
  "ip-packet",
  "ip_network",
  "ip_network_table",
  "itertools 0.13.0",
+ "l4-tcp-dns-server",
+ "l4-udp-dns-server",
  "lockfree-object-pool",
  "lru",
  "proptest",
@@ -3503,6 +3504,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "l4-tcp-dns-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "domain",
+ "futures",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "l4-udp-dns-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "domain",
+ "futures",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3601,9 +3624,9 @@ checksum = "9374ef4228402d4b7e403e5838cb880d9ee663314b0a900d5a6aabf0c213552e"
 
 [[package]]
 name = "log"
-version = "0.4.25"
+version = "0.4.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04cbf5b083de1c7e0222a7a51dbfdba1cbe1c6ab0b15e29fff3f6c077fd9cd9f"
+checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
 
 [[package]]
 name = "loom"

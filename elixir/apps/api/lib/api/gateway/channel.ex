@@ -84,7 +84,7 @@ defmodule API.Gateway.Channel do
   # Resource create message is a no-op for the Gateway as the Resource
   # details will be sent to the Gateway on an :authorize_flow message
   def handle_info({:create_resource, _resource_id}, socket) do
-    {:norely, socket}
+    {:noreply, socket}
   end
 
   # Resource is updated, eg. traffic filters are changed
@@ -679,6 +679,13 @@ defmodule API.Gateway.Channel do
 
       {:reply, :ok, socket}
     end
+  end
+
+  # Catch-all for unknown messages
+  def handle_in(message, payload, socket) do
+    Logger.error("Unknown gateway message", message: message, payload: payload)
+
+    {:reply, {:error, %{reason: :unknown_message}}, socket}
   end
 
   defp encode_ref(socket, tuple) do

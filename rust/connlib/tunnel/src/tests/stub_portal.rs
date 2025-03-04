@@ -3,16 +3,19 @@ use super::{
     sim_client::{ref_client_host, RefClient},
     sim_gateway::{ref_gateway_host, RefGateway},
     sim_net::Host,
-    strategies::{resolved_ips, subdomain_records},
+    strategies::{resolved_ips, site_specific_dns_record, subdomain_records},
 };
-use crate::messages::{gateway, DnsServer};
 use crate::{client, proptest::*};
+use crate::{
+    client::DnsResource,
+    messages::{gateway, DnsServer},
+};
 use connlib_model::GatewayId;
 use connlib_model::{ResourceId, SiteId};
-use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use proptest::{
-    sample::Selector,
+    collection,
+    sample::{self, Selector},
     strategy::{Just, Strategy},
 };
 use std::{
@@ -215,16 +218,31 @@ impl StubPortal {
         Some(gid)
     }
 
-    pub(crate) fn gateways(&self) -> impl Strategy<Value = BTreeMap<GatewayId, Host<RefGateway>>> {
+    pub(crate) fn gateway_by_ip(&self, ip: IpAddr) -> Option<GatewayId> {
         self.gateways_by_site
             .values()
             .flatten()
-            .map(|(gid, ipv4_addr, ipv6_addr)| {
-                (
-                    Just(*gid),
-                    ref_gateway_host(Just(*ipv4_addr), Just(*ipv6_addr)),
-                )
-            }) // Map each ID to a strategy that samples a gateway.
+            .find(|(_, ipv4_addr, ipv6_addr)| *ipv4_addr == ip || *ipv6_addr == ip)
+            .map(|(gid, _, _)| *gid)
+    }
+
+    pub(crate) fn gateways(&self) -> impl Strategy<Value = BTreeMap<GatewayId, Host<RefGateway>>> {
+        let dns_resources = self.dns_resources.clone();
+
+        self.gateways_by_site
+            .iter()
+            .flat_map(|(site_id, gateways)| {
+                gateways.iter().map(|(gid, ipv4_addr, ipv6_addr)| {
+                    (
+                        Just(*gid),
+                        ref_gateway_host(
+                            Just(*ipv4_addr),
+                            Just(*ipv6_addr),
+                            site_specific_dns_records(dns_resources.clone(), *site_id),
+                        ),
+                    )
+                })
+            })
             .collect::<Vec<_>>() // A `Vec<Strategy>` implements `Strategy<Value = Vec<_>>`
             .prop_map(BTreeMap::from_iter)
     }
@@ -243,62 +261,81 @@ impl StubPortal {
     }
 
     pub(crate) fn dns_resource_records(&self) -> impl Strategy<Value = DnsRecords> {
-        self.dns_resources
-            .values()
-            .map(|resource| {
-                let address = resource.address.clone();
-
-                // Only generate simple wildcard domains for these tests.
-                // The matching logic is extensively unit-tested so we don't need to cover all cases here.
-                // What we do want to cover is multiple domains pointing to the same resource.
-                // For example, `*.example.com` and `app.example.com`.
-                match address.split_once('.') {
-                    Some(("*" | "**", base)) => {
-                        subdomain_records(base.to_owned(), domain_label()).boxed()
-                    }
-                    _ => resolved_ips()
-                        .prop_map(move |resolved_ips| {
-                            DnsRecords::from([(address.parse().unwrap(), resolved_ips)])
-                        })
-                        .boxed(),
-                }
-            })
-            .collect::<Vec<_>>()
-            .prop_map(|records| {
-                let mut map = DnsRecords::default();
-
-                for record in records {
-                    map.merge(record)
-                }
-
-                map
-            })
+        dns_resource_records(self.dns_resources.clone().into_values())
     }
 }
 
-const IPV4_TUNNEL: Ipv4Network = match Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11) {
-    Ok(n) => n,
-    Err(_) => unreachable!(),
-};
-const IPV6_TUNNEL: Ipv6Network =
-    match Ipv6Network::new(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0, 0, 0, 0, 0), 107) {
-        Ok(n) => n,
-        Err(_) => unreachable!(),
-    };
+/// Generates site-specific DNS records for a particular site.
+fn site_specific_dns_records(
+    dns_resources: BTreeMap<ResourceId, client::DnsResource>,
+    site: SiteId,
+) -> impl Strategy<Value = DnsRecords> {
+    let dns_resources_in_site = dns_resources
+        .into_values()
+        .filter(move |resource| resource.sites.iter().any(|s| s.id == site));
+
+    dns_resource_records(dns_resources_in_site).prop_flat_map(|records| {
+        if records.is_empty() {
+            Just(DnsRecords::default()).boxed()
+        } else {
+            collection::btree_map(
+                sample::select(records.domains_iter().collect::<Vec<_>>()),
+                collection::btree_set(site_specific_dns_record(), 1..6),
+                0..5,
+            )
+            .prop_map_into()
+            .boxed()
+        }
+    })
+}
+
+fn dns_resource_records(
+    dns_resources: impl Iterator<Item = DnsResource>,
+) -> impl Strategy<Value = DnsRecords> {
+    dns_resources
+        .map(|resource| {
+            let address = resource.address;
+
+            // Only generate simple wildcard domains for these tests.
+            // The matching logic is extensively unit-tested so we don't need to cover all cases here.
+            // What we do want to cover is multiple domains pointing to the same resource.
+            // For example, `*.example.com` and `app.example.com`.
+            match address.split_once('.') {
+                Some(("*" | "**", base)) => {
+                    subdomain_records(base.to_owned(), domain_label()).boxed()
+                }
+                _ => resolved_ips()
+                    .prop_map(move |resolved_ips| {
+                        DnsRecords::from([(address.parse().unwrap(), resolved_ips)])
+                    })
+                    .boxed(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .prop_map(|records| {
+            let mut map = DnsRecords::default();
+
+            for record in records {
+                map.merge(record)
+            }
+
+            map
+        })
+}
 
 /// An [`Iterator`] over the possible IPv4 addresses of a tunnel interface.
 ///
 /// We use the CG-NAT range for IPv4.
 /// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L7>.
 fn tunnel_ip4s() -> impl Iterator<Item = Ipv4Addr> {
-    IPV4_TUNNEL.hosts()
+    crate::IPV4_TUNNEL.hosts()
 }
 
 /// An [`Iterator`] over the possible IPv6 addresses of a tunnel interface.
 ///
 /// See <https://github.com/firezone/firezone/blob/81dfa90f38299595e14ce9e022d1ee919909f124/elixir/apps/domain/lib/domain/network.ex#L8>.
 fn tunnel_ip6s() -> impl Iterator<Item = Ipv6Addr> {
-    IPV6_TUNNEL
+    crate::IPV6_TUNNEL
         .subnets_with_prefix(128)
         .map(|n| n.network_address())
 }

@@ -1,0 +1,21 @@
+[package]
+name = "l4-tcp-dns-server"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+domain = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["net", "io-util"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["process", "macros", "rt"] }
+
+[lints]
+workspace = true
