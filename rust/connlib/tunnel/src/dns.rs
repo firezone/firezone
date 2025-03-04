@@ -277,6 +277,8 @@ impl StubResolver {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)
             }
             (Rtype::SRV | Rtype::TXT, Some(resource)) => {
+                tracing::debug!(%qtype, %resource, "Forwarding query for DNS resource to corresponding site");
+
                 return Ok(ResolveStrategy::RecurseSite(resource));
             }
             (Rtype::PTR, _) => {
