@@ -116,6 +116,7 @@ jobs:
           rg --count --no-ignore "Performed IP-NAT64" $TESTCASES_DIR
           rg --count --no-ignore "Too big DNS response, truncating" $TESTCASES_DIR
           rg --count --no-ignore "Destination is unreachable" $TESTCASES_DIR
+          rg --count --no-ignore "Forwarding query for DNS resource to corresponding site" $TESTCASES_DIR
 
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>

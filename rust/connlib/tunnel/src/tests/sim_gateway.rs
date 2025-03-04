@@ -16,6 +16,7 @@ use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, HashMap},
+    iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
 };
@@ -34,15 +35,21 @@ pub(crate) struct SimGateway {
     /// The received TCP packets, indexed by our custom TCP payload.
     pub(crate) received_tcp_requests: BTreeMap<u64, IpPacket>,
 
+    site_specific_dns_records: DnsRecords,
     udp_dns_server_resources: HashMap<SocketAddr, UdpDnsServerResource>,
     tcp_dns_server_resources: HashMap<SocketAddr, TcpDnsServerResource>,
 }
 
 impl SimGateway {
-    pub(crate) fn new(id: GatewayId, sut: GatewayState) -> Self {
+    pub(crate) fn new(
+        id: GatewayId,
+        sut: GatewayState,
+        site_specific_dns_records: DnsRecords,
+    ) -> Self {
         Self {
             id,
             sut,
+            site_specific_dns_records,
             received_icmp_requests: Default::default(),
             udp_dns_server_resources: Default::default(),
             tcp_dns_server_resources: Default::default(),
@@ -77,16 +84,35 @@ impl SimGateway {
         global_dns_records: &DnsRecords,
         now: Instant,
     ) -> Vec<Transmit<'static>> {
-        let udp_server_packets = self.udp_dns_server_resources.values_mut().flat_map(|s| {
-            s.handle_timeout(global_dns_records, now);
+        let Some(ip_config) = self.sut.tunnel_ip_config() else {
+            tracing::error!("Tunnel IP configuration not set");
+            return Vec::new();
+        };
 
-            std::iter::from_fn(|| s.poll_outbound())
-        });
-        let tcp_server_packets = self.tcp_dns_server_resources.values_mut().flat_map(|s| {
-            s.handle_timeout(global_dns_records, now);
+        let udp_server_packets =
+            self.udp_dns_server_resources
+                .iter_mut()
+                .flat_map(|(socket, server)| {
+                    if ip_config.is_ip(socket.ip()) {
+                        server.handle_timeout(&self.site_specific_dns_records, now);
+                    } else {
+                        server.handle_timeout(global_dns_records, now);
+                    }
 
-            std::iter::from_fn(|| s.poll_outbound())
-        });
+                    std::iter::from_fn(|| server.poll_outbound())
+                });
+        let tcp_server_packets =
+            self.tcp_dns_server_resources
+                .iter_mut()
+                .flat_map(|(socket, server)| {
+                    if ip_config.is_ip(socket.ip()) {
+                        server.handle_timeout(&self.site_specific_dns_records, now);
+                    } else {
+                        server.handle_timeout(global_dns_records, now);
+                    }
+
+                    std::iter::from_fn(|| server.poll_outbound())
+                });
 
         udp_server_packets
             .chain(tcp_server_packets)
@@ -109,7 +135,22 @@ impl SimGateway {
     ) {
         self.udp_dns_server_resources.clear();
 
-        for server in dns_servers {
+        let tun_dns_server_port = 53535; // Hardcoded here so we think about backwards-compatibility when changing it.
+        let Some(ip_config) = self.sut.tunnel_ip_config() else {
+            tracing::error!("Tunnel IP configuration not set");
+            return;
+        };
+
+        for server in dns_servers
+            .chain(iter::once(SocketAddr::from((
+                ip_config.v4,
+                tun_dns_server_port,
+            ))))
+            .chain(iter::once(SocketAddr::from((
+                ip_config.v6,
+                tun_dns_server_port,
+            ))))
+        {
             self.udp_dns_server_resources
                 .insert(server, UdpDnsServerResource::default());
             self.tcp_dns_server_resources
@@ -255,6 +296,8 @@ pub struct RefGateway {
     pub(crate) key: PrivateKey,
     pub(crate) tunnel_ip4: Ipv4Addr,
     pub(crate) tunnel_ip6: Ipv6Addr,
+
+    site_specific_dns_records: DnsRecords,
 }
 
 impl RefGateway {
@@ -262,24 +305,29 @@ impl RefGateway {
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(self, id: GatewayId, now: Instant) -> SimGateway {
-        let mut sut = GatewayState::new(self.key.0, now);
+        let mut sut = GatewayState::new(self.key.0, now); // Cheating a bit here by reusing the key as seed.
         sut.update_tun_device(IpConfig {
             v4: self.tunnel_ip4,
             v6: self.tunnel_ip6,
         });
 
-        SimGateway::new(id, sut) // Cheating a bit here by reusing the key as seed.
+        SimGateway::new(id, sut, self.site_specific_dns_records)
+    }
+
+    pub fn dns_records(&self) -> &DnsRecords {
+        &self.site_specific_dns_records
     }
 }
 
 pub(crate) fn ref_gateway_host(
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
+    site_specific_dns_records: impl Strategy<Value = DnsRecords>,
 ) -> impl Strategy<Value = Host<RefGateway>> {
     host(
         dual_ip_stack(),
         any_port(),
-        ref_gateway(tunnel_ip4s, tunnel_ip6s),
+        ref_gateway(tunnel_ip4s, tunnel_ip6s, site_specific_dns_records),
         latency(200), // We assume gateways have a somewhat decent Internet connection.
     )
 }
@@ -287,14 +335,22 @@ pub(crate) fn ref_gateway_host(
 fn ref_gateway(
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
+    site_specific_dns_records: impl Strategy<Value = DnsRecords>,
 ) -> impl Strategy<Value = RefGateway> {
-    (private_key(), tunnel_ip4s, tunnel_ip6s).prop_map(move |(key, tunnel_ip4, tunnel_ip6)| {
-        RefGateway {
-            key,
-            tunnel_ip4,
-            tunnel_ip6,
-        }
-    })
+    (
+        private_key(),
+        tunnel_ip4s,
+        tunnel_ip6s,
+        site_specific_dns_records,
+    )
+        .prop_map(
+            move |(key, tunnel_ip4, tunnel_ip6, site_specific_dns_records)| RefGateway {
+                key,
+                tunnel_ip4,
+                tunnel_ip6,
+                site_specific_dns_records,
+            },
+        )
 }
 
 fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {
