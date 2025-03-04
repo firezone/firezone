@@ -73,14 +73,15 @@ impl RecursiveQuery {
     }
 
     pub(crate) fn via_tcp(
-        source: SocketAddr,
+        local: SocketAddr,
+        remote: SocketAddr,
         server: SocketAddr,
         message: Message<Vec<u8>>,
     ) -> Self {
         Self {
             server,
             message,
-            transport: Transport::Tcp { source },
+            transport: Transport::Tcp { local, remote },
         }
     }
 }
@@ -92,7 +93,8 @@ pub(crate) enum Transport {
         source: SocketAddr,
     },
     Tcp {
-        source: SocketAddr,
+        local: SocketAddr,
+        remote: SocketAddr,
     },
 }
 

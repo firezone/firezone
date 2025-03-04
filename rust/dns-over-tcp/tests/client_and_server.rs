@@ -72,7 +72,9 @@ fn progress(
                 .unwrap()
                 .into_message();
 
-            dns_server.send_message(query.source, response).unwrap();
+            dns_server
+                .send_message(query.local, query.remote, response)
+                .unwrap();
             continue;
         }
 

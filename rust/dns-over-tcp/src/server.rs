@@ -27,7 +27,7 @@ pub struct Server {
     sockets: SocketSet<'static>,
     listen_endpoints: HashMap<SocketHandle, SocketAddr>,
 
-    pending_queries: HashMap<(SocketAddr, u16), SocketHandle>,
+    sockets_by_local_and_remote: HashMap<(SocketAddr, SocketAddr), SocketHandle>,
 
     received_queries: VecDeque<Query>,
 
@@ -37,10 +37,10 @@ pub struct Server {
 
 pub struct Query {
     pub message: Message<Vec<u8>>,
-    /// The address of the socket that received the query.
+    /// The local address of the socket that received the query.
     pub local: SocketAddr,
-    /// The address of the client that sent the query.
-    pub source: SocketAddr,
+    /// The remote address of the client that sent the query.
+    pub remote: SocketAddr,
 }
 
 impl Server {
@@ -53,7 +53,7 @@ impl Server {
             interface,
             sockets: SocketSet::new(Vec::default()),
             listen_endpoints: Default::default(),
-            pending_queries: Default::default(),
+            sockets_by_local_and_remote: Default::default(),
             received_queries: Default::default(),
             created_at: now,
             last_now: now,
@@ -141,17 +141,22 @@ impl Server {
         self.device.receive(packet);
     }
 
-    /// Send a query response to the provided destination socket.
+    /// Send a query response from the given source to the provided destination socket.
     ///
     /// This fails if the socket is not writeable or if we don't have a pending query for this client.
     /// On any error, the TCP connection is automatically reset.
-    pub fn send_message(&mut self, dst: SocketAddr, message: Message<Vec<u8>>) -> Result<()> {
+    pub fn send_message(
+        &mut self,
+        src: SocketAddr,
+        dst: SocketAddr,
+        message: Message<Vec<u8>>,
+    ) -> Result<()> {
         let handle = self
-            .pending_queries
-            .remove(&(dst, message.header().id()))
+            .sockets_by_local_and_remote
+            .get(&(src, dst))
             .context("No pending query found for message")?;
 
-        let socket = self.sockets.get_mut::<tcp::Socket>(handle);
+        let socket = self.sockets.get_mut::<tcp::Socket>(*handle);
 
         write_tcp_dns_response(socket, message.for_slice_ref())
             .inspect_err(|_| socket.abort()) // Abort socket on error.
@@ -177,22 +182,18 @@ impl Server {
         }
 
         for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.sockets.iter_mut() {
-            let listen = self.listen_endpoints.get(&handle).copied().unwrap();
-            let remote = socket
-                .remote_endpoint()
-                .map(|e| SocketAddr::new(e.addr.into(), e.port));
+            let local = self.listen_endpoints.get(&handle).copied().unwrap();
 
-            while let Some(result) = try_recv_query(socket, listen).transpose() {
+            while let Some(result) = try_recv_query(socket, local).transpose() {
                 match result {
-                    Ok(message) => {
-                        let source = remote.unwrap();
-                        self.pending_queries
-                            .insert((source, message.header().id()), handle);
+                    Ok((message, remote)) => {
+                        self.sockets_by_local_and_remote
+                            .insert((local, remote), handle);
 
                         self.received_queries.push_back(Query {
                             message: message.octets_into(),
-                            local: listen,
-                            source,
+                            local,
+                            remote,
                         });
                     }
                     Err(e) => {
@@ -224,10 +225,11 @@ impl Server {
     }
 }
 
+#[expect(clippy::type_complexity, reason = "We don't care.")]
 fn try_recv_query<'b>(
     socket: &'b mut tcp::Socket,
     listen: SocketAddr,
-) -> Result<Option<Message<&'b [u8]>>> {
+) -> Result<Option<(Message<&'b [u8]>, SocketAddr)>> {
     // smoltcp's sockets can only ever handle a single remote, i.e. there is no permanent listening socket.
     // to be able to handle a new connection, reset the socket back to `listen` once the connection is closed / closing.
     {
@@ -263,13 +265,18 @@ fn try_recv_query<'b>(
         return Ok(None);
     }
 
+    let Some(remote) = socket.remote_endpoint() else {
+        return Ok(None);
+    };
+    let remote = SocketAddr::new(remote.addr.into(), remote.port);
+
     let Some(message) = codec::try_recv(socket)? else {
         return Ok(None);
     };
 
     anyhow::ensure!(!message.header().qr(), "DNS message is a response!");
 
-    Ok(Some(message))
+    Ok(Some((message, remote)))
 }
 
 fn write_tcp_dns_response(socket: &mut tcp::Socket, response: Message<&[u8]>) -> Result<()> {
