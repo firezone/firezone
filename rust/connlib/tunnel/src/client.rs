@@ -1,8 +1,10 @@
 mod resource;
 
+use domain::dep::octseq::OctetsInto;
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::dns::StubResolver;
 use crate::expiring_map::ExpiringMap;
@@ -179,7 +181,9 @@ impl DnsResourceNatState {
 
 struct PendingFlow {
     last_intent_sent_at: Instant,
-    packets: UniquePacketBuffer,
+    resource_packets: UniquePacketBuffer,
+    udp_dns_queries: AllocRingBuffer<(SocketAddr, Message<Vec<u8>>)>,
+    tcp_dns_queries: AllocRingBuffer<dns_over_tcp::Query>,
 }
 
 impl PendingFlow {
@@ -189,13 +193,27 @@ impl PendingFlow {
     /// Thus, we may receive a fair few packets before we can send them.
     const CAPACITY_POW_2: usize = 7; // 2^7 = 128
 
-    fn new(now: Instant, packet: IpPacket) -> Self {
-        let mut packets = UniquePacketBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2);
-        packets.push(packet);
-
-        Self {
+    fn new(now: Instant, trigger: ConnectionTrigger) -> Self {
+        let mut this = Self {
             last_intent_sent_at: now,
-            packets,
+            resource_packets: UniquePacketBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
+            udp_dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
+            tcp_dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
+        };
+        this.push(trigger);
+
+        this
+    }
+
+    fn push(&mut self, trigger: ConnectionTrigger) {
+        match trigger {
+            ConnectionTrigger::PacketForResource(packet) => {
+                self.resource_packets.push(packet);
+            }
+            ConnectionTrigger::UdpDnsQueryForSite { source, query } => {
+                self.udp_dns_queries.push((source, query))
+            }
+            ConnectionTrigger::TcpDnsQueryForSite { query } => self.tcp_dns_queries.push(query),
         }
     }
 }
@@ -749,7 +767,10 @@ impl ClientState {
         self.peers.add_ip(&gateway_id, &gateway_tun.v4.into());
         self.peers.add_ip(&gateway_id, &gateway_tun.v6.into());
 
-        let buffered_packets = pending_flow.packets;
+        // Deal with buffered packets
+
+        // 1. Buffered packets for resources
+        let buffered_resource_packets = pending_flow.resource_packets;
 
         match resource {
             Resource::Cidr(_) | Resource::Internet(_) => {
@@ -760,7 +781,7 @@ impl ClientState {
                 );
 
                 // For CIDR and Internet resources, we can directly queue the buffered packets.
-                for packet in buffered_packets {
+                for packet in buffered_resource_packets {
                     encapsulate_and_buffer(
                         packet,
                         gateway_id,
@@ -770,7 +791,51 @@ impl ClientState {
                     );
                 }
             }
-            Resource::Dns(_) => self.update_dns_resource_nat(now, buffered_packets.into_iter()),
+            Resource::Dns(_) => {
+                self.update_dns_resource_nat(now, buffered_resource_packets.into_iter())
+            }
+        }
+
+        // 2. Buffered UDP DNS queries for the Gateway
+        for (source, message) in pending_flow.udp_dns_queries {
+            let Some(packet) = ip_packet::make::udp_packet(
+                source.ip(),
+                match source.ip() {
+                    IpAddr::V4(_) => gateway_tun.v4.into(),
+                    IpAddr::V6(_) => gateway_tun.v6.into(),
+                },
+                source.port(),
+                crate::gateway::TUN_DNS_PORT,
+                message.into_octets(),
+            )
+            .inspect_err(|e| {
+                tracing::debug!("Failed to create UDP packet from buffered DNS query: {e:#}")
+            })
+            .ok() else {
+                continue;
+            };
+
+            encapsulate_and_buffer(
+                packet,
+                gateway_id,
+                now,
+                &mut self.node,
+                &mut self.buffered_transmits,
+            )
+        }
+
+        // 3. Buffered TCP DNS queries for the Gateway
+        for query in pending_flow.tcp_dns_queries {
+            let server = match query.local {
+                SocketAddr::V4(_) => {
+                    SocketAddr::new(gateway_tun.v4.into(), crate::gateway::TUN_DNS_PORT)
+                }
+                SocketAddr::V6(_) => {
+                    SocketAddr::new(gateway_tun.v6.into(), crate::gateway::TUN_DNS_PORT)
+                }
+            };
+
+            self.foward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
         }
 
         Ok(Ok(()))
@@ -820,16 +885,23 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%resource))]
-    fn on_not_connected_resource(&mut self, resource: ResourceId, packet: IpPacket, now: Instant) {
+    fn on_not_connected_resource(
+        &mut self,
+        resource: ResourceId,
+        trigger: impl Into<ConnectionTrigger>,
+        now: Instant,
+    ) {
+        let trigger = trigger.into();
+
         debug_assert!(self.resources_by_id.contains_key(&resource));
 
         match self.pending_flows.entry(resource) {
             Entry::Vacant(v) => {
-                v.insert(PendingFlow::new(now, packet));
+                v.insert(PendingFlow::new(now, trigger));
             }
             Entry::Occupied(mut o) => {
                 let pending_flow = o.get_mut();
-                pending_flow.packets.push(packet);
+                pending_flow.push(trigger);
 
                 let time_since_last_intent = now.duration_since(pending_flow.last_intent_sent_at);
 
@@ -1150,11 +1222,14 @@ impl ClientState {
                 let Some(gateway) =
                     peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
                 else {
-                    // TODO: Buffer IP packet or query?
-                    // If we buffer the IP packet, we need to mangle it to the gateway's IP.
-                    // If we buffer the query, it is more obvious that it needs to be turned into an IP packet.
-
-                    // self.on_not_connected_resource(resource, packet, now);
+                    self.on_not_connected_resource(
+                        resource,
+                        ConnectionTrigger::UdpDnsQueryForSite {
+                            source,
+                            query: message.octets_into(),
+                        },
+                        now,
+                    );
                     return ControlFlow::Break(());
                 };
 
@@ -1244,11 +1319,11 @@ impl ClientState {
                 let Some(gateway) =
                     peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
                 else {
-                    // TODO: Buffer IP packet or query?
-                    // If we buffer the IP packet, we need to mangle it to the gateway's IP.
-                    // If we buffer the query, it is more obvious that it needs to be turned into an IP packet.
-
-                    // self.on_not_connected_resource(resource, packet, now);
+                    self.on_not_connected_resource(
+                        resource,
+                        ConnectionTrigger::TcpDnsQueryForSite { query },
+                        now,
+                    );
                     return;
                 };
 
@@ -1922,6 +1997,25 @@ fn truncate_dns_response(mut message: Message<Vec<u8>>) -> Vec<u8> {
     message_bytes.truncate(message_truncation);
 
     message_bytes
+}
+
+/// What triggered us to establish a connection to a Gateway.
+enum ConnectionTrigger {
+    /// A packet received on the TUN device with a destination IP that maps to one of our resources.
+    PacketForResource(IpPacket),
+    /// A UDP DNS query that needs to be resolved within a particular site that we aren't connected to yet.
+    UdpDnsQueryForSite {
+        source: SocketAddr,
+        query: Message<Vec<u8>>,
+    },
+    /// A TCP DNS query that needs to be resolved within a particular site that we aren't connected to yet.
+    TcpDnsQueryForSite { query: dns_over_tcp::Query },
+}
+
+impl From<IpPacket> for ConnectionTrigger {
+    fn from(v: IpPacket) -> Self {
+        Self::PacketForResource(v)
+    }
 }
 
 pub struct IpProvider {
