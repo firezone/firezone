@@ -278,6 +278,7 @@ impl Io {
             dns::Transport::Udp { .. } => {
                 let factory = self.udp_socket_factory.clone();
                 let server = query.server;
+                let domain = query.domain();
                 let bind_addr = match query.server {
                     SocketAddr::V4(_) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
                     SocketAddr::V6(_) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
@@ -292,6 +293,8 @@ impl Io {
                     .dns_queries
                     .try_push(
                         async move {
+                            tracing::trace!(target: "wire::dns::recursive::udp", %server, %domain);
+
                             // To avoid fragmentation, IP and thus also UDP packets can only reliably sent with an MTU of <= 1500 on the public Internet.
                             const BUF_SIZE: usize = 1500;
 
@@ -317,6 +320,7 @@ impl Io {
             dns::Transport::Tcp { .. } => {
                 let factory = self.tcp_socket_factory.clone();
                 let server = query.server;
+                let domain = query.domain();
                 let meta = DnsQueryMetaData {
                     query: query.message.clone(),
                     server,
@@ -327,6 +331,8 @@ impl Io {
                     .dns_queries
                     .try_push(
                         async move {
+                            tracing::trace!(target: "wire::dns::recursive::tcp", %server, %domain);
+
                             let tcp_socket = factory(&server)?; // TODO: Optimise this to reuse a TCP socket to the same resolver.
                             let mut tcp_stream = tcp_socket.connect(server).await?;
 
