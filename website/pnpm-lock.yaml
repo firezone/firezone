@@ -51,8 +51,8 @@ importers:
         specifier: 10.4.20
         version: 10.4.20(postcss@8.5.1)
       fast-xml-parser:
-        specifier: ^4.5.1
-        version: 4.5.1
+        specifier: ^5.0.8
+        version: 5.0.8
       flowbite-react:
         specifier: ^0.10.2
         version: 0.10.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.17)
@@ -902,8 +902,8 @@ packages:
   fast-uri@3.0.6:
     resolution: {integrity: sha512-Atfo14OibSv5wAp4VWNsFYE1AchQRTv9cBGWET4pZWHzYshFSS9NQI6I57rdKn9croWVMbYFbLhJ+yJvmZIIHw==}
 
-  fast-xml-parser@4.5.1:
-    resolution: {integrity: sha512-y655CeyUQ+jj7KBbYMc4FG01V8ZQqjN+gDYGJ50RtfsUB8iG9AmwmwoAgeKLJdmueKKMrH1RJ7yXHTSoczdv5w==}
+  fast-xml-parser@5.0.8:
+    resolution: {integrity: sha512-qY8NiI5L8ff00F2giyICiJxSSKHO52tC36LJqx2JtvGyAd5ZfehC/l4iUVVHpmpIa6sM9N5mneSLHQG2INGoHA==}
     hasBin: true
 
   fastq@1.17.1:
@@ -1781,8 +1781,8 @@ packages:
     resolution: {integrity: sha512-iq6eVVI64nQQTRYq2KtEg2d2uU7LElhTJwsH4YzIHZshxlgZms/wIc4VoDQTlG/IvVIrBKG06CrZnp0qv7hkcQ==}
     engines: {node: '>=12'}
 
-  strnum@1.0.5:
-    resolution: {integrity: sha512-J8bbNyKKXl5qYcR36TIO8W3mVGVHrmmxsd5PAItGkmyzwJvybiw2IVq5nqd0i4LSNSkB/sx9VHllbfFdr9k1JA==}
+  strnum@2.0.5:
+    resolution: {integrity: sha512-YAT3K/sgpCUxhxNMrrdhtod3jckkpYwH6JAuwmUdXZsmzH1wUyzTMrrK2wYCEEqlKwrWDd35NeuUkbBy/1iK+Q==}
 
   style-to-object@0.4.4:
     resolution: {integrity: sha512-HYNoHZa2GorYNyqiCaBgsxvcJIn7OHq6inEga+E6Ke3m5JkoqpQbnFssk4jwe+K7AhGa2fcha4wSOf1Kn01dMg==}
@@ -2822,9 +2822,9 @@ snapshots:
   fast-uri@3.0.6:
     optional: true
 
-  fast-xml-parser@4.5.1:
+  fast-xml-parser@5.0.8:
     dependencies:
-      strnum: 1.0.5
+      strnum: 2.0.5
 
   fastq@1.17.1:
     dependencies:
@@ -4129,7 +4129,7 @@ snapshots:
     dependencies:
       ansi-regex: 6.1.0
 
-  strnum@1.0.5: {}
+  strnum@2.0.5: {}
 
   style-to-object@0.4.4:
     dependencies:
