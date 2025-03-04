@@ -106,10 +106,10 @@ defmodule API.ClientController do
   )
 
   # Verify a Client
-  def verify(conn, %{"client_id" => client_id}) do
+  def verify(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- Clients.fetch_client_by_id(client_id, subject, preload: :online?),
+    with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
          {:ok, client} <- Clients.verify_client(client, subject) do
       render(conn, :show, client: client)
     end
@@ -131,10 +131,10 @@ defmodule API.ClientController do
   )
 
   # Unverify a Client
-  def unverify(conn, %{"client_id" => client_id}) do
+  def unverify(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- Clients.fetch_client_by_id(client_id, subject, preload: :online?),
+    with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
          {:ok, client} <- Clients.remove_client_verification(client, subject) do
       render(conn, :show, client: client)
     end
