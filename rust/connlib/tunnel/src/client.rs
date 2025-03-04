@@ -134,8 +134,7 @@ pub struct ClientState {
     tcp_dns_client: dns_over_tcp::Client,
     tcp_dns_server: dns_over_tcp::Server,
     /// Tracks the socket on which we received a TCP DNS query by the ID of the recursive DNS query we issued.
-    tcp_dns_sockets_by_upstream_and_query_id:
-        HashMap<(SocketAddr, u16), dns_over_tcp::SocketHandle>,
+    tcp_dns_sockets_by_upstream_and_query_id: HashMap<(SocketAddr, u16), SocketAddr>,
 
     /// Stores the gateways we recently connected to.
     ///
@@ -1280,7 +1279,7 @@ impl ClientState {
                 self.update_dns_resource_nat(now, iter::empty());
 
                 unwrap_or_debug!(
-                    self.tcp_dns_server.send_message(query.socket, response),
+                    self.tcp_dns_server.send_message(query.source, response),
                     "Failed to send TCP DNS response: {}"
                 );
             }
@@ -1295,7 +1294,7 @@ impl ClientState {
 
                 self.buffered_dns_queries
                     .push_back(dns::RecursiveQuery::via_tcp(
-                        query.socket,
+                        query.source,
                         server,
                         query.message,
                     ));
@@ -1338,7 +1337,7 @@ impl ClientState {
 
                 unwrap_or_debug!(
                     self.tcp_dns_server
-                        .send_message(query.socket, dns::servfail(query.message.for_slice_ref())),
+                        .send_message(query.source, dns::servfail(query.message.for_slice_ref())),
                     "Failed to send TCP DNS response: {}"
                 );
                 return;
@@ -1347,7 +1346,7 @@ impl ClientState {
 
         let existing = self
             .tcp_dns_sockets_by_upstream_and_query_id
-            .insert((server, query_id), query.socket);
+            .insert((server, query_id), query.source);
 
         debug_assert!(existing.is_none(), "Query IDs should be unique");
     }

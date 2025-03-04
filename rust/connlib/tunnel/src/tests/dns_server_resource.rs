@@ -39,7 +39,7 @@ impl TcpDnsServerResource {
         while let Some(query) = self.server.poll_queries() {
             let response = handle_dns_query(query.message.for_slice(), global_dns_records);
 
-            self.server.send_message(query.socket, response).unwrap();
+            self.server.send_message(query.source, response).unwrap();
         }
     }
 

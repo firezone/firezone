@@ -72,7 +72,7 @@ fn progress(
                 .unwrap()
                 .into_message();
 
-            dns_server.send_message(query.socket, response).unwrap();
+            dns_server.send_message(query.source, response).unwrap();
             continue;
         }
 
