@@ -104,6 +104,32 @@ defmodule Web.Live.Settings.IdentityProviders.JumpCloud.Connect do
       %{account: account}
     end
 
+    test "redirects to identity provider settings when required params are missing", %{
+      conn: conn,
+      account: account
+    } do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_jumpcloud_provider(account: account)
+
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
+
+      conn =
+        conn
+        |> authorize_conn(identity)
+        |> assign(:account, account)
+        |> get(
+          ~p"/#{account}/settings/identity_providers/jumpcloud/#{provider}/handle_callback",
+          %{"foo" => "bar"}
+        )
+
+      assert redirected_to(conn) ==
+               ~p"/#{account}/settings/identity_providers/jumpcloud/#{provider}"
+
+      assert flash(conn, :error) =~ "Invalid request parameters:"
+      assert flash(conn, :error) =~ "\"foo\" => \"bar\""
+    end
+
     test "redirects to login page when user is not signed in", %{conn: conn} do
       account_id = Ecto.UUID.generate()
       provider_id = Ecto.UUID.generate()
