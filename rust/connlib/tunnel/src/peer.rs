@@ -1,6 +1,6 @@
 use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
@@ -38,8 +38,15 @@ impl GatewayOnClient {
         }
     }
 
-    pub(crate) fn gateway_tun(&self) -> IpConfig {
-        self.gateway_tun
+    /// For a given destination IP, return the endpoint to which the DNS query should be sent.
+    pub(crate) fn tun_dns_server_endpoint(&self, dst: IpAddr) -> SocketAddr {
+        let new_dst_ip = match dst {
+            IpAddr::V4(_) => self.gateway_tun.v4.into(),
+            IpAddr::V6(_) => self.gateway_tun.v6.into(),
+        };
+        let new_dst_port = crate::gateway::TUN_DNS_PORT;
+
+        SocketAddr::new(new_dst_ip, new_dst_port)
     }
 }
 
