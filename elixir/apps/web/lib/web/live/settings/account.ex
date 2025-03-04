@@ -80,6 +80,7 @@ defmodule Web.Settings.Account do
           <span :if={Accounts.account_active?(@account)}>disable your account and</span>
           schedule it for deletion, please <.link
             class={link_style()}
+            target="_blank"
             href={mailto_support(@account, @subject, "Account termination request: #{@account.name}")}
           >contact support</.link>.
         </p>
