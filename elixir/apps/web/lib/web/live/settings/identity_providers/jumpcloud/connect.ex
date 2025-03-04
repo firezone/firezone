@@ -125,4 +125,14 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Connect do
         |> redirect(to: ~p"/#{account}/settings/identity_providers/jumpcloud/#{provider_id}")
     end
   end
+
+  def handle_idp_callback(conn, %{"provider_id" => provider_id} = params) do
+    Logger.warning("Invalid request parameters", params: params)
+
+    conn
+    |> put_flash(:error, "Invalid request parameters: #{inspect(params)}")
+    |> redirect(
+      to: ~p"/#{conn.assigns.account}/settings/identity_providers/jumpcloud/#{provider_id}"
+    )
+  end
 end
