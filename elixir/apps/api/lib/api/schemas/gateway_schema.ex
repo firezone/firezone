@@ -29,12 +29,12 @@ defmodule API.Schemas.Gateway do
           description: "Online status of Gateway"
         }
       },
-      required: [:name, :type],
+      required: [:id, :name, :ipv4, :ipv6, :online],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "name" => "vpc-us-east",
-        "ipv4" => "1.2.3.4",
-        "ipv6" => "",
+        "ipv4" => "100.64.0.1",
+        "ipv6" => "fd00:2021:1111::1",
         "online" => true
       }
     })
