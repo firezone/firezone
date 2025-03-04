@@ -1,7 +1,7 @@
 defmodule API.Schemas.Client do
   alias OpenApiSpex.Schema
 
-  defmodule Schema do
+  defmodule GetSchema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
@@ -123,46 +123,68 @@ defmodule API.Schemas.Client do
         :updated_at
       ],
       example: %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
-          "external_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-          "actor_id" => "6ecc106b-75c1-48a5-846c-14782180c1ff",
-          "name" => "John's Macbook Air",
-          "ipv4" => "100.64.0.1",
-          "ipv6" => "fd00:2021:1111::1",
-          "online" => true,
-          "last_seen_user_agent" => "Mac OS/15.1.1 connlib/1.4.5 (arm64; 24.1.0)",
-          "last_seen_remote_ip" => "1.2.3.4",
-          "last_seen_remote_ip_location_region" => "California",
-          "last_seen_remote_ip_location_city" => "San Francisco",
-          "last_seen_remote_ip_location_lat" => 37.7749,
-          "last_seen_remote_ip_location_lon" => -122.4194,
-          "last_seen_version" => "1.4.5",
-          "last_seen_at" => "2025-01-01T00:00:00Z",
-          "created_at" => "2025-01-01T00:00:00Z",
-          "updated_at" => "2025-01-01T00:00:00Z"
+        "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
+        "external_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
+        "actor_id" => "6ecc106b-75c1-48a5-846c-14782180c1ff",
+        "name" => "John's Macbook Air",
+        "ipv4" => "100.64.0.1",
+        "ipv6" => "fd00:2021:1111::1",
+        "online" => true,
+        "last_seen_user_agent" => "Mac OS/15.1.1 connlib/1.4.5 (arm64; 24.1.0)",
+        "last_seen_remote_ip" => "1.2.3.4",
+        "last_seen_remote_ip_location_region" => "California",
+        "last_seen_remote_ip_location_city" => "San Francisco",
+        "last_seen_remote_ip_location_lat" => 37.7749,
+        "last_seen_remote_ip_location_lon" => -122.4194,
+        "last_seen_version" => "1.4.5",
+        "last_seen_at" => "2025-01-01T00:00:00Z",
+        "created_at" => "2025-01-01T00:00:00Z",
+        "updated_at" => "2025-01-01T00:00:00Z"
       }
     })
   end
 
-  defmodule PatchRequest do
+  defmodule PutSchema do
+    require OpenApiSpex
+    alias OpenApiSpex.Schema
+
+    OpenApiSpex.schema(%{
+      title: "ClientPut",
+      description: "Put schema for updating a single Client",
+      type: :object,
+      properties: %{
+        name: %Schema{
+          type: :string,
+          description: "Client Name"
+        }
+      },
+      required: [:name],
+      example: %{
+        "name" => "John's Macbook Air"
+      }
+    })
+  end
+
+  defmodule Request do
     require OpenApiSpex
     alias OpenApiSpex.Schema
     alias API.Schemas.Client
 
     OpenApiSpex.schema(%{
-      title: "ClientPatchRequest",
-      description: "PATCH body for updating a Client",
+      title: "ClientPutRequest",
+      description: "PUT body for updating a Client",
       type: :object,
       properties: %{
-        client: Client.Schema
+        client: Client.PutSchema
       },
       required: [:client],
       example: %{
         "client" => %{
-          "external_id" => "b5bb9d8014a0f9b1d61e21e796d78dccdf1352f23cd32812f4850b878ae4944c",
-          "actor_id" => "6ecc106b-75c1-48a5-846c-14782180c1ff",
           "name" => "John's Macbook Air",
-          "ipv4" => "
+          "verified" => true
+        }
+      }
+    })
   end
 
   defmodule Response do
@@ -175,7 +197,7 @@ defmodule API.Schemas.Client do
       description: "Response schema for single Client",
       type: :object,
       properties: %{
-        data: Client.Schema
+        data: Client.GetSchema
       },
       example: %{
         "data" => %{
@@ -219,7 +241,7 @@ defmodule API.Schemas.Client do
       description: "Response schema for multiple Clients",
       type: :object,
       properties: %{
-        data: %Schema{description: "Clients details", type: :array, items: Client.Schema},
+        data: %Schema{description: "Clients details", type: :array, items: Client.GetSchema},
         metadata: %Schema{description: "Pagination metadata", type: :object}
       },
       example: %{

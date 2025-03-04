@@ -2,7 +2,7 @@ defmodule API.ClientController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Client
+  alias Domain.Clients
 
   action_fallback(API.FallbackController)
 
@@ -80,7 +80,7 @@ defmodule API.ClientController do
   def update(conn, %{"id" => id, "client" => params}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- Clients.fetch_client_by_id(id, subject),
+    with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
          {:ok, client} <- Clients.update_client(client, params, subject) do
       render(conn, :show, client: client)
     end
@@ -88,6 +88,56 @@ defmodule API.ClientController do
 
   def update(_conn, _params) do
     {:error, :bad_request}
+  end
+
+  operation(:verify,
+    summary: "Verify Client",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Client ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok: {"Client Response", "application/json", API.Schemas.Client.Response}
+    ]
+  )
+
+  # Verify a Client
+  def verify(conn, %{"client_id" => client_id}) do
+    subject = conn.assigns.subject
+
+    with {:ok, client} <- Clients.fetch_client_by_id(client_id, subject, preload: :online?),
+         {:ok, client} <- Clients.verify_client(client, subject) do
+      render(conn, :show, client: client)
+    end
+  end
+
+  operation(:unverify,
+    summary: "Unverify Client",
+    parameters: [
+      id: [
+        in: :path,
+        description: "Client ID",
+        type: :string,
+        example: "00000000-0000-0000-0000-000000000000"
+      ]
+    ],
+    responses: [
+      ok: {"Client Response", "application/json", API.Schemas.Client.Response}
+    ]
+  )
+
+  # Unverify a Client
+  def unverify(conn, %{"client_id" => client_id}) do
+    subject = conn.assigns.subject
+
+    with {:ok, client} <- Clients.fetch_client_by_id(client_id, subject, preload: :online?),
+         {:ok, client} <- Clients.remove_client_verification(client, subject) do
+      render(conn, :show, client: client)
+    end
   end
 
   operation(:delete,
@@ -109,7 +159,7 @@ defmodule API.ClientController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, client} <- Clients.fetch_client_by_id(id, subject),
+    with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
          {:ok, client} <- Clients.delete_client(client, subject) do
       render(conn, :show, client: client)
     end
