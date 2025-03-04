@@ -37,6 +37,16 @@ fn dns_record() -> impl Strategy<Value = DomainRecord> {
     ]
 }
 
+pub(crate) fn site_specific_dns_record() -> impl Strategy<Value = DomainRecord> {
+    prop_oneof![
+        collection::vec(txt_record(), 6..=10)
+            .prop_map(|sections| { sections.into_iter().flatten().collect_vec() })
+            .prop_map(|o| domain::rdata::Txt::from_octets(o).unwrap())
+            .prop_map(DomainRecord::Txt),
+        srv_record()
+    ]
+}
+
 // A maximum length txt record section
 fn txt_record() -> impl Strategy<Value = Vec<u8>> {
     "[a-z]{255}".prop_map(|s| {
@@ -48,6 +58,18 @@ fn txt_record() -> impl Strategy<Value = Vec<u8>> {
         section.append(&mut b);
         section
     })
+}
+
+fn srv_record() -> impl Strategy<Value = DomainRecord> {
+    (
+        any::<u16>(),
+        any::<u16>(),
+        any::<u16>(),
+        domain_name(2..4).prop_map(|d| d.parse().unwrap()),
+    )
+        .prop_map(|(priority, weight, port, target)| {
+            DomainRecord::Srv(domain::rdata::Srv::new(priority, weight, port, target))
+        })
 }
 
 pub(crate) fn packet_source_v4(client: Ipv4Addr) -> impl Strategy<Value = Ipv4Addr> {
