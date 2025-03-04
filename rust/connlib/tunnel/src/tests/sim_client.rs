@@ -790,6 +790,11 @@ impl RefClient {
             }
         }
 
+        if let Some(resource) = self.is_site_specific_dns_query(query) {
+            self.set_resource_online(resource);
+            return;
+        }
+
         if let Some(resource) = self.dns_query_via_resource(query) {
             self.connect_to_internet_or_cidr_resource(resource);
             self.set_resource_online(resource);
@@ -1019,6 +1024,14 @@ impl RefClient {
         let maybe_active_internet_resource = self.active_internet_resource();
 
         maybe_active_cidr_resource.or(maybe_active_internet_resource)
+    }
+
+    pub(crate) fn is_site_specific_dns_query(&self, query: &DnsQuery) -> Option<ResourceId> {
+        if !matches!(query.r_type, Rtype::SRV | Rtype::TXT) {
+            return None;
+        }
+
+        self.dns_resource_by_domain(&query.domain)
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
