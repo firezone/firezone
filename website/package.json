@@ -15,7 +15,7 @@
     "@docsearch/react": "^3.8.3",
     "@mdx-js/loader": "^3.1.0",
     "@mdx-js/react": "^3.1.0",
-    "@next/mdx": "~15.1.6",
+    "@next/mdx": "~15.2.0",
     "@next/third-parties": "^15.1.6",
     "@types/mdx": "^2.0.13",
     "@types/mixpanel-browser": "^2.51.0",
