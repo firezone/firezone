@@ -263,8 +263,8 @@ impl GatewayTunnel {
                         dns::Transport::Udp { source } => {
                             self.io.send_udp_dns_response(source, message)?;
                         }
-                        dns::Transport::Tcp { source } => {
-                            self.io.send_tcp_dns_response(source, message)?;
+                        dns::Transport::Tcp { remote, .. } => {
+                            self.io.send_tcp_dns_response(remote, message)?;
                         }
                     }
 
@@ -329,8 +329,8 @@ impl GatewayTunnel {
                     };
 
                     self.io.send_dns_query(dns::RecursiveQuery::via_udp(
-                        SocketAddr::new(*nameserver, dns::DNS_PORT),
                         query.source,
+                        SocketAddr::new(*nameserver, dns::DNS_PORT),
                         query.message.for_slice_ref(),
                     ));
                 }
@@ -339,15 +339,16 @@ impl GatewayTunnel {
                         tracing::info!("No nameserver available to resolve DNS query");
 
                         self.io.send_tcp_dns_response(
-                            query.source,
+                            query.remote,
                             dns::servfail(query.message.for_slice_ref()),
                         )?;
                         continue;
                     };
 
                     self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
+                        query.local,
+                        query.remote,
                         SocketAddr::new(*nameserver, dns::DNS_PORT),
-                        query.source,
                         query.message,
                     ));
                 }
