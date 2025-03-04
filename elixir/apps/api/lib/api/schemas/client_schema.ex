@@ -14,7 +14,7 @@ defmodule API.Schemas.Client do
         actor_id: %Schema{type: :string, description: "Actor ID"},
         name: %Schema{
           type: :string,
-          description: "Client Name",
+          description: "Client Name"
         },
         ipv4: %Schema{
           type: :string,
