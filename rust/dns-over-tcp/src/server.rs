@@ -12,7 +12,7 @@ use anyhow::{Context as _, Result};
 use domain::{base::Message, dep::octseq::OctetsInto as _};
 use ip_packet::IpPacket;
 use smoltcp::{
-    iface::{Interface, PollResult, SocketSet},
+    iface::{Interface, PollResult, SocketHandle, SocketSet},
     socket::tcp,
     wire::IpEndpoint,
 };
@@ -25,7 +25,9 @@ pub struct Server {
     interface: Interface,
 
     sockets: SocketSet<'static>,
-    listen_endpoints: HashMap<smoltcp::iface::SocketHandle, SocketAddr>,
+    listen_endpoints: HashMap<SocketHandle, SocketAddr>,
+
+    pending_queries: HashMap<(SocketAddr, u16), SocketHandle>,
 
     received_queries: VecDeque<Query>,
 
@@ -33,18 +35,12 @@ pub struct Server {
     last_now: Instant,
 }
 
-/// Opaque handle to a TCP socket.
-///
-/// This purposely does not implement [`Clone`] or [`Copy`] to make them single-use.
-#[derive(Debug, PartialEq, Eq, Hash)]
-#[must_use = "An active `SocketHandle` means a TCP socket is waiting for a reply somewhere"]
-pub struct SocketHandle(smoltcp::iface::SocketHandle);
-
 pub struct Query {
     pub message: Message<Vec<u8>>,
-    pub socket: SocketHandle,
     /// The address of the socket that received the query.
     pub local: SocketAddr,
+    /// The address of the client that sent the query.
+    pub source: SocketAddr,
 }
 
 impl Server {
@@ -57,6 +53,7 @@ impl Server {
             interface,
             sockets: SocketSet::new(Vec::default()),
             listen_endpoints: Default::default(),
+            pending_queries: Default::default(),
             received_queries: Default::default(),
             created_at: now,
             last_now: now,
@@ -123,7 +120,7 @@ impl Server {
         };
 
         let dst = SocketAddr::new(packet.destination(), tcp.destination_port());
-        let is_listening = self.listen_endpoints.values().any(|listen| listen == &dst);
+        let is_listening = self.listen_endpoints.values().any(|s| s == &dst);
 
         if !is_listening && tracing::enabled!(tracing::Level::TRACE) {
             let listen_endpoints = BTreeSet::from_iter(self.listen_endpoints.values().copied());
@@ -144,12 +141,17 @@ impl Server {
         self.device.receive(packet);
     }
 
-    /// Send a message on the socket associated with the handle.
+    /// Send a query response to the provided destination socket.
     ///
-    /// This fails if the socket is not writeable.
+    /// This fails if the socket is not writeable or if we don't have a pending query for this client.
     /// On any error, the TCP connection is automatically reset.
-    pub fn send_message(&mut self, socket: SocketHandle, message: Message<Vec<u8>>) -> Result<()> {
-        let socket = self.sockets.get_mut::<tcp::Socket>(socket.0);
+    pub fn send_message(&mut self, dst: SocketAddr, message: Message<Vec<u8>>) -> Result<()> {
+        let handle = self
+            .pending_queries
+            .remove(&(dst, message.header().id()))
+            .context("No pending query found for message")?;
+
+        let socket = self.sockets.get_mut::<tcp::Socket>(handle);
 
         write_tcp_dns_response(socket, message.for_slice_ref())
             .inspect_err(|_| socket.abort()) // Abort socket on error.
@@ -176,14 +178,21 @@ impl Server {
 
         for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.sockets.iter_mut() {
             let listen = self.listen_endpoints.get(&handle).copied().unwrap();
+            let remote = socket
+                .remote_endpoint()
+                .map(|e| SocketAddr::new(e.addr.into(), e.port));
 
             while let Some(result) = try_recv_query(socket, listen).transpose() {
                 match result {
                     Ok(message) => {
+                        let source = remote.unwrap();
+                        self.pending_queries
+                            .insert((source, message.header().id()), handle);
+
                         self.received_queries.push_back(Query {
                             message: message.octets_into(),
-                            socket: SocketHandle(handle),
                             local: listen,
+                            source,
                         });
                     }
                     Err(e) => {
