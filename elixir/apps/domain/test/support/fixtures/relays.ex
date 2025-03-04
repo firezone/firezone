@@ -153,4 +153,41 @@ defmodule Domain.Fixtures.Relays do
     {:ok, relay} = Relays.delete_relay(relay, subject)
     relay
   end
+
+  def disconnect_relay(relay) do
+    :ok = Domain.Relays.disconnect_relay(relay)
+
+    :ok = Domain.Relays.unsubscribe_from_relay_presence(relay)
+
+    if relay.account_id do
+      :ok = Domain.Relays.unsubscribe_from_relays_presence_in_account(relay.account_id)
+    end
+
+    :ok = Domain.Relays.unsubscribe_from_relays_presence_in_group(relay.group_id)
+
+    :ok = Domain.PubSub.unsubscribe("relays:#{relay.id}")
+
+    if relay.account_id do
+      :ok = Domain.PubSub.unsubscribe("account_relays:#{relay.account_id}")
+    end
+
+    :ok = Domain.PubSub.unsubscribe("global_relays")
+    :ok = Domain.PubSub.unsubscribe("group_relays:#{relay.group_id}")
+
+    :ok = Domain.Relays.Presence.untrack(self(), "presences:global_relays", relay.id)
+
+    :ok =
+      Domain.Relays.Presence.untrack(self(), "presences:group_relays:#{relay.group_id}", relay.id)
+
+    if relay.account_id do
+      :ok =
+        Domain.Relays.Presence.untrack(
+          self(),
+          "presences:account_relays:#{relay.account_id}",
+          relay.id
+        )
+    end
+
+    :ok = Domain.Relays.Presence.untrack(self(), "presences:relays:#{relay.id}", relay.id)
+  end
 end

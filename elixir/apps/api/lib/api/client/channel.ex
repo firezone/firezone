@@ -2,6 +2,7 @@ defmodule API.Client.Channel do
   use API, :channel
   alias API.Client.Views
   alias Domain.{Accounts, Clients, Actors, Resources, Gateways, Relays, Policies, Flows}
+  alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
 
@@ -109,6 +110,11 @@ defmodule API.Client.Channel do
             | account: socket.assigns.subject.account
           })
       })
+
+      # Cache new stamp secrets
+      socket = Debouncer.cache_stamp_secrets(socket, relays)
+
+      {:ok, socket}
     end
   end
 
@@ -131,10 +137,15 @@ defmodule API.Client.Channel do
       :ok = Enum.each(actor_group_ids, &Policies.subscribe_to_events_for_actor_group/1)
       :ok = Policies.subscribe_to_events_for_actor(socket.assigns.subject.actor)
 
-      :ok = init(socket)
+      {:ok, socket} = init(socket)
 
       {:noreply, socket}
     end
+  end
+
+  # Called to actually push relays_presence with a disconnected relay to the client
+  def handle_info({:push_leave, relay_id, stamp_secret, payload}, socket) do
+    {:noreply, Debouncer.handle_leave(socket, relay_id, stamp_secret, payload, &push/3)}
   end
 
   ####################################
@@ -186,7 +197,7 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "client.updated" do
       socket = assign(socket, client: Clients.fetch_client_by_id!(socket.assigns.client.id))
-      :ok = init(socket)
+      {:ok, socket} = init(socket)
       {:noreply, socket}
     end
   end
@@ -408,12 +419,12 @@ defmodule API.Client.Channel do
             :ok = Relays.subscribe_to_relay_presence(relay)
           end)
 
-        push(socket, "relays_presence", %{
+        payload = %{
           disconnected_ids: [relay_id],
           connected: Views.Relay.render_many(relays, socket.assigns.subject.expires_at)
-        })
+        }
 
-        {:noreply, socket}
+        {:noreply, Debouncer.queue_leave(self(), socket, relay_id, payload)}
       end
     else
       {:noreply, socket}
@@ -444,13 +455,28 @@ defmodule API.Client.Channel do
               :ok = Relays.subscribe_to_relay_presence(relay)
             end)
 
+          # Cache new stamp secrets
+          socket = Debouncer.cache_stamp_secrets(socket, relays)
+
+          # If a relay reconnects with a different stamp_secret, disconnect them immediately
+          joined_ids = Map.keys(joins)
+
+          {socket, disconnected_ids} =
+            Debouncer.cancel_leaves_or_disconnect_immediately(
+              socket,
+              joined_ids,
+              socket.assigns.client.account_id
+            )
+
+          {:ok, relays} = select_relays(socket)
+
           push(socket, "relays_presence", %{
-            disconnected_ids: [],
+            disconnected_ids: disconnected_ids,
             connected: Views.Relay.render_many(relays, socket.assigns.subject.expires_at)
           })
-        end
 
-        {:noreply, socket}
+          {:noreply, socket}
+        end
       end
     else
       {:noreply, socket}
