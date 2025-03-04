@@ -279,6 +279,10 @@ impl RefGateway {
 
         SimGateway::new(id, sut, self.site_specific_dns_records)
     }
+
+    pub fn dns_records(&self) -> &DnsRecords {
+        &self.site_specific_dns_records
+    }
 }
 
 pub(crate) fn ref_gateway_host(

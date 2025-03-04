@@ -701,10 +701,23 @@ impl ReferenceState {
     // We surface what are the existing rtypes for a domain so that it's easier
     // for the proptests to hit an existing record.
     fn all_domains(&self) -> Vec<(DomainName, Vec<Rtype>)> {
-        self.global_dns_records
-            .domains_iter()
-            .map(|d| (d.clone(), self.global_dns_records.domain_rtypes(&d)))
-            .collect()
+        fn domains_and_rtypes(
+            records: &DnsRecords,
+        ) -> impl Iterator<Item = (DomainName, Vec<Rtype>)> + use<'_> {
+            records
+                .domains_iter()
+                .map(|d| (d.clone(), records.domain_rtypes(&d)))
+        }
+
+        // We may have multiple gateways in a site, so we need to dedup.
+        let unique_domains = self
+            .gateways
+            .values()
+            .flat_map(|g| domains_and_rtypes(g.inner().dns_records()))
+            .chain(domains_and_rtypes(&self.global_dns_records))
+            .collect::<BTreeSet<_>>();
+
+        Vec::from_iter(unique_domains)
     }
 
     fn reachable_dns_servers(&self) -> Vec<SocketAddr> {
