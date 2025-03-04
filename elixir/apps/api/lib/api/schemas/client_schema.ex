@@ -15,7 +15,6 @@ defmodule API.Schemas.Client do
         name: %Schema{
           type: :string,
           description: "Client Name",
-          pattern: ~r/[a-zA-Z][a-zA-Z0-9_]+/
         },
         ipv4: %Schema{
           type: :string,
