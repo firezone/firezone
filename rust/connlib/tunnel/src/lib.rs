@@ -76,6 +76,9 @@ pub struct Tunnel<TRoleState> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
 
+    /// The system's nameservers.
+    nameservers: BTreeSet<IpAddr>,
+
     /// The I/O component of connlib.
     ///
     /// Handles all side-effects.
@@ -110,6 +113,7 @@ impl ClientTunnel {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: ClientState::new(rand::random(), Instant::now()),
             buffers: Buffers::default(),
+            nameservers: BTreeSet::default(), // Unused (for now).
         }
     }
 
@@ -216,11 +220,13 @@ impl GatewayTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        nameservers: BTreeSet<IpAddr>,
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory),
             role_state: GatewayState::new(rand::random(), Instant::now()),
             buffers: Buffers::default(),
+            nameservers,
         }
     }
 
@@ -246,8 +252,23 @@ impl GatewayTunnel {
             }
 
             match self.io.poll(cx, &mut self.buffers)? {
-                Poll::Ready(io::Input::DnsResponse(_)) => {
-                    unreachable!("Gateway doesn't use user-space DNS resolution")
+                Poll::Ready(io::Input::DnsResponse(response)) => {
+                    let message = response.message.unwrap_or_else(|e| {
+                        tracing::debug!("DNS query failed: {e}");
+
+                        dns::servfail(response.query.for_slice_ref())
+                    });
+
+                    match response.transport {
+                        dns::Transport::Udp { source } => {
+                            self.io.send_udp_dns_response(source, message)?;
+                        }
+                        dns::Transport::Tcp { source } => {
+                            self.io.send_tcp_dns_response(source, message)?;
+                        }
+                    }
+
+                    continue;
                 }
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout, Utc::now());
@@ -296,14 +317,40 @@ impl GatewayTunnel {
 
                     continue;
                 }
-                Poll::Ready(io::Input::UdpDnsQuery(query)) => self.io.send_udp_dns_response(
-                    query.source,
-                    dns::servfail(query.message.for_slice_ref()),
-                )?,
-                Poll::Ready(io::Input::TcpDnsQuery(query)) => self.io.send_tcp_dns_response(
-                    query.source,
-                    dns::servfail(query.message.for_slice_ref()),
-                )?,
+                Poll::Ready(io::Input::UdpDnsQuery(query)) => {
+                    let Some(nameserver) = self.nameservers.first() else {
+                        tracing::info!("No nameserver available to resolve DNS query");
+
+                        self.io.send_udp_dns_response(
+                            query.source,
+                            dns::servfail(query.message.for_slice_ref()),
+                        )?;
+                        continue;
+                    };
+
+                    self.io.send_dns_query(dns::RecursiveQuery::via_udp(
+                        SocketAddr::new(*nameserver, dns::DNS_PORT),
+                        query.source,
+                        query.message.for_slice_ref(),
+                    ));
+                }
+                Poll::Ready(io::Input::TcpDnsQuery(query)) => {
+                    let Some(nameserver) = self.nameservers.first() else {
+                        tracing::info!("No nameserver available to resolve DNS query");
+
+                        self.io.send_tcp_dns_response(
+                            query.source,
+                            dns::servfail(query.message.for_slice_ref()),
+                        )?;
+                        continue;
+                    };
+
+                    self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
+                        SocketAddr::new(*nameserver, dns::DNS_PORT),
+                        query.source,
+                        query.message,
+                    ));
+                }
                 Poll::Pending => {}
             }
 
