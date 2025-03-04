@@ -821,7 +821,7 @@ impl ClientState {
                 }
             };
 
-            self.foward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
+            self.forward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
         }
 
         Ok(Ok(()))
@@ -1286,7 +1286,7 @@ impl ClientState {
             }
             dns::ResolveStrategy::RecurseLocal => {
                 if self.should_forward_dns_query_to_gateway(server.ip()) {
-                    self.foward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
+                    self.forward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
 
                     return;
                 }
@@ -1314,12 +1314,12 @@ impl ClientState {
 
                 let server = gateway.tun_dns_server_endpoint(query.local.ip());
 
-                self.foward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
+                self.forward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
             }
         };
     }
 
-    fn foward_tcp_dns_query_to_new_upstream_via_tunnel(
+    fn forward_tcp_dns_query_to_new_upstream_via_tunnel(
         &mut self,
         server: SocketAddr,
         query: dns_over_tcp::Query,
