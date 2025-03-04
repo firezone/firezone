@@ -16,6 +16,7 @@ use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, HashMap},
+    iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
 };
@@ -34,8 +35,7 @@ pub(crate) struct SimGateway {
     /// The received TCP packets, indexed by our custom TCP payload.
     pub(crate) received_tcp_requests: BTreeMap<u64, IpPacket>,
 
-    _site_specific_dns_records: DnsRecords,
-
+    site_specific_dns_records: DnsRecords,
     udp_dns_server_resources: HashMap<SocketAddr, UdpDnsServerResource>,
     tcp_dns_server_resources: HashMap<SocketAddr, TcpDnsServerResource>,
 }
@@ -49,7 +49,7 @@ impl SimGateway {
         Self {
             id,
             sut,
-            _site_specific_dns_records: site_specific_dns_records,
+            site_specific_dns_records,
             received_icmp_requests: Default::default(),
             udp_dns_server_resources: Default::default(),
             tcp_dns_server_resources: Default::default(),
@@ -84,16 +84,35 @@ impl SimGateway {
         global_dns_records: &DnsRecords,
         now: Instant,
     ) -> Vec<Transmit<'static>> {
-        let udp_server_packets = self.udp_dns_server_resources.values_mut().flat_map(|s| {
-            s.handle_timeout(global_dns_records, now);
+        let Some(ip_config) = self.sut.tunnel_ip_config() else {
+            tracing::error!("Tunnel IP configuration not set");
+            return Vec::new();
+        };
 
-            std::iter::from_fn(|| s.poll_outbound())
-        });
-        let tcp_server_packets = self.tcp_dns_server_resources.values_mut().flat_map(|s| {
-            s.handle_timeout(global_dns_records, now);
+        let udp_server_packets =
+            self.udp_dns_server_resources
+                .iter_mut()
+                .flat_map(|(socket, server)| {
+                    if ip_config.is_ip(socket.ip()) {
+                        server.handle_timeout(&self.site_specific_dns_records, now);
+                    } else {
+                        server.handle_timeout(global_dns_records, now);
+                    }
 
-            std::iter::from_fn(|| s.poll_outbound())
-        });
+                    std::iter::from_fn(|| server.poll_outbound())
+                });
+        let tcp_server_packets =
+            self.tcp_dns_server_resources
+                .iter_mut()
+                .flat_map(|(socket, server)| {
+                    if ip_config.is_ip(socket.ip()) {
+                        server.handle_timeout(&self.site_specific_dns_records, now);
+                    } else {
+                        server.handle_timeout(global_dns_records, now);
+                    }
+
+                    std::iter::from_fn(|| server.poll_outbound())
+                });
 
         udp_server_packets
             .chain(tcp_server_packets)
@@ -116,7 +135,22 @@ impl SimGateway {
     ) {
         self.udp_dns_server_resources.clear();
 
-        for server in dns_servers {
+        let tun_dns_server_port = 53535; // Hardcoded here so we think about backwards-compatibility when changing it.
+        let Some(ip_config) = self.sut.tunnel_ip_config() else {
+            tracing::error!("Tunnel IP configuration not set");
+            return;
+        };
+
+        for server in dns_servers
+            .chain(iter::once(SocketAddr::from((
+                ip_config.v4,
+                tun_dns_server_port,
+            ))))
+            .chain(iter::once(SocketAddr::from((
+                ip_config.v6,
+                tun_dns_server_port,
+            ))))
+        {
             self.udp_dns_server_resources
                 .insert(server, UdpDnsServerResource::default());
             self.tcp_dns_server_resources
