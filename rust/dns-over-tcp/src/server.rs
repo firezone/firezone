@@ -186,6 +186,8 @@ impl Server {
         for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.sockets.iter_mut() {
             let local = self.listen_endpoints.get(&handle).copied().unwrap();
 
+            let _guard = tracing::trace_span!("socket", %handle).entered();
+
             while let Some(result) = try_recv_query(socket, local).transpose() {
                 match result {
                     Ok((message, remote)) => {
@@ -261,8 +263,7 @@ fn try_recv_query(
     // Ensure we can recv, send and have space to send.
     if !socket.can_recv() || !socket.can_send() || socket.send_queue() > 0 {
         tracing::trace!(
-            can_recv = %socket.can_recv(),
-            can_send = %socket.can_send(),
+            state = %socket.state(),
             send_queue = %socket.send_queue(),
             "Not yet ready to receive next message"
         );
