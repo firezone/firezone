@@ -237,26 +237,29 @@ defmodule Domain.Actors do
   end
 
   def update_dynamic_group_memberships(account_id) do
-    Repo.transaction(fn ->
-      Group.Query.not_deleted()
-      |> Group.Query.by_account_id(account_id)
-      |> Group.Query.by_type({:in, [:dynamic, :managed]})
-      |> Group.Query.lock()
-      |> Repo.all()
-      |> Enum.map(fn group ->
-        changeset =
+    Repo.transaction(
+      fn ->
+        Group.Query.not_deleted()
+        |> Group.Query.by_account_id(account_id)
+        |> Group.Query.by_type({:in, [:dynamic, :managed]})
+        |> Group.Query.lock()
+        |> Repo.all()
+        |> Enum.map(fn group ->
+          changeset =
+            group
+            |> Repo.preload(:memberships)
+            |> Ecto.Changeset.change()
+            |> Group.Changeset.put_dynamic_memberships(account_id)
+
+          {:ok, group} = Repo.update(changeset)
+
+          :ok = broadcast_memberships_events(changeset)
+
           group
-          |> Repo.preload(:memberships)
-          |> Ecto.Changeset.change()
-          |> Group.Changeset.put_dynamic_memberships(account_id)
-
-        {:ok, group} = Repo.update(changeset)
-
-        :ok = broadcast_memberships_events(changeset)
-
-        group
-      end)
-    end, timeout: 60_000)
+        end)
+      end,
+      timeout: 60_000
+    )
   end
 
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
