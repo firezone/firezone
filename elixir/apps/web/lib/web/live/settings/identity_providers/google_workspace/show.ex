@@ -100,7 +100,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Show do
       <:action :if={is_nil(@provider.deleted_at)}>
         <.button
           style="primary"
-          navigate={
+          href={
             ~p"/#{@account.id}/settings/identity_providers/google_workspace/#{@provider}/redirect"
           }
           icon="hero-arrow-path"
