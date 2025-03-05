@@ -127,6 +127,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Connect do
 
   def handle_idp_callback(conn, %{"provider_id" => provider_id} = params) do
     Logger.warning("Invalid request parameters", params: params)
+
     maybe_errors =
       params
       |> Map.filter(fn {k, _} -> k in ["error", "error_description"] end)

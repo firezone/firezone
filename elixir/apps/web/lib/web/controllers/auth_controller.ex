@@ -376,6 +376,7 @@ defmodule Web.AuthController do
 
   def handle_idp_callback(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
     Logger.warning("Invalid request parameters", params: params)
+
     maybe_errors =
       params
       |> Map.filter(fn {k, _} -> k in ["error", "error_description"] end)

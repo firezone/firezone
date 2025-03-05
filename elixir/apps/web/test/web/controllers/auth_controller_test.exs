@@ -946,7 +946,11 @@ defmodule Web.AuthControllerTest do
       provider: provider,
       conn: conn
     } do
-      params = %{"foo" => "bar", "error" => "an error", "error_description" => "an error description"}
+      params = %{
+        "foo" => "bar",
+        "error" => "an error",
+        "error_description" => "an error description"
+      }
 
       conn =
         get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback", params)
