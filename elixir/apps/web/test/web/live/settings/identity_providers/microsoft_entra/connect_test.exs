@@ -129,14 +129,14 @@ defmodule Web.Live.Settings.IdentityProviders.MicrosoftEntra.Connect do
         |> assign(:account, account)
         |> get(
           ~p"/#{account}/settings/identity_providers/microsoft_entra/#{provider}/handle_callback",
-          %{"foo" => "bar", "error" => "an error", "error_description" => "a description"}
+          %{"foo" => "bar", "error" => "an error", "error_description" => "an error description"}
         )
 
       assert redirected_to(conn) ==
                ~p"/#{account}/settings/identity_providers/microsoft_entra/#{provider}"
 
       assert flash(conn, :error) =~ "Invalid request."
-      assert flash(conn, :error) =~ "an error. an error_description"
+      assert flash(conn, :error) =~ "error: an error. error_description: an error description"
     end
 
     test "redirects to login page when user is not signed in", %{conn: conn} do

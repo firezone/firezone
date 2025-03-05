@@ -957,7 +957,7 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to(conn) == ~p"/#{account.id}"
       assert flash(conn, :error) =~ "Invalid request."
-      assert flash(conn, :error) =~ "an error. an error description"
+      assert flash(conn, :error) =~ "error: an error. error_description: an error description"
     end
 
     test "redirects with an error when state cookie does not exist", %{

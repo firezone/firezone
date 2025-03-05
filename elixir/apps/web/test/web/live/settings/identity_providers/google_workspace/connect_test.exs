@@ -126,14 +126,14 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.Connect do
         |> assign(:account, account)
         |> get(
           ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}/handle_callback",
-          %{"foo" => "bar", "error" => "an error", "error_description" => "a description"}
+          %{"foo" => "bar", "error" => "an error", "error_description" => "an error description"}
         )
 
       assert redirected_to(conn) ==
                ~p"/#{account}/settings/identity_providers/google_workspace/#{provider}"
 
       assert flash(conn, :error) =~ "Invalid request."
-      assert flash(conn, :error) =~ "an error. a description"
+      assert flash(conn, :error) =~ "error: an error. error_description: an error description"
     end
 
     test "redirects to login page when user is not signed in", %{conn: conn} do

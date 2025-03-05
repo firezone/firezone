@@ -128,7 +128,7 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.Connect do
                ~p"/#{account}/settings/identity_providers/okta/#{provider}"
 
       assert flash(conn, :error) =~ "Invalid request."
-      assert flash(conn, :error) =~ "an error. an error description"
+      assert flash(conn, :error) =~ "error: an error. error_description: an error description"
     end
 
     test "redirects to login page when user is not signed in", %{conn: conn} do
