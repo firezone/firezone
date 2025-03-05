@@ -100,7 +100,7 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
       <:action :if={is_nil(@provider.deleted_at)}>
         <.button
           style="primary"
-          navigate={~p"/#{@account.id}/settings/identity_providers/okta/#{@provider}/redirect"}
+          href={~p"/#{@account.id}/settings/identity_providers/okta/#{@provider}/redirect"}
           icon="hero-arrow-path"
         >
           Reconnect

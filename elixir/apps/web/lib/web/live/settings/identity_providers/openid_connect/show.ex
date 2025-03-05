@@ -93,9 +93,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
       <:action :if={is_nil(@provider.deleted_at)}>
         <.button
           style="primary"
-          navigate={
-            ~p"/#{@account.id}/settings/identity_providers/openid_connect/#{@provider}/redirect"
-          }
+          href={~p"/#{@account.id}/settings/identity_providers/openid_connect/#{@provider}/redirect"}
           icon="hero-arrow-path"
         >
           Reconnect
