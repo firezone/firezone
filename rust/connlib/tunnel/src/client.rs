@@ -133,9 +133,8 @@ pub struct ClientState {
 
     tcp_dns_client: dns_over_tcp::Client,
     tcp_dns_server: dns_over_tcp::Server,
-    /// Tracks the socket on which we received a TCP DNS query by the ID of the recursive DNS query we issued.
-    tcp_dns_sockets_by_upstream_and_query_id:
-        HashMap<(SocketAddr, u16), dns_over_tcp::SocketHandle>,
+    /// Tracks the TCP stream (i.e. socket-pair) on which we received a TCP DNS query by the ID of the recursive DNS query we issued.
+    tcp_dns_streams_by_upstream_and_query_id: HashMap<(SocketAddr, u16), (SocketAddr, SocketAddr)>,
 
     /// Stores the gateways we recently connected to.
     ///
@@ -240,7 +239,7 @@ impl ClientState {
             buffered_dns_queries: Default::default(),
             tcp_dns_client: dns_over_tcp::Client::new(now, seed),
             tcp_dns_server: dns_over_tcp::Server::new(now),
-            tcp_dns_sockets_by_upstream_and_query_id: Default::default(),
+            tcp_dns_streams_by_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             dns_resource_nat_by_gateway: BTreeMap::new(),
         }
@@ -583,7 +582,7 @@ impl ClientState {
                     "Failed to queue UDP DNS response: {}"
                 );
             }
-            (dns::Transport::Tcp { source }, result) => {
+            (dns::Transport::Tcp { local, remote }, result) => {
                 let message = result
                     .inspect(|_| {
                         tracing::trace!("Received recursive TCP DNS response");
@@ -595,7 +594,7 @@ impl ClientState {
                     });
 
                 unwrap_or_warn!(
-                    self.tcp_dns_server.send_message(source, message),
+                    self.tcp_dns_server.send_message(local, remote, message),
                     "Failed to send TCP DNS response: {}"
                 );
             }
@@ -1134,9 +1133,9 @@ impl ClientState {
             if let Some(query_result) = self.tcp_dns_client.poll_query_result() {
                 let server = query_result.server;
                 let qid = query_result.query.header().id();
-                let known_sockets = &mut self.tcp_dns_sockets_by_upstream_and_query_id;
+                let known_sockets = &mut self.tcp_dns_streams_by_upstream_and_query_id;
 
-                let Some(source) = known_sockets.remove(&(server, qid)) else {
+                let Some((local, remote)) = known_sockets.remove(&(server, qid)) else {
                     tracing::warn!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
 
                     continue;
@@ -1148,7 +1147,7 @@ impl ClientState {
                     message: query_result
                         .result
                         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{e:#}"))),
-                    transport: dns::Transport::Tcp { source },
+                    transport: dns::Transport::Tcp { local, remote },
                 });
                 continue;
             }
@@ -1280,7 +1279,8 @@ impl ClientState {
                 self.update_dns_resource_nat(now, iter::empty());
 
                 unwrap_or_debug!(
-                    self.tcp_dns_server.send_message(query.socket, response),
+                    self.tcp_dns_server
+                        .send_message(query.local, query.remote, response),
                     "Failed to send TCP DNS response: {}"
                 );
             }
@@ -1295,7 +1295,8 @@ impl ClientState {
 
                 self.buffered_dns_queries
                     .push_back(dns::RecursiveQuery::via_tcp(
-                        query.socket,
+                        query.local,
+                        query.remote,
                         server,
                         query.message,
                     ));
@@ -1337,8 +1338,11 @@ impl ClientState {
                 );
 
                 unwrap_or_debug!(
-                    self.tcp_dns_server
-                        .send_message(query.socket, dns::servfail(query.message.for_slice_ref())),
+                    self.tcp_dns_server.send_message(
+                        query.local,
+                        query.remote,
+                        dns::servfail(query.message.for_slice_ref())
+                    ),
                     "Failed to send TCP DNS response: {}"
                 );
                 return;
@@ -1346,8 +1350,8 @@ impl ClientState {
         };
 
         let existing = self
-            .tcp_dns_sockets_by_upstream_and_query_id
-            .insert((server, query_id), query.socket);
+            .tcp_dns_streams_by_upstream_and_query_id
+            .insert((server, query_id), (query.local, query.remote));
 
         debug_assert!(existing.is_none(), "Query IDs should be unique");
     }

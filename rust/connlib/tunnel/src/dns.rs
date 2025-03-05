@@ -1,7 +1,6 @@
 use crate::client::IpProvider;
 use anyhow::{Context, Result};
 use connlib_model::{DomainName, ResourceId};
-use dns_over_tcp::SocketHandle;
 use domain::rdata::AllRecordData;
 use domain::{
     base::{
@@ -74,14 +73,15 @@ impl RecursiveQuery {
     }
 
     pub(crate) fn via_tcp(
-        source: SocketHandle,
+        local: SocketAddr,
+        remote: SocketAddr,
         server: SocketAddr,
         message: Message<Vec<u8>>,
     ) -> Self {
         Self {
             server,
             message,
-            transport: Transport::Tcp { source },
+            transport: Transport::Tcp { local, remote },
         }
     }
 }
@@ -93,7 +93,8 @@ pub(crate) enum Transport {
         source: SocketAddr,
     },
     Tcp {
-        source: SocketHandle,
+        local: SocketAddr,
+        remote: SocketAddr,
     },
 }
 

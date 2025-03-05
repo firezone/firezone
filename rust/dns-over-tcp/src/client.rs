@@ -195,6 +195,8 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         }
 
         for (remote, handle) in self.sockets_by_remote.iter_mut() {
+            let _guard = tracing::trace_span!("socket", %handle).entered();
+
             let socket = self.sockets.get_mut::<tcp::Socket>(*handle);
             let server = *remote;
 
@@ -399,7 +401,7 @@ fn into_failed_results(
 
 fn try_recv_response<'b>(socket: &'b mut tcp::Socket) -> Result<Option<Message<&'b [u8]>>> {
     if !socket.can_recv() {
-        tracing::trace!("Not yet ready to receive next message");
+        tracing::trace!(state = %socket.state(), "Not yet ready to receive next message");
 
         return Ok(None);
     }
