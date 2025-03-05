@@ -102,7 +102,7 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Show do
       <:action :if={is_nil(@provider.deleted_at)}>
         <.button
           style="primary"
-          navigate={~p"/#{@account.id}/settings/identity_providers/jumpcloud/#{@provider}/redirect"}
+          href={~p"/#{@account.id}/settings/identity_providers/jumpcloud/#{@provider}/redirect"}
           icon="hero-arrow-path"
         >
           Reconnect

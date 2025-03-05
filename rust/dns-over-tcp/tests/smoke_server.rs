@@ -113,7 +113,7 @@ impl Eventloop {
                     .into_message();
 
                 self.dns_server
-                    .send_message(query.socket, response)
+                    .send_message(query.local, query.remote, response)
                     .unwrap();
                 continue;
             }
