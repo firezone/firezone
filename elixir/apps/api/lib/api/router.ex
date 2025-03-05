@@ -40,6 +40,10 @@ defmodule API.Router do
   scope "/", API do
     pipe_through :api
 
+    resources "/clients", ClientController, except: [:new, :edit, :create]
+    put "/clients/:id/verify", ClientController, :verify
+    put "/clients/:id/unverify", ClientController, :unverify
+
     resources "/resources", ResourceController, except: [:new, :edit]
     resources "/policies", PolicyController, except: [:new, :edit]
 
