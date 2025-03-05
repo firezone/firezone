@@ -100,9 +100,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
       <:action :if={is_nil(@provider.deleted_at)}>
         <.button
           style="primary"
-          navigate={
-            ~p"/#{@account.id}/settings/identity_providers/microsoft_entra/#{@provider}/redirect"
-          }
+          href={~p"/#{@account.id}/settings/identity_providers/microsoft_entra/#{@provider}/redirect"}
           icon="hero-arrow-path"
         >
           Reconnect

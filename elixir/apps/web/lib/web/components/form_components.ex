@@ -475,7 +475,7 @@ defmodule Web.FormComponents do
   @doc """
   Base button type to be used directly or by the specialized button types above. e.g. edit_button, delete_button, etc.
 
-  If a navigate path is provided, an <a> tag will be used, otherwise a <button> tag will be used.
+  If a navigate, href, or patch path is provided, an <a> tag will be used, otherwise a <button> tag will be used.
 
   ## Examples
 
@@ -493,6 +493,13 @@ defmodule Web.FormComponents do
     otherwise a <button> tag will be used
     """
 
+  attr :href, :string,
+    required: false,
+    doc: """
+    The path to redirect to using a full page reload, when set an <a> tag will be used,
+    otherwise a <button> tag will be used
+    """
+
   attr :class, :string, default: "", doc: "Custom classes to be added to the button"
   attr :style, :string, default: nil, doc: "The style of the button"
   attr :type, :string, default: nil, doc: "The button type"
@@ -503,8 +510,17 @@ defmodule Web.FormComponents do
     required: false,
     doc: "The icon to be displayed on the button"
 
-  attr :rest, :global, include: ~w(disabled form name value navigate)
+  attr :rest, :global, include: ~w(disabled form name value navigate href)
   slot :inner_block, required: true, doc: "The label for the button"
+
+  def button(%{href: _} = assigns) do
+    ~H"""
+    <.link class={button_style(@style) ++ button_size(@size) ++ [@class]} href={@href} {@rest}>
+      <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
+      {render_slot(@inner_block)}
+    </.link>
+    """
+  end
 
   def button(%{navigate: _} = assigns) do
     ~H"""
