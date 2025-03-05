@@ -66,6 +66,7 @@ pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
+pub use io::NoNameserverAvailable;
 pub use utils::turn;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
@@ -317,15 +318,7 @@ impl GatewayTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::UdpDnsQuery(query)) => {
-                    let Some(nameserver) = self.io.fastest_nameserver() else {
-                        tracing::info!("No nameserver available to resolve DNS query");
-
-                        self.io.send_udp_dns_response(
-                            query.source,
-                            dns::servfail(query.message.for_slice_ref()),
-                        )?;
-                        continue;
-                    };
+                    let nameserver = self.io.fastest_nameserver()?;
 
                     self.io.send_dns_query(dns::RecursiveQuery::via_udp(
                         query.source,
@@ -334,15 +327,7 @@ impl GatewayTunnel {
                     ));
                 }
                 Poll::Ready(io::Input::TcpDnsQuery(query)) => {
-                    let Some(nameserver) = self.io.fastest_nameserver() else {
-                        tracing::info!("No nameserver available to resolve DNS query");
-
-                        self.io.send_tcp_dns_response(
-                            query.remote,
-                            dns::servfail(query.message.for_slice_ref()),
-                        )?;
-                        continue;
-                    };
+                    let nameserver = self.io.fastest_nameserver()?;
 
                     self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
                         query.local,

@@ -146,8 +146,13 @@ impl Io {
         self.sockets.poll_has_sockets(cx)
     }
 
-    pub fn fastest_nameserver(&self) -> Option<IpAddr> {
-        self.nameservers.fastest()
+    pub fn fastest_nameserver(&self) -> io::Result<IpAddr> {
+        let ns = self
+            .nameservers
+            .fastest()
+            .ok_or(io::Error::other(NoNameserverAvailable))?;
+
+        Ok(ns)
     }
 
     pub fn poll<'b>(
@@ -342,6 +347,10 @@ impl Io {
         self.tcp_dns_server.send_response(to, message)
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("No nameserver available to handle DNS query")]
+pub struct NoNameserverAvailable;
 
 fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     let len = d.packet.len();
