@@ -757,15 +757,13 @@ impl TunnelTest {
                     );
                 }
 
-                if self.client.inner().dns_mapping() != &config.dns_by_sentinel {
-                    for gateway in self.gateways.values_mut() {
-                        gateway.exec_mut(|g| {
-                            g.deploy_new_dns_servers(
-                                config.dns_by_sentinel.right_values().copied(),
-                                now,
-                            )
-                        })
-                    }
+                for gateway in self.gateways.values_mut() {
+                    gateway.exec_mut(|g| {
+                        g.deploy_new_dns_servers(
+                            config.dns_by_sentinel.right_values().copied(),
+                            now,
+                        )
+                    })
                 }
 
                 self.client.exec_mut(|c| {
