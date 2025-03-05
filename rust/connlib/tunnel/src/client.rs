@@ -152,7 +152,9 @@ enum DnsResourceNatState {
         sent_at: Instant,
         buffered_packets: UniquePacketBuffer,
     },
-    Confirmed,
+    Confirmed {
+        expires_at: Instant,
+    },
 }
 
 impl DnsResourceNatState {
@@ -161,17 +163,18 @@ impl DnsResourceNatState {
             DnsResourceNatState::Pending {
                 buffered_packets, ..
             } => buffered_packets.len(),
-            DnsResourceNatState::Confirmed => 0,
+            DnsResourceNatState::Confirmed { .. } => 0,
         }
     }
 
-    fn confirm(&mut self) -> impl Iterator<Item = IpPacket> {
-        let buffered_packets = match std::mem::replace(self, DnsResourceNatState::Confirmed) {
-            DnsResourceNatState::Pending {
-                buffered_packets, ..
-            } => Some(buffered_packets.into_iter()),
-            DnsResourceNatState::Confirmed => None,
-        };
+    fn confirm(&mut self, expires_at: Instant) -> impl Iterator<Item = IpPacket> {
+        let buffered_packets =
+            match std::mem::replace(self, DnsResourceNatState::Confirmed { expires_at }) {
+                DnsResourceNatState::Pending {
+                    buffered_packets, ..
+                } => Some(buffered_packets.into_iter()),
+                DnsResourceNatState::Confirmed { .. } => None,
+            };
 
         buffered_packets.into_iter().flatten()
     }
@@ -391,7 +394,7 @@ impl ClientState {
                     });
                 }
                 Entry::Occupied(mut o) => match o.get_mut() {
-                    DnsResourceNatState::Confirmed => continue,
+                    DnsResourceNatState::Confirmed { .. } => continue,
                     DnsResourceNatState::Pending {
                         sent_at,
                         buffered_packets,
@@ -432,7 +435,7 @@ impl ClientState {
         }
     }
 
-    /// Clears the DNS resource NAT state for a given domain.
+    /// Expires the DNS resource NAT state for a given domain if the expiry timestamp has been reached.
     ///
     /// Once cleared, this will trigger the client to submit another `AssignedIp`s event to the Gateway.
     /// On the Gateway, such an event causes a new DNS resolution.
@@ -440,27 +443,32 @@ impl ClientState {
     /// We call this function every time a client issues a DNS query for a certain domain.
     /// Coupling this behaviour together allows a client to refresh the DNS resolution of a DNS resource on the Gateway
     /// through local DNS resolutions.
-    fn clear_dns_resource_nat_for_domain(&mut self, message: Message<&[u8]>) {
+    ///
+    /// The `expires_at` timestamp is set from the TTL parameter returned from the Gateway.
+    fn expire_dns_resource_nat_for_domain(&mut self, message: Message<&[u8]>, now: Instant) {
         let Ok(question) = message.sole_question() else {
             return;
         };
         let domain = question.into_qname();
 
-        let mut any_deleted = false;
-
         self.dns_resource_nat_by_gateway
-            .retain(|(_, candidate), _| {
-                if candidate == &domain {
-                    any_deleted = true;
-                    return false;
+            .retain(|(_, candidate), state| {
+                let DnsResourceNatState::Confirmed { expires_at } = state else {
+                    return true;
+                };
+
+                if candidate != &domain {
+                    return true;
                 }
 
-                true
-            });
+                if now < *expires_at {
+                    return true;
+                }
 
-        if any_deleted {
-            tracing::debug!(%domain, "Cleared DNS resource NAT");
-        }
+                tracing::debug!(%domain, "DNS resource NAT expired");
+
+                false
+            });
     }
 
     fn is_cidr_resource_connected(&self, resource: &ResourceId) -> bool {
@@ -1180,7 +1188,7 @@ impl ClientState {
 
         match self.stub_resolver.handle(message) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.clear_dns_resource_nat_for_domain(response.for_slice_ref());
+                self.expire_dns_resource_nat_for_domain(response.for_slice_ref(), now);
                 self.update_dns_resource_nat(now, iter::empty());
 
                 unwrap_or_debug!(
@@ -1275,7 +1283,7 @@ impl ClientState {
 
         match self.stub_resolver.handle(query.message.for_slice_ref()) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.clear_dns_resource_nat_for_domain(response.for_slice_ref());
+                self.expire_dns_resource_nat_for_domain(response.for_slice_ref(), now);
                 self.update_dns_resource_nat(now, iter::empty());
 
                 unwrap_or_debug!(
@@ -1824,7 +1832,7 @@ fn handle_p2p_control_packet(
 
             tracing::debug!(%gid, domain = %res.domain, num_buffered_packets = %nat_state.num_buffered_packets(), "DNS resource NAT is active");
 
-            let buffered_packets = nat_state.confirm();
+            let buffered_packets = nat_state.confirm(now + Duration::from_secs(res.ttl as u64));
 
             for packet in buffered_packets {
                 encapsulate_and_buffer(packet, gid, now, node, buffered_transmits);
