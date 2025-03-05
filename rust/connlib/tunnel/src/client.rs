@@ -1428,7 +1428,7 @@ impl ClientState {
         self.buffered_events
             .push_back(ClientEvent::TunInterfaceUpdated(new_tun_config));
 
-        self.initialise_tcp_dns_client();
+        self.initialise_tcp_dns_client(); // We must reset the TCP DNS client because changed CIDR resources (and thus changed routes) might affect which site we connect to.
         self.initialise_tcp_dns_server();
     }
 
