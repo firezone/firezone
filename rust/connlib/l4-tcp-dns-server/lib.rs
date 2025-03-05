@@ -118,9 +118,15 @@ impl Server {
                     continue;
                 };
 
-                self.tcp_streams_by_remote.insert(from, stream); // Store the stream so we can send a response back later.
+                let local = stream.local_addr()?;
+
+                // Store the stream so we can send a response back later.
+                // We don't need to index by the local address because we only ever listen on a single socket.
+                self.tcp_streams_by_remote.insert(from, stream);
+
                 return Poll::Ready(Ok(Query {
-                    source: from,
+                    local,
+                    remote: from,
                     message,
                 }));
             }
@@ -179,7 +185,8 @@ async fn read_tcp_query(
 }
 
 pub struct Query {
-    pub source: SocketAddr,
+    pub local: SocketAddr,
+    pub remote: SocketAddr,
     pub message: Message<Vec<u8>>,
 }
 
@@ -220,7 +227,7 @@ mod tests {
                 let query = poll_fn(|cx| server.poll(cx)).await.unwrap();
 
                 server
-                    .send_response(query.source, empty_dns_response(query.message))
+                    .send_response(query.remote, empty_dns_response(query.message))
                     .unwrap();
             }
         });

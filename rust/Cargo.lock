@@ -2027,6 +2027,7 @@ dependencies = [
  "moka",
  "nix 0.29.0",
  "phoenix-channel",
+ "resolv-conf",
  "rustls",
  "secrecy",
  "serde",

@@ -1,4 +1,7 @@
 mod gso_queue;
+mod nameserver_set;
+mod tcp_dns;
+mod udp_dns;
 
 use crate::{device_channel::Device, dns, sockets::Sockets};
 use anyhow::Result;
@@ -8,17 +11,17 @@ use futures::FutureExt as _;
 use futures_bounded::FuturesTupleSet;
 use gso_queue::GsoQueue;
 use ip_packet::{IpPacket, MAX_FZ_PAYLOAD};
+use nameserver_set::NameserverSet;
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::VecDeque,
+    collections::{BTreeSet, VecDeque},
     io,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::Instrument;
 use tun::Tun;
 
@@ -44,6 +47,8 @@ pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
     gso_queue: GsoQueue,
+
+    nameservers: NameserverSet,
 
     udp_dns_server: l4_udp_dns_server::Server,
     tcp_dns_server: l4_tcp_dns_server::Server,
@@ -100,14 +105,19 @@ impl Io {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        nameservers: BTreeSet<IpAddr>,
     ) -> Self {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
+
+        let mut nameservers = NameserverSet::new(nameservers, udp_socket_factory.clone());
+        nameservers.evaluate();
 
         Self {
             outbound_packet_buffer: VecDeque::with_capacity(10), // It is unlikely that we process more than 10 packets after 1 GRO call.
             timeout: None,
             sockets,
+            nameservers,
             tcp_socket_factory,
             udp_socket_factory,
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
@@ -136,6 +146,15 @@ impl Io {
         self.sockets.poll_has_sockets(cx)
     }
 
+    pub fn fastest_nameserver(&self) -> io::Result<IpAddr> {
+        let ns = self
+            .nameservers
+            .fastest()
+            .ok_or(io::Error::other(NoNameserverAvailable))?;
+
+        Ok(ns)
+    }
+
     pub fn poll<'b>(
         &mut self,
         cx: &mut Context<'_>,
@@ -146,6 +165,7 @@ impl Io {
         >,
     > {
         ready!(self.flush_send_queue(cx)?);
+        ready!(self.nameservers.poll(cx));
 
         if let Poll::Ready(network) =
             self.sockets
@@ -255,6 +275,7 @@ impl Io {
         self.sockets.rebind(self.udp_socket_factory.as_ref());
         self.gso_queue.clear();
         self.dns_queries = FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000);
+        self.nameservers.evaluate();
     }
 
     pub fn reset_timeout(&mut self, timeout: Instant) {
@@ -274,39 +295,19 @@ impl Io {
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
+        let meta = DnsQueryMetaData {
+            query: query.message.clone(),
+            server: query.server,
+            transport: query.transport,
+        };
+
         match query.transport {
             dns::Transport::Udp { .. } => {
-                let factory = self.udp_socket_factory.clone();
-                let server = query.server;
-                let bind_addr = match query.server {
-                    SocketAddr::V4(_) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
-                    SocketAddr::V6(_) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
-                };
-                let meta = DnsQueryMetaData {
-                    query: query.message.clone(),
-                    server,
-                    transport: query.transport,
-                };
-
                 if self
                     .dns_queries
                     .try_push(
-                        async move {
-                            // To avoid fragmentation, IP and thus also UDP packets can only reliably sent with an MTU of <= 1500 on the public Internet.
-                            const BUF_SIZE: usize = 1500;
-
-                            let udp_socket = factory(&bind_addr)?;
-
-                            let response = udp_socket
-                                .handshake::<BUF_SIZE>(server, query.message.as_slice())
-                                .await?;
-
-                            let message = Message::from_octets(response)
-                                .map_err(|_| io::Error::other("Failed to parse DNS message"))?;
-
-                            Ok(message)
-                        }
-                        .instrument(telemetry_span!("recursive_udp_dns_query")),
+                        udp_dns::send(self.udp_socket_factory.clone(), query.server, query.message)
+                            .instrument(telemetry_span!("recursive_udp_dns_query")),
                         meta,
                     )
                     .is_err()
@@ -315,41 +316,11 @@ impl Io {
                 }
             }
             dns::Transport::Tcp { .. } => {
-                let factory = self.tcp_socket_factory.clone();
-                let server = query.server;
-                let meta = DnsQueryMetaData {
-                    query: query.message.clone(),
-                    server,
-                    transport: query.transport,
-                };
-
                 if self
                     .dns_queries
                     .try_push(
-                        async move {
-                            let tcp_socket = factory(&server)?; // TODO: Optimise this to reuse a TCP socket to the same resolver.
-                            let mut tcp_stream = tcp_socket.connect(server).await?;
-
-                            let query = query.message.into_octets();
-                            let dns_message_length = (query.len() as u16).to_be_bytes();
-
-                            tcp_stream.write_all(&dns_message_length).await?;
-                            tcp_stream.write_all(&query).await?;
-
-                            let mut response_length = [0u8; 2];
-                            tcp_stream.read_exact(&mut response_length).await?;
-                            let response_length = u16::from_be_bytes(response_length) as usize;
-
-                            // A u16 is at most 65k, meaning we are okay to allocate here based on what the remote is sending.
-                            let mut response = vec![0u8; response_length];
-                            tcp_stream.read_exact(&mut response).await?;
-
-                            let message = Message::from_octets(response)
-                                .map_err(|_| io::Error::other("Failed to parse DNS message"))?;
-
-                            Ok(message)
-                        }
-                        .instrument(telemetry_span!("recursive_tcp_dns_query")),
+                        tcp_dns::send(self.tcp_socket_factory.clone(), query.server, query.message)
+                            .instrument(telemetry_span!("recursive_tcp_dns_query")),
                         meta,
                     )
                     .is_err()
@@ -376,6 +347,10 @@ impl Io {
         self.tcp_dns_server.send_response(to, message)
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("No nameserver available to handle DNS query")]
+pub struct NoNameserverAvailable;
 
 fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     let len = d.packet.len();
@@ -446,6 +421,7 @@ mod tests {
             let mut io = Io::new(
                 Arc::new(|_| Err(io::Error::other("not implemented"))),
                 Arc::new(|_| Err(io::Error::other("not implemented"))),
+                BTreeSet::new(),
             );
             io.set_tun(Box::new(DummyTun));
 
