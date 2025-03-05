@@ -7,6 +7,17 @@ defmodule Web.AuthControllerTest do
   end
 
   describe "verify_credentials/2" do
+    test "redirects to account root when required params aren't provided", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_userpass_provider(account: account)
+
+      params = %{"foo" => "bar"}
+      conn = post(conn, ~p"/#{account}/sign_in/providers/#{provider}/verify_credentials", params)
+
+      assert redirected_to(conn) == ~p"/#{account}"
+      assert flash(conn, :error) =~ "Invalid request."
+    end
+
     test "redirects with an error when provider does not exist", %{conn: conn} do
       account_id = Ecto.UUID.generate()
       provider_id = Ecto.UUID.generate()
@@ -324,6 +335,17 @@ defmodule Web.AuthControllerTest do
   end
 
   describe "request_email_otp/2" do
+    test "redirects to account root when required params aren't provided", %{conn: conn} do
+      account = Fixtures.Accounts.create_account()
+      provider = Fixtures.Auth.create_email_provider(account: account)
+
+      params = %{"foo" => "bar"}
+      conn = post(conn, ~p"/#{account}/sign_in/providers/#{provider}/request_email_otp", params)
+
+      assert redirected_to(conn) == ~p"/#{account}"
+      assert flash(conn, :error) =~ "Invalid request."
+    end
+
     test "sends a login link to the user email", %{conn: conn} do
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
@@ -496,6 +518,20 @@ defmodule Web.AuthControllerTest do
         email_secret: secret,
         conn_with_cookie: conn_with_cookie
       }
+    end
+
+    test "redirects to account root if required params aren't provided", %{
+      conn: conn,
+      account: account,
+      provider: provider
+    } do
+      params = %{"foo" => "bar"}
+
+      conn =
+        get(conn, ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", params)
+
+      assert redirected_to(conn) == ~p"/#{account}"
+      assert flash(conn, :error) =~ "Invalid request."
     end
 
     test "redirects with an error when auth state for given provider does not exist", %{
@@ -905,16 +941,23 @@ defmodule Web.AuthControllerTest do
       }
     end
 
-    test "redirects with an error when params aren't provided", %{
+    test "redirects to account root when required params aren't provided", %{
       account: account,
       provider: provider,
       conn: conn
     } do
+      params = %{
+        "foo" => "bar",
+        "error" => "an error",
+        "error_description" => "an error description"
+      }
+
       conn =
-        get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback")
+        get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback", params)
 
       assert redirected_to(conn) == ~p"/#{account.id}"
-      assert flash(conn, :error) == "Invalid request."
+      assert flash(conn, :error) =~ "Invalid request."
+      assert flash(conn, :error) =~ "error: an error. error_description: an error description"
     end
 
     test "redirects with an error when state cookie does not exist", %{
