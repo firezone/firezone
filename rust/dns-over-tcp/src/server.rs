@@ -197,7 +197,7 @@ impl Server {
                             .insert((local, remote, qid), handle);
 
                         self.received_queries.push_back(Query {
-                            message: message.octets_into(),
+                            message,
                             local,
                             remote,
                         });
@@ -231,11 +231,10 @@ impl Server {
     }
 }
 
-#[expect(clippy::type_complexity, reason = "We don't care.")]
-fn try_recv_query<'b>(
-    socket: &'b mut tcp::Socket,
+fn try_recv_query(
+    socket: &mut tcp::Socket,
     listen: SocketAddr,
-) -> Result<Option<(Message<&'b [u8]>, SocketAddr)>> {
+) -> Result<Option<(Message<Vec<u8>>, SocketAddr)>> {
     // smoltcp's sockets can only ever handle a single remote, i.e. there is no permanent listening socket.
     // to be able to handle a new connection, reset the socket back to `listen` once the connection is closed / closing.
     {
@@ -271,18 +270,22 @@ fn try_recv_query<'b>(
         return Ok(None);
     }
 
-    let Some(remote) = socket.remote_endpoint() else {
-        return Ok(None);
-    };
-    let remote = SocketAddr::new(remote.addr.into(), remote.port);
-
     let Some(message) = codec::try_recv(socket)? else {
         return Ok(None);
     };
 
     anyhow::ensure!(!message.header().qr(), "DNS message is a response!");
 
-    Ok(Some((message, remote)))
+    let message = message.octets_into();
+
+    let remote = socket
+        .remote_endpoint()
+        .context("Unknown remote endpoint despite having just received a message")?;
+
+    Ok(Some((
+        message,
+        SocketAddr::new(remote.addr.into(), remote.port),
+    )))
 }
 
 fn write_tcp_dns_response(socket: &mut tcp::Socket, response: Message<&[u8]>) -> Result<()> {
