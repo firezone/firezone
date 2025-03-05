@@ -256,7 +256,7 @@ defmodule Domain.Actors do
 
         group
       end)
-    end)
+    end, timeout: 60_000)
   end
 
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
