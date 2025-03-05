@@ -27,7 +27,9 @@ pub struct Server {
     sockets: SocketSet<'static>,
     listen_endpoints: HashMap<SocketHandle, SocketAddr>,
 
-    sockets_by_local_and_remote: HashMap<(SocketAddr, SocketAddr), SocketHandle>,
+    /// Tracks the [`SocketHandle`] on which we need to send a reply for a given query by the local socket address, remote socket address and query ID.
+    pending_sockets_by_local_remote_and_query_id:
+        HashMap<(SocketAddr, SocketAddr, u16), SocketHandle>,
 
     received_queries: VecDeque<Query>,
 
@@ -53,7 +55,7 @@ impl Server {
             interface,
             sockets: SocketSet::new(Vec::default()),
             listen_endpoints: Default::default(),
-            sockets_by_local_and_remote: Default::default(),
+            pending_sockets_by_local_remote_and_query_id: Default::default(),
             received_queries: Default::default(),
             created_at: now,
             last_now: now,
@@ -152,11 +154,11 @@ impl Server {
         message: Message<Vec<u8>>,
     ) -> Result<()> {
         let handle = self
-            .sockets_by_local_and_remote
-            .get(&(src, dst))
+            .pending_sockets_by_local_remote_and_query_id
+            .remove(&(src, dst, message.header().id()))
             .context("No pending query found for message")?;
 
-        let socket = self.sockets.get_mut::<tcp::Socket>(*handle);
+        let socket = self.sockets.get_mut::<tcp::Socket>(handle);
 
         write_tcp_dns_response(socket, message.for_slice_ref())
             .inspect_err(|_| socket.abort()) // Abort socket on error.
@@ -187,8 +189,12 @@ impl Server {
             while let Some(result) = try_recv_query(socket, local).transpose() {
                 match result {
                     Ok((message, remote)) => {
-                        self.sockets_by_local_and_remote
-                            .insert((local, remote), handle);
+                        let qid = message.header().id();
+
+                        tracing::trace!(%local, %remote, %qid, "Received DNS query");
+
+                        self.pending_sockets_by_local_remote_and_query_id
+                            .insert((local, remote, qid), handle);
 
                         self.received_queries.push_back(Query {
                             message: message.octets_into(),
