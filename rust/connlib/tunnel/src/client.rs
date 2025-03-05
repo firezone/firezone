@@ -1420,12 +1420,19 @@ impl ClientState {
         self.buffered_events
             .retain(|e| !matches!(e, ClientEvent::TunInterfaceUpdated(_)));
 
+        let dns_changed = self
+            .tun_config
+            .as_ref()
+            .is_none_or(|c| c.dns_by_sentinel != new_tun_config.dns_by_sentinel);
+
         self.tun_config = Some(new_tun_config.clone());
         self.buffered_events
             .push_back(ClientEvent::TunInterfaceUpdated(new_tun_config));
 
-        self.initialise_tcp_dns_client();
-        self.initialise_tcp_dns_server();
+        if dns_changed {
+            self.initialise_tcp_dns_client();
+            self.initialise_tcp_dns_server();
+        }
     }
 
     fn drain_node_events(&mut self) {
