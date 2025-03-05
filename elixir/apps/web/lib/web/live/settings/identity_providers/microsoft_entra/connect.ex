@@ -136,4 +136,19 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Connect do
         )
     end
   end
+
+  def handle_idp_callback(conn, %{"provider_id" => provider_id} = params) do
+    Logger.warning("Invalid request parameters", params: params)
+
+    maybe_errors =
+      params
+      |> Map.filter(fn {k, _} -> k in ["error", "error_description"] end)
+      |> Enum.map_join(". ", fn {k, v} -> "#{k}: #{v}" end)
+
+    conn
+    |> put_flash(:error, "Invalid request. #{maybe_errors}")
+    |> redirect(
+      to: ~p"/#{conn.assigns.account}/settings/identity_providers/microsoft_entra/#{provider_id}"
+    )
+  end
 end

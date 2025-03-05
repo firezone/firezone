@@ -61,6 +61,14 @@ defmodule Web.AuthController do
     end
   end
 
+  def verify_credentials(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
+    Logger.warning("Invalid request parameters", params: params)
+
+    conn
+    |> put_flash(:error, "Invalid request.")
+    |> redirect(to: ~p"/#{account_id_or_slug}")
+  end
+
   @doc """
   This is a callback for the Email provider which sends login link.
   """
@@ -110,6 +118,14 @@ defmodule Web.AuthController do
         |> put_flash(:error, "You may not use this method to sign in.")
         |> redirect(to: ~p"/#{account_id_or_slug}?#{redirect_params}")
     end
+  end
+
+  def request_email_otp(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
+    Logger.warning("Invalid request parameters", params: params)
+
+    conn
+    |> put_flash(:error, "Invalid request.")
+    |> redirect(to: ~p"/#{account_id_or_slug}")
   end
 
   defp maybe_send_email_otp(conn, provider, provider_identifier, redirect_params) do
@@ -245,6 +261,14 @@ defmodule Web.AuthController do
     end
   end
 
+  def verify_sign_in_token(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
+    Logger.warning("Invalid request parameters", params: params)
+
+    conn
+    |> put_flash(:error, "Invalid request.")
+    |> redirect(to: ~p"/#{account_id_or_slug}")
+  end
+
   @doc """
   This controller redirects user to IdP during sign in for authentication while persisting
   verification state to prevent various attacks on OpenID Connect.
@@ -350,12 +374,17 @@ defmodule Web.AuthController do
     end
   end
 
-  def handle_idp_callback(conn, %{
-        "account_id_or_slug" => account_id
-      }) do
+  def handle_idp_callback(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
+    Logger.warning("Invalid request parameters", params: params)
+
+    maybe_errors =
+      params
+      |> Map.filter(fn {k, _} -> k in ["error", "error_description"] end)
+      |> Enum.map_join(". ", fn {k, v} -> "#{k}: #{v}" end)
+
     conn
-    |> put_flash(:error, "Invalid request.")
-    |> redirect(to: ~p"/#{account_id}")
+    |> put_flash(:error, "Invalid request. #{maybe_errors}")
+    |> redirect(to: ~p"/#{account_id_or_slug}")
   end
 
   def verify_idp_state_and_fetch_verifier(conn, provider_id, state) do
