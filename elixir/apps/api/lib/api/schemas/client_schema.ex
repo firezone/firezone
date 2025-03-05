@@ -179,8 +179,7 @@ defmodule API.Schemas.Client do
       required: [:client],
       example: %{
         "client" => %{
-          "name" => "John's Macbook Air",
-          "verified" => true
+          "name" => "John's Macbook Air"
         }
       }
     })
