@@ -15,6 +15,15 @@ defmodule API.FallbackController do
     |> render(:"401")
   end
 
+  def call(conn, {:error, {:unauthorized, details}}) do
+    reason = Keyword.get(details, :reason, "Unauthorized")
+
+    conn
+    |> put_status(:unauthorized)
+    |> put_view(json: API.ErrorJSON)
+    |> render(:"401", reason: reason)
+  end
+
   def call(conn, {:error, :bad_request}) do
     conn
     |> put_status(:bad_request)
