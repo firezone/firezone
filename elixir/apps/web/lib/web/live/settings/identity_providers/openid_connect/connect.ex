@@ -124,4 +124,17 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Connect do
       |> redirect(to: ~p"/#{account}/settings/identity_providers/openid_connect/#{provider_id}")
     end
   end
+
+  def handle_idp_callback(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
+    Logger.warning("Invalid request parameters", params: params)
+    maybe_errors =
+      params
+      |> Map.filter(fn {k, _} -> k in ["error", "error_description"] end)
+      |> Enum.map(fn {k, v} -> "#{k}: #{v}" end)
+      |> Enum.join(". ")
+
+    conn
+    |> put_flash(:error, "Invalid request. #{maybe_errors}")
+    |> redirect(to: ~p"/#{account_id_or_slug}")
+  end
 end

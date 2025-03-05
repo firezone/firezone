@@ -121,14 +121,14 @@ defmodule Web.Live.Settings.IdentityProviders.Okta.Connect do
         |> assign(:account, account)
         |> get(
           ~p"/#{account}/settings/identity_providers/okta/#{provider}/handle_callback",
-          %{"foo" => "bar"}
+          %{"foo" => "bar", "error" => "an error", "error_description" => "an error description"}
         )
 
       assert redirected_to(conn) ==
                ~p"/#{account}/settings/identity_providers/okta/#{provider}"
 
-      assert flash(conn, :error) =~ "Invalid request parameters:"
-      assert flash(conn, :error) =~ "\"foo\" => \"bar\""
+      assert flash(conn, :error) =~ "Invalid request."
+      assert flash(conn, :error) =~ "an error. an error description"
     end
 
     test "redirects to login page when user is not signed in", %{conn: conn} do

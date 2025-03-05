@@ -15,8 +15,7 @@ defmodule Web.AuthControllerTest do
       conn = post(conn, ~p"/#{account}/sign_in/providers/#{provider}/verify_credentials", params)
 
       assert redirected_to(conn) == ~p"/#{account}"
-      assert flash(conn, :error) =~ "Invalid request parameters:"
-      assert flash(conn, :error) =~ "\"foo\" => \"bar\""
+      assert flash(conn, :error) =~ "Invalid request."
     end
 
     test "redirects with an error when provider does not exist", %{conn: conn} do
@@ -344,8 +343,7 @@ defmodule Web.AuthControllerTest do
       conn = post(conn, ~p"/#{account}/sign_in/providers/#{provider}/request_email_otp", params)
 
       assert redirected_to(conn) == ~p"/#{account}"
-      assert flash(conn, :error) =~ "Invalid request parameters:"
-      assert flash(conn, :error) =~ "\"foo\" => \"bar\""
+      assert flash(conn, :error) =~ "Invalid request."
     end
 
     test "sends a login link to the user email", %{conn: conn} do
@@ -533,8 +531,7 @@ defmodule Web.AuthControllerTest do
         get(conn, ~p"/#{account}/sign_in/providers/#{provider}/verify_sign_in_token", params)
 
       assert redirected_to(conn) == ~p"/#{account}"
-      assert flash(conn, :error) =~ "Invalid request parameters:"
-      assert flash(conn, :error) =~ "\"foo\" => \"bar\""
+      assert flash(conn, :error) =~ "Invalid request."
     end
 
     test "redirects with an error when auth state for given provider does not exist", %{
@@ -949,14 +946,14 @@ defmodule Web.AuthControllerTest do
       provider: provider,
       conn: conn
     } do
-      params = %{"foo" => "bar"}
+      params = %{"foo" => "bar", "error" => "an error", "error_description" => "an error description"}
 
       conn =
         get(conn, ~p"/#{account.id}/sign_in/providers/#{provider.id}/handle_callback", params)
 
       assert redirected_to(conn) == ~p"/#{account.id}"
-      assert flash(conn, :error) =~ "Invalid request parameters:"
-      assert flash(conn, :error) =~ "\"foo\" => \"bar\""
+      assert flash(conn, :error) =~ "Invalid request."
+      assert flash(conn, :error) =~ "an error. an error description"
     end
 
     test "redirects with an error when state cookie does not exist", %{

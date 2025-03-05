@@ -65,7 +65,7 @@ defmodule Web.AuthController do
     Logger.warning("Invalid request parameters", params: params)
 
     conn
-    |> put_flash(:error, "Invalid request parameters: #{inspect(params)}")
+    |> put_flash(:error, "Invalid request.")
     |> redirect(to: ~p"/#{account_id_or_slug}")
   end
 
@@ -124,7 +124,7 @@ defmodule Web.AuthController do
     Logger.warning("Invalid request parameters", params: params)
 
     conn
-    |> put_flash(:error, "Invalid request parameters: #{inspect(params)}")
+    |> put_flash(:error, "Invalid request.")
     |> redirect(to: ~p"/#{account_id_or_slug}")
   end
 
@@ -265,7 +265,7 @@ defmodule Web.AuthController do
     Logger.warning("Invalid request parameters", params: params)
 
     conn
-    |> put_flash(:error, "Invalid request parameters: #{inspect(params)}")
+    |> put_flash(:error, "Invalid request.")
     |> redirect(to: ~p"/#{account_id_or_slug}")
   end
 
@@ -376,9 +376,14 @@ defmodule Web.AuthController do
 
   def handle_idp_callback(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
     Logger.warning("Invalid request parameters", params: params)
+    maybe_errors =
+      params
+      |> Map.filter(fn {k, _} -> k in ["error", "error_description"] end)
+      |> Enum.map(fn {k, v} -> "#{k}: #{v}" end)
+      |> Enum.join(". ")
 
     conn
-    |> put_flash(:error, "Invalid request parameters: #{inspect(params)}")
+    |> put_flash(:error, "Invalid request. #{maybe_errors}")
     |> redirect(to: ~p"/#{account_id_or_slug}")
   end
 
