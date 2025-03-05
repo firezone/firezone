@@ -1,4 +1,7 @@
 mod gso_queue;
+mod nameserver_set;
+mod tcp_dns;
+mod udp_dns;
 
 use crate::{device_channel::Device, dns, sockets::Sockets};
 use anyhow::Result;
@@ -12,13 +15,12 @@ use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::VecDeque,
     io,
-    net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tracing::Instrument;
 use tun::Tun;
 
@@ -274,42 +276,19 @@ impl Io {
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
+        let meta = DnsQueryMetaData {
+            query: query.message.clone(),
+            server: query.server,
+            transport: query.transport,
+        };
+
         match query.transport {
             dns::Transport::Udp { .. } => {
-                let factory = self.udp_socket_factory.clone();
-                let server = query.server;
-                let domain = query.domain();
-                let bind_addr = match query.server {
-                    SocketAddr::V4(_) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
-                    SocketAddr::V6(_) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
-                };
-                let meta = DnsQueryMetaData {
-                    query: query.message.clone(),
-                    server,
-                    transport: query.transport,
-                };
-
                 if self
                     .dns_queries
                     .try_push(
-                        async move {
-                            tracing::trace!(target: "wire::dns::recursive::udp", %server, %domain);
-
-                            // To avoid fragmentation, IP and thus also UDP packets can only reliably sent with an MTU of <= 1500 on the public Internet.
-                            const BUF_SIZE: usize = 1500;
-
-                            let udp_socket = factory(&bind_addr)?;
-
-                            let response = udp_socket
-                                .handshake::<BUF_SIZE>(server, query.message.as_slice())
-                                .await?;
-
-                            let message = Message::from_octets(response)
-                                .map_err(|_| io::Error::other("Failed to parse DNS message"))?;
-
-                            Ok(message)
-                        }
-                        .instrument(telemetry_span!("recursive_udp_dns_query")),
+                        udp_dns::send(self.udp_socket_factory.clone(), query.server, query.message)
+                            .instrument(telemetry_span!("recursive_udp_dns_query")),
                         meta,
                     )
                     .is_err()
@@ -318,44 +297,11 @@ impl Io {
                 }
             }
             dns::Transport::Tcp { .. } => {
-                let factory = self.tcp_socket_factory.clone();
-                let server = query.server;
-                let domain = query.domain();
-                let meta = DnsQueryMetaData {
-                    query: query.message.clone(),
-                    server,
-                    transport: query.transport,
-                };
-
                 if self
                     .dns_queries
                     .try_push(
-                        async move {
-                            tracing::trace!(target: "wire::dns::recursive::tcp", %server, %domain);
-
-                            let tcp_socket = factory(&server)?; // TODO: Optimise this to reuse a TCP socket to the same resolver.
-                            let mut tcp_stream = tcp_socket.connect(server).await?;
-
-                            let query = query.message.into_octets();
-                            let dns_message_length = (query.len() as u16).to_be_bytes();
-
-                            tcp_stream.write_all(&dns_message_length).await?;
-                            tcp_stream.write_all(&query).await?;
-
-                            let mut response_length = [0u8; 2];
-                            tcp_stream.read_exact(&mut response_length).await?;
-                            let response_length = u16::from_be_bytes(response_length) as usize;
-
-                            // A u16 is at most 65k, meaning we are okay to allocate here based on what the remote is sending.
-                            let mut response = vec![0u8; response_length];
-                            tcp_stream.read_exact(&mut response).await?;
-
-                            let message = Message::from_octets(response)
-                                .map_err(|_| io::Error::other("Failed to parse DNS message"))?;
-
-                            Ok(message)
-                        }
-                        .instrument(telemetry_span!("recursive_tcp_dns_query")),
+                        tcp_dns::send(self.tcp_socket_factory.clone(), query.server, query.message)
+                            .instrument(telemetry_span!("recursive_tcp_dns_query")),
                         meta,
                     )
                     .is_err()

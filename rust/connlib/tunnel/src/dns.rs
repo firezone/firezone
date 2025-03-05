@@ -84,17 +84,9 @@ impl RecursiveQuery {
             transport: Transport::Tcp { local, remote },
         }
     }
-
-    pub(crate) fn domain(&self) -> DomainName {
-        self.message
-            .sole_question()
-            .expect("all queries should be for a single name")
-            .qname()
-            .to_vec()
-    }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum Transport {
     Udp {
         /// The original source we received the DNS query on.
