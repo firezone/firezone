@@ -84,7 +84,7 @@ impl NameserverSet {
                 )
                 .is_err()
             {
-                tracing::debug!(%nameserver, "Failed to queue another UDP DNS query");
+                tracing::debug!(%nameserver, "Failed to queue another TCP DNS query");
             }
         }
     }
