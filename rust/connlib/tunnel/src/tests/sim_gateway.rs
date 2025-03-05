@@ -134,6 +134,7 @@ impl SimGateway {
         now: Instant,
     ) {
         self.udp_dns_server_resources.clear();
+        self.tcp_dns_server_resources.clear();
 
         let tun_dns_server_port = 53535; // Hardcoded here so we think about backwards-compatibility when changing it.
         let Some(ip_config) = self.sut.tunnel_ip_config() else {
