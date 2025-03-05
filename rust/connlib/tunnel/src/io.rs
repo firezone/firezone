@@ -11,11 +11,12 @@ use futures::FutureExt as _;
 use futures_bounded::FuturesTupleSet;
 use gso_queue::GsoQueue;
 use ip_packet::{IpPacket, MAX_FZ_PAYLOAD};
+use nameserver_set::NameserverSet;
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::VecDeque,
+    collections::{BTreeSet, VecDeque},
     io,
-    net::{SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
     sync::Arc,
     task::{ready, Context, Poll},
@@ -46,6 +47,8 @@ pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
     sockets: Sockets,
     gso_queue: GsoQueue,
+
+    nameservers: NameserverSet,
 
     udp_dns_server: l4_udp_dns_server::Server,
     tcp_dns_server: l4_tcp_dns_server::Server,
@@ -102,14 +105,19 @@ impl Io {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        nameservers: BTreeSet<IpAddr>,
     ) -> Self {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
+
+        let mut nameservers = NameserverSet::new(nameservers, udp_socket_factory.clone());
+        nameservers.evaluate();
 
         Self {
             outbound_packet_buffer: VecDeque::with_capacity(10), // It is unlikely that we process more than 10 packets after 1 GRO call.
             timeout: None,
             sockets,
+            nameservers,
             tcp_socket_factory,
             udp_socket_factory,
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
@@ -138,6 +146,10 @@ impl Io {
         self.sockets.poll_has_sockets(cx)
     }
 
+    pub fn fastest_nameserver(&self) -> Option<IpAddr> {
+        self.nameservers.fastest()
+    }
+
     pub fn poll<'b>(
         &mut self,
         cx: &mut Context<'_>,
@@ -148,6 +160,7 @@ impl Io {
         >,
     > {
         ready!(self.flush_send_queue(cx)?);
+        ready!(self.nameservers.poll(cx));
 
         if let Poll::Ready(network) =
             self.sockets
@@ -257,6 +270,7 @@ impl Io {
         self.sockets.rebind(self.udp_socket_factory.as_ref());
         self.gso_queue.clear();
         self.dns_queries = FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000);
+        self.nameservers.evaluate();
     }
 
     pub fn reset_timeout(&mut self, timeout: Instant) {
@@ -398,6 +412,7 @@ mod tests {
             let mut io = Io::new(
                 Arc::new(|_| Err(io::Error::other("not implemented"))),
                 Arc::new(|_| Err(io::Error::other("not implemented"))),
+                BTreeSet::new(),
             );
             io.set_tun(Box::new(DummyTun));
 

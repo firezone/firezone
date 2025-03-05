@@ -76,9 +76,6 @@ pub struct Tunnel<TRoleState> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
 
-    /// The system's nameservers.
-    nameservers: BTreeSet<IpAddr>,
-
     /// The I/O component of connlib.
     ///
     /// Handles all side-effects.
@@ -110,10 +107,13 @@ impl ClientTunnel {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> Self {
         Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory),
+            io: Io::new(
+                tcp_socket_factory,
+                udp_socket_factory.clone(),
+                BTreeSet::default(),
+            ),
             role_state: ClientState::new(rand::random(), Instant::now()),
             buffers: Buffers::default(),
-            nameservers: BTreeSet::default(), // Unused (for now).
         }
     }
 
@@ -223,10 +223,9 @@ impl GatewayTunnel {
         nameservers: BTreeSet<IpAddr>,
     ) -> Self {
         Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory),
+            io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
             role_state: GatewayState::new(rand::random(), Instant::now()),
             buffers: Buffers::default(),
-            nameservers,
         }
     }
 
@@ -318,7 +317,7 @@ impl GatewayTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::UdpDnsQuery(query)) => {
-                    let Some(nameserver) = self.nameservers.first() else {
+                    let Some(nameserver) = self.io.fastest_nameserver() else {
                         tracing::info!("No nameserver available to resolve DNS query");
 
                         self.io.send_udp_dns_response(
@@ -330,12 +329,12 @@ impl GatewayTunnel {
 
                     self.io.send_dns_query(dns::RecursiveQuery::via_udp(
                         query.source,
-                        SocketAddr::new(*nameserver, dns::DNS_PORT),
+                        SocketAddr::new(nameserver, dns::DNS_PORT),
                         query.message.for_slice_ref(),
                     ));
                 }
                 Poll::Ready(io::Input::TcpDnsQuery(query)) => {
-                    let Some(nameserver) = self.nameservers.first() else {
+                    let Some(nameserver) = self.io.fastest_nameserver() else {
                         tracing::info!("No nameserver available to resolve DNS query");
 
                         self.io.send_tcp_dns_response(
@@ -348,7 +347,7 @@ impl GatewayTunnel {
                     self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
                         query.local,
                         query.remote,
-                        SocketAddr::new(*nameserver, dns::DNS_PORT),
+                        SocketAddr::new(nameserver, dns::DNS_PORT),
                         query.message,
                     ));
                 }
