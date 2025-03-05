@@ -86,7 +86,7 @@ impl RecursiveQuery {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum Transport {
     Udp {
         /// The original source we received the DNS query on.

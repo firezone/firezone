@@ -29,6 +29,7 @@ libc = { workspace = true, features = ["std", "const-extern-fn", "extra_traits"]
 moka = { workspace = true, features = ["future"] }
 nix = { workspace = true }
 phoenix-channel = { workspace = true }
+resolv-conf = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["std", "derive"] }

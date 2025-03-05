@@ -16,10 +16,10 @@ use phoenix_channel::LoginUrl;
 use futures::{future, TryFutureExt};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
-use std::path::Path;
 use std::pin::pin;
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::{collections::BTreeSet, path::Path};
 use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
 use tracing_subscriber::layer;
@@ -113,7 +113,21 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
     )
     .context("Failed to construct URL for logging into portal")?;
 
-    let mut tunnel = GatewayTunnel::new(Arc::new(tcp_socket_factory), Arc::new(udp_socket_factory));
+    let resolv_conf = resolv_conf::Config::parse(
+        std::fs::read_to_string("/etc/resolv.conf").context("Failed to read /etc/resolv.conf")?,
+    )
+    .context("Failed to parse /etc/resolv.conf")?;
+    let nameservers = resolv_conf
+        .nameservers
+        .into_iter()
+        .map(|ip| ip.into())
+        .collect::<BTreeSet<_>>();
+
+    let mut tunnel = GatewayTunnel::new(
+        Arc::new(tcp_socket_factory),
+        Arc::new(udp_socket_factory),
+        nameservers,
+    );
     let portal = PhoenixChannel::disconnected(
         Secret::new(login),
         get_user_agent(None, env!("CARGO_PKG_VERSION")),

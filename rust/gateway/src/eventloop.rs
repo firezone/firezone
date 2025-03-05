@@ -123,6 +123,12 @@ impl Eventloop {
                         continue;
                     }
 
+                    if e.root_cause()
+                        .is::<firezone_tunnel::NoNameserverAvailable>()
+                    {
+                        return Poll::Ready(Err(Error::NoNameserversAvailable(e)));
+                    }
+
                     telemetry_event!("Tunnel error: {e:#}");
                     continue;
                 }
@@ -544,6 +550,8 @@ pub enum Error {
     UpdateTun(#[source] anyhow::Error),
     #[error("{0:#}")]
     BindDnsSockets(#[source] anyhow::Error),
+    #[error("{0:#}")]
+    NoNameserversAvailable(#[source] anyhow::Error),
 }
 
 async fn resolve(domain: DomainName) -> Result<Vec<IpAddr>> {

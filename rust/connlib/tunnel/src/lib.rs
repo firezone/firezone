@@ -66,6 +66,7 @@ pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
+pub use io::NoNameserverAvailable;
 pub use utils::turn;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
@@ -107,7 +108,11 @@ impl ClientTunnel {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> Self {
         Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory),
+            io: Io::new(
+                tcp_socket_factory,
+                udp_socket_factory.clone(),
+                BTreeSet::default(),
+            ),
             role_state: ClientState::new(rand::random(), Instant::now()),
             buffers: Buffers::default(),
         }
@@ -216,9 +221,10 @@ impl GatewayTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        nameservers: BTreeSet<IpAddr>,
     ) -> Self {
         Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory),
+            io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
             role_state: GatewayState::new(rand::random(), Instant::now()),
             buffers: Buffers::default(),
         }
@@ -246,8 +252,23 @@ impl GatewayTunnel {
             }
 
             match self.io.poll(cx, &mut self.buffers)? {
-                Poll::Ready(io::Input::DnsResponse(_)) => {
-                    unreachable!("Gateway doesn't use user-space DNS resolution")
+                Poll::Ready(io::Input::DnsResponse(response)) => {
+                    let message = response.message.unwrap_or_else(|e| {
+                        tracing::debug!("DNS query failed: {e}");
+
+                        dns::servfail(response.query.for_slice_ref())
+                    });
+
+                    match response.transport {
+                        dns::Transport::Udp { source } => {
+                            self.io.send_udp_dns_response(source, message)?;
+                        }
+                        dns::Transport::Tcp { remote, .. } => {
+                            self.io.send_tcp_dns_response(remote, message)?;
+                        }
+                    }
+
+                    continue;
                 }
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout, Utc::now());
@@ -296,14 +317,25 @@ impl GatewayTunnel {
 
                     continue;
                 }
-                Poll::Ready(io::Input::UdpDnsQuery(query)) => self.io.send_udp_dns_response(
-                    query.source,
-                    dns::servfail(query.message.for_slice_ref()),
-                )?,
-                Poll::Ready(io::Input::TcpDnsQuery(query)) => self.io.send_tcp_dns_response(
-                    query.source,
-                    dns::servfail(query.message.for_slice_ref()),
-                )?,
+                Poll::Ready(io::Input::UdpDnsQuery(query)) => {
+                    let nameserver = self.io.fastest_nameserver()?;
+
+                    self.io.send_dns_query(dns::RecursiveQuery::via_udp(
+                        query.source,
+                        SocketAddr::new(nameserver, dns::DNS_PORT),
+                        query.message.for_slice_ref(),
+                    ));
+                }
+                Poll::Ready(io::Input::TcpDnsQuery(query)) => {
+                    let nameserver = self.io.fastest_nameserver()?;
+
+                    self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
+                        query.local,
+                        query.remote,
+                        SocketAddr::new(nameserver, dns::DNS_PORT),
+                        query.message,
+                    ));
+                }
                 Poll::Pending => {}
             }
 
