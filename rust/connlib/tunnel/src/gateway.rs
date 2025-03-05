@@ -15,6 +15,8 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+pub const TUN_DNS_PORT: u16 = 53535;
+
 const EXPIRE_RESOURCES_INTERVAL: Duration = Duration::from_secs(1);
 
 /// A SANS-IO implementation of a gateway's functionality.
