@@ -10,11 +10,13 @@ use std::{
 use connlib_model::DomainName;
 use domain::base::{iana::Rcode, Message, MessageBuilder, Question, Rtype};
 use futures_bounded::FuturesTupleSet;
-use socket_factory::{SocketFactory, UdpSocket};
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 
 use crate::io::udp_dns;
 
-const MAX_DNS_SERVERS: usize = 10; // We don't bother selecting from more than 10 servers.
+use super::tcp_dns;
+
+const MAX_DNS_SERVERS: usize = 20; // We don't bother selecting from more than 10 servers over UDP and TCP.
 const DNS_TIMEOUT: Duration = Duration::from_secs(2); // Every sensible DNS servers should respond within 2s.
 
 static FIREZONE_DEV: LazyLock<DomainName> = LazyLock::new(|| {
@@ -25,7 +27,8 @@ pub struct NameserverSet {
     inner: BTreeSet<IpAddr>,
     nameserver_by_rtt: BTreeMap<Duration, IpAddr>,
 
-    socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     queries: FuturesTupleSet<io::Result<Message<Vec<u8>>>, QueryMetaData>,
 }
 
@@ -37,12 +40,14 @@ struct QueryMetaData {
 impl NameserverSet {
     pub fn new(
         inner: BTreeSet<IpAddr>,
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> Self {
         Self {
             queries: FuturesTupleSet::new(DNS_TIMEOUT, MAX_DNS_SERVERS),
             inner,
-            socket_factory: udp_socket_factory,
+            tcp_socket_factory,
+            udp_socket_factory,
             nameserver_by_rtt: Default::default(),
         }
     }
@@ -56,7 +61,7 @@ impl NameserverSet {
                 .queries
                 .try_push(
                     udp_dns::send(
-                        self.socket_factory.clone(),
+                        self.udp_socket_factory.clone(),
                         SocketAddr::new(nameserver, crate::dns::DNS_PORT),
                         query_firezone_dev(),
                     ),
@@ -64,7 +69,22 @@ impl NameserverSet {
                 )
                 .is_err()
             {
-                tracing::debug!(%nameserver, "Failed to queue another DNS query");
+                tracing::debug!(%nameserver, "Failed to queue another UDP DNS query");
+            }
+
+            if self
+                .queries
+                .try_push(
+                    tcp_dns::send(
+                        self.tcp_socket_factory.clone(),
+                        SocketAddr::new(nameserver, crate::dns::DNS_PORT),
+                        query_firezone_dev(),
+                    ),
+                    QueryMetaData { nameserver, start },
+                )
+                .is_err()
+            {
+                tracing::debug!(%nameserver, "Failed to queue another UDP DNS query");
             }
         }
     }
@@ -145,6 +165,7 @@ mod tests {
                 Ipv4Addr::new(9, 9, 9, 9).into(),
                 Ipv4Addr::new(100, 100, 100, 100).into(), // Also include an unreachable server.
             ]),
+            Arc::new(socket_factory::tcp),
             Arc::new(socket_factory::udp),
         );
         set.evaluate();
@@ -158,7 +179,11 @@ mod tests {
     async fn can_handle_no_servers() {
         let _guard = firezone_logging::test("debug");
 
-        let mut set = NameserverSet::new(BTreeSet::default(), Arc::new(socket_factory::udp));
+        let mut set = NameserverSet::new(
+            BTreeSet::default(),
+            Arc::new(socket_factory::tcp),
+            Arc::new(socket_factory::udp),
+        );
 
         std::future::poll_fn(|cx| set.poll(cx)).await;
 
