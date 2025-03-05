@@ -132,8 +132,7 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Connect do
     maybe_errors =
       params
       |> Map.filter(fn {k, _} -> k in ["error", "error_description"] end)
-      |> Enum.map(fn {k, v} -> "#{k}: #{v}" end)
-      |> Enum.join(". ")
+      |> Enum.map_join(". ", fn {k, v} -> "#{k}: #{v}" end)
 
     conn
     |> put_flash(:error, "Invalid request. #{maybe_errors}")
