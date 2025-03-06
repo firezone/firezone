@@ -5,7 +5,6 @@ mod udp_dns;
 
 use crate::{device_channel::Device, dns, sockets::Sockets};
 use anyhow::Result;
-use domain::base::Message;
 use firezone_logging::{telemetry_event, telemetry_span};
 use futures::FutureExt as _;
 use futures_bounded::FuturesTupleSet;
@@ -56,7 +55,7 @@ pub struct Io {
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
-    dns_queries: FuturesTupleSet<io::Result<Message<Vec<u8>>>, DnsQueryMetaData>,
+    dns_queries: FuturesTupleSet<io::Result<dns_types::Response>, DnsQueryMetaData>,
 
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
 
@@ -66,7 +65,7 @@ pub struct Io {
 
 #[derive(Debug)]
 struct DnsQueryMetaData {
-    query: Message<Vec<u8>>,
+    query: dns_types::Query,
     server: SocketAddr,
     transport: dns::Transport,
 }
@@ -338,7 +337,7 @@ impl Io {
     pub(crate) fn send_udp_dns_response(
         &mut self,
         to: SocketAddr,
-        message: Message<Vec<u8>>,
+        message: dns_types::Response,
     ) -> io::Result<()> {
         self.udp_dns_server.send_response(to, message)
     }
@@ -346,7 +345,7 @@ impl Io {
     pub(crate) fn send_tcp_dns_response(
         &mut self,
         to: SocketAddr,
-        message: Message<Vec<u8>>,
+        message: dns_types::Response,
     ) -> io::Result<()> {
         self.tcp_dns_server.send_response(to, message)
     }

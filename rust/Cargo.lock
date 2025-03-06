@@ -2282,7 +2282,7 @@ dependencies = [
  "derive_more 1.0.0",
  "divan",
  "dns-over-tcp",
- "domain",
+ "dns-types",
  "firezone-logging",
  "firezone-relay",
  "futures",

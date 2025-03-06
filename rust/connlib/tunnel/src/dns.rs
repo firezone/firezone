@@ -1,15 +1,9 @@
 use crate::client::IpProvider;
-use anyhow::{Context, Result};
-use connlib_model::{DomainName, ResourceId};
-use domain::base::name::FlattenInto;
-use domain::base::Name;
-use domain::rdata::AllRecordData;
-use domain::{
-    base::{
-        iana::{Class, Rcode, Rtype},
-        Message, MessageBuilder, ToName,
-    },
-    dep::octseq::OctetsInto,
+use anyhow::{Context as _, Result};
+use connlib_model::ResourceId;
+use dns_types::{
+    prelude::*, DomainName, DomainNameRef, OwnedRecordData, Query, RecordType, Response,
+    ResponseBuilder, ResponseCode,
 };
 use firezone_logging::{err_with_src, telemetry_span};
 use itertools::Itertools;
@@ -36,12 +30,12 @@ pub(crate) const DNS_PORT: u16 = 53;
 /// it. See <https://www.chromium.org/developers/dns-over-https/#faq>.
 ///
 /// SAFETY: We have a unit-test for it.
-pub const DOH_CANARY_DOMAIN: Name<&[u8]> =
-    unsafe { Name::from_octets_unchecked(b"\x13use-application-dns\x03net\x00") };
+pub const DOH_CANARY_DOMAIN: DomainNameRef =
+    unsafe { DomainNameRef::from_octets_unchecked(b"\x13use-application-dns\x03net\x00") };
 
 pub struct StubResolver {
-    fqdn_to_ips: BTreeMap<(DomainName, ResourceId), Vec<IpAddr>>,
-    ips_to_fqdn: HashMap<IpAddr, (DomainName, ResourceId)>,
+    fqdn_to_ips: BTreeMap<(dns_types::DomainName, ResourceId), Vec<IpAddr>>,
+    ips_to_fqdn: HashMap<IpAddr, (dns_types::DomainName, ResourceId)>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by the glob pattern they match against.
     dns_resources: BTreeMap<Pattern, ResourceId>,
@@ -52,7 +46,7 @@ pub struct StubResolver {
 #[derive(Debug)]
 pub(crate) struct RecursiveQuery {
     pub server: SocketAddr,
-    pub message: Message<Vec<u8>>,
+    pub message: dns_types::Query,
     pub transport: Transport,
 }
 
@@ -60,16 +54,20 @@ pub(crate) struct RecursiveQuery {
 #[derive(Debug)]
 pub(crate) struct RecursiveResponse {
     pub server: SocketAddr,
-    pub query: Message<Vec<u8>>,
-    pub message: io::Result<Message<Vec<u8>>>,
+    pub query: dns_types::Query,
+    pub message: io::Result<dns_types::Response>,
     pub transport: Transport,
 }
 
 impl RecursiveQuery {
-    pub(crate) fn via_udp(source: SocketAddr, server: SocketAddr, message: Message<&[u8]>) -> Self {
+    pub(crate) fn via_udp(
+        source: SocketAddr,
+        server: SocketAddr,
+        message: dns_types::Query,
+    ) -> Self {
         Self {
             server,
-            message: message.octets_into(),
+            message,
             transport: Transport::Udp { source },
         }
     }
@@ -78,7 +76,7 @@ impl RecursiveQuery {
         local: SocketAddr,
         remote: SocketAddr,
         server: SocketAddr,
-        message: Message<Vec<u8>>,
+        message: dns_types::Query,
     ) -> Self {
         Self {
             server,
@@ -104,7 +102,7 @@ pub(crate) enum Transport {
 #[derive(Debug)]
 pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(Message<Vec<u8>>),
+    LocalResponse(Response),
     /// The query is for a non-Resource, forward it locally to an upstream or system resolver.
     RecurseLocal,
     /// The query is for a DNS resource but for a type that we don't intercept (i.e. SRV, TXT, ...), forward it to the site that hosts the DNS resource and resolve it there.
@@ -128,13 +126,16 @@ impl StubResolver {
     ///
     /// Semantically, this is like a PTR query, i.e. we check whether we handed out this IP as part of answering a DNS query for one of our resources.
     /// This is in the hot-path of packet routing and must be fast!
-    pub(crate) fn resolve_resource_by_ip(&self, ip: &IpAddr) -> Option<&(DomainName, ResourceId)> {
+    pub(crate) fn resolve_resource_by_ip(
+        &self,
+        ip: &IpAddr,
+    ) -> Option<&(dns_types::DomainName, ResourceId)> {
         self.ips_to_fqdn.get(ip)
     }
 
     pub(crate) fn resolved_resources(
         &self,
-    ) -> impl Iterator<Item = (&DomainName, &ResourceId, &Vec<IpAddr>)> + '_ {
+    ) -> impl Iterator<Item = (&dns_types::DomainName, &ResourceId, &Vec<IpAddr>)> + '_ {
         self.fqdn_to_ips
             .iter()
             .map(|((domain, resource), ips)| (domain, resource, ips))
@@ -160,21 +161,33 @@ impl StubResolver {
 
     fn get_or_assign_a_records(
         &mut self,
-        fqdn: DomainName,
+        fqdn: dns_types::DomainName,
         resource_id: ResourceId,
-    ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
-        to_a_records(self.get_or_assign_ips(fqdn, resource_id).into_iter())
+    ) -> Vec<OwnedRecordData> {
+        self.get_or_assign_ips(fqdn, resource_id)
+            .into_iter()
+            .filter_map(get_v4)
+            .map(dns_types::records::a)
+            .collect_vec()
     }
 
     fn get_or_assign_aaaa_records(
         &mut self,
-        fqdn: DomainName,
+        fqdn: dns_types::DomainName,
         resource_id: ResourceId,
-    ) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
-        to_aaaa_records(self.get_or_assign_ips(fqdn, resource_id).into_iter())
+    ) -> Vec<OwnedRecordData> {
+        self.get_or_assign_ips(fqdn, resource_id)
+            .into_iter()
+            .filter_map(get_v6)
+            .map(dns_types::records::aaaa)
+            .collect_vec()
     }
 
-    fn get_or_assign_ips(&mut self, fqdn: DomainName, resource_id: ResourceId) -> Vec<IpAddr> {
+    fn get_or_assign_ips(
+        &mut self,
+        fqdn: dns_types::DomainName,
+        resource_id: ResourceId,
+    ) -> Vec<IpAddr> {
         let ips = self
             .fqdn_to_ips
             .entry((fqdn.clone(), resource_id))
@@ -197,7 +210,7 @@ impl StubResolver {
     /// Attempts to match the given domain against our list of possible patterns.
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
-    fn match_resource_linear(&self, domain: &DomainName) -> Option<ResourceId> {
+    fn match_resource_linear(&self, domain: &dns_types::DomainName) -> Option<ResourceId> {
         let _span = telemetry_span!("match_resource_linear").entered();
 
         let name = Candidate::from_domain(domain);
@@ -222,8 +235,8 @@ impl StubResolver {
 
     fn resource_address_name_by_reservse_dns(
         &self,
-        reverse_dns_name: &DomainName,
-    ) -> Option<DomainName> {
+        reverse_dns_name: &dns_types::DomainName,
+    ) -> Option<dns_types::DomainName> {
         let address = reverse_dns_addr(&reverse_dns_name.to_string())?;
         let (domain, _) = self.ips_to_fqdn.get(&address)?;
 
@@ -231,40 +244,14 @@ impl StubResolver {
     }
 
     /// Processes the incoming DNS query.
-    ///
-    /// Any errors will result in an immediate `SERVFAIL` response.
-    pub(crate) fn handle(&mut self, message: Message<&[u8]>) -> ResolveStrategy {
-        match self.try_handle(message) {
-            Ok(s) => s,
-            Err(e) => {
-                tracing::warn!("Failed to handle DNS query: {e:#}");
-
-                ResolveStrategy::LocalResponse(servfail(message))
-            }
-        }
-    }
-
-    fn try_handle(&mut self, message: Message<&[u8]>) -> Result<ResolveStrategy> {
-        anyhow::ensure!(
-            !message.header().qr(),
-            "Can only handle DNS queries, not responses"
-        );
-
-        // We don't need to support multiple questions/qname in a single query because
-        // nobody does it and since this run with each packet we want to squeeze as much optimization
-        // as we can therefore we won't do it.
-        //
-        // See: https://stackoverflow.com/a/55093896
-        let question = message
-            .sole_question()
-            .context("Expected a single 'question'")?;
-        let domain = question.qname().to_vec();
-        let qtype = question.qtype();
+    pub(crate) fn handle(&mut self, query: &Query) -> ResolveStrategy {
+        let domain = query.domain();
+        let qtype = query.qtype();
 
         tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
 
         if domain == DOH_CANARY_DOMAIN {
-            return Ok(ResolveStrategy::LocalResponse(nxdomain(message)));
+            return ResolveStrategy::LocalResponse(Response::nxdomain(query));
         }
 
         // We override the `domain` here to ensure that we use the FQDN everywhere from here on.
@@ -278,29 +265,30 @@ impl StubResolver {
         // `match_resource` is `O(N)` which we deem fine for DNS queries.
         let maybe_resource = self.match_resource_linear(&domain);
 
-        let resource_records = match (qtype, maybe_resource) {
-            (Rtype::A, Some(resource)) => self.get_or_assign_a_records(domain.clone(), resource),
-            (Rtype::AAAA, Some(resource)) => {
+        let records = match (qtype, maybe_resource) {
+            (RecordType::A, Some(resource)) => {
+                self.get_or_assign_a_records(domain.clone(), resource)
+            }
+            (RecordType::AAAA, Some(resource)) => {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)
             }
-            (Rtype::SRV | Rtype::TXT, Some(resource)) => {
+            (RecordType::SRV | RecordType::TXT, Some(resource)) => {
                 tracing::debug!(%qtype, %resource, "Forwarding query for DNS resource to corresponding site");
 
-                return Ok(ResolveStrategy::RecurseSite(resource));
+                return ResolveStrategy::RecurseSite(resource);
             }
-            (Rtype::PTR, _) => {
+            (RecordType::PTR, _) => {
                 let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {
-                    return Ok(ResolveStrategy::RecurseLocal);
+                    return ResolveStrategy::RecurseLocal;
                 };
 
-                vec![AllRecordData::Ptr(domain::rdata::Ptr::new(fqdn))]
+                vec![dns_types::records::ptr(fqdn)]
             }
-            (Rtype::HTTPS, Some(_)) => {
+            (RecordType::HTTPS, Some(_)) => {
                 // We must intercept queries for the HTTPS record type to force the client to issue an A / AAAA query instead.
                 // Otherwise, the client won't use the IPs we issue for a particular domain and the traffic cannot be tunneled.
 
-                let response = build_dns_with_answer(message, Vec::default())?;
-                return Ok(ResolveStrategy::LocalResponse(response));
+                return ResolveStrategy::LocalResponse(Response::no_error(query));
             }
             (_, None) if is_single_label_domain => {
                 // Queries for single-label domains, i.e. local hostnames are never recursively resolved but are instead answered with nxdomain.
@@ -310,15 +298,18 @@ impl StubResolver {
                     "Query for single-label non-resource domain, responding with NXDOMAIN"
                 );
 
-                return Ok(ResolveStrategy::LocalResponse(nxdomain(message)));
+                return ResolveStrategy::LocalResponse(Response::nxdomain(query));
             }
-            _ => return Ok(ResolveStrategy::RecurseLocal),
+            _ => return ResolveStrategy::RecurseLocal,
         };
 
-        tracing::trace!(%qtype, %domain, records = ?resource_records, "Forming DNS response");
+        tracing::trace!(%qtype, %domain, records = ?records, "Forming DNS response");
 
-        let response = build_dns_with_answer(message, resource_records)?;
-        Ok(ResolveStrategy::LocalResponse(response))
+        let response = ResponseBuilder::for_query(query, ResponseCode::NOERROR)
+            .with_records(records.into_iter().map(|r| (domain.clone(), DNS_TTL, r)))
+            .build();
+
+        ResolveStrategy::LocalResponse(response)
     }
 
     pub(crate) fn set_search_domain(&mut self, new_search_domain: Option<DomainName>) {
@@ -354,60 +345,7 @@ impl StubResolver {
     }
 }
 
-pub fn servfail(message: Message<&[u8]>) -> Message<Vec<u8>> {
-    MessageBuilder::new_vec()
-        .start_answer(&message, Rcode::SERVFAIL)
-        .expect("should always be able to create a heap-allocated SERVFAIL message")
-        .into_message()
-}
-
-fn nxdomain(message: Message<&[u8]>) -> Message<Vec<u8>> {
-    MessageBuilder::new_vec()
-        .start_answer(&message, Rcode::NXDOMAIN)
-        .expect("should always be able to create a heap-allocated NXDOMAIN message")
-        .into_message()
-}
-
-fn to_a_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
-    ips.filter_map(get_v4)
-        .map(domain::rdata::A::new)
-        .map(AllRecordData::A)
-        .collect_vec()
-}
-
-fn to_aaaa_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u8>, DomainName>> {
-    ips.filter_map(get_v6)
-        .map(domain::rdata::Aaaa::new)
-        .map(AllRecordData::Aaaa)
-        .collect_vec()
-}
-
-fn build_dns_with_answer(
-    message: Message<&[u8]>,
-    records: Vec<AllRecordData<Vec<u8>, DomainName>>,
-) -> Result<Message<Vec<u8>>> {
-    // Take the original qname out of the message.
-    // DNS queries should always respond for the exact same qname that was queried, even if we expanded a single-label domain.
-    let qname = message
-        .sole_question()
-        .context("Expected a single question")?
-        .into_qname();
-
-    let mut answer_builder = MessageBuilder::new_vec()
-        .start_answer(&message, Rcode::NOERROR)
-        .context("Failed to create answer from query")?;
-    answer_builder.header_mut().set_ra(true);
-
-    for record in records {
-        answer_builder
-            .push((qname, Class::IN, DNS_TTL, record))
-            .context("Failed to push record")?;
-    }
-
-    Ok(answer_builder.into_message())
-}
-
-pub fn is_subdomain(name: &DomainName, resource: &str) -> bool {
+pub fn is_subdomain(name: &dns_types::DomainName, resource: &str) -> bool {
     let pattern = match Pattern::new(resource) {
         Ok(p) => p,
         Err(e) => {
@@ -586,7 +524,7 @@ mod pattern {
     pub struct Candidate(String);
 
     impl Candidate {
-        pub fn from_domain(domain: &DomainName) -> Self {
+        pub fn from_domain(domain: &dns_types::DomainName) -> Self {
             Self(domain.to_string().replace('.', "/"))
         }
     }
@@ -640,7 +578,6 @@ mod pattern {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain::base::Question;
     use std::str::FromStr as _;
     use test_case::test_case;
 
@@ -763,22 +700,19 @@ mod tests {
     fn query_for_doh_canary_domain_records_nx_domain() {
         let mut resolver = StubResolver::default();
 
-        let mut builder = MessageBuilder::new_vec().question();
-        builder
-            .push(Question::new_in(
-                "use-application-dns.net".parse::<DomainName>().unwrap(),
-                Rtype::A,
-            ))
-            .unwrap();
-        let query = builder.into_message();
+        let query = Query::new(
+            "use-application-dns.net"
+                .parse::<dns_types::DomainName>()
+                .unwrap(),
+            RecordType::A,
+        );
 
-        let ResolveStrategy::LocalResponse(response) = resolver.handle(query.for_slice_ref())
-        else {
+        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
             panic!("Unexpected result")
         };
 
-        assert_eq!(response.header().rcode(), Rcode::NXDOMAIN);
-        assert_eq!(response.answer().unwrap().count(), 0);
+        assert_eq!(response.response_code(), ResponseCode::NXDOMAIN);
+        assert_eq!(response.records().count(), 0);
     }
 }
 
@@ -808,7 +742,7 @@ mod benches {
                     .unwrap()
                     .to_string();
 
-                let needle = DomainName::vec_from_str(&needle).unwrap();
+                let needle = dns_types::DomainName::vec_from_str(&needle).unwrap();
 
                 (resolver, needle)
             })
