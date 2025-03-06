@@ -5,7 +5,7 @@ use std::{
 };
 
 use dns_over_tcp::QueryResult;
-use domain::base::{iana::Rcode, Message, MessageBuilder, Name, Rtype};
+use dns_types::{Query, RecordType, ResponseBuilder, ResponseCode};
 
 #[test]
 fn smoke() {
@@ -26,7 +26,10 @@ fn smoke() {
 
     for id in 0..5 {
         dns_client
-            .send_query(resolver_addr, a_query("example.com", id))
+            .send_query(
+                resolver_addr,
+                Query::new("example.com".parse().unwrap(), RecordType::A).with_id(id),
+            )
             .unwrap();
     }
 
@@ -39,16 +42,6 @@ fn smoke() {
 
         println!("{result:?}")
     }
-}
-
-fn a_query(domain: &str, id: u16) -> Message<Vec<u8>> {
-    let mut builder = MessageBuilder::new_vec().question();
-    builder.header_mut().set_id(id);
-    builder
-        .push((Name::vec_from_str(domain).unwrap(), Rtype::A))
-        .unwrap();
-
-    builder.into_message()
 }
 
 fn progress(
@@ -67,13 +60,12 @@ fn progress(
         }
 
         if let Some(query) = dns_server.poll_queries() {
-            let response = MessageBuilder::new_vec()
-                .start_answer(&query.message, Rcode::NXDOMAIN)
-                .unwrap()
-                .into_message();
-
             dns_server
-                .send_message(query.local, query.remote, response)
+                .send_message(
+                    query.local,
+                    query.remote,
+                    ResponseBuilder::for_query(&query.message, ResponseCode::NXDOMAIN).build(),
+                )
                 .unwrap();
             continue;
         }
