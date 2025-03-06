@@ -10,6 +10,7 @@ members = [
   "connlib/snownet",
   "connlib/tunnel",
   "dns-over-tcp",
+  "dns-types",
   "gateway",
   "gui-client/src-common",
   "gui-client/src-tauri",
@@ -164,6 +165,7 @@ snownet = { path = "connlib/snownet" }
 l4-udp-dns-server = { path = "connlib/l4-udp-dns-server" }
 l4-tcp-dns-server = { path = "connlib/l4-tcp-dns-server" }
 dns-over-tcp = { path = "dns-over-tcp" }
+dns-types = { path = "dns-types" }
 firezone-relay = { path = "relay" }
 connlib-model = { path = "connlib/model" }
 firezone-tunnel = { path = "connlib/tunnel" }
