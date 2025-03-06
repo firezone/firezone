@@ -1130,7 +1130,6 @@ name = "connlib-model"
 version = "0.1.0"
 dependencies = [
  "boringtun",
- "domain",
  "ip_network",
  "itertools 0.13.0",
  "serde",
