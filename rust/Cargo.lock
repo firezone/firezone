@@ -1721,6 +1721,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dns-types"
+version = "0.1.0"
+dependencies = [
+ "domain",
+ "thiserror 1.0.69",
+ "tracing",
+]
+
+[[package]]
 name = "domain"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
