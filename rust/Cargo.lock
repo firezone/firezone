@@ -3533,7 +3533,7 @@ name = "l4-udp-dns-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "domain",
+ "dns-types",
  "futures",
  "tokio",
  "tracing",
