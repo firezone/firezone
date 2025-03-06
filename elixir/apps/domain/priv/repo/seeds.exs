@@ -136,6 +136,13 @@ defmodule Domain.Repo.Seeds do
         }
       })
 
+    {:ok, _mock_provider} =
+      Auth.create_provider(account, %{
+        name: "Mock",
+        adapter: :mock,
+        adapter_config: %{}
+      })
+
     {:ok, userpass_provider} =
       Auth.create_provider(account, %{
         name: "UserPass",
