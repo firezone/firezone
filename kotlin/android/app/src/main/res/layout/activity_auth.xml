@@ -5,8 +5,9 @@
 	xmlns:tools="http://schemas.android.com/tools"
 	android:layout_width="match_parent"
 	android:layout_height="match_parent"
+	tools:context=".features.auth.ui.AuthActivity"
 	android:padding="@dimen/spacing_medium"
-	tools:context=".features.auth.ui.AuthActivity">
+	android:fitsSystemWindows="true">
 
 	<androidx.constraintlayout.widget.ConstraintLayout
 		android:id="@+id/llContainer"

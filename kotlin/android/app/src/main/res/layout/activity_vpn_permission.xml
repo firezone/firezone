@@ -6,7 +6,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="@dimen/spacing_medium"
-    tools:context=".features.permission.vpn.ui.VpnPermissionActivity">
+    tools:context=".features.permission.vpn.ui.VpnPermissionActivity"
+    android:fitsSystemWindows="true">
 
   <androidx.appcompat.widget.LinearLayoutCompat
       android:id="@+id/llContainer"

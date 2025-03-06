@@ -5,7 +5,8 @@
 	android:id="@+id/enabled"
 	android:layout_width="match_parent"
 	android:layout_height="wrap_content"
-	android:paddingVertical="@dimen/spacing_small">
+	android:padding="@dimen/spacing_medium"
+	android:fitsSystemWindows="true">
 
 	<TextView
 		android:id="@+id/resourceNameText"

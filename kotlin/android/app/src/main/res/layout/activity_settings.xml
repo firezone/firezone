@@ -4,7 +4,8 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="@dimen/spacing_4x">
+    android:padding="@dimen/spacing_medium"
+    android:fitsSystemWindows="true">
 
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btCancel"
