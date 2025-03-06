@@ -36,7 +36,7 @@ defmodule Domain.Clients.Client.Changeset do
         device_uuid: fragment("EXCLUDED.device_uuid"),
         identifier_for_vendor: fragment("EXCLUDED.identifier_for_vendor"),
         firebase_installation_id: fragment("EXCLUDED.firebase_installation_id"),
-        updated_at: fragment("NOW()"),
+        updated_at: fragment("timezone('UTC', NOW())"),
         verified_at:
           fragment(
             """

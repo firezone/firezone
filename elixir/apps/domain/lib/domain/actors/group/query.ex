@@ -68,7 +68,7 @@ defmodule Domain.Actors.Group.Query do
     |> Ecto.Query.select([groups: groups], groups)
     |> Ecto.Query.update([groups: groups],
       set: [
-        deleted_at: fragment("COALESCE(?, NOW())", groups.deleted_at)
+        deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", groups.deleted_at)
       ]
     )
   end

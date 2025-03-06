@@ -6,7 +6,7 @@ defmodule Domain.Flows.Flow.Query do
   end
 
   def not_expired(queryable \\ all()) do
-    where(queryable, [flows: flows], flows.expires_at > fragment("NOW()"))
+    where(queryable, [flows: flows], flows.expires_at > fragment("timezone('UTC', NOW())"))
   end
 
   def by_id(queryable, id) do
@@ -67,7 +67,7 @@ defmodule Domain.Flows.Flow.Query do
     |> Ecto.Query.select([flows: flows], flows)
     |> Ecto.Query.update([flows: flows],
       set: [
-        expires_at: fragment("LEAST(?, NOW())", flows.expires_at)
+        expires_at: fragment("LEAST(?, timezone('UTC', NOW()))", flows.expires_at)
       ]
     )
   end
@@ -117,10 +117,10 @@ defmodule Domain.Flows.Flow.Query do
     ]
 
   def filter_by_expired(queryable, "expired") do
-    {queryable, dynamic([flows: flows], flows.expires_at < fragment("NOW()"))}
+    {queryable, dynamic([flows: flows], flows.expires_at < fragment("timezone('UTC', NOW())"))}
   end
 
   def filter_by_expired(queryable, "not_expired") do
-    {queryable, dynamic([flows: flows], flows.expires_at >= fragment("NOW()"))}
+    {queryable, dynamic([flows: flows], flows.expires_at >= fragment("timezone('UTC', NOW())"))}
   end
 end
