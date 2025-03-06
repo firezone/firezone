@@ -110,7 +110,11 @@ impl Io {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
 
-        let mut nameservers = NameserverSet::new(nameservers, udp_socket_factory.clone());
+        let mut nameservers = NameserverSet::new(
+            nameservers,
+            tcp_socket_factory.clone(),
+            udp_socket_factory.clone(),
+        );
         nameservers.evaluate();
 
         Self {
