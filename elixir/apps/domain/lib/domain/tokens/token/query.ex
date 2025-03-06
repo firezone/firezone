@@ -30,7 +30,7 @@ defmodule Domain.Tokens.Token.Query do
       [tokens: tokens],
       not is_nil(tokens.expires_at) and
         fragment(
-          "NOW() + '5 seconds'::interval < ? AND ? < NOW() + ?::interval",
+          "timezone('UTC', NOW()) + '5 seconds'::interval < ? AND ? < timezone('UTC', NOW()) + ?::interval",
           tokens.expires_at,
           tokens.expires_at,
           ^duration
@@ -83,7 +83,7 @@ defmodule Domain.Tokens.Token.Query do
     |> Ecto.Query.select([tokens: tokens], tokens)
     |> Ecto.Query.update([tokens: tokens],
       set: [
-        deleted_at: fragment("COALESCE(?, NOW())", tokens.deleted_at)
+        deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", tokens.deleted_at)
       ]
     )
   end

@@ -48,7 +48,7 @@ defmodule Domain.Auth.Provider.Query do
       [providers: providers],
       is_nil(providers.last_synced_at) or
         fragment(
-          "? + LEAST((interval '10 minute' * (COALESCE(?, 0) ^ 2 + 1)), interval '4 hours') < NOW()",
+          "? + LEAST((interval '10 minute' * (COALESCE(?, 0) ^ 2 + 1)), interval '4 hours') < timezone('UTC', NOW())",
           providers.last_synced_at,
           providers.last_syncs_failed
         )
