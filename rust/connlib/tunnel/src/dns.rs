@@ -1,6 +1,7 @@
 use crate::client::IpProvider;
 use anyhow::{Context, Result};
 use connlib_model::{DomainName, ResourceId};
+use domain::base::Name;
 use domain::rdata::AllRecordData;
 use domain::{
     base::{
@@ -14,7 +15,6 @@ use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use std::sync::LazyLock;
 use std::{
     collections::{BTreeMap, HashMap},
     net::SocketAddr,
@@ -33,10 +33,10 @@ pub(crate) const DNS_PORT: u16 = 53;
 /// For Chrome and other Chrome-based browsers, this is not required as
 /// Chrome will automatically disable DoH if your server(s) don't support
 /// it. See <https://www.chromium.org/developers/dns-over-https/#faq>.
-static DOH_CANARY_DOMAIN: LazyLock<DomainName> = LazyLock::new(|| {
-    DomainName::vec_from_str("use-application-dns.net")
-        .expect("static domain name should always parse")
-});
+///
+/// SAFETY: We have a unit-test for it.
+pub const DOH_CANARY_DOMAIN: Name<&[u8]> =
+    unsafe { Name::from_octets_unchecked(b"\x13use-application-dns\x03net\x00") };
 
 pub struct StubResolver {
     fqdn_to_ips: BTreeMap<(DomainName, ResourceId), Vec<IpAddr>>,
@@ -260,7 +260,7 @@ impl StubResolver {
 
         tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
 
-        if domain == *DOH_CANARY_DOMAIN {
+        if domain == DOH_CANARY_DOMAIN {
             let payload = MessageBuilder::new_vec()
                 .start_answer(&message, Rcode::NXDOMAIN)
                 .context("Failed to create answer from DNS query")?
