@@ -1705,13 +1705,12 @@ name = "dns-over-tcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "domain",
+ "dns-types",
  "firezone-bin-shared",
  "firezone-logging",
  "futures",
  "ip-packet",
  "ip_network",
- "itertools 0.13.0",
  "rand 0.8.5",
  "smoltcp",
  "tokio",
