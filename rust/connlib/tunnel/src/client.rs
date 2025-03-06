@@ -1,5 +1,6 @@
 mod resource;
 
+use dns_types::DomainName;
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
@@ -14,9 +15,7 @@ use crate::unique_packet_buffer::UniquePacketBuffer;
 use crate::{dns, is_peer, p2p_control, IpConfig, TunConfig, IPV4_TUNNEL, IPV6_TUNNEL};
 use anyhow::Context;
 use bimap::BiMap;
-use connlib_model::{
-    DomainName, GatewayId, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
-};
+use connlib_model::{GatewayId, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView};
 use connlib_model::{Site, SiteId};
 use firezone_logging::{err_with_src, telemetry_event, unwrap_or_debug, unwrap_or_warn};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -26,7 +25,6 @@ use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
 use crate::ClientEvent;
-use domain::base::Message;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
@@ -440,17 +438,12 @@ impl ClientState {
     /// We call this function every time a client issues a DNS query for a certain domain.
     /// Coupling this behaviour together allows a client to refresh the DNS resolution of a DNS resource on the Gateway
     /// through local DNS resolutions.
-    fn clear_dns_resource_nat_for_domain(&mut self, message: Message<&[u8]>) {
-        let Ok(question) = message.sole_question() else {
-            return;
-        };
-        let domain = question.into_qname();
-
+    fn clear_dns_resource_nat_for_domain(&mut self, message: &dns_types::Response) {
         let mut any_deleted = false;
 
         self.dns_resource_nat_by_gateway
             .retain(|(_, candidate), _| {
-                if candidate == &domain {
+                if candidate == &message.domain() {
                     any_deleted = true;
                     return false;
                 }
@@ -459,7 +452,7 @@ impl ClientState {
             });
 
         if any_deleted {
-            tracing::debug!(%domain, "Cleared DNS resource NAT");
+            tracing::debug!(domain = %message.domain(), "Cleared DNS resource NAT");
         }
     }
 
@@ -547,16 +540,11 @@ impl ClientState {
     }
 
     pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse) {
-        let qid = response.query.header().id();
+        let qid = response.query.id();
         let server = response.server;
-        let domain = response
-            .query
-            .sole_question()
-            .ok()
-            .map(|q| q.into_qname())
-            .map(tracing::field::display);
+        let domain = response.query.domain();
 
-        let _span = tracing::debug_span!("handle_dns_response", %qid, %server, domain).entered();
+        let _span = tracing::debug_span!("handle_dns_response", %qid, %server, %domain).entered();
 
         match (response.transport, response.message) {
             (dns::Transport::Udp { .. }, Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
@@ -567,14 +555,14 @@ impl ClientState {
                     .inspect(|message| {
                         tracing::trace!("Received recursive UDP DNS response");
 
-                        if message.header().tc() {
+                        if message.truncated() {
                             tracing::debug!("Upstream DNS server had to truncate response");
                         }
                     })
                     .unwrap_or_else(|e| {
                         telemetry_event!("Recursive UDP DNS query failed: {}", err_with_src(&e));
 
-                        dns::servfail(response.query.for_slice_ref())
+                        dns_types::Response::servfail(&response.query)
                     });
 
                 unwrap_or_warn!(
@@ -590,7 +578,7 @@ impl ClientState {
                     .unwrap_or_else(|e| {
                         telemetry_event!("Recursive TCP DNS query failed: {}", err_with_src(&e));
 
-                        dns::servfail(response.query.for_slice_ref())
+                        dns_types::Response::servfail(&response.query)
                     });
 
                 unwrap_or_warn!(
@@ -661,7 +649,7 @@ impl ClientState {
         &mut self,
         from: SocketAddr,
         dst: SocketAddr,
-        message: Message<Vec<u8>>,
+        message: dns_types::Response,
     ) -> anyhow::Result<()> {
         let saddr = *self
             .dns_mapping
@@ -673,7 +661,7 @@ impl ClientState {
             dst.ip(),
             DNS_PORT,
             dst.port(),
-            truncate_dns_response(message),
+            message.into_bytes(MAX_UDP_PAYLOAD),
         )?;
 
         self.buffered_packets.push_back(ip_packet);
@@ -1132,7 +1120,7 @@ impl ClientState {
             // Check if the client has assembled a response to a query.
             if let Some(query_result) = self.tcp_dns_client.poll_query_result() {
                 let server = query_result.server;
-                let qid = query_result.query.header().id();
+                let qid = query_result.query.id();
                 let known_sockets = &mut self.tcp_dns_streams_by_upstream_and_query_id;
 
                 let Some((local, remote)) = known_sockets.remove(&(server, qid)) else {
@@ -1168,7 +1156,7 @@ impl ClientState {
             return ControlFlow::Break(());
         };
 
-        let message = match parse_udp_dns_message(&datagram) {
+        let message = match parse_udp_dns_query(&datagram) {
             Ok(message) => message,
             Err(e) => {
                 tracing::warn!(?packet, "Failed to parse DNS query: {e:#}");
@@ -1178,9 +1166,9 @@ impl ClientState {
 
         let source = SocketAddr::new(packet.source(), datagram.source_port());
 
-        match self.stub_resolver.handle(message) {
+        match self.stub_resolver.handle(&message) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.clear_dns_resource_nat_for_domain(response.for_slice_ref());
+                self.clear_dns_resource_nat_for_domain(&response);
                 self.update_dns_resource_nat(now, iter::empty());
 
                 unwrap_or_debug!(
@@ -1195,7 +1183,7 @@ impl ClientState {
 
                     return ControlFlow::Continue(packet);
                 }
-                let query_id = message.header().id();
+                let query_id = message.id();
 
                 tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host");
 
@@ -1238,9 +1226,8 @@ impl ClientState {
             .expect("to be a valid UDP packet at this point");
 
         let dst_port = datagram.destination_port();
-        let query_id = parse_udp_dns_message(&datagram)
+        let query_id = parse_udp_dns_query(&datagram)
             .expect("to be a valid DNS query at this point")
-            .header()
             .id();
 
         let connlib_dns_server = SocketAddr::new(dst_ip, dst_port);
@@ -1265,7 +1252,7 @@ impl ClientState {
     }
 
     fn handle_tcp_dns_query(&mut self, query: dns_over_tcp::Query, now: Instant) {
-        let query_id = query.message.header().id();
+        let query_id = query.message.id();
 
         let Some(upstream) = self.dns_mapping.get_by_left(&query.local.ip()) else {
             // This is highly-unlikely but might be possible if our DNS mapping changes whilst the TCP DNS server is processing a request.
@@ -1273,9 +1260,9 @@ impl ClientState {
         };
         let server = upstream.address();
 
-        match self.stub_resolver.handle(query.message.for_slice_ref()) {
+        match self.stub_resolver.handle(&query.message) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.clear_dns_resource_nat_for_domain(response.for_slice_ref());
+                self.clear_dns_resource_nat_for_domain(&response);
                 self.update_dns_resource_nat(now, iter::empty());
 
                 unwrap_or_debug!(
@@ -1325,7 +1312,7 @@ impl ClientState {
         server: SocketAddr,
         query: dns_over_tcp::Query,
     ) {
-        let query_id = query.message.header().id();
+        let query_id = query.message.id();
 
         match self
             .tcp_dns_client
@@ -1341,7 +1328,7 @@ impl ClientState {
                     self.tcp_dns_server.send_message(
                         query.local,
                         query.remote,
-                        dns::servfail(query.message.for_slice_ref())
+                        dns_types::Response::servfail(&query.message)
                     ),
                     "Failed to send TCP DNS response: {}"
                 );
@@ -1779,7 +1766,7 @@ fn encapsulate_and_buffer(
     buffered_transmits.push_back(enc_packet.to_transmit().into_owned());
 }
 
-fn parse_udp_dns_message<'b>(datagram: &UdpSlice<'b>) -> anyhow::Result<Message<&'b [u8]>> {
+fn parse_udp_dns_query(datagram: &UdpSlice) -> anyhow::Result<dns_types::Query> {
     let port = datagram.destination_port();
 
     anyhow::ensure!(
@@ -1787,10 +1774,10 @@ fn parse_udp_dns_message<'b>(datagram: &UdpSlice<'b>) -> anyhow::Result<Message<
         "DNS over UDP is only supported on port 53"
     );
 
-    let message = Message::from_octets(datagram.payload())
-        .context("Failed to parse payload as DNS message")?;
+    let query = dns_types::Query::parse(datagram.payload())
+        .context("Failed to parse UDP payload as DNS query")?;
 
-    Ok(message)
+    Ok(query)
 }
 
 fn handle_p2p_control_packet(
@@ -1937,23 +1924,17 @@ fn maybe_mangle_dns_response_from_upstream_dns_server(
     let src_port = udp.source_port();
     let src_socket = SocketAddr::new(src_ip, src_port);
 
-    let Ok(message) = domain::base::Message::from_slice(udp.payload()) else {
+    let Ok(message) = dns_types::Response::parse(udp.payload()) else {
         return packet;
     };
 
     let Some(original_dst) =
-        udp_dns_sockets_by_upstream_and_query_id.remove(&(src_socket, message.header().id()))
+        udp_dns_sockets_by_upstream_and_query_id.remove(&(src_socket, message.id()))
     else {
         return packet;
     };
 
-    let domain = message
-        .sole_question()
-        .ok()
-        .map(|q| q.into_qname())
-        .map(tracing::field::display);
-
-    tracing::trace!(server = %src_ip, query_id = %message.header().id(), domain, "Received UDP DNS response via tunnel");
+    tracing::trace!(server = %src_ip, query_id = %message.id(), domain = %message.domain(), "Received UDP DNS response via tunnel");
 
     packet.set_src(original_dst.ip());
     packet
@@ -1964,28 +1945,6 @@ fn maybe_mangle_dns_response_from_upstream_dns_server(
     packet.update_checksum();
 
     packet
-}
-
-fn truncate_dns_response(mut message: Message<Vec<u8>>) -> Vec<u8> {
-    let message_length = message.as_octets().len();
-    if message_length <= MAX_UDP_PAYLOAD {
-        return message.into_octets();
-    }
-
-    tracing::debug!(?message, %message_length, "Too big DNS response, truncating");
-
-    message.header_mut().set_tc(true);
-
-    let message_truncation = match message.answer() {
-        Ok(answer) if answer.pos() <= MAX_UDP_PAYLOAD => answer.pos(),
-        // This should be very unlikely or impossible.
-        _ => message.question().pos(),
-    };
-
-    let mut message_bytes = message.into_octets();
-    message_bytes.truncate(message_truncation);
-
-    message_bytes
 }
 
 /// What triggered us to establish a connection to a Gateway.
