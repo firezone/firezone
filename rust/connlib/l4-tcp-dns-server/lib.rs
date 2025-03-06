@@ -2,8 +2,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use anyhow::{anyhow, Context as _, Result};
-use domain::base::Message;
+use anyhow::{Context as _, Result};
 use futures::{
     future::BoxFuture, stream::FuturesUnordered, task::AtomicWaker, FutureExt, StreamExt as _,
 };
@@ -31,7 +30,7 @@ pub struct Server {
     /// A set of futures that read DNS queries from TCP streams.
     #[expect(clippy::type_complexity, reason = "We don't care.")]
     reading_tcp_queries: FuturesUnordered<
-        BoxFuture<'static, Result<Option<(SocketAddr, Message<Vec<u8>>, TcpStream)>>>,
+        BoxFuture<'static, Result<Option<(SocketAddr, dns_types::Query, TcpStream)>>>,
     >,
     /// A set of futures that send DNS responses over TCP streams.
     sending_tcp_responses: FuturesUnordered<BoxFuture<'static, Result<(TcpStream, SocketAddr)>>>,
@@ -68,7 +67,11 @@ impl Server {
         Ok(())
     }
 
-    pub fn send_response(&mut self, to: SocketAddr, response: Message<Vec<u8>>) -> io::Result<()> {
+    pub fn send_response(
+        &mut self,
+        to: SocketAddr,
+        response: dns_types::Response,
+    ) -> io::Result<()> {
         let mut stream = self
             .tcp_streams_by_remote
             .remove(&to)
@@ -76,7 +79,9 @@ impl Server {
 
         self.sending_tcp_responses.push(
             async move {
-                let len = response.as_slice().len() as u16;
+                let response = response.into_bytes(usize::MAX); // TCP responses don't have a size limit.
+
+                let len = response.len() as u16;
                 let len = len.to_be_bytes();
 
                 stream
@@ -84,7 +89,7 @@ impl Server {
                     .await
                     .context("Failed to write TCP DNS header")?;
                 stream
-                    .write_all(response.as_slice())
+                    .write_all(&response)
                     .await
                     .context("Failed to write TCP DNS message")?;
 
@@ -161,7 +166,7 @@ fn anyhow_to_io(e: anyhow::Error) -> io::Error {
 async fn read_tcp_query(
     mut stream: TcpStream,
     from: SocketAddr,
-) -> Result<Option<(SocketAddr, Message<Vec<u8>>, TcpStream)>> {
+) -> Result<Option<(SocketAddr, dns_types::Query, TcpStream)>> {
     let mut buf = [0; 2];
     match stream.read_exact(&mut buf).await {
         Ok(2) => {}
@@ -178,8 +183,7 @@ async fn read_tcp_query(
         .await
         .context("Failed to read TCP DNS message")?;
 
-    let message =
-        Message::try_from_octets(buf).map_err(|_| anyhow!("Failed to parse DNS message"))?;
+    let message = dns_types::Query::parse(&buf).context("Failed to parse DNS message")?;
 
     Ok(Some((from, message, stream)))
 }
@@ -187,7 +191,7 @@ async fn read_tcp_query(
 pub struct Query {
     pub local: SocketAddr,
     pub remote: SocketAddr,
-    pub message: Message<Vec<u8>>,
+    pub message: dns_types::Query,
 }
 
 fn make_tcp_listener(socket: impl ToSocketAddrs) -> Result<TcpListener> {
@@ -205,7 +209,6 @@ fn make_tcp_listener(socket: impl ToSocketAddrs) -> Result<TcpListener> {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use domain::base::{iana::Rcode, MessageBuilder};
     use std::future::poll_fn;
     use std::net::{Ipv4Addr, Ipv6Addr};
     use std::process::ExitStatus;
@@ -227,7 +230,7 @@ mod tests {
                 let query = poll_fn(|cx| server.poll(cx)).await.unwrap();
 
                 server
-                    .send_response(query.remote, empty_dns_response(query.message))
+                    .send_response(query.remote, dns_types::Response::no_error(&query.message))
                     .unwrap();
             }
         });
@@ -243,13 +246,6 @@ mod tests {
         assert!(!server_task.is_finished());
 
         server_task.abort();
-    }
-
-    fn empty_dns_response(message: Message<Vec<u8>>) -> Message<Vec<u8>> {
-        MessageBuilder::new_vec()
-            .start_answer(&message, Rcode::NOERROR)
-            .unwrap()
-            .into_message()
     }
 
     async fn dig(server: SocketAddr) -> ExitStatus {
