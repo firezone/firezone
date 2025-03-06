@@ -170,6 +170,8 @@ pub struct Interface {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
     pub upstream_dns: Vec<DnsServer>,
+    #[serde(default)]
+    pub search_domain: Option<DomainName>,
 }
 
 /// A single relay

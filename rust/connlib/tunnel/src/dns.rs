@@ -1,6 +1,7 @@
 use crate::client::IpProvider;
 use anyhow::{Context, Result};
 use connlib_model::{DomainName, ResourceId};
+use domain::base::name::FlattenInto;
 use domain::rdata::AllRecordData;
 use domain::{
     base::{
@@ -44,6 +45,7 @@ pub struct StubResolver {
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by the glob pattern they match against.
     dns_resources: BTreeMap<Pattern, ResourceId>,
+    search_domain: Option<DomainName>,
 }
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
@@ -116,6 +118,7 @@ impl Default for StubResolver {
             ips_to_fqdn: Default::default(),
             ip_provider: IpProvider::for_resources(),
             dns_resources: Default::default(),
+            search_domain: Default::default(),
         }
     }
 }
@@ -264,6 +267,14 @@ impl StubResolver {
             return Ok(ResolveStrategy::LocalResponse(nxdomain(message)));
         }
 
+        // We override the `domain` here to ensure that we use the FQDN everywhere from here on.
+        let (domain, is_single_label_domain) = self
+            .fully_qualify_using_search_domain(domain.clone())
+            .inspect_err(
+                |e| tracing::debug!(%domain, "Failed to expand single-label domain: {e:#}"),
+            )
+            .unwrap_or((domain, true)); // Failure to fully-qualify it can only happen if it is a single-label domain.
+
         // `match_resource` is `O(N)` which we deem fine for DNS queries.
         let maybe_resource = self.match_resource_linear(&domain);
 
@@ -291,6 +302,16 @@ impl StubResolver {
                 let response = build_dns_with_answer(message, Vec::default())?;
                 return Ok(ResolveStrategy::LocalResponse(response));
             }
+            (_, None) if is_single_label_domain => {
+                // Queries for single-label domains, i.e. local hostnames are never recursively resolved but are instead answered with nxdomain.
+
+                tracing::trace!(
+                    %domain,
+                    "Query for single-label non-resource domain, responding with NXDOMAIN"
+                );
+
+                return Ok(ResolveStrategy::LocalResponse(nxdomain(message)));
+            }
             _ => return Ok(ResolveStrategy::RecurseLocal),
         };
 
@@ -298,6 +319,38 @@ impl StubResolver {
 
         let response = build_dns_with_answer(message, resource_records)?;
         Ok(ResolveStrategy::LocalResponse(response))
+    }
+
+    pub(crate) fn set_search_domain(&mut self, new_search_domain: Option<DomainName>) {
+        if self.search_domain == new_search_domain {
+            return;
+        }
+
+        tracing::debug!(current = ?self.search_domain, new = ?new_search_domain, "Setting new search-domain");
+
+        self.search_domain = new_search_domain;
+    }
+
+    fn fully_qualify_using_search_domain(&self, domain: DomainName) -> Result<(DomainName, bool)> {
+        // Root-label counts as a label.
+        if domain.label_count() != 2 {
+            return Ok((domain, false));
+        }
+
+        let search_domain = self
+            .search_domain
+            .clone()
+            .context("No search-domain configured to expand single-label domain")?;
+
+        let domain = domain
+            .into_relative()
+            .chain(search_domain)
+            .context("Query + search domain exceeds max allowed domain length")?
+            .flatten_into();
+
+        tracing::trace!(target: "tunnel_test_coverage", "Expanded single-label query into FQDN using search-domain");
+
+        Ok((domain, true))
     }
 }
 

@@ -13,10 +13,12 @@ use crate::{
     DomainName,
 };
 use crate::{proptest::*, ClientState};
+use anyhow::Context;
+use anyhow::Result;
 use bimap::BiMap;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, SiteId};
 use domain::{
-    base::{iana::Opcode, Message, MessageBuilder, Question, Rtype, ToName},
+    base::{iana::Opcode, name::FlattenInto, Message, MessageBuilder, Question, Rtype, ToName},
     rdata::AllRecordData,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -393,6 +395,8 @@ pub struct RefClient {
     /// The upstream DNS resolvers configured in the portal.
     #[debug(skip)]
     upstream_dns_resolvers: Vec<DnsServer>,
+    /// The search-domain configured in the portal.
+    pub(crate) search_domain: Option<DomainName>,
 
     ipv4_routes: BTreeMap<ResourceId, Ipv4Network>,
     ipv6_routes: BTreeMap<ResourceId, Ipv6Network>,
@@ -466,6 +470,7 @@ impl RefClient {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
             upstream_dns: self.upstream_dns_resolvers.clone(),
+            search_domain: self.search_domain.clone(),
         });
         client_state.update_system_resolvers(self.system_dns_resolvers.clone());
 
@@ -615,6 +620,23 @@ impl RefClient {
         }
     }
 
+    pub(crate) fn fully_qualify_using_search_domain(
+        &self,
+        domain: DomainName,
+    ) -> Result<DomainName> {
+        if domain.label_count() != 2 {
+            return Ok(domain); // If it is not a single-label domain, it is already fully qualified.
+        }
+
+        let search_domain = self.search_domain.clone().context("No search domain")?;
+        let label = domain.into_relative();
+
+        Ok(label
+            .chain(search_domain)
+            .context("Domain too long")?
+            .flatten_into())
+    }
+
     #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     pub(crate) fn on_icmp_packet(
         &mut self,
@@ -751,7 +773,11 @@ impl RefClient {
             return;
         };
 
-        self.site_status.insert(site.id, ResourceStatus::Online);
+        let previous = self.site_status.insert(site.id, ResourceStatus::Online);
+
+        if previous.is_none_or(|s| s != ResourceStatus::Online) {
+            tracing::debug!(%resource, "Resource is now online");
+        }
     }
 
     fn is_connected_to_internet_or_cidr(&self, resource: ResourceId) -> bool {
@@ -774,11 +800,6 @@ impl RefClient {
     }
 
     pub(crate) fn on_dns_query(&mut self, query: &DnsQuery) {
-        self.dns_records
-            .entry(query.domain.clone())
-            .or_default()
-            .insert(query.r_type);
-
         match query.transport {
             DnsTransport::Udp => {
                 self.expected_udp_dns_handshakes
@@ -789,6 +810,18 @@ impl RefClient {
                     .push_back((query.dns_server, query.query_id));
             }
         }
+
+        if query.domain.label_count() == 2 && self.dns_resource_by_domain(&query.domain).is_none() {
+            // DNS queries for single-label domains which are not resources are answered with NXDOMAIN.
+            tracing::debug!("No state change for non-resource single-label DNS query");
+
+            return;
+        }
+
+        self.dns_records
+            .entry(query.domain.clone())
+            .or_default()
+            .insert(query.r_type);
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
             self.set_resource_online(resource);
@@ -846,6 +879,23 @@ impl RefClient {
     }
 
     pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
+        let domain = domain.clone();
+
+        let domain = if domain.label_count() == 2 {
+            let Some(search_domain) = self.search_domain.clone() else {
+                tracing::error!("Must have search domain if we are handling single-label queries");
+                return None;
+            };
+
+            domain
+                .into_relative()
+                .chain(search_domain)
+                .unwrap()
+                .flatten_into()
+        } else {
+            domain
+        };
+
         self.resources
             .iter()
             .cloned()
@@ -1085,11 +1135,18 @@ pub(crate) fn ref_client_host(
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
     system_dns: impl Strategy<Value = Vec<IpAddr>>,
     upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
+    search_domain: impl Strategy<Value = Option<DomainName>>,
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
         any_ip_stack(),
         any_port(),
-        ref_client(tunnel_ip4s, tunnel_ip6s, system_dns, upstream_dns),
+        ref_client(
+            tunnel_ip4s,
+            tunnel_ip6s,
+            system_dns,
+            upstream_dns,
+            search_domain,
+        ),
         latency(300), // TODO: Increase with #6062.
     )
 }
@@ -1099,12 +1156,14 @@ fn ref_client(
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
     system_dns: impl Strategy<Value = Vec<IpAddr>>,
     upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
+    search_domain: impl Strategy<Value = Option<DomainName>>,
 ) -> impl Strategy<Value = RefClient> {
     (
         tunnel_ip4s,
         tunnel_ip6s,
         system_dns,
         upstream_dns,
+        search_domain,
         client_id(),
         private_key(),
     )
@@ -1114,6 +1173,7 @@ fn ref_client(
                 tunnel_ip6,
                 system_dns_resolvers,
                 upstream_dns_resolvers,
+                search_domain,
                 id,
                 key,
             )| {
@@ -1124,6 +1184,7 @@ fn ref_client(
                     tunnel_ip6,
                     system_dns_resolvers,
                     upstream_dns_resolvers,
+                    search_domain,
                     internet_resource: Default::default(),
                     cidr_resources: IpNetworkTable::new(),
                     dns_records: Default::default(),

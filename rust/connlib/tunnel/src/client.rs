@@ -1045,7 +1045,7 @@ impl ClientState {
     }
 
     pub fn update_interface_config(&mut self, config: InterfaceConfig) {
-        tracing::trace!(upstream_dns = ?config.upstream_dns, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
+        tracing::trace!(upstream_dns = ?config.upstream_dns, search_domain = ?config.search_domain, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
 
         match self.tun_config.as_mut() {
             Some(existing) => {
@@ -1072,6 +1072,7 @@ impl ClientState {
             }
         }
 
+        self.stub_resolver.set_search_domain(config.search_domain);
         self.upstream_dns = config.upstream_dns;
 
         self.update_dns_mapping()
