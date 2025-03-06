@@ -66,7 +66,7 @@ defmodule Domain.Clients.Client.Query do
     |> Ecto.Query.select([clients: clients], clients)
     |> Ecto.Query.update([clients: clients],
       set: [
-        deleted_at: fragment("COALESCE(?, NOW())", clients.deleted_at)
+        deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", clients.deleted_at)
       ]
     )
   end

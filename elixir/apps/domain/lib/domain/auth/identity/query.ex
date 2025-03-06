@@ -203,7 +203,7 @@ defmodule Domain.Auth.Identity.Query do
     |> Ecto.Query.select([identities: identities], identities)
     |> Ecto.Query.update([identities: identities],
       set: [
-        deleted_at: fragment("COALESCE(?, NOW())", identities.deleted_at),
+        deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", identities.deleted_at),
         provider_state: ^%{}
       ]
     )

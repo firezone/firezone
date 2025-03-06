@@ -143,7 +143,7 @@ defmodule Domain.Tokens do
           ),
         expires_at:
           fragment(
-            "CASE WHEN ? - 1 = 0 THEN COALESCE(?, NOW()) ELSE ? END",
+            "CASE WHEN ? - 1 = 0 THEN COALESCE(?, timezone('UTC', NOW())) ELSE ? END",
             tokens.remaining_attempts,
             tokens.expires_at,
             tokens.expires_at

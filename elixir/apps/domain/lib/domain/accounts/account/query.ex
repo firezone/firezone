@@ -74,7 +74,7 @@ defmodule Domain.Accounts.Account.Query do
       queryable,
       [accounts: accounts],
       fragment(
-        "(?->'notifications'->?->>'last_notified')::timestamp < NOW() - ?::interval",
+        "(?->'notifications'->?->>'last_notified')::timestamp < timezone('UTC', NOW()) - ?::interval",
         accounts.config,
         ^notification,
         ^interval

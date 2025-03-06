@@ -73,7 +73,7 @@ defmodule Domain.Policies.Policy.Query do
     |> Ecto.Query.select([policies: policies], policies)
     |> Ecto.Query.update([policies: policies],
       set: [
-        deleted_at: fragment("COALESCE(?, NOW())", policies.deleted_at)
+        deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", policies.deleted_at)
       ]
     )
   end
