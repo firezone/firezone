@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque, hash_map};
 use std::iter;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Instant;
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
@@ -12,7 +12,7 @@ use dns_types::DomainName;
 use filter_engine::FilterEngine;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
+use ip_packet::{icmpv4, icmpv6, IpPacket, PacketBuilder, Protocol, UnsupportedProtocol};
 
 use crate::utils::network_contains_network;
 use crate::{GatewayEvent, IpConfig};
@@ -286,8 +286,12 @@ impl ClientOnGateway {
         }
 
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
-            return Ok(TranslateOutboundResult::Send(packet));
+            return self.dst_unreachable(&packet);
         };
+
+        if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
+            return self.dst_unreachable(&packet);
+        }
 
         let (source_protocol, real_ip) =
             self.nat_table
@@ -440,11 +444,54 @@ impl ClientOnGateway {
     pub fn id(&self) -> ClientId {
         self.id
     }
+
+    fn dst_unreachable(&self, packet: &IpPacket) -> Result<TranslateOutboundResult> {
+        let dst = packet.destination();
+
+        // TODO: Should we use the source IP of the packet?
+        let icmp_error = match dst {
+            IpAddr::V4(inside_dst) => icmpv4_unreachable(inside_dst, self.client_tun.v4, packet)?,
+            IpAddr::V6(inside_dst) => icmpv6_unreachable(inside_dst, self.client_tun.v6, packet)?,
+        };
+
+        Ok(TranslateOutboundResult::DestinationUnreachable(icmp_error))
+    }
+}
+
+fn icmpv4_unreachable(
+    src: Ipv4Addr,
+    dst: Ipv4Addr,
+    original_packet: &IpPacket,
+) -> Result<IpPacket, anyhow::Error> {
+    let builder = PacketBuilder::ipv4(src.octets(), dst.octets(), 20).icmpv4(
+        ip_packet::Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Host),
+    );
+    let payload = original_packet.packet();
+
+    let ip_packet = ip_packet::build!(builder, payload)?;
+
+    Ok(ip_packet)
+}
+
+fn icmpv6_unreachable(
+    src: Ipv6Addr,
+    dst: Ipv6Addr,
+    original_packet: &IpPacket,
+) -> Result<IpPacket, anyhow::Error> {
+    let builder = PacketBuilder::ipv6(src.octets(), dst.octets(), 20).icmpv6(
+        ip_packet::Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::NoRoute),
+    );
+    let payload = original_packet.packet();
+
+    let ip_packet = ip_packet::build!(builder, payload)?;
+
+    Ok(ip_packet)
 }
 
 #[derive(Debug, PartialEq)]
 pub enum TranslateOutboundResult {
     Send(IpPacket),
+    DestinationUnreachable(IpPacket),
     Filtered,
 }
 
