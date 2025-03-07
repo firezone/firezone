@@ -1,7 +1,15 @@
-use std::{sync::Arc, time::Duration};
+#![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use std::{
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
+
+use anyhow::{Context, Result};
 use env::ON_PREM;
+use parking_lot::Mutex;
 use sentry::protocol::SessionStatus;
+use serde::{Deserialize, Serialize};
 
 pub struct Dsn(&'static str);
 
@@ -17,6 +25,10 @@ pub const GUI_DSN: Dsn = Dsn("https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o45079711
 pub const HEADLESS_DSN: Dsn = Dsn("https://bc27dca8bb37be0142c48c4f89647c13@o4507971108339712.ingest.us.sentry.io/4508010028728320");
 pub const RELAY_DSN: Dsn = Dsn("https://9d5f664d8f8f7f1716d4b63a58bcafd5@o4507971108339712.ingest.us.sentry.io/4508373298970624");
 pub const TESTING: Dsn = Dsn("https://55ef451fca9054179a11f5d132c02f45@o4507971108339712.ingest.us.sentry.io/4508792604852224");
+
+const POSTHOG_API_KEY: &str = "phc_uXXl56plyvIBHj81WwXBLtdPElIRbm7keRTdUCmk8ll";
+
+static FEATURE_FLAGS: LazyLock<Mutex<FeatureFlags>> = LazyLock::new(Mutex::default);
 
 mod env {
     use std::borrow::Cow;
@@ -150,9 +162,32 @@ impl Telemetry {
     }
 
     pub fn set_firezone_id(id: String) {
-        update_user(|user| {
-            user.id = Some(id);
+        update_user({
+            let id = id.clone();
+            |user| user.id = Some(id)
         });
+
+        std::thread::spawn(|| {
+            let flags = evaluate_feature_flags(id)
+                .inspect_err(|e| tracing::debug!("Failed to evaluate feature flags: {e:#}"))
+                .unwrap_or_default();
+
+            tracing::debug!(?flags, "Evaluated feature-flags");
+
+            *FEATURE_FLAGS.lock() = flags;
+
+            sentry::Hub::main().configure_scope(|scope| {
+                scope.set_context("flags", sentry_flag_context(flags));
+            });
+        });
+    }
+}
+
+pub mod feature_flags {
+    use crate::*;
+
+    pub fn icmp_unreachable_instead_of_nat64() -> bool {
+        FEATURE_FLAGS.lock().icmp_unreachable_instead_of_nat64
     }
 }
 
@@ -167,6 +202,58 @@ fn update_user(update: impl FnOnce(&mut sentry::User)) {
 
 fn set_current_user(user: Option<sentry::User>) {
     sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
+}
+
+fn evaluate_feature_flags(id: String) -> Result<FeatureFlags> {
+    let json = reqwest::blocking::Client::new()
+        .post("https://us.i.posthog.com/decide?v=3")
+        .body(format!(
+            r#"{{
+            "api_key": "{POSTHOG_API_KEY}",
+            "distinct_id": "{id}"
+        }}"#
+        ))
+        .send()
+        .context("Failed to send POST request")?
+        .json::<DecideResponse>()
+        .context("Failed to deserialize response")?;
+
+    Ok(json.feature_flags)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct DecideResponse {
+    feature_flags: FeatureFlags,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone, Copy)]
+struct FeatureFlags {
+    #[serde(default)]
+    icmp_unreachable_instead_of_nat64: bool,
+}
+
+fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
+    #[derive(Debug, serde::Serialize)]
+    #[serde(tag = "flag", rename_all = "snake_case")]
+    enum SentryFlag {
+        IcmpUnreachableInsteadOfNat64 { result: bool },
+    }
+
+    // Exhaustive destruction so we don't forget to update this when we add a flag.
+    let FeatureFlags {
+        icmp_unreachable_instead_of_nat64,
+    } = flags;
+
+    let value = serde_json::json!({
+        "values": [
+            SentryFlag::IcmpUnreachableInsteadOfNat64 {
+                result: icmp_unreachable_instead_of_nat64,
+            }
+        ]
+    });
+
+    sentry::protocol::Context::Other(serde_json::from_value(value).expect("to and from json works"))
 }
 
 #[cfg(test)]
