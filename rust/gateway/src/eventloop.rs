@@ -1,8 +1,8 @@
 use anyhow::{Context as _, Result};
 use boringtun::x25519::PublicKey;
-use connlib_model::DomainName;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
+use dns_types::DomainName;
 use firezone_bin_shared::TunDeviceManager;
 use firezone_logging::{telemetry_event, telemetry_span};
 use firezone_tunnel::messages::gateway::{
