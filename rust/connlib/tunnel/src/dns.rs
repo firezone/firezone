@@ -288,7 +288,7 @@ impl StubResolver {
                 // We must intercept queries for the HTTPS record type to force the client to issue an A / AAAA query instead.
                 // Otherwise, the client won't use the IPs we issue for a particular domain and the traffic cannot be tunneled.
 
-                let response = build_dns_with_answer(message, domain, Vec::default())?;
+                let response = build_dns_with_answer(message, Vec::default())?;
                 return Ok(ResolveStrategy::LocalResponse(response));
             }
             _ => return Ok(ResolveStrategy::RecurseLocal),
@@ -296,7 +296,7 @@ impl StubResolver {
 
         tracing::trace!(%qtype, %domain, records = ?resource_records, "Forming DNS response");
 
-        let response = build_dns_with_answer(message, domain, resource_records)?;
+        let response = build_dns_with_answer(message, resource_records)?;
         Ok(ResolveStrategy::LocalResponse(response))
     }
 }
@@ -331,9 +331,15 @@ fn to_aaaa_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u
 
 fn build_dns_with_answer(
     message: Message<&[u8]>,
-    qname: DomainName,
     records: Vec<AllRecordData<Vec<u8>, DomainName>>,
 ) -> Result<Message<Vec<u8>>> {
+    // Take the original qname out of the message.
+    // DNS queries should always respond for the exact same qname that was queried, even if we expanded a single-label domain.
+    let qname = message
+        .sole_question()
+        .context("Expected a single question")?
+        .into_qname();
+
     let mut answer_builder = MessageBuilder::new_vec()
         .start_answer(&message, Rcode::NOERROR)
         .context("Failed to create answer from query")?;
@@ -341,7 +347,7 @@ fn build_dns_with_answer(
 
     for record in records {
         answer_builder
-            .push((&qname, Class::IN, DNS_TTL, record))
+            .push((qname, Class::IN, DNS_TTL, record))
             .context("Failed to push record")?;
     }
 
