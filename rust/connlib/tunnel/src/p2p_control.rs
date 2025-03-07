@@ -51,11 +51,13 @@ pub mod dns_resource_nat {
         resource: ResourceId,
         domain: DomainName,
         status: NatStatus,
+        ttl: u16,
     ) -> Result<IpPacket> {
         let payload = serde_json::to_vec(&DomainStatus {
             status,
             resource,
             domain,
+            ttl,
         })
         .context("Failed to serialize `DomainStatus` event")?;
 
@@ -100,6 +102,8 @@ pub mod dns_resource_nat {
         pub resource: ResourceId,
         pub domain: DomainName,
         pub status: NatStatus,
+        #[serde(default = "default_ttl")]
+        pub ttl: u16,
     }
 
     #[derive(serde::Serialize, serde::Deserialize, PartialEq, Eq, Debug)]
@@ -109,6 +113,10 @@ pub mod dns_resource_nat {
         /// The NAT is inactive and traffic won't be routed.
         #[serde(other)] // For forwards-compatibility with future versions of this enum.
         Inactive,
+    }
+
+    fn default_ttl() -> u16 {
+        30
     }
 
     #[cfg(test)]
@@ -155,6 +163,7 @@ pub mod dns_resource_nat {
                 ResourceId::from_u128(101),
                 domain("example.com"),
                 NatStatus::Active,
+                30,
             )
             .unwrap();
 
@@ -163,7 +172,8 @@ pub mod dns_resource_nat {
 
             assert_eq!(domain_status.resource, ResourceId::from_u128(101));
             assert_eq!(domain_status.domain, domain("example.com"));
-            assert_eq!(domain_status.status, NatStatus::Active)
+            assert_eq!(domain_status.status, NatStatus::Active);
+            assert_eq!(domain_status.ttl, 30);
         }
 
         #[test]
@@ -181,6 +191,24 @@ pub mod dns_resource_nat {
             assert_eq!(domain_status.resource, ResourceId::from_u128(101));
             assert_eq!(domain_status.domain, domain("example.com"));
             assert_eq!(domain_status.status, NatStatus::Inactive);
+        }
+
+        #[test]
+        fn domain_status_default_ttl() {
+            let payload = r#"{"resource":"00000000-0000-0000-0000-000000000065","domain":"example.com","status":"active"}"#;
+            let packet = ip_packet::make::fz_p2p_control(
+                [DOMAIN_STATUS_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0],
+                payload.as_bytes(),
+            )
+            .expect("payload is less than max packet size");
+
+            let slice = packet.as_fz_p2p_control().unwrap();
+            let domain_status = decode_domain_status(slice).unwrap();
+
+            assert_eq!(domain_status.resource, ResourceId::from_u128(101));
+            assert_eq!(domain_status.domain, domain("example.com"));
+            assert_eq!(domain_status.status, NatStatus::Inactive);
+            assert_eq!(domain_status.ttl, 30);
         }
 
         fn domain(d: &str) -> DomainName {
