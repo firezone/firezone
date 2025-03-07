@@ -261,12 +261,7 @@ impl StubResolver {
         tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
 
         if domain == *DOH_CANARY_DOMAIN {
-            let payload = MessageBuilder::new_vec()
-                .start_answer(&message, Rcode::NXDOMAIN)
-                .context("Failed to create answer from DNS query")?
-                .into_message();
-
-            return Ok(ResolveStrategy::LocalResponse(payload));
+            return Ok(ResolveStrategy::LocalResponse(nxdomain(message)));
         }
 
         // `match_resource` is `O(N)` which we deem fine for DNS queries.
@@ -310,6 +305,13 @@ pub fn servfail(message: Message<&[u8]>) -> Message<Vec<u8>> {
     MessageBuilder::new_vec()
         .start_answer(&message, Rcode::SERVFAIL)
         .expect("should always be able to create a heap-allocated SERVFAIL message")
+        .into_message()
+}
+
+fn nxdomain(message: Message<&[u8]>) -> Message<Vec<u8>> {
+    MessageBuilder::new_vec()
+        .start_answer(&message, Rcode::NXDOMAIN)
+        .expect("should always be able to create a heap-allocated NXDOMAIN message")
         .into_message()
 }
 
