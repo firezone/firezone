@@ -9,7 +9,7 @@ path = "lib.rs"
 
 [dependencies]
 anyhow = { workspace = true }
-domain = { workspace = true }
+dns-types = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true, features = ["net"] }
 tracing = { workspace = true }

@@ -7,10 +7,9 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-domain = { workspace = true }
+dns-types = { workspace = true }
 firezone-logging = { workspace = true }
 ip-packet = { workspace = true }
-itertools = { workspace = true }
 rand = { workspace = true }
 smoltcp = { workspace = true, features = ["std", "log", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp"] }
 tracing = { workspace = true }

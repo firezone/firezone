@@ -15,7 +15,7 @@ connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
-domain = { workspace = true }
+dns-types = { workspace = true }
 firezone-logging = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true }
