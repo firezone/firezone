@@ -141,6 +141,11 @@ defmodule Domain.Actors.Group.Query do
     )
   end
 
+  def select_provider_identifiers(queryable) do
+    queryable
+    |> select([groups: groups], groups.provider_identifier)
+  end
+
   def lock(queryable) do
     lock(queryable, "FOR UPDATE")
   end

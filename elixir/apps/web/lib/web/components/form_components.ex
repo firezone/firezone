@@ -681,6 +681,63 @@ defmodule Web.FormComponents do
     """
   end
 
+  @doc """
+  Renders a button group. Requires at least two :button slots to be passed.
+
+  ## Examples
+
+    <.button_group>
+      <:button label="Cancel" />
+      <.button label="Save" />
+    </.button_group>
+  """
+  slot :button, required: true do
+    attr :label, :string, required: true
+    attr :icon, :string
+    attr :event, :string
+  end
+
+  def button_group(assigns) do
+    if Enum.count(assigns.button) < 2 do
+      raise """
+      The button group component requires at least two buttons to be passed.
+      """
+    end
+
+    # TODO: button group styles
+    shared = ~w[
+      phx-submit-loading:opacity-75
+      px-3 py-2
+      text-sm text-neutral-900
+      bg-white border-neutral-200 hover:bg-neutral-100
+    ]
+
+    first = shared ++ ~w[border rounded-s]
+    middle = shared ++ ~w[border-t border-b]
+    last = shared ++ ~w[border rounded-e]
+
+    ~H"""
+    <div class="inline-flex rounded shadow" role="group">
+      <%= for {button, index} <- Enum.with_index(@button) do %>
+        <button
+          type="button"
+          class={
+            if index == 0, do: first,
+            else: if index == Enum.count(@button) - 1, do: last,
+            else: middle
+          }
+          {if button[:event], do: %{"phx-click" => button[:event]}, else: %{}}
+        >
+          <%= if button[:icon] do %>
+            <span class={button[:icon]}></span>
+          <% end %>
+          <%= button[:label] %>
+        </button>
+      <% end %>
+    </div>
+    """
+  end
+
   def button_style do
     [
       "flex items-center justify-center",

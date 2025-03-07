@@ -391,37 +391,6 @@ defmodule Web.Settings.IdentityProviders.Components do
               label_placement="left"
             />
           </form>
-          <div class="flex justify-between items-center">
-            <div>
-              <p class="px-4 text-sm text-gray-500">
-                {pending_changes(@provider, @group_filters_enabled_at, @added, @removed)}
-              </p>
-            </div>
-
-            <.button_with_confirmation
-              id="save_changes"
-              {changed?(@provider, @group_filters_enabled_at, @added, @removed) && %{} || %{disabled: "disabled"}}
-              style={
-                (changed?(@provider, @group_filters_enabled_at, @added, @removed) && "primary") ||
-                  "disabled"
-              }
-              confirm_style="primary"
-              class="m-4"
-              on_confirm="submit"
-            >
-              <:dialog_title>Confirm changes to Actor Groups</:dialog_title>
-              <:dialog_content>
-                {confirm_message(@added, @removed)}
-              </:dialog_content>
-              <:dialog_confirm_button>
-                Save
-              </:dialog_confirm_button>
-              <:dialog_cancel_button>
-                Cancel
-              </:dialog_cancel_button>
-              Save
-            </.button_with_confirmation>
-          </div>
           <fieldset
             disabled={!@group_filters_enabled_at}
             class={if @group_filters_enabled_at, do: "", else: "opacity-50"}
@@ -477,6 +446,41 @@ defmodule Web.Settings.IdentityProviders.Components do
               </:col>
             </.live_table>
           </fieldset>
+          <div class="flex justify-between items-center">
+            <p class="px-4 text-sm text-gray-500">
+              {pending_changes(@provider, @group_filters_enabled_at, @added, @removed)}
+            </p>
+
+            <.button_group>
+              <:button label="Select All" event="select_all" />
+              <:button label="Select None" event="select_none" />
+              <:button label="Reset" event="reset_selection" />
+            </.button_group>
+
+            <.button_with_confirmation
+              id="save_changes"
+              {changed?(@provider, @group_filters_enabled_at, @added, @removed) && %{} || %{disabled: "disabled"}}
+              style={
+                (changed?(@provider, @group_filters_enabled_at, @added, @removed) && "primary") ||
+                  "disabled"
+              }
+              confirm_style="primary"
+              class="m-4"
+              on_confirm="submit"
+            >
+              <:dialog_title>Confirm changes to Actor Groups</:dialog_title>
+              <:dialog_content>
+                {confirm_message(@added, @removed)}
+              </:dialog_content>
+              <:dialog_confirm_button>
+                Save
+              </:dialog_confirm_button>
+              <:dialog_cancel_button>
+                Cancel
+              </:dialog_cancel_button>
+              Save
+            </.button_with_confirmation>
+          </div>
         <% else %>
           <div class="flex items-center justify-center w-full h-12 bg-red-500 text-white">
             <span>
@@ -543,10 +547,41 @@ defmodule Web.Settings.IdentityProviders.Components do
       do: handle_live_table_event(event, params, socket)
 
   def handle_group_filters_event("toggle_filters", _params, socket) do
-    group_filters_enabled_at =
-      if socket.assigns.group_filters_enabled_at, do: nil, else: DateTime.utc_now()
+    group_filters_enabled = not socket.assigns.group_filters_enabled
+    {:noreply, assign(socket, group_filters_enabled: group_filters_enabled)}
+  end
 
-    {:noreply, assign(socket, group_filters_enabled_at: group_filters_enabled_at)}
+  def handle_group_filters_event("select_all", _params, socket) do
+    all_groups = Actors.all_deleted_and_unfiltered_groups_for!(socket.assigns.provider, socket.assigns.subject)
+    filtered_groups = Actors.all_filtered_groups_for!(socket.assigns.provider, socket.assigns.subject)
+
+    added = Enum.reduce(all_groups, %{}, fn group, acc ->
+      if Enum.member?(socket.assigns.filtered_group_identifiers, group.provider_identifier) do
+        acc
+      else
+        Map.put(acc, group.provider_identifier, group.name)
+      end
+    end)
+
+    {:noreply, assign(socket, added: added, removed: %{})}
+  end
+
+  def handle_group_filters_event("select_none", _params, socket) do
+    all_groups = Actors.all_groups_for_provider!(socket.assigns.provider, socket.assigns.subject)
+
+    removed = Enum.reduce(all_groups, %{}, fn group, acc ->
+      if Enum.member?(socket.assigns.filtered_group_identifiers, group.provider_identifier) do
+        Map.put(acc, group.provider_identifier, group.name)
+      else
+        acc
+      end
+    end)
+
+    {:noreply, assign(socket, added: %{}, removed: removed)}
+  end
+
+  def handle_group_filters_event("reset_selection", _params, socket) do
+    {:noreply, assign(socket, added: %{}, removed: %{})}
   end
 
   def handle_group_filters_event(
@@ -582,9 +617,9 @@ defmodule Web.Settings.IdentityProviders.Components do
   def handle_group_filters_event("submit", _params, socket) do
     added_identifiers = Map.keys(socket.assigns.added)
     removed_identifiers = Map.keys(socket.assigns.removed)
-    enabled_at = socket.assigns.group_filters_enabled_at
+    filtered_at = DateTime.utc_now()
 
-    new_filtered_group_identifiers =
+    new_filtered_group_ids =
       socket.assigns.filtered_group_identifiers ++ (added_identifiers -- removed_identifiers)
 
     provider = %Provider{
