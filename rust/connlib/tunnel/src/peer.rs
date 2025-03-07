@@ -289,8 +289,11 @@ impl ClientOnGateway {
             return self.dst_unreachable(&packet);
         };
 
-        if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
-            return self.dst_unreachable(&packet);
+        #[expect(clippy::collapsible_if, reason = "We want the feature flag separate.")]
+        if firezone_telemetry::feature_flags::icmp_unreachable_instead_of_nat64() {
+            if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
+                return self.dst_unreachable(&packet);
+            }
         }
 
         let (source_protocol, real_ip) =
