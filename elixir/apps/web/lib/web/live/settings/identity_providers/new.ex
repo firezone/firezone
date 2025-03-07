@@ -125,6 +125,10 @@ defmodule Web.Settings.IdentityProviders.New do
     end
   end
 
+  def next_step_path("mock", account) do
+    ~p"/#{account}/settings/identity_providers/mock/new"
+  end
+
   def pretty_print_provider(adapter) do
     case adapter do
       :openid_connect -> "OpenID Connect"
@@ -132,6 +136,7 @@ defmodule Web.Settings.IdentityProviders.New do
       :microsoft_entra -> "Microsoft EntraID"
       :okta -> "Okta"
       :jumpcloud -> "JumpCloud"
+      :mock -> "Mock"
     end
   end
 end

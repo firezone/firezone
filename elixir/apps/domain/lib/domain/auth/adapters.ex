@@ -9,6 +9,7 @@ defmodule Domain.Auth.Adapters do
     microsoft_entra: Domain.Auth.Adapters.MicrosoftEntra,
     okta: Domain.Auth.Adapters.Okta,
     jumpcloud: Domain.Auth.Adapters.JumpCloud,
+    mock: Domain.Auth.Adapters.Mock,
     userpass: Domain.Auth.Adapters.UserPass
   }
 

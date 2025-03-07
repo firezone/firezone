@@ -1539,6 +1539,12 @@ defmodule Web.CoreComponents do
     """
   end
 
+  def provider_icon(%{adapter: :mock} = assigns) do
+    ~H"""
+    <.icon name="hero-command-line" {@rest} />
+    """
+  end
+
   def provider_icon(%{adapter: :email} = assigns) do
     ~H"""
     <.icon name="hero-envelope" {@rest} />

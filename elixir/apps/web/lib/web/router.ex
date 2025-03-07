@@ -280,6 +280,12 @@ defmodule Web.Router do
             get "/:provider_id/handle_callback", Connect, :handle_idp_callback
           end
 
+          scope "/mock", Mock do
+            live "/new", New
+            live "/:provider_id", Show
+            live "/:provider_id/edit", Edit
+          end
+
           scope "/system", System do
             live "/:provider_id", Show
           end

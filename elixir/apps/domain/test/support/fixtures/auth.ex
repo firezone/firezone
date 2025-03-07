@@ -43,31 +43,15 @@ defmodule Domain.Fixtures.Auth do
     "user-#{unique_integer()}@#{String.downcase(name)}.com"
   end
 
-  def random_provider_identifier(%Domain.Auth.Provider{adapter: :openid_connect}) do
-    Ecto.UUID.generate()
-  end
-
-  def random_provider_identifier(%Domain.Auth.Provider{adapter: :google_workspace}) do
-    Ecto.UUID.generate()
-  end
-
-  def random_provider_identifier(%Domain.Auth.Provider{adapter: :microsoft_entra}) do
-    Ecto.UUID.generate()
-  end
-
-  def random_provider_identifier(%Domain.Auth.Provider{adapter: :okta}) do
-    Ecto.UUID.generate()
-  end
-
-  def random_provider_identifier(%Domain.Auth.Provider{adapter: :jumpcloud}) do
-    Ecto.UUID.generate()
-  end
-
   def random_provider_identifier(%Domain.Auth.Provider{adapter: :userpass, name: name}) do
     "user-#{unique_integer()}@#{String.downcase(name)}.com"
   end
 
-  def random_workos_org_identifier() do
+  def random_provider_identifier(%Domain.Auth.Provider{adapter: _other_adapter}) do
+    Ecto.UUID.generate()
+  end
+
+  def random_workos_org_identifier do
     chars = Range.to_list(?A..?Z) ++ Range.to_list(?0..?9)
     str = for _ <- 1..26, into: "", do: <<Enum.random(chars)>>
     "org_#{str}"

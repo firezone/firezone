@@ -14,6 +14,7 @@ defmodule Domain.AuthTest do
                google_workspace: [enabled: true, sync: true],
                jumpcloud: [enabled: true, sync: true],
                microsoft_entra: [enabled: true, sync: true],
+               mock: [enabled: true, sync: true],
                okta: [enabled: true, sync: true],
                openid_connect: [enabled: true, sync: false]
              ]
@@ -24,6 +25,7 @@ defmodule Domain.AuthTest do
                google_workspace: [enabled: false, sync: true],
                jumpcloud: [enabled: false, sync: true],
                microsoft_entra: [enabled: false, sync: true],
+               mock: [enabled: false, sync: true],
                okta: [enabled: false, sync: true],
                openid_connect: [enabled: true, sync: false]
              ]

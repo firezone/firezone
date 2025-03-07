@@ -268,6 +268,7 @@ defmodule Web.Settings.IdentityProviders.Components do
   def adapter_name(:microsoft_entra), do: "Microsoft Entra"
   def adapter_name(:okta), do: "Okta"
   def adapter_name(:jumpcloud), do: "JumpCloud"
+  def adapter_name(:mock), do: "Mock"
   def adapter_name(:openid_connect), do: "OpenID Connect"
 
   def view_provider(account, %{adapter: adapter} = provider)
@@ -288,6 +289,9 @@ defmodule Web.Settings.IdentityProviders.Components do
 
   def view_provider(account, %{adapter: :jumpcloud} = provider),
     do: ~p"/#{account}/settings/identity_providers/jumpcloud/#{provider}"
+
+  def view_provider(account, %{adapter: :mock} = provider),
+    do: ~p"/#{account}/settings/identity_providers/mock/#{provider}"
 
   def sync_status(%{provider: %{provisioner: :custom}} = assigns) do
     ~H"""
