@@ -1064,6 +1064,7 @@ impl ClientState {
                         v6: config.ipv6,
                     },
                     dns_by_sentinel: Default::default(),
+                    search_domain: config.search_domain.clone(),
                     ipv4_routes,
                     ipv6_routes,
                 };
@@ -1742,6 +1743,7 @@ impl ClientState {
                 .iter()
                 .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
                 .collect::<BiMap<_, _>>(),
+            search_domain: config.search_domain,
             ipv4_routes,
             ipv6_routes,
         };

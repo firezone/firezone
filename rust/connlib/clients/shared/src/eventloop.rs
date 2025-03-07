@@ -172,6 +172,7 @@ where
                     config.ip.v4,
                     config.ip.v6,
                     dns_servers,
+                    config.search_domain,
                     Vec::from_iter(config.ipv4_routes),
                     Vec::from_iter(config.ipv6_routes),
                 );

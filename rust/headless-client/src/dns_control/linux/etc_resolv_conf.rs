@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Result};
+use connlib_model::DomainName;
 use std::{
     fs,
     io::{self, Write},
@@ -35,8 +36,8 @@ impl Default for ResolvPaths {
 /// This is async because it's called in a Tokio context and it's nice to use their
 /// `fs` module
 #[cfg_attr(test, mutants::skip)] // Would modify system-wide `/etc/resolv.conf`
-pub(crate) fn configure(dns_config: &[IpAddr]) -> Result<()> {
-    configure_at_paths(dns_config, &ResolvPaths::default())
+pub(crate) fn configure(dns_config: &[IpAddr], search_domain: Option<DomainName>) -> Result<()> {
+    configure_at_paths(dns_config, search_domain, &ResolvPaths::default())
 }
 
 /// Revert changes Firezone made to `/etc/resolv.conf`
@@ -47,7 +48,11 @@ pub(crate) fn revert() -> Result<()> {
     revert_at_paths(&ResolvPaths::default())
 }
 
-fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Result<()> {
+fn configure_at_paths(
+    dns_config: &[IpAddr],
+    search_domain: Option<DomainName>,
+    paths: &ResolvPaths,
+) -> Result<()> {
     if dns_config.is_empty() {
         tracing::warn!("`dns_config` is empty, leaving `/etc/resolv.conf` unchanged");
         return Ok(());
@@ -91,6 +96,7 @@ fn configure_at_paths(dns_config: &[IpAddr], paths: &ResolvPaths) -> Result<()> 
     let mut new_resolv_conf = parsed;
 
     new_resolv_conf.nameservers = dns_config.iter().map(|addr| (*addr).into()).collect();
+    new_resolv_conf.set_search(search_domain.into_iter().map(|d| d.to_string()).collect());
 
     // Over-writing `/etc/resolv.conf` actually violates Docker's plan for handling DNS
     // https://docs.docker.com/network/#dns-services
@@ -304,7 +310,7 @@ nameserver 100.100.111.2
 
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
 
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths)?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], None, &paths)?;
 
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 1])])?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])?;
@@ -326,7 +332,7 @@ nameserver 100.100.111.2
 
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
 
-        configure_at_paths(&[], &paths)?;
+        configure_at_paths(&[], None, &paths)?;
 
         check_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
         // No backup since we didn't touch the original file
@@ -341,11 +347,11 @@ nameserver 100.100.111.2
         let (_temp_dir, paths) = create_temp_paths();
 
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths)?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], None, &paths)?;
         revert_at_paths(&paths)?;
 
         write_resolv_conf(&paths.resolv, &[CLOUDFLARE_DNS.into()])?;
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], &paths)?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], None, &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 2])])?;
         check_resolv_conf(&paths.backup, &[CLOUDFLARE_DNS.into()])?;
         revert_at_paths(&paths)?;
@@ -368,7 +374,7 @@ nameserver 100.100.111.2
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
 
         // First run
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths)?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], None, &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 1])])
             .context("First run, resolv.conf should have sentinel")?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])
@@ -377,7 +383,7 @@ nameserver 100.100.111.2
         // Crash happens
 
         // Second run
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], &paths)?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], None, &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 2])])
             .context("Second run, resolv.conf should have new sentinel")?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])
@@ -401,7 +407,7 @@ nameserver 100.100.111.2
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
 
         // First run
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths)?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], None, &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 1])])
             .context("First run, resolv.conf should have sentinel")?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])
@@ -412,7 +418,7 @@ nameserver 100.100.111.2
         write_resolv_conf(&paths.resolv, &[CLOUDFLARE_DNS.into()])?;
 
         // Second run
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], &paths)?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 2])], None, &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 2])])
             .context("Second run, resolv.conf should have new sentinel")?;
         check_resolv_conf(&paths.backup, &[CLOUDFLARE_DNS.into()])
@@ -437,11 +443,11 @@ nameserver 100.100.111.2
         write_resolv_conf(&paths.resolv, &[GOOGLE_DNS.into()])?;
 
         // Configure twice
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths)?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], None, &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 1])])?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])?;
 
-        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], &paths)?;
+        configure_at_paths(&[IpAddr::from([100, 100, 111, 1])], None, &paths)?;
         check_resolv_conf(&paths.resolv, &[IpAddr::from([100, 100, 111, 1])])?;
         check_resolv_conf(&paths.backup, &[GOOGLE_DNS.into()])?;
 
