@@ -21,7 +21,7 @@ use connlib_model::{Site, SiteId};
 use firezone_logging::{err_with_src, telemetry_event, unwrap_or_debug, unwrap_or_warn};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, UdpSlice, MAX_UDP_PAYLOAD};
+use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
 
 use crate::peer::GatewayOnClient;
@@ -52,6 +52,10 @@ pub(crate) const IPV6_RESOURCES: Ipv6Network = match Ipv6Network::new(
 };
 
 const DNS_PORT: u16 = 53;
+
+const LLMNR_PORT: u16 = 5355;
+const LLMNR_IPV4: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 252);
+const LLMNR_IPV6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 1, 0, 3);
 
 pub(crate) const DNS_SENTINELS_V4: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24) {
@@ -849,6 +853,12 @@ impl ClientState {
     /// Handles UDP & TCP packets targeted at our stub resolver.
     fn try_handle_dns(&mut self, packet: IpPacket, now: Instant) -> ControlFlow<(), IpPacket> {
         let dst = packet.destination();
+
+        if is_llmnr(dst) {
+            self.handle_llmnr_dns_query(packet, now);
+            return ControlFlow::Break(());
+        }
+
         let Some(upstream) = self.dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
             return ControlFlow::Continue(packet); // Not for our DNS resolver.
         };
@@ -1170,7 +1180,15 @@ impl ClientState {
             return ControlFlow::Break(());
         };
 
-        let message = match parse_udp_dns_message(&datagram) {
+        if datagram.destination_port() != DNS_PORT {
+            tracing::debug!(
+                ?packet,
+                "UDP DNS queries are only supported on port {DNS_PORT}"
+            );
+            return ControlFlow::Break(());
+        }
+
+        let message = match Message::from_octets(datagram.payload()) {
             Ok(message) => message,
             Err(e) => {
                 tracing::warn!(?packet, "Failed to parse DNS query: {e:#}");
@@ -1228,6 +1246,57 @@ impl ClientState {
         ControlFlow::Break(())
     }
 
+    fn handle_llmnr_dns_query(&mut self, packet: IpPacket, now: Instant) {
+        let Some(datagram) = packet.as_udp() else {
+            tracing::debug!(?packet, "Not a UDP packet");
+
+            return;
+        };
+
+        if datagram.destination_port() != LLMNR_PORT {
+            tracing::debug!(
+                ?packet,
+                "LLMNR queries are only supported on port {LLMNR_PORT}"
+            );
+            return;
+        }
+
+        let message = match Message::from_octets(datagram.payload()) {
+            Ok(message) => message,
+            Err(e) => {
+                tracing::warn!(?packet, "Failed to parse DNS query: {e:#}");
+                return;
+            }
+        };
+
+        match self.stub_resolver.handle(message) {
+            dns::ResolveStrategy::LocalResponse(response) => {
+                self.clear_dns_resource_nat_for_domain(response.for_slice_ref());
+                self.update_dns_resource_nat(now, iter::empty());
+
+                let maybe_packet = ip_packet::make::udp_packet(
+                    packet.destination(),
+                    packet.source(),
+                    datagram.destination_port(),
+                    datagram.source_port(),
+                    truncate_dns_response(response),
+                )
+                .inspect_err(|e| {
+                    tracing::debug!("Failed to create LLMNR DNS response packet: {e:#}");
+                })
+                .ok();
+
+                self.buffered_packets.extend(maybe_packet);
+            }
+            dns::ResolveStrategy::RecurseLocal => {
+                tracing::trace!("LLMNR queries are not forwarded to upstream resolvers");
+            }
+            dns::ResolveStrategy::RecurseSite(_) => {
+                tracing::trace!("LLMNR queries are not forwarded to upstream resolvers");
+            }
+        }
+    }
+
     fn mangle_udp_dns_query_to_new_upstream_through_tunnel(
         &mut self,
         upstream: SocketAddr,
@@ -1240,7 +1309,7 @@ impl ClientState {
             .expect("to be a valid UDP packet at this point");
 
         let dst_port = datagram.destination_port();
-        let query_id = parse_udp_dns_message(&datagram)
+        let query_id = Message::from_octets(datagram.payload())
             .expect("to be a valid DNS query at this point")
             .header()
             .id();
@@ -1763,6 +1832,13 @@ impl ClientState {
     }
 }
 
+fn is_llmnr(dst: IpAddr) -> bool {
+    match dst {
+        IpAddr::V4(ip) => ip == LLMNR_IPV4,
+        IpAddr::V6(ip) => ip == LLMNR_IPV6,
+    }
+}
+
 fn encapsulate_and_buffer(
     packet: IpPacket,
     gid: GatewayId,
@@ -1780,20 +1856,6 @@ fn encapsulate_and_buffer(
     };
 
     buffered_transmits.push_back(enc_packet.to_transmit().into_owned());
-}
-
-fn parse_udp_dns_message<'b>(datagram: &UdpSlice<'b>) -> anyhow::Result<Message<&'b [u8]>> {
-    let port = datagram.destination_port();
-
-    anyhow::ensure!(
-        port == DNS_PORT,
-        "DNS over UDP is only supported on port 53"
-    );
-
-    let message = Message::from_octets(datagram.payload())
-        .context("Failed to parse payload as DNS message")?;
-
-    Ok(message)
 }
 
 fn handle_p2p_control_packet(
