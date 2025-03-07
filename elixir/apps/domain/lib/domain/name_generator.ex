@@ -156,6 +156,93 @@ defmodule Domain.NameGenerator do
     view vision vitality volume voyage warranty wave wealth welfare will
     wisdom work workforce workshop world yield zone
   )
+  @first_names ~w(
+    Aaron Abby Abner Abram Ace Ada Adaline Adam Adan Addison Adela Adele Adeline Adrian
+    Adriana Afton Agatha Agnes Aidan Aileen Aimee Ainsley Aisha Ajax Akira Al Alaina
+    Alan Alana Alanna Albert Alberta Alden Aldo Alec Alecia Alejandra Alek Alessandra Alex
+    Alexa Alexander Alexandra Alexis Alfie Alfred Ali Alice Alicia Alina Alisha Alison
+    Alissa Allie Alma Alvin Alyssa Amara Amari Amanda Amber Amelia Amelie Amina Amira
+    Amos Amy Anabel Anastasia Anderson Andre Andrea Andres Andrew Angel Angela Angelica
+    Angelina Angelique Angie Anika Anita Ann Anna Annabelle Anne Annette Annie Anthony
+    Antonio April Arabella Archer Archie Arden Arely Ariel Aria Arianna Arjun Arlene
+    Arlo Armando Arnold Arthur Arturo Asa Ashley Ashton Barbara Barrett Barry Beatrice
+    Beau Beckett Becky Bella Benjamin Bennett Benny Bernard Beth Bethany Bianca Bill Billie
+    Blake Blanca Bob Bobby Bonnie Boris Boyd Brad Bradley Brady Brandon Brandi Brandy
+    Breanna Brenda Brent Bret Brett Brian Briana Brianna Bridget Britt Brittany Brock Brody
+    Brooke Bruce Bruno Bryan Bryant Bryce Bryn Caitlin Caleb Callie Calvin Camila Camille
+    Candace Cara Carina Carla Carlee Carley Carmen Carol Carolina Caroline Carrie Carson
+    Carter Casey Cassandra Catherine Cathy Cecilia Cedric Celeste Cesar Chad Charles
+    Charlie Charlotte Chase Chelsea Chloe Chris Christian Christina Christine
+    Christopher Daisy Dakota Dale Dallas Damian Damon Dan Dana Daniel Daniela Danielle
+    Danny Darius Darlene Darren Dave David Dawn Dean Deborah Declan Dee Deirdre Delia
+    Dennis Derek Desiree Devin Diana Diane Diego Dillon Dominic Don Donald Donna Doris
+    Dorothy Doug Douglas Earl Easton Eddie Eden Edgar Edith Edward Edwin Elena Eli Elias
+    Elijah Elise Elizabeth Ella Elle Ellen Elliot Elliott Elsie Ember Emerson Emery Emily
+    Emma Enrique Eric Erica Erin Esme Faith Felix Fiona Flora Floyd Frances Francesca
+    Francisco Frank Franklin Fred Frederick Freya Faye Finn Forrest Fergus Farrah Fabian
+    Gabriel Gabriela Gail Gage Gale Gavin Gemma Gene Genesis Geoffrey George Georgia
+    Gerald Geraldine Gerardo Gia Gianna Gideon Gilbert Gina Giovanna Giovanni Giselle
+    Grace Gracie Graham Grant Greg Gregory Greta Griffin Hailey Hank Hannah Harley Harold
+    Harper Harrison Harry Hazel Heidi Helen Helena Henry Herbert Holly Hope Howard
+    Hugh Hugo Hunter Ian Ibrahim Ida Imani Imogen India Ingrid Irena Irene Iris Isaac
+    Isabel Isabella Isabelle Isaiah Isaias Isadora Israel Ivan Ivy Jack Jackie Jackson
+    Jacob Jade Jaden Jaime Jake James Jamie Jan Jana Jane Janet Janelle Janice Jared
+    Jasmine Jason Jasper Javier Jay Jayden Jean Jeanette Jeffrey Jenna Jennifer Jeremy
+    Jerome Jerry Jesse Jessica Jill Jim Jo Joan Joann Joanne Jodie Joe Joel John Johnny
+    Jordan Joseph Josephine Josh Joshua Josie Kaitlyn Kaleb Kallie Kamal Kamila Kara Karen
+    Kari Karla Kasey Kate Katelyn Katherine Kathleen Kathryn Katie Kay Kayla Keegan
+    Keira Keith Kelly Kelvin Ken Kendall Kenneth Kent Kerry Kevin Kiara Kieran Kim
+    Kimberly King Kinley Kirk Kirsten Kit Kody Kyle Lacey Laila Lamar Lana Lance Landon
+    Lara Larry Laura Lauren Laurie Lawrence Leah Lee Leila Lena Leo Leon Leonard
+    Leonardo Leslie Lester Lexi Liam Lila Lily Lincoln Linda Lindsay Lisa Livia Lloyd
+    Logan Lola Lonnie Lora Lorna Louis Louise Lucas Lucia Lucian Lucy Luis Luke Lydia
+    Lyle Lynn Lyric Liana Mackenzie Madison
+  )
+  @last_names ~w(
+    Smith Johnson Williams Brown Jones Garcia Miller Davis Rodriguez Martinez Hernandez
+    Lopez Gonzalez Wilson Anderson Thomas Taylor Moore Jackson Martin Lee Perez Thompson
+    White Harris Sanchez Clark Ramirez Lewis Robinson Walker Young Allen King Wright Scott
+    Torres Nguyen Hill Flores Green Adams Nelson Baker Hall Rivera Campbell Mitchell Carter
+    Roberts Gomez Phillips Evans Turner Diaz Parker Cruz Edwards Collins Reyes Stewart
+    Morris Morales Murphy Cook Rogers Gutierrez Ortiz Morgan Cooper Peterson Bailey Reed
+    Kelly Howard Ramos Kim Cox Ward Richardson Watson Brooks Chavez Wood James Bennett Gray
+    Mendoza Ruiz Hughes Price Alvarez Castillo Sanders Patel Myers Long Ross Foster
+    Jimenez Powell Jenkins Perry Russell Sullivan Bell Coleman Butler Henderson Barnes
+    Gonzales Fisher Vasquez Simmons Romero Jordan Patterson Alexander Hamilton Graham Reynolds
+    Griffin Wallace West Cole Hayes Bryant Herrera Gibson Ellis Tran Medina Freeman Wells
+    Webb Simpson Stevens Tucker Porter Hunter Hicks Crawford Henry Boyd Mason Munoz Kennedy
+    Warren Dixon Bradley Lawson Fuller Burke Santos Mills Armstrong Webster Chapman Lane
+    Shelton Nichols Gardner Payne Kelley Ferguson Ortega Ramsey Howe Wolfe Newman Lowe Olson
+    Manning Moran Erickson Donovan Moss Russo Ford Finley Francis Vega Soto Steele
+    Barker Sharp Schmidt Norton McDonald Mendez Bush Gill Delgado Andrade Matthews Austin
+    Walsh Pierce Haynes Lyons Ray Bates Schneider Palmer Riley Figueroa Burton Dunn Little
+    Klein Day Fields Curry Peters Becker Warner Wagner Stevenson Benson Bradford Marshall
+    Norris Sutton Frazier Murray Brewer Daniels Cross Burns Sims Davidson Barrett Watkins
+    Baldwin Graves Conrad Todd Berry Jensen Elliott Wilkinson Franklin Harper McCarthy
+    Owen Spencer Fitzgerald McKinney Cummings Meyers Banks Potter Arnold Harding Guzman
+    Owens Rowe Lambert Jennings Forbes Ingram Pugh McBride Shaw Velazquez McKenzie Drake
+    Howell Foley Patrick Carr Andrews O'Neill Glover Hanson Harvey Levine Swanson Douglas
+    Mercado Nash Boone Maldonado McCormick Cortez Doyle Parsons Morrow Carpenter Watts
+    McGuire Vaughn Bender Kramer French Chambers Le Benjamin McDaniel Oneal Livingston
+    Cohen Pearson Petersen Pope Serrano Fischer Campos Hardy Love Garner Cabrera Molina
+    Bridges Wilkerson Atkinson Orozco Sweeney Gross Casey Lynch Mack Holloway Barton Rojas
+    Church England Suarez Wise Maddox Khan Zhang Yu Su Fuentes Salinas Cervantes Browning
+    Hayward McMahon Cannon Rocha Reilly Aguirre Farmer Berg Conley Odom Rush McFarland
+    Baird Hogan Valdez Kirby Choi Yang Chang Stein Bernard Merrill English Kirk Barry
+    Cantu Preston Crosby Whitaker Durham Branch Gillespie Franco Santiago Mays Contreras
+    Monroe McIntosh Buck Heath Simon Duran York McCullough Burnett Henson Petty
+    Fincher Clay Small Browne Dotson Acevedo Parrish Peck Davila Collier Robles Pitts
+    McKee Salazar Herman Cline Pace Holden Guerra Davenport Singleton Horn Moody
+    Valentine Wilkins Charles McKinley House Santana Gilmore Quintana Benton Reece Stout
+    Bauer Lamb Osborne Randall Combs Ayers Atkins Jefferson Parra Mayer Pineda Duke
+    Conway McClain Rosales Burch Leon Guerrero Key Logan Rios Shepherd Bullock Horton
+    Patton Zuniga Delacruz Donaldson Levy Huber Frost Mullen Rasmussen Vance Buckley
+    Hendrix Sheppard Glass Shearer Dickerson Nielsen Joyner Skinner McLaughlin Padilla
+    McGee Parks Mccall Workman Dudley Rosario Whitley Christiansen Lowery Booth Spears
+    Navarro Snyder Rosenthal Donnelly Beard McIntyre Joyce Connelly Blevins Hodge Melton
+    Pruitt Melendez Calderon Roman Sharpe Meadows Zamora Fitzpatrick Booker Velez
+    McFadden Hyatt Chandler Roberson
+  )
 
   def generate do
     "#{Enum.random(@adjectives)}-#{Enum.random(@nouns)}"
@@ -164,5 +251,13 @@ defmodule Domain.NameGenerator do
   def generate_slug do
     generate()
     |> String.replace(~r/-/, "_")
+  end
+
+  def generate_first_name do
+    Enum.random(@first_names)
+  end
+
+  def generate_last_name do
+    Enum.random(@last_names)
   end
 end

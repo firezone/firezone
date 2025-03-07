@@ -463,6 +463,7 @@ defmodule Domain.Config.Definitions do
       microsoft_entra
       okta
       jumpcloud
+      mock
       userpass
       token
     ]a)},
@@ -473,6 +474,7 @@ defmodule Domain.Config.Definitions do
       microsoft_entra
       okta
       jumpcloud
+      mock
       token
     ]a
   )

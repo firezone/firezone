@@ -79,7 +79,7 @@ services:
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
       # Auth
-      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud"
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       # Secrets
       TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
@@ -151,7 +151,7 @@ services:
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
       # Auth
-      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud"
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       # Secrets
       TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
@@ -215,7 +215,7 @@ services:
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
       # Auth
-      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud"
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       # Secrets
       TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
@@ -283,7 +283,7 @@ services:
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
       # Auth
-      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud"
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       # Secrets
       TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
       TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
