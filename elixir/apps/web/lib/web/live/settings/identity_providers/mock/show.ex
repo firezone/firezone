@@ -255,10 +255,6 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
     """
   end
 
-  def changed_group_identifiers(changeset) do
-    changeset.changes[:filtered_group_identifiers] || []
-  end
-
   def handle_event("delete", _params, socket) do
     {:ok, _provider} = Auth.delete_provider(socket.assigns.provider, socket.assigns.subject)
 
