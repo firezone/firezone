@@ -28,7 +28,21 @@ pub const TESTING: Dsn = Dsn("https://55ef451fca9054179a11f5d132c02f45@o45079711
 
 const POSTHOG_API_KEY: &str = "phc_uXXl56plyvIBHj81WwXBLtdPElIRbm7keRTdUCmk8ll";
 
+// Process-wide storage of enabled feature flags.
+//
+// Defaults to everything off.
 static FEATURE_FLAGS: LazyLock<Mutex<FeatureFlags>> = LazyLock::new(Mutex::default);
+
+/// Exposes all feature flags as public, static functions.
+///
+/// These only ever hit an in-memory location so can even be called from hot paths.
+pub mod feature_flags {
+    use crate::*;
+
+    pub fn icmp_unreachable_instead_of_nat64() -> bool {
+        FEATURE_FLAGS.lock().icmp_unreachable_instead_of_nat64
+    }
+}
 
 mod env {
     use std::borrow::Cow;
@@ -180,14 +194,6 @@ impl Telemetry {
                 scope.set_context("flags", sentry_flag_context(flags));
             });
         });
-    }
-}
-
-pub mod feature_flags {
-    use crate::*;
-
-    pub fn icmp_unreachable_instead_of_nat64() -> bool {
-        FEATURE_FLAGS.lock().icmp_unreachable_instead_of_nat64
     }
 }
 
