@@ -15,6 +15,7 @@
 
 use super::DnsController;
 use anyhow::{Context as _, Result};
+use connlib_model::DomainName;
 use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
 use firezone_bin_shared::windows::error::EPT_S_NOT_REGISTERED;
 use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
@@ -66,7 +67,11 @@ impl DnsController {
     ///
     /// Must be async and an owned `Vec` to match the Linux signature
     #[expect(clippy::unused_async)]
-    pub async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
+    pub async fn set_dns(
+        &mut self,
+        dns_config: Vec<IpAddr>,
+        _search_domain: Option<DomainName>,
+    ) -> Result<()> {
         match self.dns_control_method {
             DnsControlMethod::Disabled => {}
             DnsControlMethod::Nrpt => {
@@ -277,7 +282,7 @@ mod tests {
         ];
         rt.block_on(async {
             dns_controller
-                .set_dns(fz_dns_servers.clone())
+                .set_dns(fz_dns_servers.clone(), None)
                 .await
                 .unwrap();
         });

@@ -10,7 +10,7 @@ use crate::{
     client::DnsResource,
     messages::{gateway, DnsServer},
 };
-use connlib_model::GatewayId;
+use connlib_model::{DomainName, GatewayId};
 use connlib_model::{ResourceId, SiteId};
 use itertools::Itertools;
 use proptest::{
@@ -252,11 +252,26 @@ impl StubPortal {
         system_dns: impl Strategy<Value = Vec<IpAddr>>,
         upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
     ) -> impl Strategy<Value = Host<RefClient>> {
+        let possible_search_domains = self
+            .dns_resources
+            .values()
+            .map(|r| {
+                // For `*.example.com`, we want to extract `example.com`.
+                // For `**.example.com`, we want to extract `example.com`.
+                // For `app.example.com`, we want to extract `example.com`.
+                // Therefore, we can always split by the first dot.
+                let (_, search_domain) = r.address.split_once(".").unwrap();
+
+                DomainName::vec_from_str(search_domain).unwrap()
+            })
+            .collect::<Vec<_>>();
+
         ref_client_host(
             Just(self.client_tunnel_ipv4),
             Just(self.client_tunnel_ipv6),
             system_dns,
             upstream_dns,
+            proptest::option::of(sample::select(possible_search_domains)),
         )
     }
 
