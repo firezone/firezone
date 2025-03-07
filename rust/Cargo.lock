@@ -2020,7 +2020,7 @@ dependencies = [
  "clap",
  "connlib-model",
  "dns-lookup",
- "domain",
+ "dns-types",
  "either",
  "firezone-bin-shared",
  "firezone-logging",
