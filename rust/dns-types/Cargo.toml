@@ -8,7 +8,7 @@ license = { workspace = true }
 path = "lib.rs"
 
 [dependencies]
-domain = { workspace = true }
+domain = { version = "0.10", features = ["serde"] } # Not a workspace dependency because we don't want any other crates to depend on it.
 thiserror = { workspace = true }
 tracing = { workspace = true }
 
