@@ -11,16 +11,30 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
          {:ok, identities_count_by_provider_id} <-
            Auth.fetch_identities_count_grouped_by_provider_id(socket.assigns.subject),
          {:ok, groups_count_by_provider_id} <-
-           Actors.fetch_groups_count_grouped_by_provider_id(socket.assigns.subject) do
+           Actors.fetch_groups_count_grouped_by_provider_id(socket.assigns.subject),
+         {:ok, groups, metadata} <-
+           Actors.list_groups_for_provider(provider, socket.assigns.subject) do
       safe_to_delete_actors_count = Actors.count_synced_actors_for_provider(provider)
 
       {:ok,
        assign(socket,
          provider: provider,
+         group_filters_enabled_at: provider.group_filters_enabled_at,
+         filtered_group_identifiers: provider.filtered_group_identifiers,
+         added: %{},
+         removed: %{},
+         groups: groups,
+         groups_metadata: metadata,
          identities_count_by_provider_id: identities_count_by_provider_id,
          groups_count_by_provider_id: groups_count_by_provider_id,
          safe_to_delete_actors_count: safe_to_delete_actors_count,
          page_title: "Identity Provider #{provider.name}"
+       )
+       |> assign_live_table("groups",
+         query_module: Actors.Group.Query,
+         sortable_fields: [],
+         hide_filters: [:provider_id],
+         callback: &handle_update!/2
        )}
     else
       _ -> raise Web.LiveErrors.NotFoundError
@@ -46,9 +60,7 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
         <span :if={not is_nil(@provider.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@provider.deleted_at)}>
-        <.edit_button navigate={
-          ~p"/#{@account}/settings/identity_providers/mock/#{@provider.id}/edit"
-        }>
+        <.edit_button navigate={~p"/#{@account}/settings/identity_providers/mock/#{@provider}/edit"}>
           Edit
         </.edit_button>
       </:action>
@@ -208,6 +220,19 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
       </:content>
     </.section>
 
+    <.group_filters
+      provider={@provider}
+      added={@added}
+      removed={@removed}
+      filtered_group_identifiers={@filtered_group_identifiers}
+      group_filters_enabled_at={@group_filters_enabled_at}
+      groups={@groups}
+      groups_metadata={@groups_metadata}
+      filters_by_table_id={@filters_by_table_id}
+      filter_form_by_table_id={@filter_form_by_table_id}
+      order_by_table_id={@order_by_table_id}
+    />
+
     <.danger_zone :if={is_nil(@provider.deleted_at)}>
       <:action>
         <.button_with_confirmation
@@ -232,6 +257,10 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
       </:action>
     </.danger_zone>
     """
+  end
+
+  def changed_group_identifiers(changeset) do
+    changeset.changes[:filtered_group_identifiers] || []
   end
 
   def handle_event("delete", _params, socket) do
@@ -274,5 +303,19 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
       )
 
     {:noreply, assign(socket, provider: provider)}
+  end
+
+  # For group filters
+
+  def handle_event(event, params, socket),
+    do: handle_group_filters_event(event, params, socket)
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_update!(socket, list_opts) do
+    handle_group_filters_update!(socket, list_opts)
   end
 end

@@ -382,6 +382,61 @@ defmodule Web.FormComponents do
     """
   end
 
+  ### Switches ###
+
+  @doc """
+  Renders a checkbox disguised as a toggle switch.
+
+  ## Examples
+
+      <.switch field={@form[:email_opt_in]} />
+      <.switch name="my-switch" />
+  """
+
+  attr :id, :any, default: nil
+  attr :name, :string, default: nil
+  attr :label, :string, default: nil
+  attr :label_placement, :string, default: "right", values: ~w(left right)
+  attr :checked, :boolean, default: false, doc: "the checked flag for the switch"
+
+  attr :field, Phoenix.HTML.FormField,
+    default: nil,
+    doc: "a form field struct retrieved from the form, for example: @form[:email]"
+
+  def switch(assigns) do
+    id = assigns.id || get_in(assigns, [:field, Access.key(:id)])
+    name = assigns.name || get_in(assigns, [:field, Access.key(:name)])
+    checked = assigns.checked || get_in(assigns, [:field, Access.key(:value)])
+
+    assigns =
+      assign(assigns,
+        id: id,
+        name: name,
+        checked: checked
+      )
+
+    ~H"""
+    <label class="inline-flex items-center cursor-pointer">
+      <input type="checkbox" id={@id} class="sr-only peer" checked={@checked} name={@name} value="on" />
+      <%= if @label_placement == "left" do %>
+        <span class="ms-3 mr-3 text-sm font-medium text-neutral-900">{@label}</span>
+      <% end %>
+      <div class={~w(
+        relative w-11 h-6 bg-neutral-200 peer-focus:outline-none
+        peer-focus:ring-2 peer-focus:ring-accent-300 rounded-full
+        peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full
+        peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px]
+        after:start-[2px] after:bg-white after:border-neutral-300 after:border
+        after:rounded-full after:h-5 after:w-5 after:transition-all
+        peer-checked:bg-accent-600
+      )}></div>
+      <%= if @label_placement == "right" do %>
+        <span class="ms-3 ml-3 text-sm font-medium text-neutral-900">{@label}</span>
+      <% end %>
+    </label>
+    """
+  end
+
   ### Dialogs ###
 
   attr :id, :string, required: true, doc: "The id of the dialog"
