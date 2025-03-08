@@ -10,11 +10,6 @@ defmodule Domain.Auth.Identity.Query do
     |> where([identities: identities], is_nil(identities.deleted_at))
   end
 
-  def not_deleted_or_excluded do
-    not_deleted()
-    |> where([identities: identities], is_nil(identities.excluded_at))
-  end
-
   def deleted do
     all()
     |> where([identities: identities], not is_nil(identities.deleted_at))

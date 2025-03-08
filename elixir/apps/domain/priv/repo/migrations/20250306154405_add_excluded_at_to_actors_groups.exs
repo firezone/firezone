@@ -1,12 +1,8 @@
-defmodule Domain.Repo.Migrations.AddExcludedAtToActorGroupsAndAuthIdentities do
+defmodule Domain.Repo.Migrations.AddExcludedAtToActorGroups do
   use Ecto.Migration
 
   def change do
     alter table(:actor_groups) do
-      add(:excluded_at, :utc_datetime_usec)
-    end
-
-    alter table(:auth_identities) do
       add(:excluded_at, :utc_datetime_usec)
     end
 
