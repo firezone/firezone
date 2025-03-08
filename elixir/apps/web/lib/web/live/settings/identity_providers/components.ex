@@ -1,5 +1,7 @@
 defmodule Web.Settings.IdentityProviders.Components do
   use Web, :component_library
+  import Web.LiveTable
+  alias Domain.Actors
 
   def status(%{provider: %{deleted_at: deleted_at}} = assigns) when not is_nil(deleted_at) do
     ~H"""
@@ -367,5 +369,270 @@ defmodule Web.Settings.IdentityProviders.Components do
       </span>
     </div>
     """
+  end
+
+  def group_filters(assigns) do
+    ~H"""
+    <.section>
+      <:title>
+        Group Filters
+      </:title>
+      <:help>
+        Group filters allow you to control which groups are synced from the Identity Provider.
+        By default, all groups are included.
+      </:help>
+      <:action>
+        <.docs_action path="/authenticate/directory-sync" fragment="group-filters" />
+      </:action>
+      <:content>
+        <%= if @provider.last_synced_at do %>
+          <form phx-change="toggle_filters">
+            <.switch
+              checked={@group_filters_enabled}
+              label="Enable group filters"
+              label_placement="left"
+            />
+          </form>
+          <fieldset
+            disabled={!@group_filters_enabled}
+            class={if @group_filters_enabled, do: "", else: "opacity-50"}
+          >
+            <.live_table
+              id="groups"
+              rows={@groups}
+              row_id={&"group-#{&1.id}"}
+              filters={@filters_by_table_id["groups"]}
+              filter={@filter_form_by_table_id["groups"]}
+              ordered_by={@order_by_table_id["groups"]}
+              metadata={@groups_metadata}
+            >
+              <:col :let={group} label="group">
+                <.icon
+                  :if={removed?(@removed, group)}
+                  name="hero-minus"
+                  class="h-3.5 w-3.5 mr-2 text-red-500"
+                />
+                <.icon
+                  :if={added?(@added, group)}
+                  name="hero-plus"
+                  class="h-3.5 w-3.5 mr-2 text-green-500"
+                />
+
+                {group.name |> String.trim_leading("Group:")}
+              </:col>
+              <:col :let={group}>
+                <div class="flex justify-end">
+                  <.button
+                    :if={show_remove_button?(@added, @removed, group)}
+                    size="xs"
+                    style="info"
+                    icon="hero-minus"
+                    phx-click="remove_group"
+                    phx-value-id={group.id}
+                    phx-value-name={group.name}
+                    phx-value-excluded_at={group.excluded_at}
+                  >
+                    Remove
+                  </.button>
+                  <.button
+                    :if={show_add_button?(@added, @removed, group)}
+                    size="xs"
+                    style="info"
+                    icon="hero-plus"
+                    phx-click="add_group"
+                    phx-value-id={group.id}
+                    phx-value-name={group.name}
+                    phx-value-excluded_at={group.excluded_at}
+                  >
+                    Add
+                  </.button>
+                </div>
+              </:col>
+            </.live_table>
+          </fieldset>
+          <div class="flex justify-between items-center">
+            <p class="px-4 text-sm text-gray-500">
+              {pending_changes(@added, @removed)}
+            </p>
+
+            <.button_group>
+              <:button label="Select All" event="select_all" />
+              <:button label="Select None" event="select_none" />
+              <:button label="Reset" event="reset_selection" />
+            </.button_group>
+
+            <.button_with_confirmation
+              id="save_changes"
+              {group_filters_changed?(@added, @removed) && %{} || %{disabled: "disabled"}}
+              style={(group_filters_changed?(@added, @removed) && "primary") || "disabled"}
+              confirm_style="primary"
+              class="m-4"
+              on_confirm="submit"
+            >
+              <:dialog_title>Confirm changes to Actor Groups</:dialog_title>
+              <:dialog_content>
+                {confirm_message(@added, @removed)}
+              </:dialog_content>
+              <:dialog_confirm_button>
+                Save
+              </:dialog_confirm_button>
+              <:dialog_cancel_button>
+                Cancel
+              </:dialog_cancel_button>
+              Save
+            </.button_with_confirmation>
+          </div>
+        <% else %>
+          <div class="flex items-center justify-center w-full h-12 bg-red-500 text-white">
+            <span>
+              Never synced
+            </span>
+          </div>
+        <% end %>
+      </:content>
+    </.section>
+    """
+  end
+
+  defp group_filters_changed?(added, removed) do
+    Enum.any?(added) or Enum.any?(removed)
+  end
+
+  defp show_add_button?(added, removed, group) do
+    (is_nil(group.excluded_at) and not added?(added, group)) or
+      (!is_nil(group.excluded_at) and removed?(removed, group))
+  end
+
+  defp show_remove_button?(added, removed, group) do
+    (!is_nil(group.excluded_at) and not removed?(removed, group)) or added?(added, group)
+  end
+
+  defp added?(added, group) do
+    Enum.any?(added, fn {id, _name} -> id == group.id end)
+  end
+
+  defp removed?(removed, group) do
+    Enum.any?(removed, fn {id, _name} -> id == group.id end)
+  end
+
+  defp pending_changes(added, removed) do
+    if group_filters_changed?(added, removed) do
+      "#{Enum.count(added)} added, #{Enum.count(removed)} removed"
+    else
+      "No changes pending"
+    end
+  end
+
+  defp confirm_message(added, removed) do
+    added_names = Enum.map(added, fn {_id, name} -> name end)
+    removed_names = Enum.map(removed, fn {_id, name} -> name end)
+
+    add = if added_names != [], do: "add #{Enum.join(added_names, ", ")}"
+    remove = if removed_names != [], do: "remove #{Enum.join(removed_names, ", ")}"
+    change = [add, remove] |> Enum.reject(&is_nil/1) |> Enum.join(" and ")
+
+    if change == "" do
+      # Don't show confirmation message if no changes were made
+      nil
+    else
+      "Are you sure you want to #{change}?"
+    end
+  end
+
+  # Shared event handlers for group filters
+
+  def handle_group_filters_event(event, params, socket)
+      when event in ["paginate", "order_by", "filter"],
+      do: handle_live_table_event(event, params, socket)
+
+  def handle_group_filters_event("toggle_filters", _params, socket) do
+    group_filters_enabled = not socket.assigns.group_filters_enabled
+    {:noreply, assign(socket, group_filters_enabled: group_filters_enabled)}
+  end
+
+  def handle_group_filters_event("select_all", _params, socket) do
+    all_groups =
+      Actors.all_deleted_and_excluded_groups_for!(socket.assigns.provider, socket.assigns.subject)
+
+    added =
+      Enum.reduce(all_groups, %{}, fn group, acc ->
+        if group.excluded_at do
+          acc
+        else
+          Map.put(acc, group.id, group.name)
+        end
+      end)
+
+    {:noreply, assign(socket, added: added, removed: %{})}
+  end
+
+  def handle_group_filters_event("select_none", _params, socket) do
+    all_groups =
+      Actors.all_deleted_and_excluded_groups_for!(socket.assigns.provider, socket.assigns.subject)
+
+    removed =
+      Enum.reduce(all_groups, %{}, fn group, acc ->
+        if group.excluded_at do
+          Map.put(acc, group.id, group.name)
+        else
+          acc
+        end
+      end)
+
+    {:noreply, assign(socket, added: %{}, removed: removed)}
+  end
+
+  def handle_group_filters_event("reset_selection", _params, socket) do
+    {:noreply, assign(socket, added: %{}, removed: %{})}
+  end
+
+  def handle_group_filters_event("add_group", %{"id" => id, "name" => name} = params, socket) do
+    removed = Map.delete(socket.assigns.removed, id)
+
+    if params["excluded_at"] do
+      {:noreply, assign(socket, removed: removed)}
+    else
+      added = Map.put(socket.assigns.added, id, name)
+      {:noreply, assign(socket, added: added, removed: removed)}
+    end
+  end
+
+  def handle_group_filters_event("remove_group", %{"id" => id, "name" => name} = params, socket) do
+    added = Map.delete(socket.assigns.added, id)
+
+    if params["excluded_at"] do
+      removed = Map.put(socket.assigns.removed, id, name)
+      {:noreply, assign(socket, added: added, removed: removed)}
+    else
+      {:noreply, assign(socket, added: added)}
+    end
+  end
+
+  def handle_group_filters_event("submit", _params, socket) do
+    # TODO: Set excluded_at for groups that were removed
+    # TODO: Remove excluded_at for groups that were added
+    # added_ids = Map.keys(socket.assigns.added)
+    # removed_ids = Map.keys(socket.assigns.removed)
+
+    {:noreply,
+     assign(socket,
+       added: %{},
+       removed: %{}
+     )}
+  end
+
+  def handle_group_filters_update!(socket, list_opts) do
+    with {:ok, groups, metadata} <-
+           Actors.list_all_deleted_and_excluded_groups_for(
+             socket.assigns.provider,
+             socket.assigns.subject,
+             list_opts
+           ) do
+      {:ok,
+       assign(socket,
+         groups: groups,
+         groups_metadata: metadata
+       )}
+    end
   end
 end

@@ -86,7 +86,11 @@ defmodule Domain.Actors.Membership.Query do
   end
 
   def with_joined_groups(queryable \\ all()) do
-    join(queryable, :inner, [memberships: memberships], groups in ^Group.Query.not_deleted(),
+    join(
+      queryable,
+      :inner,
+      [memberships: memberships],
+      groups in ^Group.Query.not_deleted_or_excluded(),
       on: groups.id == memberships.group_id,
       as: :groups
     )

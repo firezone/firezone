@@ -10,6 +10,19 @@ defmodule Domain.Actors.Group.Query do
     |> where([groups: groups], is_nil(groups.deleted_at))
   end
 
+  def not_deleted_or_excluded do
+    not_deleted()
+    |> where([groups: groups], is_nil(groups.excluded_at))
+  end
+
+  def not_excluded(queryable \\ all()) do
+    where(queryable, [groups: groups], is_nil(groups.excluded_at))
+  end
+
+  def excluded(queryable) do
+    where(queryable, [groups: groups], not is_nil(groups.excluded_at))
+  end
+
   def not_editable(queryable) do
     where(queryable, [groups: groups], not is_nil(groups.provider_id) or groups.type != :static)
   end
@@ -69,6 +82,16 @@ defmodule Domain.Actors.Group.Query do
     |> Ecto.Query.update([groups: groups],
       set: [
         deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", groups.deleted_at)
+      ]
+    )
+  end
+
+  def exclude(queryable, group_ids) do
+    queryable
+    |> where([groups: groups], groups.id in ^group_ids)
+    |> update([groups: groups],
+      set: [
+        excluded_at: fragment("COALESCE(?, timezone('UTC', NOW()))", groups.excluded_at)
       ]
     )
   end
