@@ -626,15 +626,15 @@ defmodule Domain.AccountsTest do
 
       assert errors_on(changeset) == %{
                config: %{
-                 search_domain: ["must not start or end with a dot"]
+                 search_domain: ["must not start with a dot"]
                }
              }
     end
 
-    test "returns error when search_domain ends with a dot", %{account: account} do
+    test "returns error when search_domain ends with .local", %{account: account} do
       attrs = %{
         config: %{
-          search_domain: "example.com."
+          search_domain: "test.local"
         }
       }
 
@@ -642,7 +642,7 @@ defmodule Domain.AccountsTest do
 
       assert errors_on(changeset) == %{
                config: %{
-                 search_domain: ["must not start or end with a dot"]
+                 search_domain: ["must not end with .local"]
                }
              }
     end
