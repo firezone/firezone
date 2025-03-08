@@ -86,10 +86,10 @@ defmodule Domain.Actors.Group.Query do
     )
   end
 
-  def exclude(queryable) do
+  def exclude(queryable, group_ids) do
     queryable
-    |> Ecto.Query.select([groups: groups], groups)
-    |> Ecto.Query.update([groups: groups],
+    |> where([groups: groups], groups.id in ^group_ids)
+    |> update([groups: groups],
       set: [
         excluded_at: fragment("COALESCE(?, timezone('UTC', NOW()))", groups.excluded_at)
       ]

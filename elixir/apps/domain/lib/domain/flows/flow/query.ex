@@ -43,6 +43,12 @@ defmodule Domain.Flows.Flow.Query do
     |> where([identity: identity], identity.provider_id == ^provider_id)
   end
 
+  def by_policy_actor_group_ids(queryable, actor_group_ids) do
+    queryable
+    |> with_joined_policy()
+    |> where([policy: policy], policy.actor_group_id in ^actor_group_ids)
+  end
+
   def by_resource_id(queryable, resource_id) do
     where(queryable, [flows: flows], flows.resource_id == ^resource_id)
   end
