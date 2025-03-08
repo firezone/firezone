@@ -35,6 +35,7 @@ defmodule Domain.Actors.Group.Sync do
   end
 
   defp all_provider_groups(provider) do
+    # includes excluded - we want to include them for sync purposes
     groups =
       Group.Query.not_deleted()
       |> Group.Query.by_account_id(provider.account_id)
@@ -58,6 +59,7 @@ defmodule Domain.Actors.Group.Sync do
   end
 
   defp delete_groups(provider, provider_identifiers_to_delete) do
+    # includes excluded - we want to include them for sync purposes
     Group.Query.not_deleted()
     |> Group.Query.by_account_id(provider.account_id)
     |> Group.Query.by_provider_id(provider.id)

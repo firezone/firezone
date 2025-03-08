@@ -865,7 +865,7 @@ defmodule Domain.ActorsTest do
       assert deleted_group1.provider_identifier in ["G:GROUP_ID1", "OU:OU_ID1"]
       assert deleted_group2.provider_identifier in ["G:GROUP_ID1", "OU:OU_ID1"]
       assert Repo.aggregate(Actors.Group, :count) == 2
-      assert Repo.aggregate(Actors.Group.Query.not_deleted(), :count) == 0
+      assert Repo.aggregate(Actors.Group.Query.not_deleted_or_excluded(), :count) == 0
 
       assert Enum.empty?(group_ids_by_provider_identifier)
 

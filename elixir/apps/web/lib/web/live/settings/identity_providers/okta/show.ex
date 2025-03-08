@@ -241,8 +241,6 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
       provider={@provider}
       added={@added}
       removed={@removed}
-      filtered_group_identifiers={@filtered_group_identifiers}
-      group_filters_enabled_at={@group_filters_enabled_at}
       groups={@groups}
       groups_metadata={@groups_metadata}
       group_filters_enabled={@group_filters_enabled}

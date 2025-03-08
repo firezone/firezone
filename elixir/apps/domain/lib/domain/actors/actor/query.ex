@@ -123,7 +123,7 @@ defmodule Domain.Actors.Actor.Query do
       |> join(
         :inner,
         [memberships: memberships],
-        groups in ^Domain.Actors.Group.Query.not_deleted(),
+        groups in ^Domain.Actors.Group.Query.not_deleted_or_excluded(),
         on: groups.id == memberships.group_id
       )
       |> select([memberships: memberships], memberships.group_id)
@@ -149,7 +149,7 @@ defmodule Domain.Actors.Actor.Query do
       queryable,
       :left,
       [memberships: memberships],
-      groups in ^Domain.Actors.Group.Query.not_deleted(),
+      groups in ^Domain.Actors.Group.Query.not_deleted_or_excluded(),
       on: groups.id == memberships.group_id,
       as: :groups
     )
