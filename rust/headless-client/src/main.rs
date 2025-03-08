@@ -297,13 +297,14 @@ fn main() -> Result<()> {
                     ipv4,
                     ipv6,
                     dns,
+                    search_domain,
                     ipv4_routes,
                     ipv6_routes,
                 } => {
                     tun_device.set_ips(ipv4, ipv6).await?;
                     tun_device.set_routes(ipv4_routes, ipv6_routes).await?;
 
-                    dns_controller.set_dns(dns).await?;
+                    dns_controller.set_dns(dns, search_domain).await?;
 
                     // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready
                     // <https://github.com/firezone/firezone/pull/6026#discussion_r1692297438>

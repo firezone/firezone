@@ -9,6 +9,7 @@ use anyhow::Context;
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
+use connlib_model::DomainName;
 use connlib_model::ResourceView;
 use firezone_logging::err_with_src;
 use firezone_logging::sentry_layer;
@@ -127,6 +128,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
+        _search_domain: Option<DomainName>,
         route_list_v4: Vec<Ipv4Network>,
         route_list_v6: Vec<Ipv6Network>,
     ) {

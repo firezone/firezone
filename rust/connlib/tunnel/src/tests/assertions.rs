@@ -206,10 +206,18 @@ fn assert_packets_properties<T, U>(
                     assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
                 }
                 Destination::DomainName { name, .. } => {
+                    let domain = match ref_client.fully_qualify_using_search_domain(name.clone()) {
+                        Ok(domain) => domain,
+                        Err(e) => {
+                            tracing::error!(target: "assertions", "Failed to fully-qualify domain: {e:#}");
+                            return;
+                        }
+                    };
+
                     assert_destination_is_dns_resource(
                         gateway_received_request,
                         global_dns_records,
-                        name,
+                        &domain,
                     );
 
                     assert_proxy_ip_mapping_is_stable(
@@ -377,9 +385,9 @@ fn assert_destination_is_dns_resource(
         .collect::<Vec<_>>();
 
     if !possible_resource_ips.contains(&actual) {
-        tracing::error!(target: "assertions", %actual, ?possible_resource_ips, "❌ Unknown resource IP");
+        tracing::error!(target: "assertions", %domain, %actual, ?possible_resource_ips, "❌ Unknown resource IP");
     } else {
-        tracing::info!(target: "assertions", ip = %actual, "✅ Resource IP is valid");
+        tracing::info!(target: "assertions", %domain, ip = %actual, "✅ Resource IP is valid");
     }
 }
 
