@@ -3,6 +3,8 @@ defmodule Domain.Accounts.Config do
 
   @primary_key false
   embedded_schema do
+    field :search_domain, :string
+
     embeds_many :clients_upstream_dns, ClientsUpstreamDNS,
       primary_key: false,
       on_replace: :delete do

@@ -7,14 +7,43 @@ defmodule Domain.Accounts.Config.Changeset do
 
   def changeset(config \\ %Config{}, attrs) do
     config
-    |> cast(attrs, [])
+    |> cast(attrs, [:search_domain])
     |> cast_embed(:clients_upstream_dns,
       with: &client_upstream_dns_changeset/2,
       sort_param: :clients_upstream_dns_sort,
       drop_param: :clients_upstream_dns_drop
     )
     |> cast_embed(:notifications, with: &notifications_changeset/2)
+    |> validate_search_domain()
     |> validate_unique_clients_upstream_dns()
+  end
+
+  defp validate_search_domain(changeset) do
+    changeset
+    |> validate_change(:search_domain, fn :search_domain, domain ->
+      cond do
+        domain == nil || domain == "" ->
+          [search_domain: "cannot be empty"]
+
+        String.length(domain) > 255 ->
+          [search_domain: "must not exceed 255 characters"]
+
+        String.starts_with?(domain, ".") || String.ends_with?(domain, ".") ->
+          [search_domain: "must not start or end with a dot"]
+
+        String.contains?(domain, "..") ->
+          [search_domain: "must not contain consecutive dots"]
+
+        !String.match?(domain, ~r/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i) ->
+          [search_domain: "must be a valid fully-qualified domain name"]
+
+        Enum.any?(String.split(domain, "."), &(String.length(&1) > 63)) ->
+          [search_domain: "each label must not exceed 63 characters"]
+
+        true ->
+          []
+      end
+    end)
   end
 
   defp validate_unique_clients_upstream_dns(changeset) do
