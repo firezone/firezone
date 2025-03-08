@@ -126,7 +126,7 @@ jobs:
           fi
 
           # Start one-by-one to avoid variability in service startup order
-          docker compose up -d dns.httpbin httpbin download.httpbin --no-build
+          docker compose up -d dns.httpbin.test httpbin download.httpbin --no-build
           docker compose up -d api web domain --no-build
           docker compose up -d otel --no-build
           docker compose up -d relay-1 --no-build
