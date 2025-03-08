@@ -9,7 +9,7 @@ use crate::tun::Tun;
 use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
-use connlib_model::ResourceView;
+use connlib_model::{DomainName, ResourceView};
 use firezone_logging::{err_with_src, sentry_layer};
 use firezone_telemetry::{Telemetry, ANDROID_DSN};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -170,6 +170,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
+        _search_domain: Option<DomainName>,
         route_list_4: Vec<Ipv4Network>,
         route_list_6: Vec<Ipv6Network>,
     ) {

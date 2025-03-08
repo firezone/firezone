@@ -236,6 +236,7 @@ impl TunnelTest {
                         ipv4: c.sut.tunnel_ip_config().unwrap().v4,
                         ipv6: c.sut.tunnel_ip_config().unwrap().v6,
                         upstream_dns: servers,
+                        search_domain: ref_state.client.inner().search_domain.clone(),
                     })
                 });
             }
@@ -267,6 +268,7 @@ impl TunnelTest {
                         ipv4,
                         ipv6,
                         upstream_dns,
+                        search_domain: ref_state.client.inner().search_domain.clone(),
                     });
                     c.update_relays(iter::empty(), state.relays.iter(), now);
                     c.sut.set_resources(all_resources);
@@ -835,17 +837,18 @@ impl TunnelTest {
 fn address_from_destination(destination: &Destination, state: &TunnelTest, src: &IpAddr) -> IpAddr {
     match destination {
         Destination::DomainName { resolved_ip, name } => {
-            let available_ips = state
-                .client
-                .inner()
-                .dns_records
-                .get(name)
-                .unwrap()
-                .iter()
-                .filter(|ip| match ip {
-                    IpAddr::V4(_) => src.is_ipv4(),
-                    IpAddr::V6(_) => src.is_ipv6(),
-                });
+            let dns_records = &state.client.inner().dns_records;
+
+            let Some(ips) = dns_records.get(name) else {
+                tracing::error!(%name, ?dns_records, "No DNS records");
+
+                panic!("No DNS records")
+            };
+
+            let available_ips = ips.iter().filter(|ip| match ip {
+                IpAddr::V4(_) => src.is_ipv4(),
+                IpAddr::V6(_) => src.is_ipv6(),
+            });
             *resolved_ip.select(available_ips)
         }
         Destination::IpAddr(addr) => *addr,

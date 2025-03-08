@@ -1,6 +1,7 @@
 use crate::client::IpProvider;
 use anyhow::{Context, Result};
 use connlib_model::{DomainName, ResourceId};
+use domain::base::name::FlattenInto;
 use domain::rdata::AllRecordData;
 use domain::{
     base::{
@@ -44,6 +45,7 @@ pub struct StubResolver {
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by the glob pattern they match against.
     dns_resources: BTreeMap<Pattern, ResourceId>,
+    search_domain: Option<DomainName>,
 }
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
@@ -116,6 +118,7 @@ impl Default for StubResolver {
             ips_to_fqdn: Default::default(),
             ip_provider: IpProvider::for_resources(),
             dns_resources: Default::default(),
+            search_domain: Default::default(),
         }
     }
 }
@@ -261,13 +264,16 @@ impl StubResolver {
         tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
 
         if domain == *DOH_CANARY_DOMAIN {
-            let payload = MessageBuilder::new_vec()
-                .start_answer(&message, Rcode::NXDOMAIN)
-                .context("Failed to create answer from DNS query")?
-                .into_message();
-
-            return Ok(ResolveStrategy::LocalResponse(payload));
+            return Ok(ResolveStrategy::LocalResponse(nxdomain(message)));
         }
+
+        // We override the `domain` here to ensure that we use the FQDN everywhere from here on.
+        let (domain, is_single_label_domain) = self
+            .fully_qualify_using_search_domain(domain.clone())
+            .inspect_err(
+                |e| tracing::debug!(%domain, "Failed to expand single-label domain: {e:#}"),
+            )
+            .unwrap_or((domain, true)); // Failure to fully-qualify it can only happen if it is a single-label domain.
 
         // `match_resource` is `O(N)` which we deem fine for DNS queries.
         let maybe_resource = self.match_resource_linear(&domain);
@@ -293,16 +299,58 @@ impl StubResolver {
                 // We must intercept queries for the HTTPS record type to force the client to issue an A / AAAA query instead.
                 // Otherwise, the client won't use the IPs we issue for a particular domain and the traffic cannot be tunneled.
 
-                let response = build_dns_with_answer(message, domain, Vec::default())?;
+                let response = build_dns_with_answer(message, Vec::default())?;
                 return Ok(ResolveStrategy::LocalResponse(response));
+            }
+            (_, None) if is_single_label_domain => {
+                // Queries for single-label domains, i.e. local hostnames are never recursively resolved but are instead answered with nxdomain.
+
+                tracing::trace!(
+                    %domain,
+                    "Query for single-label non-resource domain, responding with NXDOMAIN"
+                );
+
+                return Ok(ResolveStrategy::LocalResponse(nxdomain(message)));
             }
             _ => return Ok(ResolveStrategy::RecurseLocal),
         };
 
         tracing::trace!(%qtype, %domain, records = ?resource_records, "Forming DNS response");
 
-        let response = build_dns_with_answer(message, domain, resource_records)?;
+        let response = build_dns_with_answer(message, resource_records)?;
         Ok(ResolveStrategy::LocalResponse(response))
+    }
+
+    pub(crate) fn set_search_domain(&mut self, new_search_domain: Option<DomainName>) {
+        if self.search_domain == new_search_domain {
+            return;
+        }
+
+        tracing::debug!(current = ?self.search_domain, new = ?new_search_domain, "Setting new search-domain");
+
+        self.search_domain = new_search_domain;
+    }
+
+    fn fully_qualify_using_search_domain(&self, domain: DomainName) -> Result<(DomainName, bool)> {
+        // Root-label counts as a label.
+        if domain.label_count() != 2 {
+            return Ok((domain, false));
+        }
+
+        let search_domain = self
+            .search_domain
+            .clone()
+            .context("No search-domain configured to expand single-label domain")?;
+
+        let domain = domain
+            .into_relative()
+            .chain(search_domain)
+            .context("Query + search domain exceeds max allowed domain length")?
+            .flatten_into();
+
+        tracing::trace!(target: "tunnel_test_coverage", "Expanded single-label query into FQDN using search-domain");
+
+        Ok((domain, true))
     }
 }
 
@@ -310,6 +358,13 @@ pub fn servfail(message: Message<&[u8]>) -> Message<Vec<u8>> {
     MessageBuilder::new_vec()
         .start_answer(&message, Rcode::SERVFAIL)
         .expect("should always be able to create a heap-allocated SERVFAIL message")
+        .into_message()
+}
+
+fn nxdomain(message: Message<&[u8]>) -> Message<Vec<u8>> {
+    MessageBuilder::new_vec()
+        .start_answer(&message, Rcode::NXDOMAIN)
+        .expect("should always be able to create a heap-allocated NXDOMAIN message")
         .into_message()
 }
 
@@ -329,9 +384,15 @@ fn to_aaaa_records(ips: impl Iterator<Item = IpAddr>) -> Vec<AllRecordData<Vec<u
 
 fn build_dns_with_answer(
     message: Message<&[u8]>,
-    qname: DomainName,
     records: Vec<AllRecordData<Vec<u8>, DomainName>>,
 ) -> Result<Message<Vec<u8>>> {
+    // Take the original qname out of the message.
+    // DNS queries should always respond for the exact same qname that was queried, even if we expanded a single-label domain.
+    let qname = message
+        .sole_question()
+        .context("Expected a single question")?
+        .into_qname();
+
     let mut answer_builder = MessageBuilder::new_vec()
         .start_answer(&message, Rcode::NOERROR)
         .context("Failed to create answer from query")?;
@@ -339,7 +400,7 @@ fn build_dns_with_answer(
 
     for record in records {
         answer_builder
-            .push((&qname, Class::IN, DNS_TTL, record))
+            .push((qname, Class::IN, DNS_TTL, record))
             .context("Failed to push record")?;
     }
 

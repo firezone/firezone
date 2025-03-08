@@ -379,6 +379,7 @@ pub struct TunConfig {
     ///   If upstream DNS servers are configured (in the portal), we will use those.
     ///   Otherwise, we will use the DNS servers configured on the system.
     pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+    pub search_domain: Option<DomainName>,
 
     #[debug("{}", DisplaySet(ipv4_routes))]
     pub ipv4_routes: BTreeSet<Ipv4Network>,

@@ -449,11 +449,12 @@ impl<'a> Handler<'a> {
                 ipv4,
                 ipv6,
                 dns,
+                search_domain,
                 ipv4_routes,
                 ipv6_routes,
             } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
-                self.dns_controller.set_dns(dns).await?;
+                self.dns_controller.set_dns(dns, search_domain).await?;
                 if let Some(instant) = self.last_connlib_start_instant.take() {
                     tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
                 }

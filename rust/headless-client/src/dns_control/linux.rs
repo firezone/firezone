@@ -1,5 +1,6 @@
 use super::DnsController;
 use anyhow::{bail, Context as _, Result};
+use connlib_model::DomainName;
 use firezone_bin_shared::{platform::DnsControlMethod, TunDeviceManager};
 use std::{net::IpAddr, process::Command, str::FromStr};
 
@@ -21,15 +22,21 @@ impl DnsController {
     /// it would be bad if this was called from 2 threads at once.
     ///
     /// Cancel safety: Try not to cancel this.
-    pub async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
+    pub async fn set_dns(
+        &mut self,
+        dns_config: Vec<IpAddr>,
+        search_domain: Option<DomainName>,
+    ) -> Result<()> {
         match self.dns_control_method {
             DnsControlMethod::Disabled => Ok(()),
-            DnsControlMethod::EtcResolvConf => {
-                tokio::task::spawn_blocking(move || etc_resolv_conf::configure(&dns_config))
-                    .await
-                    .context("Failed to `spawn_blocking` DNS control task")?
+            DnsControlMethod::EtcResolvConf => tokio::task::spawn_blocking(move || {
+                etc_resolv_conf::configure(&dns_config, search_domain)
+            })
+            .await
+            .context("Failed to `spawn_blocking` DNS control task")?,
+            DnsControlMethod::SystemdResolved => {
+                configure_systemd_resolved(&dns_config, search_domain).await
             }
-            DnsControlMethod::SystemdResolved => configure_systemd_resolved(&dns_config).await,
         }
         .context("Failed to control DNS")
     }
@@ -52,10 +59,17 @@ impl DnsController {
 ///
 /// Cancel safety: Cancelling the future may leave running subprocesses
 /// which should eventually exit on their own.
-async fn configure_systemd_resolved(dns_config: &[IpAddr]) -> Result<()> {
+async fn configure_systemd_resolved(
+    dns_config: &[IpAddr],
+    search_domain: Option<DomainName>,
+) -> Result<()> {
+    let search_domain = search_domain
+        .map(|d| d.to_string())
+        .unwrap_or_else(|| "~.".to_owned());
+
     configure_dns_for_tun("dns", dns_config).await?;
-    configure_dns_for_tun("domain", &["~."]).await?;
-    configure_dns_for_tun("llmnr", &[false]).await?; // Must disable LLMNR to not interfere with local search domains.
+    configure_dns_for_tun("domain", &[search_domain]).await?;
+    configure_dns_for_tun("llmnr", &[true]).await?;
 
     tracing::info!(?dns_config, "Configured DNS sentinels with `resolvectl`");
 

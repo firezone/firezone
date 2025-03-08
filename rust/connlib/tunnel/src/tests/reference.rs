@@ -273,6 +273,17 @@ impl ReferenceState {
                 },
             )
             .with_if_not_empty(
+                5,
+                (
+                    state.single_label_queries_for_search_domains(),
+                    state.reachable_dns_servers(),
+                ),
+                |(domains, dns_servers)| {
+                    dns_queries(sample::select(domains), sample::select(dns_servers))
+                        .prop_map(Transition::SendDnsQueries)
+                },
+            )
+            .with_if_not_empty(
                 1,
                 state
                     .client
@@ -597,8 +608,16 @@ impl ReferenceState {
                     .sending_socket_for(query.dns_server.ip())
                     .is_some();
 
+                let Ok(domain) = state
+                    .client
+                    .inner()
+                    .fully_qualify_using_search_domain(query.domain.clone())
+                else {
+                    return false;
+                };
+
                 let is_ptr_query = matches!(query.r_type, Rtype::PTR);
-                let is_known_domain = state.global_dns_records.contains_domain(&query.domain);
+                let is_known_domain = state.global_dns_records.contains_domain(&domain);
                 // In case we sampled a PTR query, the domain doesn't have to exist.
                 let ptr_or_known_domain = is_ptr_query || is_known_domain;
 
@@ -715,6 +734,41 @@ impl ReferenceState {
             .values()
             .flat_map(|g| domains_and_rtypes(g.inner().dns_records()))
             .chain(domains_and_rtypes(&self.global_dns_records))
+            .collect::<BTreeSet<_>>();
+
+        Vec::from_iter(unique_domains)
+    }
+
+    // We surface what are the existing rtypes for a domain so that it's easier
+    // for the proptests to hit an existing record.
+    fn single_label_queries_for_search_domains(&self) -> Vec<(DomainName, Vec<Rtype>)> {
+        let Some(search_domain) = self.client.inner().search_domain.clone() else {
+            return Vec::default();
+        };
+
+        fn domains_and_rtypes(
+            records: &DnsRecords,
+        ) -> impl Iterator<Item = (DomainName, Vec<Rtype>)> + use<'_> {
+            records
+                .domains_iter()
+                .map(|d| (d.clone(), records.domain_rtypes(&d)))
+        }
+
+        // We may have multiple gateways in a site, so we need to dedup.
+        let unique_domains = self
+            .gateways
+            .values()
+            .flat_map(|g| domains_and_rtypes(g.inner().dns_records()))
+            .chain(domains_and_rtypes(&self.global_dns_records))
+            .filter_map(|(domain, rtypes)| {
+                let relative_name = domain.strip_suffix(&search_domain).ok()?;
+
+                if relative_name.label_count() != 1 {
+                    return None;
+                }
+
+                Some((relative_name.into_absolute().unwrap(), rtypes))
+            })
             .collect::<BTreeSet<_>>();
 
         Vec::from_iter(unique_domains)
