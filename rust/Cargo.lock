@@ -2249,7 +2249,12 @@ dependencies = [
 name = "firezone-telemetry"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "parking_lot",
+ "reqwest",
  "sentry",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
