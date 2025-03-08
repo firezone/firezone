@@ -26,6 +26,7 @@ defmodule Domain.Actors.Group do
 
     belongs_to :account, Domain.Accounts.Account
 
+    field :excluded_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end

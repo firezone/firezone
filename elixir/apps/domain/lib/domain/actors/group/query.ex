@@ -10,6 +10,14 @@ defmodule Domain.Actors.Group.Query do
     |> where([groups: groups], is_nil(groups.deleted_at))
   end
 
+  def not_excluded(queryable) do
+    where(queryable, [groups: groups], is_nil(groups.excluded_at))
+  end
+
+  def excluded(queryable) do
+    where(queryable, [groups: groups], not is_nil(groups.excluded_at))
+  end
+
   def not_editable(queryable) do
     where(queryable, [groups: groups], not is_nil(groups.provider_id) or groups.type != :static)
   end
@@ -139,11 +147,6 @@ defmodule Domain.Actors.Group.Query do
       on: actors.id == memberships.actor_id,
       as: :actors
     )
-  end
-
-  def select_provider_identifiers(queryable) do
-    queryable
-    |> select([groups: groups], groups.provider_identifier)
   end
 
   def lock(queryable) do

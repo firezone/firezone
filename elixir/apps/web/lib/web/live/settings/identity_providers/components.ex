@@ -1,7 +1,7 @@
 defmodule Web.Settings.IdentityProviders.Components do
   use Web, :component_library
   import Web.LiveTable
-  alias Domain.{Actors, Auth.Provider}
+  alias Domain.Actors
 
   def status(%{provider: %{deleted_at: deleted_at}} = assigns) when not is_nil(deleted_at) do
     ~H"""
@@ -381,24 +381,26 @@ defmodule Web.Settings.IdentityProviders.Components do
         Group filters allow you to control which groups are synced from the Identity Provider.
         By default, all groups are included.
       </:help>
-      <:action></:action>
+      <:action>
+        <.docs_action path="/authenticate/directory-sync" fragment="group-filters" />
+      </:action>
       <:content>
         <%= if @provider.last_synced_at do %>
           <form phx-change="toggle_filters">
             <.switch
-              checked={@group_filters_enabled_at}
+              checked={@group_filters_enabled}
               label="Enable group filters"
               label_placement="left"
             />
           </form>
           <fieldset
-            disabled={!@group_filters_enabled_at}
-            class={if @group_filters_enabled_at, do: "", else: "opacity-50"}
+            disabled={!@group_filters_enabled}
+            class={if @group_filters_enabled, do: "", else: "opacity-50"}
           >
             <.live_table
               id="groups"
               rows={@groups}
-              row_id={&"group-#{&1.provider_identifier}"}
+              row_id={&"group-#{&1.id}"}
               filters={@filters_by_table_id["groups"]}
               filter={@filter_form_by_table_id["groups"]}
               ordered_by={@order_by_table_id["groups"]}
@@ -421,24 +423,26 @@ defmodule Web.Settings.IdentityProviders.Components do
               <:col :let={group}>
                 <div class="flex justify-end">
                   <.button
-                    :if={show_remove_button?(@filtered_group_identifiers, @added, @removed, group)}
+                    :if={show_remove_button?(@added, @removed, group)}
                     size="xs"
                     style="info"
                     icon="hero-minus"
                     phx-click="remove_group"
-                    phx-value-identifier={group.provider_identifier}
+                    phx-value-id={group.id}
                     phx-value-name={group.name}
+                    phx-value-excluded_at={group.excluded_at}
                   >
                     Remove
                   </.button>
                   <.button
-                    :if={show_add_button?(@filtered_group_identifiers, @added, @removed, group)}
+                    :if={show_add_button?(@added, @removed, group)}
                     size="xs"
                     style="info"
                     icon="hero-plus"
                     phx-click="add_group"
-                    phx-value-identifier={group.provider_identifier}
+                    phx-value-id={group.id}
                     phx-value-name={group.name}
+                    phx-value-excluded_at={group.excluded_at}
                   >
                     Add
                   </.button>
@@ -448,7 +452,7 @@ defmodule Web.Settings.IdentityProviders.Components do
           </fieldset>
           <div class="flex justify-between items-center">
             <p class="px-4 text-sm text-gray-500">
-              {pending_changes(@provider, @group_filters_enabled_at, @added, @removed)}
+              {pending_changes(@added, @removed)}
             </p>
 
             <.button_group>
@@ -459,11 +463,8 @@ defmodule Web.Settings.IdentityProviders.Components do
 
             <.button_with_confirmation
               id="save_changes"
-              {changed?(@provider, @group_filters_enabled_at, @added, @removed) && %{} || %{disabled: "disabled"}}
-              style={
-                (changed?(@provider, @group_filters_enabled_at, @added, @removed) && "primary") ||
-                  "disabled"
-              }
+              {group_filters_changed?(@added, @removed) && %{} || %{disabled: "disabled"}}
+              style={(group_filters_changed?(@added, @removed) && "primary") || "disabled"}
               confirm_style="primary"
               class="m-4"
               on_confirm="submit"
@@ -493,31 +494,29 @@ defmodule Web.Settings.IdentityProviders.Components do
     """
   end
 
-  defp changed?(provider, group_filters_enabled_at, added, removed) do
-    Enum.any?(added) or Enum.any?(removed) or
-      provider.group_filters_enabled_at != group_filters_enabled_at
+  defp group_filters_changed?(added, removed) do
+    Enum.any?(added) or Enum.any?(removed)
   end
 
-  defp show_add_button?(filtered, added, removed, group) do
-    (not Enum.member?(filtered, group.provider_identifier) and not added?(added, group)) or
-      (Enum.member?(filtered, group.provider_identifier) and removed?(removed, group))
+  defp show_add_button?(added, removed, group) do
+    (is_nil(group.excluded_at) and not added?(added, group)) or
+      (!is_nil(group.excluded_at) and removed?(removed, group))
   end
 
-  defp show_remove_button?(filtered, added, removed, group) do
-    (Enum.member?(filtered, group.provider_identifier) and not removed?(removed, group)) or
-      added?(added, group)
+  defp show_remove_button?(added, removed, group) do
+    (!is_nil(group.excluded_at) and not removed?(removed, group)) or added?(added, group)
   end
 
   defp added?(added, group) do
-    Enum.any?(added, fn {identifier, _name} -> identifier == group.provider_identifier end)
+    Enum.any?(added, fn {id, _name} -> id == group.id end)
   end
 
   defp removed?(removed, group) do
-    Enum.any?(removed, fn {identifier, _name} -> identifier == group.provider_identifier end)
+    Enum.any?(removed, fn {id, _name} -> id == group.id end)
   end
 
-  defp pending_changes(provider, group_filters_enabled_at, added, removed) do
-    if changed?(provider, group_filters_enabled_at, added, removed) do
+  defp pending_changes(added, removed) do
+    if group_filters_changed?(added, removed) do
       "#{Enum.count(added)} added, #{Enum.count(removed)} removed"
     else
       "No changes pending"
@@ -552,30 +551,33 @@ defmodule Web.Settings.IdentityProviders.Components do
   end
 
   def handle_group_filters_event("select_all", _params, socket) do
-    all_groups = Actors.all_deleted_and_unfiltered_groups_for!(socket.assigns.provider, socket.assigns.subject)
-    filtered_groups = Actors.all_filtered_groups_for!(socket.assigns.provider, socket.assigns.subject)
+    all_groups =
+      Actors.all_deleted_and_excluded_groups_for!(socket.assigns.provider, socket.assigns.subject)
 
-    added = Enum.reduce(all_groups, %{}, fn group, acc ->
-      if Enum.member?(socket.assigns.filtered_group_identifiers, group.provider_identifier) do
-        acc
-      else
-        Map.put(acc, group.provider_identifier, group.name)
-      end
-    end)
+    added =
+      Enum.reduce(all_groups, %{}, fn group, acc ->
+        if group.excluded_at do
+          acc
+        else
+          Map.put(acc, group.id, group.name)
+        end
+      end)
 
     {:noreply, assign(socket, added: added, removed: %{})}
   end
 
   def handle_group_filters_event("select_none", _params, socket) do
-    all_groups = Actors.all_groups_for_provider!(socket.assigns.provider, socket.assigns.subject)
+    all_groups =
+      Actors.all_deleted_and_excluded_groups_for!(socket.assigns.provider, socket.assigns.subject)
 
-    removed = Enum.reduce(all_groups, %{}, fn group, acc ->
-      if Enum.member?(socket.assigns.filtered_group_identifiers, group.provider_identifier) do
-        Map.put(acc, group.provider_identifier, group.name)
-      else
-        acc
-      end
-    end)
+    removed =
+      Enum.reduce(all_groups, %{}, fn group, acc ->
+        if group.excluded_at do
+          Map.put(acc, group.id, group.name)
+        else
+          acc
+        end
+      end)
 
     {:noreply, assign(socket, added: %{}, removed: removed)}
   end
@@ -584,30 +586,22 @@ defmodule Web.Settings.IdentityProviders.Components do
     {:noreply, assign(socket, added: %{}, removed: %{})}
   end
 
-  def handle_group_filters_event(
-        "add_group",
-        %{"identifier" => identifier, "name" => name},
-        socket
-      ) do
-    removed = Map.delete(socket.assigns.removed, identifier)
+  def handle_group_filters_event("add_group", %{"id" => id, "name" => name} = params, socket) do
+    removed = Map.delete(socket.assigns.removed, id)
 
-    if Enum.member?(socket.assigns.filtered_group_identifiers, identifier) do
+    if params["excluded_at"] do
       {:noreply, assign(socket, removed: removed)}
     else
-      added = Map.put(socket.assigns.added, identifier, name)
+      added = Map.put(socket.assigns.added, id, name)
       {:noreply, assign(socket, added: added, removed: removed)}
     end
   end
 
-  def handle_group_filters_event(
-        "remove_group",
-        %{"identifier" => identifier, "name" => name},
-        socket
-      ) do
-    added = Map.delete(socket.assigns.added, identifier)
+  def handle_group_filters_event("remove_group", %{"id" => id, "name" => name} = params, socket) do
+    added = Map.delete(socket.assigns.added, id)
 
-    if Enum.member?(socket.assigns.filtered_group_identifiers, identifier) do
-      removed = Map.put(socket.assigns.removed, identifier, name)
+    if params["excluded_at"] do
+      removed = Map.put(socket.assigns.removed, id, name)
       {:noreply, assign(socket, added: added, removed: removed)}
     else
       {:noreply, assign(socket, added: added)}
@@ -615,32 +609,21 @@ defmodule Web.Settings.IdentityProviders.Components do
   end
 
   def handle_group_filters_event("submit", _params, socket) do
-    added_identifiers = Map.keys(socket.assigns.added)
-    removed_identifiers = Map.keys(socket.assigns.removed)
-    filtered_at = DateTime.utc_now()
-
-    new_filtered_group_ids =
-      socket.assigns.filtered_group_identifiers ++ (added_identifiers -- removed_identifiers)
-
-    provider = %Provider{
-      socket.assigns.provider
-      | filtered_group_identifiers: new_filtered_group_identifiers,
-        group_filters_enabled_at: enabled_at
-    }
+    # TODO: Set excluded_at for groups that were removed
+    # TODO: Remove excluded_at for groups that were added
+    # added_ids = Map.keys(socket.assigns.added)
+    # removed_ids = Map.keys(socket.assigns.removed)
 
     {:noreply,
      assign(socket,
-       provider: provider,
        added: %{},
-       removed: %{},
-       filtered_group_identifiers: new_filtered_group_identifiers,
-       group_filters_enabled_at: enabled_at
+       removed: %{}
      )}
   end
 
   def handle_group_filters_update!(socket, list_opts) do
     with {:ok, groups, metadata} <-
-           Actors.list_groups_for_provider(
+           Actors.list_all_deleted_and_excluded_groups_for(
              socket.assigns.provider,
              socket.assigns.subject,
              list_opts

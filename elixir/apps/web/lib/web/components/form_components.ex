@@ -704,7 +704,26 @@ defmodule Web.FormComponents do
       """
     end
 
-    # TODO: button group styles
+    ~H"""
+    <div class="inline-flex rounded shadow" role="group">
+      <%= for {button, index} <- Enum.with_index(@button) do %>
+        <button
+          type="button"
+          class={button_group_style(index, Enum.count(@button))}
+          {if button[:event], do: %{"phx-click" => button[:event]}, else: %{}}
+        >
+          <%= if button[:icon] do %>
+            <span class={button[:icon]}></span>
+          <% end %>
+          {button[:label]}
+        </button>
+      <% end %>
+    </div>
+    """
+  end
+
+  def button_group_style(idx, count) do
+    # TODO: more styles
     shared = ~w[
       phx-submit-loading:opacity-75
       px-3 py-2
@@ -712,30 +731,18 @@ defmodule Web.FormComponents do
       bg-white border-neutral-200 hover:bg-neutral-100
     ]
 
-    first = shared ++ ~w[border rounded-s]
-    middle = shared ++ ~w[border-t border-b]
-    last = shared ++ ~w[border rounded-e]
-
-    ~H"""
-    <div class="inline-flex rounded shadow" role="group">
-      <%= for {button, index} <- Enum.with_index(@button) do %>
-        <button
-          type="button"
-          class={
-            if index == 0, do: first,
-            else: if index == Enum.count(@button) - 1, do: last,
-            else: middle
-          }
-          {if button[:event], do: %{"phx-click" => button[:event]}, else: %{}}
-        >
-          <%= if button[:icon] do %>
-            <span class={button[:icon]}></span>
-          <% end %>
-          <%= button[:label] %>
-        </button>
-      <% end %>
-    </div>
-    """
+    if idx == 0 do
+      # first
+      shared ++ ~w[border rounded-s]
+    else
+      if idx == count - 1 do
+        # last
+        shared ++ ~w[border rounded-e]
+      else
+        # middle
+        shared ++ ~w[border-t border-b]
+      end
+    end
   end
 
   def button_style do

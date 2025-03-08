@@ -25,6 +25,7 @@ defmodule Domain.Actors.Actor do
     field :last_seen_at, :utc_datetime_usec, virtual: true
     field :last_synced_at, :utc_datetime_usec
     field :disabled_at, :utc_datetime_usec
+    field :excluded_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end

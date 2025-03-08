@@ -55,20 +55,32 @@ defmodule Domain.Actors do
     end
   end
 
-  def list_all_deleted_and_unfiltered_groups_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject, opts \\ []) do
+  def list_all_deleted_and_excluded_groups_for(
+        %Auth.Provider{} = provider,
+        %Auth.Subject{} = subject,
+        opts \\ []
+      ) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group
+      Group.Query.all()
       |> Group.Query.by_provider_id(provider.id)
       |> Authorizer.for_subject(subject)
       |> Repo.list(Group.Query, opts)
     end
   end
 
-  def all_deleted_and_unfiltered_groups_for!(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
-    Group
+  def all_deleted_and_excluded_groups_for!(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    Group.Query.all()
     |> Group.Query.by_provider_id(provider.id)
     |> Authorizer.for_subject(subject)
     |> Repo.all()
+  end
+
+  def any_group_excluded?(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    Group.Query.all()
+    |> Group.Query.by_provider_id(provider.id)
+    |> Authorizer.for_subject(subject)
+    |> Group.Query.excluded()
+    |> Repo.exists?()
   end
 
   def all_groups!(%Auth.Subject{} = subject, opts \\ []) do

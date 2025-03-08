@@ -13,19 +13,19 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Show do
          {:ok, groups_count_by_provider_id} <-
            Actors.fetch_groups_count_grouped_by_provider_id(socket.assigns.subject),
          {:ok, groups, metadata} <-
-           Actors.list_groups_for_provider(provider, socket.assigns.subject) do
+           Actors.list_all_deleted_and_excluded_groups_for(provider, socket.assigns.subject) do
+      group_filters_enabled = Actors.any_group_excluded?(provider, socket.assigns.subject)
       safe_to_delete_actors_count = Actors.count_synced_actors_for_provider(provider)
       {:ok, maybe_workos_directory} = maybe_fetch_directory(provider)
 
       {:ok,
        assign(socket,
          provider: provider,
-         group_filters_enabled_at: provider.group_filters_enabled_at,
-         filtered_group_identifiers: provider.filtered_group_identifiers,
          added: %{},
          removed: %{},
          groups: groups,
          groups_metadata: metadata,
+         group_filters_enabled: group_filters_enabled,
          identities_count_by_provider_id: identities_count_by_provider_id,
          groups_count_by_provider_id: groups_count_by_provider_id,
          workos_directory: maybe_workos_directory,
@@ -238,6 +238,7 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Show do
       group_filters_enabled_at={@group_filters_enabled_at}
       groups={@groups}
       groups_metadata={@groups_metadata}
+      group_filters_enabled={@group_filters_enabled}
       filters_by_table_id={@filters_by_table_id}
       filter_form_by_table_id={@filter_form_by_table_id}
       order_by_table_id={@order_by_table_id}
@@ -328,6 +329,20 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Show do
     end
   end
 
+  # For group filters
+
+  def handle_event(event, params, socket),
+    do: handle_group_filters_event(event, params, socket)
+
+  def handle_params(params, uri, socket) do
+    socket = handle_live_tables_params(socket, params, uri)
+    {:noreply, socket}
+  end
+
+  def handle_update!(socket, list_opts) do
+    handle_group_filters_update!(socket, list_opts)
+  end
+
   attr :account, :any, required: true
   attr :provider, :any, required: true
 
@@ -358,19 +373,5 @@ defmodule Web.Settings.IdentityProviders.JumpCloud.Show do
 
   defp maybe_fetch_directory(provider) do
     Domain.Auth.DirectorySync.WorkOS.fetch_directory(provider)
-  end
-
-  # For group filters
-
-  def handle_event(event, params, socket),
-    do: handle_group_filters_event(event, params, socket)
-
-  def handle_params(params, uri, socket) do
-    socket = handle_live_tables_params(socket, params, uri)
-    {:noreply, socket}
-  end
-
-  def handle_update!(socket, list_opts) do
-    handle_group_filters_update!(socket, list_opts)
   end
 end
