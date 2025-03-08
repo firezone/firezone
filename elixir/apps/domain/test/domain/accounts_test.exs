@@ -583,6 +583,118 @@ defmodule Domain.AccountsTest do
              }
     end
 
+    test "returns error when search_domain is invalid", %{account: account} do
+      attrs = %{
+        config: %{
+          search_domain: "invalid"
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 search_domain: ["must be a valid fully-qualified domain name"]
+               }
+             }
+    end
+
+    test "returns error when search_domain is too long", %{account: account} do
+      attrs = %{
+        config: %{
+          search_domain: String.duplicate("a", 256)
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 search_domain: ["must not exceed 255 characters"]
+               }
+             }
+    end
+
+    test "returns error when search_domain starts with a dot", %{account: account} do
+      attrs = %{
+        config: %{
+          search_domain: ".example.com"
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 search_domain: ["must not start or end with a dot"]
+               }
+             }
+    end
+
+    test "returns error when search_domain ends with a dot", %{account: account} do
+      attrs = %{
+        config: %{
+          search_domain: "example.com."
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 search_domain: ["must not start or end with a dot"]
+               }
+             }
+    end
+
+    test "returns error when search_domain contains consecutive dots", %{account: account} do
+      attrs = %{
+        config: %{
+          search_domain: "example..com"
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 search_domain: ["must not contain consecutive dots"]
+               }
+             }
+    end
+
+    test "returns error when search_domain labels exceed 63 characters", %{account: account} do
+      attrs = %{
+        config: %{
+          search_domain: "a" <> String.duplicate("a", 63) <> ".com"
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 search_domain: ["each label must not exceed 63 characters"]
+               }
+             }
+    end
+
+    test "returns error when search_domain contains invalid characters", %{account: account} do
+      attrs = %{
+        config: %{
+          search_domain: "example.com!"
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 search_domain: ["must be a valid fully-qualified domain name"]
+               }
+             }
+    end
+
     test "updates account and broadcasts a message", %{account: account} do
       Bypass.open()
       |> Domain.Mocks.Stripe.mock_update_customer_endpoint(account)
