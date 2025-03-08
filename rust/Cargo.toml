@@ -86,6 +86,7 @@ os_info = { version = "3", default-features = false }
 output_vt100 = "0.1"
 png = "0.17.16"
 proptest = "1.6.0"
+parking_lot = "0.12.3"
 proptest-state-machine = "0.3.1"
 quinn-udp = { version = "0.5.8", features = ["fast-apple-datapath"] }
 rand = "0.8.5"
