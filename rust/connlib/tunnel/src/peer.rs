@@ -1,6 +1,6 @@
 use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter;
-use std::net::{IpAddr, SocketAddr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::time::Instant;
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
@@ -11,7 +11,7 @@ use connlib_model::{ClientId, DomainName, GatewayId, ResourceId};
 use filter_engine::FilterEngine;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
+use ip_packet::{icmpv4, icmpv6, IpPacket, PacketBuilder, Protocol, UnsupportedProtocol};
 
 use crate::utils::network_contains_network;
 use crate::{GatewayEvent, IpConfig};
@@ -271,15 +271,29 @@ impl ClientOnGateway {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<IpPacket> {
+    ) -> anyhow::Result<TranslateOutboundResult> {
+        let dst = packet.destination();
+
         // Packets to the TUN interface don't get transformed.
-        if self.gateway_tun.is_ip(packet.destination()) {
-            return Ok(packet);
+        if self.gateway_tun.is_ip(dst) {
+            return Ok(TranslateOutboundResult::Send(packet));
+        }
+
+        // Packets for CIDR resources / Internet resource are forwarded as is.
+        if !is_dns_addr(dst) {
+            return Ok(TranslateOutboundResult::Send(packet));
         }
 
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
-            return Ok(packet);
+            return self.dst_unreachable(&packet);
         };
+
+        #[expect(clippy::collapsible_if, reason = "We want the feature flag separate.")]
+        if firezone_telemetry::feature_flags::icmp_unreachable_instead_of_nat64() {
+            if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
+                return self.dst_unreachable(&packet);
+            }
+        }
 
         let (source_protocol, real_ip) =
             self.nat_table
@@ -295,24 +309,24 @@ impl ClientOnGateway {
             .context("Failed to translate packet to new destination")?;
         packet.update_checksum();
 
-        Ok(packet)
+        Ok(TranslateOutboundResult::Send(packet))
     }
 
     pub fn translate_outbound(
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<Option<IpPacket>> {
+    ) -> anyhow::Result<TranslateOutboundResult> {
         // Filtering a packet is not an error.
         if let Err(e) = self.ensure_allowed_src_and_dst(&packet) {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
-            return Ok(None);
+            return Ok(TranslateOutboundResult::Filtered);
         }
 
         // Failing to transform is an error we want to know about further up.
-        let packet = self.transform_network_to_tun(packet, now)?;
+        let result = self.transform_network_to_tun(packet, now)?;
 
-        Ok(Some(packet))
+        Ok(result)
     }
 
     pub fn translate_inbound(
@@ -432,6 +446,55 @@ impl ClientOnGateway {
     pub fn id(&self) -> ClientId {
         self.id
     }
+
+    fn dst_unreachable(&self, packet: &IpPacket) -> Result<TranslateOutboundResult> {
+        let dst = packet.destination();
+
+        // TODO: Should we use the source IP of the packet?
+        let icmp_error = match dst {
+            IpAddr::V4(inside_dst) => icmpv4_unreachable(inside_dst, self.client_tun.v4, packet)?,
+            IpAddr::V6(inside_dst) => icmpv6_unreachable(inside_dst, self.client_tun.v6, packet)?,
+        };
+
+        Ok(TranslateOutboundResult::DestinationUnreachable(icmp_error))
+    }
+}
+
+fn icmpv4_unreachable(
+    src: Ipv4Addr,
+    dst: Ipv4Addr,
+    original_packet: &IpPacket,
+) -> Result<IpPacket, anyhow::Error> {
+    let builder = PacketBuilder::ipv4(src.octets(), dst.octets(), 20).icmpv4(
+        ip_packet::Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Host),
+    );
+    let payload = original_packet.packet();
+
+    let ip_packet = ip_packet::build!(builder, payload)?;
+
+    Ok(ip_packet)
+}
+
+fn icmpv6_unreachable(
+    src: Ipv6Addr,
+    dst: Ipv6Addr,
+    original_packet: &IpPacket,
+) -> Result<IpPacket, anyhow::Error> {
+    let builder = PacketBuilder::ipv6(src.octets(), dst.octets(), 20).icmpv6(
+        ip_packet::Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::NoRoute),
+    );
+    let payload = original_packet.packet();
+
+    let ip_packet = ip_packet::build!(builder, payload)?;
+
+    Ok(ip_packet)
+}
+
+#[derive(Debug, PartialEq)]
+pub enum TranslateOutboundResult {
+    Send(IpPacket),
+    DestinationUnreachable(IpPacket),
+    Filtered,
 }
 
 impl GatewayOnClient {
@@ -638,7 +701,7 @@ mod tests {
 
     use crate::{
         messages::gateway::{Filter, PortRange, ResourceDescription, ResourceDescriptionCidr},
-        peer::nat_table,
+        peer::{nat_table, TranslateOutboundResult},
         IpConfig,
     };
     use chrono::Utc;
@@ -746,14 +809,14 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer
-            .translate_outbound(request, Instant::now())
-            .unwrap()
-            .is_some());
-        assert!(peer
-            .translate_inbound(response, Instant::now())
-            .unwrap()
-            .is_some());
+        assert!(matches!(
+            peer.translate_outbound(request, Instant::now()).unwrap(),
+            crate::peer::TranslateOutboundResult::Send(_)
+        ));
+        assert!(matches!(
+            peer.translate_outbound(response, Instant::now()).unwrap(),
+            crate::peer::TranslateOutboundResult::Send(_)
+        ));
     }
 
     #[test]
@@ -791,10 +854,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer
-            .translate_outbound(pkt, Instant::now())
-            .unwrap()
-            .is_none());
+        assert!(matches!(
+            peer.translate_outbound(pkt, Instant::now()).unwrap(),
+            crate::peer::TranslateOutboundResult::Filtered
+        ));
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -805,10 +868,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer
-            .translate_outbound(pkt, Instant::now())
-            .unwrap()
-            .is_none());
+        assert!(matches!(
+            peer.translate_outbound(pkt, Instant::now()).unwrap(),
+            crate::peer::TranslateOutboundResult::Filtered
+        ));
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -855,10 +918,10 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer
-            .translate_outbound(pkt, Instant::now())
-            .unwrap()
-            .is_none());
+        assert!(matches!(
+            peer.translate_outbound(pkt, Instant::now()).unwrap(),
+            crate::peer::TranslateOutboundResult::Filtered
+        ));
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -897,7 +960,10 @@ mod tests {
 
         let mut now = Instant::now();
 
-        assert!(matches!(peer.translate_outbound(request, now), Ok(Some(_))));
+        assert!(matches!(
+            peer.translate_outbound(request, now),
+            Ok(TranslateOutboundResult::Send(_))
+        ));
 
         let response = ip_packet::make::udp_packet(
             foo_real_ip(),
