@@ -90,7 +90,7 @@ defmodule Domain.Actors.Membership.Query do
       queryable,
       :inner,
       [memberships: memberships],
-      groups in ^Group.Query.not_deleted_or_excluded(),
+      groups in ^Group.Query.not_deleted(),
       on: groups.id == memberships.group_id,
       as: :groups
     )

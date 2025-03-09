@@ -163,11 +163,11 @@ defmodule Domain.Policies do
     |> delete_policies(provider, subject)
   end
 
-  def delete_policies_for(%Auth.Provider{} = provider, actor_group_ids, %Auth.Subject{} = subject) do
+  def delete_policies_for(%Auth.Provider{} = provider, actor_group_ids) do
     Policy.Query.not_deleted()
     |> Policy.Query.by_actor_group_provider_id(provider.id)
     |> Policy.Query.by_actor_group_ids(actor_group_ids)
-    |> delete_policies(provider, subject)
+    |> delete_policies()
   end
 
   def delete_policies_for(%Actors.Group{} = actor_group) do

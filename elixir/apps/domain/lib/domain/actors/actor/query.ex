@@ -56,6 +56,42 @@ defmodule Domain.Actors.Actor.Query do
     |> where([actors: actors], not exists(subquery))
   end
 
+  def not_a_member_of_any_group(queryable) do
+    subquery =
+      Domain.Actors.Membership.Query.all()
+      |> where([memberships: memberships], memberships.actor_id == parent_as(:actors).id)
+
+    queryable
+    |> where([actors: actors], not exists(subquery))
+  end
+
+  # Actors where all identities belong exclusively to the given provider
+  def by_only_provider_id(queryable \\ not_deleted(), provider_id) do
+    # Check for existence of identities with the given provider
+    has_provider_subquery =
+      Domain.Auth.Identity.Query.all()
+      |> where(
+        [identities: identities],
+        identities.actor_id == parent_as(:actors).id and
+          identities.provider_id == ^provider_id and
+          is_nil(identities.deleted_at)
+      )
+
+    # Check for existence of identities with other providers
+    other_providers_subquery =
+      Domain.Auth.Identity.Query.all()
+      |> where(
+        [identities: identities],
+        identities.actor_id == parent_as(:actors).id and
+          identities.provider_id != ^provider_id and
+          is_nil(identities.deleted_at)
+      )
+
+    queryable
+    |> where([actors: actors], exists(has_provider_subquery))
+    |> where([actors: actors], not exists(other_providers_subquery))
+  end
+
   def by_type(queryable, {:in, types}) do
     where(queryable, [actors: actors], actors.type in ^types)
   end
@@ -123,7 +159,7 @@ defmodule Domain.Actors.Actor.Query do
       |> join(
         :inner,
         [memberships: memberships],
-        groups in ^Domain.Actors.Group.Query.not_deleted_or_excluded(),
+        groups in ^Domain.Actors.Group.Query.not_deleted(),
         on: groups.id == memberships.group_id
       )
       |> select([memberships: memberships], memberships.group_id)
@@ -149,7 +185,7 @@ defmodule Domain.Actors.Actor.Query do
       queryable,
       :left,
       [memberships: memberships],
-      groups in ^Domain.Actors.Group.Query.not_deleted_or_excluded(),
+      groups in ^Domain.Actors.Group.Query.not_deleted(),
       on: groups.id == memberships.group_id,
       as: :groups
     )

@@ -13,18 +13,17 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
          {:ok, groups_count_by_provider_id} <-
            Actors.fetch_groups_count_grouped_by_provider_id(socket.assigns.subject),
          {:ok, groups, metadata} <-
-           Actors.list_all_deleted_and_excluded_groups_for(provider, socket.assigns.subject) do
-      group_filters_enabled = Actors.any_group_excluded?(provider, socket.assigns.subject)
+           Actors.list_all_groups_for(provider, socket.assigns.subject) do
       safe_to_delete_actors_count = Actors.count_synced_actors_for_provider(provider)
 
       {:ok,
        assign(socket,
          provider: provider,
-         added: %{},
-         removed: %{},
+         included: %{},
+         excluded: %{},
          groups: groups,
          groups_metadata: metadata,
-         group_filters_enabled: group_filters_enabled,
+         group_filters_enabled: not is_nil(provider.group_filters_enabled_at),
          identities_count_by_provider_id: identities_count_by_provider_id,
          groups_count_by_provider_id: groups_count_by_provider_id,
          safe_to_delete_actors_count: safe_to_delete_actors_count,
@@ -222,8 +221,8 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
 
     <.group_filters
       provider={@provider}
-      added={@added}
-      removed={@removed}
+      included={@included}
+      excluded={@excluded}
       groups={@groups}
       groups_metadata={@groups_metadata}
       group_filters_enabled={@group_filters_enabled}

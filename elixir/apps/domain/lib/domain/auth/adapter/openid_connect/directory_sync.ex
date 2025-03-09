@@ -151,7 +151,7 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
       {:ok, pid} = Task.Supervisor.start_link()
 
       with {:ok, data, data_fetch_time_taken} <- fetch_provider_data(module, provider, pid),
-           {:ok, db_operations_time_taken} <- insert_provider_updates(provider, data) do
+           {:ok, db_operations_time_taken} <- apply_provider_updates(provider, data) do
         finish_time = System.monotonic_time(:millisecond)
 
         :telemetry.execute(
@@ -233,7 +233,7 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
     end
   end
 
-  defp insert_provider_updates(
+  defp apply_provider_updates(
          provider,
          {identities_attrs, actor_groups_attrs, membership_tuples}
        ) do
@@ -251,7 +251,9 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
                    groups_effects.group_ids_by_provider_identifier,
                    provider,
                    membership_tuples
-                 ) do
+                 ),
+               # TODO: Return effects here for logging
+               :ok <- Actors.delete_excluded_associations(provider) do
             Auth.Provider.Changeset.sync_finished(provider)
             |> Repo.update!()
 

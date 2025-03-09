@@ -417,7 +417,7 @@ defmodule Web.FormComponents do
 
     ~H"""
     <label class="inline-flex items-center cursor-pointer">
-      <input type="checkbox" id={@id} class="sr-only peer" checked={@checked} name={@name} value="on" />
+      <input type="checkbox" id={@id} class="sr-only peer" checked={@checked} name={@name} />
       <%= if @label_placement == "left" do %>
         <span class="ms-3 mr-3 text-sm font-medium text-neutral-900">{@label}</span>
       <% end %>
@@ -691,6 +691,8 @@ defmodule Web.FormComponents do
       <.button label="Save" />
     </.button_group>
   """
+  attr :style, :string, default: "info", doc: "The style of the button group"
+
   slot :button, required: true do
     attr :label, :string, required: true
     attr :icon, :string
@@ -705,11 +707,11 @@ defmodule Web.FormComponents do
     end
 
     ~H"""
-    <div class="inline-flex rounded shadow" role="group">
+    <div class="inline-flex rounded" role="group">
       <%= for {button, index} <- Enum.with_index(@button) do %>
         <button
           type="button"
-          class={button_group_style(index, Enum.count(@button))}
+          class={button_group_style(@style, index, Enum.count(@button))}
           {if button[:event], do: %{"phx-click" => button[:event]}, else: %{}}
         >
           <%= if button[:icon] do %>
@@ -722,7 +724,11 @@ defmodule Web.FormComponents do
     """
   end
 
-  def button_group_style(idx, count) do
+  def button_group_style("disabled", idx, count) do
+    ~w[cursor-not-allowed opacity-50] ++ button_group_style("info", idx, count)
+  end
+
+  def button_group_style("info", idx, count) do
     # TODO: more styles
     shared = ~w[
       phx-submit-loading:opacity-75

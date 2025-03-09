@@ -260,6 +260,19 @@ defmodule Domain.Clients do
     end
   end
 
+  # for idp sync
+  def delete_clients_for(%Actors.Actor{} = actor) do
+    queryable =
+      Client.Query.not_deleted()
+      |> Client.Query.by_actor_id(actor.id)
+      |> Client.Query.by_account_id(actor.account_id)
+
+    with {:ok, _clients} <- delete_clients(queryable) do
+      :ok = disconnect_actor_clients(actor)
+      :ok
+    end
+  end
+
   def delete_clients_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
     queryable =
       Client.Query.not_deleted()
@@ -271,6 +284,18 @@ defmodule Domain.Clients do
       :ok = disconnect_actor_clients(actor)
       :ok
     end
+  end
+
+  # for idp sync
+  defp delete_clients(queryable) do
+    {_count, clients} =
+      queryable
+      |> Client.Query.delete()
+      |> Repo.update_all([])
+
+    :ok = Enum.each(clients, &disconnect_client/1)
+
+    {:ok, clients}
   end
 
   defp delete_clients(queryable, subject) do

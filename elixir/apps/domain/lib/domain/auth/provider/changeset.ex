@@ -116,6 +116,18 @@ defmodule Domain.Auth.Provider.Changeset do
     |> put_change(:disabled_at, nil)
   end
 
+  def enable_group_filters(%Provider{} = provider) do
+    provider
+    |> change()
+    |> put_change(:group_filters_enabled_at, DateTime.utc_now())
+  end
+
+  def disable_group_filters(%Provider{} = provider) do
+    provider
+    |> change()
+    |> put_change(:group_filters_enabled_at, nil)
+  end
+
   def delete_provider(%Provider{} = provider) do
     provider
     |> change()

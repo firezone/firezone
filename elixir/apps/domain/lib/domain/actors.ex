@@ -28,7 +28,7 @@ defmodule Domain.Actors do
   def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
          true <- Repo.valid_uuid?(id) do
-      Group.Query.all()
+      Group.Query.not_excluded()
       |> Group.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch(Group.Query, opts)
@@ -55,38 +55,30 @@ defmodule Domain.Actors do
     end
   end
 
-  def list_all_deleted_and_excluded_groups_for(
+  def list_all_groups_for(
         %Auth.Provider{} = provider,
         %Auth.Subject{} = subject,
         opts \\ []
       ) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group.Query.all()
+      Group.Query.not_deleted()
       |> Group.Query.by_provider_id(provider.id)
       |> Authorizer.for_subject(subject)
       |> Repo.list(Group.Query, opts)
     end
   end
 
-  def all_deleted_and_excluded_groups_for!(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
-    Group.Query.all()
+  def all_groups_for!(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    Group.Query.not_deleted()
     |> Group.Query.by_provider_id(provider.id)
     |> Authorizer.for_subject(subject)
     |> Repo.all()
   end
 
-  def any_group_excluded?(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
-    Group.Query.all()
-    |> Group.Query.by_provider_id(provider.id)
-    |> Authorizer.for_subject(subject)
-    |> Group.Query.excluded()
-    |> Repo.exists?()
-  end
-
   def all_groups!(%Auth.Subject{} = subject, opts \\ []) do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-    Group.Query.not_deleted_or_excluded()
+    Group.Query.not_deleted()
     |> Authorizer.for_subject(subject)
     |> Repo.all()
     |> Repo.preload(preload)
@@ -266,8 +258,8 @@ defmodule Domain.Actors do
 
   def update_dynamic_group_memberships(account_id) do
     Repo.transaction(fn ->
-      # includes excluded - we still want to update memberships for synced groups
-      Group.Query.not_deleted()
+      # includes excluded - we still want to update those
+      Group.Query.not_deleted_or_excluded()
       |> Group.Query.by_account_id(account_id)
       |> Group.Query.by_type({:in, [:dynamic, :managed]})
       |> Group.Query.lock()
@@ -286,6 +278,26 @@ defmodule Domain.Actors do
         group
       end)
     end)
+  end
+
+  def update_group_filters_for(
+        %Auth.Provider{} = provider,
+        included_ids,
+        excluded_ids,
+        %Auth.Subject{} = subject
+      ) do
+    dbg(included_ids)
+    dbg(excluded_ids)
+
+    # These should never overlap
+    if Enum.any?(included_ids, &Enum.member?(excluded_ids, &1)) do
+      {:error, :overlapping_ids}
+    else
+      {:ok, _groups} = exclude_groups_for(provider, excluded_ids, subject)
+      {:ok, _groups} = include_groups_for(provider, included_ids, subject)
+
+      :ok
+    end
   end
 
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
@@ -374,26 +386,61 @@ defmodule Domain.Actors do
     {:ok, groups}
   end
 
-  # Similar to delete_groups_for/2 above, but marks them as excluded instead of deleting
-  # NOTE: Like delete_groups_for/2 above, this ALSO deletes associated memberships and policies!
-  def exclude_groups_for(%Auth.Provider{} = provider, group_ids, %Auth.Subject{} = subject) do
+  # Delete associated entities belonging to excluded groups
+  def delete_excluded_associations(provider) do
+    with {:ok, group_ids} <- Group.Query.excluded_ids(provider) do
+      # Delete memberships
+      {_count, memberships} =
+        Membership.Query.by_group_provider_id(provider.id)
+        |> Membership.Query.by_group_id({:in, group_ids})
+        |> Membership.Query.returning_all()
+        |> Repo.delete_all()
+
+      :ok = broadcast_membership_removal_events(memberships)
+
+      # Delete actors + identities that have no other identities and don't belong to any non-excluded groups
+      :ok = delete_excluded_actors(provider)
+
+      # TODO: Return effects here for logging
+      :ok
+    end
+  end
+
+  defp delete_excluded_actors(provider) do
+    Actor.Query.not_deleted()
+    |> Actor.Query.by_account_id(provider.account_id)
+    |> Actor.Query.by_only_provider_id(provider.id)
+    |> Actor.Query.not_a_member_of_any_group()
+    |> Repo.all()
+    |> Enum.each(&delete_actor(&1))
+  end
+
+  defp exclude_groups_for(_provider, [], _subject), do: {:ok, []}
+
+  defp exclude_groups_for(%Auth.Provider{} = provider, group_ids, %Auth.Subject{} = subject) do
     queryable =
-      Group.Query.not_deleted_or_excluded()
+      Group.Query.not_deleted()
       |> Group.Query.by_provider_id(provider.id)
       |> Group.Query.by_account_id(provider.account_id)
 
-    {_count, memberships} =
-      Membership.Query.by_group_provider_id(provider.id)
-      |> Membership.Query.by_group_id({:in, group_ids})
-      |> Membership.Query.returning_all()
-      |> Repo.delete_all()
+    {:ok, groups} = exclude_groups(queryable, group_ids, subject)
 
-    :ok = broadcast_membership_removal_events(memberships)
+    # Delete associated policies
+    {:ok, _policies} = Policies.delete_policies_for(provider, group_ids)
 
-    with {:ok, groups} <- exclude_groups(queryable, group_ids, subject) do
-      {:ok, _policies} = Policies.delete_policies_for(provider, group_ids, subject)
-      {:ok, groups}
-    end
+    # Deleting memberships, identities and actors is handled in the sync job
+    {:ok, groups}
+  end
+
+  defp include_groups_for(_provider, [], _subject), do: {:ok, []}
+
+  defp include_groups_for(%Auth.Provider{} = provider, group_ids, %Auth.Subject{} = subject) do
+    queryable =
+      Group.Query.not_deleted()
+      |> Group.Query.by_provider_id(provider.id)
+      |> Group.Query.by_account_id(provider.account_id)
+
+    include_groups(queryable, group_ids, subject)
   end
 
   defp exclude_groups(queryable, group_ids, subject) do
@@ -401,7 +448,19 @@ defmodule Domain.Actors do
       {_count, groups} =
         queryable
         |> Authorizer.for_subject(subject)
-        |> Group.Query.exclude(group_ids)
+        |> Group.Query.set_excluded(group_ids)
+        |> Repo.update_all([])
+
+      {:ok, groups}
+    end
+  end
+
+  def include_groups(queryable, group_ids, subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      {_count, groups} =
+        queryable
+        |> Authorizer.for_subject(subject)
+        |> Group.Query.set_included(group_ids)
         |> Repo.update_all([])
 
       {:ok, groups}
@@ -614,7 +673,7 @@ defmodule Domain.Actors do
         []
 
       group_ids ->
-        Group.Query.not_deleted_or_excluded()
+        Group.Query.not_deleted()
         |> Group.Query.not_editable()
         |> Group.Query.by_id({:in, group_ids})
         |> Repo.all()
@@ -646,6 +705,43 @@ defmodule Domain.Actors do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Actor.Query, with: &Actor.Changeset.enable_actor/1)
     end
+  end
+
+  # for idp sync
+  def delete_actor(%Actor{} = actor) do
+    Actor.Query.not_deleted()
+    |> Actor.Query.by_id(actor.id)
+    |> Repo.fetch_and_update(Actor.Query,
+      with: fn actor ->
+        if actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
+          # Delete associated identities
+          :ok = Auth.delete_identities_for(actor)
+
+          # Delete associated clients
+          :ok = Clients.delete_clients_for(actor)
+
+          # Delete associated memberships
+          {_count, memberships} =
+            Membership.Query.by_actor_id(actor.id)
+            |> Membership.Query.returning_all()
+            |> Repo.delete_all()
+
+          # Update dynamic group memberships
+          {:ok, _groups} = update_dynamic_group_memberships(actor.account_id)
+
+          # Broadcast membership removal events
+          :ok = broadcast_membership_removal_events(memberships)
+
+          # Delete associated tokens
+          {:ok, _tokens} = Tokens.delete_tokens_for(actor)
+
+          # Delete the actor
+          Actor.Changeset.delete_actor(actor)
+        else
+          :cant_delete_the_last_admin
+        end
+      end
+    )
   end
 
   def delete_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
