@@ -8,7 +8,8 @@ defmodule API.Client.ChannelTest do
           clients_upstream_dns: [
             %{protocol: "ip_port", address: "1.1.1.1"},
             %{protocol: "ip_port", address: "8.8.8.8:53"}
-          ]
+          ],
+          search_domain: "example.com"
         },
         features: %{
           internet_resource: true
@@ -352,7 +353,8 @@ defmodule API.Client.ChannelTest do
                upstream_dns: [
                  %{protocol: :ip_port, address: "1.1.1.1:53"},
                  %{protocol: :ip_port, address: "8.8.8.8:53"}
-               ]
+               ],
+               search_domain: "example.com"
              }
     end
 
@@ -710,7 +712,8 @@ defmodule API.Client.ChannelTest do
           clients_upstream_dns: [
             %{protocol: "ip_port", address: "1.2.3.1"},
             %{protocol: "ip_port", address: "1.8.8.1:53"}
-          ]
+          ],
+          search_domain: "example.com"
         }
       )
 
@@ -724,7 +727,8 @@ defmodule API.Client.ChannelTest do
                upstream_dns: [
                  %{protocol: :ip_port, address: "1.2.3.1:53"},
                  %{protocol: :ip_port, address: "1.8.8.1:53"}
-               ]
+               ],
+               search_domain: "example.com"
              }
     end
   end

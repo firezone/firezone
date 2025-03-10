@@ -56,7 +56,8 @@ defmodule Web.Live.Settings.DNSTest do
 
     assert find_inputs(form) == [
              "account[config][_persistent_id]",
-             "account[config][clients_upstream_dns_drop][]"
+             "account[config][clients_upstream_dns_drop][]",
+             "account[config][search_domain]"
            ]
   end
 
@@ -94,8 +95,71 @@ defmodule Web.Live.Settings.DNSTest do
              "account[config][clients_upstream_dns][0][address]",
              "account[config][clients_upstream_dns][0][protocol]",
              "account[config][clients_upstream_dns_drop][]",
-             "account[config][clients_upstream_dns_sort][]"
+             "account[config][clients_upstream_dns_sort][]",
+             "account[config][search_domain]"
            ]
+  end
+
+  test "saves search domain", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    account = Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+
+    attrs = %{
+      account: %{
+        config: %{
+          search_domain: "example.com"
+        }
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
+
+    lv
+    |> form("form", attrs)
+    |> render_submit()
+
+    assert lv
+           |> form("form")
+           |> find_inputs() == [
+             "account[config][_persistent_id]",
+             "account[config][clients_upstream_dns_drop][]",
+             "account[config][search_domain]"
+           ]
+
+    account = Domain.Accounts.fetch_account_by_id!(account.id)
+
+    assert account.config.search_domain == "example.com"
+  end
+
+  test "renders error for invalid search domain", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    account = Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+
+    attrs = %{
+      account: %{
+        config: %{
+          search_domain: "example"
+        }
+      }
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
+
+    assert lv
+           |> form("form", attrs)
+           |> render_change() =~ "must be a valid fully-qualified domain name"
   end
 
   test "saves custom DNS server address", %{
@@ -141,7 +205,8 @@ defmodule Web.Live.Settings.DNSTest do
              "account[config][clients_upstream_dns][0][address]",
              "account[config][clients_upstream_dns][0][protocol]",
              "account[config][clients_upstream_dns_drop][]",
-             "account[config][clients_upstream_dns_sort][]"
+             "account[config][clients_upstream_dns_sort][]",
+             "account[config][search_domain]"
            ]
   end
 
@@ -183,7 +248,8 @@ defmodule Web.Live.Settings.DNSTest do
              "account[config][clients_upstream_dns][2][address]",
              "account[config][clients_upstream_dns][2][protocol]",
              "account[config][clients_upstream_dns_drop][]",
-             "account[config][clients_upstream_dns_sort][]"
+             "account[config][clients_upstream_dns_sort][]",
+             "account[config][search_domain]"
            ]
   end
 

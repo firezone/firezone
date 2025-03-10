@@ -38,35 +38,53 @@ defmodule Web.Settings.DNS do
       </:action>
 
       <:help>
-        Configure the upstream resolver used by connected Clients.
-        Queries for Resources will <strong>always</strong> use Firezone's internal DNS.
-        All other queries will use the resolvers configured here or the Client's
-        system resolvers if none are configured.
+        <p>
+          Configure the search domain and upstream resolvers used by devices when the Firezone Client is connected.
+        </p>
       </:help>
 
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto">
-          <h2 class="mb-4 text-xl text-neutral-900">Client DNS</h2>
-
-          <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
-
-          <% empty? =
-            Domain.Repo.Changeset.empty?(@form.source) and
-              Enum.empty?(@account.config.clients_upstream_dns) %>
-
-          <p :if={not empty?} class="mb-4 text-neutral-500">
-            Upstream resolvers will be used by Clients in the order they are listed below.
-          </p>
-
-          <p :if={empty?} class="text-neutral-500">
-            No upstream resolvers have been configured. Click <strong>New Resolver</strong>
-            to add one.
-          </p>
-
           <.form for={@form} phx-submit={:submit} phx-change={:change}>
-            <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-              <div>
-                <.inputs_for :let={config} field={@form[:config]}>
+            <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
+
+            <.inputs_for :let={config} field={@form[:config]}>
+              <h2 class="mb-4 text-xl text-neutral-900">Search Domain</h2>
+
+              <p class="mb-4 text-neutral-500">
+                The search domain, or default DNS suffix, will be appended to all single-label DNS queries made by Client devices
+                while connected to Firezone.
+              </p>
+
+              <div class="mb-12">
+                <.input field={config[:search_domain]} placeholder="E.g. example.com" />
+                <p class="mt-2 text-sm text-neutral-500">
+                  Enter a valid FQDN to append to single-label DNS queries. The
+                  resulting FQDN will be used to match against DNS Resources in
+                  your account, or forwarded to the upstream resolvers if no
+                  match is found.
+                </p>
+              </div>
+
+              <h2 class="mb-4 text-xl text-neutral-900">Upstream Resolvers</h2>
+
+              <p class="mb-4 text-neutral-500">
+                Queries for Resources will <strong>always</strong> use Firezone's internal DNS.
+                All other queries will use the resolvers configured here or the device's
+                system resolvers if none are configured.
+              </p>
+
+              <p :if={not upstream_dns_empty?(@account, @form)} class="mb-4 text-neutral-500">
+                Upstream resolvers will be used by Client devices in the order they are listed below.
+              </p>
+
+              <p :if={upstream_dns_empty?(@account, @form)} class="text-neutral-500">
+                No upstream resolvers have been configured. Click <strong>New Resolver</strong>
+                to add one.
+              </p>
+
+              <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+                <div>
                   <.inputs_for :let={dns} field={config[:clients_upstream_dns]}>
                     <input
                       type="hidden"
@@ -85,10 +103,10 @@ defmodule Web.Settings.DNS do
                           value={dns[:protocol].value}
                         />
                       </div>
-                      <div class="w-3/4">
+                      <div class="flex-grow">
                         <.input label="Address" field={dns[:address]} placeholder="E.g. 1.1.1.1" />
                       </div>
-                      <div class="w-1/12 flex">
+                      <div class="justify-self-end">
                         <div class="pt-7">
                           <button
                             type="button"
@@ -105,6 +123,7 @@ defmodule Web.Settings.DNS do
                       </div>
                     </div>
                   </.inputs_for>
+
                   <input type="hidden" name={"#{config.name}[clients_upstream_dns_drop][]"} />
                   <.button
                     class="mt-6 w-full"
@@ -122,18 +141,19 @@ defmodule Web.Settings.DNS do
                   >
                     {error}
                   </.error>
-                </.inputs_for>
+                </div>
               </div>
+
               <p class="text-sm text-neutral-500">
                 <strong>Note:</strong>
                 It is highly recommended to specify <strong>both</strong>
                 IPv4 and IPv6 addresses when adding upstream resolvers. Otherwise, Clients without IPv4
                 or IPv6 connectivity may not be able to resolve DNS queries.
               </p>
-              <.submit_button>
-                Save
-              </.submit_button>
-            </div>
+            </.inputs_for>
+            <.submit_button>
+              Save
+            </.submit_button>
           </.form>
         </div>
       </:content>
@@ -169,6 +189,15 @@ defmodule Web.Settings.DNS do
 
         {:noreply, assign(socket, form: form)}
     end
+  end
+
+  defp upstream_dns_empty?(account, form) do
+    upstream_dns_changes =
+      Map.get(form.source.changes, :config, %{})
+      |> Map.get(:changes, %{})
+      |> Map.get(:clients_upstream_dns, %{})
+
+    Enum.empty?(account.config.clients_upstream_dns) and Enum.empty?(upstream_dns_changes)
   end
 
   defp dns_options do

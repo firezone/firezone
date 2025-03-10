@@ -11,6 +11,7 @@ defmodule API.Client.Views.Interface do
       end)
 
     %{
+      search_domain: client.account.config.search_domain,
       upstream_dns: upstream_dns,
       ipv4: client.ipv4,
       ipv6: client.ipv6
