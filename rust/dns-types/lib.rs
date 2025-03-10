@@ -214,11 +214,11 @@ impl Response {
     ///
     /// The `max_len` parameter specifies the maximum size of the payload.
     /// In case the payload is bigger than `max_len`, it will be truncated and the TC bit in the header will be set.
-    pub fn into_bytes(mut self, max_len: usize) -> Vec<u8> {
+    pub fn into_bytes(mut self, max_len: u16) -> Vec<u8> {
         let qid = self.inner.header().id();
 
         let len = self.inner.as_slice().len();
-        if len <= max_len {
+        if len <= max_len as usize {
             return self.inner.into_octets();
         }
 

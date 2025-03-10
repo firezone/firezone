@@ -79,7 +79,7 @@ impl Server {
 
         self.sending_tcp_responses.push(
             async move {
-                let response = response.into_bytes(usize::MAX); // TCP responses don't have a size limit.
+                let response = response.into_bytes(u16::MAX); // DNS over TCP has a 16-bit length field, we can't encode anything bigger than that.
 
                 let len = response.len() as u16;
                 let len = len.to_be_bytes();

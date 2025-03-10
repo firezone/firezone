@@ -159,7 +159,7 @@ impl Server {
 
         let socket = self.sockets.get_mut::<tcp::Socket>(handle);
 
-        codec::try_send(socket, &response.into_bytes(usize::MAX))
+        codec::try_send(socket, &response.into_bytes(u16::MAX))
             .inspect_err(|_| socket.abort()) // Abort socket on error.
             .context("Failed to write DNS response")?;
 
