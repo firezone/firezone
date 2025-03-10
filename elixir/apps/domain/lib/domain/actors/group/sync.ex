@@ -12,6 +12,9 @@ defmodule Domain.Actors.Group.Sync do
 
     provider_identifiers = Map.keys(attrs_by_provider_identifier)
 
+    # We always want to keep our DB groups in sync with all provider groups, regardless of filtering.
+    # However, if the provider has group filteres enabled, we only want to return provider identifiers
+    # that are included so that memberships and identities can be filtered accordingly.
     with {:ok, groups} <- all_provider_groups(provider),
          {:ok, {upsert, delete}} <- plan_groups_update(groups, provider_identifiers),
          {:ok, deleted} <- delete_groups(provider, delete),
@@ -19,13 +22,14 @@ defmodule Domain.Actors.Group.Sync do
       group_ids_by_provider_identifier =
         for group <- groups ++ upserted,
             group.provider_identifier not in delete,
+            # Apply group filters if they are enabled
+            is_nil(provider.group_filters_enabled_at) or not is_nil(group.included_at),
             into: %{} do
           {group.provider_identifier, group.id}
         end
 
       {:ok,
        %{
-         groups: groups,
          plan: {upsert, delete},
          deleted: deleted,
          upserted: upserted,

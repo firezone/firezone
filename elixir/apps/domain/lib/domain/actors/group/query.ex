@@ -28,7 +28,7 @@ defmodule Domain.Actors.Group.Query do
 
   def excluded(queryable) do
     queryable
-    |> join(:left, [groups: groups], providers in assoc(groups, :provider), as: :providers)
+    |> join(:inner, [groups: groups], providers in assoc(groups, :provider), as: :providers)
     |> where(
       [groups: groups, providers: providers],
       not is_nil(groups.provider_id) and

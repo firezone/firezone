@@ -238,7 +238,7 @@ defmodule Domain.Actors do
 
   def update_group(%Group{provider_id: nil} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group.Query.not_deleted_or_excluded()
+      Group.Query.not_deleted()
       |> Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Group.Query,
@@ -285,9 +285,6 @@ defmodule Domain.Actors do
         excluded_ids,
         %Auth.Subject{} = subject
       ) do
-    dbg(included_ids)
-    dbg(excluded_ids)
-
     # These should never overlap
     if Enum.any?(included_ids, &Enum.member?(excluded_ids, &1)) do
       {:error, :overlapping_ids}
