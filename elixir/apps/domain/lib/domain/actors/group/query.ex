@@ -119,9 +119,10 @@ defmodule Domain.Actors.Group.Query do
     )
   end
 
-  def excluded_ids(queryable) do
-    queryable
+  def excluded_ids(provider) do
+    not_deleted()
     |> excluded()
+    |> by_provider_id(provider.id)
     |> select([groups: groups], groups.id)
   end
 

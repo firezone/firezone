@@ -258,8 +258,7 @@ defmodule Domain.Actors do
 
   def update_dynamic_group_memberships(account_id) do
     Repo.transaction(fn ->
-      # includes excluded - we still want to update those
-      Group.Query.not_deleted_or_excluded()
+      Group.Query.not_deleted()
       |> Group.Query.by_account_id(account_id)
       |> Group.Query.by_type({:in, [:dynamic, :managed]})
       |> Group.Query.lock()
