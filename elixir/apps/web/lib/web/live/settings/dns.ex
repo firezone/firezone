@@ -39,12 +39,7 @@ defmodule Web.Settings.DNS do
 
       <:help>
         <p>
-          Configure the default DNS suffix and upstream resolvers used by devices when the Firezone Client is connected.
-        </p>
-        <p>
-          Queries for Resources will <strong>always</strong> use Firezone's internal DNS.
-          All other queries will use the resolvers configured here or the device's
-          system resolvers if none are configured.
+          Configure the search domain and upstream resolvers used by devices when the Firezone Client is connected.
         </p>
       </:help>
 
@@ -54,21 +49,33 @@ defmodule Web.Settings.DNS do
             <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
 
             <.inputs_for :let={config} field={@form[:config]}>
-              <h2 class="mb-4 text-xl text-neutral-900">Default DNS Suffix</h2>
+              <h2 class="mb-4 text-xl text-neutral-900">Search Domain</h2>
 
               <p class="mb-4 text-neutral-500">
-                The default DNS suffix will be appended to all single-label DNS queries made by Client devices
+                The search domain, or default DNS suffix, will be appended to all single-label DNS queries made by Client devices
                 while connected to Firezone.
               </p>
 
               <div class="mb-12">
                 <.input field={config[:search_domain]} placeholder="E.g. example.com" />
+                <p class="mt-2 text-sm text-neutral-500">
+                  Enter a valid FQDN to append to single-label DNS queries. The
+                  resulting FQDN will be used to match against DNS Resources in
+                  your account, or forwarded to the upstream resolvers if no
+                  match is found.
+                </p>
               </div>
 
               <h2 class="mb-4 text-xl text-neutral-900">Upstream Resolvers</h2>
 
+              <p class="mb-4 text-neutral-500">
+                Queries for Resources will <strong>always</strong> use Firezone's internal DNS.
+                All other queries will use the resolvers configured here or the device's
+                system resolvers if none are configured.
+              </p>
+
               <p :if={not upstream_dns_empty?(@account, @form)} class="mb-4 text-neutral-500">
-                Upstream resolvers will be used by Clients in the order they are listed below.
+                Upstream resolvers will be used by Client devices in the order they are listed below.
               </p>
 
               <p :if={upstream_dns_empty?(@account, @form)} class="text-neutral-500">
