@@ -2149,6 +2149,7 @@ dependencies = [
  "connlib-client-shared",
  "connlib-model",
  "dirs 5.0.1",
+ "dns-types",
  "firezone-bin-shared",
  "firezone-logging",
  "firezone-telemetry",
