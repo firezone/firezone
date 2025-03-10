@@ -104,7 +104,7 @@ pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
     LocalResponse(Response),
     /// The query is for a non-Resource, forward it locally to an upstream or system resolver.
-    RecurseLocal,
+    RecurseLocal(DomainName),
     /// The query is for a DNS resource but for a type that we don't intercept (i.e. SRV, TXT, ...), forward it to the site that hosts the DNS resource and resolve it there.
     RecurseSite(ResourceId),
 }
@@ -279,7 +279,7 @@ impl StubResolver {
             }
             (RecordType::PTR, _) => {
                 let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {
-                    return ResolveStrategy::RecurseLocal;
+                    return ResolveStrategy::RecurseLocal(domain);
                 };
 
                 vec![dns_types::records::ptr(fqdn)]
@@ -291,16 +291,17 @@ impl StubResolver {
                 return ResolveStrategy::LocalResponse(Response::no_error(query));
             }
             (_, None) if is_single_label_domain => {
-                // Queries for single-label domains, i.e. local hostnames are never recursively resolved but are instead answered with nxdomain.
+                // Queries for single-label domains, i.e. local hostnames are recursively resolved
+                // just like any other non-resource domain.
 
                 tracing::trace!(
                     %domain,
-                    "Query for single-label non-resource domain, responding with NXDOMAIN"
+                    "Query for single-label non-resource domain, passing through to upstream resolver"
                 );
 
-                return ResolveStrategy::LocalResponse(Response::nxdomain(query));
+                return ResolveStrategy::RecurseLocal(domain);
             }
-            _ => return ResolveStrategy::RecurseLocal,
+            _ => return ResolveStrategy::RecurseLocal(domain),
         };
 
         tracing::trace!(%qtype, %domain, records = ?records, "Forming DNS response");

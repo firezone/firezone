@@ -1,6 +1,6 @@
 mod resource;
 
-use dns_types::DomainName;
+use dns_types::{DomainName, Query};
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
@@ -789,8 +789,8 @@ impl ClientState {
             let gateway = self.peers.get(&gateway_id).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
 
             let upstream = gateway.tun_dns_server_endpoint(packet.destination());
-            let packet =
-                self.mangle_udp_dns_query_to_new_upstream_through_tunnel(upstream, now, packet);
+            let packet = self
+                .mangle_udp_dns_query_to_new_upstream_through_tunnel(upstream, now, packet, None);
 
             encapsulate_and_buffer(
                 packet,
@@ -1196,19 +1196,36 @@ impl ClientState {
                     "Failed to queue UDP DNS response: {}"
                 );
             }
-            dns::ResolveStrategy::RecurseLocal => {
+            dns::ResolveStrategy::RecurseLocal(domain) => {
                 if self.should_forward_dns_query_to_gateway(upstream.ip()) {
-                    let packet = self
-                        .mangle_udp_dns_query_to_new_upstream_through_tunnel(upstream, now, packet);
+                    let packet = self.mangle_udp_dns_query_to_new_upstream_through_tunnel(
+                        upstream, now, packet, domain,
+                    );
 
                     return ControlFlow::Continue(packet);
                 }
-                let query_id = message.id();
+
+                let updated_message = if message.domain() != domain {
+                    tracing::debug!(
+                        old_domain = %message.domain(),
+                        new_domain = %domain,
+                        "Updating DNS query domain due to expanded search domain"
+                    );
+                    Query::new(domain.clone(), message.qtype()).with_id(message.id())
+                } else {
+                    message.clone()
+                };
+
+                let query_id = updated_message.id();
 
                 tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host");
 
                 self.buffered_dns_queries
-                    .push_back(dns::RecursiveQuery::via_udp(source, upstream, message));
+                    .push_back(dns::RecursiveQuery::via_udp(
+                        source,
+                        upstream,
+                        updated_message,
+                    ));
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
                 let Some(gateway) =
@@ -1276,7 +1293,7 @@ impl ClientState {
 
                 self.buffered_packets.extend(maybe_packet);
             }
-            dns::ResolveStrategy::RecurseLocal => {
+            dns::ResolveStrategy::RecurseLocal(_) => {
                 tracing::trace!("LLMNR queries are not forwarded to upstream resolvers");
             }
             dns::ResolveStrategy::RecurseSite(_) => {
@@ -1290,6 +1307,7 @@ impl ClientState {
         upstream: SocketAddr,
         now: Instant,
         mut packet: IpPacket,
+        domain: Option<DomainName>,
     ) -> IpPacket {
         let dst_ip = packet.destination();
         let datagram = packet
@@ -1297,9 +1315,26 @@ impl ClientState {
             .expect("to be a valid UDP packet at this point");
 
         let dst_port = datagram.destination_port();
-        let query_id = dns_types::Query::parse(datagram.payload())
-            .expect("to be a valid DNS query at this point")
-            .id();
+        let mut query = dns_types::Query::parse(datagram.payload())
+            .expect("to be a valid DNS query at this point");
+        let query_id = query.id();
+
+        if let Some(domain) = domain {
+            if query.domain() != domain {
+                tracing::debug!(
+                    old_domain = %query.domain(),
+                    new_domain = %domain,
+                    "Updating DNS query domain due to expanded search domain"
+                );
+                query = Query::new(domain, query.qtype()).with_id(query_id);
+
+                let new_payload = query.into_bytes();
+                packet
+                    .as_udp_mut()
+                    .expect("to be a valid UDP packet at this point")
+                    .set_payload(new_payload);
+            }
+        }
 
         let connlib_dns_server = SocketAddr::new(dst_ip, dst_port);
 
@@ -1342,7 +1377,7 @@ impl ClientState {
                     "Failed to send TCP DNS response: {}"
                 );
             }
-            dns::ResolveStrategy::RecurseLocal => {
+            dns::ResolveStrategy::RecurseLocal(domain) => {
                 if self.should_forward_dns_query_to_gateway(server.ip()) {
                     self.forward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
 
