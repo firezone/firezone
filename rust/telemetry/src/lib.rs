@@ -1,13 +1,12 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
-    sync::{Arc, LazyLock},
+    sync::{atomic::AtomicBool, Arc},
     time::Duration,
 };
 
 use anyhow::{Context, Result};
 use env::ON_PREM;
-use parking_lot::Mutex;
 use sentry::protocol::SessionStatus;
 use serde::{Deserialize, Serialize};
 
@@ -31,7 +30,7 @@ const POSTHOG_API_KEY: &str = "phc_uXXl56plyvIBHj81WwXBLtdPElIRbm7keRTdUCmk8ll";
 // Process-wide storage of enabled feature flags.
 //
 // Defaults to everything off.
-static FEATURE_FLAGS: LazyLock<Mutex<FeatureFlags>> = LazyLock::new(Mutex::default);
+static FEATURE_FLAGS: FeatureFlags = FeatureFlags::new();
 
 /// Exposes all feature flags as public, static functions.
 ///
@@ -40,7 +39,7 @@ pub mod feature_flags {
     use crate::*;
 
     pub fn icmp_unreachable_instead_of_nat64() -> bool {
-        FEATURE_FLAGS.lock().icmp_unreachable_instead_of_nat64
+        FEATURE_FLAGS.icmp_unreachable_instead_of_nat64.get()
     }
 }
 
@@ -182,16 +181,18 @@ impl Telemetry {
         });
 
         std::thread::spawn(|| {
-            let flags = evaluate_feature_flags(id)
+            let flags = posthog::decide(id)
                 .inspect_err(|e| tracing::debug!("Failed to evaluate feature flags: {e:#}"))
                 .unwrap_or_default();
 
-            tracing::debug!(?flags, "Evaluated feature-flags");
+            FEATURE_FLAGS
+                .icmp_unreachable_instead_of_nat64
+                .store(flags.icmp_unreachable_instead_of_nat64);
 
-            *FEATURE_FLAGS.lock() = flags;
+            tracing::debug!(?FEATURE_FLAGS, "Evaluated feature-flags");
 
             sentry::Hub::main().configure_scope(|scope| {
-                scope.set_context("flags", sentry_flag_context(flags));
+                scope.set_context("flags", sentry_contexts::flags(&FEATURE_FLAGS));
             });
         });
     }
@@ -210,56 +211,102 @@ fn set_current_user(user: Option<sentry::User>) {
     sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
 }
 
-fn evaluate_feature_flags(id: String) -> Result<FeatureFlags> {
-    let json = reqwest::blocking::Client::new()
-        .post("https://us.i.posthog.com/decide?v=3")
-        .body(format!(
-            r#"{{
-            "api_key": "{POSTHOG_API_KEY}",
-            "distinct_id": "{id}"
-        }}"#
-        ))
-        .send()
-        .context("Failed to send POST request")?
-        .json::<DecideResponse>()
-        .context("Failed to deserialize response")?;
-
-    Ok(json.feature_flags)
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DecideResponse {
-    feature_flags: FeatureFlags,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default, Clone, Copy)]
+/// Holds all currently known feature flags.
+///
+/// The feature flag value itself uses atomic operations with relaxed orderings.
+/// The main thing we want out of these flags is that they must evaluate extremely quickly so we can check them in hot paths.
+/// Relaxed orderings are the weakest and thus fastest of all orderings.
+/// We don't worry about reorderings because they are effectively only ever set when the user logs in and remain constant afterwards.
+#[derive(Debug, Default)]
 struct FeatureFlags {
-    #[serde(default)]
-    icmp_unreachable_instead_of_nat64: bool,
+    icmp_unreachable_instead_of_nat64: RelaxedAtomicBool,
 }
 
-fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
-    #[derive(Debug, serde::Serialize)]
-    #[serde(tag = "flag", rename_all = "snake_case")]
-    enum SentryFlag {
-        IcmpUnreachableInsteadOfNat64 { result: bool },
+impl FeatureFlags {
+    const fn new() -> Self {
+        Self {
+            icmp_unreachable_instead_of_nat64: RelaxedAtomicBool::r#false(),
+        }
+    }
+}
+
+/// An [`AtomicBool`] that uses relaxed ordering for all its operations.
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct RelaxedAtomicBool(AtomicBool);
+
+impl RelaxedAtomicBool {
+    const fn r#false() -> Self {
+        Self(AtomicBool::new(false))
     }
 
-    // Exhaustive destruction so we don't forget to update this when we add a flag.
-    let FeatureFlags {
-        icmp_unreachable_instead_of_nat64,
-    } = flags;
+    fn get(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::Relaxed)
+    }
 
-    let value = serde_json::json!({
-        "values": [
-            SentryFlag::IcmpUnreachableInsteadOfNat64 {
-                result: icmp_unreachable_instead_of_nat64,
-            }
-        ]
-    });
+    fn store(&self, value: bool) {
+        self.0.store(value, std::sync::atomic::Ordering::Relaxed);
+    }
+}
 
-    sentry::protocol::Context::Other(serde_json::from_value(value).expect("to and from json works"))
+mod posthog {
+    use super::*;
+
+    #[derive(Debug, Serialize, Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct DecideResponse {
+        feature_flags: Flags,
+    }
+
+    #[derive(Debug, Serialize, Deserialize, Default)]
+    pub struct Flags {
+        #[serde(default)]
+        pub icmp_unreachable_instead_of_nat64: bool,
+    }
+
+    pub fn decide(id: String) -> Result<posthog::Flags> {
+        let json = reqwest::blocking::Client::new()
+            .post("https://us.i.posthog.com/decide?v=3")
+            .body(format!(
+                r#"{{
+                "api_key": "{POSTHOG_API_KEY}",
+                "distinct_id": "{id}"
+            }}"#
+            ))
+            .send()
+            .context("Failed to send POST request")?
+            .json::<posthog::DecideResponse>()
+            .context("Failed to deserialize response")?;
+
+        Ok(json.feature_flags)
+    }
+}
+
+mod sentry_contexts {
+    use super::*;
+    use sentry::protocol::Context;
+
+    pub fn flags(flags: &FeatureFlags) -> Context {
+        #[derive(Debug, serde::Serialize)]
+        #[serde(tag = "flag", rename_all = "snake_case")]
+        enum SentryFlag {
+            IcmpUnreachableInsteadOfNat64 { result: bool },
+        }
+
+        // Exhaustive destruction so we don't forget to update this when we add a flag.
+        let FeatureFlags {
+            icmp_unreachable_instead_of_nat64,
+        } = flags;
+
+        let value = serde_json::json!({
+            "values": [
+                SentryFlag::IcmpUnreachableInsteadOfNat64 {
+                    result: icmp_unreachable_instead_of_nat64.get(),
+                }
+            ]
+        });
+
+        Context::Other(serde_json::from_value(value).expect("to and from json works"))
+    }
 }
 
 #[cfg(test)]

@@ -6,7 +6,6 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-parking_lot = { workspace = true }
 reqwest = { workspace = true, features = ["blocking"] }
 sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls", "tracing"] }
 serde = { workspace = true }
