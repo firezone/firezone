@@ -1107,6 +1107,7 @@ dependencies = [
  "bimap",
  "chrono",
  "connlib-model",
+ "dns-types",
  "firezone-logging",
  "firezone-tunnel",
  "ip_network",
