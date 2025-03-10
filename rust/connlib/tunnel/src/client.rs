@@ -1771,6 +1771,16 @@ impl ClientState {
         peer.allowed_ips.retain(|_, r| !r.is_empty());
 
         self.resources_gateways.remove(&id);
+
+        // Clear DNS resource NAT state for all domains resolved for this DNS resource.
+        for domain in self
+            .stub_resolver
+            .resolved_resources()
+            .filter_map(|(domain, candidate, _)| (candidate == &id).then_some(domain))
+        {
+            self.dns_resource_nat_by_gateway
+                .retain(|(_, candidate), _| candidate != domain);
+        }
     }
 
     fn update_dns_mapping(&mut self) {
