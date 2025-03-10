@@ -13,6 +13,7 @@ anyhow = { workspace = true }
 backoff = { workspace = true }
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
+dns-types = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 flume = { workspace = true }

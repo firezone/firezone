@@ -4,10 +4,8 @@ use std::{
     time::Instant,
 };
 
-use domain::base::{
-    iana::{Class, Rcode},
-    Message, MessageBuilder, Record, RecordData, ToName, Ttl,
-};
+use dns_types::prelude::*;
+use dns_types::ResponseCode;
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
 
 use super::dns_records::DnsRecords;
@@ -37,7 +35,7 @@ impl TcpDnsServerResource {
     pub fn handle_timeout(&mut self, global_dns_records: &DnsRecords, now: Instant) {
         self.server.handle_timeout(now);
         while let Some(query) = self.server.poll_queries() {
-            let response = handle_dns_query(query.message.for_slice(), global_dns_records);
+            let response = handle_dns_query(&query.message, global_dns_records);
 
             self.server
                 .send_message(query.local, query.remote, response)
@@ -58,9 +56,9 @@ impl UdpDnsServerResource {
     pub fn handle_timeout(&mut self, global_dns_records: &DnsRecords, _: Instant) {
         while let Some(packet) = self.inbound_packets.pop_front() {
             let udp = packet.as_udp().unwrap();
-            let query = Message::from_octets(udp.payload().to_vec()).unwrap();
+            let query = dns_types::Query::parse(udp.payload()).unwrap();
 
-            let response = handle_dns_query(query.for_slice(), global_dns_records);
+            let response = handle_dns_query(&query, global_dns_records);
 
             self.outbound_packets.push_back(
                 ip_packet::make::udp_packet(
@@ -68,7 +66,7 @@ impl UdpDnsServerResource {
                     packet.source(),
                     udp.destination_port(),
                     udp.source_port(),
-                    truncate_dns_response(response),
+                    response.into_bytes(MAX_UDP_PAYLOAD),
                 )
                 .expect("src and dst are retrieved from the same packet"),
             )
@@ -80,44 +78,18 @@ impl UdpDnsServerResource {
     }
 }
 
-fn handle_dns_query(query: &Message<[u8]>, global_dns_records: &DnsRecords) -> Message<Vec<u8>> {
-    let response = MessageBuilder::new_vec();
-    let mut answers = response.start_answer(query, Rcode::NOERROR).unwrap();
+fn handle_dns_query(
+    query: &dns_types::Query,
+    global_dns_records: &DnsRecords,
+) -> dns_types::Response {
+    let domain = query.domain().to_vec();
 
-    for query in query.question() {
-        let query = query.unwrap();
-        let name = query.qname().to_name::<Vec<u8>>();
+    let records = global_dns_records
+        .domain_records_iter(&domain)
+        .filter(|r| r.rtype() == query.qtype())
+        .map(|rdata| (domain.clone(), 60 * 60 * 24, rdata));
 
-        let records = global_dns_records
-            .domain_records_iter(&name)
-            .filter(|r| r.rtype() == query.qtype())
-            .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
-
-        for record in records {
-            answers.push(record).unwrap();
-        }
-    }
-
-    answers.into_message()
-}
-
-fn truncate_dns_response(message: Message<Vec<u8>>) -> Vec<u8> {
-    let mut message_bytes = message.as_octets().to_vec();
-
-    if message_bytes.len() > MAX_UDP_PAYLOAD {
-        let mut new_message = message.clone();
-        new_message.header_mut().set_tc(true);
-
-        let message_truncation = match message.answer() {
-            Ok(answer) if answer.pos() <= MAX_UDP_PAYLOAD => answer.pos(),
-            // This should be very unlikely or impossible.
-            _ => message.question().pos(),
-        };
-
-        message_bytes = new_message.as_octets().to_vec();
-
-        message_bytes.truncate(message_truncation);
-    }
-
-    message_bytes
+    dns_types::ResponseBuilder::for_query(query, ResponseCode::NOERROR)
+        .with_records(records)
+        .build()
 }

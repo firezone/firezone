@@ -1044,6 +1044,7 @@ dependencies = [
  "backoff",
  "connlib-client-shared",
  "connlib-model",
+ "dns-types",
  "firezone-logging",
  "firezone-telemetry",
  "flume",
@@ -1075,6 +1076,7 @@ dependencies = [
  "backoff",
  "connlib-client-shared",
  "connlib-model",
+ "dns-types",
  "firezone-logging",
  "firezone-telemetry",
  "flume",
@@ -1107,6 +1109,7 @@ dependencies = [
  "bimap",
  "chrono",
  "connlib-model",
+ "dns-types",
  "firezone-logging",
  "firezone-tunnel",
  "ip_network",
@@ -1130,7 +1133,6 @@ name = "connlib-model"
 version = "0.1.0"
 dependencies = [
  "boringtun",
- "domain",
  "ip_network",
  "itertools 0.13.0",
  "serde",
@@ -1706,18 +1708,26 @@ name = "dns-over-tcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "domain",
+ "dns-types",
  "firezone-bin-shared",
  "firezone-logging",
  "futures",
  "ip-packet",
  "ip_network",
- "itertools 0.13.0",
  "rand 0.8.5",
  "smoltcp",
  "tokio",
  "tracing",
  "tun",
+]
+
+[[package]]
+name = "dns-types"
+version = "0.1.0"
+dependencies = [
+ "domain",
+ "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]
@@ -2013,7 +2023,7 @@ dependencies = [
  "clap",
  "connlib-model",
  "dns-lookup",
- "domain",
+ "dns-types",
  "either",
  "firezone-bin-shared",
  "firezone-logging",
@@ -2141,6 +2151,7 @@ dependencies = [
  "connlib-client-shared",
  "connlib-model",
  "dirs 5.0.1",
+ "dns-types",
  "firezone-bin-shared",
  "firezone-logging",
  "firezone-telemetry",
@@ -2274,7 +2285,7 @@ dependencies = [
  "derive_more 1.0.0",
  "divan",
  "dns-over-tcp",
- "domain",
+ "dns-types",
  "firezone-logging",
  "firezone-relay",
  "futures",
@@ -3514,7 +3525,7 @@ name = "l4-tcp-dns-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "domain",
+ "dns-types",
  "futures",
  "tokio",
  "tracing",
@@ -3525,7 +3536,7 @@ name = "l4-udp-dns-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "domain",
+ "dns-types",
  "futures",
  "tokio",
  "tracing",

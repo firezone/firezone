@@ -12,7 +12,8 @@
 
 use anyhow::{Context as _, Result};
 use connlib_client_shared::Callbacks;
-use connlib_model::{DomainName, ResourceView};
+use connlib_model::ResourceView;
+use dns_types::DomainName;
 use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_logging::FilterReloadHandle;
 use std::{

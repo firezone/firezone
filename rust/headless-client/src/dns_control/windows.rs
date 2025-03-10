@@ -15,7 +15,7 @@
 
 use super::DnsController;
 use anyhow::{Context as _, Result};
-use connlib_model::DomainName;
+use dns_types::DomainName;
 use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
 use firezone_bin_shared::windows::error::EPT_S_NOT_REGISTERED;
 use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};

@@ -1,5 +1,5 @@
 use anyhow::{bail, Context, Result};
-use connlib_model::DomainName;
+use dns_types::DomainName;
 use std::{
     fs,
     io::{self, Write},

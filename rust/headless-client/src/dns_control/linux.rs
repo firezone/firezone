@@ -1,6 +1,6 @@
 use super::DnsController;
 use anyhow::{bail, Context as _, Result};
-use connlib_model::DomainName;
+use dns_types::DomainName;
 use firezone_bin_shared::{platform::DnsControlMethod, TunDeviceManager};
 use std::{net::IpAddr, process::Command, str::FromStr};
 

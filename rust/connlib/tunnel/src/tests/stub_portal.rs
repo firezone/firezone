@@ -10,8 +10,9 @@ use crate::{
     client::DnsResource,
     messages::{gateway, DnsServer},
 };
-use connlib_model::{DomainName, GatewayId};
+use connlib_model::GatewayId;
 use connlib_model::{ResourceId, SiteId};
+use dns_types::DomainName;
 use itertools::Itertools;
 use proptest::{
     collection,

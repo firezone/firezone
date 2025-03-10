@@ -1,4 +1,4 @@
-use super::dns_records::{ip_to_domain_record, DnsRecords};
+use super::dns_records::DnsRecords;
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
 use crate::client::{
     CidrResource, DnsResource, InternetResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6,
@@ -6,7 +6,8 @@ use crate::client::{
 };
 use crate::messages::DnsServer;
 use crate::{proptest::*, IPV4_TUNNEL, IPV6_TUNNEL};
-use connlib_model::{DomainRecord, RelayId, Site};
+use connlib_model::{RelayId, Site};
+use dns_types::OwnedRecordData;
 use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
@@ -27,22 +28,20 @@ pub(crate) fn global_dns_records() -> impl Strategy<Value = DnsRecords> {
     .prop_map_into()
 }
 
-fn dns_record() -> impl Strategy<Value = DomainRecord> {
+fn dns_record() -> impl Strategy<Value = OwnedRecordData> {
     prop_oneof![
-        3 => non_reserved_ip().prop_map(ip_to_domain_record),
+        3 => non_reserved_ip().prop_map(dns_types::records::ip),
         1 => collection::vec(txt_record(), 6..=10)
             .prop_map(|sections| { sections.into_iter().flatten().collect_vec() })
-            .prop_map(|o| domain::rdata::Txt::from_octets(o).unwrap())
-            .prop_map(DomainRecord::Txt)
+            .prop_map(|content| dns_types::records::txt(content).unwrap())
     ]
 }
 
-pub(crate) fn site_specific_dns_record() -> impl Strategy<Value = DomainRecord> {
+pub(crate) fn site_specific_dns_record() -> impl Strategy<Value = OwnedRecordData> {
     prop_oneof![
         collection::vec(txt_record(), 6..=10)
             .prop_map(|sections| { sections.into_iter().flatten().collect_vec() })
-            .prop_map(|o| domain::rdata::Txt::from_octets(o).unwrap())
-            .prop_map(DomainRecord::Txt),
+            .prop_map(|content| dns_types::records::txt(content).unwrap()),
         srv_record()
     ]
 }
@@ -60,7 +59,7 @@ fn txt_record() -> impl Strategy<Value = Vec<u8>> {
     })
 }
 
-fn srv_record() -> impl Strategy<Value = DomainRecord> {
+fn srv_record() -> impl Strategy<Value = OwnedRecordData> {
     (
         any::<u16>(),
         any::<u16>(),
@@ -68,7 +67,7 @@ fn srv_record() -> impl Strategy<Value = DomainRecord> {
         domain_name(2..4).prop_map(|d| d.parse().unwrap()),
     )
         .prop_map(|(priority, weight, port, target)| {
-            DomainRecord::Srv(domain::rdata::Srv::new(priority, weight, port, target))
+            dns_types::records::srv(priority, weight, port, target)
         })
 }
 
@@ -270,12 +269,12 @@ fn double_star_wildcard_dns_resource(
     })
 }
 
-pub(crate) fn resolved_ips() -> impl Strategy<Value = BTreeSet<DomainRecord>> {
+pub(crate) fn resolved_ips() -> impl Strategy<Value = BTreeSet<OwnedRecordData>> {
     let record = prop_oneof![
         dns_resource_ip4s().prop_map_into(),
         dns_resource_ip6s().prop_map_into()
     ]
-    .prop_map(ip_to_domain_record);
+    .prop_map(dns_types::records::ip);
 
     collection::btree_set(record, 1..6)
 }

@@ -10,17 +10,13 @@ use super::{
 use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::{DnsServer, Interface},
-    DomainName,
 };
 use crate::{proptest::*, ClientState};
 use anyhow::Context;
 use anyhow::Result;
 use bimap::BiMap;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, SiteId};
-use domain::{
-    base::{iana::Opcode, name::FlattenInto, Message, MessageBuilder, Question, Rtype, ToName},
-    rdata::AllRecordData,
-};
+use dns_types::{prelude::*, DomainName, Query, RecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
@@ -115,7 +111,7 @@ impl SimClient {
     pub(crate) fn send_dns_query_for(
         &mut self,
         domain: DomainName,
-        r_type: Rtype,
+        r_type: RecordType,
         query_id: u16,
         upstream: SocketAddr,
         dns_transport: DnsTransport,
@@ -133,20 +129,7 @@ impl SimClient {
             .tunnel_ip_for(sentinel)
             .expect("tunnel should be initialised");
 
-        // Create the DNS query message
-        let mut msg_builder = MessageBuilder::new_vec();
-
-        msg_builder.header_mut().set_opcode(Opcode::QUERY);
-        msg_builder.header_mut().set_rd(true);
-        msg_builder.header_mut().set_id(query_id);
-
-        // Create the query
-        let mut question_builder = msg_builder.question();
-        question_builder
-            .push(Question::new_in(domain, r_type))
-            .unwrap();
-
-        let message = question_builder.into_message();
+        let query = Query::new(domain, r_type).with_id(query_id);
 
         match dns_transport {
             DnsTransport::Udp => {
@@ -155,7 +138,7 @@ impl SimClient {
                     sentinel,
                     9999, // An application would pick a free source port.
                     53,
-                    message.as_octets().to_vec(),
+                    query.into_bytes(),
                 )
                 .unwrap();
 
@@ -165,7 +148,7 @@ impl SimClient {
             }
             DnsTransport::Tcp => {
                 self.tcp_dns_client
-                    .send_query(SocketAddr::new(sentinel, 53), message)
+                    .send_query(SocketAddr::new(sentinel, 53), query)
                     .unwrap();
                 self.sent_tcp_dns_queries.insert((upstream, query_id));
 
@@ -246,15 +229,15 @@ impl SimClient {
             match failed_packet.layer4_protocol() {
                 Layer4Protocol::Udp { src, dst } => {
                     self.received_udp_replies
-                        .insert((SPort(dst), DPort(src)), packet.clone());
+                        .insert((SPort(dst), DPort(src)), packet);
                 }
                 Layer4Protocol::Tcp { src, dst } => {
                     self.received_tcp_replies
-                        .insert((SPort(dst), DPort(src)), packet.clone());
+                        .insert((SPort(dst), DPort(src)), packet);
                 }
                 Layer4Protocol::Icmp { seq, id } => {
                     self.received_icmp_replies
-                        .insert((Seq(seq), Identifier(id)), packet.clone());
+                        .insert((Seq(seq), Identifier(id)), packet);
                 }
             }
 
@@ -263,7 +246,7 @@ impl SimClient {
 
         if let Some(udp) = packet.as_udp() {
             if udp.source_port() == 53 {
-                let message = Message::from_slice(udp.payload())
+                let response = dns_types::Response::parse(udp.payload())
                     .expect("ip packets on port 53 to be DNS packets");
 
                 // Map back to upstream socket so we can assert on it correctly.
@@ -274,10 +257,10 @@ impl SimClient {
                 };
 
                 self.received_udp_dns_responses
-                    .insert((upstream, message.header().id()), packet.clone());
+                    .insert((upstream, response.id()), packet.clone());
 
-                if !message.header().tc() {
-                    self.handle_dns_response(message);
+                if !response.truncated() {
+                    self.handle_dns_response(&response);
                 }
 
                 return;
@@ -341,26 +324,19 @@ impl SimClient {
         Some(*socket)
     }
 
-    pub(crate) fn handle_dns_response(&mut self, message: &Message<[u8]>) {
-        for record in message.answer().unwrap() {
-            let record = record.unwrap();
-            let domain = record.owner().to_name();
-
+    pub(crate) fn handle_dns_response(&mut self, response: &dns_types::Response) {
+        for record in response.records() {
             #[expect(clippy::wildcard_enum_match_arm)]
-            let ip = match record
-                .into_any_record::<AllRecordData<_, _>>()
-                .unwrap()
-                .data()
-            {
-                AllRecordData::A(a) => IpAddr::from(a.addr()),
-                AllRecordData::Aaaa(aaaa) => IpAddr::from(aaaa.addr()),
-                AllRecordData::Ptr(_) => {
+            let ip = match record.data() {
+                RecordData::A(a) => IpAddr::from(a.addr()),
+                RecordData::Aaaa(aaaa) => IpAddr::from(aaaa.addr()),
+                RecordData::Ptr(_) => {
                     continue;
                 }
-                AllRecordData::Txt(_) => {
+                RecordData::Txt(_) => {
                     continue;
                 }
-                AllRecordData::Srv(_) => {
+                RecordData::Srv(_) => {
                     continue;
                 }
                 unhandled => {
@@ -368,7 +344,10 @@ impl SimClient {
                 }
             };
 
-            self.dns_records.entry(domain).or_default().push(ip);
+            self.dns_records
+                .entry(response.domain())
+                .or_default()
+                .push(ip);
         }
 
         // Ensure all IPs are always sorted.
@@ -419,7 +398,7 @@ pub struct RefClient {
     /// The IPs assigned to a domain by connlib are an implementation detail that we don't want to model in these tests.
     /// Instead, we just remember what _kind_ of records we resolved to be able to sample a matching src IP.
     #[debug(skip)]
-    pub(crate) dns_records: BTreeMap<DomainName, BTreeSet<Rtype>>,
+    pub(crate) dns_records: BTreeMap<DomainName, BTreeSet<RecordType>>,
 
     /// Whether we are connected to the gateway serving the Internet resource.
     #[debug(skip)]
@@ -907,7 +886,7 @@ impl RefClient {
             .find(|id| !self.disabled_resources.contains(id))
     }
 
-    fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, BTreeSet<Rtype>)> + '_ {
+    fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, BTreeSet<RecordType>)> + '_ {
         self.dns_records
             .iter()
             .filter(|(domain, _)| self.dns_resource_by_domain(domain).is_some())
@@ -953,7 +932,7 @@ impl RefClient {
             .filter_map(|(domain, records)| {
                 records
                     .iter()
-                    .any(|r| matches!(r, &Rtype::A))
+                    .any(|r| matches!(r, &RecordType::A))
                     .then_some(domain)
             })
             .collect()
@@ -964,7 +943,7 @@ impl RefClient {
             .filter_map(|(domain, records)| {
                 records
                     .iter()
-                    .any(|r| matches!(r, &Rtype::AAAA))
+                    .any(|r| matches!(r, &RecordType::AAAA))
                     .then_some(domain)
             })
             .collect()
@@ -1065,7 +1044,10 @@ impl RefClient {
 
         // If we are querying a DNS resource, we will issue a connection intent to the DNS resource, not the CIDR resource.
         if self.dns_resource_by_domain(&query.domain).is_some()
-            && matches!(query.r_type, Rtype::A | Rtype::AAAA | Rtype::PTR)
+            && matches!(
+                query.r_type,
+                RecordType::A | RecordType::AAAA | RecordType::PTR
+            )
         {
             return None;
         }
@@ -1077,7 +1059,7 @@ impl RefClient {
     }
 
     pub(crate) fn is_site_specific_dns_query(&self, query: &DnsQuery) -> Option<ResourceId> {
-        if !matches!(query.r_type, Rtype::SRV | Rtype::TXT) {
+        if !matches!(query.r_type, RecordType::SRV | RecordType::TXT) {
             return None;
         }
 

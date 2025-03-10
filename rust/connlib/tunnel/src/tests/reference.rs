@@ -4,10 +4,10 @@ use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
-use crate::{client, DomainName};
+use crate::client;
 use crate::{dns::is_subdomain, proptest::relay_id};
 use connlib_model::{GatewayId, RelayId, StaticSecret};
-use domain::base::Rtype;
+use dns_types::{DomainName, RecordType};
 use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample::select;
@@ -616,8 +616,9 @@ impl ReferenceState {
                     return false;
                 };
 
-                let is_ptr_query = matches!(query.r_type, Rtype::PTR);
+                let is_ptr_query = matches!(query.r_type, RecordType::PTR);
                 let is_known_domain = state.global_dns_records.contains_domain(&domain);
+
                 // In case we sampled a PTR query, the domain doesn't have to exist.
                 let ptr_or_known_domain = is_ptr_query || is_known_domain;
 
@@ -708,8 +709,8 @@ impl ReferenceState {
             .dns_records
             .get(name)
             .is_some_and(|r| match src {
-                IpAddr::V4(_) => r.contains(&Rtype::A),
-                IpAddr::V6(_) => r.contains(&Rtype::AAAA),
+                IpAddr::V4(_) => r.contains(&RecordType::A),
+                IpAddr::V6(_) => r.contains(&RecordType::AAAA),
             })
             && self.gateways.contains_key(gateway)
     }
@@ -719,10 +720,10 @@ impl ReferenceState {
 impl ReferenceState {
     // We surface what are the existing rtypes for a domain so that it's easier
     // for the proptests to hit an existing record.
-    fn all_domains(&self) -> Vec<(DomainName, Vec<Rtype>)> {
+    fn all_domains(&self) -> Vec<(DomainName, Vec<RecordType>)> {
         fn domains_and_rtypes(
             records: &DnsRecords,
-        ) -> impl Iterator<Item = (DomainName, Vec<Rtype>)> + use<'_> {
+        ) -> impl Iterator<Item = (DomainName, Vec<RecordType>)> + use<'_> {
             records
                 .domains_iter()
                 .map(|d| (d.clone(), records.domain_rtypes(&d)))
@@ -741,14 +742,14 @@ impl ReferenceState {
 
     // We surface what are the existing rtypes for a domain so that it's easier
     // for the proptests to hit an existing record.
-    fn single_label_queries_for_search_domains(&self) -> Vec<(DomainName, Vec<Rtype>)> {
+    fn single_label_queries_for_search_domains(&self) -> Vec<(DomainName, Vec<RecordType>)> {
         let Some(search_domain) = self.client.inner().search_domain.clone() else {
             return Vec::default();
         };
 
         fn domains_and_rtypes(
             records: &DnsRecords,
-        ) -> impl Iterator<Item = (DomainName, Vec<Rtype>)> + use<'_> {
+        ) -> impl Iterator<Item = (DomainName, Vec<RecordType>)> + use<'_> {
             records
                 .domains_iter()
                 .map(|d| (d.clone(), records.domain_rtypes(&d)))
