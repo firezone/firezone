@@ -2,13 +2,12 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     io,
     net::{IpAddr, SocketAddr},
-    sync::{Arc, LazyLock},
+    sync::Arc,
     task::{ready, Context, Poll},
     time::{Duration, Instant},
 };
 
-use connlib_model::DomainName;
-use domain::base::{iana::Rcode, Message, MessageBuilder, Question, Rtype};
+use dns_types::{prelude::*, DomainNameRef, Query, RecordType, ResponseCode};
 use futures_bounded::FuturesTupleSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 
@@ -19,9 +18,8 @@ use super::tcp_dns;
 const MAX_DNS_SERVERS: usize = 20; // We don't bother selecting from more than 10 servers over UDP and TCP.
 const DNS_TIMEOUT: Duration = Duration::from_secs(2); // Every sensible DNS servers should respond within 2s.
 
-static FIREZONE_DEV: LazyLock<DomainName> = LazyLock::new(|| {
-    DomainName::vec_from_str("firezone.dev").expect("static domain should always parse")
-});
+pub const FIREZONE_DEV: DomainNameRef =
+    unsafe { DomainNameRef::from_octets_unchecked(b"\x08firezone\x03dev\x00") };
 
 pub struct NameserverSet {
     inner: BTreeSet<IpAddr>,
@@ -29,7 +27,7 @@ pub struct NameserverSet {
 
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    queries: FuturesTupleSet<io::Result<Message<Vec<u8>>>, QueryMetaData>,
+    queries: FuturesTupleSet<io::Result<dns_types::Response>, QueryMetaData>,
 }
 
 struct QueryMetaData {
@@ -63,7 +61,7 @@ impl NameserverSet {
                     udp_dns::send(
                         self.udp_socket_factory.clone(),
                         SocketAddr::new(nameserver, crate::dns::DNS_PORT),
-                        query_firezone_dev(),
+                        Query::new(FIREZONE_DEV.to_vec(), RecordType::A),
                     ),
                     QueryMetaData { nameserver, start },
                 )
@@ -78,7 +76,7 @@ impl NameserverSet {
                     tcp_dns::send(
                         self.tcp_socket_factory.clone(),
                         SocketAddr::new(nameserver, crate::dns::DNS_PORT),
-                        query_firezone_dev(),
+                        Query::new(FIREZONE_DEV.to_vec(), RecordType::A),
                     ),
                     QueryMetaData { nameserver, start },
                 )
@@ -102,7 +100,7 @@ impl NameserverSet {
 
         loop {
             match ready!(self.queries.poll_unpin(cx)) {
-                (Ok(Ok(response)), meta) if response.header().rcode() == Rcode::NOERROR => {
+                (Ok(Ok(response)), meta) if response.response_code() == ResponseCode::NOERROR => {
                     let rtt = meta.start.elapsed();
 
                     tracing::debug!(nameserver = %meta.nameserver, ?rtt, ?response, "DNS query completed");
@@ -133,24 +131,21 @@ impl NameserverSet {
     }
 }
 
-fn query_firezone_dev() -> Message<Vec<u8>> {
-    let mut builder = MessageBuilder::new_vec().question();
-    builder.header_mut().set_random_id();
-    builder.header_mut().set_rd(true);
-    builder.header_mut().set_qr(false);
-
-    builder
-        .push(Question::new_in(FIREZONE_DEV.clone(), Rtype::A))
-        .expect("static question should always be valid");
-
-    builder.into_message()
-}
-
 #[cfg(test)]
 mod tests {
     use std::net::Ipv4Addr;
 
+    use dns_types::DomainName;
+
     use super::*;
+
+    #[test]
+    fn const_domain_is_correct() {
+        assert_eq!(
+            FIREZONE_DEV,
+            DomainName::vec_from_str("firezone.dev").unwrap()
+        )
+    }
 
     #[tokio::test]
     #[ignore = "Needs Internet"]

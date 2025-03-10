@@ -9,7 +9,6 @@ use crate::{
     time::smol_now,
 };
 use anyhow::{anyhow, bail, Context as _, Result};
-use domain::{base::Message, dep::octseq::OctetsInto};
 use ip_packet::IpPacket;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use smoltcp::{
@@ -36,9 +35,9 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     sockets_by_remote: BTreeMap<SocketAddr, smoltcp::iface::SocketHandle>,
     local_ports_by_socket: HashMap<smoltcp::iface::SocketHandle, u16>,
     /// Queries we should send to a DNS resolver.
-    pending_queries_by_remote: HashMap<SocketAddr, VecDeque<Message<Vec<u8>>>>,
+    pending_queries_by_remote: HashMap<SocketAddr, VecDeque<dns_types::Query>>,
     /// Queries we have sent to a DNS resolver and are waiting for a reply.
-    sent_queries_by_remote: HashMap<SocketAddr, HashMap<u16, Message<Vec<u8>>>>,
+    sent_queries_by_remote: HashMap<SocketAddr, HashMap<u16, dns_types::Query>>,
 
     query_results: VecDeque<QueryResult>,
 
@@ -50,9 +49,9 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
 
 #[derive(Debug)]
 pub struct QueryResult {
-    pub query: Message<Vec<u8>>,
+    pub query: dns_types::Query,
     pub server: SocketAddr,
-    pub result: Result<Message<Vec<u8>>>,
+    pub result: Result<dns_types::Response>,
 }
 
 impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
@@ -88,9 +87,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     /// Send the given DNS query to the target server.
     ///
     /// This only queues the message. You need to call [`Client::handle_timeout`] to actually send them.
-    pub fn send_query(&mut self, server: SocketAddr, message: Message<Vec<u8>>) -> Result<()> {
-        anyhow::ensure!(!message.header().qr(), "Message is a DNS response!");
-
+    pub fn send_query(&mut self, server: SocketAddr, message: dns_types::Query) -> Result<()> {
         self.pending_queries_by_remote
             .entry(server)
             .or_default()
@@ -308,8 +305,8 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 fn send_pending_queries(
     socket: &mut tcp::Socket,
     server: SocketAddr,
-    pending_queries: &mut VecDeque<Message<Vec<u8>>>,
-    sent_queries: &mut HashMap<u16, Message<Vec<u8>>>,
+    pending_queries: &mut VecDeque<dns_types::Query>,
+    sent_queries: &mut HashMap<u16, dns_types::Query>,
     query_results: &mut VecDeque<QueryResult>,
 ) {
     loop {
@@ -321,9 +318,9 @@ fn send_pending_queries(
             break;
         };
 
-        match codec::try_send(socket, query.for_slice_ref()).context("Failed to send DNS query") {
+        match codec::try_send(socket, query.as_bytes()).context("Failed to send DNS query") {
             Ok(()) => {
-                let replaced = sent_queries.insert(query.header().id(), query).is_some();
+                let replaced = sent_queries.insert(query.id(), query).is_some();
                 debug_assert!(!replaced, "Query ID is not unique");
             }
             Err(e) => {
@@ -344,8 +341,8 @@ fn send_pending_queries(
 fn recv_responses(
     socket: &mut tcp::Socket,
     server: SocketAddr,
-    pending_queries: &mut VecDeque<Message<Vec<u8>>>,
-    sent_queries: &mut HashMap<u16, Message<Vec<u8>>>,
+    pending_queries: &mut VecDeque<dns_types::Query>,
+    sent_queries: &mut HashMap<u16, dns_types::Query>,
     query_results: &mut VecDeque<QueryResult>,
 ) {
     let Some(result) = try_recv_response(socket)
@@ -358,13 +355,13 @@ fn recv_responses(
     let new_results = result
         .and_then(|response| {
             let query = sent_queries
-                .remove(&response.header().id())
+                .remove(&response.id())
                 .context("DNS resolver sent response for unknown query")?;
 
             Ok(vec![QueryResult {
                 query,
                 server,
-                result: Ok(response.octets_into()),
+                result: Ok(response),
             }])
         })
         .unwrap_or_else(|e| {
@@ -379,8 +376,8 @@ fn recv_responses(
 fn fail_all_queries<'a>(
     error: &'a anyhow::Error,
     server: SocketAddr,
-    pending_queries: &'a mut VecDeque<Message<Vec<u8>>>,
-    sent_queries: &'a mut HashMap<u16, Message<Vec<u8>>>,
+    pending_queries: &'a mut VecDeque<dns_types::Query>,
+    sent_queries: &'a mut HashMap<u16, dns_types::Query>,
 ) -> impl Iterator<Item = QueryResult> + 'a {
     let pending_queries = pending_queries.drain(..);
     let sent_queries = sent_queries.drain().map(|(_, query)| query);
@@ -391,7 +388,7 @@ fn fail_all_queries<'a>(
 
 fn into_failed_results(
     server: SocketAddr,
-    iter: impl IntoIterator<Item = Message<Vec<u8>>>,
+    iter: impl IntoIterator<Item = dns_types::Query>,
     make_error: impl Fn() -> anyhow::Error,
 ) -> impl Iterator<Item = QueryResult> {
     iter.into_iter().map(move |query| QueryResult {
@@ -401,18 +398,14 @@ fn into_failed_results(
     })
 }
 
-fn try_recv_response<'b>(socket: &'b mut tcp::Socket) -> Result<Option<Message<&'b [u8]>>> {
+fn try_recv_response(socket: &mut tcp::Socket) -> Result<Option<dns_types::Response>> {
     if !socket.can_recv() {
         tracing::trace!(state = %socket.state(), "Not yet ready to receive next message");
 
         return Ok(None);
     }
 
-    let Some(message) = codec::try_recv(socket)? else {
-        return Ok(None);
-    };
+    let maybe_response = codec::try_recv(socket)?;
 
-    anyhow::ensure!(message.header().qr(), "DNS message is a query!");
-
-    Ok(Some(message))
+    Ok(maybe_response)
 }

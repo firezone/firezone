@@ -17,8 +17,8 @@ use crate::tests::transition::Transition;
 use crate::utils::earliest;
 use crate::{dns, messages::Interface, ClientEvent, GatewayEvent};
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
-use domain::base::iana::{Class, Rcode};
-use domain::base::{Message, MessageBuilder, Record, RecordData, ToName as _, Ttl};
+use dns_types::prelude::*;
+use dns_types::ResponseCode;
 use rand::distributions::DistString;
 use rand::SeedableRng;
 use sha2::Digest;
@@ -416,10 +416,8 @@ impl TunnelTest {
                 let server = query.server;
                 let transport = query.transport;
 
-                let response = self.on_recursive_dns_query(
-                    query.message.for_slice_ref(),
-                    &ref_state.global_dns_records,
-                );
+                let response =
+                    self.on_recursive_dns_query(&query.message, &ref_state.global_dns_records);
                 self.client.exec_mut(|c| {
                     c.sut.handle_dns_response(dns::RecursiveResponse {
                         server,
@@ -531,8 +529,8 @@ impl TunnelTest {
                         let upstream = c.dns_mapping().get_by_left(&result.server.ip()).unwrap();
 
                         c.received_tcp_dns_responses
-                            .insert((*upstream, result.query.header().id()));
-                        c.handle_dns_response(message.for_slice())
+                            .insert((*upstream, result.query.id()));
+                        c.handle_dns_response(&message)
                     }
                     Err(e) => {
                         tracing::error!("TCP DNS query failed: {e:#}");
@@ -779,28 +777,22 @@ impl TunnelTest {
 
     fn on_recursive_dns_query(
         &self,
-        query: Message<&[u8]>,
+        query: &dns_types::Query,
         global_dns_records: &DnsRecords,
-    ) -> Message<Vec<u8>> {
-        let response = MessageBuilder::new_vec();
-        let mut answers = response.start_answer(&query, Rcode::NOERROR).unwrap();
-
-        let query = query.sole_question().unwrap();
-        let name = query.qname().to_vec();
+    ) -> dns_types::Response {
         let qtype = query.qtype();
+        let domain = query.domain();
 
-        let records = global_dns_records
-            .domain_records_iter(&name)
-            .filter(|record| qtype == record.rtype())
-            .map(|rdata| Record::new(name.clone(), Class::IN, Ttl::from_days(1), rdata));
+        let response = dns_types::ResponseBuilder::for_query(query, ResponseCode::NOERROR)
+            .with_records(
+                global_dns_records
+                    .domain_records_iter(&domain)
+                    .filter(|record| qtype == record.rtype())
+                    .map(|rdata| (domain.clone(), 60 * 60 * 24, rdata)),
+            )
+            .build();
 
-        for record in records {
-            answers.push(record).unwrap();
-        }
-
-        let response = answers.into_message();
-
-        tracing::debug!(%name, %qtype, "Responding to DNS query");
+        tracing::debug!(%domain, %qtype, "Responding to DNS query");
 
         response
     }

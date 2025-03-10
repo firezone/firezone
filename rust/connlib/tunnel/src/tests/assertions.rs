@@ -4,7 +4,7 @@ use super::{
     sim_gateway::SimGateway,
     transition::{Destination, ReplyTo},
 };
-use connlib_model::{DomainName, GatewayId};
+use connlib_model::GatewayId;
 use ip_packet::IpPacket;
 use itertools::Itertools;
 use std::{
@@ -377,7 +377,7 @@ fn assert_destination_is_cdir_resource(gateway_received_request: &IpPacket, expe
 fn assert_destination_is_dns_resource(
     gateway_received_request: &IpPacket,
     global_dns_records: &DnsRecords,
-    domain: &DomainName,
+    domain: &dns_types::DomainName,
 ) {
     let actual = gateway_received_request.destination();
     let possible_resource_ips = global_dns_records

@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::{Context as _, Result};
-use domain::base::{iana::Rcode, MessageBuilder};
+use dns_types::{ResponseBuilder, ResponseCode};
 use firezone_bin_shared::TunDeviceManager;
 use ip_network::Ipv4Network;
 use tokio::task::JoinSet;
@@ -107,13 +107,12 @@ impl Eventloop {
             }
 
             if let Some(query) = self.dns_server.poll_queries() {
-                let response = MessageBuilder::new_vec()
-                    .start_answer(&query.message, Rcode::NXDOMAIN)
-                    .unwrap()
-                    .into_message();
-
                 self.dns_server
-                    .send_message(query.local, query.remote, response)
+                    .send_message(
+                        query.local,
+                        query.remote,
+                        ResponseBuilder::for_query(&query.message, ResponseCode::NXDOMAIN).build(),
+                    )
                     .unwrap();
                 continue;
             }

@@ -1,4 +1,5 @@
-use connlib_model::{DomainName, ResourceView};
+use connlib_model::ResourceView;
+use dns_types::DomainName;
 use ip_network::{Ipv4Network, Ipv6Network};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
