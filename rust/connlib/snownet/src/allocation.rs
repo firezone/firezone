@@ -11,6 +11,7 @@ use std::{
     collections::{BTreeMap, VecDeque},
     iter,
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
+    sync::Arc,
     time::{Duration, Instant},
 };
 use str0m::{net::Protocol, Candidate};
@@ -47,7 +48,6 @@ const BINDING_INTERVAL: Duration = Duration::from_secs(25);
 /// Represents a TURN allocation that refreshes itself.
 ///
 /// Allocations have a lifetime and need to be continuously refreshed to stay active.
-#[derive(Debug)]
 pub struct Allocation {
     /// The known sockets of the relay.
     server: RelaySocket,
@@ -77,7 +77,7 @@ pub struct Allocation {
     /// When we received the allocation and how long it is valid.
     allocation_lifetime: Option<(Instant, Duration)>,
 
-    buffered_transmits: VecDeque<Transmit<'static>>,
+    buffered_transmits: VecDeque<Transmit>,
     events: VecDeque<Event>,
 
     sent_requests: BTreeMap<TransactionId, (SocketAddr, Message<Attribute>, ExponentialBackoff)>,
@@ -88,6 +88,8 @@ pub struct Allocation {
     credentials: Option<Credentials>,
 
     explicit_failure: Option<FreeReason>,
+
+    buffer_pool: Arc<lockfree_object_pool::SpinLockObjectPool<Vec<u8>>>,
 }
 
 #[derive(derive_more::Debug, Clone, Copy)]
@@ -212,6 +214,7 @@ impl Allocation {
         realm: Realm,
         now: Instant,
         session_id: SessionId,
+        buffer_pool: Arc<lockfree_object_pool::SpinLockObjectPool<Vec<u8>>>,
     ) -> Self {
         let mut allocation = Self {
             server,
@@ -235,6 +238,7 @@ impl Allocation {
             software: Software::new(format!("snownet; session={session_id}"))
                 .expect("description has less then 128 chars"),
             explicit_failure: Default::default(),
+            buffer_pool,
         };
 
         allocation.send_binding_requests(now);
@@ -742,7 +746,7 @@ impl Allocation {
         self.events.pop_front()
     }
 
-    pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
+    pub fn poll_transmit(&mut self) -> Option<Transmit> {
         self.buffered_transmits.pop_front()
     }
 
@@ -1082,10 +1086,14 @@ impl Allocation {
 
         self.sent_requests
             .insert(id, (dst, message.clone(), backoff));
+
+        let mut buffer = self.buffer_pool.pull_owned();
+        buffer.copy_from_slice(&encode(message));
+
         self.buffered_transmits.push_back(Transmit {
             src: None,
             dst,
-            payload: encode(message).into(),
+            payload: buffer,
         });
 
         true
@@ -2817,6 +2825,10 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
                 SessionId::default(),
+                Arc::new(lockfree_object_pool::SpinLockObjectPool::new(
+                    Vec::default,
+                    |v| v.fill(0),
+                )),
             )
         }
 
@@ -2831,6 +2843,10 @@ mod tests {
                 Realm::new("firezone".to_owned()).unwrap(),
                 start,
                 SessionId::default(),
+                Arc::new(lockfree_object_pool::SpinLockObjectPool::new(
+                    Vec::default,
+                    |v| v.fill(0),
+                )),
             )
         }
 

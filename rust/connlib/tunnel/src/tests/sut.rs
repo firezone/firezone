@@ -157,7 +157,7 @@ impl TunnelTest {
 
                 let transmit = state
                     .client
-                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
+                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?));
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
@@ -181,7 +181,7 @@ impl TunnelTest {
 
                 let transmit = state
                     .client
-                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
+                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?));
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
@@ -205,7 +205,7 @@ impl TunnelTest {
 
                 let transmit = state
                     .client
-                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
+                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?));
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
@@ -620,7 +620,7 @@ impl TunnelTest {
     /// It takes a [`Transmit`] and checks, which host accepts it, i.e. has configured the correct IP address.
     ///
     /// Currently, the network topology of our tests are a single subnet without NAT.
-    fn dispatch_transmit(&mut self, transmit: Transmit<'static>, at: Instant) {
+    fn dispatch_transmit(&mut self, transmit: Transmit, at: Instant) {
         let src = transmit
             .src
             .expect("`src` should always be set in these tests");

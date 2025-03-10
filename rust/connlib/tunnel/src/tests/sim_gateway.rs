@@ -64,7 +64,7 @@ impl SimGateway {
         unreachable_hosts: &UnreachableHosts,
         now: Instant,
         utc_now: DateTime<Utc>,
-    ) -> Option<Transmit<'static>> {
+    ) -> Option<Transmit> {
         let Some(packet) = self
             .sut
             .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
@@ -83,7 +83,7 @@ impl SimGateway {
         &mut self,
         global_dns_records: &DnsRecords,
         now: Instant,
-    ) -> Vec<Transmit<'static>> {
+    ) -> Vec<Transmit> {
         let Some(ip_config) = self.sut.tunnel_ip_config() else {
             tracing::error!("Tunnel IP configuration not set");
             return Vec::new();
@@ -116,15 +116,7 @@ impl SimGateway {
 
         udp_server_packets
             .chain(tcp_server_packets)
-            .filter_map(|packet| {
-                Some(
-                    self.sut
-                        .handle_tun_input(packet, now)
-                        .unwrap()?
-                        .to_transmit()
-                        .into_owned(),
-                )
-            })
+            .filter_map(|packet| Some(self.sut.handle_tun_input(packet, now).unwrap()?))
             .collect()
     }
 
@@ -165,7 +157,7 @@ impl SimGateway {
         packet: IpPacket,
         unreachable_hosts: &UnreachableHosts,
         now: Instant,
-    ) -> Option<Transmit<'static>> {
+    ) -> Option<Transmit> {
         // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
 
         let dst_ip = packet.destination();
@@ -220,12 +212,7 @@ impl SimGateway {
 
         if let Some(reply) = icmp_error.or_else(|| echo_reply(packet.clone())) {
             self.request_received(&packet);
-            let transmit = self
-                .sut
-                .handle_tun_input(reply, now)
-                .unwrap()?
-                .to_transmit()
-                .into_owned();
+            let transmit = self.sut.handle_tun_input(reply, now).unwrap()?;
 
             return Some(transmit);
         }
@@ -268,7 +255,7 @@ impl SimGateway {
         payload: &[u8],
         icmp_error: Option<IpPacket>,
         now: Instant,
-    ) -> Option<Transmit<'static>> {
+    ) -> Option<Transmit> {
         let reply = icmp_error.unwrap_or_else(|| {
             ip_packet::make::icmp_reply_packet(
                 packet.destination(),
@@ -280,12 +267,7 @@ impl SimGateway {
             .expect("src and dst are taken from incoming packet")
         });
 
-        let transmit = self
-            .sut
-            .handle_tun_input(reply, now)
-            .unwrap()?
-            .to_transmit()
-            .into_owned();
+        let transmit = self.sut.handle_tun_input(reply, now).unwrap()?;
 
         Some(transmit)
     }

@@ -120,7 +120,7 @@ impl SimClient {
         upstream: SocketAddr,
         dns_transport: DnsTransport,
         now: Instant,
-    ) -> Option<Transmit<'static>> {
+    ) -> Option<Transmit> {
         let Some(sentinel) = self.dns_by_sentinel.get_by_right(&upstream).copied() else {
             tracing::error!(%upstream, "Unknown DNS server");
             return None;
@@ -178,15 +178,15 @@ impl SimClient {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> Option<snownet::Transmit<'static>> {
+    ) -> Option<snownet::Transmit> {
         self.update_sent_requests(&packet);
 
-        let Some(enc_packet) = self.sut.handle_tun_input(packet, now) else {
+        let Some(transmit) = self.sut.handle_tun_input(packet, now) else {
             self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
             return None;
         };
 
-        Some(enc_packet.to_transmit().into_owned())
+        Some(transmit)
     }
 
     fn update_sent_requests(&mut self, packet: &IpPacket) {

@@ -163,13 +163,13 @@ impl ClientTunnel {
                     let now = Instant::now();
 
                     for packet in packets {
-                        let Some(packet) = self.role_state.handle_tun_input(packet, now) else {
+                        let Some(transmit) = self.role_state.handle_tun_input(packet, now) else {
                             self.role_state.handle_timeout(now);
                             continue;
                         };
 
                         self.io
-                            .send_network(packet.src(), packet.dst(), packet.payload());
+                            .send_network(transmit.src, transmit.dst, &transmit.payload);
                     }
 
                     continue;
