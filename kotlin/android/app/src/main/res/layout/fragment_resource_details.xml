@@ -3,8 +3,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="@dimen/spacing_medium"
-    android:fitsSystemWindows="true">
+    android:padding="@dimen/spacing_medium">
 
     <!-- Resource Section -->
     <TextView
