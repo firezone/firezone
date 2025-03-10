@@ -19,10 +19,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::{fs, io};
 
+use anyhow::Context;
 use time::OffsetDateTime;
 use tracing::Subscriber;
 use tracing_appender::non_blocking::{NonBlocking, WorkerGuard};
 use tracing_subscriber::Layer;
+
+use crate::unwrap_or_debug;
 
 pub const TIME_FORMAT: &str = "[year]-[month]-[day]-[hour]-[minute]-[second]";
 
@@ -130,6 +133,7 @@ impl Appender {
         let filename = format!("{}.{date}.{}", self.file_base_name, self.file_extension);
 
         let path = self.directory.join(&filename);
+        let latest = self.directory.join("latest");
         let mut open_options = fs::OpenOptions::new();
         open_options.append(true).create(true);
 
@@ -145,6 +149,21 @@ impl Appender {
 
         let file = new_file?;
         Self::set_permissions(&file)?;
+
+        let _ = std::fs::remove_file(&latest);
+
+        #[cfg(unix)]
+        unwrap_or_debug!(
+            std::os::unix::fs::symlink(path, latest)
+                .context("Failed to create `latest` link to log file"),
+            "{}"
+        );
+        #[cfg(windows)]
+        unwrap_or_debug!(
+            std::os::windows::fs::symlink_file(path, latest)
+                .context("Failed to create `latest` link to log file"),
+            "{}"
+        );
 
         Ok((file, filename))
     }
