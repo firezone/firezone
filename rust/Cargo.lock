@@ -1076,6 +1076,7 @@ dependencies = [
  "backoff",
  "connlib-client-shared",
  "connlib-model",
+ "dns-types",
  "firezone-logging",
  "firezone-telemetry",
  "flume",
