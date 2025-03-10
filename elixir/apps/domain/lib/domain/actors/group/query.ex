@@ -10,7 +10,7 @@ defmodule Domain.Actors.Group.Query do
     |> where([groups: groups], is_nil(groups.deleted_at))
   end
 
-  def not_deleted_or_excluded do
+  def not_deleted_and_not_excluded do
     not_deleted()
     |> not_excluded()
   end

@@ -11,7 +11,7 @@ defmodule Domain.Actors do
   def fetch_groups_count_grouped_by_provider_id(%Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       groups =
-        Group.Query.not_deleted_or_excluded()
+        Group.Query.not_deleted_and_not_excluded()
         |> Group.Query.group_by_provider_id()
         |> Authorizer.for_subject(subject)
         |> Repo.all()
@@ -40,7 +40,7 @@ defmodule Domain.Actors do
 
   def list_groups(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group.Query.not_deleted_or_excluded()
+      Group.Query.not_deleted_and_not_excluded()
       |> Authorizer.for_subject(subject)
       |> Repo.list(Group.Query, opts)
     end
@@ -48,7 +48,7 @@ defmodule Domain.Actors do
 
   def list_groups_for(%Actor{} = actor, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group.Query.not_deleted_or_excluded()
+      Group.Query.not_deleted_and_not_excluded()
       |> Group.Query.by_actor_id(actor.id)
       |> Authorizer.for_subject(subject)
       |> Repo.list(Group.Query, opts)
@@ -87,7 +87,7 @@ defmodule Domain.Actors do
   def all_editable_groups!(%Auth.Subject{} = subject, opts \\ []) do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-    Group.Query.not_deleted_or_excluded()
+    Group.Query.not_deleted_and_not_excluded()
     |> Group.Query.editable()
     |> Authorizer.for_subject(subject)
     |> Repo.all()
@@ -96,7 +96,7 @@ defmodule Domain.Actors do
 
   def list_editable_groups(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group.Query.not_deleted_or_excluded()
+      Group.Query.not_deleted_and_not_excluded()
       |> Group.Query.editable()
       |> Authorizer.for_subject(subject)
       |> Repo.list(Group.Query, opts)
@@ -107,7 +107,7 @@ defmodule Domain.Actors do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       ids = groups |> Enum.map(& &1.id) |> Enum.uniq()
 
-      Group.Query.not_deleted_or_excluded()
+      Group.Query.not_deleted_and_not_excluded()
       |> Group.Query.by_id({:in, ids})
       |> Group.Query.preload_few_actors_for_each_group(limit)
       |> Authorizer.for_subject(subject)
