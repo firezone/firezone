@@ -180,6 +180,16 @@ defmodule Domain.Config.Definitions do
   )
 
   @doc """
+  The API rate limiter uses a token bucket algorithm. This field sets the rate the bucket is refilled.
+  """
+  defconfig(:api_refill_rate, :integer, default: 10)
+
+  @doc """
+  The API rate limiter uses a token bucket algorithm. This field sets the capacity of the bucket.
+  """
+  defconfig(:api_capacity, :integer, default: 200)
+
+  @doc """
   Enable or disable requiring secure cookies. Required for HTTPS.
   """
   defconfig(:phoenix_secure_cookies, :boolean, default: true)
