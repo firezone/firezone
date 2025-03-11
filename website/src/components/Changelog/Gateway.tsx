@@ -22,7 +22,8 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.5" date={new Date("2025-03-10")}>
         <ChangeItem pull="8124">
           Fixes a bug in the routing of DNS resources that would lead to "Source
           not allowed" errors in the Client logs.
@@ -30,7 +31,7 @@ export default function Gateway() {
         <ChangeItem pull="8225">
           Caches successful DNS queries for DNS resource domains for 30 seconds.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.4" date={new Date("2025-02-11")}>
         <ChangeItem pull="7944">
           Fixes an edge case where a busy Gateway could experience a deadlock
