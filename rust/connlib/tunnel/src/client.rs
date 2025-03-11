@@ -1196,36 +1196,35 @@ impl ClientState {
                     "Failed to queue UDP DNS response: {}"
                 );
             }
-            dns::ResolveStrategy::RecurseLocal(domain) => {
+            dns::ResolveStrategy::RecurseLocal(expanded_domain) => {
                 if self.should_forward_dns_query_to_gateway(upstream.ip()) {
                     let packet = self.mangle_udp_dns_query_to_new_upstream_through_tunnel(
-                        upstream, now, packet, domain,
+                        upstream,
+                        now,
+                        packet,
+                        Some(expanded_domain),
                     );
 
                     return ControlFlow::Continue(packet);
                 }
 
-                let updated_message = if message.domain() != domain {
+                let message = if message.domain() != expanded_domain {
                     tracing::debug!(
                         old_domain = %message.domain(),
-                        new_domain = %domain,
+                        new_domain = %expanded_domain,
                         "Updating DNS query domain due to expanded search domain"
                     );
-                    Query::new(domain.clone(), message.qtype()).with_id(message.id())
+                    Query::new(expanded_domain, message.qtype()).with_id(message.id())
                 } else {
-                    message.clone()
+                    message
                 };
 
-                let query_id = updated_message.id();
+                let query_id = message.id();
 
                 tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host");
 
                 self.buffered_dns_queries
-                    .push_back(dns::RecursiveQuery::via_udp(
-                        source,
-                        upstream,
-                        updated_message,
-                    ));
+                    .push_back(dns::RecursiveQuery::via_udp(source, upstream, message));
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
                 let Some(gateway) =
@@ -1241,8 +1240,9 @@ impl ClientState {
 
                 let upstream = gateway.tun_dns_server_endpoint(packet.destination());
 
-                let packet =
-                    self.mangle_udp_dns_query_to_new_upstream_through_tunnel(upstream, now, packet);
+                let packet = self.mangle_udp_dns_query_to_new_upstream_through_tunnel(
+                    upstream, now, packet, None,
+                );
 
                 return ControlFlow::Continue(packet);
             }
@@ -1307,7 +1307,7 @@ impl ClientState {
         upstream: SocketAddr,
         now: Instant,
         mut packet: IpPacket,
-        domain: Option<DomainName>,
+        expanded_domain: Option<DomainName>,
     ) -> IpPacket {
         let dst_ip = packet.destination();
         let datagram = packet
@@ -1319,23 +1319,6 @@ impl ClientState {
             .expect("to be a valid DNS query at this point");
         let query_id = query.id();
 
-        if let Some(domain) = domain {
-            if query.domain() != domain {
-                tracing::debug!(
-                    old_domain = %query.domain(),
-                    new_domain = %domain,
-                    "Updating DNS query domain due to expanded search domain"
-                );
-                query = Query::new(domain, query.qtype()).with_id(query_id);
-
-                let new_payload = query.into_bytes();
-                packet
-                    .as_udp_mut()
-                    .expect("to be a valid UDP packet at this point")
-                    .set_payload(new_payload);
-            }
-        }
-
         let connlib_dns_server = SocketAddr::new(dst_ip, dst_port);
 
         self.udp_dns_sockets_by_upstream_and_query_id.insert(
@@ -1343,7 +1326,37 @@ impl ClientState {
             connlib_dns_server,
             now + IDS_EXPIRE,
         );
+
+        tracing::trace!(%upstream, %connlib_dns_server, %query_id, "Forwarding UDP DNS query via tunnel");
+
+        // If an expanded domain was passed that doesn't match the original query, it means we
+        // expanded it using the search domain set by the portal. If so, we need to update the
+        // packet payload to reflect the new domain.
+        if let Some(expanded_domain) = expanded_domain {
+            if query.domain() != expanded_domain {
+                tracing::debug!(
+                    old_domain = %query.domain(),
+                    new_domain = %expanded_domain,
+                    "Updating DNS query domain due to expanded search domain"
+                );
+                query = Query::new(expanded_domain, query.qtype()).with_id(query_id);
+                let payload = query.into_bytes();
+
+                let new_packet = ip_packet::make::udp_packet(
+                    packet.source(),
+                    upstream.ip(),
+                    datagram.source_port(),
+                    upstream.port(),
+                    payload,
+                )
+                .expect("to be able to create a valid UDP packet");
+
+                return new_packet;
+            }
+        }
+
         packet.set_dst(upstream.ip());
+
         // TODO: Remove this once we disallow non-standard DNS ports: https://github.com/firezone/firezone/issues/8330
         packet
             .as_udp_mut()
@@ -1351,8 +1364,6 @@ impl ClientState {
             .set_destination_port(upstream.port());
 
         packet.update_checksum();
-
-        tracing::trace!(%upstream, %connlib_dns_server, %query_id, "Forwarding UDP DNS query via tunnel");
 
         packet
     }
@@ -1377,7 +1388,26 @@ impl ClientState {
                     "Failed to send TCP DNS response: {}"
                 );
             }
-            dns::ResolveStrategy::RecurseLocal(domain) => {
+            dns::ResolveStrategy::RecurseLocal(expanded_domain) => {
+                // Update query domain if it was expanded
+                let query = if query.message.domain() != expanded_domain {
+                    tracing::debug!(
+                        old_domain = %query.message.domain(),
+                        new_domain = %expanded_domain,
+                        "Updating DNS query domain due to expanded search domain"
+                    );
+                    let message =
+                        Query::new(expanded_domain, query.message.qtype()).with_id(query_id);
+
+                    dns_over_tcp::Query {
+                        local: query.local,
+                        remote: query.remote,
+                        message,
+                    }
+                } else {
+                    query
+                };
+
                 if self.should_forward_dns_query_to_gateway(server.ip()) {
                     self.forward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
 
