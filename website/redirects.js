@@ -22,7 +22,7 @@ module.exports = [
     source: "/dl/firezone-client-android/latest",
     destination:
       // mark:current-android-version
-      "https://www.github.com/firezone/firezone/releases/download/android-client-1.4.2/firezone-android-client-1.4.2.apk",
+      "https://www.github.com/firezone/firezone/releases/download/android-client-1.4.3/firezone-android-client-1.4.3.apk",
     permanent: false,
   },
   /*
