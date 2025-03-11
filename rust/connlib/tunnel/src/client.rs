@@ -147,6 +147,14 @@ pub struct ClientState {
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit<'static>>,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
+
+    /// When we expand a domain and send it to an upstream to resolve, we need to remember
+    /// the original domain so we can mangle the response's question section back to the original
+    /// domain.
+    udp_dns_expanded_domains_by_upstream_and_query_id:
+        ExpiringMap<(SocketAddr, u16), (DomainName, DomainName)>,
+    tcp_dns_expanded_domains_by_upstream_and_query_id:
+        ExpiringMap<(SocketAddr, u16), (DomainName, DomainName)>,
 }
 
 enum DnsResourceNatState {
@@ -244,6 +252,8 @@ impl ClientState {
             tcp_dns_streams_by_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             dns_resource_nat_by_gateway: BTreeMap::new(),
+            udp_dns_expanded_domains_by_upstream_and_query_id: Default::default(),
+            tcp_dns_expanded_domains_by_upstream_and_query_id: Default::default(),
         }
     }
 
@@ -538,6 +548,7 @@ impl ClientState {
         let packet = maybe_mangle_dns_response_from_upstream_dns_server(
             packet,
             &mut self.udp_dns_sockets_by_upstream_and_query_id,
+            &mut self.udp_dns_expanded_domains_by_upstream_and_query_id,
         );
 
         Some(packet)
@@ -1208,18 +1219,23 @@ impl ClientState {
                     return ControlFlow::Continue(packet);
                 }
 
+                let query_id = message.id();
+
                 let message = if message.domain() != expanded_domain {
                     tracing::debug!(
                         old_domain = %message.domain(),
                         new_domain = %expanded_domain,
                         "Updating DNS query domain due to expanded search domain"
                     );
-                    Query::new(expanded_domain, message.qtype()).with_id(message.id())
+                    self.expanded_domains_by_upstream_and_query_id.insert(
+                        (upstream, query_id),
+                        (expanded_domain.clone(), message.domain()),
+                        now + IDS_EXPIRE,
+                    );
+                    Query::new(expanded_domain, message.qtype()).with_id(query_id)
                 } else {
                     message
                 };
-
-                let query_id = message.id();
 
                 tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host");
 
@@ -1339,6 +1355,12 @@ impl ClientState {
                     new_domain = %expanded_domain,
                     "Updating DNS query domain due to expanded search domain"
                 );
+                self.udp_dns_expanded_domains_by_upstream_and_query_id
+                    .insert(
+                        (upstream, query_id),
+                        (expanded_domain.clone(), query.domain()),
+                        now + IDS_EXPIRE,
+                    );
                 query = Query::new(expanded_domain, query.qtype()).with_id(query_id);
                 let payload = query.into_bytes();
 
@@ -1396,8 +1418,15 @@ impl ClientState {
                         new_domain = %expanded_domain,
                         "Updating DNS query domain due to expanded search domain"
                     );
-                    let message =
-                        Query::new(expanded_domain, query.message.qtype()).with_id(query_id);
+                    let message = Query::new(expanded_domain.clone(), query.message.qtype())
+                        .with_id(query_id);
+
+                    self.tcp_dns_expanded_domains_by_upstream_and_query_id
+                        .insert(
+                            (server, query_id),
+                            (expanded_domain.clone(), query.message.domain()),
+                            now + IDS_EXPIRE,
+                        );
 
                     dns_over_tcp::Query {
                         local: query.local,
@@ -2054,6 +2083,10 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
 fn maybe_mangle_dns_response_from_upstream_dns_server(
     mut packet: IpPacket,
     udp_dns_sockets_by_upstream_and_query_id: &mut ExpiringMap<(SocketAddr, u16), SocketAddr>,
+    udp_dns_expanded_domains_by_upstream_and_query_id: &mut ExpiringMap<
+        (SocketAddr, u16),
+        (DomainName, DomainName),
+    >,
 ) -> IpPacket {
     let src_ip = packet.source();
 
@@ -2075,6 +2108,32 @@ fn maybe_mangle_dns_response_from_upstream_dns_server(
     };
 
     tracing::trace!(server = %src_ip, query_id = %message.id(), domain = %message.domain(), "Received UDP DNS response via tunnel");
+
+    // If we mangled the original query to expand the search domain, we need to mangle the
+    // response back to the original domain.
+    if let Some((expanded_domain, original_domain)) =
+        udp_dns_expanded_domains_by_upstream_and_query_id.remove(&(src_socket, message.id()))
+    {
+        if message.domain() != expanded_domain {
+            tracing::debug!(
+                old_domain = %message.domain(),
+                new_domain = %expanded_domain,
+                "Updating DNS response domain due to expanded search domain"
+            );
+            let message = Query::new(original_domain, message.qtype()).with_id(message.id());
+
+            packet = ip_packet::make::udp_packet(
+                original_dst.ip(),
+                src_ip,
+                original_dst.port(),
+                src_port,
+                message.into_bytes(),
+            )
+            .expect("to be able to create a valid UDP packet");
+
+            return packet;
+        }
+    }
 
     packet.set_src(original_dst.ip());
     packet
