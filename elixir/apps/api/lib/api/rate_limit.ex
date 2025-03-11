@@ -9,7 +9,7 @@ defmodule API.RateLimit do
 
   @default_cost 10
 
-  def default_cost() do
+  def default_cost do
     @default_cost
   end
 
