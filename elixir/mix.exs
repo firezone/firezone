@@ -34,7 +34,6 @@ defmodule Firezone.MixProject do
   # Run "mix help deps" for examples and options.
   defp deps do
     [
-      {:hammer, "~> 7.0.0"},
       # Shared deps
       {:jason, "~> 1.2"},
 
