@@ -90,11 +90,7 @@ impl SimRelay {
         }
     }
 
-    pub(crate) fn receive(
-        &mut self,
-        transmit: Transmit,
-        now: Instant,
-    ) -> Option<Transmit<'static>> {
+    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
         let dst = transmit.dst;
         let payload = &transmit.payload;
         let sender = transmit.src.unwrap();
@@ -118,7 +114,7 @@ impl SimRelay {
         payload: &[u8],
         client: ClientSocket,
         now: Instant,
-    ) -> Option<Transmit<'static>> {
+    ) -> Option<Transmit> {
         let (port, peer) = self.sut.handle_client_input(payload, client, now)?;
 
         let payload = &payload[4..];
@@ -165,7 +161,7 @@ impl SimRelay {
         payload: &[u8],
         peer: PeerSocket,
         port: AllocationPort,
-    ) -> Option<Transmit<'static>> {
+    ) -> Option<Transmit> {
         let (client, channel) = self.sut.handle_peer_traffic(payload, peer, port)?;
 
         let full_length = firezone_relay::ChannelData::encode_header_to_slice(
