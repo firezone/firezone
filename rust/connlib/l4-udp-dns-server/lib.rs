@@ -2,8 +2,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use anyhow::{anyhow, Context as _, Result};
-use domain::base::Message;
+use anyhow::{Context as _, Result};
 use futures::{
     future::BoxFuture,
     stream::{self, BoxStream, FuturesUnordered},
@@ -24,8 +23,8 @@ pub struct Server {
     udp_v6: Option<Arc<UdpSocket>>,
 
     // Streams that read incoming queries from the UDP sockets.
-    reading_udp_v4_queries: BoxStream<'static, Result<(SocketAddr, Message<Vec<u8>>)>>,
-    reading_udp_v6_queries: BoxStream<'static, Result<(SocketAddr, Message<Vec<u8>>)>>,
+    reading_udp_v4_queries: BoxStream<'static, Result<(SocketAddr, dns_types::Query)>>,
+    reading_udp_v6_queries: BoxStream<'static, Result<(SocketAddr, dns_types::Query)>>,
 
     // Futures that send responses on the UDP sockets.
     sending_udp_v4_responses: FuturesUnordered<BoxFuture<'static, Result<()>>>,
@@ -69,7 +68,11 @@ impl Server {
         Ok(())
     }
 
-    pub fn send_response(&mut self, to: SocketAddr, response: Message<Vec<u8>>) -> io::Result<()> {
+    pub fn send_response(
+        &mut self,
+        to: SocketAddr,
+        response: dns_types::Response,
+    ) -> io::Result<()> {
         let (udp_socket, workers) = match (to, self.udp_v4.clone(), self.udp_v6.clone()) {
             (SocketAddr::V4(_), Some(socket), _) => (socket, &mut self.sending_udp_v4_responses),
             (SocketAddr::V6(_), _, Some(socket)) => (socket, &mut self.sending_udp_v6_responses),
@@ -79,8 +82,13 @@ impl Server {
 
         workers.push(
             async move {
+                // TODO: Make this limit configurable.
+                // The current 1200 are conservative and should be safe for the public Internet and our WireGuard tunnel.
+                // Worst-case, the client will re-query over TCP.
+                let payload = response.into_bytes(1200);
+
                 udp_socket
-                    .send_to(response.as_slice(), to)
+                    .send_to(&payload, to)
                     .await
                     .context("Failed to send UDP response")?;
 
@@ -141,7 +149,7 @@ impl Server {
 /// Produces a stream of incoming DNS queries from a UDP socket for as long as there is at least one strong reference to the socket.
 fn udp_dns_query_stream(
     udp_socket: Weak<UdpSocket>,
-) -> BoxStream<'static, Result<(SocketAddr, Message<Vec<u8>>)>> {
+) -> BoxStream<'static, Result<(SocketAddr, dns_types::Query)>> {
     stream::repeat(udp_socket) // We start with an infinite stream of weak references to the UDP socket.
         .filter_map(|udp_socket| async move { udp_socket.upgrade() }) // For each item pulled from the stream, we first try to upgrade to a strong reference.
         .then(read_udp_query) // And then read single DNS query from the socket.
@@ -152,7 +160,7 @@ fn anyhow_to_io(e: anyhow::Error) -> io::Error {
     io::Error::other(format!("{e:#}"))
 }
 
-async fn read_udp_query(socket: Arc<UdpSocket>) -> Result<(SocketAddr, Message<Vec<u8>>)> {
+async fn read_udp_query(socket: Arc<UdpSocket>) -> Result<(SocketAddr, dns_types::Query)> {
     let mut buffer = vec![0u8; 2000]; // On the public Internet, any MTU > 1500 is very unlikely so 2000 is a safe bet.
 
     let (len, from) = socket
@@ -162,15 +170,14 @@ async fn read_udp_query(socket: Arc<UdpSocket>) -> Result<(SocketAddr, Message<V
 
     buffer.truncate(len);
 
-    let message =
-        Message::try_from_octets(buffer).map_err(|_| anyhow!("Failed to parse DNS message"))?;
+    let message = dns_types::Query::parse(&buffer).context("Failed to parse DNS message")?;
 
     Ok((from, message))
 }
 
 pub struct Query {
     pub source: SocketAddr,
-    pub message: Message<Vec<u8>>,
+    pub message: dns_types::Query,
 }
 
 fn make_udp_socket(socket: impl ToSocketAddrs) -> Result<UdpSocket> {
@@ -201,7 +208,6 @@ impl Default for Server {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use domain::base::{iana::Rcode, MessageBuilder};
     use std::future::poll_fn;
     use std::net::{Ipv4Addr, Ipv6Addr};
     use std::process::ExitStatus;
@@ -223,7 +229,7 @@ mod tests {
                 let query = poll_fn(|cx| server.poll(cx)).await.unwrap();
 
                 server
-                    .send_response(query.source, empty_dns_response(query.message))
+                    .send_response(query.source, dns_types::Response::no_error(&query.message))
                     .unwrap();
             }
         });
@@ -239,13 +245,6 @@ mod tests {
         assert!(!server_task.is_finished());
 
         server_task.abort();
-    }
-
-    fn empty_dns_response(message: Message<Vec<u8>>) -> Message<Vec<u8>> {
-        MessageBuilder::new_vec()
-            .start_answer(&message, Rcode::NOERROR)
-            .unwrap()
-            .into_message()
     }
 
     async fn dig(server: SocketAddr) -> ExitStatus {

@@ -9,7 +9,6 @@ use crate::{
     time::smol_now,
 };
 use anyhow::{Context as _, Result};
-use domain::{base::Message, dep::octseq::OctetsInto as _};
 use ip_packet::IpPacket;
 use smoltcp::{
     iface::{Interface, PollResult, SocketHandle, SocketSet},
@@ -38,7 +37,7 @@ pub struct Server {
 }
 
 pub struct Query {
-    pub message: Message<Vec<u8>>,
+    pub message: dns_types::Query,
     /// The local address of the socket that received the query.
     pub local: SocketAddr,
     /// The remote address of the client that sent the query.
@@ -151,16 +150,16 @@ impl Server {
         &mut self,
         src: SocketAddr,
         dst: SocketAddr,
-        message: Message<Vec<u8>>,
+        response: dns_types::Response,
     ) -> Result<()> {
         let handle = self
             .pending_sockets_by_local_remote_and_query_id
-            .remove(&(src, dst, message.header().id()))
+            .remove(&(src, dst, response.id()))
             .context("No pending query found for message")?;
 
         let socket = self.sockets.get_mut::<tcp::Socket>(handle);
 
-        write_tcp_dns_response(socket, message.for_slice_ref())
+        codec::try_send(socket, &response.into_bytes(u16::MAX))
             .inspect_err(|_| socket.abort()) // Abort socket on error.
             .context("Failed to write DNS response")?;
 
@@ -191,7 +190,7 @@ impl Server {
             while let Some(result) = try_recv_query(socket, local).transpose() {
                 match result {
                     Ok((message, remote)) => {
-                        let qid = message.header().id();
+                        let qid = message.id();
 
                         tracing::trace!(%local, %remote, %qid, "Received DNS query");
 
@@ -236,7 +235,7 @@ impl Server {
 fn try_recv_query(
     socket: &mut tcp::Socket,
     listen: SocketAddr,
-) -> Result<Option<(Message<Vec<u8>>, SocketAddr)>> {
+) -> Result<Option<(dns_types::Query, SocketAddr)>> {
     // smoltcp's sockets can only ever handle a single remote, i.e. there is no permanent listening socket.
     // to be able to handle a new connection, reset the socket back to `listen` once the connection is closed / closing.
     {
@@ -271,28 +270,16 @@ fn try_recv_query(
         return Ok(None);
     }
 
-    let Some(message) = codec::try_recv(socket)? else {
+    let Some(query) = codec::try_recv(socket)? else {
         return Ok(None);
     };
-
-    anyhow::ensure!(!message.header().qr(), "DNS message is a response!");
-
-    let message = message.octets_into();
 
     let remote = socket
         .remote_endpoint()
         .context("Unknown remote endpoint despite having just received a message")?;
 
     Ok(Some((
-        message,
+        query,
         SocketAddr::new(remote.addr.into(), remote.port),
     )))
-}
-
-fn write_tcp_dns_response(socket: &mut tcp::Socket, response: Message<&[u8]>) -> Result<()> {
-    anyhow::ensure!(response.header().qr(), "DNS message is a query!");
-
-    codec::try_send(socket, response)?;
-
-    Ok(())
 }

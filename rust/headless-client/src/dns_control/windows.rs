@@ -15,6 +15,7 @@
 
 use super::DnsController;
 use anyhow::{Context as _, Result};
+use dns_types::DomainName;
 use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
 use firezone_bin_shared::windows::error::EPT_S_NOT_REGISTERED;
 use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
@@ -66,11 +67,15 @@ impl DnsController {
     ///
     /// Must be async and an owned `Vec` to match the Linux signature
     #[expect(clippy::unused_async)]
-    pub async fn set_dns(&mut self, dns_config: Vec<IpAddr>) -> Result<()> {
+    pub async fn set_dns(
+        &mut self,
+        dns_config: Vec<IpAddr>,
+        search_domain: Option<DomainName>,
+    ) -> Result<()> {
         match self.dns_control_method {
             DnsControlMethod::Disabled => {}
             DnsControlMethod::Nrpt => {
-                activate(&dns_config).context("Failed to activate DNS control")?
+                activate(&dns_config, search_domain).context("Failed to activate DNS control")?
             }
         }
         Ok(())
@@ -131,18 +136,21 @@ pub(crate) fn system_resolvers(_method: DnsControlMethod) -> Result<Vec<IpAddr>>
 const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
 
 /// Tells Windows to send all DNS queries to our sentinels
-fn activate(dns_config: &[IpAddr]) -> Result<()> {
+fn activate(dns_config: &[IpAddr], search_domain: Option<DomainName>) -> Result<()> {
     // TODO: Known issue where web browsers will keep a connection open to a site,
     // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
     // again unless you let that connection time out:
     // <https://github.com/firezone/firezone/issues/3113#issuecomment-1882096111>
-    tracing::info!(nameservers = ?dns_config, "Activating DNS control");
+    tracing::info!(nameservers = ?dns_config, ?search_domain, "Activating DNS control");
 
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
     if let Err(e) = set_nameservers_on_interface(dns_config) {
         tracing::warn!( "Failed to explicitly set nameservers on tunnel interface; DNS resources in WSL may not work: {e:#}");
     }
+
+    set_search_domain_on_interface(search_domain)
+        .context("Failed to set search domain on interface")?;
 
     // e.g. [100.100.111.1, 100.100.111.2] -> "100.100.111.1;100.100.111.2"
     let dns_config_string = itertools::join(dns_config, ";");
@@ -198,6 +206,44 @@ fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
         winreg::enums::KEY_WRITE,
     )?;
     key.set_value("NameServer", &ipv6_nameservers)?;
+
+    Ok(())
+}
+
+/// Sets (or unsets) the search domain on the tunnel interface.
+///
+/// If `search_domain` is `None`, the search domain is unset.
+/// If we cannot open any of the keys, we no-op.
+/// Some systems might have IPv4 or IPv6 disabled and we don't want to fail in that case.
+fn set_search_domain_on_interface(search_domain: Option<DomainName>) -> Result<()> {
+    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+    let search_list = search_domain.map(|d| d.to_string()).unwrap_or_default(); // Default to empty string in order to "unset" the search domain.
+
+    if let Ok(key) = hklm
+        .open_subkey_with_flags(
+            Path::new(&format!(
+                r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
+            )),
+            winreg::enums::KEY_WRITE,
+        )
+        .context("Failed to open IPv4 tunnel interface registry key")
+        .inspect_err(|e| tracing::debug!("{e:#}"))
+    {
+        key.set_value("SearchList", &search_list)?;
+    }
+
+    if let Ok(key) = hklm
+        .open_subkey_with_flags(
+            Path::new(&format!(
+                r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
+            )),
+            winreg::enums::KEY_WRITE,
+        )
+        .context("Failed to open IPv6 tunnel interface registry key")
+        .inspect_err(|e| tracing::debug!("{e:#}"))
+    {
+        key.set_value("SearchList", &search_list)?;
+    }
 
     Ok(())
 }
@@ -277,7 +323,7 @@ mod tests {
         ];
         rt.block_on(async {
             dns_controller
-                .set_dns(fz_dns_servers.clone())
+                .set_dns(fz_dns_servers.clone(), None)
                 .await
                 .unwrap();
         });

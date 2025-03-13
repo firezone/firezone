@@ -1037,13 +1037,14 @@ checksum = "baf0a07a401f374238ab8e2f11a104d2851bf9ce711ec69804834de8af45c7af"
 
 [[package]]
 name = "connlib-client-android"
-version = "1.4.3"
+version = "1.4.4"
 dependencies = [
  "android_log-sys",
  "anyhow",
  "backoff",
  "connlib-client-shared",
  "connlib-model",
+ "dns-types",
  "firezone-logging",
  "firezone-telemetry",
  "flume",
@@ -1069,12 +1070,13 @@ dependencies = [
 
 [[package]]
 name = "connlib-client-apple"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "backoff",
  "connlib-client-shared",
  "connlib-model",
+ "dns-types",
  "firezone-logging",
  "firezone-telemetry",
  "flume",
@@ -1107,6 +1109,7 @@ dependencies = [
  "bimap",
  "chrono",
  "connlib-model",
+ "dns-types",
  "firezone-logging",
  "firezone-tunnel",
  "ip_network",
@@ -1130,7 +1133,6 @@ name = "connlib-model"
 version = "0.1.0"
 dependencies = [
  "boringtun",
- "domain",
  "ip_network",
  "itertools 0.13.0",
  "serde",
@@ -1706,18 +1708,26 @@ name = "dns-over-tcp"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "domain",
+ "dns-types",
  "firezone-bin-shared",
  "firezone-logging",
  "futures",
  "ip-packet",
  "ip_network",
- "itertools 0.13.0",
  "rand 0.8.5",
  "smoltcp",
  "tokio",
  "tracing",
  "tun",
+]
+
+[[package]]
+name = "dns-types"
+version = "0.1.0"
+dependencies = [
+ "domain",
+ "thiserror 1.0.69",
+ "tracing",
 ]
 
 [[package]]
@@ -2002,7 +2012,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.4.5"
+version = "1.4.6"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2013,7 +2023,7 @@ dependencies = [
  "clap",
  "connlib-model",
  "dns-lookup",
- "domain",
+ "dns-types",
  "either",
  "firezone-bin-shared",
  "firezone-logging",
@@ -2045,7 +2055,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.4.8"
+version = "1.4.9"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -2090,7 +2100,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client-common"
-version = "1.4.8"
+version = "1.4.9"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2132,7 +2142,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.4.4"
+version = "1.4.5"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -2141,6 +2151,7 @@ dependencies = [
  "connlib-client-shared",
  "connlib-model",
  "dirs 5.0.1",
+ "dns-types",
  "firezone-bin-shared",
  "firezone-logging",
  "firezone-telemetry",
@@ -2274,7 +2285,7 @@ dependencies = [
  "derive_more 1.0.0",
  "divan",
  "dns-over-tcp",
- "domain",
+ "dns-types",
  "firezone-logging",
  "firezone-relay",
  "futures",
@@ -3514,7 +3525,7 @@ name = "l4-tcp-dns-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "domain",
+ "dns-types",
  "futures",
  "tokio",
  "tracing",
@@ -3525,7 +3536,7 @@ name = "l4-udp-dns-server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "domain",
+ "dns-types",
  "futures",
  "tokio",
  "tracing",

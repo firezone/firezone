@@ -9,6 +9,7 @@ defmodule API.Router do
 
     plug :accepts, ["json"]
     plug API.Plugs.Auth
+    plug API.Plugs.RateLimit
   end
 
   pipeline :public do

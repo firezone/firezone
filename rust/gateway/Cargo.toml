@@ -1,7 +1,7 @@
 [package]
 name = "firezone-gateway"
 # mark:next-gateway-version
-version = "1.4.5"
+version = "1.4.6"
 edition = { workspace = true }
 license = { workspace = true }
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -15,7 +15,7 @@ chrono = { workspace = true }
 clap = { workspace = true }
 connlib-model = { workspace = true }
 dns-lookup = { workspace = true }
-domain = { workspace = true }
+dns-types = { workspace = true }
 either = { workspace = true }
 firezone-bin-shared = { workspace = true }
 firezone-logging = { workspace = true }

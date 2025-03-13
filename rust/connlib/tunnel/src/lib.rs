@@ -8,7 +8,8 @@
 use anyhow::Result;
 use bimap::BiMap;
 use chrono::Utc;
-use connlib_model::{ClientId, DomainName, GatewayId, PublicKey, ResourceId, ResourceView};
+use connlib_model::{ClientId, GatewayId, PublicKey, ResourceId, ResourceView};
+use dns_types::DomainName;
 use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -256,7 +257,7 @@ impl GatewayTunnel {
                     let message = response.message.unwrap_or_else(|e| {
                         tracing::debug!("DNS query failed: {e}");
 
-                        dns::servfail(response.query.for_slice_ref())
+                        dns_types::Response::servfail(&response.query)
                     });
 
                     match response.transport {
@@ -323,7 +324,7 @@ impl GatewayTunnel {
                     self.io.send_dns_query(dns::RecursiveQuery::via_udp(
                         query.source,
                         SocketAddr::new(nameserver, dns::DNS_PORT),
-                        query.message.for_slice_ref(),
+                        query.message,
                     ));
                 }
                 Poll::Ready(io::Input::TcpDnsQuery(query)) => {
@@ -379,6 +380,7 @@ pub struct TunConfig {
     ///   If upstream DNS servers are configured (in the portal), we will use those.
     ///   Otherwise, we will use the DNS servers configured on the system.
     pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+    pub search_domain: Option<DomainName>,
 
     #[debug("{}", DisplaySet(ipv4_routes))]
     pub ipv4_routes: BTreeSet<Ipv4Network>,

@@ -10,6 +10,7 @@ use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
+use dns_types::DomainName;
 use firezone_logging::err_with_src;
 use firezone_logging::sentry_layer;
 use firezone_telemetry::Telemetry;
@@ -87,6 +88,7 @@ mod ffi {
             &self,
             tunnelAddressIPv4: String,
             tunnelAddressIPv6: String,
+            searchDomain: Option<String>,
             dnsAddresses: String,
             routeListv4: String,
             routeListv6: String,
@@ -127,6 +129,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
+        search_domain: Option<DomainName>,
         route_list_v4: Vec<Ipv4Network>,
         route_list_v6: Vec<Ipv6Network>,
     ) {
@@ -139,6 +142,7 @@ impl Callbacks for CallbackHandler {
                 self.inner.on_set_interface_config(
                     tunnel_address_v4.to_string(),
                     tunnel_address_v6.to_string(),
+                    search_domain.map(|s| s.to_string()),
                     dns_addresses,
                     route_list_4,
                     route_list_6,

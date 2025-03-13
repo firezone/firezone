@@ -1,4 +1,5 @@
 use connlib_model::ResourceView;
+use dns_types::DomainName;
 use ip_network::{Ipv4Network, Ipv6Network};
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -17,6 +18,7 @@ pub trait Callbacks: Clone + Send + Sync {
         _: Ipv4Addr,
         _: Ipv6Addr,
         _: Vec<IpAddr>,
+        _: Option<DomainName>,
         _: Vec<Ipv4Network>,
         _: Vec<Ipv6Network>,
     ) {
@@ -83,6 +85,7 @@ where
         ipv4_addr: Ipv4Addr,
         ipv6_addr: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
+        search_domain: Option<DomainName>,
         route_list_4: Vec<Ipv4Network>,
         route_list_6: Vec<Ipv6Network>,
     ) {
@@ -93,6 +96,7 @@ where
                 ipv4_addr,
                 ipv6_addr,
                 dns_addresses,
+                search_domain,
                 route_list_4,
                 route_list_6,
             );

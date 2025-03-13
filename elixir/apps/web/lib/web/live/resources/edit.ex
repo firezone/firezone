@@ -167,6 +167,12 @@ defmodule Web.Resources.Edit do
                   <code class="ml-2 px-0.5 font-semibold">us-east?.c.com</code>
                   matches a single character (e.g. <code class="px-0.5 font-semibold">us-east1.c.com</code>).
                 </div>
+                <div class="mt-2 text-xs text-neutral-500">
+                  The search domain can be <.link
+                    href={~p"/#{@account}/settings/dns"}
+                    class={link_style()}
+                  >configured in settings</.link>.
+                </div>
               </div>
               <div :if={to_string(@form[:type].value) == "ip"} class="mt-2 text-xs text-neutral-500">
                 IPv4 and IPv6 addresses are supported.

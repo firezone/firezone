@@ -29,7 +29,9 @@ impl UniquePacketBuffer {
             return;
         }
 
-        tracing::debug!(num_buffered = %self.len(), packet = ?new, "Buffering packet");
+        let num_buffered = self.len() + 1;
+
+        tracing::debug!(%num_buffered, packet = ?new, "Buffering packet");
 
         self.buffer.push(new);
     }

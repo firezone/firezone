@@ -13,6 +13,7 @@
 use anyhow::{Context as _, Result};
 use connlib_client_shared::Callbacks;
 use connlib_model::ResourceView;
+use dns_types::DomainName;
 use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_logging::FilterReloadHandle;
 use std::{
@@ -84,6 +85,7 @@ pub enum ConnlibMsg {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
         dns: Vec<IpAddr>,
+        search_domain: Option<DomainName>,
         ipv4_routes: Vec<Ipv4Network>,
         ipv6_routes: Vec<Ipv6Network>,
     },
@@ -110,6 +112,7 @@ impl Callbacks for CallbackHandler {
         ipv4: Ipv4Addr,
         ipv6: Ipv6Addr,
         dns: Vec<IpAddr>,
+        search_domain: Option<DomainName>,
         ipv4_routes: Vec<Ipv4Network>,
         ipv6_routes: Vec<Ipv6Network>,
     ) {
@@ -118,6 +121,7 @@ impl Callbacks for CallbackHandler {
                 ipv4,
                 ipv6,
                 dns,
+                search_domain,
                 ipv4_routes,
                 ipv6_routes,
             })
@@ -151,6 +155,6 @@ mod tests {
     // Make sure it's okay to store a bunch of these to mitigate #5880
     #[test]
     fn callback_msg_size() {
-        assert_eq!(std::mem::size_of::<ConnlibMsg>(), 96)
+        assert_eq!(std::mem::size_of::<ConnlibMsg>(), 120)
     }
 }

@@ -18,7 +18,8 @@ pub const DOMAIN_STATUS_EVENT: FzP2pEventType = FzP2pEventType::new(1);
 pub mod dns_resource_nat {
     use super::*;
     use anyhow::{Context as _, Result};
-    use connlib_model::{DomainName, ResourceId};
+    use connlib_model::ResourceId;
+    use dns_types::DomainName;
     use ip_packet::{FzP2pControlSlice, IpPacket};
     use std::net::IpAddr;
 
@@ -113,7 +114,6 @@ pub mod dns_resource_nat {
 
     #[cfg(test)]
     mod tests {
-        use domain::base::Name;
 
         use super::*;
         use std::net::{Ipv4Addr, Ipv6Addr};
@@ -192,7 +192,7 @@ pub mod dns_resource_nat {
             let domain =
                 DomainName::vec_from_str(&format!("{label}.{label}.{label}.{label}.{label}.com"))
                     .unwrap();
-            assert_eq!(domain.len(), Name::MAX_LEN);
+            assert_eq!(domain.len(), dns_types::MAX_NAME_LEN);
 
             domain
         }

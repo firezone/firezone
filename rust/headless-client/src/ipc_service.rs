@@ -449,11 +449,12 @@ impl<'a> Handler<'a> {
                 ipv4,
                 ipv6,
                 dns,
+                search_domain,
                 ipv4_routes,
                 ipv6_routes,
             } => {
                 self.tun_device.set_ips(ipv4, ipv6).await?;
-                self.dns_controller.set_dns(dns).await?;
+                self.dns_controller.set_dns(dns, search_domain).await?;
                 if let Some(instant) = self.last_connlib_start_instant.take() {
                     tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
                 }
@@ -587,7 +588,7 @@ impl<'a> Handler<'a> {
             // The IPC service must use the GUI's version number, not the Headless Client's.
             // But refactoring to separate the IPC service from the Headless Client will take a while.
             // mark:next-gui-version
-            get_user_agent(None, "1.4.8"),
+            get_user_agent(None, "1.4.9"),
             "client",
             (),
             || {

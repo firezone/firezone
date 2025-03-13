@@ -3,6 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use chrono::{serde::ts_seconds, DateTime, Utc};
 use connlib_model::RelayId;
+use dns_types::DomainName;
 use ip_network::IpNetwork;
 use secrecy::{ExposeSecret as _, Secret};
 use serde::{Deserialize, Serialize};
@@ -13,8 +14,6 @@ pub mod gateway;
 mod key;
 
 pub use key::{Key, SecretKey};
-
-use crate::DomainName;
 
 /// Represents a wireguard peer.
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -170,6 +169,8 @@ pub struct Interface {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
     pub upstream_dns: Vec<DnsServer>,
+    #[serde(default)]
+    pub search_domain: Option<DomainName>,
 }
 
 /// A single relay

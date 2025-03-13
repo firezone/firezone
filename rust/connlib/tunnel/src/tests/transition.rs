@@ -2,12 +2,11 @@ use crate::{
     client::{Resource, IPV4_RESOURCES, IPV6_RESOURCES},
     proptest::{host_v4, host_v6},
 };
-use connlib_model::RelayId;
+use connlib_model::{RelayId, ResourceId};
+use dns_types::{DomainName, RecordType};
 
 use super::sim_net::{any_ip_stack, any_port, Host};
 use crate::messages::DnsServer;
-use connlib_model::{DomainName, ResourceId};
-use domain::base::Rtype;
 use prop::collection;
 use proptest::{prelude::*, sample};
 use std::{
@@ -89,7 +88,7 @@ pub(crate) enum Transition {
 pub(crate) struct DnsQuery {
     pub(crate) domain: DomainName,
     /// The type of DNS query we should send.
-    pub(crate) r_type: Rtype,
+    pub(crate) r_type: RecordType,
     /// The DNS query ID.
     pub(crate) query_id: u16,
     pub(crate) dns_server: SocketAddr,
@@ -277,13 +276,13 @@ where
 fn non_dns_ports() -> impl Strategy<Value = u16> {
     any::<u16>().prop_filter(
         "avoid using port 53 for non-dns queries for simplicity",
-        |p| *p != 53,
+        |p| *p != 53 && *p != 53535,
     )
 }
 
 /// Samples up to 5 DNS queries that will be sent concurrently into connlib.
 pub(crate) fn dns_queries(
-    domain: impl Strategy<Value = (DomainName, Vec<Rtype>)>,
+    domain: impl Strategy<Value = (DomainName, Vec<RecordType>)>,
     dns_server: impl Strategy<Value = SocketAddr>,
 ) -> impl Strategy<Value = Vec<DnsQuery>> {
     // Queries can be uniquely identified by the tuple of DNS server and query ID.
@@ -317,7 +316,7 @@ pub(crate) fn dns_queries(
                             maybe_reverse_record,
                             transport,
                         )| {
-                            if matches!(r_type, Rtype::PTR) {
+                            if matches!(r_type, RecordType::PTR) {
                                 domain =
                                     DomainName::reverse_from_addr(maybe_reverse_record).unwrap();
                             }
@@ -358,10 +357,15 @@ fn dns_transport() -> impl Strategy<Value = DnsTransport> {
 ///
 /// Similarrly to trigger NAT64 and NAT46 we need to query for A when only AAAA is available and vice versa.
 pub(crate) fn maybe_available_response_rtypes(
-    available_rtypes: Vec<Rtype>,
-) -> impl Strategy<Value = Rtype> {
-    if available_rtypes.contains(&Rtype::A) || available_rtypes.contains(&Rtype::AAAA) {
-        sample::select(vec![Rtype::PTR, Rtype::MX, Rtype::A, Rtype::AAAA])
+    available_rtypes: Vec<RecordType>,
+) -> impl Strategy<Value = RecordType> {
+    if available_rtypes.contains(&RecordType::A) || available_rtypes.contains(&RecordType::AAAA) {
+        sample::select(vec![
+            RecordType::PTR,
+            RecordType::MX,
+            RecordType::A,
+            RecordType::AAAA,
+        ])
     } else {
         sample::select(available_rtypes)
     }
