@@ -2288,6 +2288,7 @@ dependencies = [
  "dns-types",
  "firezone-logging",
  "firezone-relay",
+ "firezone-telemetry",
  "futures",
  "futures-bounded",
  "glob",
