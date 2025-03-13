@@ -7,7 +7,8 @@ defmodule API.Application do
     _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
     children = [
-      API.Endpoint
+      API.Endpoint,
+      API.RateLimit
     ]
 
     opts = [strategy: :one_for_one, name: API.Supervisor]

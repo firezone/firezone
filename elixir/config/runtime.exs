@@ -197,6 +197,10 @@ if config_env() == :prod do
       external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
       private_clients: compile_config!(:phoenix_private_clients)
 
+    config :api, API.RateLimit,
+      refill_rate: compile_config!(:api_refill_rate),
+      capacity: compile_config!(:api_capacity)
+
     config :web,
       api_external_url: api_external_url
   end

@@ -206,6 +206,10 @@ config :api,
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}],
   relays_presence_debounce_timeout_ms: 3_000
 
+config :api, API.RateLimit,
+  refill_rate: 10,
+  capacity: 200
+
 ###############################
 ##### Third-party configs #####
 ###############################
