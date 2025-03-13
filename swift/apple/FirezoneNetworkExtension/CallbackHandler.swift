@@ -20,6 +20,7 @@ public protocol CallbackHandlerDelegate: AnyObject {
   func onSetInterfaceConfig(
     tunnelAddressIPv4: String,
     tunnelAddressIPv6: String,
+    searchDomain: String?,
     dnsAddresses: [String],
     routeListv4: String,
     routeListv6: String
@@ -34,6 +35,7 @@ public class CallbackHandler {
   func onSetInterfaceConfig(
     tunnelAddressIPv4: RustString,
     tunnelAddressIPv6: RustString,
+    searchDomain: RustString?,
     dnsAddresses: RustString,
     routeListv4: RustString,
     routeListv6: RustString
@@ -43,6 +45,7 @@ public class CallbackHandler {
         CallbackHandler.onSetInterfaceConfig:
           IPv4: \(tunnelAddressIPv4.toString())
           IPv6: \(tunnelAddressIPv6.toString())
+          SearchDomain: \(String(describing: (searchDomain?.toString())))
           DNS: \(dnsAddresses.toString())
           IPv4 routes:  \(routeListv4.toString())
           IPv6 routes: \(routeListv6.toString())
@@ -57,6 +60,7 @@ public class CallbackHandler {
     delegate?.onSetInterfaceConfig(
       tunnelAddressIPv4: tunnelAddressIPv4.toString(),
       tunnelAddressIPv6: tunnelAddressIPv6.toString(),
+      searchDomain: searchDomain?.toString(),
       dnsAddresses: dnsArray,
       routeListv4: routeListv4.toString(),
       routeListv6: routeListv6.toString()
