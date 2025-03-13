@@ -18,6 +18,7 @@ dns-types = { workspace = true }
 firezone-bin-shared = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
+tracking-allocator = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
