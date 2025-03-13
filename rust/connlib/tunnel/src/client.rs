@@ -1,6 +1,6 @@
 mod resource;
 
-use dns_types::DomainName;
+use dns_types::{DomainName, ResponseCode};
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
@@ -1259,6 +1259,12 @@ impl ClientState {
 
         match self.stub_resolver.handle(&message) {
             dns::ResolveStrategy::LocalResponse(response) => {
+                if response.response_code() == ResponseCode::NXDOMAIN
+                    && firezone_telemetry::feature_flags::drop_llmnr_nxdomain_responses()
+                {
+                    return;
+                }
+
                 self.clear_dns_resource_nat_for_domain(&response);
                 self.update_dns_resource_nat(now, iter::empty());
 
