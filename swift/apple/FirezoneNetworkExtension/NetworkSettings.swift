@@ -44,11 +44,11 @@ class NetworkSettings {
   }
 
   func setDummyMatchDomain() {
-    self.matchDomains = ["firezone-fd0020211111"];
+    self.matchDomains = ["firezone-fd0020211111"]
   }
 
   func clearDummyMatchDomain() {
-    self.matchDomains = [""];
+    self.matchDomains = [""]
 
     self.matchDomains.append(contentsOf: self.searchDomains)
   }
