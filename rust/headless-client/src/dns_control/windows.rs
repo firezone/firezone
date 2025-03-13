@@ -70,13 +70,12 @@ impl DnsController {
     pub async fn set_dns(
         &mut self,
         dns_config: Vec<IpAddr>,
-        _search_domain: Option<DomainName>,
+        search_domain: Option<DomainName>,
     ) -> Result<()> {
         match self.dns_control_method {
             DnsControlMethod::Disabled => {}
-            DnsControlMethod::Nrpt => {
-                activate(&dns_config).context("Failed to activate DNS control")?
-            }
+            DnsControlMethod::Nrpt => activate(&dns_config, search_domain.as_ref())
+                .context("Failed to activate DNS control")?,
         }
         Ok(())
     }
@@ -136,7 +135,7 @@ pub(crate) fn system_resolvers(_method: DnsControlMethod) -> Result<Vec<IpAddr>>
 const NRPT_REG_KEY: &str = "{6C0507CB-C884-4A78-BC55-0ACEE21227F6}";
 
 /// Tells Windows to send all DNS queries to our sentinels
-fn activate(dns_config: &[IpAddr]) -> Result<()> {
+fn activate(dns_config: &[IpAddr], search_domain: Option<&str>) -> Result<()> {
     // TODO: Known issue where web browsers will keep a connection open to a site,
     // using QUIC, HTTP/2, or even HTTP/1.1, and so they won't resolve the DNS
     // again unless you let that connection time out:
@@ -148,6 +147,9 @@ fn activate(dns_config: &[IpAddr]) -> Result<()> {
     if let Err(e) = set_nameservers_on_interface(dns_config) {
         tracing::warn!( "Failed to explicitly set nameservers on tunnel interface; DNS resources in WSL may not work: {e:#}");
     }
+
+    set_search_domain_on_interface(search_domain)
+        .context("Failed to set search domain on interface")?;
 
     // e.g. [100.100.111.1, 100.100.111.2] -> "100.100.111.1;100.100.111.2"
     let dns_config_string = itertools::join(dns_config, ";");
@@ -203,6 +205,29 @@ fn set_nameservers_on_interface(dns_config: &[IpAddr]) -> Result<()> {
         winreg::enums::KEY_WRITE,
     )?;
     key.set_value("NameServer", &ipv6_nameservers)?;
+
+    Ok(())
+}
+
+fn set_search_domain_on_interface(search_domain: Option<&str>) -> Result<()> {
+    let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
+    let search_list = search_domain.unwrap_or_default();
+
+    let key = hklm.open_subkey_with_flags(
+        Path::new(&format!(
+            r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
+        )),
+        winreg::enums::KEY_WRITE,
+    )?;
+    key.set_value("SearchList", &search_list)?;
+
+    let key = hklm.open_subkey_with_flags(
+        Path::new(&format!(
+            r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
+        )),
+        winreg::enums::KEY_WRITE,
+    )?;
+    key.set_value("SearchList", &search_list)?;
 
     Ok(())
 }
