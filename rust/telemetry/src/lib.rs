@@ -42,6 +42,10 @@ pub mod feature_flags {
     pub fn icmp_unreachable_instead_of_nat64() -> bool {
         FEATURE_FLAGS.read().icmp_unreachable_instead_of_nat64
     }
+
+    pub fn drop_llmnr_nxdomain_responses() -> bool {
+        FEATURE_FLAGS.read().drop_llmnr_nxdomain_responses
+    }
 }
 
 mod env {
@@ -237,6 +241,8 @@ struct DecideResponse {
 struct FeatureFlags {
     #[serde(default)]
     icmp_unreachable_instead_of_nat64: bool,
+    #[serde(default)]
+    drop_llmnr_nxdomain_responses: bool,
 }
 
 fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
@@ -244,18 +250,21 @@ fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
     #[serde(tag = "flag", rename_all = "snake_case")]
     enum SentryFlag {
         IcmpUnreachableInsteadOfNat64 { result: bool },
+        DropLlmnrNxdomainResponses { result: bool },
     }
 
     // Exhaustive destruction so we don't forget to update this when we add a flag.
     let FeatureFlags {
         icmp_unreachable_instead_of_nat64,
+        drop_llmnr_nxdomain_responses,
     } = flags;
 
     let value = serde_json::json!({
         "values": [
             SentryFlag::IcmpUnreachableInsteadOfNat64 {
                 result: icmp_unreachable_instead_of_nat64,
-            }
+            },
+            SentryFlag::DropLlmnrNxdomainResponses { result: drop_llmnr_nxdomain_responses }
         ]
     });
 
