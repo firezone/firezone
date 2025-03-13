@@ -276,7 +276,7 @@ where
 fn non_dns_ports() -> impl Strategy<Value = u16> {
     any::<u16>().prop_filter(
         "avoid using port 53 for non-dns queries for simplicity",
-        |p| *p != 53,
+        |p| *p != 53 && *p != 53535,
     )
 }
 
