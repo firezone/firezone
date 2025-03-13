@@ -213,21 +213,31 @@ fn set_search_domain_on_interface(search_domain: Option<&str>) -> Result<()> {
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
     let search_list = search_domain.unwrap_or_default();
 
-    let key = hklm.open_subkey_with_flags(
-        Path::new(&format!(
-            r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
-        )),
-        winreg::enums::KEY_WRITE,
-    )?;
-    key.set_value("SearchList", &search_list)?;
+    if let Ok(key) = hklm
+        .open_subkey_with_flags(
+            Path::new(&format!(
+                r"SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
+            )),
+            winreg::enums::KEY_WRITE,
+        )
+        .context("Failed to open IPv4 tunnel interface registry key")
+        .inspect_err(|e| tracing::debug!("{e:#}"))
+    {
+        key.set_value("SearchList", &search_list)?;
+    }
 
-    let key = hklm.open_subkey_with_flags(
-        Path::new(&format!(
-            r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
-        )),
-        winreg::enums::KEY_WRITE,
-    )?;
-    key.set_value("SearchList", &search_list)?;
+    if let Ok(key) = hklm
+        .open_subkey_with_flags(
+            Path::new(&format!(
+                r"SYSTEM\CurrentControlSet\Services\Tcpip6\Parameters\Interfaces\{{{TUNNEL_UUID}}}"
+            )),
+            winreg::enums::KEY_WRITE,
+        )
+        .context("Failed to open IPv6 tunnel interface registry key")
+        .inspect_err(|e| tracing::debug!("{e:#}"))
+    {
+        key.set_value("SearchList", &search_list)?;
+    }
 
     Ok(())
 }
