@@ -1,7 +1,7 @@
 use anyhow::{bail, Context as _, Result};
 use clap::{Args, Parser};
 use firezone_gui_client_common::{
-    self as common, controller::Failure, deep_link, settings::AdvancedSettings,
+    self as common, controller::Failure, deep_link, errors, settings::AdvancedSettings,
 };
 use firezone_telemetry::Telemetry;
 use tracing::instrument;
@@ -126,6 +126,11 @@ fn run_gui(cli: Cli) -> Result<()> {
                     "Firezone is already running. If it's not responding, force-stop it."
                         .to_string(),
                 )?;
+                return Err(anyhow);
+            }
+
+            if let Some(error) = anyhow.root_cause().downcast_ref::<errors::Error>() {
+                common::errors::show_error_dialog(error.user_friendly_msg())?;
                 return Err(anyhow);
             }
 
