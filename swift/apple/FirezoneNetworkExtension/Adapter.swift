@@ -363,6 +363,7 @@ extension Adapter: CallbackHandlerDelegate {
   public func onSetInterfaceConfig(
     tunnelAddressIPv4: String,
     tunnelAddressIPv6: String,
+    searchDomain: String?,
     dnsAddresses: [String],
     routeListv4: String,
     routeListv6: String
@@ -393,6 +394,7 @@ extension Adapter: CallbackHandlerDelegate {
       networkSettings.dnsAddresses = dnsAddresses
       networkSettings.routes4 = routes4
       networkSettings.routes6 = routes6
+      networkSettings.setSearchDomain(domain: searchDomain)
 
       networkSettings.apply()
     }
@@ -474,7 +476,7 @@ extension Adapter {
     let semaphore = DispatchSemaphore(value: 0)
 
     // Set tunnel's matchDomains to a dummy string that will never match any name
-    networkSettings.matchDomains = ["firezone-fd0020211111"]
+    networkSettings.setDummyMatchDomain()
 
     // Call apply to populate /etc/resolv.conf with the system's default resolvers
     networkSettings.apply {
@@ -484,7 +486,7 @@ extension Adapter {
       resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
 
       // Restore connlib's DNS resolvers
-      networkSettings.matchDomains = [""]
+      networkSettings.clearDummyMatchDomain()
       networkSettings.apply { semaphore.signal() }
     }
 

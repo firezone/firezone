@@ -23,10 +23,34 @@ class NetworkSettings {
   public var dnsAddresses: [String] = []
   public var routes4: [NEIPv4Route] = []
   public var routes6: [NEIPv6Route] = []
-  public var matchDomains: [String] = [""]
+
+  // Private to ensure we append the search domain if we set it.
+  private var matchDomains: [String] = [""]
+  private var searchDomains: [String] = [""]
 
   init(packetTunnelProvider: PacketTunnelProvider?) {
     self.packetTunnelProvider = packetTunnelProvider
+  }
+
+  func setSearchDomain(domain: String?) {
+    guard let domain = domain else {
+        self.matchDomains = [""]
+        self.searchDomains = [""]
+        return;
+    }
+
+    self.matchDomains = ["", domain]
+    self.searchDomains = [domain]
+  }
+
+  func setDummyMatchDomain() {
+    self.matchDomains = ["firezone-fd0020211111"]
+  }
+
+  func clearDummyMatchDomain() {
+    self.matchDomains = [""]
+
+    self.matchDomains.append(contentsOf: self.searchDomains)
   }
 
   func apply(completionHandler: (() -> Void)? = nil) {
@@ -46,7 +70,8 @@ class NetworkSettings {
     ipv4Settings.includedRoutes = routes4
     ipv6Settings.includedRoutes = routes6
     dnsSettings.matchDomains = matchDomains
-    dnsSettings.matchDomainsNoSearch = true
+    dnsSettings.searchDomains = searchDomains
+    dnsSettings.matchDomainsNoSearch = false
     tunnelNetworkSettings.ipv4Settings = ipv4Settings
     tunnelNetworkSettings.ipv6Settings = ipv6Settings
     tunnelNetworkSettings.dnsSettings = dnsSettings

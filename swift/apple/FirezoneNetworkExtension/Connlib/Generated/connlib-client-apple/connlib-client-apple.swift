@@ -1,6 +1,6 @@
 @_cdecl("__swift_bridge__$CallbackHandler$on_set_interface_config")
-func __swift_bridge__CallbackHandler_on_set_interface_config (_ this: UnsafeMutableRawPointer, _ tunnelAddressIPv4: UnsafeMutableRawPointer, _ tunnelAddressIPv6: UnsafeMutableRawPointer, _ dnsAddresses: UnsafeMutableRawPointer, _ routeListv4: UnsafeMutableRawPointer, _ routeListv6: UnsafeMutableRawPointer) {
-    Unmanaged<CallbackHandler>.fromOpaque(this).takeUnretainedValue().onSetInterfaceConfig(tunnelAddressIPv4: RustString(ptr: tunnelAddressIPv4), tunnelAddressIPv6: RustString(ptr: tunnelAddressIPv6), dnsAddresses: RustString(ptr: dnsAddresses), routeListv4: RustString(ptr: routeListv4), routeListv6: RustString(ptr: routeListv6))
+func __swift_bridge__CallbackHandler_on_set_interface_config (_ this: UnsafeMutableRawPointer, _ tunnelAddressIPv4: UnsafeMutableRawPointer, _ tunnelAddressIPv6: UnsafeMutableRawPointer, _ searchDomain: UnsafeMutableRawPointer?, _ dnsAddresses: UnsafeMutableRawPointer, _ routeListv4: UnsafeMutableRawPointer, _ routeListv6: UnsafeMutableRawPointer) {
+    Unmanaged<CallbackHandler>.fromOpaque(this).takeUnretainedValue().onSetInterfaceConfig(tunnelAddressIPv4: RustString(ptr: tunnelAddressIPv4), tunnelAddressIPv6: RustString(ptr: tunnelAddressIPv6), searchDomain: { let val = searchDomain; if val != nil { return RustString(ptr: val!) } else { return nil } }(), dnsAddresses: RustString(ptr: dnsAddresses), routeListv4: RustString(ptr: routeListv4), routeListv6: RustString(ptr: routeListv6))
 }
 
 @_cdecl("__swift_bridge__$CallbackHandler$on_update_resources")
