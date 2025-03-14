@@ -26,13 +26,14 @@ create_token_file
 sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
 
 HTTPBIN=dns
+HTTPBIN_FQDN="$HTTPBIN.httpbin.search.test"
 
 # I'm assuming the docker iface name is relatively constant
 DOCKER_IFACE="docker0"
 FZ_IFACE="tun-firezone"
 
 echo "# Make sure gateway can reach httpbin by DNS"
-gateway sh -c "curl --fail $HTTPBIN/get"
+gateway sh -c "curl --fail $HTTPBIN_FQDN/get"
 
 echo "# Accessing a resource should fail before the client is up"
 # Force curl to try the Firezone interface. I can't block off the Docker interface yet
