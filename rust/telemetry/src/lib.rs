@@ -5,7 +5,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use env::ON_PREM;
 use parking_lot::RwLock;
 use sentry::protocol::SessionStatus;
@@ -41,6 +41,10 @@ pub mod feature_flags {
 
     pub fn icmp_unreachable_instead_of_nat64() -> bool {
         FEATURE_FLAGS.read().icmp_unreachable_instead_of_nat64
+    }
+
+    pub fn drop_llmnr_nxdomain_responses() -> bool {
+        FEATURE_FLAGS.read().drop_llmnr_nxdomain_responses
     }
 }
 
@@ -210,33 +214,52 @@ fn set_current_user(user: Option<sentry::User>) {
     sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
 }
 
-fn evaluate_feature_flags(id: String) -> Result<FeatureFlags> {
-    let json = reqwest::blocking::Client::new()
+fn evaluate_feature_flags(distinct_id: String) -> Result<FeatureFlags> {
+    let response = reqwest::blocking::ClientBuilder::new()
+        .connection_verbose(true)
+        .build()?
         .post("https://us.i.posthog.com/decide?v=3")
-        .body(format!(
-            r#"{{
-            "api_key": "{POSTHOG_API_KEY}",
-            "distinct_id": "{id}"
-        }}"#
-        ))
+        .json(&DecideRequest {
+            api_key: POSTHOG_API_KEY.to_string(),
+            distinct_id,
+        })
         .send()
-        .context("Failed to send POST request")?
+        .context("Failed to send POST request")?;
+
+    let status = response.status();
+
+    if !status.is_success() {
+        let body = response.text().unwrap_or_default();
+
+        bail!("Failed to get feature flags; status={status}, body={body}")
+    }
+
+    let json = response
         .json::<DecideResponse>()
         .context("Failed to deserialize response")?;
 
     Ok(json.feature_flags)
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize)]
+struct DecideRequest {
+    api_key: String,
+    distinct_id: String,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DecideResponse {
     feature_flags: FeatureFlags,
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone, Copy)]
+#[derive(Debug, Deserialize, Default, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
 struct FeatureFlags {
     #[serde(default)]
     icmp_unreachable_instead_of_nat64: bool,
+    #[serde(default)]
+    drop_llmnr_nxdomain_responses: bool,
 }
 
 fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
@@ -244,18 +267,21 @@ fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
     #[serde(tag = "flag", rename_all = "snake_case")]
     enum SentryFlag {
         IcmpUnreachableInsteadOfNat64 { result: bool },
+        DropLlmnrNxdomainResponses { result: bool },
     }
 
     // Exhaustive destruction so we don't forget to update this when we add a flag.
     let FeatureFlags {
         icmp_unreachable_instead_of_nat64,
+        drop_llmnr_nxdomain_responses,
     } = flags;
 
     let value = serde_json::json!({
         "values": [
             SentryFlag::IcmpUnreachableInsteadOfNat64 {
                 result: icmp_unreachable_instead_of_nat64,
-            }
+            },
+            SentryFlag::DropLlmnrNxdomainResponses { result: drop_llmnr_nxdomain_responses }
         ]
     });
 
