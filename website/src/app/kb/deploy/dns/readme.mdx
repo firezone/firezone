@@ -84,6 +84,23 @@ resolver(s).
 
 </Alert>
 
+## Configuring search domains
+
+A search domain (sometimes known as a default DNS suffix) can be configured with
+the domain name of your choosing in the `Settings -> DNS` page. This domain will
+automatically be appended to **all single-label queries on the system** when a
+Client device is signed into Firezone.
+
+<Alert color="warning">
+
+On Apple, Android, and Linux devices, these are applied _in addition_ to any
+locally-configured search domains. On Windows devices, however, these are
+applied _instead of_ any locally-configured search domains. If this is causing
+an issue for your use case, leave feedback on
+[this GitHub issue](https://github.com/firezone/firezone/issues/8430).
+
+</Alert>
+
 ## Configuring Client DNS upstream resolvers
 
 Upstream DNS in all Clients can be configured with the servers of your choosing
