@@ -39,7 +39,7 @@ defmodule Domain.Repo.Seeds do
         name: "Firezone Account",
         slug: "firezone",
         config: %{
-          search_domain: "httpbin.test"
+          search_domain: "httpbin.search.test"
         }
       })
 
@@ -1024,8 +1024,8 @@ defmodule Domain.Repo.Seeds do
       Resources.create_resource(
         %{
           type: :dns,
-          name: "**.httpbin.test",
-          address: "**.httpbin.test",
+          name: "**.httpbin.search.test",
+          address: "**.httpbin.search.test",
           address_description: "http://httpbin/",
           connections: [%{gateway_group_id: gateway_group.id}],
           filters: [
@@ -1133,7 +1133,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       Policies.create_policy(
         %{
-          name: "All Access To dns.httpbin",
+          name: "All Access To **.httpbin",
           actor_group_id: everyone_group.id,
           resource_id: dns_httpbin_resource.id
         },
@@ -1143,7 +1143,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       Policies.create_policy(
         %{
-          name: "All Access To httpbin.test",
+          name: "All Access To **.httpbin.search.test",
           actor_group_id: everyone_group.id,
           resource_id: search_domain_resource.id
         },

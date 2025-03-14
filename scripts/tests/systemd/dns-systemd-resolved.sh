@@ -25,7 +25,7 @@ create_token_file
 
 sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
 
-HTTPBIN=dns.httpbin
+HTTPBIN=dns
 
 # I'm assuming the docker iface name is relatively constant
 DOCKER_IFACE="docker0"

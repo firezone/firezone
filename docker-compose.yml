@@ -409,7 +409,7 @@ services:
       dns_resources:
         ipv4_address: 172.21.0.101
 
-  dns.httpbin.test:
+  dns.httpbin.search.test:
     image: kennethreitz/httpbin
     healthcheck:
       test: ["CMD-SHELL", "ps -C gunicorn"]

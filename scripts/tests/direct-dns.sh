@@ -5,7 +5,7 @@
 
 source "./scripts/tests/lib.sh"
 
-HTTPBIN=dns.httpbin
+HTTPBIN=dns
 
 # Re-up the gateway since a local dev setup may run this back-to-back
 docker compose up -d gateway --no-build
