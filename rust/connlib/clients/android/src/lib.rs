@@ -577,3 +577,13 @@ fn install_rustls_crypto_provider() {
         tracing::debug!("Skipping install of crypto provider because we already have one.");
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_jstring_is_null() {
+        assert!(JString::default().is_null())
+    }
+}
