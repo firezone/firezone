@@ -171,7 +171,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-        _search_domain: Option<DomainName>,
+        search_domain: Option<DomainName>,
         route_list_4: Vec<Ipv4Network>,
         route_list_6: Vec<Ipv6Network>,
     ) {
@@ -194,6 +194,23 @@ impl Callbacks for CallbackHandler {
                     name: "dns_addresses",
                     source,
                 })?;
+            let jnull;
+            let jstring;
+            let search_domain_jvalue = match search_domain {
+                Some(domain) => {
+                    jstring = env
+                        .new_string(domain.to_string())
+                        .map_err(|source| CallbackError::NewStringFailed {
+                            name: "search_domain",
+                            source,
+                        })?;
+                    JValue::from(&jstring)
+                }
+                None => {
+                    jnull = JObject::null();
+                    JValue::Object(&jnull)
+                }
+            };
             let route_list_4 = env
                 .new_string(serde_json::to_string(&V4RouteList::new(route_list_4))?)
                 .map_err(|source| CallbackError::NewStringFailed {
@@ -211,11 +228,12 @@ impl Callbacks for CallbackHandler {
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
                 &[
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
                     JValue::from(&dns_addresses),
+                    search_domain_jvalue,
                     JValue::from(&route_list_4),
                     JValue::from(&route_list_6),
                 ],
