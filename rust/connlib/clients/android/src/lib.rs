@@ -194,23 +194,16 @@ impl Callbacks for CallbackHandler {
                     name: "dns_addresses",
                     source,
                 })?;
-            let jnull;
-            let jstring;
-            let search_domain_jvalue = match search_domain {
-                Some(domain) => {
-                    jstring = env
-                        .new_string(domain.to_string())
+            let search_domain = search_domain
+                .map(|domain| {
+                    env.new_string(domain.to_string())
                         .map_err(|source| CallbackError::NewStringFailed {
                             name: "search_domain",
                             source,
-                        })?;
-                    JValue::from(&jstring)
-                }
-                None => {
-                    jnull = JObject::null();
-                    JValue::Object(&jnull)
-                }
-            };
+                        })
+                })
+                .transpose()?
+                .unwrap_or_default();
             let route_list_4 = env
                 .new_string(serde_json::to_string(&V4RouteList::new(route_list_4))?)
                 .map_err(|source| CallbackError::NewStringFailed {
@@ -233,7 +226,7 @@ impl Callbacks for CallbackHandler {
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
                     JValue::from(&dns_addresses),
-                    search_domain_jvalue,
+                    JValue::from(&search_domain),
                     JValue::from(&route_list_4),
                     JValue::from(&route_list_6),
                 ],
