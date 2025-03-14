@@ -2,22 +2,29 @@ defmodule Domain.Auth.Identity.Sync do
   alias Domain.Repo
   alias Domain.Auth.{Identity, Provider}
 
-  def sync_provider_identities(%Provider{} = provider, attrs_list) do
-    attrs_by_provider_identifier =
-      for attrs <- attrs_list, into: %{} do
-        {Map.fetch!(attrs, "provider_identifier"), attrs}
-      end
+  def sync_provider_identities(filtered_memberships, %Provider{} = provider, attrs_list) do
+    filtered_actor_provider_identifiers =
+      Enum.map(filtered_memberships, fn {_, actor_provider_identifier} ->
+        actor_provider_identifier
+      end)
+      |> Enum.uniq()
 
-    provider_identifiers = Map.keys(attrs_by_provider_identifier)
+    filtered_attrs_by_provider_identifier =
+      attrs_list
+      |> Enum.filter(fn attrs ->
+        Map.get(attrs, "provider_identifier") in filtered_actor_provider_identifiers
+      end)
+      |> Enum.into(%{}, fn attrs ->
+        {Map.fetch!(attrs, "provider_identifier"), attrs}
+      end)
 
     with {:ok, identities} <- all_provider_identities(provider),
-         {:ok, {insert, update, delete}} <-
-           plan_identities_update(identities, provider_identifiers),
+         {:ok, {insert, update, delete}} <- plan_identities_update(identities, filtered_actor_provider_identifiers),
          {:ok, deleted} <- delete_identities(provider, delete),
          {:ok, inserted} <-
-           insert_identities(provider, attrs_by_provider_identifier, insert),
+           insert_identities(provider, filtered_attrs_by_provider_identifier, insert),
          {:ok, updated} <-
-           update_identities_and_actors(identities, attrs_by_provider_identifier, update) do
+           update_identities_and_actors(identities, filtered_attrs_by_provider_identifier, update) do
       Domain.Actors.update_dynamic_group_memberships(provider.account_id)
 
       actor_ids_by_provider_identifier =

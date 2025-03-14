@@ -246,17 +246,15 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
           # we don't want to insert memberships or identities for them, and instead
           # we want to delete the existing memberships and identities.
           with {:ok, groups_effects} <- Actors.sync_provider_groups(provider, actor_groups_attrs),
-               {:ok, identities_effects} <-
-                 Auth.sync_provider_identities(provider, identities_attrs),
                {:ok, memberships_effects} <-
                  Actors.sync_provider_memberships(
-                   identities_effects.actor_ids_by_provider_identifier,
                    groups_effects.group_ids_by_provider_identifier,
                    provider,
                    membership_tuples
                  ),
-               # TODO: Return effects here for logging
-               :ok <- Actors.delete_excluded_associations(provider) do
+               {:ok, identities_effects} <- Auth.sync_provider_identities(memberships_effects.filtered_memberships, provider, identities_attrs) do
+            # TODO: Delete actors with no more identities here
+
             Auth.Provider.Changeset.sync_finished(provider)
             |> Repo.update!()
 

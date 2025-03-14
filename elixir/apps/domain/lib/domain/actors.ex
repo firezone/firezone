@@ -173,13 +173,11 @@ defmodule Domain.Actors do
   end
 
   def sync_provider_memberships(
-        actor_ids_by_provider_identifier,
         group_ids_by_provider_identifier,
         %Auth.Provider{} = provider,
         tuples
       ) do
     Membership.Sync.sync_provider_memberships(
-      actor_ids_by_provider_identifier,
       group_ids_by_provider_identifier,
       provider,
       tuples
