@@ -5,27 +5,27 @@ defmodule Domain.Actors.Membership.Sync do
   alias Domain.Actors.Membership
 
   def sync_provider_memberships(
-        actor_ids_by_provider_identifier,
-        group_ids_by_provider_identifier,
+        filtered_group_ids_by_provider_identifier,
         %Auth.Provider{} = provider,
         tuples
       ) do
-    tuples =
-      Enum.flat_map(tuples, fn {group_provider_identifier, actor_provider_identifier} ->
-        group_id = Map.get(group_ids_by_provider_identifier, group_provider_identifier)
-        actor_id = Map.get(actor_ids_by_provider_identifier, actor_provider_identifier)
+    filtered_group_ids =
+      Enum.flat_map(tuples, fn {group_provider_identifier, _actor_provider_identifier} ->
+        group_id = Map.get(filtered_group_ids_by_provider_identifier, group_provider_identifier)
 
-        if is_nil(group_id) or is_nil(actor_id) do
+        if is_nil(group_id) do
           []
         else
-          [{group_id, actor_id}]
+          [group_id]
         end
       end)
 
     with {:ok, memberships} <- all_provider_memberships(provider),
-         {:ok, {insert, delete}} <- plan_memberships_update(tuples, memberships),
+         {:ok, {insert, delete}} <- plan_memberships_update(filtered_group_ids, memberships),
          deleted_stats = delete_memberships(delete),
          {:ok, inserted} <- insert_memberships(provider, insert) do
+
+      # TODO: Don't broadcast events here until *after* the DB operation completes...
       :ok =
         Enum.each(insert, fn {group_id, actor_id} ->
           Actors.broadcast_membership_event(:create, actor_id, group_id)
@@ -36,9 +36,16 @@ defmodule Domain.Actors.Membership.Sync do
           Actors.broadcast_membership_event(:delete, actor_id, group_id)
         end)
 
+      # Only report back memberships that belong to at least one kept group
+      filtered_memberships =
+        Enum.filter(tuples, fn {group_provider_identifier, _actor_provider_identifier} ->
+          Map.has_key?(filtered_group_ids_by_provider_identifier, group_provider_identifier)
+        end)
+
       {:ok,
        %{
          plan: {insert, delete},
+         filtered_memberships: filtered_memberships,
          inserted: inserted,
          deleted_stats: deleted_stats
        }}
@@ -54,15 +61,15 @@ defmodule Domain.Actors.Membership.Sync do
     {:ok, memberships}
   end
 
-  defp plan_memberships_update(tuples, memberships) do
+  defp plan_memberships_update(group_ids, memberships) do
     {insert, _update, delete} =
       Enum.reduce(
         memberships,
-        {tuples, [], []},
+        {memberships, [], []},
         fn membership, {insert, update, delete} ->
           tuple = {membership.group_id, membership.actor_id}
 
-          if tuple in tuples do
+          if membership.group_id in group_ids do
             {insert -- [tuple], [tuple] ++ update, delete}
           else
             {insert -- [tuple], update, [tuple] ++ delete}

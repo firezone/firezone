@@ -10,6 +10,32 @@ defmodule Domain.Actors.Group.Query do
     |> where([groups: groups], is_nil(groups.deleted_at))
   end
 
+  def not_deleted_and_not_excluded do
+    not_deleted()
+    |> not_excluded()
+  end
+
+  def not_excluded(queryable \\ all()) do
+    queryable
+    |> join(:left, [groups: groups], providers in assoc(groups, :provider), as: :providers)
+    |> where(
+      [groups: groups, providers: providers],
+      is_nil(groups.provider_id) or
+        (not is_nil(groups.provider_id) and
+           (is_nil(providers.group_filters_enabled_at) or not is_nil(groups.included_at)))
+    )
+  end
+
+  def excluded(queryable) do
+    queryable
+    |> join(:inner, [groups: groups], providers in assoc(groups, :provider), as: :providers)
+    |> where(
+      [groups: groups, providers: providers],
+      not is_nil(groups.provider_id) and
+        (not is_nil(providers.group_filters_enabled_at) and is_nil(groups.included_at))
+    )
+  end
+
   def not_editable(queryable) do
     where(queryable, [groups: groups], not is_nil(groups.provider_id) or groups.type != :static)
   end
@@ -71,6 +97,33 @@ defmodule Domain.Actors.Group.Query do
         deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", groups.deleted_at)
       ]
     )
+  end
+
+  def set_excluded(queryable, group_ids) do
+    queryable
+    |> where([groups: groups], groups.id in ^group_ids)
+    |> update([groups: groups],
+      set: [
+        included_at: nil
+      ]
+    )
+  end
+
+  def set_included(queryable, group_ids) do
+    queryable
+    |> where([groups: groups], groups.id in ^group_ids)
+    |> update([groups: groups],
+      set: [
+        included_at: fragment("COALESCE(?, timezone('UTC', NOW()))", groups.included_at)
+      ]
+    )
+  end
+
+  def excluded_ids(provider) do
+    not_deleted()
+    |> excluded()
+    |> by_provider_id(provider.id)
+    |> select([groups: groups], groups.id)
   end
 
   def group_by_provider_id(queryable) do

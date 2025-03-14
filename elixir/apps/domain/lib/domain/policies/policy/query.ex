@@ -53,6 +53,11 @@ defmodule Domain.Policies.Policy.Query do
     |> where([actor_group: actor_group], actor_group.provider_id == ^provider_id)
   end
 
+  def by_actor_group_ids(queryable, actor_group_ids) do
+    queryable
+    |> where([policies: policies], policies.actor_group_id in ^actor_group_ids)
+  end
+
   def by_actor_id(queryable, actor_id) do
     queryable
     |> with_joined_memberships()
