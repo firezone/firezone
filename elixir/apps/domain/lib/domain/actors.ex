@@ -380,35 +380,6 @@ defmodule Domain.Actors do
     {:ok, groups}
   end
 
-  # Delete associated entities belonging to excluded groups
-  def delete_excluded_associations(provider) do
-    with {:ok, group_ids} <- Group.Query.excluded_ids(provider) do
-      # Delete memberships
-      {_count, memberships} =
-        Membership.Query.by_group_provider_id(provider.id)
-        |> Membership.Query.by_group_id({:in, group_ids})
-        |> Membership.Query.returning_all()
-        |> Repo.delete_all()
-
-      :ok = broadcast_membership_removal_events(memberships)
-
-      # Delete actors + identities that have no other identities and don't belong to any non-excluded groups
-      :ok = delete_excluded_actors(provider)
-
-      # TODO: Return effects here for logging
-      :ok
-    end
-  end
-
-  defp delete_excluded_actors(provider) do
-    Actor.Query.not_deleted()
-    |> Actor.Query.by_account_id(provider.account_id)
-    |> Actor.Query.by_only_provider_id(provider.id)
-    |> Actor.Query.not_a_member_of_any_group()
-    |> Repo.all()
-    |> Enum.each(&delete_actor(&1))
-  end
-
   defp exclude_groups_for(_provider, [], _subject), do: {:ok, []}
 
   defp exclude_groups_for(%Auth.Provider{} = provider, group_ids, %Auth.Subject{} = subject) do
@@ -419,7 +390,7 @@ defmodule Domain.Actors do
 
     {:ok, groups} = exclude_groups(queryable, group_ids, subject)
 
-    # Delete associated policies
+    # Delete associated policies now
     {:ok, _policies} = Policies.delete_policies_for(provider, group_ids)
 
     # Deleting memberships, identities and actors is handled in the sync job
