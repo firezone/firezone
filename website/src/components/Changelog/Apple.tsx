@@ -20,6 +20,11 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased></Unreleased>
+      <Entry version="1.4.7" date={new Date("2025-03-14")}>
+        <ChangeItem pull="8421">
+          Applies the search domain configured in the admin portal, if any.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.4.6" date={new Date("2025-03-11")}>
         <ChangeItem pull="8282">
           Shows friendlier and more-human alert messages when something goes
