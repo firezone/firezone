@@ -56,7 +56,7 @@ defmodule Web.Settings.DNS do
                 while connected to Firezone.
               </p>
 
-              <div class="mb-12">
+              <div class="mb-8">
                 <.input field={config[:search_domain]} placeholder="E.g. example.com" />
                 <p class="mt-2 text-sm text-neutral-500">
                   Enter a valid FQDN to append to single-label DNS queries. The
@@ -151,9 +151,11 @@ defmodule Web.Settings.DNS do
                 or IPv6 connectivity may not be able to resolve DNS queries.
               </p>
             </.inputs_for>
-            <.submit_button>
-              Save
-            </.submit_button>
+            <div class="mt-16">
+              <.submit_button>
+                Save DNS Settings
+              </.submit_button>
+            </div>
           </.form>
         </div>
       </:content>
