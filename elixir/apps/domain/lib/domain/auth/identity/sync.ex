@@ -19,7 +19,8 @@ defmodule Domain.Auth.Identity.Sync do
       end)
 
     with {:ok, identities} <- all_provider_identities(provider),
-         {:ok, {insert, update, delete}} <- plan_identities_update(identities, filtered_actor_provider_identifiers),
+         {:ok, {insert, update, delete}} <-
+           plan_identities_update(identities, filtered_actor_provider_identifiers),
          {:ok, deleted} <- delete_identities(provider, delete),
          {:ok, inserted} <-
            insert_identities(provider, filtered_attrs_by_provider_identifier, insert),

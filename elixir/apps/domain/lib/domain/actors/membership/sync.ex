@@ -24,7 +24,6 @@ defmodule Domain.Actors.Membership.Sync do
          {:ok, {insert, delete}} <- plan_memberships_update(filtered_group_ids, memberships),
          deleted_stats = delete_memberships(delete),
          {:ok, inserted} <- insert_memberships(provider, insert) do
-
       # TODO: Don't broadcast events here until *after* the DB operation completes...
       :ok =
         Enum.each(insert, fn {group_id, actor_id} ->

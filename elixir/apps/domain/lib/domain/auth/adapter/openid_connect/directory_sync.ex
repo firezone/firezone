@@ -252,7 +252,12 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
                    provider,
                    membership_tuples
                  ),
-               {:ok, identities_effects} <- Auth.sync_provider_identities(memberships_effects.filtered_memberships, provider, identities_attrs) do
+               {:ok, identities_effects} <-
+                 Auth.sync_provider_identities(
+                   memberships_effects.filtered_memberships,
+                   provider,
+                   identities_attrs
+                 ) do
             # TODO: Delete actors with no more identities here
 
             Auth.Provider.Changeset.sync_finished(provider)
