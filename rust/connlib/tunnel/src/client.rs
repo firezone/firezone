@@ -1050,6 +1050,9 @@ impl ClientState {
                 // We don't really expect these to change but let's update them anyway.
                 existing.ip.v4 = config.ipv4;
                 existing.ip.v6 = config.ipv6;
+
+                // These are safe to always update
+                existing.search_domain = config.search_domain.clone();
             }
             None => {
                 let (ipv4_routes, ipv6_routes) = self.routes().partition_map(|route| match route {

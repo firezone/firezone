@@ -23,6 +23,13 @@ defmodule Domain.Resources do
     end
   end
 
+  def fetch_internet_resource(%Accounts.Account{} = account) do
+    Resource.Query.all()
+    |> Resource.Query.by_account_id(account.id)
+    |> Resource.Query.by_type(:internet)
+    |> Repo.fetch(Resource.Query)
+  end
+
   def fetch_internet_resource(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       Resource.Query.all()

@@ -243,57 +243,7 @@ defmodule Web.Sites.Index do
       <:help>
         Use the Internet Site to manage secure, private access to the public internet for your workforce.
       </:help>
-
-      <:content :if={
-        Domain.Accounts.internet_resource_enabled?(@account) &&
-          needs_internet_resource_migration?(@internet_resource, @internet_gateway_group)
-      }>
-        <div class="px-1 text-neutral-500">
-          <p class="mb-2">
-            ACTION REQUIRED: Please migrate your existing Internet Resource to this Site before <strong>March 15, 2025</strong>.
-          </p>
-          <p class="mb-8 text-sm">
-            <.website_link path="/blog/migrate-your-internet-resource">
-              Read more about why this is necessary.
-            </.website_link>
-          </p>
-          <.button_with_confirmation
-            id="migrate_internet_resource"
-            style="warning"
-            confirm_style="warning"
-            icon="hero-exclamation-triangle-solid"
-            on_confirm="migrate_internet_resource"
-          >
-            <:dialog_title>
-              Confirm Internet Resource Migration from {@existing_internet_resource_group_name}
-            </:dialog_title>
-            <:dialog_content>
-              <p class="text-center my-8">
-                <.icon name="hero-exclamation-triangle-solid" class="w-16 h-16 text-primary-500" />
-              </p>
-              <p class="mb-2">
-                Migrating the Internet Resource will permanently
-                move it from the <strong>{@existing_internet_resource_group_name}</strong>
-                Site to the <strong>Internet</strong>
-                Site. This cannot be reversed.
-              </p>
-              <p class="mb-2">
-                Any Clients connected to this Resource will be immediately disconnected.
-              </p>
-              <p>
-                To minimize downtime, it is recommended to deploy new Gateways in the Internet Site before completing the migration of the Internet Resource.
-              </p>
-            </:dialog_content>
-            <:dialog_confirm_button>
-              Migrate Internet Resource
-            </:dialog_confirm_button>
-            <:dialog_cancel_button>
-              Cancel
-            </:dialog_cancel_button>
-            Migrate Internet Resource
-          </.button_with_confirmation>
-        </div>
-      </:content>
+      <:content></:content>
     </.section>
     """
   end
@@ -331,64 +281,4 @@ defmodule Web.Sites.Index do
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
     do: handle_live_table_event(event, params, socket)
-
-  def handle_event("migrate_internet_resource", _, socket) do
-    internet_resource = socket.assigns.internet_resource
-    internet_gateway_group = socket.assigns.internet_gateway_group
-
-    case migrate_internet_resource(
-           internet_resource,
-           internet_gateway_group,
-           socket.assigns.subject
-         ) do
-      {:ok, internet_resource} ->
-        socket =
-          socket
-          |> assign(internet_resource: internet_resource)
-          |> put_flash(:info, "Internet Resource migrated successfully.")
-
-        {:noreply, socket}
-
-      _ ->
-        {:noreply, socket |> put_flash(:error, "Failed to migrate Internet Resource.")}
-    end
-  end
-
-  defp needs_internet_resource_migration?(nil, _), do: false
-
-  defp needs_internet_resource_migration?(internet_resource, internet_gateway_group) do
-    # can only be in the internet site now
-    length(internet_resource.connections) > 1 ||
-      Enum.all?(internet_resource.connections, fn connection ->
-        connection.gateway_group_id != internet_gateway_group.id
-      end)
-  end
-
-  defp migrate_internet_resource(internet_resource, internet_gateway_group, subject) do
-    attrs = %{
-      connections: %{
-        internet_gateway_group.id => %{
-          gateway_group_id: internet_gateway_group.id,
-          resource_id: internet_resource.id,
-          enabled: true
-        }
-      }
-    }
-
-    Domain.Repo.transaction(fn ->
-      with {:ok, _count} <- Domain.Resources.delete_connections_for(internet_resource, subject),
-           {:updated, resource} <-
-             Domain.Resources.update_resource(internet_resource, attrs, subject) do
-        resource
-      else
-        {:error, changeset} ->
-          Logger.error("Failed to migrate Internet Resource",
-            reason: inspect(changeset),
-            account: internet_resource.account_id
-          )
-
-          Domain.Repo.rollback(changeset)
-      end
-    end)
-  end
 end
