@@ -5,7 +5,8 @@
 
 source "./scripts/tests/lib.sh"
 
-HTTPBIN=dns.httpbin
+HTTPBIN=dns
+HTTPBIN_FQDN="$HTTPBIN.httpbin.search.test"
 
 # Re-up the gateway since a local dev setup may run this back-to-back
 docker compose up -d gateway --no-build
@@ -14,7 +15,7 @@ echo "# check original resolv.conf"
 client sh -c "cat /etc/resolv.conf.before-firezone"
 
 echo "# Make sure gateway can reach httpbin by DNS"
-gateway sh -c "curl --fail $HTTPBIN/get"
+gateway sh -c "curl --fail $HTTPBIN_FQDN/get"
 
 echo "# Try to ping httpbin as a DNS resource"
 client_ping_resource "$HTTPBIN"

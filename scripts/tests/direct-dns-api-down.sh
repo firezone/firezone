@@ -2,7 +2,7 @@
 
 source "./scripts/tests/lib.sh"
 
-HTTPBIN=dns.httpbin
+HTTPBIN=dns
 
 function run_test() {
     echo "# Access httpbin by DNS"

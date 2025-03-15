@@ -5,7 +5,7 @@
 
 source "./scripts/tests/lib.sh"
 
-RESOURCE1=dns.httpbin
+RESOURCE1=dns
 RESOURCE2=download.httpbin
 
 echo "# Try to ping httpbin as DNS resource 1"
