@@ -36,7 +36,7 @@ class NetworkSettings {
     guard let domain = domain else {
         self.matchDomains = [""]
         self.searchDomains = [""]
-        return;
+        return
     }
 
     self.matchDomains = ["", domain]
