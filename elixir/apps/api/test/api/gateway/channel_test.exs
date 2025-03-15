@@ -134,10 +134,12 @@ defmodule API.Gateway.ChannelTest do
       relay: relay,
       socket: socket
     } do
+      internet_gateway_group = Fixtures.Gateways.create_internet_group(account: account)
+
       resource =
-        Fixtures.Resources.create_resource(
-          type: :internet,
-          account: account
+        Fixtures.Resources.create_internet_resource(
+          account: account,
+          connections: [%{gateway_group_id: internet_gateway_group.id}]
         )
 
       channel_pid = self()

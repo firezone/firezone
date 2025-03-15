@@ -28,6 +28,14 @@ defmodule API.Client.ChannelTest do
     gateway_group_token = Fixtures.Gateways.create_token(account: account, group: gateway_group)
     gateway = Fixtures.Gateways.create_gateway(account: account, group: gateway_group)
 
+    internet_gateway_group = Fixtures.Gateways.create_internet_group(account: account)
+
+    internet_gateway_group_token =
+      Fixtures.Gateways.create_token(account: account, group: internet_gateway_group)
+
+    internet_gateway =
+      Fixtures.Gateways.create_gateway(account: account, group: internet_gateway_group)
+
     dns_resource =
       Fixtures.Resources.create_resource(
         account: account,
@@ -51,10 +59,9 @@ defmodule API.Client.ChannelTest do
       )
 
     internet_resource =
-      Fixtures.Resources.create_resource(
-        type: :internet,
+      Fixtures.Resources.create_internet_resource(
         account: account,
-        connections: [%{gateway_group_id: gateway_group.id}]
+        connections: [%{gateway_group_id: internet_gateway_group.id}]
       )
 
     unauthorized_resource =
@@ -142,6 +149,9 @@ defmodule API.Client.ChannelTest do
       gateway_group_token: gateway_group_token,
       gateway_group: gateway_group,
       gateway: gateway,
+      internet_gateway_group: internet_gateway_group,
+      internet_gateway_group_token: internet_gateway_group_token,
+      internet_gateway: internet_gateway,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
       ip_resource: ip_resource,
@@ -255,6 +265,7 @@ defmodule API.Client.ChannelTest do
 
     test "sends list of available resources after join", %{
       client: client,
+      internet_gateway_group: internet_gateway_group,
       gateway_group: gateway_group,
       dns_resource: dns_resource,
       cidr_resource: cidr_resource,
@@ -337,8 +348,8 @@ defmodule API.Client.ChannelTest do
                type: :internet,
                gateway_groups: [
                  %{
-                   id: gateway_group.id,
-                   name: gateway_group.name
+                   id: internet_gateway_group.id,
+                   name: internet_gateway_group.name
                  }
                ],
                can_be_disabled: true
@@ -1215,10 +1226,10 @@ defmodule API.Client.ChannelTest do
 
     test "returns online gateway connected to an internet resource", %{
       account: account,
+      internet_gateway_group_token: gateway_group_token,
+      internet_gateway: gateway,
       internet_resource: resource,
       client: client,
-      gateway_group_token: gateway_group_token,
-      gateway: gateway,
       socket: socket
     } do
       Fixtures.Accounts.update_account(account,
@@ -1722,8 +1733,8 @@ defmodule API.Client.ChannelTest do
 
     test "returns gateway that support Internet resources", %{
       account: account,
+      internet_gateway_group: internet_gateway_group,
       internet_resource: resource,
-      subject: subject,
       socket: socket
     } do
       account =
@@ -1742,22 +1753,13 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      gateway_group = Fixtures.Gateways.create_group(account: account)
-
       gateway =
         Fixtures.Gateways.create_gateway(
           account: account,
-          group: gateway_group,
+          group: internet_gateway_group,
           context: %{
             user_agent: "iOS/12.5 (iPhone) connlib/1.2.0"
           }
-        )
-
-      {:updated, resource} =
-        Domain.Resources.update_resource(
-          resource,
-          %{connections: [%{gateway_group_id: gateway_group.id}]},
-          subject
         )
 
       :ok = Domain.Gateways.connect_gateway(gateway)
@@ -1770,7 +1772,7 @@ defmodule API.Client.ChannelTest do
       gateway =
         Fixtures.Gateways.create_gateway(
           account: account,
-          group: gateway_group,
+          group: internet_gateway_group,
           context: %{
             user_agent: "iOS/12.5 (iPhone) connlib/1.3.0"
           }

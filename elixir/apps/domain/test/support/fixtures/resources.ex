@@ -49,6 +49,29 @@ defmodule Domain.Fixtures.Resources do
     resource
   end
 
+  def create_internet_resource(attrs \\ %{}) do
+    attrs = resource_attrs(attrs)
+
+    {account, attrs} =
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        Fixtures.Accounts.create_account(assoc_attrs)
+      end)
+
+    {subject, attrs} =
+      pop_assoc_fixture(attrs, :subject, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, actor: [type: :account_admin_user]})
+        |> Fixtures.Auth.create_subject()
+      end)
+
+    {:ok, resource} =
+      attrs
+      |> Map.put(:type, :internet)
+      |> Domain.Resources.create_resource(subject)
+
+    resource
+  end
+
   def delete_resource(resource) do
     resource = Repo.preload(resource, :account)
 
