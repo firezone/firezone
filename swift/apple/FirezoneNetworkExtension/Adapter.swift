@@ -360,6 +360,7 @@ extension Adapter {
 // MARK: Implementing CallbackHandlerDelegate
 
 extension Adapter: CallbackHandlerDelegate {
+  // swiftlint:disable:next function_parameter_count
   public func onSetInterfaceConfig(
     tunnelAddressIPv4: String,
     tunnelAddressIPv6: String,
