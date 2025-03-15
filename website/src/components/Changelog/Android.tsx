@@ -20,6 +20,11 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased></Unreleased>
+      <Entry version="1.4.4" date={new Date("2025-03-13")}>
+        <ChangeItem pull="8436">
+          Adds support for search domains configured in the admin portal.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.4.3" date={new Date("2025-03-10")}>
         <ChangeItem pull="8376">
           Fixes a bug where UI controls could overlap with system controls on
