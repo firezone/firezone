@@ -9,6 +9,18 @@ export default function GUI({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased></Unreleased>
+      <Entry version="1.4.9" date={new Date("2025-03-14")}>
+        {os === OS.Windows && (
+          <ChangeItem pull="8422">
+            Applies the search domain configured in the admin portal, if any.
+          </ChangeItem>
+        )}
+        {os === OS.Linux && (
+          <ChangeItem pull="8378">
+            Applies the search domain configured in the admin portal, if any.
+          </ChangeItem>
+        )}
+      </Entry>
       <Entry version="1.4.8" date={new Date("2025-03-10")}>
         <ChangeItem pull="8286">
           Fixes a bug that prevented certain Resource fields from being updated
