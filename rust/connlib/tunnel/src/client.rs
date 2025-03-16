@@ -1039,7 +1039,11 @@ impl ClientState {
 
         self.system_resolvers = new_dns;
 
-        self.update_dns_mapping()
+        if let Some(tun_config) = self.tun_config.as_ref() {
+            self.update_dns_mapping(tun_config.search_domain.clone());
+        } else {
+            self.update_dns_mapping(None);
+        }
     }
 
     pub fn update_interface_config(&mut self, config: InterfaceConfig) {
@@ -1050,9 +1054,6 @@ impl ClientState {
                 // We don't really expect these to change but let's update them anyway.
                 existing.ip.v4 = config.ipv4;
                 existing.ip.v6 = config.ipv6;
-
-                // These are safe to always update
-                existing.search_domain = config.search_domain.clone();
             }
             None => {
                 let (ipv4_routes, ipv6_routes) = self.routes().partition_map(|route| match route {
@@ -1074,10 +1075,12 @@ impl ClientState {
             }
         }
 
+        let search_domain = config.search_domain.clone();
+
         self.stub_resolver.set_search_domain(config.search_domain);
         self.upstream_dns = config.upstream_dns;
 
-        self.update_dns_mapping()
+        self.update_dns_mapping(search_domain);
     }
 
     pub fn poll_packets(&mut self) -> Option<IpPacket> {
@@ -1779,7 +1782,7 @@ impl ClientState {
         }
     }
 
-    fn update_dns_mapping(&mut self) {
+    fn update_dns_mapping(&mut self, new_search_domain: Option<DomainName>) {
         let Some(config) = self.tun_config.clone() else {
             // For the Tauri clients this can happen because it's called immediately after phoenix_channel's connect, before on_set_interface_config
             tracing::debug!("Unable to update DNS servers without interface configuration");
@@ -1792,8 +1795,9 @@ impl ClientState {
 
         if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
             == HashSet::from_iter(self.dns_mapping.right_values())
+            && config.search_domain == new_search_domain
         {
-            tracing::debug!(servers = ?effective_dns_servers, "Effective DNS servers are unchanged");
+            tracing::debug!(servers = ?effective_dns_servers, search_domain = ?new_search_domain, "Effective DNS servers and search_domain are unchanged");
 
             return;
         }
@@ -1818,7 +1822,7 @@ impl ClientState {
                 .iter()
                 .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
                 .collect::<BiMap<_, _>>(),
-            search_domain: config.search_domain,
+            search_domain: new_search_domain,
             ipv4_routes,
             ipv6_routes,
         };
