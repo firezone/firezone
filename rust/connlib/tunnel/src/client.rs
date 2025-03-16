@@ -1045,21 +1045,27 @@ impl ClientState {
     pub fn update_interface_config(&mut self, config: InterfaceConfig) {
         tracing::trace!(upstream_dns = ?config.upstream_dns, search_domain = ?config.search_domain, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
 
-        match self.tun_config.as_mut() {
-            Some(existing) => {
-                // We don't really expect these to change but let's update them anyway.
-                existing.ip.v4 = config.ipv4;
-                existing.ip.v6 = config.ipv6;
-
-                // These are safe to always update
-                existing.search_domain = config.search_domain.clone();
-            }
-            None => {
+        // Create a new `TunConfig` by patching the corresponding fields of the existing one.
+        let new_tun_config = self
+            .tun_config
+            .as_ref()
+            .map(|existing| TunConfig {
+                ip: IpConfig {
+                    v4: config.ipv4,
+                    v6: config.ipv6,
+                },
+                dns_by_sentinel: existing.dns_by_sentinel.clone(),
+                search_domain: config.search_domain.clone(),
+                ipv4_routes: existing.ipv4_routes.clone(),
+                ipv6_routes: existing.ipv6_routes.clone(),
+            })
+            .unwrap_or_else(|| {
                 let (ipv4_routes, ipv6_routes) = self.routes().partition_map(|route| match route {
                     IpNetwork::V4(v4) => itertools::Either::Left(v4),
                     IpNetwork::V6(v6) => itertools::Either::Right(v6),
                 });
-                let new_tun_config = TunConfig {
+
+                TunConfig {
                     ip: IpConfig {
                         v4: config.ipv4,
                         v6: config.ipv6,
@@ -1068,16 +1074,14 @@ impl ClientState {
                     search_domain: config.search_domain.clone(),
                     ipv4_routes,
                     ipv6_routes,
-                };
+                }
+            });
 
-                self.maybe_update_tun_config(new_tun_config);
-            }
-        }
+        // Apply the new `TunConfig` if it differs from the existing one.
+        self.maybe_update_tun_config(new_tun_config);
 
-        self.stub_resolver.set_search_domain(config.search_domain);
         self.upstream_dns = config.upstream_dns;
-
-        self.update_dns_mapping()
+        self.update_dns_mapping();
     }
 
     pub fn poll_packets(&mut self) -> Option<IpPacket> {
@@ -1486,6 +1490,9 @@ impl ClientState {
         }
 
         tracing::info!(config = ?new_tun_config, "Updating TUN device");
+
+        self.stub_resolver
+            .set_search_domain(new_tun_config.search_domain.clone());
 
         // Ensure we don't emit multiple interface updates in a row.
         self.buffered_events
