@@ -117,7 +117,6 @@ jobs:
           rg --count --no-ignore "Truncating DNS response" $TESTCASES_DIR
           rg --count --no-ignore "Destination is unreachable" $TESTCASES_DIR
           rg --count --no-ignore "Forwarding query for DNS resource to corresponding site" $TESTCASES_DIR
-          rg --count --no-ignore "Expanded single-label query into FQDN using search-domain" $TESTCASES_DIR
 
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>

@@ -829,18 +829,18 @@ impl TunnelTest {
 fn address_from_destination(destination: &Destination, state: &TunnelTest, src: &IpAddr) -> IpAddr {
     match destination {
         Destination::DomainName { resolved_ip, name } => {
-            let dns_records = &state.client.inner().dns_records;
+            let available_ips = state
+                .client
+                .inner()
+                .dns_records
+                .get(name)
+                .unwrap()
+                .iter()
+                .filter(|ip| match ip {
+                    IpAddr::V4(_) => src.is_ipv4(),
+                    IpAddr::V6(_) => src.is_ipv6(),
+                });
 
-            let Some(ips) = dns_records.get(name) else {
-                tracing::error!(%name, ?dns_records, "No DNS records");
-
-                panic!("No DNS records")
-            };
-
-            let available_ips = ips.iter().filter(|ip| match ip {
-                IpAddr::V4(_) => src.is_ipv4(),
-                IpAddr::V6(_) => src.is_ipv6(),
-            });
             *resolved_ip.select(available_ips)
         }
         Destination::IpAddr(addr) => *addr,
