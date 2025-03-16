@@ -232,6 +232,15 @@ pub(crate) fn assert_dns_servers_are_valid(ref_client: &RefClient, sim_client: &
     }
 }
 
+pub(crate) fn assert_search_domain_is_valid(ref_client: &RefClient, sim_client: &SimClient) {
+    let expected = ref_client.expected_search_domain();
+    let actual = sim_client.effective_search_domain();
+
+    if actual != expected {
+        tracing::error!(target: "assertions", ?actual, ?expected, "❌ Search domain is incorrect");
+    }
+}
+
 pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimClient) {
     let (expected_ipv4, expected_ipv6) = ref_client.expected_routes();
     let (actual_ipv4, actual_ipv6) = (
