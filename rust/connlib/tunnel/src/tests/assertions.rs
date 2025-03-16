@@ -206,18 +206,10 @@ fn assert_packets_properties<T, U>(
                     assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
                 }
                 Destination::DomainName { name, .. } => {
-                    let domain = match ref_client.fully_qualify_using_search_domain(name.clone()) {
-                        Ok(domain) => domain,
-                        Err(e) => {
-                            tracing::error!(target: "assertions", "Failed to fully-qualify domain: {e:#}");
-                            return;
-                        }
-                    };
-
                     assert_destination_is_dns_resource(
                         gateway_received_request,
                         global_dns_records,
-                        &domain,
+                        name,
                     );
 
                     assert_proxy_ip_mapping_is_stable(

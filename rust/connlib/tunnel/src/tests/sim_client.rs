@@ -12,11 +12,9 @@ use crate::{
     messages::{DnsServer, Interface},
 };
 use crate::{proptest::*, ClientState};
-use anyhow::Context;
-use anyhow::Result;
 use bimap::BiMap;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, SiteId};
-use dns_types::{prelude::*, DomainName, Query, RecordData, RecordType};
+use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
@@ -599,23 +597,6 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn fully_qualify_using_search_domain(
-        &self,
-        domain: DomainName,
-    ) -> Result<DomainName> {
-        if domain.label_count() != 2 {
-            return Ok(domain); // If it is not a single-label domain, it is already fully qualified.
-        }
-
-        let search_domain = self.search_domain.clone().context("No search domain")?;
-        let label = domain.into_relative();
-
-        Ok(label
-            .chain(search_domain)
-            .context("Domain too long")?
-            .flatten_into())
-    }
-
     #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     pub(crate) fn on_icmp_packet(
         &mut self,
@@ -779,6 +760,11 @@ impl RefClient {
     }
 
     pub(crate) fn on_dns_query(&mut self, query: &DnsQuery) {
+        self.dns_records
+            .entry(query.domain.clone())
+            .or_default()
+            .insert(query.r_type);
+
         match query.transport {
             DnsTransport::Udp => {
                 self.expected_udp_dns_handshakes
@@ -789,18 +775,6 @@ impl RefClient {
                     .push_back((query.dns_server, query.query_id));
             }
         }
-
-        if query.domain.label_count() == 2 && self.dns_resource_by_domain(&query.domain).is_none() {
-            // DNS queries for single-label domains which are not resources are answered with NXDOMAIN.
-            tracing::debug!("No state change for non-resource single-label DNS query");
-
-            return;
-        }
-
-        self.dns_records
-            .entry(query.domain.clone())
-            .or_default()
-            .insert(query.r_type);
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
             self.set_resource_online(resource);
@@ -858,23 +832,6 @@ impl RefClient {
     }
 
     pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
-        let domain = domain.clone();
-
-        let domain = if domain.label_count() == 2 {
-            let Some(search_domain) = self.search_domain.clone() else {
-                tracing::error!("Must have search domain if we are handling single-label queries");
-                return None;
-            };
-
-            domain
-                .into_relative()
-                .chain(search_domain)
-                .unwrap()
-                .flatten_into()
-        } else {
-            domain
-        };
-
         self.resources
             .iter()
             .cloned()

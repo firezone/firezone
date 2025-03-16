@@ -97,6 +97,7 @@ fn configure_at_paths(
 
     new_resolv_conf.nameservers = dns_config.iter().map(|addr| (*addr).into()).collect();
     new_resolv_conf.set_search(search_domain.into_iter().map(|d| d.to_string()).collect());
+    new_resolv_conf.ndots = 1; // Must be 1 (e.g. the default) for search-domains to work
 
     // Over-writing `/etc/resolv.conf` actually violates Docker's plan for handling DNS
     // https://docs.docker.com/network/#dns-services
