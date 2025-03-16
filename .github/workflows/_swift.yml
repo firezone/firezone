@@ -69,6 +69,20 @@ jobs:
         with:
           path: ~/Library/Developer/Xcode/DerivedData
           key: ${{ runner.os }}-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
+      - name: swiftlint
+        run: |
+          # The binary is not installed by default
+          brew install swiftlint
+
+          cd swift/apple
+          swiftlint --autocorrect
+          swiftlint --strict
+
+          if [ ! -z "$(git status --porcelain)" ]; then
+            echo 'swiftlint corrected files!'
+            git diff
+            exit 1
+          fi
       - run: ${{ matrix.build-script }}
         env:
           IOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_APP_PROVISIONING_PROFILE }}"
