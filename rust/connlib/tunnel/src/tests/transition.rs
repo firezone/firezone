@@ -55,6 +55,8 @@ pub(crate) enum Transition {
     UpdateSystemDnsServers(Vec<IpAddr>),
     /// The upstream DNS servers changed.
     UpdateUpstreamDnsServers(Vec<DnsServer>),
+    /// The upstream search domain changed.
+    UpdateUpstreamSearchDomain(Option<DomainName>),
 
     /// Roam the client to a new pair of sockets.
     RoamClient {

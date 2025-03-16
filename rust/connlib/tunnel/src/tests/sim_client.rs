@@ -45,6 +45,9 @@ pub(crate) struct SimClient {
     pub(crate) ipv4_routes: BTreeSet<Ipv4Network>,
     pub(crate) ipv6_routes: BTreeSet<Ipv6Network>,
 
+    /// The search-domain emitted by connlib.
+    pub(crate) search_domain: Option<DomainName>,
+
     pub(crate) resource_status: BTreeMap<ResourceId, ResourceStatus>,
 
     pub(crate) sent_udp_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket>,
@@ -87,6 +90,7 @@ impl SimClient {
             received_udp_replies: Default::default(),
             ipv4_routes: Default::default(),
             ipv6_routes: Default::default(),
+            search_domain: Default::default(),
             resource_status: Default::default(),
             tcp_dns_client,
         }
@@ -95,6 +99,10 @@ impl SimClient {
     /// Returns the _effective_ DNS servers that connlib is using.
     pub(crate) fn effective_dns_servers(&self) -> BTreeSet<SocketAddr> {
         self.dns_by_sentinel.right_values().copied().collect()
+    }
+
+    pub(crate) fn effective_search_domain(&self) -> Option<DomainName> {
+        self.search_domain.clone()
     }
 
     pub(crate) fn set_new_dns_servers(&mut self, mapping: BiMap<IpAddr, SocketAddr>) {
@@ -925,6 +933,10 @@ impl RefClient {
             .collect()
     }
 
+    pub(crate) fn expected_search_domain(&self) -> Option<DomainName> {
+        self.search_domain.clone()
+    }
+
     pub(crate) fn expected_routes(&self) -> (BTreeSet<Ipv4Network>, BTreeSet<Ipv6Network>) {
         (
             self.ipv4_routes
@@ -1041,6 +1053,10 @@ impl RefClient {
 
     pub(crate) fn set_upstream_dns_resolvers(&mut self, servers: &Vec<DnsServer>) {
         self.upstream_dns_resolvers.clone_from(servers);
+    }
+
+    pub(crate) fn set_upstream_search_domain(&mut self, domain: Option<&DomainName>) {
+        self.search_domain = domain.cloned()
     }
 
     pub(crate) fn upstream_dns_resolvers(&self) -> Vec<DnsServer> {

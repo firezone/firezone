@@ -253,6 +253,16 @@ impl StubPortal {
         system_dns: impl Strategy<Value = Vec<IpAddr>>,
         upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
     ) -> impl Strategy<Value = Host<RefClient>> {
+        ref_client_host(
+            Just(self.client_tunnel_ipv4),
+            Just(self.client_tunnel_ipv6),
+            system_dns,
+            upstream_dns,
+            self.search_domain(),
+        )
+    }
+
+    pub(crate) fn search_domain(&self) -> impl Strategy<Value = Option<DomainName>> {
         let possible_search_domains = self
             .dns_resources
             .values()
@@ -267,13 +277,7 @@ impl StubPortal {
             })
             .collect::<Vec<_>>();
 
-        ref_client_host(
-            Just(self.client_tunnel_ipv4),
-            Just(self.client_tunnel_ipv6),
-            system_dns,
-            upstream_dns,
-            proptest::option::of(sample::select(possible_search_domains)),
-        )
+        proptest::option::of(sample::select(possible_search_domains))
     }
 
     pub(crate) fn dns_resource_records(&self) -> impl Strategy<Value = DnsRecords> {

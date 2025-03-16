@@ -240,6 +240,16 @@ impl TunnelTest {
                     })
                 });
             }
+            Transition::UpdateUpstreamSearchDomain(search_domain) => {
+                state.client.exec_mut(|c| {
+                    c.sut.update_interface_config(Interface {
+                        ipv4: c.sut.tunnel_ip_config().unwrap().v4,
+                        ipv6: c.sut.tunnel_ip_config().unwrap().v6,
+                        upstream_dns: ref_state.client.inner().upstream_dns_resolvers(),
+                        search_domain,
+                    })
+                });
+            }
             Transition::RoamClient { ip4, ip6, port } => {
                 state.network.remove_host(&state.client);
                 state.client.update_interface(ip4, ip6, port);
@@ -357,6 +367,7 @@ impl TunnelTest {
         assert_udp_dns_packets_properties(ref_client, sim_client);
         assert_tcp_dns(ref_client, sim_client);
         assert_dns_servers_are_valid(ref_client, sim_client);
+        assert_search_domain_is_valid(ref_client, sim_client);
         assert_routes_are_valid(ref_client, sim_client);
         assert_resource_status(ref_client, sim_client);
     }
@@ -751,9 +762,10 @@ impl TunnelTest {
                 if self.client.inner().dns_mapping() == &config.dns_by_sentinel
                     && self.client.inner().ipv4_routes == config.ipv4_routes
                     && self.client.inner().ipv6_routes == config.ipv6_routes
+                    && self.client.inner().search_domain == config.search_domain
                 {
                     tracing::error!(
-                        "Emitted `TunInterfaceUpdated` without changing DNS servers or routes"
+                        "Emitted `TunInterfaceUpdated` without changing DNS servers, routes or search domain"
                     );
                 }
 
@@ -770,6 +782,7 @@ impl TunnelTest {
                     c.set_new_dns_servers(config.dns_by_sentinel);
                     c.ipv4_routes = config.ipv4_routes;
                     c.ipv6_routes = config.ipv6_routes;
+                    c.search_domain = config.search_domain
                 });
             }
         }

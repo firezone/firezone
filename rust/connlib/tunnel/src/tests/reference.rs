@@ -187,6 +187,13 @@ impl ReferenceState {
                 1,
                 upstream_dns_servers().prop_map(Transition::UpdateUpstreamDnsServers),
             )
+            .with(
+                1,
+                state
+                    .portal
+                    .search_domain()
+                    .prop_map(Transition::UpdateUpstreamSearchDomain),
+            )
             .with_if_not_empty(
                 5,
                 state.all_resources_not_known_to_client(),
@@ -451,6 +458,11 @@ impl ReferenceState {
                     .client
                     .exec_mut(|client| client.set_upstream_dns_resolvers(servers));
             }
+            Transition::UpdateUpstreamSearchDomain(domain) => {
+                state
+                    .client
+                    .exec_mut(|client| client.set_upstream_search_domain(domain.as_ref()));
+            }
             Transition::RoamClient { ip4, ip6, .. } => {
                 state.network.remove_host(&state.client);
                 state.client.ip4.clone_from(ip4);
@@ -591,6 +603,7 @@ impl ReferenceState {
                     .iter()
                     .any(|dns_server| state.client.sending_socket_for(dns_server.ip()).is_some())
             }
+            Transition::UpdateUpstreamSearchDomain(_) => true,
             Transition::SendDnsQueries(queries) => queries.iter().all(|query| {
                 let has_socket_for_server = state
                     .client
