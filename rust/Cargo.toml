@@ -139,14 +139,14 @@ subtle = "2.5.0"
 supports-color = "3.0.2"
 swift-bridge = "0.1.57"
 swift-bridge-build = "0.1.57"
-tauri = "2.2.5"
-tauri-build = "2.0.1"
+tauri = "2.3.1"
+tauri-build = "2.0.6"
 tauri-plugin-dialog = "2.2.0"
 tauri-plugin-notification = "2.2.0"
 tauri-plugin-opener = "2.2.0"
 tauri-plugin-shell = "2.2.0"
-tauri-runtime = "2.3.0"
-tauri-utils = "2.1.1"
+tauri-runtime = "2.4.0"
+tauri-utils = "2.2.0"
 tempfile = "3.13.0"
 test-case = "3.3.1"
 test-strategy = "0.4.0"
@@ -171,6 +171,7 @@ url = "2.5.2"
 uuid = "1.14.0"
 windows = "0.58.0"
 winreg = "0.52.0"
+zbus = "5.5.0"
 zip = { version = "2", default-features = false }
 
 [workspace.lints.clippy]
@@ -193,6 +194,8 @@ boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.26" } # Waiting for release.
+arboard = { git = "https://github.com/1Password/arboard" } # Waiting for release.
+softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
