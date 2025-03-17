@@ -253,6 +253,12 @@ impl Drop for Tun {
     }
 }
 
+impl Drop for TunState {
+    fn drop(&mut self) {
+        let _ = self.session.shutdown(); // Cancels any `receive_blocking` calls.
+    }
+}
+
 impl Tun {
     fn new(mtu: u32) -> Result<Self> {
         let path = ensure_dll().context("Failed to ensure `wintun.dll` is in place")?;
