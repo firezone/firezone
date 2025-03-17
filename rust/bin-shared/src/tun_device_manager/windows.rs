@@ -204,10 +204,6 @@ pub struct Tun {
 
 /// All state relevant to the WinTUN device.
 struct TunState {
-    #[expect(
-        dead_code,
-        reason = "The send/recv threads have `Weak` references to this which we need to keep alive"
-    )]
     session: Arc<wintun::Session>,
 
     outbound_tx: PollSender<IpPacket>,
