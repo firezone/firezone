@@ -31,7 +31,7 @@ netlink-packet-core = { version = "0.7" }
 netlink-packet-route = { version = "0.19" }
 nix = { workspace = true, features = ["socket"] }
 rtnetlink = { workspace = true }
-zbus = "4.4" # Can't use `zbus`'s `tokio` feature here, or it will break toast popups all the way over in `gui-client`.
+zbus = { workspace = true } # Can't use `zbus`'s `tokio` feature here, or it will break toast popups all the way over in `gui-client`.
 
 [target.'cfg(windows)'.dependencies]
 known-folders = { workspace = true }
