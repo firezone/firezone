@@ -20,9 +20,14 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased></Unreleased>
-      <Entry version="1.4.4" date={new Date("2025-03-13")}>
+      <Entry version="1.4.5" date={new Date("2025-03-15")}>
+        <ChangeItem pull="8445">
+          Fixes a bug where search domains changes weren't applied if already signed in.
+        </ChangeItem>
+      </Entry>
+      <Entry version="1.4.4" date={new Date("2025-03-14")}>
         <ChangeItem pull="8436">
-          Adds support for search domains configured in the admin portal.
+          Applies the search domain configured in the admin portal, if any.
         </ChangeItem>
       </Entry>
       <Entry version="1.4.3" date={new Date("2025-03-10")}>

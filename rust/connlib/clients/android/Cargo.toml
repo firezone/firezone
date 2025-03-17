@@ -1,7 +1,7 @@
 [package]
 name = "connlib-client-android"
 # mark:next-android-version
-version = "1.4.5"
+version = "1.4.6"
 edition = { workspace = true }
 license = { workspace = true }
 
