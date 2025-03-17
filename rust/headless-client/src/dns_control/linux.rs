@@ -48,7 +48,10 @@ impl DnsController {
         // Flushing is only implemented for systemd-resolved
         if matches!(self.dns_control_method, DnsControlMethod::SystemdResolved) {
             tracing::debug!("Flushing systemd-resolved DNS cache...");
-            Command::new("resolvectl").arg("flush-caches").status()?;
+            Command::new("resolvectl")
+                .arg("flush-caches")
+                .status()
+                .context("Failed to run `resolvectl flush-caches`")?;
             tracing::debug!("Flushed DNS.");
         }
         Ok(())
