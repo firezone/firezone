@@ -5,7 +5,6 @@ use firezone_headless_client::{
 };
 use futures::SinkExt;
 use secrecy::{ExposeSecret, SecretString};
-use std::net::IpAddr;
 
 pub use firezone_headless_client::ipc::ClientRead;
 
@@ -51,21 +50,6 @@ impl Client {
         .await
         .context("Couldn't send Connect message")
         .map_err(Error::Other)?;
-        Ok(())
-    }
-
-    pub async fn reset(&mut self) -> Result<()> {
-        self.send_msg(&IpcClientMsg::Reset)
-            .await
-            .context("Couldn't send Reset")?;
-        Ok(())
-    }
-
-    /// Tell connlib about the system's default resolvers
-    pub async fn set_dns(&mut self, dns: Vec<IpAddr>) -> Result<()> {
-        self.send_msg(&IpcClientMsg::SetDns(dns))
-            .await
-            .context("Couldn't send SetDns")?;
         Ok(())
     }
 }

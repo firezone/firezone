@@ -5,7 +5,6 @@
 //!
 //! On Windows, we use NRPT by default. We can also explicitly not control DNS.
 
-use anyhow::Result;
 use firezone_bin_shared::platform::DnsControlMethod;
 use std::net::IpAddr;
 
@@ -42,10 +41,4 @@ impl DnsController {
     pub fn system_resolvers(&self) -> Vec<IpAddr> {
         system_resolvers(self.dns_control_method).unwrap_or_default()
     }
-}
-
-// TODO: Move DNS and network change listening to the IPC service, so this won't
-// need to be public.
-pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
-    system_resolvers(DnsControlMethod::default())
 }

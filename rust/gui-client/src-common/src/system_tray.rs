@@ -46,7 +46,6 @@ impl AppState {
         let quit_text = match &self.connlib {
             ConnlibState::Loading
             | ConnlibState::Quitting
-            | ConnlibState::RetryingConnection
             | ConnlibState::SignedOut
             | ConnlibState::WaitingForBrowser
             | ConnlibState::WaitingForPortal
@@ -56,7 +55,6 @@ impl AppState {
         let menu = match self.connlib {
             ConnlibState::Loading => Menu::default().disabled("Loading..."),
             ConnlibState::Quitting => Menu::default().disabled("Quitting..."),
-            ConnlibState::RetryingConnection => retrying_sign_in("Waiting for Internet access..."),
             ConnlibState::SignedIn(x) => signed_in(&x),
             ConnlibState::SignedOut => Menu::default().item(Event::SignIn, "Sign In"),
             ConnlibState::WaitingForBrowser => signing_in("Waiting for browser..."),
@@ -70,7 +68,6 @@ impl AppState {
 pub enum ConnlibState {
     Loading,
     Quitting,
-    RetryingConnection,
     SignedIn(SignedIn),
     SignedOut,
     WaitingForBrowser,
@@ -235,13 +232,6 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
     }
 
     menu
-}
-
-fn retrying_sign_in(waiting_message: &str) -> Menu {
-    Menu::default()
-        .disabled(waiting_message)
-        .item(Event::RetryPortalConnection, "Retry sign-in")
-        .item(Event::CancelSignIn, "Cancel sign-in")
 }
 
 fn signing_in(waiting_message: &str) -> Menu {

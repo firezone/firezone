@@ -37,8 +37,7 @@ pub mod uptime;
 pub use clear_logs::clear_logs;
 pub use dns_control::DnsController;
 pub use ipc_service::{
-    ipc, run_only_ipc_service, ClientMsg as IpcClientMsg, Error as IpcServiceError,
-    ServerMsg as IpcServerMsg,
+    ipc, run_only_ipc_service, ClientMsg as IpcClientMsg, ServerMsg as IpcServerMsg,
 };
 
 use ip_network::{Ipv4Network, Ipv6Network};
