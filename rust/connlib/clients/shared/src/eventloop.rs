@@ -28,7 +28,6 @@ pub struct Eventloop<C: Callbacks> {
 
 /// Commands that can be sent to the [`Eventloop`].
 pub enum Command {
-    Stop,
     Reset,
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
@@ -60,7 +59,7 @@ where
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), phoenix_channel::Error>> {
         loop {
             match self.rx.poll_recv(cx) {
-                Poll::Ready(Some(Command::Stop)) | Poll::Ready(None) => return Poll::Ready(Ok(())),
+                Poll::Ready(None) => return Poll::Ready(Ok(())),
                 Poll::Ready(Some(Command::SetDns(dns))) => {
                     self.tunnel.state_mut().update_system_resolvers(dns);
 

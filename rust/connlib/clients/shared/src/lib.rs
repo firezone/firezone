@@ -103,12 +103,11 @@ impl Session {
     pub fn set_tun(&self, new_tun: Box<dyn Tun>) {
         let _ = self.channel.send(Command::SetTun(new_tun));
     }
+}
 
-    /// Disconnect a [`Session`].
-    ///
-    /// This consumes [`Session`] which cleans up all state associated with it.
-    pub fn disconnect(self) {
-        let _ = self.channel.send(Command::Stop);
+impl Drop for Session {
+    fn drop(&mut self) {
+        tracing::debug!("`Session` dropped")
     }
 }
 

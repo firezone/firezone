@@ -323,7 +323,6 @@ impl WrappedSession {
 
     fn disconnect(mut self) {
         self.runtime.block_on(self.telemetry.stop());
-        self.inner.disconnect();
     }
 }
 
