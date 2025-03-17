@@ -1,6 +1,8 @@
 use anyhow::Result;
 use firezone_headless_client::ipc;
 
+pub const GENERIC_MSG: &str = "An unexpected error occurred. Please try restarting Firezone. If the issue persists, contact your administrator.";
+
 // TODO: Replace with `anyhow` gradually per <https://github.com/firezone/firezone/pull/3546#discussion_r1477114789>
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -34,7 +36,7 @@ impl Error {
             }
             Error::IpcClosed => "IPC connection closed".to_string(),
             Error::IpcRead(_) => "IPC read failure".to_string(),
-            Error::Other(error) => error.to_string(),
+            Error::Other(_) => GENERIC_MSG.to_string(),
         }
     }
 }

@@ -129,7 +129,7 @@ fn run_gui(cli: Cli) -> Result<()> {
                 return Err(anyhow);
             }
 
-            common::errors::show_error_dialog(anyhow.to_string())?;
+            common::errors::show_error_dialog(common::errors::GENERIC_MSG.to_owned())?;
             tracing::error!("GUI failed: {anyhow:#}");
 
             Err(anyhow)
