@@ -40,7 +40,7 @@ pub(crate) fn reevaluate(user_id: String) {
     });
 }
 
-/// Initialize the runtime to use for evaluating featuer flags.
+/// Initialize the runtime to use for evaluating feature flags.
 fn init_runtime() -> Runtime {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1) // We only need 1 worker thread.
