@@ -631,20 +631,16 @@ defmodule Domain.AccountsTest do
              }
     end
 
-    test "returns error when search_domain ends with .local", %{account: account} do
+    # Explicitly used by customers
+    test "allows search_domains that end with .local", %{account: account} do
       attrs = %{
         config: %{
           search_domain: "test.local"
         }
       }
 
-      assert {:error, changeset} = update_account_by_id(account.id, attrs)
-
-      assert errors_on(changeset) == %{
-               config: %{
-                 search_domain: ["must not end with .local"]
-               }
-             }
+      assert {:ok, account} = update_account_by_id(account.id, attrs)
+      assert account.config.search_domain == "test.local"
     end
 
     test "returns error when search_domain contains consecutive dots", %{account: account} do

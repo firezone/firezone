@@ -31,9 +31,6 @@ defmodule Domain.Accounts.Config.Changeset do
         String.starts_with?(domain, ".") ->
           [search_domain: "must not start with a dot"]
 
-        String.ends_with?(domain, ".local") || String.ends_with?(domain, ".local.") ->
-          [search_domain: "must not end with .local"]
-
         String.contains?(domain, "..") ->
           [search_domain: "must not contain consecutive dots"]
 
