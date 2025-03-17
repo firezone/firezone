@@ -77,7 +77,6 @@ mod ffi {
 
         #[swift_bridge(swift_name = "setDisabledResources", return_with = err_to_string)]
         fn set_disabled_resources(&mut self, disabled_resources: String) -> Result<(), String>;
-        fn disconnect(self);
     }
 
     extern "Swift" {
@@ -320,8 +319,10 @@ impl WrappedSession {
 
         Ok(())
     }
+}
 
-    fn disconnect(mut self) {
+impl Drop for WrappedSession {
+    fn drop(&mut self) {
         self.runtime.block_on(self.telemetry.stop());
     }
 }
