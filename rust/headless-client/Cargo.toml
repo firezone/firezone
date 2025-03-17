@@ -51,7 +51,7 @@ mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` test
 dirs = { workspace = true }
 libc = { workspace = true }
 nix = { workspace = true, features = ["fs", "user", "socket"] }
-resolv-conf = "0.7.0"
+resolv-conf = { workspace = true }
 rtnetlink = { workspace = true }
 sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 
