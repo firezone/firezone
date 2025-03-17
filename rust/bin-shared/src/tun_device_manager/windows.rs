@@ -426,7 +426,9 @@ fn start_recv_thread(
             let pkt = match receive_result {
                 Ok(pkt) => pkt,
                 Err(wintun::Error::ShuttingDown) => {
-                    tracing::debug!("Stopping recv worker thread because Wintun is shutting down");
+                    tracing::debug!(
+                        "Stopping TUN recv worker thread because Wintun is shutting down"
+                    );
                     break;
                 }
                 Err(e) => {
