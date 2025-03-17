@@ -10,7 +10,7 @@ use proptest_state_machine::Sequential;
 use reference::ReferenceState;
 use std::sync::atomic::{self, AtomicU32};
 use tracing_subscriber::{
-    layer::SubscriberExt as _, util::SubscriberInitExt as _, EnvFilter, Layer,
+    EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
 };
 
 mod assertions;

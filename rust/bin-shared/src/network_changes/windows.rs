@@ -63,21 +63,21 @@
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
 use crate::platform::DnsControlMethod;
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{Context as _, Result, anyhow};
 use std::thread;
 use tokio::sync::{
     mpsc::{self, error::TrySendError},
     oneshot,
 };
 use windows::{
-    core::{Interface, Result as WinResult, GUID},
     Win32::{
         Networking::NetworkListManager::{
-            INetworkEvents, INetworkEvents_Impl, INetworkListManager, NetworkListManager,
-            NLM_CONNECTIVITY, NLM_NETWORK_PROPERTY_CHANGE,
+            INetworkEvents, INetworkEvents_Impl, INetworkListManager, NLM_CONNECTIVITY,
+            NLM_NETWORK_PROPERTY_CHANGE, NetworkListManager,
         },
         System::Com,
     },
+    core::{GUID, Interface, Result as WinResult},
 };
 
 pub async fn new_dns_notifier(
@@ -384,10 +384,10 @@ mod async_dns {
         task::LocalSet,
     };
     use windows::Win32::{
-        Foundation::{CloseHandle, BOOLEAN, HANDLE, INVALID_HANDLE_VALUE},
+        Foundation::{BOOLEAN, CloseHandle, HANDLE, INVALID_HANDLE_VALUE},
         System::Registry,
         System::Threading::{
-            CreateEventA, RegisterWaitForSingleObject, UnregisterWaitEx, INFINITE,
+            CreateEventA, INFINITE, RegisterWaitForSingleObject, UnregisterWaitEx,
             WT_EXECUTEINWAITTHREAD,
         },
     };

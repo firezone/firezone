@@ -4,7 +4,7 @@
 
 use anyhow::{Context as _, Result};
 use futures::{
-    future::BoxFuture, stream::FuturesUnordered, task::AtomicWaker, FutureExt, StreamExt as _,
+    FutureExt, StreamExt as _, future::BoxFuture, stream::FuturesUnordered, task::AtomicWaker,
 };
 use std::{
     collections::HashMap,

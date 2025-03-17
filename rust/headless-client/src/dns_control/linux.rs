@@ -1,7 +1,7 @@
 use super::DnsController;
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use dns_types::DomainName;
-use firezone_bin_shared::{platform::DnsControlMethod, TunDeviceManager};
+use firezone_bin_shared::{TunDeviceManager, platform::DnsControlMethod};
 use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;

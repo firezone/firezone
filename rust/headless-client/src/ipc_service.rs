@@ -1,21 +1,21 @@
 use crate::{
-    device_id, dns_control::DnsController, known_dirs, signals, CallbackHandler, CliCommon,
-    ConnlibMsg,
+    CallbackHandler, CliCommon, ConnlibMsg, device_id, dns_control::DnsController, known_dirs,
+    signals,
 };
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use clap::Parser;
 use connlib_model::ResourceView;
 use firezone_bin_shared::{
-    platform::{tcp_socket_factory, udp_socket_factory, DnsControlMethod},
-    TunDeviceManager, TOKEN_ENV_KEY,
+    TOKEN_ENV_KEY, TunDeviceManager,
+    platform::{DnsControlMethod, tcp_socket_factory, udp_socket_factory},
 };
-use firezone_logging::{err_with_src, sentry_layer, telemetry_span, FilterReloadHandle};
+use firezone_logging::{FilterReloadHandle, err_with_src, sentry_layer, telemetry_span};
 use firezone_telemetry::Telemetry;
 use futures::{
+    Future as _, SinkExt as _, Stream as _,
     future::poll_fn,
     task::{Context, Poll},
-    Future as _, SinkExt as _, Stream as _,
 };
 use phoenix_channel::LoginUrl;
 use secrecy::SecretString;
@@ -30,14 +30,14 @@ use std::{
     time::Duration,
 };
 use tokio::{sync::mpsc, time::Instant};
-use tracing_subscriber::{layer::SubscriberExt, EnvFilter, Layer, Registry};
+use tracing_subscriber::{EnvFilter, Layer, Registry, layer::SubscriberExt};
 use url::Url;
 
 pub mod ipc;
 use backoff::ExponentialBackoffBuilder;
 use connlib_model::ResourceId;
 use ipc::{Server as IpcServer, ServiceId};
-use phoenix_channel::{get_user_agent, PhoenixChannel};
+use phoenix_channel::{PhoenixChannel, get_user_agent};
 use secrecy::Secret;
 
 #[cfg(target_os = "linux")]

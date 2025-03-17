@@ -1,17 +1,17 @@
 use super::{
+    QueryId,
     dns_records::DnsRecords,
-    reference::{private_key, PrivateKey},
-    sim_net::{any_ip_stack, any_port, host, Host},
-    sim_relay::{map_explode, SimRelay},
+    reference::{PrivateKey, private_key},
+    sim_net::{Host, any_ip_stack, any_port, host},
+    sim_relay::{SimRelay, map_explode},
     strategies::latency,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
-    QueryId,
 };
+use crate::{ClientState, proptest::*};
 use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::{DnsServer, Interface},
 };
-use crate::{proptest::*, ClientState};
 use bimap::BiMap;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, SiteId};
 use dns_types::{DomainName, Query, RecordData, RecordType};

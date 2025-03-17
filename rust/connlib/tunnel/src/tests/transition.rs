@@ -1,11 +1,11 @@
 use crate::{
-    client::{Resource, IPV4_RESOURCES, IPV6_RESOURCES},
+    client::{IPV4_RESOURCES, IPV6_RESOURCES, Resource},
     proptest::{host_v4, host_v6},
 };
 use connlib_model::{RelayId, ResourceId};
 use dns_types::{DomainName, RecordType};
 
-use super::sim_net::{any_ip_stack, any_port, Host};
+use super::sim_net::{Host, any_ip_stack, any_port};
 use crate::messages::DnsServer;
 use prop::collection;
 use proptest::{prelude::*, sample};
@@ -148,7 +148,7 @@ pub(crate) trait ReplyTo {
 
 impl ReplyTo for (SPort, DPort) {
     fn reply_to(self) -> Self {
-        (SPort(self.1 .0), DPort(self.0 .0))
+        (SPort(self.1.0), DPort(self.0.0))
     }
 }
 

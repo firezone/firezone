@@ -21,7 +21,7 @@ use std::{
     path::PathBuf,
 };
 use tokio::sync::mpsc;
-use tracing_subscriber::{fmt, layer::SubscriberExt as _, Layer as _, Registry};
+use tracing_subscriber::{Layer as _, Registry, fmt, layer::SubscriberExt as _};
 
 mod clear_logs;
 /// Generate a persistent device ID, stores it to disk, and reads it back.
@@ -37,8 +37,8 @@ pub mod uptime;
 pub use clear_logs::clear_logs;
 pub use dns_control::DnsController;
 pub use ipc_service::{
-    ipc, run_only_ipc_service, ClientMsg as IpcClientMsg, Error as IpcServiceError,
-    ServerMsg as IpcServerMsg,
+    ClientMsg as IpcClientMsg, Error as IpcServiceError, ServerMsg as IpcServerMsg, ipc,
+    run_only_ipc_service,
 };
 
 use ip_network::{Ipv4Network, Ipv6Network};

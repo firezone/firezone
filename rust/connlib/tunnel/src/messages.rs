@@ -1,7 +1,7 @@
 //! Message types that are used by both the gateway and client.
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
-use chrono::{serde::ts_seconds, DateTime, Utc};
+use chrono::{DateTime, Utc, serde::ts_seconds};
 use connlib_model::RelayId;
 use dns_types::DomainName;
 use ip_network::IpNetwork;

@@ -166,7 +166,7 @@ impl platform::Server {
 #[cfg(test)]
 mod tests {
     use super::{platform::Server, *};
-    use anyhow::{bail, ensure, Result};
+    use anyhow::{Result, bail, ensure};
     use futures::{SinkExt, StreamExt};
     use std::time::Duration;
     use tokio::{task::JoinHandle, time::timeout};

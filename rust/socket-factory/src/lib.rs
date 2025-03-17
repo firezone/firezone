@@ -8,7 +8,7 @@ use std::{
     io::{self, IoSliceMut},
     net::{IpAddr, SocketAddr},
     slice,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
 
 use std::any::Any;
@@ -247,7 +247,7 @@ impl UdpSocket {
                                 "stride ({}) is larger than buffer len ({})",
                                 meta.stride, meta.len
                             ),
-                        )))
+                        )));
                     }
                 }
 

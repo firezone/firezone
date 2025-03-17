@@ -1,24 +1,24 @@
 use crate::CliCommon;
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
 use futures::channel::mpsc;
 use std::{
-    ffi::{c_void, OsStr, OsString},
+    ffi::{OsStr, OsString, c_void},
     mem::size_of,
     time::Duration,
 };
 use windows::{
-    core::PWSTR,
     Win32::{
         Foundation::{CloseHandle, HANDLE},
         Security::{
-            GetTokenInformation, LookupAccountSidW, TokenElevation, TokenUser, SID_NAME_USE,
-            TOKEN_ELEVATION, TOKEN_QUERY, TOKEN_USER,
+            GetTokenInformation, LookupAccountSidW, SID_NAME_USE, TOKEN_ELEVATION, TOKEN_QUERY,
+            TOKEN_USER, TokenElevation, TokenUser,
         },
         System::Threading::{GetCurrentProcess, OpenProcessToken},
     },
+    core::PWSTR,
 };
 use windows_service::{
     service::{

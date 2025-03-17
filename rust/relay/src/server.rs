@@ -6,7 +6,7 @@ pub use crate::server::client_message::{
     Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
 };
 
-use crate::auth::{self, AuthenticatedMessage, MessageIntegrityExt, Nonces, FIREZONE};
+use crate::auth::{self, AuthenticatedMessage, FIREZONE, MessageIntegrityExt, Nonces};
 use crate::net_ext::IpAddrExt;
 use crate::{ClientSocket, IpStack, PeerSocket, SOFTWARE};
 use anyhow::Result;
@@ -14,8 +14,8 @@ use bytecodec::EncodeExt;
 use core::fmt;
 use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt as _;
-use opentelemetry::metrics::{Counter, UpDownCounter};
 use opentelemetry::KeyValue;
+use opentelemetry::metrics::{Counter, UpDownCounter};
 use rand::Rng;
 use secrecy::SecretString;
 use smallvec::SmallVec;
@@ -39,7 +39,7 @@ use stun_codec::rfc8656::attributes::{
 };
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
 use stun_codec::{Message, MessageClass, Method, TransactionId};
-use tracing::{field, Span};
+use tracing::{Span, field};
 use tracing_core::field::display;
 use uuid::Uuid;
 

@@ -12,17 +12,17 @@ use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6
 use connlib_model::ResourceView;
 use dns_types::DomainName;
 use firezone_logging::{err_with_src, sentry_layer};
-use firezone_telemetry::{Telemetry, ANDROID_DSN};
+use firezone_telemetry::{ANDROID_DSN, Telemetry};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
+    JNIEnv, JavaVM,
     objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
     sys::jlong,
-    JNIEnv, JavaVM,
 };
-use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
+use phoenix_channel::get_user_agent;
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};

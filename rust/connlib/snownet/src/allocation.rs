@@ -13,8 +13,9 @@ use std::{
     net::{SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant},
 };
-use str0m::{net::Protocol, Candidate};
+use str0m::{Candidate, net::Protocol};
 use stun_codec::{
+    DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
     rfc5389::{
         attributes::{
             ErrorCode, MessageIntegrity, Nonce, Realm, Software, Username, XorMappedAddress,
@@ -30,9 +31,8 @@ use stun_codec::{
         methods::{ALLOCATE, CHANNEL_BIND, REFRESH},
     },
     rfc8656::attributes::AdditionalAddressFamily,
-    DecodedMessage, Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId,
 };
-use tracing::{field, Span};
+use tracing::{Span, field};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
 

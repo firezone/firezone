@@ -33,7 +33,8 @@ impl<'a> ChannelData<'a> {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 format!(
-                    "channel data message specified {length} bytes but the payload is only {} bytes", payload.len()
+                    "channel data message specified {length} bytes but the payload is only {} bytes",
+                    payload.len()
                 ),
             ));
         }

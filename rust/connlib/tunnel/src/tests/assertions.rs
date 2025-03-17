@@ -8,7 +8,7 @@ use connlib_model::GatewayId;
 use ip_packet::IpPacket;
 use itertools::Itertools;
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque, hash_map::Entry},
     hash::Hash,
     marker::PhantomData,
     net::IpAddr,

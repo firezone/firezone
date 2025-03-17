@@ -1,8 +1,8 @@
 use anyhow::Result;
 use etherparse::{
+    Icmpv4Header, Icmpv4Type, Icmpv6Header, Icmpv6Type, IpNumber, Ipv6FlowLabel, Ipv6Header,
     icmpv4,
     icmpv6::{self, ParameterProblemHeader},
-    Icmpv4Header, Icmpv4Type, Icmpv6Header, Icmpv6Type, IpNumber, Ipv6FlowLabel, Ipv6Header,
 };
 use std::{io::Cursor, net::Ipv6Addr};
 

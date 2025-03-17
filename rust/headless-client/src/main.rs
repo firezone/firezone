@@ -2,24 +2,23 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_client_shared::Session;
 use firezone_bin_shared::{
-    new_dns_notifier, new_network_notifier,
+    TOKEN_ENV_KEY, TunDeviceManager, new_dns_notifier, new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},
-    TunDeviceManager, TOKEN_ENV_KEY,
 };
 use firezone_headless_client::{
-    device_id, signals, CallbackHandler, CliCommon, ConnlibMsg, DnsController,
+    CallbackHandler, CliCommon, ConnlibMsg, DnsController, device_id, signals,
 };
 use firezone_logging::telemetry_span;
 use firezone_telemetry::Telemetry;
 use futures::StreamExt as _;
-use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
+use phoenix_channel::get_user_agent;
 use secrecy::{Secret, SecretString};
 use std::{
     path::{Path, PathBuf},

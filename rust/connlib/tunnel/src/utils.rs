@@ -1,4 +1,4 @@
-use crate::{messages::Relay, REALM};
+use crate::{REALM, messages::Relay};
 use connlib_model::RelayId;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools as _;

@@ -13,12 +13,12 @@ use connlib_model::ResourceView;
 use dns_types::DomainName;
 use firezone_logging::err_with_src;
 use firezone_logging::sentry_layer;
-use firezone_telemetry::Telemetry;
 use firezone_telemetry::APPLE_DSN;
+use firezone_telemetry::Telemetry;
 use ip_network::{Ipv4Network, Ipv6Network};
-use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
+use phoenix_channel::get_user_agent;
 use secrecy::{Secret, SecretString};
 use std::sync::OnceLock;
 use std::{

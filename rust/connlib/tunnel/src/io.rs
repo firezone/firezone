@@ -18,7 +18,7 @@ use std::{
     net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
     sync::Arc,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
     time::{Duration, Instant},
 };
 use tracing::Instrument;
@@ -164,7 +164,10 @@ impl Io {
         buffers: &'b mut Buffers,
     ) -> Poll<
         io::Result<
-            Input<impl Iterator<Item = IpPacket> + use<'b>, impl Iterator<Item = DatagramIn<'b>> + use<'b>>,
+            Input<
+                impl Iterator<Item = IpPacket> + use<'b>,
+                impl Iterator<Item = DatagramIn<'b>> + use<'b>,
+            >,
         >,
     > {
         ready!(self.flush_send_queue(cx)?);
@@ -433,8 +436,10 @@ mod tests {
 
         async fn next(
             &mut self,
-        ) -> Input<impl Iterator<Item = IpPacket> + use<>, impl Iterator<Item = DatagramIn<'static>> + use<>>
-        {
+        ) -> Input<
+            impl Iterator<Item = IpPacket> + use<>,
+            impl Iterator<Item = DatagramIn<'static>> + use<>,
+        > {
             poll_fn(|cx| {
                 self.poll(
                     cx,
@@ -450,7 +455,10 @@ mod tests {
             &mut self,
         ) -> Poll<
             io::Result<
-                Input<impl Iterator<Item = IpPacket> + use<>, impl Iterator<Item = DatagramIn<'static>> + use<>>,
+                Input<
+                    impl Iterator<Item = IpPacket> + use<>,
+                    impl Iterator<Item = DatagramIn<'static>> + use<>,
+                >,
             >,
         > {
             self.poll(

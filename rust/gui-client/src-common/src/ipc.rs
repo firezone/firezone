@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result};
 use firezone_headless_client::{
-    ipc::{self, Error},
     IpcClientMsg,
+    ipc::{self, Error},
 };
 use futures::SinkExt;
 use secrecy::{ExposeSecret, SecretString};

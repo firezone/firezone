@@ -9,7 +9,7 @@
 //! and the math for compositing RGBA images in a mostly-gamma-correct way
 //! is simple enough to just replicate it here.
 
-use anyhow::{ensure, Context as _, Result};
+use anyhow::{Context as _, Result, ensure};
 
 pub struct Image {
     pub width: u32,

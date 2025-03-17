@@ -1,7 +1,7 @@
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
-use known_folders::{get_known_folder_path, KnownFolder};
+use known_folders::{KnownFolder, get_known_folder_path};
 use socket_factory::{TcpSocket, UdpSocket};
 use std::{
     cmp::Ordering,
@@ -18,8 +18,8 @@ use windows::Win32::NetworkManagement::{
 };
 use windows::Win32::{
     NetworkManagement::IpHelper::{
-        CreateIpForwardEntry2, DeleteIpForwardEntry2, GetBestRoute2, GetIpForwardTable2,
-        GET_ADAPTERS_ADDRESSES_FLAGS, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
+        CreateIpForwardEntry2, DeleteIpForwardEntry2, GET_ADAPTERS_ADDRESSES_FLAGS, GetBestRoute2,
+        GetIpForwardTable2, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
     },
     NetworkManagement::Ndis::IfOperStatusUp,
     Networking::WinSock::{ADDRESS_FAMILY, AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR_INET},

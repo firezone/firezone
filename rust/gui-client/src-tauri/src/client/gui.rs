@@ -7,7 +7,7 @@ use crate::client::{
     self, about, logging,
     settings::{self},
 };
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use common::system_tray::Event as TrayMenuEvent;
 use firezone_gui_client_common::{
     self as common,

@@ -6,13 +6,13 @@ use std::{fmt, io, num::NonZeroU8};
 
 use nu_ansi_term::{Color, Style};
 use time::format_description::well_known::{
-    iso8601::{Config, EncodedConfig, TimePrecision},
     Iso8601,
+    iso8601::{Config, EncodedConfig, TimePrecision},
 };
 use tracing::{Event, Level, Subscriber};
 use tracing_log::NormalizeEvent as _;
 use tracing_subscriber::{
-    fmt::{format::Writer, FmtContext, FormatEvent, FormatFields, FormattedFields},
+    fmt::{FmtContext, FormatEvent, FormatFields, FormattedFields, format::Writer},
     registry::LookupSpan,
 };
 
