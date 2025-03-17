@@ -204,10 +204,6 @@ pub struct Tun {
 
 /// All state relevant to the WinTUN device.
 struct TunState {
-    #[expect(
-        dead_code,
-        reason = "The send/recv threads have `Weak` references to this which we need to keep alive"
-    )]
     session: Arc<wintun::Session>,
 
     outbound_tx: PollSender<IpPacket>,
@@ -250,6 +246,12 @@ impl Drop for Tun {
         if let Err(error) = send_thread.join() {
             tracing::error!("`Tun::send_thread` panicked: {error:?}");
         }
+    }
+}
+
+impl Drop for TunState {
+    fn drop(&mut self) {
+        let _ = self.session.shutdown(); // Cancels any `receive_blocking` calls.
     }
 }
 
@@ -424,7 +426,9 @@ fn start_recv_thread(
             let pkt = match receive_result {
                 Ok(pkt) => pkt,
                 Err(wintun::Error::ShuttingDown) => {
-                    tracing::debug!("Stopping recv worker thread because Wintun is shutting down");
+                    tracing::debug!(
+                        "Stopping TUN recv worker thread because Wintun is shutting down"
+                    );
                     break;
                 }
                 Err(e) => {
