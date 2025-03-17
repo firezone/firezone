@@ -52,8 +52,11 @@
             packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.pnpm pkgs.cargo-sort pkgs.cargo-deny pkgs.cargo-autoinherit ];
             buildInputs = packages;
             src = ../..;
-
             PKG_CONFIG_PATH = with pkgs; "${glib.dev}/lib/pkgconfig:${libsoup_3.dev}/lib/pkgconfig:${webkitgtk_4_1.dev}/lib/pkgconfig:${at-spi2-atk.dev}/lib/pkgconfig:${gtk3.dev}/lib/pkgconfig:${gdk-pixbuf.dev}/lib/pkgconfig:${cairo.dev}/lib/pkgconfig:${pango.dev}/lib/pkgconfig:${harfbuzz.dev}/lib/pkgconfig";
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+                pkgs.libayatana-appindicator
+              ];
+            # WEBKIT_DISABLE_DMABUF_RENDERER = 1; # https://github.com/tauri-apps/tauri/issues/9304
           };
         }
       );
