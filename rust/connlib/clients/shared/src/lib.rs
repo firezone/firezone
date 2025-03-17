@@ -26,7 +26,8 @@ const PHOENIX_TOPIC: &str = "client";
 
 /// A session is the entry-point for connlib, maintains the runtime and the tunnel.
 ///
-/// A session is created using [Session::connect], then to stop a session we use [Session::disconnect].
+/// A session is created using [`Session::connect`].
+/// To stop the session, simply drop this struct.
 #[derive(Clone)]
 pub struct Session {
     channel: tokio::sync::mpsc::UnboundedSender<Command>,
