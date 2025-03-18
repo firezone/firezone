@@ -246,6 +246,7 @@ defmodule Web.Sites.NewToken do
       end
 
     [
+      {"FIREZONE_ID", Ecto.UUID.generate()},
       {"FIREZONE_TOKEN", encoded_token},
       api_url_override
     ]
@@ -266,7 +267,6 @@ defmodule Web.Sites.NewToken do
       "--health-cmd=\"ip link | grep tun-firezone\"",
       "--name=firezone-gateway",
       "--cap-add=NET_ADMIN",
-      "--volume /var/lib/firezone",
       "--sysctl net.ipv4.ip_forward=1",
       "--sysctl net.ipv4.conf.all.src_valid_mark=1",
       "--sysctl net.ipv6.conf.all.disable_ipv6=0",
