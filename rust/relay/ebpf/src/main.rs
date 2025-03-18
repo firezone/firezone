@@ -2,8 +2,9 @@
 #![no_main]
 
 use aya_ebpf::{
-    bindings::{TC_ACT_PIPE, TC_ACT_SHOT},
-    helpers::bpf_redirect,
+    bindings::{BPF_F_RECOMPUTE_CSUM, TC_ACT_PIPE, TC_ACT_SHOT},
+    cty::c_void,
+    helpers::{bpf_redirect, bpf_skb_store_bytes},
     macros::{classifier, map},
     maps::HashMap,
     programs::TcContext,
@@ -120,39 +121,48 @@ fn try_handle_turn(ctx: TcContext) -> Result<i32, ()> {
             return Ok(TC_ACT_SHOT);
         };
 
+        unsafe { *ipv4hdr }.dst_addr = port_and_peer.dest_ip();
+        unsafe { *ipv4hdr }.tot_len = (tot_len - 4).to_be();
+        unsafe { *udphdr }.source = port_and_peer.allocation_port();
+        unsafe { *udphdr }.dest = port_and_peer.dest_port();
+        unsafe { *udphdr }.len = (udp_payload_len - 4).to_be();
+
+        let Ok(encapsulated_data_ptr) = ptr_at::<u8>(&ctx, udp_payload_offset + 4) else {
+            return Ok(TC_ACT_PIPE);
+        };
+
+        // NOTE: TC programs are not allowed to modify the packet so this fails. Need to use XDP instead ...
+        unsafe {
+            let ret = bpf_skb_store_bytes(
+                ctx.skb.skb,
+                udp_payload_offset as u32,
+                encapsulated_data_ptr as *const c_void,
+                (udp_payload_len - 4) as u32,
+                BPF_F_RECOMPUTE_CSUM as u64,
+            );
+
+            if ret != 0 {
+                return Err(());
+            }
+        }
+
+        let ingress_ifindex = unsafe { (*(ctx.skb.skb)).ingress_ifindex };
+
+        let res = unsafe { bpf_redirect(ingress_ifindex, 0) as i32 };
+
         info!(
             &ctx,
-            "Redirecting message from {:i}:{} on channel {} to {:i}:{} on port {}",
+            "Redirecting message from {:i}:{} on channel {} to {:i}:{} on port {}; res = {}",
             source_addr,
             source_port,
             channel_number,
             port_and_peer.dest_ip(),
             port_and_peer.dest_port(),
             port_and_peer.allocation_port(),
+            res
         );
 
-        unsafe { *ipv4hdr }.dst_addr = port_and_peer.dest_ip();
-        unsafe { *udphdr }.source = port_and_peer.allocation_port();
-        unsafe { *udphdr }.dest = port_and_peer.dest_port();
-
-        // Remove the channel header
-        ctx.adjust_room(-4, 0, 0);
-        ctx.l3_csum_replace(
-            EthHdr::LEN + mem::offset_of!(Ipv4Hdr, check),
-            tot_len as u64,
-            (tot_len - 4) as u64,
-            0,
-        );
-        ctx.l4_csum_replace(
-            EthHdr::LEN + Ipv4Hdr::LEN + mem::offset_of!(UdpHdr, check),
-            udp_payload_len as u64,
-            (udp_payload_len - 4) as u64,
-            0,
-        );
-
-        let ingress_ifindex = unsafe { (*(ctx.skb.skb)).ingress_ifindex };
-
-        Ok(unsafe { bpf_redirect(ingress_ifindex, 0) as i32 })
+        Ok(res)
     } else {
         try_handle_peer(ctx)
     }
