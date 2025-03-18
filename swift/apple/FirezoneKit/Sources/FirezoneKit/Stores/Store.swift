@@ -97,7 +97,7 @@ public final class Store: ObservableObject {
 
     try ipcClient().subscribeToVPNStatusUpdates(handler: statusChangeHandler)
 
-    if autoStart && status == .disconnected {
+    if autoStart {
       // Try to connect on start
       try ipcClient().start()
     }
