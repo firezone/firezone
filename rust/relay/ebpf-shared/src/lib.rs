@@ -1,3 +1,7 @@
+//! Shared data structures between the kernel and userspace.
+//!
+//! To learn more about the layout requirements of these structs, read <https://github.com/foniod/redbpf/issues/150#issuecomment-964017857>.
+
 #![cfg_attr(not(feature = "userspace"), no_std)]
 
 #[repr(C)]
