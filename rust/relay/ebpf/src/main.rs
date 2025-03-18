@@ -25,8 +25,7 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 }
 
 #[map]
-static CHANNEL_DATA_TO_UDP: HashMap<ClientAndChannel, PortAndPeer> =
-    HashMap::with_max_entries(1024, 0);
+static CHANNELS_TO_UDP: HashMap<ClientAndChannel, PortAndPeer> = HashMap::with_max_entries(1024, 0);
 
 // #[map]
 // static UDP_TO_CHANNEL_DATA: HashMap<(AllocationPort, SocketAddr), (ChannelNumber, SocketAddr)> =
@@ -103,7 +102,7 @@ fn try_handle_turn(ctx: TcContext) -> Result<i32, ()> {
         }
 
         let binding = unsafe {
-            CHANNEL_DATA_TO_UDP.get(&ClientAndChannel(
+            CHANNELS_TO_UDP.get(&ClientAndChannel(
                 SocketAddrV4 {
                     ipv4_address: source_addr,
                     port: source_port,
@@ -119,10 +118,10 @@ fn try_handle_turn(ctx: TcContext) -> Result<i32, ()> {
             },
         )) = binding
         else {
-            // warn!(
-            //     "No channel binding from {:i} port {} for channel {}",
-            //     source_addr, source_port, channel_number,
-            // );
+            debug!(
+                "No channel binding from {:i} port {} for channel {}",
+                source_addr, source_port, channel_number,
+            );
 
             return Ok(TC_ACT_SHOT);
         };

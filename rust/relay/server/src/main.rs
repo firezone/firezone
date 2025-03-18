@@ -157,7 +157,7 @@ async fn try_main(args: Args) -> Result<()> {
     program.attach("eth0", TcAttachType::Ingress)?;
 
     let channel_data_to_udp = aya::maps::HashMap::<_, ClientAndChannel, PortAndPeer>::try_from(
-        bpf.map_mut("CHANNEL_DATA_TO_UDP").context("no map")?,
+        bpf.map_mut("CHANNELS_TO_UDP").context("no map")?,
     )?;
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
