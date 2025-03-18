@@ -204,9 +204,6 @@ class Adapter {
 
     // Cancel network monitor
     networkMonitor?.cancel()
-
-    // Shutdown the tunnel, assigning nil to session will invoke `Drop` on the Rust side
-    session = nil
   }
 
   /// Start the tunnel.
