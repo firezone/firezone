@@ -71,6 +71,9 @@
                   <p style="margin: 0; line-height: 24px">
                     The latest Firezone Gateway release is: <%= @latest_version %>
                   </p>
+                  <p style="margin: 0; line-height: 24px">
+                    <a href="https://www.firezone.dev/changelog?tab=gateway" target="_blank">See what's changed in this release</a>.
+                  </p>
                   <div role="separator" style="line-height: 16px">&zwj;</div>
                   <p style="margin: 0; line-height: 24px;">
                     The following list of Gateways in your Firezone Account can be updated.
@@ -91,7 +94,7 @@
                   <div role="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0;">&zwj;</div>
                   <p style="margin: 0; line-height: 24px;">
                     We recommend updating the Gateways at your earliest convenience. Help on how to update Gateways can be found
-                    in our <a href="https://www.firezone.dev/kb/administer/upgrading">Firezone Gateway Upgrade Guide</a>
+                    in our <a href="https://www.firezone.dev/kb/administer/upgrading">Firezone Gateway Upgrade Guide</a>.
                     <br>
                     <br>
                     Thanks, <br>The Firezone Team
