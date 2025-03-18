@@ -2,7 +2,7 @@ Gateway Update Available!
 
 The latest Firezone Gateway release is: <%= @latest_version %>
 
-See what's changed: https://www.firezone.dev/changelog?utm_source=email
+See what's changed: https://www.firezone.dev/changelog?tab=gateway
 
 The following list of Gateways in your Firezone Account can be updated:
 <%= for gateway <- @gateways do %>

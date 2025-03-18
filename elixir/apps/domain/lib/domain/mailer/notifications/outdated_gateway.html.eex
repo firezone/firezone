@@ -72,7 +72,7 @@
                     The latest Firezone Gateway release is: <%= @latest_version %>
                   </p>
                   <p style="margin: 0; line-height: 24px">
-                    <a href="https://www.firezone.dev/changelog?utm_source=email" target="_blank">See what's changed in this release</a>.
+                    <a href="https://www.firezone.dev/changelog?tab=gateway" target="_blank">See what's changed in this release</a>.
                   </p>
                   <div role="separator" style="line-height: 16px">&zwj;</div>
                   <p style="margin: 0; line-height: 24px;">
