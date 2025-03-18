@@ -434,10 +434,7 @@ impl<'a> Handler<'a> {
                 error_msg,
                 is_authentication_error,
             } => {
-                if let Some(session) = self.session.take() {
-                    // Identical to dropping, but looks nicer
-                    session.connlib.disconnect();
-                }
+                let _ = self.session.take();
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg,
@@ -491,9 +488,7 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::ConnectResult(result)).await?
             }
             ClientMsg::Disconnect => {
-                if let Some(session) = self.session.take() {
-                    // Identical to dropping it, but looks nicer.
-                    session.connlib.disconnect();
+                if self.session.take().is_some() {
                     self.dns_controller.deactivate()?;
                 }
                 // Always send `DisconnectedGracefully` even if we weren't connected,

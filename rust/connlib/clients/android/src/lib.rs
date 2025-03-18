@@ -460,10 +460,9 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 ) {
     let session = session_ptr as *mut SessionWrapper;
     catch_and_throw(&mut env, |_| {
-        let mut session = Box::from_raw(session);
+        let mut session = Box::from_raw(session); // Creating an owned `Box` from this will properly drop this at the end of the scope.
 
         session.runtime.block_on(session.telemetry.stop());
-        session.inner.disconnect();
     });
 }
 
