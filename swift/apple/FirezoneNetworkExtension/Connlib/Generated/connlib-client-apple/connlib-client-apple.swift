@@ -31,10 +31,6 @@ extension WrappedSession {
     class public func connect<GenericIntoRustString: IntoRustString>(_ api_url: GenericIntoRustString, _ token: GenericIntoRustString, _ device_id: GenericIntoRustString, _ account_slug: GenericIntoRustString, _ device_name_override: Optional<GenericIntoRustString>, _ os_version_override: Optional<GenericIntoRustString>, _ log_dir: GenericIntoRustString, _ log_filter: GenericIntoRustString, _ callback_handler: CallbackHandler, _ device_info: GenericIntoRustString) throws -> WrappedSession {
         try { let val = __swift_bridge__$WrappedSession$connect({ let rustString = api_url.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), { let rustString = token.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), { let rustString = device_id.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), { let rustString = account_slug.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), { if let rustString = optionalStringIntoRustString(device_name_override) { rustString.isOwned = false; return rustString.ptr } else { return nil } }(), { if let rustString = optionalStringIntoRustString(os_version_override) { rustString.isOwned = false; return rustString.ptr } else { return nil } }(), { let rustString = log_dir.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), { let rustString = log_filter.intoRustString(); rustString.isOwned = false; return rustString.ptr }(), Unmanaged.passRetained(callback_handler).toOpaque(), { let rustString = device_info.intoRustString(); rustString.isOwned = false; return rustString.ptr }()); if val.is_ok { return WrappedSession(ptr: val.ok_or_err!) } else { throw RustString(ptr: val.ok_or_err!) } }()
     }
-
-    public func disconnect() {
-        __swift_bridge__$WrappedSession$disconnect({isOwned = false; return ptr;}())
-    }
 }
 public class WrappedSessionRefMut: WrappedSessionRef {
     public override init(ptr: UnsafeMutableRawPointer) {
