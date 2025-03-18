@@ -23,6 +23,11 @@ if [ -z "$FIREZONE_TOKEN" ]; then
     exit 1
 fi
 
+if [ -z "$FIREZONE_ID" ]; then
+    echo "FIREZONE_ID is required"
+    exit 1
+fi
+
 # Setup user and group
 sudo groupadd -f firezone
 id -u firezone >/dev/null 2>&1 || sudo useradd -r -g firezone -s /sbin/nologin firezone
@@ -43,8 +48,6 @@ User=firezone
 Group=firezone
 PermissionsStartOnly=true
 SyslogIdentifier=firezone-gateway
-StateDirectory=firezone
-StateDirectoryMode=0755
 
 # Environment variables
 Environment="FIREZONE_NAME=$FIREZONE_NAME"
@@ -101,9 +104,6 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
 # while restricting it to only that capability.
 AmbientCapabilities=CAP_NET_ADMIN
 CapabilityBoundingSet=CAP_NET_ADMIN
-
-# Allow write access only to specific directories needed at runtime.
-ReadWriteDirectories=/var/lib/firezone
 
 # Make some sensitive paths inaccessible.
 InaccessiblePaths=/root /home
