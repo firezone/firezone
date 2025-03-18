@@ -71,7 +71,39 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
     OpenIDConnect.sign_out(provider, identity, redirect_url)
   end
 
-  def fetch_service_account_token(%Provider{} = provider) do
+  def fetch_access_token(%Provider{} = provider) do
+    case GoogleWorkspace.fetch_service_account_access_token(provider) do
+      {:ok, access_token} ->
+        {:ok, access_token}
+
+      {:error, :missing_service_account_key} ->
+        {:ok, provider.adapter_state["access_token"]}
+
+      {:error, {401, _response} = reason} ->
+        Logger.warning("401 while fetching service account access token",
+          account_id: provider.account_id,
+          account_slug: provider.account.slug,
+          provider_id: provider.id,
+          provider_adapter: provider.adapter,
+          reason: inspect(reason)
+        )
+
+        {:error, reason}
+
+      {:error, reason} ->
+        Logger.error("Failed to fetch service account access token",
+          account_id: provider.account_id,
+          account_slug: provider.account.slug,
+          provider_id: provider.id,
+          provider_adapter: provider.adapter,
+          reason: inspect(reason)
+        )
+
+        {:error, reason}
+    end
+  end
+
+  def fetch_service_account_access_token(%Provider{} = provider) do
     key = provider.adapter_config["service_account_json_key"]
     sub = provider.adapter_state["userinfo"]["sub"]
 

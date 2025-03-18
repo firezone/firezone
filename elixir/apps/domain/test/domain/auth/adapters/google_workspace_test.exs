@@ -139,7 +139,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
     end
   end
 
-  describe "fetch_service_account_token/1" do
+  describe "fetch_service_account_access_token/1" do
     test "generates a valid JWT" do
       Bypass.open()
       |> Mocks.GoogleWorkspaceDirectory.mock_token_endpoint()
@@ -147,7 +147,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
       provider = Repo.get!(Auth.Provider, provider.id)
 
-      assert fetch_service_account_token(provider) == {:ok, "GOOGLE_0AUTH_ACCESS_TOKEN"}
+      assert fetch_service_account_access_token(provider) == {:ok, "GOOGLE_0AUTH_ACCESS_TOKEN"}
     end
 
     test "returns error when API is not available" do
@@ -158,7 +158,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
       {provider, _bypass} = Fixtures.Auth.start_and_create_google_workspace_provider()
       provider = Repo.get!(Auth.Provider, provider.id)
 
-      assert fetch_service_account_token(provider) ==
+      assert fetch_service_account_access_token(provider) ==
                {:error, %Mint.TransportError{reason: :econnrefused}}
     end
   end
