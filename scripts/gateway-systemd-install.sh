@@ -64,7 +64,7 @@ Environment="OTLP_GRPC_ENDPOINT=$FIREZONE_OTLP_GRPC_ENDPOINT"
 ExecStartPre=/usr/local/bin/firezone-gateway-init
 
 # ExecStart script
-ExecStart=/usr/local/bin/firezone-gateway
+ExecStart=/opt/firezone/bin/firezone-gateway
 
 # Restart on failure
 TimeoutStartSec=3s
@@ -126,29 +126,42 @@ cat <<EOF | sudo tee /usr/local/bin/firezone-gateway-init
 
 set -ue
 
+# Define the target directory and binary path
+TARGET_DIR="/opt/firezone/bin"
+BINARY_PATH="\$TARGET_DIR/firezone-gateway"
+
+# Create the directory if it doesn’t exist
+if [ ! -d "\$TARGET_DIR" ]; then
+  mkdir -p "\$TARGET_DIR"
+  chown firezone:firezone "\$TARGET_DIR"
+  chmod 0755 "\$TARGET_DIR"
+fi
+
+
 # Download ${FIREZONE_VERSION} version of the gateway if it doesn't already exist
-if [ ! -e /usr/local/bin/firezone-gateway ]; then
-  echo "/usr/local/bin/firezone-gateway not found."
+if [ ! -e "\$BINARY_PATH" ]; then
+  echo "\$BINARY_PATH not found."
   echo "Downloading ${FIREZONE_VERSION} version from ${FIREZONE_ARTIFACT_URL}..."
   arch=\$(uname -m)
 
   # See https://www.firezone.dev/changelog for available binaries
-  curl -fsSL ${FIREZONE_ARTIFACT_URL}/${FIREZONE_VERSION}/\$arch -o /tmp/firezone-gateway
+  curl -fsSL ${FIREZONE_ARTIFACT_URL}/${FIREZONE_VERSION}/\$arch -o "\$BINARY_PATH.download"
 
-  if file /tmp/firezone-gateway | grep -q "ELF"; then
-    mv /tmp/firezone-gateway /usr/local/bin/firezone-gateway
+  if file "\$BINARY_PATH.download" | grep -q "ELF"; then
+    mv "\$BINARY_PATH.download" "\$BINARY_PATH"
   else
-    echo "/tmp/firezone-gateway is not an executable!"
+    echo "\$BINARY_PATH.download is not an executable!"
     echo "Ensure '${FIREZONE_ARTIFACT_URL}/${FIREZONE_VERSION}/\$arch' is accessible from this machine,"
     echo "or download binary manually and install to /usr/local/bin/firezone-gateway."
     exit 1
   fi
 else
-  echo "/usr/local/bin/firezone-gateway found. Skipping download."
+  echo "\$BINARY_PATH found. Skipping download."
 fi
 
 # Set proper permissions on each start
-chmod 0755 /usr/local/bin/firezone-gateway
+chmod 0755 "\$BINARY_PATH"
+chown firezone:firezone "\$BINARY_PATH"
 
 # Enable masquerading for ethernet and wireless interfaces
 iptables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i tun-firezone -j ACCEPT
