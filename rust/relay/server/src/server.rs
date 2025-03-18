@@ -926,11 +926,8 @@ where
             (SocketAddr::V4(client), SocketAddr::V4(peer)) => {
                 self.channel_data_to_udp
                     .insert(
-                        ClientAndChannel(
-                            client.into(),
-                            firezone_relay_ebpf_shared::ChannelNumber(requested_channel.value()),
-                        ),
-                        PortAndPeer(id.0, peer.into()),
+                        ClientAndChannel::from_socket(client, requested_channel.value()),
+                        PortAndPeer::from_socket(peer, id.0),
                         0,
                     )
                     .expect("failed to insert into eBPF map");

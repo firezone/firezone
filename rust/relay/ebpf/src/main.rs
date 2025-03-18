@@ -9,7 +9,7 @@ use aya_ebpf::{
     programs::TcContext,
 };
 use aya_log_ebpf::*;
-use firezone_relay_ebpf_shared::{ChannelNumber, ClientAndChannel, PortAndPeer, SocketAddrV4};
+use firezone_relay_ebpf_shared::{ClientAndChannel, PortAndPeer};
 
 use core::mem;
 use network_types::{
@@ -25,7 +25,8 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 }
 
 #[map]
-static CHANNELS_TO_UDP: HashMap<ClientAndChannel, PortAndPeer> = HashMap::with_max_entries(1024, 0);
+static CHANNELS_TO_UDP: HashMap<ClientAndChannel, PortAndPeer> =
+    HashMap::with_max_entries(0x1000, 0);
 
 // #[map]
 // static UDP_TO_CHANNEL_DATA: HashMap<(AllocationPort, SocketAddr), (ChannelNumber, SocketAddr)> =
@@ -72,9 +73,12 @@ fn try_handle_turn(ctx: TcContext) -> Result<i32, ()> {
     let udphdr: *const UdpHdr = ptr_at(&ctx, EthHdr::LEN + Ipv4Hdr::LEN)?;
 
     let source_port = u16::from_be(unsafe { (*udphdr).source });
+    let dest_port = u16::from_be(unsafe { (*udphdr).dest });
     let udp_payload_len = u16::from_be(unsafe { (*udphdr).len });
 
-    if source_port == 3478 {
+    trace!(&ctx, "New packet from {:i}:{}", source_addr, source_port);
+
+    if dest_port == 3478 {
         // Handle channel data messages
         let udp_payload_offset = EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN;
 
@@ -96,31 +100,21 @@ fn try_handle_turn(ctx: TcContext) -> Result<i32, ()> {
         let length = u16::from_be(unsafe { *length_ptr });
 
         if udp_payload_offset + 4 + length as usize > ctx.data_end() {
-            // warn!("Length of channel data message out of bounds");
+            warn!(&ctx, "Length of channel data message out of bounds");
 
             return Ok(TC_ACT_SHOT);
         }
 
-        let binding = unsafe {
-            CHANNELS_TO_UDP.get(&ClientAndChannel(
-                SocketAddrV4 {
-                    ipv4_address: source_addr,
-                    port: source_port,
-                },
-                ChannelNumber(channel_number),
-            ))
-        };
-        let Some(PortAndPeer(
-            new_src_port,
-            SocketAddrV4 {
-                ipv4_address: dst_ip,
-                port: dst_port,
-            },
-        )) = binding
-        else {
+        let client_and_channel = ClientAndChannel::new(source_addr, source_port, channel_number);
+
+        let binding = unsafe { CHANNELS_TO_UDP.get(&client_and_channel) };
+        let Some(port_and_peer) = binding else {
             debug!(
-                "No channel binding from {:i} port {} for channel {}",
-                source_addr, source_port, channel_number,
+                &ctx,
+                "No channel binding from {:x}:{:x} for channel {:x}",
+                source_addr,
+                source_port,
+                channel_number,
             );
 
             return Ok(TC_ACT_SHOT);
@@ -128,18 +122,18 @@ fn try_handle_turn(ctx: TcContext) -> Result<i32, ()> {
 
         info!(
             &ctx,
-            "Redirecting message from {:i}:{} on channel {} to {:i}{} on port {}",
+            "Redirecting message from {:i}:{} on channel {} to {:i}:{} on port {}",
             source_addr,
             source_port,
             channel_number,
-            *dst_ip,
-            *dst_port,
-            *new_src_port
+            port_and_peer.dest_ip(),
+            port_and_peer.dest_port(),
+            port_and_peer.allocation_port(),
         );
 
-        unsafe { *ipv4hdr }.dst_addr = *dst_ip;
-        unsafe { *udphdr }.source = *new_src_port;
-        unsafe { *udphdr }.dest = *dst_port;
+        unsafe { *ipv4hdr }.dst_addr = port_and_peer.dest_ip();
+        unsafe { *udphdr }.source = port_and_peer.allocation_port();
+        unsafe { *udphdr }.dest = port_and_peer.dest_port();
 
         // Remove the channel header
         ctx.adjust_room(-4, 0, 0);

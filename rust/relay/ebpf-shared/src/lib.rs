@@ -1,44 +1,84 @@
 #![cfg_attr(not(feature = "userspace"), no_std)]
 
-#[repr(C, align(32))]
+#[repr(C)]
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "userspace", derive(Debug))]
-pub struct SocketAddrV4 {
-    pub ipv4_address: u32,
-    pub port: u16,
+pub struct ClientAndChannel {
+    ipv4_address: u32,
+    _padding_ipv4_address: [u8; 4],
+
+    port: u16,
+    _padding_port: [u8; 6],
+
+    channel: u16,
+    _padding_channel: [u8; 6],
+
+    _padding_struct: [u8; 40],
 }
 
-#[repr(C, align(32))]
-#[derive(Clone, Copy)]
-#[cfg_attr(feature = "userspace", derive(Debug))]
-pub struct ChannelNumber(pub u16);
+impl ClientAndChannel {
+    pub fn new(ipv4_address: u32, port: u16, channel: u16) -> Self {
+        Self {
+            ipv4_address: ipv4_address.to_be(),
+            _padding_ipv4_address: [0u8; 4],
 
-#[repr(C, align(32))]
-#[derive(Clone, Copy)]
-#[cfg_attr(feature = "userspace", derive(Debug))]
-pub struct ClientAndChannel(pub SocketAddrV4, pub ChannelNumber);
+            port: port.to_be(),
+            _padding_port: [0u8; 6],
 
-#[repr(C, align(32))]
+            channel: channel.to_be(),
+            _padding_channel: [0u8; 6],
+
+            _padding_struct: [0u8; 40],
+        }
+    }
+
+    pub fn from_socket(src: core::net::SocketAddrV4, channel: u16) -> Self {
+        Self::new(src.ip().to_bits(), src.port(), channel)
+    }
+}
+
+#[repr(C)]
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "userspace", derive(Debug))]
-pub struct PortAndPeer(pub u16, pub SocketAddrV4);
+pub struct PortAndPeer {
+    ipv4_address: u32,
+    _padding_ipv4_address: [u8; 4],
+
+    allocation_port: u16,
+    _padding_allocation_port: [u8; 6],
+
+    dest_port: u16,
+    _padding_dest_port: [u8; 6],
+}
+
+impl PortAndPeer {
+    pub fn from_socket(dst: core::net::SocketAddrV4, allocation_port: u16) -> Self {
+        Self {
+            ipv4_address: dst.ip().to_bits(),
+            _padding_ipv4_address: [0u8; 4],
+            allocation_port,
+            _padding_allocation_port: [0u8; 6],
+            dest_port: dst.port(),
+            _padding_dest_port: [0u8; 6],
+        }
+    }
+
+    pub fn dest_ip(&self) -> u32 {
+        self.ipv4_address
+    }
+
+    pub fn allocation_port(&self) -> u16 {
+        self.allocation_port
+    }
+
+    pub fn dest_port(&self) -> u16 {
+        self.dest_port
+    }
+}
 
 #[cfg(feature = "userspace")]
 mod userspace {
     use super::*;
-
-    unsafe impl aya::Pod for SocketAddrV4 {}
-
-    impl From<std::net::SocketAddrV4> for SocketAddrV4 {
-        fn from(value: std::net::SocketAddrV4) -> Self {
-            SocketAddrV4 {
-                ipv4_address: value.ip().to_bits(),
-                port: value.port(),
-            }
-        }
-    }
-
-    unsafe impl aya::Pod for ChannelNumber {}
 
     unsafe impl aya::Pod for ClientAndChannel {}
 
@@ -48,29 +88,9 @@ mod userspace {
 #[cfg(all(test, feature = "userspace"))]
 mod tests {
     use super::*;
-    use std::mem::{align_of, size_of};
 
     #[test]
-    fn check_alignments() {
-        println!(
-            "SocketAddrV4: size = {}, align = {}",
-            size_of::<SocketAddrV4>(),
-            align_of::<SocketAddrV4>()
-        );
-        println!(
-            "ChannelNumber: size = {}, align = {}",
-            size_of::<ChannelNumber>(),
-            align_of::<ChannelNumber>()
-        );
-        println!(
-            "ClientAndChannel: size = {}, align = {}",
-            size_of::<ClientAndChannel>(),
-            align_of::<ClientAndChannel>()
-        );
-        println!(
-            "PortAndPeer: size = {}, align = {}",
-            size_of::<PortAndPeer>(),
-            align_of::<PortAndPeer>()
-        );
+    fn client_and_channel_as_size_64() {
+        assert_eq!(std::mem::size_of::<ClientAndChannel>(), 64)
     }
 }
