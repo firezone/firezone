@@ -4,6 +4,8 @@
 use crate::error::Error;
 use aya_ebpf::{
     bindings::xdp_action,
+    cty::c_void,
+    helpers::{bpf_csum_diff, bpf_xdp_adjust_head, bpf_xdp_load_bytes, bpf_xdp_store_bytes},
     macros::{map, xdp},
     maps::HashMap,
     programs::XdpContext,
@@ -59,7 +61,8 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     let ipv4hdr_slice = slice_mut_at::<{ Ipv4Header::MIN_LEN }>(ctx, Ethernet2Header::LEN)?;
     let ipv4hdr = parse_ipv4(ipv4hdr_slice)?;
 
-    let source_addr = u32::from_be_bytes(ipv4hdr.source());
+    let src_addr = u32::from_be_bytes(ipv4hdr.source());
+    let dst_addr = u32::from_be_bytes(ipv4hdr.destination());
     let tot_len = ipv4hdr.total_len();
     // let ipv4hdr_length = usize::from(ipv4hdr.ihl() * 4);
     let ipv4hdr_length = Ipv4Header::MIN_LEN;
@@ -72,15 +75,13 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
         slice_mut_at::<{ UdpHeader::LEN }>(ctx, Ethernet2Header::LEN + ipv4hdr_length)?;
     let udphdr = parse_udp(udphdr_slice)?;
 
-    let source_port = udphdr.source_port();
-    let dest_port = udphdr.destination_port();
+    let src_port = udphdr.source_port();
+    let dst_port = udphdr.destination_port();
     let udp_payload_len = udphdr.length();
 
-    trace!(ctx, "New packet from {:i}:{}", source_addr, source_port);
+    trace!(ctx, "New packet from {:i}:{}", src_addr, src_port);
 
-    if dest_port == 3478 {
-        // Handle channel data messages
-
+    if dst_port == 3478 {
         let cdhdr = slice_mut_at::<{ CHANNEL_DATA_HEADER_LEN }>(
             ctx,
             Ethernet2Header::LEN + ipv4hdr_length + UdpHeader::LEN,
@@ -91,44 +92,62 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
         }
 
         let channel_number = u16::from_be_bytes([cdhdr[0], cdhdr[1]]);
-        let channel_data_length = usize::from(u16::from_be_bytes([cdhdr[2], cdhdr[3]]));
 
-        if channel_data_length > usize::from(u16::MAX) {
-            return Ok(xdp_action::XDP_DROP);
-        }
-
-        let channel_data_payload = remaining_bytes(
+        let (channel_data_payload, channel_data_length) = remaining_bytes(
             ctx,
             Ethernet2Header::LEN + ipv4hdr_length + UdpHeader::LEN + CHANNEL_DATA_HEADER_LEN,
         )?;
 
-        // if channel_data_payload.len() != channel_data_length {
-        //     return Ok(xdp_action::XDP_DROP);
-        // }
+        {
+            // Untrusted because we read it from the packet.
+            let untrusted_length = usize::from(u16::from_be_bytes([cdhdr[2], cdhdr[3]]));
 
-        let client_and_channel = ClientAndChannel::new(source_addr, source_port, channel_number);
+            // We received less (or more) data than the header said we would.
+            if channel_data_length != untrusted_length {
+                return Ok(xdp_action::XDP_DROP);
+            }
+        }
+
+        let client_and_channel = ClientAndChannel::new(src_addr, src_port, channel_number);
 
         let binding = unsafe { CHANNELS_TO_UDP.get(&client_and_channel) };
         let Some(port_and_peer) = binding else {
             debug!(
                 ctx,
                 "No channel binding from {:x}:{:x} for channel {:x}",
-                source_addr,
-                source_port,
+                src_addr,
+                src_port,
                 channel_number,
             );
 
             return Ok(xdp_action::XDP_PASS);
         };
 
-        let ipv4_dst = ipv4hdr.destination();
-
         {
             let mut ipv4hdr_mut = parse_ipv4_mut(ipv4hdr_slice)?;
 
-            ipv4hdr_mut.set_source(ipv4_dst); // The IP we received the packet on will be the new source IP.
+            ipv4hdr_mut.set_source(dst_addr.to_be_bytes()); // The IP we received the packet on will be the new source IP.
             ipv4hdr_mut.set_destination(port_and_peer.dest_ip().to_be_bytes());
             ipv4hdr_mut.set_total_length((tot_len - 4).to_be_bytes());
+
+            // let checksum = unsafe {
+            //     bpf_csum_diff(
+            //         [src_addr, dst_addr, u32::from(tot_len)].as_mut_ptr(),
+            //         3,
+            //         [dst_addr, port_and_peer.dest_ip(), (u32::from(tot_len - 4))].as_mut_ptr(),
+            //         3,
+            //         u32::from(udphdr.checksum()),
+            //     )
+            // };
+            // let checksum = unsafe {
+            //     bpf_csum_diff(
+            //         cdhdr.as_mut_ptr(),
+            //         (udp_payload_len + 3) / 4,
+            //         channel_data_payload.as_mut_ptr(),
+            //         (channel_data_length + 3) / 4,
+            //         checksum,
+            //     )
+            // };
         }
 
         {
@@ -139,43 +158,66 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             udphdr_mut.set_length(udp_payload_len - 4);
         }
 
-        {
-            let ipv4_header = parse_ipv4(ipv4hdr_slice)?;
+        // {
+        //     let ipv4_header = parse_ipv4(ipv4hdr_slice)?;
 
-            let udp_checksum = parse_udp(udphdr_slice)?
-                .to_header()
-                .calc_checksum_ipv4_raw(
-                    ipv4_header.source(),
-                    ipv4_header.destination(),
-                    channel_data_payload,
-                )
-                .map_err(|_| Error::UdpChecksum)?;
-            let ipv4_checksum = calc_ipv4_checksum(&ipv4_header);
+        //     let udp_checksum = parse_udp(udphdr_slice)?
+        //         .to_header()
+        //         .calc_checksum_ipv4_raw(ipv4_header.source(), ipv4_header.destination(), &[]) // TODO: Fix payload.
+        //         .map_err(|_| Error::UdpChecksum)?;
+        //     let ipv4_checksum = calc_ipv4_checksum(&ipv4_header);
 
-            parse_udp_mut(udphdr_slice)?.set_checksum(udp_checksum);
-            parse_ipv4_mut(ipv4hdr_slice)?.set_checksum(ipv4_checksum);
+        //     parse_udp_mut(udphdr_slice)?.set_checksum(udp_checksum);
+        //     parse_ipv4_mut(ipv4hdr_slice)?.set_checksum(ipv4_checksum);
+        // }
+
+        // Verifier needs this ...
+        if channel_data_payload.as_mut_ptr() as usize + channel_data_length > ctx.data_end() {
+            return Ok(xdp_action::XDP_DROP);
+        }
+
+        let mut headers = [0u8; Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN];
+
+        unsafe {
+            bpf_xdp_load_bytes(
+                ctx.ctx,
+                0,
+                headers.as_mut_ptr() as *mut c_void,
+                (Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN) as u32,
+            );
         }
 
         unsafe {
-            aya_ebpf::memmove(
-                cdhdr.as_mut_ptr(),
-                channel_data_payload.as_mut_ptr(),
-                channel_data_length,
-            );
-        }
+            bpf_xdp_store_bytes(
+                ctx.ctx,
+                4,
+                headers.as_mut_ptr() as *mut c_void,
+                (Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN) as u32,
+            )
+        };
+
+        unsafe { bpf_xdp_adjust_head(ctx.ctx, 4) };
+
+        // unsafe {
+        //     aya_ebpf::memmove(
+        //         cdhdr.as_mut_ptr(),
+        //         channel_data_payload.as_mut_ptr(),
+        //         channel_data_length,
+        //     );
+        // }
 
         info!(
             ctx,
             "Redirecting message from {:i}:{} on channel {} to {:i}:{} on port {}",
-            source_addr,
-            source_port,
+            src_addr,
+            src_port,
             channel_number,
             port_and_peer.dest_ip(),
             port_and_peer.dest_port(),
             port_and_peer.allocation_port()
         );
 
-        Ok(xdp_action::XDP_REDIRECT)
+        Ok(xdp_action::XDP_TX)
     } else {
         try_handle_peer(ctx)
     }
@@ -255,7 +297,7 @@ fn slice_mut_at<const LEN: usize>(ctx: &XdpContext, offset: usize) -> Result<&mu
 }
 
 #[inline(always)]
-fn remaining_bytes(ctx: &XdpContext, offset: usize) -> Result<&mut [u8], Error> {
+fn remaining_bytes(ctx: &XdpContext, offset: usize) -> Result<(&mut [u8], usize), Error> {
     let start = ctx.data() + offset;
     let end = ctx.data_end();
 
@@ -265,5 +307,8 @@ fn remaining_bytes(ctx: &XdpContext, offset: usize) -> Result<&mut [u8], Error> 
 
     let len = end - start;
 
-    Ok(unsafe { core::slice::from_raw_parts_mut(start as *mut u8, len) })
+    Ok((
+        unsafe { core::slice::from_raw_parts_mut(start as *mut u8, len) },
+        len,
+    ))
 }

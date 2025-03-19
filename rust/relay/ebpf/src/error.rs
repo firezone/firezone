@@ -19,20 +19,9 @@ impl aya_log_ebpf::WriteToBuf for Error {
             Error::UdpChecksum => "Failed to calculate UDP checksum",
             Error::NotImplemented => "Not implemented",
             Error::PacketTooShort => "Packet is too short",
-        }
-        .as_bytes();
+        };
 
-        if buf.len() < msg.len() {
-            return None;
-        }
-
-        // SAFETY:
-        // - We checked that `buf` is long enough.
-        // - We pass the length of the string.
-        unsafe { aya_ebpf::memcpy(buf.as_mut_ptr(), msg.as_ptr() as *mut u8, msg.len()) };
-
-        // SAFETY: All strings are non-zero in length.
-        Some(unsafe { NonZeroUsize::new_unchecked(msg.len()) })
+        msg.write(buf)
     }
 }
 

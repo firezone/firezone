@@ -154,7 +154,7 @@ async fn try_main(args: Args) -> Result<()> {
         .context("No program")?
         .try_into()?;
     program.load()?;
-    program.attach("eth0", XdpFlags::DRV_MODE | XdpFlags::REPLACE)?;
+    program.attach("eth0", XdpFlags::default())?;
 
     let channel_data_to_udp = aya::maps::HashMap::<_, ClientAndChannel, PortAndPeer>::try_from(
         bpf.map_mut("CHANNELS_TO_UDP").context("no map")?,
