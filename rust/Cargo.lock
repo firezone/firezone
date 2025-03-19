@@ -1875,6 +1875,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "etherparse-ext"
+version = "0.1.0"
+dependencies = [
+ "etherparse",
+]
+
+[[package]]
 name = "event-listener"
 version = "5.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3239,6 +3246,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "etherparse",
+ "etherparse-ext",
  "lockfree-object-pool",
  "proptest",
  "test-strategy",

@@ -29,4 +29,9 @@ impl<'a> Ipv4HeaderSliceMut<'a> {
         // Safety: Slice it at least of length 20 as checked in the ctor.
         unsafe { write_to_offset_unchecked(self.slice, 16, dst) };
     }
+
+    pub fn set_total_length(&mut self, len: [u8; 2]) {
+        // Safety: Slice it at least of length 20 as checked in the ctor.
+        unsafe { write_to_offset_unchecked(self.slice, 2, len) };
+    }
 }
