@@ -82,8 +82,9 @@ defmodule Web.Settings.Account do
         >
           <:dialog_title>Confirm Account Deletion</:dialog_title>
           <:dialog_content>
-            This Account will be scheduled for complete deletion.<br /><br />
-            Are you sure you want to delete your Account?
+            This account <strong>{@account.slug}</strong>
+            will be scheduled for complete deletion.<br /><br />
+            Are you sure you want to delete your account?
           </:dialog_content>
           <:dialog_confirm_button>
             Delete Account
@@ -102,7 +103,7 @@ defmodule Web.Settings.Account do
         <p class="ml-4 mb-4 text-neutral-600">
           <.icon name="hero-exclamation-circle" class="inline-block w-5 h-5 mr-1 text-red-500" />
           <span :if={@delete_requested}>
-            A request has been sent to delete your Account.
+            A request has been sent to delete your account.
           </span>
           <span :if={!@delete_requested}>
             Schedule your account for deletion.

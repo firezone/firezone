@@ -1,5 +1,15 @@
 REQUEST TO DELETE ACCOUNT!
 
+
+To perform the deletion:
+------------------------
+1. Go to the Stripe dashboard
+2. Lookup the customer by account id from below (<%= @account.id %>)
+3. Cancel the subscription (choose "immediately")
+4. Open an IEx shell to prod
+5. Run `Domain.Ops.delete_disabled_account("<%= @account.id %>")`
+
+
 Request details:
 ----------------
 Account ID:   <%= @account.id %>
