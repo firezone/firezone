@@ -66,6 +66,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     let tot_len = ipv4hdr.total_len();
     // let ipv4hdr_length = usize::from(ipv4hdr.ihl() * 4);
     let ipv4hdr_length = Ipv4Header::MIN_LEN;
+    let ipv4_checksum = ipv4hdr.header_checksum();
 
     let IpNumber::UDP = ipv4hdr.protocol() else {
         return Ok(xdp_action::XDP_PASS);
@@ -78,6 +79,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     let src_port = udphdr.source_port();
     let dst_port = udphdr.destination_port();
     let udp_payload_len = udphdr.length();
+    let udp_checksum = udphdr.checksum();
 
     trace!(ctx, "New packet from {:i}:{}", src_addr, src_port);
 
@@ -93,7 +95,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 
         let channel_number = u16::from_be_bytes([cdhdr[0], cdhdr[1]]);
 
-        let (channel_data_payload, channel_data_length) = remaining_bytes(
+        let channel_data_length = remaining_bytes(
             ctx,
             Ethernet2Header::LEN + ipv4hdr_length + UdpHeader::LEN + CHANNEL_DATA_HEADER_LEN,
         )?;
@@ -126,54 +128,80 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
         {
             let mut ipv4hdr_mut = parse_ipv4_mut(ipv4hdr_slice)?;
 
-            ipv4hdr_mut.set_source(dst_addr.to_be_bytes()); // The IP we received the packet on will be the new source IP.
-            ipv4hdr_mut.set_destination(port_and_peer.dest_ip().to_be_bytes());
-            ipv4hdr_mut.set_total_length((tot_len - 4).to_be_bytes());
+            let new_src_addr = dst_addr; // The IP we received the packet on will be the new source IP.
+            let new_dst_addr = port_and_peer.dest_ip();
+            let new_tot_len = tot_len - 4;
 
-            // let checksum = unsafe {
-            //     bpf_csum_diff(
-            //         [src_addr, dst_addr, u32::from(tot_len)].as_mut_ptr(),
-            //         3,
-            //         [dst_addr, port_and_peer.dest_ip(), (u32::from(tot_len - 4))].as_mut_ptr(),
-            //         3,
-            //         u32::from(udphdr.checksum()),
-            //     )
-            // };
-            // let checksum = unsafe {
-            //     bpf_csum_diff(
-            //         cdhdr.as_mut_ptr(),
-            //         (udp_payload_len + 3) / 4,
-            //         channel_data_payload.as_mut_ptr(),
-            //         (channel_data_length + 3) / 4,
-            //         checksum,
-            //     )
-            // };
-        }
+            ipv4hdr_mut.set_source(new_src_addr.to_be_bytes());
+            ipv4hdr_mut.set_destination(new_dst_addr.to_be_bytes());
+            ipv4hdr_mut.set_total_length(new_tot_len.to_be_bytes());
 
-        {
+            let new_checksum = unsafe {
+                bpf_csum_diff(
+                    [src_addr, dst_addr, u32::from(tot_len)].as_mut_ptr(), // Original components
+                    3,
+                    [new_src_addr, new_dst_addr, (u32::from(new_tot_len))].as_mut_ptr(), // New components
+                    3,
+                    u32::from(ipv4_checksum),
+                )
+            };
+            ipv4hdr_mut.set_checksum(new_checksum as u16);
+
             let mut udphdr_mut = parse_udp_mut(udphdr_slice)?;
 
-            udphdr_mut.set_source_port(port_and_peer.allocation_port());
-            udphdr_mut.set_destination_port(port_and_peer.dest_port());
-            udphdr_mut.set_length(udp_payload_len - 4);
-        }
+            let new_src_port = port_and_peer.allocation_port();
+            let new_dst_port = port_and_peer.dest_port();
+            let new_length = udp_payload_len - 4;
 
-        // {
-        //     let ipv4_header = parse_ipv4(ipv4hdr_slice)?;
+            udphdr_mut.set_source_port(new_src_port);
+            udphdr_mut.set_destination_port(new_dst_port);
+            udphdr_mut.set_length(new_length);
 
-        //     let udp_checksum = parse_udp(udphdr_slice)?
-        //         .to_header()
-        //         .calc_checksum_ipv4_raw(ipv4_header.source(), ipv4_header.destination(), &[]) // TODO: Fix payload.
-        //         .map_err(|_| Error::UdpChecksum)?;
-        //     let ipv4_checksum = calc_ipv4_checksum(&ipv4_header);
+            let ip_pseudo_header_checksum_delta = unsafe {
+                bpf_csum_diff(
+                    [src_addr, dst_addr, u32::from(udp_payload_len)].as_mut_ptr(),
+                    3,
+                    [new_src_addr, new_dst_addr, (u32::from(new_length))].as_mut_ptr(),
+                    3,
+                    0,
+                )
+            };
 
-        //     parse_udp_mut(udphdr_slice)?.set_checksum(udp_checksum);
-        //     parse_ipv4_mut(ipv4hdr_slice)?.set_checksum(ipv4_checksum);
-        // }
+            let udp_header_checksum_delta = unsafe {
+                bpf_csum_diff(
+                    [
+                        u32::from(src_port),
+                        u32::from(dst_port),
+                        u32::from(udp_payload_len),
+                    ]
+                    .as_mut_ptr(),
+                    3,
+                    [
+                        u32::from(new_src_port),
+                        u32::from(new_dst_port),
+                        (u32::from(new_length)),
+                    ]
+                    .as_mut_ptr(),
+                    3,
+                    0,
+                )
+            };
+            let payload_checksum_delta = unsafe {
+                bpf_csum_diff(
+                    cdhdr.as_mut_ptr() as *mut u32,
+                    1,                     // 4 bytes = 1 u32 word
+                    core::ptr::null_mut(), // No new bytes
+                    0,
+                    0,
+                )
+            };
 
-        // Verifier needs this ...
-        if channel_data_payload.as_mut_ptr() as usize + channel_data_length > ctx.data_end() {
-            return Ok(xdp_action::XDP_DROP);
+            udphdr_mut.set_checksum(csum_fold_helper(
+                (i64::from(udp_checksum)
+                    + ip_pseudo_header_checksum_delta
+                    + udp_header_checksum_delta
+                    + payload_checksum_delta) as u64,
+            ));
         }
 
         let mut headers = [0u8; Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN];
@@ -187,24 +215,16 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             );
         }
 
+        unsafe { bpf_xdp_adjust_head(ctx.ctx, 4) };
+
         unsafe {
             bpf_xdp_store_bytes(
                 ctx.ctx,
-                4,
+                0,
                 headers.as_mut_ptr() as *mut c_void,
                 (Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN) as u32,
             )
         };
-
-        unsafe { bpf_xdp_adjust_head(ctx.ctx, 4) };
-
-        // unsafe {
-        //     aya_ebpf::memmove(
-        //         cdhdr.as_mut_ptr(),
-        //         channel_data_payload.as_mut_ptr(),
-        //         channel_data_length,
-        //     );
-        // }
 
         info!(
             ctx,
@@ -221,37 +241,6 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     } else {
         try_handle_peer(ctx)
     }
-}
-
-#[inline(always)]
-fn calc_ipv4_checksum(ipv4_header: &Ipv4HeaderSlice) -> u16 {
-    checksum::Sum16BitWords::new()
-        .add_2bytes([
-            (4 << 4) | ipv4_header.ihl(),
-            (ipv4_header.dcp().value() << 2) | ipv4_header.ecn().value(),
-        ])
-        .add_2bytes(ipv4_header.total_len().to_be_bytes())
-        .add_2bytes(ipv4_header.identification().to_be_bytes())
-        .add_2bytes({
-            let frag_off_be = ipv4_header.fragments_offset().value().to_be_bytes();
-            let flags = {
-                let mut result = 0;
-                if ipv4_header.dont_fragment() {
-                    result |= 64;
-                }
-                if ipv4_header.more_fragments() {
-                    result |= 32;
-                }
-                result
-            };
-            [flags | (frag_off_be[0] & 0x1f), frag_off_be[1]]
-        })
-        .add_2bytes([ipv4_header.ttl(), ipv4_header.protocol().0])
-        .add_4bytes(ipv4_header.source())
-        .add_4bytes(ipv4_header.destination())
-        .add_slice(ipv4_header.options())
-        .ones_complement()
-        .to_be()
 }
 
 #[inline(always)]
@@ -284,6 +273,17 @@ fn try_handle_peer(_: &XdpContext) -> Result<u32, Error> {
     Err(Error::NotImplemented)
 }
 
+// Converts a checksum into u16
+#[inline(always)]
+pub fn csum_fold_helper(mut csum: u64) -> u16 {
+    for _i in 0..4 {
+        if (csum >> 16) > 0 {
+            csum = (csum & 0xffff) + (csum >> 16);
+        }
+    }
+    !(csum as u16)
+}
+
 #[inline(always)]
 fn slice_mut_at<const LEN: usize>(ctx: &XdpContext, offset: usize) -> Result<&mut [u8], Error> {
     let start = ctx.data();
@@ -297,7 +297,7 @@ fn slice_mut_at<const LEN: usize>(ctx: &XdpContext, offset: usize) -> Result<&mu
 }
 
 #[inline(always)]
-fn remaining_bytes(ctx: &XdpContext, offset: usize) -> Result<(&mut [u8], usize), Error> {
+fn remaining_bytes(ctx: &XdpContext, offset: usize) -> Result<usize, Error> {
     let start = ctx.data() + offset;
     let end = ctx.data_end();
 
@@ -307,8 +307,5 @@ fn remaining_bytes(ctx: &XdpContext, offset: usize) -> Result<(&mut [u8], usize)
 
     let len = end - start;
 
-    Ok((
-        unsafe { core::slice::from_raw_parts_mut(start as *mut u8, len) },
-        len,
-    ))
+    Ok(len)
 }
