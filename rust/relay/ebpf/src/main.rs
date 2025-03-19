@@ -1,23 +1,22 @@
 #![no_std]
 #![no_main]
 
+use crate::error::Error;
 use aya_ebpf::{
-    bindings::{BPF_F_RECOMPUTE_CSUM, TC_ACT_PIPE, TC_ACT_SHOT},
-    cty::c_void,
-    helpers::{bpf_redirect, bpf_skb_store_bytes},
-    macros::{classifier, map},
+    bindings::xdp_action,
+    macros::{map, xdp},
     maps::HashMap,
-    programs::TcContext,
+    programs::XdpContext,
 };
 use aya_log_ebpf::*;
+use etherparse::{
+    checksum, EtherType, Ethernet2Header, Ethernet2HeaderSlice, IpNumber, Ipv4HeaderSlice,
+    UdpHeader, UdpHeaderSlice,
+};
+use etherparse_ext::{Ipv4HeaderSliceMut, UdpHeaderSliceMut};
 use firezone_relay_ebpf_shared::{ClientAndChannel, PortAndPeer};
 
-use core::mem;
-use network_types::{
-    eth::{EthHdr, EtherType},
-    ip::{IpProto, Ipv4Hdr},
-    udp::UdpHdr,
-};
+mod error;
 
 #[cfg(not(test))]
 #[panic_handler]
@@ -33,77 +32,83 @@ static CHANNELS_TO_UDP: HashMap<ClientAndChannel, PortAndPeer> =
 // static UDP_TO_CHANNEL_DATA: HashMap<(AllocationPort, SocketAddr), (ChannelNumber, SocketAddr)> =
 //     HashMap::with_max_entries(1024, 0);
 
-#[classifier]
-pub fn handle_turn(ctx: TcContext) -> i32 {
-    match try_handle_turn(ctx) {
+#[xdp]
+pub fn handle_turn(ctx: XdpContext) -> u32 {
+    match try_handle_turn(&ctx) {
         Ok(ret) => ret,
-        Err(()) => TC_ACT_PIPE,
+        Err(e) => {
+            debug!(&ctx, "Failed to handle packet {}", e);
+
+            xdp_action::XDP_ABORTED
+        }
     }
 }
 
-#[inline(always)]
-fn ptr_at<T>(ctx: &TcContext, offset: usize) -> Result<*const T, ()> {
-    let start = ctx.data();
-    let end = ctx.data_end();
-    let len = mem::size_of::<T>();
+const CHANNEL_DATA_HEADER_LEN: usize = 4;
 
-    if start + offset + len > end {
-        return Err(());
-    }
-
-    Ok((start + offset) as *const T)
-}
-
-fn try_handle_turn(ctx: TcContext) -> Result<i32, ()> {
-    let ethhdr: *const EthHdr = ptr_at(&ctx, 0)?;
-
-    match unsafe { (*ethhdr).ether_type } {
-        EtherType::Ipv4 => {}
-        _ => return Ok(TC_ACT_PIPE),
-    }
-
-    let ipv4hdr: *const Ipv4Hdr = ptr_at(&ctx, EthHdr::LEN)?;
-    let source_addr = u32::from_be(unsafe { (*ipv4hdr).src_addr });
-    let tot_len = u16::from_be(unsafe { (*ipv4hdr).tot_len });
-
-    let ip_proto = unsafe { (*ipv4hdr).proto };
-    let IpProto::Udp = ip_proto else {
-        return Ok(TC_ACT_PIPE);
+fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
+    // SAFETY:
+    // - single u8 is always aligned
+    // - we checked the length
+    // - data within `XdpContext` is always continguous memory
+    let packet = unsafe {
+        core::slice::from_raw_parts_mut(ctx.data() as *mut u8, ctx.data_end() - ctx.data())
     };
 
-    let udphdr: *const UdpHdr = ptr_at(&ctx, EthHdr::LEN + Ipv4Hdr::LEN)?;
+    let (ethhdr_slice, ethernet_payload) = packet
+        .split_at_mut_checked(Ethernet2Header::LEN)
+        .ok_or(Error::SplitMutFailed)?;
+    let ethhdr = parse_eth(ethhdr_slice)?;
 
-    let source_port = u16::from_be(unsafe { (*udphdr).source });
-    let dest_port = u16::from_be(unsafe { (*udphdr).dest });
-    let udp_payload_len = u16::from_be(unsafe { (*udphdr).len });
+    match ethhdr.ether_type() {
+        EtherType::IPV4 => {}
+        _ => return Ok(xdp_action::XDP_PASS),
+    }
 
-    trace!(&ctx, "New packet from {:i}:{}", source_addr, source_port);
+    let ipv4hdr_length = (parse_ipv4(ethernet_payload)?.ihl() as usize) * 4;
+    let (ipv4hdr_slice, ipv4_payload) = ethernet_payload
+        .split_at_mut_checked(ipv4hdr_length)
+        .ok_or(Error::SplitMutFailed)?;
+    let ipv4hdr = parse_ipv4(ipv4hdr_slice)?;
+
+    let source_addr = u32::from_be_bytes(ipv4hdr.source());
+    let tot_len = ipv4hdr.total_len();
+
+    let IpNumber::UDP = ipv4hdr.protocol() else {
+        return Ok(xdp_action::XDP_PASS);
+    };
+
+    let (udphdr_slice, udp_payload) = ipv4_payload
+        .split_at_mut_checked(UdpHeader::LEN)
+        .ok_or(Error::SplitMutFailed)?;
+    let udp_payload_ptr = udp_payload.as_mut_ptr();
+    let udphdr = parse_udp(udphdr_slice)?;
+
+    let source_port = udphdr.source_port();
+    let dest_port = udphdr.destination_port();
+    let udp_payload_len = udphdr.length();
+
+    trace!(ctx, "New packet from {:i}:{}", source_addr, source_port);
 
     if dest_port == 3478 {
         // Handle channel data messages
-        let udp_payload_offset = EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN;
 
-        let first_byte_ptr = ptr_at::<u8>(&ctx, udp_payload_offset)?;
-        let first_byte = unsafe { *first_byte_ptr };
+        let (cdhdr, channel_data_payload) = udp_payload
+            .split_at_mut_checked(CHANNEL_DATA_HEADER_LEN)
+            .ok_or(Error::SplitMutFailed)?;
+        let channel_data_payload_ptr = channel_data_payload.as_mut_ptr();
 
-        if !(64..=79).contains(&first_byte) {
-            return Ok(TC_ACT_PIPE);
+        if !(64..=79).contains(&cdhdr[0]) {
+            return Ok(xdp_action::XDP_PASS);
         }
 
-        let Ok(cn_ptr) = ptr_at::<u16>(&ctx, udp_payload_offset) else {
-            return Ok(TC_ACT_PIPE);
-        };
-        let Ok(length_ptr) = ptr_at::<u16>(&ctx, udp_payload_offset + 2) else {
-            return Ok(TC_ACT_PIPE);
-        };
+        let channel_number = u16::from_be_bytes([cdhdr[0], cdhdr[1]]);
+        let channel_data_length = usize::from(u16::from_be_bytes([cdhdr[2], cdhdr[3]]));
 
-        let channel_number = u16::from_be(unsafe { *cn_ptr });
-        let length = u16::from_be(unsafe { *length_ptr });
+        if channel_data_length > channel_data_payload.len() {
+            warn!(ctx, "Length of channel data message out of bounds");
 
-        if udp_payload_offset + 4 + length as usize > ctx.data_end() {
-            warn!(&ctx, "Length of channel data message out of bounds");
-
-            return Ok(TC_ACT_SHOT);
+            return Ok(xdp_action::XDP_PASS);
         }
 
         let client_and_channel = ClientAndChannel::new(source_addr, source_port, channel_number);
@@ -111,63 +116,126 @@ fn try_handle_turn(ctx: TcContext) -> Result<i32, ()> {
         let binding = unsafe { CHANNELS_TO_UDP.get(&client_and_channel) };
         let Some(port_and_peer) = binding else {
             debug!(
-                &ctx,
+                ctx,
                 "No channel binding from {:x}:{:x} for channel {:x}",
                 source_addr,
                 source_port,
                 channel_number,
             );
 
-            return Ok(TC_ACT_SHOT);
+            return Ok(xdp_action::XDP_PASS);
         };
 
-        unsafe { *ipv4hdr }.dst_addr = port_and_peer.dest_ip();
-        unsafe { *ipv4hdr }.tot_len = (tot_len - 4).to_be();
-        unsafe { *udphdr }.source = port_and_peer.allocation_port();
-        unsafe { *udphdr }.dest = port_and_peer.dest_port();
-        unsafe { *udphdr }.len = (udp_payload_len - 4).to_be();
+        let ipv4_dst = ipv4hdr.destination();
 
-        let Ok(encapsulated_data_ptr) = ptr_at::<u8>(&ctx, udp_payload_offset + 4) else {
-            return Ok(TC_ACT_PIPE);
-        };
+        {
+            let mut ipv4hdr_mut = parse_ipv4_mut(ipv4hdr_slice)?;
 
-        // NOTE: TC programs are not allowed to modify the packet so this fails. Need to use XDP instead ...
-        unsafe {
-            let ret = bpf_skb_store_bytes(
-                ctx.skb.skb,
-                udp_payload_offset as u32,
-                encapsulated_data_ptr as *const c_void,
-                (udp_payload_len - 4) as u32,
-                BPF_F_RECOMPUTE_CSUM as u64,
-            );
-
-            if ret != 0 {
-                return Err(());
-            }
+            ipv4hdr_mut.set_source(ipv4_dst); // The IP we received the packet on will be the new source IP.
+            ipv4hdr_mut.set_destination(port_and_peer.dest_ip().to_be_bytes());
+            ipv4hdr_mut.set_total_length((tot_len - 4).to_be_bytes());
         }
 
-        let ingress_ifindex = unsafe { (*(ctx.skb.skb)).ingress_ifindex };
+        {
+            let mut udphdr_mut = parse_udp_mut(udphdr_slice)?;
 
-        let res = unsafe { bpf_redirect(ingress_ifindex, 0) as i32 };
+            udphdr_mut.set_source_port(port_and_peer.allocation_port());
+            udphdr_mut.set_destination_port(port_and_peer.dest_port());
+            udphdr_mut.set_length(udp_payload_len - 4);
+        }
+
+        {
+            let ipv4_header = parse_ipv4(ipv4hdr_slice)?;
+
+            let udp_checksum = parse_udp(udphdr_slice)?
+                .to_header()
+                .calc_checksum_ipv4_raw(
+                    ipv4_header.source(),
+                    ipv4_header.destination(),
+                    channel_data_payload,
+                )
+                .map_err(|_| Error::UdpChecksum)?;
+            let ipv4_checksum = calc_ipv4_checksum(&ipv4_header);
+
+            parse_udp_mut(udphdr_slice)?.set_checksum(udp_checksum);
+            parse_ipv4_mut(ipv4hdr_slice)?.set_checksum(ipv4_checksum);
+        }
+
+        unsafe {
+            aya_ebpf::memmove(
+                udp_payload_ptr,
+                channel_data_payload_ptr,
+                channel_data_length,
+            );
+        }
 
         info!(
-            &ctx,
-            "Redirecting message from {:i}:{} on channel {} to {:i}:{} on port {}; res = {}",
+            ctx,
+            "Redirecting message from {:i}:{} on channel {} to {:i}:{} on port {}",
             source_addr,
             source_port,
             channel_number,
             port_and_peer.dest_ip(),
             port_and_peer.dest_port(),
-            port_and_peer.allocation_port(),
-            res
+            port_and_peer.allocation_port()
         );
 
-        Ok(res)
+        Ok(xdp_action::XDP_REDIRECT)
     } else {
         try_handle_peer(ctx)
     }
 }
 
-fn try_handle_peer(ctx: TcContext) -> Result<i32, ()> {
-    Err(())
+fn calc_ipv4_checksum(ipv4_header: &Ipv4HeaderSlice) -> u16 {
+    checksum::Sum16BitWords::new()
+        .add_2bytes([
+            (4 << 4) | ipv4_header.ihl(),
+            (ipv4_header.dcp().value() << 2) | ipv4_header.ecn().value(),
+        ])
+        .add_2bytes(ipv4_header.total_len().to_be_bytes())
+        .add_2bytes(ipv4_header.identification().to_be_bytes())
+        .add_2bytes({
+            let frag_off_be = ipv4_header.fragments_offset().value().to_be_bytes();
+            let flags = {
+                let mut result = 0;
+                if ipv4_header.dont_fragment() {
+                    result |= 64;
+                }
+                if ipv4_header.more_fragments() {
+                    result |= 32;
+                }
+                result
+            };
+            [flags | (frag_off_be[0] & 0x1f), frag_off_be[1]]
+        })
+        .add_2bytes([ipv4_header.ttl(), ipv4_header.protocol().0])
+        .add_4bytes(ipv4_header.source())
+        .add_4bytes(ipv4_header.destination())
+        .add_slice(ipv4_header.options())
+        .ones_complement()
+        .to_be()
+}
+
+fn parse_udp(slice: &mut [u8]) -> Result<UdpHeaderSlice<'_>, Error> {
+    UdpHeaderSlice::from_slice(slice).map_err(|_| Error::UdpHeader)
+}
+
+fn parse_udp_mut(slice: &mut [u8]) -> Result<UdpHeaderSliceMut<'_>, Error> {
+    UdpHeaderSliceMut::from_slice(slice).map_err(|_| Error::UdpHeader)
+}
+
+fn parse_ipv4(slice: &mut [u8]) -> Result<Ipv4HeaderSlice<'_>, Error> {
+    Ipv4HeaderSlice::from_slice(slice).map_err(|_| Error::Ipv4Header)
+}
+
+fn parse_ipv4_mut(slice: &mut [u8]) -> Result<Ipv4HeaderSliceMut<'_>, Error> {
+    Ipv4HeaderSliceMut::from_slice(slice).map_err(|_| Error::Ipv4Header)
+}
+
+fn parse_eth(slice: &mut [u8]) -> Result<Ethernet2HeaderSlice<'_>, Error> {
+    Ethernet2HeaderSlice::from_slice(slice).map_err(|_| Error::Ethernet2Header)
+}
+
+fn try_handle_peer(_: &XdpContext) -> Result<u32, Error> {
+    Err(Error::NotImplemented)
 }

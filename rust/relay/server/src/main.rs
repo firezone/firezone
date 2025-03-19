@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use anyhow::{bail, Context, Result};
-use aya::programs::{SchedClassifier, TcAttachType};
+use aya::programs::{Xdp, XdpFlags};
 use aya_log::EbpfLogger;
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
@@ -149,12 +149,12 @@ async fn try_main(args: Args) -> Result<()> {
         "/firezone-relay-ebpf-main"
     )))?;
     let _ = EbpfLogger::init(&mut bpf);
-    let program: &mut SchedClassifier = bpf
+    let program: &mut Xdp = bpf
         .program_mut("handle_turn")
         .context("No program")?
         .try_into()?;
     program.load()?;
-    program.attach("eth0", TcAttachType::Ingress)?;
+    program.attach("eth0", XdpFlags::DRV_MODE | XdpFlags::REPLACE)?;
 
     let channel_data_to_udp = aya::maps::HashMap::<_, ClientAndChannel, PortAndPeer>::try_from(
         bpf.map_mut("CHANNELS_TO_UDP").context("no map")?,

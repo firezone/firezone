@@ -6,8 +6,10 @@ edition = "2021"
 [dependencies]
 aya-ebpf = { git = "https://github.com/aya-rs/aya" }
 aya-log-ebpf = { git = "https://github.com/aya-rs/aya" }
-network-types = "0.0.7"
+etherparse-ext = { workspace = true }
+etherparse = { workspace = true }
 firezone-relay-ebpf-shared = { workspace = true }
+format_no_std = "1.2.0"
 
 [build-dependencies]
 which = { version = "7.0.0", default-features = false }
