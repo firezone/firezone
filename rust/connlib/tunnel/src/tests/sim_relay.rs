@@ -1,11 +1,11 @@
 use super::{
-    sim_net::{dual_ip_stack, host, Host},
+    sim_net::{Host, dual_ip_stack, host},
     strategies::latency,
 };
 use connlib_model::RelayId;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use proptest::prelude::*;
-use rand::{rngs::StdRng, SeedableRng as _};
+use rand::{SeedableRng as _, rngs::StdRng};
 use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
 use std::{

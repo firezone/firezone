@@ -5,7 +5,7 @@ use crate::client::gui::Managed;
 use anyhow::{Context, Result};
 use firezone_gui_client_common::{
     controller::{ControllerRequest, CtlrTx},
-    settings::{save, AdvancedSettings},
+    settings::{AdvancedSettings, save},
 };
 use std::time::Duration;
 use tokio::sync::oneshot;

@@ -6,7 +6,7 @@ pub use crate::server::client_message::{
     Allocate, Binding, ChannelBind, ClientMessage, CreatePermission, Refresh,
 };
 
-use crate::auth::{self, AuthenticatedMessage, MessageIntegrityExt, Nonces, FIREZONE};
+use crate::auth::{self, AuthenticatedMessage, FIREZONE, MessageIntegrityExt, Nonces};
 use crate::net_ext::IpAddrExt;
 use crate::{ClientSocket, IpStack, PeerSocket, SOFTWARE};
 use anyhow::Result;
@@ -14,8 +14,8 @@ use bytecodec::EncodeExt;
 use core::fmt;
 use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt as _;
-use opentelemetry::metrics::{Counter, UpDownCounter};
 use opentelemetry::KeyValue;
+use opentelemetry::metrics::{Counter, UpDownCounter};
 use rand::Rng;
 use secrecy::SecretString;
 use smallvec::SmallVec;
@@ -39,7 +39,7 @@ use stun_codec::rfc8656::attributes::{
 };
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
 use stun_codec::{Message, MessageClass, Method, TransactionId};
-use tracing::{field, Span};
+use tracing::{Span, field};
 use tracing_core::field::display;
 use uuid::Uuid;
 
@@ -191,7 +191,7 @@ where
             channels_by_client_and_number: Default::default(),
             channel_numbers_by_client_and_peer: Default::default(),
             pending_commands: Default::default(),
-            auth_secret: SecretString::from(hex::encode(rng.gen::<[u8; 32]>())),
+            auth_secret: SecretString::from(hex::encode(rng.r#gen::<[u8; 32]>())),
             rng,
             nonces: Default::default(),
             allocations_up_down_counter,
@@ -1077,7 +1077,7 @@ where
     }
 
     fn new_nonce_attribute(&mut self) -> Nonce {
-        let new_nonce = Uuid::from_u128(self.rng.gen());
+        let new_nonce = Uuid::from_u128(self.rng.r#gen());
 
         self.add_nonce(new_nonce);
 

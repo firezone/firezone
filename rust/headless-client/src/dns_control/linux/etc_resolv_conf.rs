@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use dns_types::DomainName;
 use std::{
     fs,
@@ -63,7 +63,9 @@ fn configure_at_paths(
 
     let text = fs::read_to_string(&paths.resolv).context("Failed to read `resolv.conf`")?;
     let text = if text.starts_with(MAGIC_HEADER) {
-        tracing::info!("The last run of Firezone crashed before reverting `/etc/resolv.conf`. Reverting it now before re-writing it.");
+        tracing::info!(
+            "The last run of Firezone crashed before reverting `/etc/resolv.conf`. Reverting it now before re-writing it."
+        );
         let resolv_path = &paths.resolv;
         let paths = paths.clone();
         revert_at_paths(&paths).context("Failed to revert `'resolv.conf`")?;
@@ -153,8 +155,8 @@ fn ensure_regular_file(path: &Path) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{configure_at_paths, revert_at_paths, ResolvPaths};
-    use anyhow::{ensure, Context, Result};
+    use super::{ResolvPaths, configure_at_paths, revert_at_paths};
+    use anyhow::{Context, Result, ensure};
     use std::{
         net::{IpAddr, Ipv4Addr, Ipv6Addr},
         path::Path,

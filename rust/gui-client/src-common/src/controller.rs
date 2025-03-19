@@ -6,7 +6,7 @@ use crate::{
     system_tray::{self, Event as TrayMenuEvent},
     updates,
 };
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use connlib_model::ResourceView;
 use firezone_bin_shared::platform::DnsControlMethod;
 use firezone_headless_client::{
@@ -17,8 +17,8 @@ use firezone_headless_client::{
 use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
 use futures::{
-    stream::{self, BoxStream},
     Stream, StreamExt,
+    stream::{self, BoxStream},
 };
 use secrecy::{ExposeSecret as _, SecretString};
 use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, task::Poll, time::Instant};
@@ -260,7 +260,7 @@ impl<I: GuiIntegration> Controller<I> {
                     self.try_retry_connection().await?
                 }
                 EventloopTick::NetworkChanged(Err(e)) | EventloopTick::DnsChanged(Err(e)) => {
-                    return Err(Error::Other(e))
+                    return Err(Error::Other(e));
                 }
 
                 EventloopTick::IpcMsg(Some(Ok(msg))) => {
@@ -281,7 +281,7 @@ impl<I: GuiIntegration> Controller<I> {
                     self.handle_update_notification(notification)?
                 }
                 EventloopTick::UpdateNotification(None) => {
-                    return Err(Error::Other(anyhow!("Update checker task stopped")))
+                    return Err(Error::Other(anyhow!("Update checker task stopped")));
                 }
             }
         }
@@ -393,22 +393,28 @@ impl<I: GuiIntegration> Controller<I> {
     async fn handle_request(&mut self, req: ControllerRequest) -> Result<(), Error> {
         match req {
             Req::ApplySettings(settings) => {
-                self.log_filter_reloader.reload(&settings.log_filter).context("Couldn't reload log filter")?;
+                self.log_filter_reloader
+                    .reload(&settings.log_filter)
+                    .context("Couldn't reload log filter")?;
 
                 self.advanced_settings = *settings;
 
-                self.ipc_client.send_msg(&IpcClientMsg::ApplyLogFilter { directives: self.advanced_settings.log_filter.clone() }).await?;
+                self.ipc_client
+                    .send_msg(&IpcClientMsg::ApplyLogFilter {
+                        directives: self.advanced_settings.log_filter.clone(),
+                    })
+                    .await?;
 
-                tracing::debug!(
-                    "Applied new settings. Log level will take effect immediately."
-                );
+                tracing::debug!("Applied new settings. Log level will take effect immediately.");
 
                 // Refresh the menu in case the favorites were reset.
                 self.refresh_system_tray_menu();
             }
             Req::ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
-                    tracing::error!("Can't clear logs, we're already waiting on another log-clearing operation");
+                    tracing::error!(
+                        "Can't clear logs, we're already waiting on another log-clearing operation"
+                    );
                 }
                 if let Err(error) = logging::clear_gui_logs().await {
                     tracing::error!("Failed to clear GUI logs: {error:#}");
@@ -423,23 +429,26 @@ impl<I: GuiIntegration> Controller<I> {
                 tracing::error!("Crashing on purpose");
                 // SAFETY: Crashing is unsafe
                 unsafe { sadness_generator::raise_segfault() }
-            },
+            }
             Req::Fail(Failure::Error) => Err(anyhow!("Test error"))?,
             Req::Fail(Failure::Panic) => panic!("Test panic"),
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
-            Req::SchemeRequest(url) => {
-                match self.handle_deep_link(&url).await {
-                    Ok(()) => {},
-                    Err(Error::Other(error)) if error.root_cause().downcast_ref::<auth::Error>().is_some_and(|e| matches!(e, auth::Error::NoInflightRequest)) => {
-                        tracing::debug!("Ignoring deep-link; no local state");
-                    }
-                    Err(error) => {
-                        tracing::error!("`handle_deep_link` failed: {error:#}");
-                    }
+            Req::SchemeRequest(url) => match self.handle_deep_link(&url).await {
+                Ok(()) => {}
+                Err(Error::Other(error))
+                    if error
+                        .root_cause()
+                        .downcast_ref::<auth::Error>()
+                        .is_some_and(|e| matches!(e, auth::Error::NoInflightRequest)) =>
+                {
+                    tracing::debug!("Ignoring deep-link; no local state");
                 }
-            }
+                Err(error) => {
+                    tracing::error!("`handle_deep_link` failed: {error:#}");
+                }
+            },
             Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
                 let req = self
                     .auth
@@ -448,43 +457,52 @@ impl<I: GuiIntegration> Controller<I> {
 
                 let url = req.to_url(&self.advanced_settings.auth_base_url);
                 self.refresh_system_tray_menu();
-                self.integration.open_url(url.expose_secret())
+                self.integration
+                    .open_url(url.expose_secret())
                     .context("Couldn't open auth page")?;
                 self.integration.set_welcome_window_visible(false)?;
             }
             Req::SystemTrayMenu(TrayMenuEvent::AddFavorite(resource_id)) => {
-                self.advanced_settings.favorite_resources.insert(resource_id);
+                self.advanced_settings
+                    .favorite_resources
+                    .insert(resource_id);
                 self.refresh_favorite_resources().await?;
-            },
-            Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => self.integration.open_url(
-                &self.advanced_settings.auth_base_url,
-            )
-            .context("Couldn't open auth page")?,
+            }
+            Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => self
+                .integration
+                .open_url(&self.advanced_settings.auth_base_url)
+                .context("Couldn't open auth page")?,
             Req::SystemTrayMenu(TrayMenuEvent::Copy(s)) => arboard::Clipboard::new()
                 .context("Couldn't access clipboard")?
                 .set_text(s)
                 .context("Couldn't copy resource URL or other text to clipboard")?,
-            Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => {
-                match &self.status {
-                    Status::Disconnected | Status::RetryingConnection { .. } | Status::WaitingForPortal { .. } => {
-                        tracing::info!("Calling `sign_out` to cancel sign-in");
-                        self.sign_out().await?;
-                    }
-                    Status::Quitting => tracing::error!("Can't cancel sign-in while already quitting"),
-                    Status::TunnelReady{..} => tracing::error!("Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."),
-                    Status::WaitingForTunnel { .. } => {
-                        tracing::debug!(
-                            "Connlib is already raising the tunnel, calling `sign_out` anyway"
-                        );
-                        self.sign_out().await?;
-                    }
+            Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => match &self.status {
+                Status::Disconnected
+                | Status::RetryingConnection { .. }
+                | Status::WaitingForPortal { .. } => {
+                    tracing::info!("Calling `sign_out` to cancel sign-in");
+                    self.sign_out().await?;
                 }
-            }
+                Status::Quitting => tracing::error!("Can't cancel sign-in while already quitting"),
+                Status::TunnelReady { .. } => tracing::error!(
+                    "Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."
+                ),
+                Status::WaitingForTunnel { .. } => {
+                    tracing::debug!(
+                        "Connlib is already raising the tunnel, calling `sign_out` anyway"
+                    );
+                    self.sign_out().await?;
+                }
+            },
             Req::SystemTrayMenu(TrayMenuEvent::RemoveFavorite(resource_id)) => {
-                self.advanced_settings.favorite_resources.remove(&resource_id);
+                self.advanced_settings
+                    .favorite_resources
+                    .remove(&resource_id);
                 self.refresh_favorite_resources().await?;
             }
-            Req::SystemTrayMenu(TrayMenuEvent::RetryPortalConnection) => self.try_retry_connection().await?,
+            Req::SystemTrayMenu(TrayMenuEvent::RetryPortalConnection) => {
+                self.try_retry_connection().await?
+            }
             Req::SystemTrayMenu(TrayMenuEvent::EnableInternetResource) => {
                 self.advanced_settings.internet_resource_enabled = Some(true);
                 self.update_disabled_resources().await?;
@@ -509,10 +527,10 @@ impl<I: GuiIntegration> Controller<I> {
                 tracing::info!("User asked to sign out");
                 self.sign_out().await?;
             }
-            Req::SystemTrayMenu(TrayMenuEvent::Url(url)) => {
-                self.integration.open_url(&url)
-                    .context("Couldn't open URL from system tray")?
-            }
+            Req::SystemTrayMenu(TrayMenuEvent::Url(url)) => self
+                .integration
+                .open_url(&url)
+                .context("Couldn't open URL from system tray")?,
             Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
                 tracing::info!("User clicked Quit in the menu");
                 self.status = Status::Quitting;
@@ -521,7 +539,8 @@ impl<I: GuiIntegration> Controller<I> {
             }
             Req::UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
-                self.integration.open_url(&download_url)
+                self.integration
+                    .open_url(&download_url)
                     .context("Couldn't open update page")?;
             }
         }
@@ -532,7 +551,9 @@ impl<I: GuiIntegration> Controller<I> {
         match msg {
             IpcServerMsg::ClearedLogs(result) => {
                 let Some(tx) = self.clear_logs_callback.take() else {
-                    return Err(Error::Other(anyhow!("Can't handle `IpcClearedLogs` when there's no callback waiting for a `ClearLogs` result")));
+                    return Err(Error::Other(anyhow!(
+                        "Can't handle `IpcClearedLogs` when there's no callback waiting for a `ClearLogs` result"
+                    )));
                 };
                 tx.send(result).map_err(|_| {
                     Error::Other(anyhow!("Couldn't send `ClearLogs` result to Tauri task"))

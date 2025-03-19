@@ -1,7 +1,7 @@
 //! Module to check the Github repo for new releases
 
 use anyhow::{Context, Result};
-use rand::{thread_rng, Rng as _};
+use rand::{Rng as _, thread_rng};
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{io::Write, path::PathBuf, str::FromStr, time::Duration};
@@ -392,7 +392,9 @@ mod tests {
 
     fn release(major: u64, minor: u64, patch: u64) -> Release {
         let version = Version::new(major, minor, patch);
-        let download_url = format!("https://www.github.com/firezone/firezone/releases/download/{version}/firezone-client-gui-windows_{version}_x86_64.msi");
+        let download_url = format!(
+            "https://www.github.com/firezone/firezone/releases/download/{version}/firezone-client-gui-windows_{version}_x86_64.msi"
+        );
         let download_url = Url::parse(&download_url).unwrap();
         Release {
             download_url,
@@ -403,9 +405,18 @@ mod tests {
     #[test]
     fn parse_version_from_url() {
         for (input, expected) in [
-            ("https://www.github.com/firezone/firezone/releases/download/1.0.0/firezone-client-gui-windows_1.0.0_x86_64.msi", Some((1, 0, 0))),
-            ("https://www.github.com/firezone/firezone/releases/download/1.0.1/firezone-client-gui-linux_1.0.1_x86_64.deb", Some((1, 0, 1))),
-            ("https://www.github.com/firezone/firezone/releases/download/1.0.1/firezone-client-gui-linux_x86_64.deb", None),
+            (
+                "https://www.github.com/firezone/firezone/releases/download/1.0.0/firezone-client-gui-windows_1.0.0_x86_64.msi",
+                Some((1, 0, 0)),
+            ),
+            (
+                "https://www.github.com/firezone/firezone/releases/download/1.0.1/firezone-client-gui-linux_1.0.1_x86_64.deb",
+                Some((1, 0, 1)),
+            ),
+            (
+                "https://www.github.com/firezone/firezone/releases/download/1.0.1/firezone-client-gui-linux_x86_64.deb",
+                None,
+            ),
         ] {
             let input = Url::parse(input).unwrap();
             let expected = expected.map(|(a, b, c)| Version::new(a, b, c));

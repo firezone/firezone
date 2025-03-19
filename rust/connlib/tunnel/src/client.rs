@@ -12,7 +12,7 @@ use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::unique_packet_buffer::UniquePacketBuffer;
-use crate::{dns, is_peer, p2p_control, IpConfig, TunConfig, IPV4_TUNNEL, IPV6_TUNNEL};
+use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_model::{GatewayId, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView};
@@ -23,8 +23,8 @@ use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
 
-use crate::peer::GatewayOnClient;
 use crate::ClientEvent;
+use crate::peer::GatewayOnClient;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
@@ -167,7 +167,7 @@ impl DnsResourceNatState {
         }
     }
 
-    fn confirm(&mut self) -> impl Iterator<Item = IpPacket> {
+    fn confirm(&mut self) -> impl Iterator<Item = IpPacket> + use<> {
         let buffered_packets = match std::mem::replace(self, DnsResourceNatState::Confirmed) {
             DnsResourceNatState::Pending {
                 buffered_packets, ..
@@ -720,7 +720,10 @@ impl ClientState {
 
         if let Some(old_gateway_id) = self.resources_gateways.insert(resource_id, gateway_id) {
             if self.peers.get(&old_gateway_id).is_some() {
-                assert_eq!(old_gateway_id, gateway_id, "Resources are not expected to change gateways without a previous message, resource_id = {resource_id}");
+                assert_eq!(
+                    old_gateway_id, gateway_id,
+                    "Resources are not expected to change gateways without a previous message, resource_id = {resource_id}"
+                );
             }
         }
 
@@ -1945,7 +1948,9 @@ fn effective_dns_servers(
         .peekable();
 
     if dns_servers.peek().is_none() {
-        tracing::info!("No system default DNS servers available! Can't initialize resolver. DNS resources won't work.");
+        tracing::info!(
+            "No system default DNS servers available! Can't initialize resolver. DNS resources won't work."
+        );
         return Vec::new();
     }
 
@@ -2136,9 +2141,11 @@ mod tests {
         let sentinel_dns = sentinel_dns_mapping(&servers, vec![]);
 
         for server in servers {
-            assert!(sentinel_dns
-                .get_by_right(&server)
-                .is_some_and(|s| sentinel_ranges().iter().any(|e| e.contains(*s))))
+            assert!(
+                sentinel_dns
+                    .get_by_right(&server)
+                    .is_some_and(|s| sentinel_ranges().iter().any(|e| e.contains(*s)))
+            )
         }
     }
 

@@ -4,7 +4,7 @@ use proptest::arbitrary::any;
 use proptest::prop_oneof;
 use proptest::strategy::Strategy;
 
-use crate::{build, IpPacket};
+use crate::{IpPacket, build};
 use etherparse::{Ipv4Extensions, Ipv4Header, Ipv4Options, PacketBuilder};
 use proptest::prelude::Just;
 

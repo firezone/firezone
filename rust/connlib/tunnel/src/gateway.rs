@@ -1,7 +1,7 @@
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
 use crate::utils::earliest;
-use crate::{p2p_control, GatewayEvent, IpConfig};
+use crate::{GatewayEvent, IpConfig, p2p_control};
 use crate::{peer::ClientOnGateway, peer_store::PeerStore};
 use anyhow::{Context, Result};
 use boringtun::x25519::PublicKey;

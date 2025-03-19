@@ -43,7 +43,9 @@ mod platform {
     impl Error {
         pub(crate) fn user_friendly_msg(&self) -> String {
             match self {
-                Error::UserNotInFirezoneGroup => format!("You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"),
+                Error::UserNotInFirezoneGroup => format!(
+                    "You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"
+                ),
                 Error::Other(e) => format!("Failed to determine group ownership: {e:#}"),
             }
         }

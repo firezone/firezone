@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use firezone_headless_client::known_dirs;
 use firezone_logging::err_with_src;
-use rand::{thread_rng, RngCore};
+use rand::{RngCore, thread_rng};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -354,10 +354,12 @@ mod tests {
 
     #[test]
     fn actor_name() {
-        assert!(actor_name_path()
-            .expect("`actor_name_path` should return Ok")
-            .components()
-            .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
+        assert!(
+            actor_name_path()
+                .expect("`actor_name_path` should return Ok")
+                .components()
+                .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref()))
+        );
     }
 
     #[test]

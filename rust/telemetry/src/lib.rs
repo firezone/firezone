@@ -14,13 +14,27 @@ pub struct Dsn(&'static str);
 // > DSNs are safe to keep public because they only allow submission of new events and related event data; they do not allow read access to any information.
 // <https://docs.sentry.io/concepts/key-terms/dsn-explainer/#dsn-utilization>
 
-pub const ANDROID_DSN: Dsn = Dsn("https://928a6ee1f6af9734100b8bc89b2dc87d@o4507971108339712.ingest.us.sentry.io/4508175126233088");
-pub const APPLE_DSN: Dsn = Dsn("https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488");
-pub const GATEWAY_DSN: Dsn = Dsn("https://f763102cc3937199ec483fbdae63dfdc@o4507971108339712.ingest.us.sentry.io/4508162914451456");
-pub const GUI_DSN: Dsn = Dsn("https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312");
-pub const HEADLESS_DSN: Dsn = Dsn("https://bc27dca8bb37be0142c48c4f89647c13@o4507971108339712.ingest.us.sentry.io/4508010028728320");
-pub const RELAY_DSN: Dsn = Dsn("https://9d5f664d8f8f7f1716d4b63a58bcafd5@o4507971108339712.ingest.us.sentry.io/4508373298970624");
-pub const TESTING: Dsn = Dsn("https://55ef451fca9054179a11f5d132c02f45@o4507971108339712.ingest.us.sentry.io/4508792604852224");
+pub const ANDROID_DSN: Dsn = Dsn(
+    "https://928a6ee1f6af9734100b8bc89b2dc87d@o4507971108339712.ingest.us.sentry.io/4508175126233088",
+);
+pub const APPLE_DSN: Dsn = Dsn(
+    "https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488",
+);
+pub const GATEWAY_DSN: Dsn = Dsn(
+    "https://f763102cc3937199ec483fbdae63dfdc@o4507971108339712.ingest.us.sentry.io/4508162914451456",
+);
+pub const GUI_DSN: Dsn = Dsn(
+    "https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312",
+);
+pub const HEADLESS_DSN: Dsn = Dsn(
+    "https://bc27dca8bb37be0142c48c4f89647c13@o4507971108339712.ingest.us.sentry.io/4508010028728320",
+);
+pub const RELAY_DSN: Dsn = Dsn(
+    "https://9d5f664d8f8f7f1716d4b63a58bcafd5@o4507971108339712.ingest.us.sentry.io/4508373298970624",
+);
+pub const TESTING: Dsn = Dsn(
+    "https://55ef451fca9054179a11f5d132c02f45@o4507971108339712.ingest.us.sentry.io/4508792604852224",
+);
 
 mod env {
     use std::borrow::Cow;
@@ -93,11 +107,7 @@ impl Telemetry {
                 traces_sampler: Some(Arc::new(|tx| {
                     // Only submit `telemetry` spans to Sentry.
                     // Those get sampled at creation time (to save CPU power) so we want to submit all of them.
-                    if tx.name() == "telemetry" {
-                        1.0
-                    } else {
-                        0.0
-                    }
+                    if tx.name() == "telemetry" { 1.0 } else { 0.0 }
                 })),
                 max_breadcrumbs: 500,
                 ..Default::default()

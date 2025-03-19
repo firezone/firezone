@@ -1,5 +1,5 @@
 use super::dns_records::DnsRecords;
-use super::unreachable_hosts::{unreachable_hosts, UnreachableHosts};
+use super::unreachable_hosts::{UnreachableHosts, unreachable_hosts};
 use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
@@ -467,9 +467,11 @@ impl ReferenceState {
                 state.network.remove_host(&state.client);
                 state.client.ip4.clone_from(ip4);
                 state.client.ip6.clone_from(ip6);
-                debug_assert!(state
-                    .network
-                    .add_host(state.client.inner().id, &state.client));
+                debug_assert!(
+                    state
+                        .network
+                        .add_host(state.client.inner().id, &state.client)
+                );
 
                 // When roaming, we are not connected to any resource and wait for the next packet to re-establish a connection.
                 state.client.exec_mut(|client| {
@@ -717,7 +719,7 @@ impl ReferenceState {
     fn all_domains(&self) -> Vec<(DomainName, Vec<RecordType>)> {
         fn domains_and_rtypes(
             records: &DnsRecords,
-        ) -> impl Iterator<Item = (DomainName, Vec<RecordType>)> + use<'_> {
+        ) -> impl Iterator<Item = (DomainName, Vec<RecordType>)> {
             records
                 .domains_iter()
                 .map(|d| (d.clone(), records.domain_rtypes(&d)))
@@ -800,11 +802,11 @@ impl ReferenceState {
     }
 }
 
-fn select_host_v4(hosts: &[Ipv4Network]) -> impl Strategy<Value = Ipv4Addr> {
+fn select_host_v4(hosts: &[Ipv4Network]) -> impl Strategy<Value = Ipv4Addr> + use<> {
     sample::select(hosts.to_vec()).prop_flat_map(crate::proptest::host_v4)
 }
 
-fn select_host_v6(hosts: &[Ipv6Network]) -> impl Strategy<Value = Ipv6Addr> {
+fn select_host_v6(hosts: &[Ipv6Network]) -> impl Strategy<Value = Ipv6Addr> + use<> {
     sample::select(hosts.to_vec()).prop_flat_map(crate::proptest::host_v6)
 }
 

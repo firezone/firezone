@@ -3,11 +3,11 @@ use std::{
     io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
     time::{Duration, Instant},
 };
 
-use dns_types::{prelude::*, DomainNameRef, Query, RecordType, ResponseCode};
+use dns_types::{DomainNameRef, Query, RecordType, ResponseCode, prelude::*};
 use futures_bounded::FuturesTupleSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 

@@ -1,7 +1,7 @@
 use crate::TUNNEL_NAME;
 use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
-use known_folders::{get_known_folder_path, KnownFolder};
+use known_folders::{KnownFolder, get_known_folder_path};
 use socket_factory::{TcpSocket, UdpSocket};
 use std::{
     cmp::Ordering,
@@ -18,8 +18,8 @@ use windows::Win32::NetworkManagement::{
 };
 use windows::Win32::{
     NetworkManagement::IpHelper::{
-        CreateIpForwardEntry2, DeleteIpForwardEntry2, GetBestRoute2, GetIpForwardTable2,
-        GET_ADAPTERS_ADDRESSES_FLAGS, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
+        CreateIpForwardEntry2, DeleteIpForwardEntry2, GET_ADAPTERS_ADDRESSES_FLAGS, GetBestRoute2,
+        GetIpForwardTable2, IP_ADAPTER_ADDRESSES_LH, MIB_IPFORWARD_ROW2,
     },
     NetworkManagement::Ndis::IfOperStatusUp,
     Networking::WinSock::{ADDRESS_FAMILY, AF_INET, AF_INET6, AF_UNSPEC, SOCKADDR_INET},
@@ -429,12 +429,20 @@ fn find_best_route_for_luid(luid: &NET_LUID_LH, dst: IpAddr) -> Result<Route> {
 
 // SAFETY: si_family must be always set in the union, which will be the case for a valid SOCKADDR_INET
 unsafe fn to_ip_addr(addr: SOCKADDR_INET, dst: IpAddr) -> Option<IpAddr> {
-    match (addr.si_family, dst) {
+    let family = unsafe { addr.si_family };
+
+    match (family, dst) {
         (ADDRESS_FAMILY(0), IpAddr::V4(_)) | (ADDRESS_FAMILY(2), _) => {
-            Some(Ipv4Addr::from(addr.Ipv4.sin_addr).into())
+            // SAFETY: We checked the family.
+            let ipv4 = unsafe { addr.Ipv4 };
+
+            Some(Ipv4Addr::from(ipv4.sin_addr).into())
         }
         (ADDRESS_FAMILY(0), IpAddr::V6(_)) | (ADDRESS_FAMILY(23), _) => {
-            Some(Ipv6Addr::from(addr.Ipv6.sin6_addr).into())
+            // SAFETY: We checked the family.
+            let ipv6 = unsafe { addr.Ipv6 };
+
+            Some(Ipv6Addr::from(ipv6.sin6_addr).into())
         }
         _ => None,
     }

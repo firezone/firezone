@@ -45,9 +45,10 @@ mod tests {
             settings(),
         ] {
             let dir = dir.expect("should have gotten Some(path)");
-            assert!(dir
-                .components()
-                .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
+            assert!(
+                dir.components()
+                    .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref()))
+            );
         }
     }
 }

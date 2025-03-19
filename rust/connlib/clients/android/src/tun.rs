@@ -51,7 +51,7 @@ impl Tun {
     /// - The file descriptor must be open.
     /// - The file descriptor must not get closed by anyone else.
     pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
-        let name = interface_name(fd)?;
+        let name = unsafe { interface_name(fd)? };
 
         let (inbound_tx, inbound_rx) = mpsc::channel(1000);
         let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
@@ -95,7 +95,7 @@ unsafe fn interface_name(fd: RawFd) -> io::Result<String> {
     const TUNGETIFF: libc::c_ulong = 0x800454d2;
     let mut request = tun::ioctl::Request::<tun::ioctl::GetInterfaceNamePayload>::new();
 
-    ioctl::exec(fd, TUNGETIFF, &mut request)?;
+    unsafe { ioctl::exec(fd, TUNGETIFF, &mut request)? };
 
     Ok(request.name().to_string())
 }

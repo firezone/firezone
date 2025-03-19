@@ -1,12 +1,12 @@
-use crate::{callbacks::Callbacks, PHOENIX_TOPIC};
+use crate::{PHOENIX_TOPIC, callbacks::Callbacks};
 use anyhow::Result;
 use connlib_model::{PublicKey, ResourceId};
 use firezone_logging::{err_with_src, telemetry_event};
+use firezone_tunnel::messages::RelaysPresence;
 use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
-use firezone_tunnel::messages::RelaysPresence;
 use firezone_tunnel::{ClientTunnel, IpConfig};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
 use std::time::Instant;

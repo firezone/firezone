@@ -11,15 +11,15 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use sentry_tracing::EventFilter;
-use tracing::{subscriber::DefaultGuard, Subscriber};
+use tracing::{Subscriber, subscriber::DefaultGuard};
 use tracing_log::LogTracer;
 use tracing_subscriber::{
-    filter::ParseError, fmt, layer::SubscriberExt as _, registry::LookupSpan, reload,
-    util::SubscriberInitExt, EnvFilter, Layer, Registry,
+    EnvFilter, Layer, Registry, filter::ParseError, fmt, layer::SubscriberExt as _,
+    registry::LookupSpan, reload, util::SubscriberInitExt,
 };
 
 pub use ansi::stdout_supports_ansi;
-pub use err_with_sources::{err_with_src, ErrorWithSources};
+pub use err_with_sources::{ErrorWithSources, err_with_src};
 pub use format::Format;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`

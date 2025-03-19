@@ -13,7 +13,7 @@ use hex_display::HexDisplayExt;
 use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf};
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
-use rand::{random, Rng, RngCore, SeedableRng};
+use rand::{Rng, RngCore, SeedableRng, random};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
@@ -256,7 +256,10 @@ where
         let remote_creds = remote_creds.into();
 
         if self.connections.initial.contains_key(&cid) {
-            debug_assert!(false, "The new `upsert_connection` API is incompatible with the previous `new_connection` API");
+            debug_assert!(
+                false,
+                "The new `upsert_connection` API is incompatible with the previous `new_connection` API"
+            );
             return Ok(());
         }
 
@@ -451,7 +454,10 @@ where
             .ok_or(Error::NotConnected)?;
 
         if self.mode.is_server() && !conn.state.has_nominated_socket() {
-            tracing::debug!(?packet, "ICE is still in progress; dropping packet because server should not initiate WireGuard sessions");
+            tracing::debug!(
+                ?packet,
+                "ICE is still in progress; dropping packet because server should not initiate WireGuard sessions"
+            );
 
             return Ok(None);
         }

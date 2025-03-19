@@ -1,4 +1,4 @@
-use std::collections::{hash_map, BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque, hash_map};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
@@ -17,7 +17,7 @@ use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 use crate::utils::network_contains_network;
 use crate::{GatewayEvent, IpConfig};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use nat_table::{NatTable, TranslateIncomingResult};
 
 mod filter_engine;
@@ -638,9 +638,9 @@ mod tests {
     };
 
     use crate::{
+        IpConfig,
         messages::gateway::{Filter, PortRange, ResourceDescription, ResourceDescriptionCidr},
         peer::nat_table,
-        IpConfig,
     };
     use chrono::Utc;
     use connlib_model::{ClientId, ResourceId};
@@ -699,30 +699,54 @@ mod tests {
 
         peer.expire_resources(now);
 
-        assert!(peer
-            .ensure_allowed_resource(tcp_packet.destination(), tcp_packet.destination_protocol())
-            .is_ok());
-        assert!(peer
-            .ensure_allowed_resource(udp_packet.destination(), udp_packet.destination_protocol())
-            .is_ok());
+        assert!(
+            peer.ensure_allowed_resource(
+                tcp_packet.destination(),
+                tcp_packet.destination_protocol()
+            )
+            .is_ok()
+        );
+        assert!(
+            peer.ensure_allowed_resource(
+                udp_packet.destination(),
+                udp_packet.destination_protocol()
+            )
+            .is_ok()
+        );
 
         peer.expire_resources(then);
 
-        assert!(peer
-            .ensure_allowed_resource(tcp_packet.destination(), tcp_packet.destination_protocol())
-            .is_err());
-        assert!(peer
-            .ensure_allowed_resource(udp_packet.destination(), udp_packet.destination_protocol())
-            .is_ok());
+        assert!(
+            peer.ensure_allowed_resource(
+                tcp_packet.destination(),
+                tcp_packet.destination_protocol()
+            )
+            .is_err()
+        );
+        assert!(
+            peer.ensure_allowed_resource(
+                udp_packet.destination(),
+                udp_packet.destination_protocol()
+            )
+            .is_ok()
+        );
 
         peer.expire_resources(after_then);
 
-        assert!(peer
-            .ensure_allowed_resource(tcp_packet.destination(), tcp_packet.destination_protocol())
-            .is_err());
-        assert!(peer
-            .ensure_allowed_resource(udp_packet.destination(), udp_packet.destination_protocol())
-            .is_err());
+        assert!(
+            peer.ensure_allowed_resource(
+                tcp_packet.destination(),
+                tcp_packet.destination_protocol()
+            )
+            .is_err()
+        );
+        assert!(
+            peer.ensure_allowed_resource(
+                udp_packet.destination(),
+                udp_packet.destination_protocol()
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -747,14 +771,16 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer
-            .translate_outbound(request, Instant::now())
-            .unwrap()
-            .is_some());
-        assert!(peer
-            .translate_inbound(response, Instant::now())
-            .unwrap()
-            .is_some());
+        assert!(
+            peer.translate_outbound(request, Instant::now())
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            peer.translate_inbound(response, Instant::now())
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[test]
@@ -792,10 +818,11 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer
-            .translate_outbound(pkt, Instant::now())
-            .unwrap()
-            .is_none());
+        assert!(
+            peer.translate_outbound(pkt, Instant::now())
+                .unwrap()
+                .is_none()
+        );
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -806,10 +833,11 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer
-            .translate_outbound(pkt, Instant::now())
-            .unwrap()
-            .is_none());
+        assert!(
+            peer.translate_outbound(pkt, Instant::now())
+                .unwrap()
+                .is_none()
+        );
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -856,10 +884,11 @@ mod tests {
         )
         .unwrap();
 
-        assert!(peer
-            .translate_outbound(pkt, Instant::now())
-            .unwrap()
-            .is_none());
+        assert!(
+            peer.translate_outbound(pkt, Instant::now())
+                .unwrap()
+                .is_none()
+        );
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -1106,9 +1135,10 @@ mod proptests {
                 Protocol::Icmp => icmp_request_packet(src, *dest, 1, 0, &[]),
             }
             .unwrap();
-            assert!(peer
-                .ensure_allowed_resource(packet.destination(), packet.destination_protocol())
-                .is_ok());
+            assert!(
+                peer.ensure_allowed_resource(packet.destination(), packet.destination_protocol())
+                    .is_ok()
+            );
         }
     }
 
@@ -1161,9 +1191,10 @@ mod proptests {
             }
             .unwrap();
 
-            assert!(peer
-                .ensure_allowed_resource(packet.destination(), packet.destination_protocol())
-                .is_ok());
+            assert!(
+                peer.ensure_allowed_resource(packet.destination(), packet.destination_protocol())
+                    .is_ok()
+            );
         }
     }
 
@@ -1211,9 +1242,10 @@ mod proptests {
             None,
         );
 
-        assert!(peer
-            .ensure_allowed_resource(packet.destination(), packet.destination_protocol())
-            .is_err());
+        assert!(
+            peer.ensure_allowed_resource(packet.destination(), packet.destination_protocol())
+                .is_err()
+        );
     }
 
     #[test_strategy::proptest()]
@@ -1284,18 +1316,20 @@ mod proptests {
         );
         peer.remove_resource(&resource_id_removed);
 
-        assert!(peer
-            .ensure_allowed_resource(
+        assert!(
+            peer.ensure_allowed_resource(
                 packet_allowed.destination(),
                 packet_allowed.destination_protocol()
             )
-            .is_ok());
-        assert!(peer
-            .ensure_allowed_resource(
+            .is_ok()
+        );
+        assert!(
+            peer.ensure_allowed_resource(
                 packet_rejected.destination(),
                 packet_rejected.destination_protocol()
             )
-            .is_err());
+            .is_err()
+        );
     }
 
     fn cidr_resources(
@@ -1343,8 +1377,8 @@ mod proptests {
         })
     }
 
-    fn non_overlapping_non_empty_filters_with_allowed_protocol(
-    ) -> impl Strategy<Value = ((Filters, Protocol), (Filters, Protocol))> {
+    fn non_overlapping_non_empty_filters_with_allowed_protocol()
+    -> impl Strategy<Value = ((Filters, Protocol), (Filters, Protocol))> {
         filters_with_allowed_protocol()
             .prop_filter("empty filters accepts every packet", |(f, _)| !f.is_empty())
             .prop_flat_map(|(filters_a, protocol_a)| {

@@ -1,11 +1,11 @@
 use super::dns_records::DnsRecords;
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
 use crate::client::{
-    CidrResource, DnsResource, InternetResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6,
-    IPV4_RESOURCES, IPV6_RESOURCES,
+    CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
+    InternetResource,
 };
 use crate::messages::DnsServer;
-use crate::{proptest::*, IPV4_TUNNEL, IPV6_TUNNEL};
+use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
 use connlib_model::{RelayId, Site};
 use dns_types::OwnedRecordData;
 use ip_network::{Ipv4Network, Ipv6Network};

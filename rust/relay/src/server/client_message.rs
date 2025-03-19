@@ -1,7 +1,7 @@
-use crate::auth::{generate_password, split_username, systemtime_from_unix, FIREZONE};
-use crate::server::channel_data::ChannelData;
-use crate::server::{error_response, UDP_TRANSPORT};
 use crate::Attribute;
+use crate::auth::{FIREZONE, generate_password, split_username, systemtime_from_unix};
+use crate::server::channel_data::ChannelData;
+use crate::server::{UDP_TRANSPORT, error_response};
 use anyhow::{Context, Result};
 use bytecodec::DecodeExt;
 use secrecy::SecretString;

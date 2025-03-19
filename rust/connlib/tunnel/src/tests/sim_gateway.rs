@@ -1,14 +1,14 @@
 use super::{
     dns_records::DnsRecords,
     dns_server_resource::{TcpDnsServerResource, UdpDnsServerResource},
-    reference::{private_key, PrivateKey},
-    sim_net::{any_port, dual_ip_stack, host, Host},
-    sim_relay::{map_explode, SimRelay},
+    reference::{PrivateKey, private_key},
+    sim_net::{Host, any_port, dual_ip_stack, host},
+    sim_relay::{SimRelay, map_explode},
     strategies::latency,
     unreachable_hosts::{IcmpError, UnreachableHosts},
 };
 use crate::{GatewayState, IpConfig};
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId};
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};

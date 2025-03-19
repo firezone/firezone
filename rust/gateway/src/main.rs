@@ -3,17 +3,16 @@ use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::{
-    http_health_check,
+    TunDeviceManager, http_health_check,
     platform::{tcp_socket_factory, udp_socket_factory},
-    TunDeviceManager,
 };
 
 use firezone_telemetry::Telemetry;
 use firezone_tunnel::GatewayTunnel;
-use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
+use phoenix_channel::get_user_agent;
 
-use futures::{future, TryFutureExt};
+use futures::{TryFutureExt, future};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use std::pin::pin;

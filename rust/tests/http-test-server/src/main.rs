@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 use axum::{
+    Router,
     body::{Body, Bytes},
     extract::Query,
     http::Response,
     response::IntoResponse,
     routing::get,
-    Router,
 };
 use futures::StreamExt;
 use std::{convert::Infallible, net::Ipv4Addr};

@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 use firezone_bin_shared::BUNDLE_ID;
-use known_folders::{get_known_folder_path, KnownFolder};
+use known_folders::{KnownFolder, get_known_folder_path};
 use std::path::{Path, PathBuf};
 
 // The return value is useful on Linux

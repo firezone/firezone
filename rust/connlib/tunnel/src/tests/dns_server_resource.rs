@@ -4,8 +4,8 @@ use std::{
     time::Instant,
 };
 
-use dns_types::prelude::*;
 use dns_types::ResponseCode;
+use dns_types::prelude::*;
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
 
 use super::dns_records::DnsRecords;

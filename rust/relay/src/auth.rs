@@ -34,18 +34,18 @@
 //! Each client will receive a different pair of username and password.
 //! Thus, even with valid credentials, an attacker cannot reuse those credentials to fake responses for a different client.
 
-use base64::prelude::BASE64_STANDARD_NO_PAD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD_NO_PAD;
 use bytecodec::Encode;
 use once_cell::sync::Lazy;
 use secrecy::{ExposeSecret, SecretString};
-use sha2::digest::FixedOutput;
 use sha2::Sha256;
-use std::collections::hash_map::Entry;
+use sha2::digest::FixedOutput;
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::time::{Duration, SystemTime};
-use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
 use stun_codec::Message;
+use stun_codec::rfc5389::attributes::{MessageIntegrity, Realm, Username};
 use uuid::Uuid;
 
 use crate::Attribute;

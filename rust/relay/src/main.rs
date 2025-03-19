@@ -1,17 +1,17 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::http_health_check;
 use firezone_logging::{err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
-    sockets, AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack,
-    PeerSocket, Server, Sleep, VERSION,
+    AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
+    Sleep, VERSION, sockets,
 };
-use firezone_telemetry::{Telemetry, RELAY_DSN};
-use futures::{future, FutureExt};
+use firezone_telemetry::{RELAY_DSN, Telemetry};
+use futures::{FutureExt, future};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
@@ -20,12 +20,12 @@ use std::borrow::Cow;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use std::task::{ready, Poll};
+use std::task::{Poll, ready};
 use std::time::{Duration, Instant};
-use tracing::{level_filters::LevelFilter, Subscriber};
+use tracing::{Subscriber, level_filters::LevelFilter};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
+use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use url::Url;
 
 const STATS_LOG_INTERVAL: Duration = Duration::from_secs(10);
@@ -662,8 +662,8 @@ fn is_healthy(last_heartbeat_sent: Arc<Mutex<Option<Instant>>>) -> bool {
 
 fn make_otel_metadata() -> opentelemetry_sdk::Resource {
     use opentelemetry::{Key, KeyValue};
-    use opentelemetry_sdk::resource::{EnvResourceDetector, TelemetryResourceDetector};
     use opentelemetry_sdk::Resource;
+    use opentelemetry_sdk::resource::{EnvResourceDetector, TelemetryResourceDetector};
 
     const SERVICE_NAME: Key = Key::from_static_str("service.name");
     const SERVICE_NAMESPACE: Key = Key::from_static_str("service.namespace");

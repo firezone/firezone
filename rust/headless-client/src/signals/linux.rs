@@ -3,7 +3,7 @@ use futures::{
     future::poll_fn,
     task::{Context, Poll},
 };
-use tokio::signal::unix::{signal, Signal, SignalKind};
+use tokio::signal::unix::{Signal, SignalKind, signal};
 
 pub struct Terminate {
     /// For Ctrl+C from a terminal

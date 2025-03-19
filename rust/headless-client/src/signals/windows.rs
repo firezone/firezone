@@ -1,10 +1,10 @@
 use anyhow::Result;
 use futures::{
+    StreamExt as _,
     channel::mpsc,
     future::poll_fn,
     stream::BoxStream,
     task::{Context, Poll},
-    StreamExt as _,
 };
 
 pub struct Terminate {

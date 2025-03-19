@@ -1,6 +1,6 @@
 use futures::SinkExt as _;
 use ip_packet::{IpPacket, IpPacketBuf};
-use libc::{fcntl, iovec, msghdr, recvmsg, AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK};
+use libc::{AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK, fcntl, iovec, msghdr, recvmsg};
 use std::task::{Context, Poll};
 use std::{
     io,
@@ -165,7 +165,7 @@ fn write(fd: RawFd, src: &IpPacket) -> io::Result<usize> {
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn name(fd: RawFd) -> io::Result<String> {
-    use libc::{getsockopt, socklen_t, IF_NAMESIZE, SYSPROTO_CONTROL, UTUN_OPT_IFNAME};
+    use libc::{IF_NAMESIZE, SYSPROTO_CONTROL, UTUN_OPT_IFNAME, getsockopt, socklen_t};
 
     let mut tunnel_name = [0u8; IF_NAMESIZE];
     let mut tunnel_name_len = tunnel_name.len() as socklen_t;
@@ -190,7 +190,7 @@ fn name(fd: RawFd) -> io::Result<String> {
 fn search_for_tun_fd() -> io::Result<RawFd> {
     const CTL_NAME: &[u8] = b"com.apple.net.utun_control";
 
-    use libc::{ctl_info, getpeername, ioctl, sockaddr_ctl, socklen_t, AF_SYSTEM, CTLIOCGINFO};
+    use libc::{AF_SYSTEM, CTLIOCGINFO, ctl_info, getpeername, ioctl, sockaddr_ctl, socklen_t};
     use std::mem::size_of;
 
     let mut info = ctl_info {

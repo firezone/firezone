@@ -4,7 +4,7 @@
 // and named pipes on Windows, so TODO de-dupe the IPC code
 
 use crate::auth;
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use secrecy::{ExposeSecret, SecretString};
 use url::Url;
 
@@ -27,7 +27,7 @@ mod imp;
 #[error("named pipe server couldn't start listening, we are probably the second instance")]
 pub struct CantListen;
 
-pub use imp::{open, register, Server};
+pub use imp::{Server, open, register};
 
 /// Parses a deep-link URL into a struct.
 ///

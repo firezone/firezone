@@ -1,6 +1,6 @@
 use std::{sync::LazyLock, time::Duration};
 
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;

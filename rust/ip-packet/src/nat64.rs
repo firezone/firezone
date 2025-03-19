@@ -192,7 +192,7 @@ pub fn translate_in_place(buf: &mut [u8], src: Ipv4Addr, dst: Ipv4Addr) -> Resul
 fn translate_icmpv6_header(
     icmpv6_header: etherparse::Icmpv6Header,
 ) -> Option<etherparse::Icmpv4Header> {
-    use etherparse::{icmpv4, Icmpv4Header, Icmpv4Type, Icmpv6Type};
+    use etherparse::{Icmpv4Header, Icmpv4Type, Icmpv6Type, icmpv4};
 
     // Note: we only really need to support reply/request because we need
     // the identification to do nat anyways as source port.

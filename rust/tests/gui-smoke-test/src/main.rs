@@ -2,7 +2,7 @@
 //
 // Starts up the IPC service and GUI app and lets them run for a bit
 
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use clap::Parser;
 use std::{
     ffi::OsStr,

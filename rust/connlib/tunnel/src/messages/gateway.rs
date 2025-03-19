@@ -4,7 +4,7 @@ use crate::messages::{
     GatewayResponse, IceCredentials, Interface, Key, Peer, Relay, RelaysPresence, ResolveRequest,
     SecretKey,
 };
-use chrono::{serde::ts_seconds_option, DateTime, Utc};
+use chrono::{DateTime, Utc, serde::ts_seconds_option};
 use connlib_model::{ClientId, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};

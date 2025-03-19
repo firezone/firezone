@@ -1,7 +1,7 @@
 use crate::slice_utils::write_to_offset_unchecked;
 use etherparse::{
-    icmpv4::{TYPE_ECHO_REPLY, TYPE_ECHO_REQUEST},
     Icmpv4Slice,
+    icmpv4::{TYPE_ECHO_REPLY, TYPE_ECHO_REQUEST},
 };
 
 pub struct Icmpv4HeaderSliceMut<'a> {

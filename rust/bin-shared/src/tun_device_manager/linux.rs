@@ -1,18 +1,18 @@
 //! Virtual network interface
 
 use crate::FIREZONE_MARK;
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{Context as _, Result, anyhow};
 use firezone_logging::err_with_src;
 use futures::{SinkExt, TryStreamExt};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use libc::{
-    fcntl, makedev, mknod, open, EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR,
-    S_IFCHR,
+    EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR, S_IFCHR, fcntl, makedev, mknod,
+    open,
 };
 use netlink_packet_route::route::{RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
-use rtnetlink::{new_connection, Error::NetlinkError, Handle, RouteAddRequest, RuleAddRequest};
+use rtnetlink::{Error::NetlinkError, Handle, RouteAddRequest, RuleAddRequest, new_connection};
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::path::Path;
 use std::sync::Arc;

@@ -680,7 +680,7 @@ mod tests {
 #[allow(clippy::unwrap_used)]
 mod benches {
     use super::*;
-    use rand::{distributions::DistString, seq::IteratorRandom, Rng};
+    use rand::{Rng, distributions::DistString, seq::IteratorRandom};
 
     #[divan::bench(
         consts = [10, 100, 1_000, 10_000, 100_000]

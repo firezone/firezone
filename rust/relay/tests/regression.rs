@@ -1,9 +1,10 @@
 #![allow(clippy::unwrap_used)]
 
+use Output::{CreateAllocation, FreeAllocation};
 use bytecodec::{DecodeExt, EncodeExt};
 use firezone_relay::{
     AddressFamily, Allocate, AllocationPort, Attribute, Binding, ChannelBind, ChannelData,
-    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, Server, SOFTWARE,
+    ClientMessage, ClientSocket, Command, IpStack, PeerSocket, Refresh, SOFTWARE, Server,
 };
 use rand::rngs::mock::StepRng;
 use secrecy::SecretString;
@@ -20,7 +21,6 @@ use stun_codec::rfc5766::methods::{ALLOCATE, CHANNEL_BIND, REFRESH};
 use stun_codec::{Message, MessageClass, MessageDecoder, MessageEncoder, TransactionId};
 use test_strategy::proptest;
 use uuid::Uuid;
-use Output::{CreateAllocation, FreeAllocation};
 
 #[proptest]
 fn can_answer_stun_request_from_ip4_address(

@@ -35,7 +35,7 @@ mod platform {
     };
     use tokio::{
         net::UdpSocket,
-        time::{timeout, Instant},
+        time::{Instant, timeout},
     };
     use tun::Tun as _;
 
