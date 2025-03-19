@@ -8,8 +8,8 @@ In this example, we will deploy one or more Firezone Gateways in a single VPC on
 Google Cloud Platform (GCP) that are configured to egress traffic through a
 single Cloud NAT that is assigned a single static IP address.
 
-This example is built on top of
-[Google Cloud Gateway via Regional Instance Group](https://github.com/firezone/firezone/tree/main/terraform/modules/google-cloud/apps/gateway-region-instance-group/).
+This example is built on top of our example module for deploying a
+[Firezone Gateway in Google Cloud](https://github.com/firezone/terraform-google-gateway/tree/main/examples/nat-gateway).
 
 ## Common use cases
 
@@ -51,22 +51,34 @@ There's no limit to the number of Firezone Gateways you can deploy in a single
 VPC.
 
 <Alert color="warning">
-  If you need more than 64,512 concurrent connections, you can increase the
-  number of public IP addresses reserved for the Cloud NAT. See [Google's
-  documentation](https://cloud.google.com/nat/docs/ports-and-addresses#ports)
-  for more information.
+
+If you need more than 64,512 concurrent connections, you can increase the number
+of public IP addresses reserved for the Cloud NAT. See
+[Google's documentation](https://cloud.google.com/nat/docs/ports-and-addresses#ports)
+for more information.
+
 </Alert>
 
-We've tested with `f1-micro` instances which still work quite well for most
+We've tested with `e2-micro` instances which still work quite well for most
 applications. However, you may want to consider a larger instance type if you
 have a high volume of traffic or lots of concurrent connections. See
-[Gateway sizing recommendations](/kb/deploy/gateeways#sizing-recommendations)
-for some general guidelines depending on your expected traffic.
+[Gateway sizing recommendations](/kb/deploy/gateways#sizing-recommendations) for
+some general guidelines depending on your expected traffic.
 
 ## Deployment
 
-1. [Download](https://raw.githubusercontent.com/firezone/firezone/main/terraform/examples/google-cloud/nat_gateway/main.tf)
-   the `main.tf` from the example module.
+1. Clone the module to your local machine:
+
+```
+git clone https://github.com/firezone/terraform-google-gateway
+```
+
+1. cd into the `examples/nat-gateway` directory.
+
+```
+cd terraform-google-gateway/examples/nat-gateway
+```
+
 1. Configure the necessary Terraform
    [variables](https://developer.hashicorp.com/terraform/language/values/variables).
    Here's an example `terraform.tfvars` you can use as a starting point:
@@ -103,10 +115,12 @@ listed as `Online`.
 />
 
 <Alert color="info">
-  It can sometimes take **up to 30 minutes** for all of the resources in this
-  example to provision and connect to the portal. If you suspect the Gateway(s)
-  are not connecting, follow the instructions in the [troubleshooting
-  guide](/kb/administer/troubleshooting) to diagnose the issue.
+
+It can sometimes take **up to 30 minutes** for all of the resources in this
+example to provision and connect to the portal. If you suspect the Gateway(s)
+are not connecting, follow the instructions in the
+[troubleshooting guide](/kb/administer/troubleshooting) to diagnose the issue.
+
 </Alert>
 
 ## Upgrading
@@ -117,8 +131,10 @@ update this variable and run `terraform apply`, which will trigger a new
 deployment of the Firezone Gateway(s) with the new version.
 
 <Alert color="info">
-  You can follow the latest releases of the Gateway at our [changelog
-  page](https://www.firezone.dev/changelog).
+
+You can follow the latest releases of the Gateway at our
+[changelog page](https://www.firezone.dev/changelog).
+
 </Alert>
 
 This will incur a few minutes of downtime as Terraform destroys the existing
