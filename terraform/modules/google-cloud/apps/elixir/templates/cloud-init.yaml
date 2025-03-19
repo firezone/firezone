@@ -98,8 +98,8 @@ runcmd:
   - sudo ip6tables-restore < /etc/iptables/rules.v6
   - systemctl daemon-reload
   - systemctl start otel-collector.service
-  # Enable swapspace to minimize OOM kills
-  - fallocate -l 1G /var/swapfile
-  - chmod 600 /var/swapfile
-  - mkswap /var/swapfile
-  - swapon /var/swapfile
+
+swap:
+  filename: /swapfile
+  size: ${swap_size_gb}G
+  maxsize: ${swap_size_gb}G
