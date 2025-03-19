@@ -6,6 +6,7 @@ defmodule Web.Settings.Account do
     socket =
       assign(socket,
         page_title: "Account",
+        delete_requested: false,
         account_type: Accounts.type(socket.assigns.account)
       )
 
@@ -71,22 +72,60 @@ defmodule Web.Settings.Account do
       <:title>
         Danger zone
       </:title>
+      <:action>
+        <.button_with_confirmation
+          id="delete_account"
+          style="danger"
+          icon="hero-trash-solid"
+          on_confirm="delete_account"
+          disabled={@delete_requested}
+        >
+          <:dialog_title>Confirm Account Deletion</:dialog_title>
+          <:dialog_content>
+            This account <strong>{@account.slug}</strong>
+            will be scheduled for complete deletion.<br /><br />
+            Are you sure you want to delete your account?
+          </:dialog_content>
+          <:dialog_confirm_button>
+            Delete Account
+          </:dialog_confirm_button>
+          <:dialog_cancel_button>
+            Cancel
+          </:dialog_cancel_button>
+          <span :if={@delete_requested}>Delete Requested</span>
+          <span :if={!@delete_requested}>Delete Account</span>
+        </.button_with_confirmation>
+      </:action>
       <:content>
         <h3 class="ml-4 mb-4 font-medium text-neutral-900">
           Terminate account
         </h3>
         <p class="ml-4 mb-4 text-neutral-600">
-          <.icon name="hero-exclamation-circle" class="inline-block w-5 h-5 mr-1 text-red-500" /> To
-          <span :if={Accounts.account_active?(@account)}>disable your account and</span>
-          schedule it for deletion, please <.link
-            class={link_style()}
-            target="_blank"
-            href={mailto_support(@account, @subject, "Account termination request: #{@account.name}")}
-          >contact support</.link>.
+          <.icon name="hero-exclamation-circle" class="inline-block w-5 h-5 mr-1 text-red-500" />
+          <span :if={@delete_requested}>
+            A request has been sent to delete your account.
+          </span>
+          <span :if={!@delete_requested}>
+            Schedule your account for deletion.
+          </span>
         </p>
       </:content>
     </.section>
     """
+  end
+
+  def handle_event("delete_account", _params, socket) do
+    Domain.Mailer.AccountDelete.account_delete_email(
+      socket.assigns.account,
+      socket.assigns.subject
+    )
+    |> Domain.Mailer.deliver()
+
+    socket =
+      socket
+      |> assign(:delete_requested, true)
+
+    {:noreply, socket}
   end
 
   defp notifications_table(assigns) do
