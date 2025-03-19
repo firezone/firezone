@@ -10,8 +10,8 @@ use aya_ebpf::{
 };
 use aya_log_ebpf::*;
 use etherparse::{
-    checksum, EtherType, Ethernet2Header, Ethernet2HeaderSlice, IpNumber, Ipv4HeaderSlice,
-    UdpHeader, UdpHeaderSlice,
+    checksum, EtherType, Ethernet2Header, Ethernet2HeaderSlice, IpNumber, Ipv4Header,
+    Ipv4HeaderSlice, UdpHeader, UdpHeaderSlice,
 };
 use etherparse_ext::{Ipv4HeaderSliceMut, UdpHeaderSliceMut};
 use firezone_relay_ebpf_shared::{ClientAndChannel, PortAndPeer};
@@ -47,17 +47,7 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
 const CHANNEL_DATA_HEADER_LEN: usize = 4;
 
 fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
-    // SAFETY:
-    // - single u8 is always aligned
-    // - we checked the length
-    // - data within `XdpContext` is always continguous memory
-    let packet = unsafe {
-        core::slice::from_raw_parts_mut(ctx.data() as *mut u8, ctx.data_end() - ctx.data())
-    };
-
-    let (ethhdr_slice, ethernet_payload) = packet
-        .split_at_mut_checked(Ethernet2Header::LEN)
-        .ok_or(Error::SplitMutFailed)?;
+    let ethhdr_slice = slice_mut_at::<{ Ethernet2Header::LEN }>(ctx, 0)?;
     let ethhdr = parse_eth(ethhdr_slice)?;
 
     match ethhdr.ether_type() {
@@ -65,23 +55,20 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
         _ => return Ok(xdp_action::XDP_PASS),
     }
 
-    let ipv4hdr_length = (parse_ipv4(ethernet_payload)?.ihl() as usize) * 4;
-    let (ipv4hdr_slice, ipv4_payload) = ethernet_payload
-        .split_at_mut_checked(ipv4hdr_length)
-        .ok_or(Error::SplitMutFailed)?;
+    let ipv4hdr_slice = slice_mut_at::<{ Ipv4Header::MIN_LEN }>(ctx, Ethernet2Header::LEN)?;
     let ipv4hdr = parse_ipv4(ipv4hdr_slice)?;
 
     let source_addr = u32::from_be_bytes(ipv4hdr.source());
     let tot_len = ipv4hdr.total_len();
+    let ipv4hdr_length = usize::from(ipv4hdr.ihl() * 4);
+    // let ipv4hdr_length = Ipv4Header::MIN_LEN;
 
     let IpNumber::UDP = ipv4hdr.protocol() else {
         return Ok(xdp_action::XDP_PASS);
     };
 
-    let (udphdr_slice, udp_payload) = ipv4_payload
-        .split_at_mut_checked(UdpHeader::LEN)
-        .ok_or(Error::SplitMutFailed)?;
-    let udp_payload_ptr = udp_payload.as_mut_ptr();
+    let udphdr_slice =
+        slice_mut_at::<{ UdpHeader::LEN }>(ctx, Ethernet2Header::LEN + ipv4hdr_length)?;
     let udphdr = parse_udp(udphdr_slice)?;
 
     let source_port = udphdr.source_port();
@@ -93,10 +80,10 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     if dest_port == 3478 {
         // Handle channel data messages
 
-        let (cdhdr, channel_data_payload) = udp_payload
-            .split_at_mut_checked(CHANNEL_DATA_HEADER_LEN)
-            .ok_or(Error::SplitMutFailed)?;
-        let channel_data_payload_ptr = channel_data_payload.as_mut_ptr();
+        let cdhdr = slice_mut_at::<{ CHANNEL_DATA_HEADER_LEN }>(
+            ctx,
+            Ethernet2Header::LEN + ipv4hdr_length + UdpHeader::LEN,
+        )?;
 
         if !(64..=79).contains(&cdhdr[0]) {
             return Ok(xdp_action::XDP_PASS);
@@ -105,9 +92,16 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
         let channel_number = u16::from_be_bytes([cdhdr[0], cdhdr[1]]);
         let channel_data_length = usize::from(u16::from_be_bytes([cdhdr[2], cdhdr[3]]));
 
-        if channel_data_length > channel_data_payload.len() {
-            warn!(ctx, "Length of channel data message out of bounds");
+        if channel_data_length > usize::from(u16::MAX) {
+            return Ok(xdp_action::XDP_PASS);
+        }
 
+        let channel_data_payload = remaining_bytes(
+            ctx,
+            Ethernet2Header::LEN + ipv4hdr_length + UdpHeader::LEN + CHANNEL_DATA_HEADER_LEN,
+        )?;
+
+        if channel_data_payload.len() != channel_data_length {
             return Ok(xdp_action::XDP_PASS);
         }
 
@@ -163,8 +157,8 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 
         unsafe {
             aya_ebpf::memmove(
-                udp_payload_ptr,
-                channel_data_payload_ptr,
+                cdhdr.as_mut_ptr(),
+                channel_data_payload.as_mut_ptr(),
                 channel_data_length,
             );
         }
@@ -238,4 +232,30 @@ fn parse_eth(slice: &mut [u8]) -> Result<Ethernet2HeaderSlice<'_>, Error> {
 
 fn try_handle_peer(_: &XdpContext) -> Result<u32, Error> {
     Err(Error::NotImplemented)
+}
+
+#[inline(always)]
+fn slice_mut_at<const LEN: usize>(ctx: &XdpContext, offset: usize) -> Result<&mut [u8], Error> {
+    let start = ctx.data();
+    let end = ctx.data_end();
+
+    if start + offset + LEN > end {
+        return Err(Error::PacketTooShort);
+    }
+
+    Ok(unsafe { core::slice::from_raw_parts_mut((start + offset) as *mut u8, LEN) })
+}
+
+#[inline(always)]
+fn remaining_bytes(ctx: &XdpContext, offset: usize) -> Result<&mut [u8], Error> {
+    let start = ctx.data();
+    let end = ctx.data_end();
+
+    if start + offset > end {
+        return Err(Error::PacketTooShort);
+    }
+
+    let len = end - start - offset;
+
+    Ok(unsafe { core::slice::from_raw_parts_mut((start + offset) as *mut u8, len) })
 }

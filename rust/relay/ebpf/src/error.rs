@@ -5,9 +5,9 @@ pub enum Error {
     Ethernet2Header,
     Ipv4Header,
     UdpHeader,
-    SplitMutFailed,
     UdpChecksum,
     NotImplemented,
+    PacketTooShort,
 }
 
 impl aya_log_ebpf::WriteToBuf for Error {
@@ -16,9 +16,9 @@ impl aya_log_ebpf::WriteToBuf for Error {
             Error::Ethernet2Header => "Failed to parse Ethernet2 header",
             Error::Ipv4Header => "Failed to parse IPv4 header",
             Error::UdpHeader => "Failed to parse UDP header",
-            Error::SplitMutFailed => "Slice is not long enough to split",
             Error::UdpChecksum => "Failed to calculate UDP checksum",
             Error::NotImplemented => "Not implemented",
+            Error::PacketTooShort => "Packet is too short",
         }
         .as_bytes();
 
