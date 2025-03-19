@@ -101,5 +101,5 @@ runcmd:
 
 swap:
   filename: /swapfile
-  size: "${swap_size_gb}G"
-  maxsize: "${swap_size_gb}G"
+  size: ${swap_size_gb}G
+  maxsize: ${swap_size_gb}G
