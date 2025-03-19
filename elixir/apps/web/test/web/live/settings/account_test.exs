@@ -149,7 +149,7 @@ defmodule Web.Live.Settings.AccountTest do
     assert lv
            |> element("button[type=submit]", "Delete Account")
            |> render_click()
-           |> element_to_text() =~ "A request has been sent to delete your Account"
+           |> element_to_text() =~ "A request has been sent to delete your account"
 
     assert_email_sent(fn email ->
       assert email.subject == "ACCOUNT DELETE REQUEST - #{account.slug}"
