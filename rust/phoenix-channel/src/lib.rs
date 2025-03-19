@@ -10,8 +10,8 @@ use std::time::Duration;
 use std::{fmt, future, marker::PhantomData};
 use std::{io, mem};
 
-use backoff::backoff::Backoff;
 use backoff::ExponentialBackoff;
+use backoff::backoff::Backoff;
 use base64::Engine;
 use firezone_logging::{err_with_src, telemetry_span};
 use futures::future::BoxFuture;
@@ -19,13 +19,13 @@ use futures::{FutureExt, SinkExt, StreamExt};
 use itertools::Itertools as _;
 use rand_core::{OsRng, RngCore};
 use secrecy::{ExposeSecret, Secret};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use std::task::{Context, Poll, Waker};
 use tokio_tungstenite::client_async_tls;
 use tokio_tungstenite::{
-    tungstenite::{handshake::client::Request, Message},
     MaybeTlsStream, WebSocketStream,
+    tungstenite::{Message, handshake::client::Request},
 };
 use url::Url;
 
@@ -133,7 +133,9 @@ pub enum Error {
     Client(StatusCode),
     #[error("Authentication token expired")]
     TokenExpired,
-    #[error("Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}")]
+    #[error(
+        "Got disconnected from portal and hit the max-retry limit. Last connection error: {final_error}"
+    )]
     MaxRetriesReached { final_error: String },
     #[error("Failed to login with portal: {0}")]
     LoginFailed(ErrorReply),
@@ -304,7 +306,9 @@ where
         if self.pending_messages.len() > MAX_BUFFERED_MESSAGES {
             self.pending_messages.clear();
 
-            tracing::warn!("Dropping pending messages to portal because we exceeded the maximum of {MAX_BUFFERED_MESSAGES}");
+            tracing::warn!(
+                "Dropping pending messages to portal because we exceeded the maximum of {MAX_BUFFERED_MESSAGES}"
+            );
         }
 
         let (id, msg) = self.make_message(topic, message);
@@ -522,7 +526,7 @@ where
                             return Poll::Ready(Ok(Event::InboundMessage {
                                 topic: message.topic,
                                 msg,
-                            }))
+                            }));
                         }
                         (Payload::Reply(_), None) => {
                             tracing::warn!("Discarding reply because server omitted reference");

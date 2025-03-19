@@ -2,8 +2,8 @@
 
 use domain::{
     base::{
-        message_builder::AnswerBuilder, name::FlattenInto, HeaderCounts, Message, MessageBuilder,
-        ParsedName, Question, RecordSection,
+        HeaderCounts, Message, MessageBuilder, ParsedName, Question, RecordSection,
+        message_builder::AnswerBuilder, name::FlattenInto,
     },
     dep::octseq::OctetsInto,
     rdata::AllRecordData,
@@ -12,9 +12,9 @@ use domain::{
 pub mod prelude {
     // Re-export trait names so other crates can call the functions on them.
     // We don't export the name though so that it cannot conflict.
-    pub use domain::base::name::FlattenInto as _;
     pub use domain::base::RecordData as _;
     pub use domain::base::ToName as _;
+    pub use domain::base::name::FlattenInto as _;
 }
 
 pub const MAX_NAME_LEN: usize = domain::base::Name::MAX_LEN;
@@ -296,7 +296,7 @@ pub enum Error {
 pub mod records {
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-    use domain::rdata::{rfc1035::TxtError, Aaaa, Ptr, Srv, Txt, A};
+    use domain::rdata::{A, Aaaa, Ptr, Srv, Txt, rfc1035::TxtError};
 
     use super::*;
 

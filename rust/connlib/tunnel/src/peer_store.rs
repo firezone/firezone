@@ -1,5 +1,5 @@
 use core::fmt;
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{HashMap, hash_map::Entry};
 use std::hash::Hash;
 use std::net::IpAddr;
 
@@ -185,9 +185,11 @@ mod tests {
         peer_storage.remove(&0);
 
         assert!(peer_storage.get(&0).is_none());
-        assert!(peer_storage
-            .peer_by_ip("100.0.0.1".parse().unwrap())
-            .is_none())
+        assert!(
+            peer_storage
+                .peer_by_ip("100.0.0.1".parse().unwrap())
+                .is_none()
+        )
     }
 
     #[test]
@@ -197,8 +199,10 @@ mod tests {
         peer_storage.insert(DummyPeer::new(0), &[]);
 
         assert!(peer_storage.get(&0).is_some());
-        assert!(peer_storage
-            .peer_by_ip("100.0.0.1".parse().unwrap())
-            .is_none())
+        assert!(
+            peer_storage
+                .peer_by_ip("100.0.0.1".parse().unwrap())
+                .is_none()
+        )
     }
 }

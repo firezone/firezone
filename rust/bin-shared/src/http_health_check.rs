@@ -1,6 +1,6 @@
+use axum::Router;
 use axum::http::StatusCode;
 use axum::routing::get;
-use axum::Router;
 use std::net::SocketAddr;
 
 /// Runs an HTTP server that responds to `GET /healthz` with 200 OK or 400 BAD REQUEST, depending on the return value of `is_healthy`.

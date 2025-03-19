@@ -8,7 +8,7 @@ use std::{
     io::{self, IoSliceMut},
     net::{IpAddr, SocketAddr},
     slice,
-    task::{ready, Context, Poll},
+    task::{Context, Poll, ready},
 };
 
 use std::any::Any;
@@ -213,7 +213,7 @@ impl UdpSocket {
         &self,
         buffer: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>> + fmt::Debug>> {
+    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>> + fmt::Debug + use<'b>>> {
         let Self {
             port, inner, state, ..
         } = self;
@@ -247,7 +247,7 @@ impl UdpSocket {
                                 "stride ({}) is larger than buffer len ({})",
                                 meta.stride, meta.len
                             ),
-                        )))
+                        )));
                     }
                 }
 

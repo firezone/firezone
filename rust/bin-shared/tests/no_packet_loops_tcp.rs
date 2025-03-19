@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used)]
 
-use firezone_bin_shared::{platform::tcp_socket_factory, TunDeviceManager};
+use firezone_bin_shared::{TunDeviceManager, platform::tcp_socket_factory};
 use ip_network::Ipv4Network;
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -37,5 +37,8 @@ async fn no_packet_loops_tcp() {
     let mut bytes = vec![];
     stream.read_to_end(&mut bytes).await.unwrap();
     let s = String::from_utf8(bytes).unwrap();
-    assert_eq!(s, "<html>\r\n<head><title>400 Bad Request</title></head>\r\n<body>\r\n<center><h1>400 Bad Request</h1></center>\r\n<hr><center>cloudflare</center>\r\n</body>\r\n</html>\r\n");
+    assert_eq!(
+        s,
+        "<html>\r\n<head><title>400 Bad Request</title></head>\r\n<body>\r\n<center><h1>400 Bad Request</h1></center>\r\n<hr><center>cloudflare</center>\r\n</body>\r\n</html>\r\n"
+    );
 }

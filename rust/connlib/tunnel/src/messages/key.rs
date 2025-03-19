@@ -1,7 +1,7 @@
-use base64::{display::Base64Display, engine::general_purpose::STANDARD, Engine};
+use base64::{Engine, display::Base64Display, engine::general_purpose::STANDARD};
 use boringtun::x25519::PublicKey;
 use secrecy::{CloneableSecret, DebugSecret, Secret, SerializableSecret, Zeroize};
-use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
 use std::{fmt, str::FromStr};
 

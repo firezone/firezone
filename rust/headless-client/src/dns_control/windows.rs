@@ -16,10 +16,10 @@
 use super::DnsController;
 use anyhow::{Context as _, Result};
 use dns_types::DomainName;
-use firezone_bin_shared::platform::{DnsControlMethod, CREATE_NO_WINDOW, TUNNEL_UUID};
+use firezone_bin_shared::platform::{CREATE_NO_WINDOW, DnsControlMethod, TUNNEL_UUID};
 use firezone_bin_shared::windows::error::EPT_S_NOT_REGISTERED;
 use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
-use windows::Win32::System::GroupPolicy::{RefreshPolicyEx, RP_FORCE};
+use windows::Win32::System::GroupPolicy::{RP_FORCE, RefreshPolicyEx};
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
 // Copied from the deep link schema
@@ -146,7 +146,9 @@ fn activate(dns_config: &[IpAddr], search_domain: Option<DomainName>) -> Result<
     let hklm = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE);
 
     if let Err(e) = set_nameservers_on_interface(dns_config) {
-        tracing::warn!( "Failed to explicitly set nameservers on tunnel interface; DNS resources in WSL may not work: {e:#}");
+        tracing::warn!(
+            "Failed to explicitly set nameservers on tunnel interface; DNS resources in WSL may not work: {e:#}"
+        );
     }
 
     set_search_domain_on_interface(search_domain)

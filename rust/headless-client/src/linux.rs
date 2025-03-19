@@ -1,7 +1,7 @@
 //! Implementation, Linux-specific
 
 use super::TOKEN_ENV_KEY;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use firezone_bin_shared::BUNDLE_ID;
 use std::path::{Path, PathBuf};
 

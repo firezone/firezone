@@ -1,4 +1,4 @@
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use futures::StreamExt as _;
 use ip_packet::{IpPacket, IpPacketBuf};
 use std::io;

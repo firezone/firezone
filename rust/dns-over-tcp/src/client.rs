@@ -8,9 +8,9 @@ use crate::{
     codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice,
     time::smol_now,
 };
-use anyhow::{anyhow, bail, Context as _, Result};
+use anyhow::{Context as _, Result, anyhow, bail};
 use ip_packet::IpPacket;
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use smoltcp::{
     iface::{Interface, PollResult, SocketSet},
     socket::tcp,

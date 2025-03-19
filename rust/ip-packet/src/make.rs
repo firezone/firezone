@@ -1,7 +1,7 @@
 //! Factory module for making all kinds of packets.
 
 use crate::{IpPacket, IpPacketBuf};
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use etherparse::PacketBuilder;
 use std::net::IpAddr;
 

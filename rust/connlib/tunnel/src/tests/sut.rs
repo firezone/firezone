@@ -15,12 +15,12 @@ use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
-use crate::{dns, messages::Interface, ClientEvent, GatewayEvent};
+use crate::{ClientEvent, GatewayEvent, dns, messages::Interface};
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
-use dns_types::prelude::*;
 use dns_types::ResponseCode;
-use rand::distributions::DistString;
+use dns_types::prelude::*;
 use rand::SeedableRng;
+use rand::distributions::DistString;
 use sha2::Digest;
 use snownet::Transmit;
 use std::iter;
@@ -253,9 +253,11 @@ impl TunnelTest {
             Transition::RoamClient { ip4, ip6, port } => {
                 state.network.remove_host(&state.client);
                 state.client.update_interface(ip4, ip6, port);
-                debug_assert!(state
-                    .network
-                    .add_host(state.client.inner().id, &state.client));
+                debug_assert!(
+                    state
+                        .network
+                        .add_host(state.client.inner().id, &state.client)
+                );
 
                 state.client.exec_mut(|c| {
                     c.sut.reset(now);
