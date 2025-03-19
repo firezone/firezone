@@ -198,7 +198,9 @@ resource "google_compute_instance_template" "application" {
       }
     })
 
-    user-data = templatefile("${path.module}/templates/cloud-init.yaml", {})
+    user-data = templatefile("${path.module}/templates/cloud-init.yaml", {
+      swap_size_gb = var.compute_swap_size_gb
+    })
 
     google-logging-enabled       = "true"
     google-logging-use-fluentbit = "true"

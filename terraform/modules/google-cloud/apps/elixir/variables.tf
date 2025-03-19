@@ -29,6 +29,12 @@ variable "compute_boot_disk_type" {
   description = "Type of the boot disk."
 }
 
+variable "compute_swap_size_gb" {
+  type        = number
+  default     = 0
+  description = "Size of the swap disk in GB."
+}
+
 ################################################################################
 ## VPC
 ################################################################################
