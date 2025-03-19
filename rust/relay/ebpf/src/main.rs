@@ -12,8 +12,8 @@ use aya_ebpf::{
 };
 use aya_log_ebpf::*;
 use etherparse::{
-    checksum, EtherType, Ethernet2Header, Ethernet2HeaderSlice, IpNumber, Ipv4Header,
-    Ipv4HeaderSlice, UdpHeader, UdpHeaderSlice,
+    EtherType, Ethernet2Header, Ethernet2HeaderSlice, IpNumber, Ipv4Header, Ipv4HeaderSlice,
+    UdpHeader, UdpHeaderSlice,
 };
 use etherparse_ext::{Ipv4HeaderSliceMut, UdpHeaderSliceMut};
 use firezone_relay_ebpf_shared::{ClientAndChannel, PortAndPeer};
@@ -41,7 +41,7 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
         Err(e) => {
             debug!(&ctx, "Failed to handle packet {}", e);
 
-            xdp_action::XDP_ABORTED
+            xdp_action::XDP_PASS // Re-consider this.
         }
     }
 }
@@ -136,16 +136,23 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             ipv4hdr_mut.set_destination(new_dst_addr.to_be_bytes());
             ipv4hdr_mut.set_total_length(new_tot_len.to_be_bytes());
 
-            let new_checksum = unsafe {
+            let new_ipv4_checksum = csum_fold_helper(unsafe {
                 bpf_csum_diff(
                     [src_addr, dst_addr, u32::from(tot_len)].as_mut_ptr(), // Original components
                     3,
                     [new_src_addr, new_dst_addr, (u32::from(new_tot_len))].as_mut_ptr(), // New components
                     3,
                     u32::from(ipv4_checksum),
-                )
-            };
-            ipv4hdr_mut.set_checksum(new_checksum as u16);
+                ) as u64
+            });
+            ipv4hdr_mut.set_checksum(new_ipv4_checksum);
+
+            trace!(
+                ctx,
+                "Updating IP checksum from {:x} to {:x}",
+                ipv4_checksum,
+                new_ipv4_checksum
+            );
 
             let mut udphdr_mut = parse_udp_mut(udphdr_slice)?;
 
@@ -196,12 +203,21 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
                 )
             };
 
-            udphdr_mut.set_checksum(csum_fold_helper(
+            let new_udp_checksum = csum_fold_helper(
                 (i64::from(udp_checksum)
                     + ip_pseudo_header_checksum_delta
                     + udp_header_checksum_delta
                     + payload_checksum_delta) as u64,
-            ));
+            );
+
+            trace!(
+                ctx,
+                "Updating UDP checksum from {:x} to {:x}",
+                udp_checksum,
+                new_udp_checksum
+            );
+
+            udphdr_mut.set_checksum(new_udp_checksum);
         }
 
         let mut headers = [0u8; Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN];

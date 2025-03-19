@@ -9,6 +9,6 @@ fn main() -> anyhow::Result<()> {
     let ebpf_package = packages
         .into_iter()
         .find(|cargo_metadata::Package { name, .. }| name == "firezone-relay-ebpf")
-        .ok_or_else(|| anyhow!("xdp-hello-ebpf package not found"))?;
+        .ok_or_else(|| anyhow!("firezone-relay-ebpf package not found"))?;
     aya_build::build_ebpf([ebpf_package])
 }
