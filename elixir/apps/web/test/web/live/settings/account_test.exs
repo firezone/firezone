@@ -135,4 +135,28 @@ defmodule Web.Live.Settings.AccountTest do
     html = lv |> render()
     assert html =~ "Gateway Upgrade Available"
   end
+
+  test "sends account deletion email", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/account")
+
+    assert lv
+           |> element("button[type=submit]", "Delete Account")
+           |> render_click()
+           |> element_to_text() =~ "A request has been sent to delete your account"
+
+    assert_email_sent(fn email ->
+      assert email.subject == "ACCOUNT DELETE REQUEST - #{account.slug}"
+      assert email.text_body =~ "REQUEST TO DELETE ACCOUNT!"
+      assert email.text_body =~ "#{account.id}"
+      assert email.text_body =~ "#{account.slug}"
+      assert email.text_body =~ "#{identity.actor_id}"
+    end)
+  end
 end
