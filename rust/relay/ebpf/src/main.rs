@@ -46,6 +46,7 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
 
 const CHANNEL_DATA_HEADER_LEN: usize = 4;
 
+#[inline(always)]
 fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     let ethhdr_slice = slice_mut_at::<{ Ethernet2Header::LEN }>(ctx, 0)?;
     let ethhdr = parse_eth(ethhdr_slice)?;
@@ -60,8 +61,8 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 
     let source_addr = u32::from_be_bytes(ipv4hdr.source());
     let tot_len = ipv4hdr.total_len();
-    let ipv4hdr_length = usize::from(ipv4hdr.ihl() * 4);
-    // let ipv4hdr_length = Ipv4Header::MIN_LEN;
+    // let ipv4hdr_length = usize::from(ipv4hdr.ihl() * 4);
+    let ipv4hdr_length = Ipv4Header::MIN_LEN;
 
     let IpNumber::UDP = ipv4hdr.protocol() else {
         return Ok(xdp_action::XDP_PASS);
@@ -93,7 +94,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
         let channel_data_length = usize::from(u16::from_be_bytes([cdhdr[2], cdhdr[3]]));
 
         if channel_data_length > usize::from(u16::MAX) {
-            return Ok(xdp_action::XDP_PASS);
+            return Ok(xdp_action::XDP_DROP);
         }
 
         let channel_data_payload = remaining_bytes(
@@ -101,9 +102,9 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             Ethernet2Header::LEN + ipv4hdr_length + UdpHeader::LEN + CHANNEL_DATA_HEADER_LEN,
         )?;
 
-        if channel_data_payload.len() != channel_data_length {
-            return Ok(xdp_action::XDP_PASS);
-        }
+        // if channel_data_payload.len() != channel_data_length {
+        //     return Ok(xdp_action::XDP_DROP);
+        // }
 
         let client_and_channel = ClientAndChannel::new(source_addr, source_port, channel_number);
 
@@ -180,6 +181,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     }
 }
 
+#[inline(always)]
 fn calc_ipv4_checksum(ipv4_header: &Ipv4HeaderSlice) -> u16 {
     checksum::Sum16BitWords::new()
         .add_2bytes([
@@ -210,26 +212,32 @@ fn calc_ipv4_checksum(ipv4_header: &Ipv4HeaderSlice) -> u16 {
         .to_be()
 }
 
+#[inline(always)]
 fn parse_udp(slice: &mut [u8]) -> Result<UdpHeaderSlice<'_>, Error> {
     UdpHeaderSlice::from_slice(slice).map_err(|_| Error::UdpHeader)
 }
 
+#[inline(always)]
 fn parse_udp_mut(slice: &mut [u8]) -> Result<UdpHeaderSliceMut<'_>, Error> {
     UdpHeaderSliceMut::from_slice(slice).map_err(|_| Error::UdpHeader)
 }
 
+#[inline(always)]
 fn parse_ipv4(slice: &mut [u8]) -> Result<Ipv4HeaderSlice<'_>, Error> {
     Ipv4HeaderSlice::from_slice(slice).map_err(|_| Error::Ipv4Header)
 }
 
+#[inline(always)]
 fn parse_ipv4_mut(slice: &mut [u8]) -> Result<Ipv4HeaderSliceMut<'_>, Error> {
     Ipv4HeaderSliceMut::from_slice(slice).map_err(|_| Error::Ipv4Header)
 }
 
+#[inline(always)]
 fn parse_eth(slice: &mut [u8]) -> Result<Ethernet2HeaderSlice<'_>, Error> {
     Ethernet2HeaderSlice::from_slice(slice).map_err(|_| Error::Ethernet2Header)
 }
 
+#[inline(always)]
 fn try_handle_peer(_: &XdpContext) -> Result<u32, Error> {
     Err(Error::NotImplemented)
 }
@@ -248,14 +256,14 @@ fn slice_mut_at<const LEN: usize>(ctx: &XdpContext, offset: usize) -> Result<&mu
 
 #[inline(always)]
 fn remaining_bytes(ctx: &XdpContext, offset: usize) -> Result<&mut [u8], Error> {
-    let start = ctx.data();
+    let start = ctx.data() + offset;
     let end = ctx.data_end();
 
-    if start + offset > end {
+    if start > end {
         return Err(Error::PacketTooShort);
     }
 
-    let len = end - start - offset;
+    let len = end - start;
 
-    Ok(unsafe { core::slice::from_raw_parts_mut((start + offset) as *mut u8, len) })
+    Ok(unsafe { core::slice::from_raw_parts_mut(start as *mut u8, len) })
 }
