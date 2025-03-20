@@ -242,9 +242,8 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
         fn ->
           start_time = System.monotonic_time(:millisecond)
 
-          # Sync groups first because some might be excluded. If they are,
-          # we don't want to insert memberships or identities for them, and instead
-          # we want to delete the existing memberships and identities.
+          # Sync groups first because some might be filtered out. If they are,
+          # we want to delete any relevant memberships and identities for them.
           with {:ok, groups_effects} <- Actors.sync_provider_groups(provider, actor_groups_attrs),
                {:ok, memberships_effects} <-
                  Actors.sync_provider_memberships(
@@ -254,7 +253,7 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
                  ),
                {:ok, identities_effects} <-
                  Auth.sync_provider_identities(
-                   memberships_effects.filtered_memberships,
+                   memberships_effects.included_memberships,
                    provider,
                    identities_attrs
                  ) do

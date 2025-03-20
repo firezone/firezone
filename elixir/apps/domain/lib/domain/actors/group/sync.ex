@@ -23,7 +23,7 @@ defmodule Domain.Actors.Group.Sync do
         for group <- groups ++ upserted,
             group.provider_identifier not in delete,
             # Apply group filters if they are enabled
-            is_nil(provider.group_filters_enabled_at) or not is_nil(group.included_at),
+            is_nil(provider.group_filters_enabled_at) or group.provider_identifier in provider.included_groups,
             into: %{} do
           {group.provider_identifier, group.id}
         end
@@ -63,7 +63,7 @@ defmodule Domain.Actors.Group.Sync do
   end
 
   defp delete_groups(provider, provider_identifiers_to_delete) do
-    # includes excluded - we want to include them for sync purposes
+    # includes excluded - we want to mark them deleted for sync purposes
     Group.Query.not_deleted()
     |> Group.Query.by_account_id(provider.account_id)
     |> Group.Query.by_provider_id(provider.id)

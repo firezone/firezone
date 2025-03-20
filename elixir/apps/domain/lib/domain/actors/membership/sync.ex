@@ -5,13 +5,13 @@ defmodule Domain.Actors.Membership.Sync do
   alias Domain.Actors.Membership
 
   def sync_provider_memberships(
-        filtered_group_ids_by_provider_identifier,
+        included_group_ids_by_provider_identifier,
         %Auth.Provider{} = provider,
         tuples
       ) do
-    filtered_group_ids =
+    included_group_ids =
       Enum.flat_map(tuples, fn {group_provider_identifier, _actor_provider_identifier} ->
-        group_id = Map.get(filtered_group_ids_by_provider_identifier, group_provider_identifier)
+        group_id = Map.get(included_group_ids_by_provider_identifier, group_provider_identifier)
 
         if is_nil(group_id) do
           []
@@ -21,7 +21,7 @@ defmodule Domain.Actors.Membership.Sync do
       end)
 
     with {:ok, memberships} <- all_provider_memberships(provider),
-         {:ok, {insert, delete}} <- plan_memberships_update(filtered_group_ids, memberships),
+         {:ok, {insert, delete}} <- plan_memberships_update(included_group_ids, memberships),
          deleted_stats = delete_memberships(delete),
          {:ok, inserted} <- insert_memberships(provider, insert) do
       # TODO: Don't broadcast events here until *after* the DB operation completes...
@@ -36,15 +36,15 @@ defmodule Domain.Actors.Membership.Sync do
         end)
 
       # Only report back memberships that belong to at least one kept group
-      filtered_memberships =
+      included_memberships =
         Enum.filter(tuples, fn {group_provider_identifier, _actor_provider_identifier} ->
-          Map.has_key?(filtered_group_ids_by_provider_identifier, group_provider_identifier)
+          Map.has_key?(included_group_ids_by_provider_identifier, group_provider_identifier)
         end)
 
       {:ok,
        %{
          plan: {insert, delete},
-         filtered_memberships: filtered_memberships,
+         included_memberships: included_memberships,
          inserted: inserted,
          deleted_stats: deleted_stats
        }}

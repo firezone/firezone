@@ -3,8 +3,8 @@ defmodule Domain.Repo.Migrations.AddIncludedGroupsToAuthProviders do
 
   def change do
     alter table(:auth_providers) do
-      # NULLable since we want to distinguish between disabled, and enabled yet empty
-      add(:included_groups, {:array, :string})
+      add(:included_groups, {:array, :string}, default: [])
+      add(:group_filters_enabled_at, :utc_datetime_usec)
     end
   end
 end

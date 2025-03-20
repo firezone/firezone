@@ -375,8 +375,8 @@ defmodule Domain.Auth do
     end
   end
 
-  def sync_provider_identities(filtered_memberships, %Provider{} = provider, attrs_list) do
-    Identity.Sync.sync_provider_identities(filtered_memberships, provider, attrs_list)
+  def sync_provider_identities(included_memberships, %Provider{} = provider, attrs_list) do
+    Identity.Sync.sync_provider_identities(included_memberships, provider, attrs_list)
   end
 
   def all_actor_ids_by_membership_rules!(account_id, membership_rules) do

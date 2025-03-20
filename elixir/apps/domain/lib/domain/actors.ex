@@ -55,26 +55,6 @@ defmodule Domain.Actors do
     end
   end
 
-  def list_all_groups_for(
-        %Auth.Provider{} = provider,
-        %Auth.Subject{} = subject,
-        opts \\ []
-      ) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      Group.Query.not_deleted()
-      |> Group.Query.by_provider_id(provider.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.list(Group.Query, opts)
-    end
-  end
-
-  def all_groups_for!(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
-    Group.Query.not_deleted()
-    |> Group.Query.by_provider_id(provider.id)
-    |> Authorizer.for_subject(subject)
-    |> Repo.all()
-  end
-
   def all_groups!(%Auth.Subject{} = subject, opts \\ []) do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
 
@@ -277,7 +257,7 @@ defmodule Domain.Actors do
     end)
   end
 
-  def update_group_filters_for(
+  def update_filtered_groups_for(
         %Auth.Provider{} = provider,
         included_ids,
         excluded_ids,
@@ -378,58 +358,6 @@ defmodule Domain.Actors do
     :ok = broadcast_membership_removal_events(memberships)
 
     {:ok, groups}
-  end
-
-  defp exclude_groups_for(_provider, [], _subject), do: {:ok, []}
-
-  defp exclude_groups_for(%Auth.Provider{} = provider, group_ids, %Auth.Subject{} = subject) do
-    queryable =
-      Group.Query.not_deleted()
-      |> Group.Query.by_provider_id(provider.id)
-      |> Group.Query.by_account_id(provider.account_id)
-
-    {:ok, groups} = exclude_groups(queryable, group_ids, subject)
-
-    # Delete associated policies now
-    {:ok, _policies} = Policies.delete_policies_for(provider, group_ids)
-
-    # Deleting memberships, identities and actors is handled in the sync job
-    {:ok, groups}
-  end
-
-  defp include_groups_for(_provider, [], _subject), do: {:ok, []}
-
-  defp include_groups_for(%Auth.Provider{} = provider, group_ids, %Auth.Subject{} = subject) do
-    queryable =
-      Group.Query.not_deleted()
-      |> Group.Query.by_provider_id(provider.id)
-      |> Group.Query.by_account_id(provider.account_id)
-
-    include_groups(queryable, group_ids, subject)
-  end
-
-  defp exclude_groups(queryable, group_ids, subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      {_count, groups} =
-        queryable
-        |> Authorizer.for_subject(subject)
-        |> Group.Query.set_excluded(group_ids)
-        |> Repo.update_all([])
-
-      {:ok, groups}
-    end
-  end
-
-  def include_groups(queryable, group_ids, subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      {_count, groups} =
-        queryable
-        |> Authorizer.for_subject(subject)
-        |> Group.Query.set_included(group_ids)
-        |> Repo.update_all([])
-
-      {:ok, groups}
-    end
   end
 
   def group_synced?(%Group{provider_id: nil}), do: false
