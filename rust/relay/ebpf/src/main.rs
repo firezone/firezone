@@ -13,7 +13,7 @@ use aya_ebpf::{
 use aya_log_ebpf::*;
 use etherparse::{
     EtherType, Ethernet2Header, Ethernet2HeaderSlice, IpNumber, Ipv4Header, Ipv4HeaderSlice,
-    UdpHeader, UdpHeaderSlice,
+    Ipv6Header, UdpHeader, UdpHeaderSlice,
 };
 use etherparse_ext::{Ipv4HeaderSliceMut, UdpHeaderSliceMut};
 use firezone_relay_ebpf_shared::{ClientAndChannel, PortAndPeer};
@@ -64,10 +64,10 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     let src_addr = u32::from_be_bytes(ipv4hdr.source());
     let dst_addr = u32::from_be_bytes(ipv4hdr.destination());
     let tot_len = ipv4hdr.total_len();
-    let ipv4hdr_length = ipv4hdr.ihl() * 4;
     let ipv4_checksum = ipv4hdr.header_checksum();
 
-    if usize::from(ipv4hdr_length) != Ipv4Header::MIN_LEN {
+    // IPv4 packets with options are handled in user-space.
+    if usize::from(ipv4hdr.ihl() * 4) != Ipv4Header::MIN_LEN {
         return Ok(xdp_action::XDP_PASS);
     }
 
@@ -75,10 +75,8 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
         return Ok(xdp_action::XDP_PASS);
     };
 
-    let udphdr_slice = slice_mut_at::<{ UdpHeader::LEN }>(
-        ctx,
-        Ethernet2Header::LEN + usize::from(ipv4hdr_length),
-    )?;
+    let udphdr_slice =
+        slice_mut_at::<{ UdpHeader::LEN }>(ctx, Ethernet2Header::LEN + Ipv4Header::MIN_LEN)?;
     let udphdr = parse_udp(udphdr_slice)?;
 
     let src_port = udphdr.source_port();
@@ -91,7 +89,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     if dst_port == 3478 {
         let cdhdr = slice_mut_at::<{ CHANNEL_DATA_HEADER_LEN }>(
             ctx,
-            Ethernet2Header::LEN + usize::from(ipv4hdr_length) + UdpHeader::LEN,
+            Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN,
         )?;
 
         if !(64..=79).contains(&cdhdr[0]) {
@@ -105,10 +103,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 
         let channel_data_length = remaining_bytes(
             ctx,
-            Ethernet2Header::LEN
-                + usize::from(ipv4hdr_length)
-                + UdpHeader::LEN
-                + CHANNEL_DATA_HEADER_LEN,
+            Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN + CHANNEL_DATA_HEADER_LEN,
         )?;
 
         // We received less (or more) data than the header said we would.
@@ -209,7 +204,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             );
         }
 
-        remove_channel_data_header(ctx, ipv4hdr_length);
+        remove_channel_data_header_ipv4(ctx);
 
         info!(
             ctx,
@@ -228,20 +223,23 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     }
 }
 
-fn remove_channel_data_header(ctx: &XdpContext, ip_header_length: u8) {
-    move_headers::<{ CHANNEL_DATA_HEADER_LEN as i32 }>(ctx, ip_header_length)
+fn remove_channel_data_header_ipv4(ctx: &XdpContext) {
+    move_headers::<{ CHANNEL_DATA_HEADER_LEN as i32 }, { Ipv4Header::MIN_LEN }>(ctx)
 }
 
-fn add_channel_data_header(ctx: &XdpContext, ip_header_length: u8) {
-    move_headers::<{ -(CHANNEL_DATA_HEADER_LEN as i32) }>(ctx, ip_header_length)
+fn add_channel_data_header_ipv4(ctx: &XdpContext) {
+    move_headers::<{ -(CHANNEL_DATA_HEADER_LEN as i32) }, { Ipv4Header::MIN_LEN }>(ctx)
 }
 
-fn move_headers<const DELTA: i32>(ctx: &XdpContext, ip_header_length: u8) {
+fn move_headers<const DELTA: i32, const IP_HEADER_LEN: usize>(ctx: &XdpContext) {
     // Scratch space for our headers.
     // IPv6 headers are always 40 bytes long.
     // IPv4 headers are between 20 and 60 bytes long.
-    // Thus, reserving space for the max length of an IPv4 header is enough.
-    let mut headers = [0u8; Ethernet2Header::LEN + Ipv4Header::MAX_LEN + UdpHeader::LEN];
+    // We restrict the eBPF program to only handle 20 byte long IPv4 headers.
+    // Therefore, we only need to reserver space for IPv6 headers.
+    //
+    // Ideally, we would just use the const-generic argument here but that is not yet supported ...
+    let mut headers = [0u8; Ethernet2Header::LEN + Ipv6Header::LEN + UdpHeader::LEN];
 
     // Copy headers into buffer.
     unsafe {
@@ -249,7 +247,7 @@ fn move_headers<const DELTA: i32>(ctx: &XdpContext, ip_header_length: u8) {
             ctx.ctx,
             0,
             headers.as_mut_ptr() as *mut c_void,
-            (Ethernet2Header::LEN + usize::from(ip_header_length) + UdpHeader::LEN) as u32,
+            (Ethernet2Header::LEN + IP_HEADER_LEN + UdpHeader::LEN) as u32,
         );
     }
 
@@ -262,7 +260,7 @@ fn move_headers<const DELTA: i32>(ctx: &XdpContext, ip_header_length: u8) {
             ctx.ctx,
             0,
             headers.as_mut_ptr() as *mut c_void,
-            (Ethernet2Header::LEN + usize::from(ip_header_length) + UdpHeader::LEN) as u32,
+            (Ethernet2Header::LEN + IP_HEADER_LEN + UdpHeader::LEN) as u32,
         )
     };
 }
