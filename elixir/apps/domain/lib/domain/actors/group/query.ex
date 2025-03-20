@@ -22,7 +22,7 @@ defmodule Domain.Actors.Group.Query do
       [groups: groups, providers: providers],
       is_nil(groups.provider_id) or
         (not is_nil(groups.provider_id) and
-           (is_nil(providers.group_filters_enabled_at) or not is_nil(groups.included_at)))
+           (is_nil(providers.included_groups) or groups.provider_identifier in ^providers.included_groups))
     )
   end
 
@@ -32,7 +32,7 @@ defmodule Domain.Actors.Group.Query do
     |> where(
       [groups: groups, providers: providers],
       not is_nil(groups.provider_id) and
-        (not is_nil(providers.group_filters_enabled_at) and is_nil(groups.included_at))
+        (not is_nil(providers.included_groups) and groups.provider_identifier not in ^providers.included_groups)
     )
   end
 
@@ -97,33 +97,6 @@ defmodule Domain.Actors.Group.Query do
         deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", groups.deleted_at)
       ]
     )
-  end
-
-  def set_excluded(queryable, group_ids) do
-    queryable
-    |> where([groups: groups], groups.id in ^group_ids)
-    |> update([groups: groups],
-      set: [
-        included_at: nil
-      ]
-    )
-  end
-
-  def set_included(queryable, group_ids) do
-    queryable
-    |> where([groups: groups], groups.id in ^group_ids)
-    |> update([groups: groups],
-      set: [
-        included_at: fragment("COALESCE(?, timezone('UTC', NOW()))", groups.included_at)
-      ]
-    )
-  end
-
-  def excluded_ids(provider) do
-    not_deleted()
-    |> excluded()
-    |> by_provider_id(provider.id)
-    |> select([groups: groups], groups.id)
   end
 
   def group_by_provider_id(queryable) do

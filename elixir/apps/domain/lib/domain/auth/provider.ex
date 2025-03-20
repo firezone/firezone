@@ -26,7 +26,8 @@ defmodule Domain.Auth.Provider do
     field :sync_disabled_at, :utc_datetime_usec
     field :sync_error_emailed_at, :utc_datetime_usec
 
-    field :group_filters_enabled_at, :utc_datetime_usec
+    field :included_groups, {:array, :string}
+
     field :disabled_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
     timestamps()
