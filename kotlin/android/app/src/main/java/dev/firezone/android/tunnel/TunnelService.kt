@@ -58,6 +58,7 @@ class TunnelService : VpnService() {
     var tunnelIpv4Address: String? = null
     var tunnelIpv6Address: String? = null
     private var tunnelDnsAddresses: MutableList<String> = mutableListOf()
+    private var tunnelSearchDomain: String? = null
     private var tunnelRoutes: MutableList<Cidr> = mutableListOf()
     private var _tunnelResources: List<Resource> = emptyList()
     private var _tunnelState: State = State.DOWN
@@ -116,6 +117,7 @@ class TunnelService : VpnService() {
                 addressIPv4: String,
                 addressIPv6: String,
                 dnsAddresses: String,
+                searchDomain: String?,
                 routes4JSON: String,
                 routes6JSON: String,
             ) {
@@ -124,6 +126,7 @@ class TunnelService : VpnService() {
                 val routes4 = moshi.adapter<MutableList<Cidr>>().fromJson(routes4JSON)!!
                 val routes6 = moshi.adapter<MutableList<Cidr>>().fromJson(routes6JSON)!!
 
+                tunnelSearchDomain = searchDomain
                 tunnelIpv4Address = addressIPv4
                 tunnelIpv6Address = addressIPv6
                 tunnelRoutes.clear()
@@ -205,6 +208,10 @@ class TunnelService : VpnService() {
 
                 tunnelDnsAddresses.forEach { dns ->
                     addDnsServer(dns)
+                }
+
+                tunnelSearchDomain?.let {
+                    addSearchDomain(it)
                 }
 
                 addAddress(tunnelIpv4Address!!, 32)

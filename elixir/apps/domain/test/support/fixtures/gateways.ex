@@ -28,6 +28,19 @@ defmodule Domain.Fixtures.Gateways do
     group
   end
 
+  def create_internet_group(attrs \\ %{}) do
+    attrs = group_attrs(attrs)
+
+    {account, _attrs} =
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        Fixtures.Accounts.create_account(assoc_attrs)
+      end)
+
+    {:ok, group} = Gateways.create_internet_group(account)
+
+    group
+  end
+
   def delete_group(group) do
     group = Repo.preload(group, :account)
 

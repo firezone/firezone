@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use firezone_headless_client::known_dirs;
 use secrecy::{ExposeSecret, Secret};
 use std::{io::ErrorKind, path::PathBuf, process::Command};

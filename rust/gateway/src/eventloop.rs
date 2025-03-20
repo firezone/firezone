@@ -11,7 +11,7 @@ use firezone_tunnel::messages::gateway::{
 };
 use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
 use firezone_tunnel::{
-    DnsResourceNatEntry, GatewayTunnel, IpConfig, ResolveDnsRequest, IPV4_TUNNEL, IPV6_TUNNEL,
+    DnsResourceNatEntry, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest,
 };
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::BTreeSet;
@@ -103,7 +103,9 @@ impl Eventloop {
                 }
                 Poll::Ready(Err(e)) if e.kind() == io::ErrorKind::PermissionDenied => {
                     if !mem::replace(&mut self.logged_permission_denied, true) {
-                        tracing::info!("Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic.")
+                        tracing::info!(
+                            "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
+                        )
                     }
 
                     continue;
@@ -534,7 +536,7 @@ impl Eventloop {
     fn resolve(
         &self,
         domain: DomainName,
-    ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> {
+    ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> + use<> {
         let do_resolve = resolve(domain.clone());
         let cache = self.dns_cache.clone();
 

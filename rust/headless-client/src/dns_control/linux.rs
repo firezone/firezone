@@ -1,7 +1,7 @@
 use super::DnsController;
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use dns_types::DomainName;
-use firezone_bin_shared::{platform::DnsControlMethod, TunDeviceManager};
+use firezone_bin_shared::{TunDeviceManager, platform::DnsControlMethod};
 use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
@@ -48,7 +48,10 @@ impl DnsController {
         // Flushing is only implemented for systemd-resolved
         if matches!(self.dns_control_method, DnsControlMethod::SystemdResolved) {
             tracing::debug!("Flushing systemd-resolved DNS cache...");
-            Command::new("resolvectl").arg("flush-caches").status()?;
+            Command::new("resolvectl")
+                .arg("flush-caches")
+                .status()
+                .context("Failed to run `resolvectl flush-caches`")?;
             tracing::debug!("Flushed DNS.");
         }
         Ok(())

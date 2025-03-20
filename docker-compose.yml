@@ -1,6 +1,7 @@
 services:
   # Dependencies
   postgres:
+    # TODO: Enable pgaudit on dev instance. See https://github.com/pgaudit/pgaudit/issues/44#issuecomment-455090262
     image: postgres:15
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -409,7 +410,7 @@ services:
       dns_resources:
         ipv4_address: 172.21.0.101
 
-  dns.httpbin:
+  dns.httpbin.search.test:
     image: kennethreitz/httpbin
     healthcheck:
       test: ["CMD-SHELL", "ps -C gunicorn"]

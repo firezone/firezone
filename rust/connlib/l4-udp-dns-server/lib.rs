@@ -4,10 +4,10 @@
 
 use anyhow::{Context as _, Result};
 use futures::{
+    FutureExt, StreamExt as _,
     future::BoxFuture,
     stream::{self, BoxStream, FuturesUnordered},
     task::AtomicWaker,
-    FutureExt, StreamExt as _,
 };
 use std::{
     io,

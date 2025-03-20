@@ -1,14 +1,14 @@
 use super::{
     dns_records::DnsRecords,
-    sim_client::{ref_client_host, RefClient},
-    sim_gateway::{ref_gateway_host, RefGateway},
+    sim_client::{RefClient, ref_client_host},
+    sim_gateway::{RefGateway, ref_gateway_host},
     sim_net::Host,
     strategies::{resolved_ips, site_specific_dns_record, subdomain_records},
 };
 use crate::{client, proptest::*};
 use crate::{
     client::DnsResource,
-    messages::{gateway, DnsServer},
+    messages::{DnsServer, gateway},
 };
 use connlib_model::GatewayId;
 use connlib_model::{ResourceId, SiteId};
@@ -227,7 +227,9 @@ impl StubPortal {
             .map(|(gid, _, _)| *gid)
     }
 
-    pub(crate) fn gateways(&self) -> impl Strategy<Value = BTreeMap<GatewayId, Host<RefGateway>>> {
+    pub(crate) fn gateways(
+        &self,
+    ) -> impl Strategy<Value = BTreeMap<GatewayId, Host<RefGateway>>> + use<> {
         let dns_resources = self.dns_resources.clone();
 
         self.gateways_by_site
@@ -248,11 +250,25 @@ impl StubPortal {
             .prop_map(BTreeMap::from_iter)
     }
 
-    pub(crate) fn client(
+    pub(crate) fn client<S1, S2>(
         &self,
-        system_dns: impl Strategy<Value = Vec<IpAddr>>,
-        upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
-    ) -> impl Strategy<Value = Host<RefClient>> {
+        system_dns: S1,
+        upstream_dns: S2,
+    ) -> impl Strategy<Value = Host<RefClient>> + use<S1, S2>
+    where
+        S1: Strategy<Value = Vec<IpAddr>>,
+        S2: Strategy<Value = Vec<DnsServer>>,
+    {
+        ref_client_host(
+            Just(self.client_tunnel_ipv4),
+            Just(self.client_tunnel_ipv6),
+            system_dns,
+            upstream_dns,
+            self.search_domain(),
+        )
+    }
+
+    pub(crate) fn search_domain(&self) -> impl Strategy<Value = Option<DomainName>> + use<> {
         let possible_search_domains = self
             .dns_resources
             .values()
@@ -267,16 +283,10 @@ impl StubPortal {
             })
             .collect::<Vec<_>>();
 
-        ref_client_host(
-            Just(self.client_tunnel_ipv4),
-            Just(self.client_tunnel_ipv6),
-            system_dns,
-            upstream_dns,
-            proptest::option::of(sample::select(possible_search_domains)),
-        )
+        proptest::option::of(sample::select(possible_search_domains))
     }
 
-    pub(crate) fn dns_resource_records(&self) -> impl Strategy<Value = DnsRecords> {
+    pub(crate) fn dns_resource_records(&self) -> impl Strategy<Value = DnsRecords> + use<> {
         dns_resource_records(self.dns_resources.clone().into_values())
     }
 }

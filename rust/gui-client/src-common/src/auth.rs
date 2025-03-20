@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use firezone_headless_client::known_dirs;
 use firezone_logging::err_with_src;
-use rand::{thread_rng, RngCore};
+use rand::{RngCore, thread_rng};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -28,8 +28,13 @@ pub enum Error {
     PathWrong,
     #[error("Couldn't read session file: {0}")]
     ReadFile(std::io::Error),
-    #[error("Could not (de)serialize session data")]
-    Serde,
+    #[error("Could not serialize session data")]
+    SerializeSession(#[source] serde_json::Error),
+    #[error("Could not deserialize session data ({json})")]
+    DeserializeSession {
+        source: serde_json::Error,
+        json: String,
+    },
     #[error("State in server response doesn't match state in client request")]
     StatesDontMatch,
     #[error("Couldn't write session file: {0}")]
@@ -212,7 +217,7 @@ impl Auth {
         save_file(
             &session_data_path()?,
             serde_json::to_string(session)
-                .map_err(|_| Error::Serde)?
+                .map_err(Error::SerializeSession)?
                 .as_bytes(),
         )?;
         Ok(())
@@ -248,8 +253,9 @@ impl Auth {
             Err(e) => return Err(Error::ReadFile(e)),
         };
         match std::fs::read_to_string(session_data_path()?) {
-            Ok(x) => {
-                session = serde_json::from_str(&x).map_err(|_| Error::Serde)?;
+            Ok(json) => {
+                session = serde_json::from_str(&json)
+                    .map_err(|source| Error::DeserializeSession { source, json })?;
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => return Err(Error::ReadFile(e)),
@@ -348,10 +354,12 @@ mod tests {
 
     #[test]
     fn actor_name() {
-        assert!(actor_name_path()
-            .expect("`actor_name_path` should return Ok")
-            .components()
-            .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
+        assert!(
+            actor_name_path()
+                .expect("`actor_name_path` should return Ok")
+                .components()
+                .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref()))
+        );
     }
 
     #[test]

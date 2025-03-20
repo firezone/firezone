@@ -1,5 +1,5 @@
-use firezone_bin_shared::{platform::app_local_data_dir, BUNDLE_ID};
-use known_folders::{get_known_folder_path, KnownFolder};
+use firezone_bin_shared::{BUNDLE_ID, platform::app_local_data_dir};
+use known_folders::{KnownFolder, get_known_folder_path};
 use std::path::PathBuf;
 
 /// Path for IPC service config that the IPC service can write

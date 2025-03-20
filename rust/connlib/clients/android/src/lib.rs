@@ -12,17 +12,17 @@ use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6
 use connlib_model::ResourceView;
 use dns_types::DomainName;
 use firezone_logging::{err_with_src, sentry_layer};
-use firezone_telemetry::{Telemetry, ANDROID_DSN};
+use firezone_telemetry::{ANDROID_DSN, Telemetry};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
+    JNIEnv, JavaVM,
     objects::{GlobalRef, JClass, JObject, JString, JValue},
     strings::JNIString,
     sys::jlong,
-    JNIEnv, JavaVM,
 };
-use phoenix_channel::get_user_agent;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
+use phoenix_channel::get_user_agent;
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{io, net::IpAddr, os::fd::AsRawFd, path::Path, sync::Arc};
@@ -171,7 +171,7 @@ impl Callbacks for CallbackHandler {
         tunnel_address_v4: Ipv4Addr,
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
-        _search_domain: Option<DomainName>,
+        search_domain: Option<DomainName>,
         route_list_4: Vec<Ipv4Network>,
         route_list_6: Vec<Ipv6Network>,
     ) {
@@ -194,6 +194,16 @@ impl Callbacks for CallbackHandler {
                     name: "dns_addresses",
                     source,
                 })?;
+            let search_domain = search_domain
+                .map(|domain| {
+                    env.new_string(domain.to_string())
+                        .map_err(|source| CallbackError::NewStringFailed {
+                            name: "search_domain",
+                            source,
+                        })
+                })
+                .transpose()?
+                .unwrap_or_default();
             let route_list_4 = env
                 .new_string(serde_json::to_string(&V4RouteList::new(route_list_4))?)
                 .map_err(|source| CallbackError::NewStringFailed {
@@ -211,11 +221,12 @@ impl Callbacks for CallbackHandler {
             env.call_method(
                 &self.callback_handler,
                 name,
-                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
+                "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V",
                 &[
                     JValue::from(&tunnel_address_v4),
                     JValue::from(&tunnel_address_v6),
                     JValue::from(&dns_addresses),
+                    JValue::from(&search_domain),
                     JValue::from(&route_list_4),
                     JValue::from(&route_list_6),
                 ],
@@ -385,7 +396,7 @@ fn connect(
 /// # Safety
 /// Pointers must be valid
 /// fd must be a valid file descriptor
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_connect(
     mut env: JNIEnv,
     _class: JClass,
@@ -441,31 +452,32 @@ pub struct SessionWrapper {
 
 /// # Safety
 /// session_ptr should have been obtained from `connect` function
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_disconnect(
     mut env: JNIEnv,
     _: JClass,
     session_ptr: jlong,
 ) {
-    let session = session_ptr as *mut SessionWrapper;
-    catch_and_throw(&mut env, |_| {
-        let mut session = Box::from_raw(session);
+    // Creating an owned `Box` from this will properly drop this at the end of the scope.
+    let mut session = unsafe { Box::from_raw(session_ptr as *mut SessionWrapper) };
 
+    catch_and_throw(&mut env, |_| {
         session.runtime.block_on(session.telemetry.stop());
-        session.inner.disconnect();
     });
 }
 
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDisabledResources(
     mut env: JNIEnv,
     _: JClass,
     session_ptr: jlong,
     disabled_resources: JString,
 ) {
+    let session = unsafe { &*(session_ptr as *const SessionWrapper) };
+
     let disabled_resources = String::from(
         env.get_string(&disabled_resources)
             .expect("Invalid string returned from android client"),
@@ -474,7 +486,6 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
         .expect("Failed to deserialize disabled resource IDs");
 
     tracing::debug!("disabled resource: {disabled_resources:?}");
-    let session = &*(session_ptr as *const SessionWrapper);
     session.inner.set_disabled_resources(disabled_resources);
 }
 
@@ -487,50 +498,55 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_se
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setDns(
     mut env: JNIEnv,
     _: JClass,
     session_ptr: jlong,
     dns_list: JString,
 ) {
+    let session = unsafe { &*(session_ptr as *const SessionWrapper) };
+
     let dns = String::from(
         env.get_string(&dns_list)
             .expect("Invalid string returned from android client"),
     );
     let dns = serde_json::from_str::<Vec<IpAddr>>(&dns).expect("Failed to deserialize DNS IPs");
-    let session = &*(session_ptr as *const SessionWrapper);
+
     session.inner.set_dns(dns);
 }
 
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_reset(
     _: JNIEnv,
     _: JClass,
     session_ptr: jlong,
 ) {
-    let session = &*(session_ptr as *const SessionWrapper);
+    let session = unsafe { &*(session_ptr as *const SessionWrapper) };
+
     session.inner.reset();
 }
 
 /// # Safety
 /// session_ptr should have been obtained from `connect` function, and shouldn't be dropped with disconnect
 /// at any point before or during operation of this function.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_setTun(
     mut env: JNIEnv,
     _: JClass,
     session_ptr: jlong,
     fd: RawFd,
 ) {
-    let session = &*(session_ptr as *const SessionWrapper);
+    let session = unsafe { &*(session_ptr as *const SessionWrapper) };
 
     // Enter tokio RT context to construct `Tun`.
     let _enter = session.runtime.enter();
-    let tun = match Tun::from_fd(fd) {
+    let tun_result = unsafe { Tun::from_fd(fd) };
+
+    let tun = match tun_result {
         Ok(t) => t,
         Err(e) => {
             throw(&mut env, "java/lang/Exception", e.to_string());
@@ -564,5 +580,15 @@ fn install_rustls_crypto_provider() {
     if existing.is_err() {
         // On Android, connlib gets loaded as shared library by the JVM and may remain loaded even if we disconnect the tunnel.
         tracing::debug!("Skipping install of crypto provider because we already have one.");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_jstring_is_null() {
+        assert!(JString::default().is_null())
     }
 }

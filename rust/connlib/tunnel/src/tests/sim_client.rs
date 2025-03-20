@@ -1,22 +1,20 @@
 use super::{
+    QueryId,
     dns_records::DnsRecords,
-    reference::{private_key, PrivateKey},
-    sim_net::{any_ip_stack, any_port, host, Host},
-    sim_relay::{map_explode, SimRelay},
+    reference::{PrivateKey, private_key},
+    sim_net::{Host, any_ip_stack, any_port, host},
+    sim_relay::{SimRelay, map_explode},
     strategies::latency,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
-    QueryId,
 };
+use crate::{ClientState, proptest::*};
 use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::{DnsServer, Interface},
 };
-use crate::{proptest::*, ClientState};
-use anyhow::Context;
-use anyhow::Result;
 use bimap::BiMap;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, SiteId};
-use dns_types::{prelude::*, DomainName, Query, RecordData, RecordType};
+use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{Icmpv4Type, Icmpv6Type, IpPacket, Layer4Protocol};
@@ -46,6 +44,9 @@ pub(crate) struct SimClient {
 
     pub(crate) ipv4_routes: BTreeSet<Ipv4Network>,
     pub(crate) ipv6_routes: BTreeSet<Ipv6Network>,
+
+    /// The search-domain emitted by connlib.
+    pub(crate) search_domain: Option<DomainName>,
 
     pub(crate) resource_status: BTreeMap<ResourceId, ResourceStatus>,
 
@@ -89,6 +90,7 @@ impl SimClient {
             received_udp_replies: Default::default(),
             ipv4_routes: Default::default(),
             ipv6_routes: Default::default(),
+            search_domain: Default::default(),
             resource_status: Default::default(),
             tcp_dns_client,
         }
@@ -97,6 +99,10 @@ impl SimClient {
     /// Returns the _effective_ DNS servers that connlib is using.
     pub(crate) fn effective_dns_servers(&self) -> BTreeSet<SocketAddr> {
         self.dns_by_sentinel.right_values().copied().collect()
+    }
+
+    pub(crate) fn effective_search_domain(&self) -> Option<DomainName> {
+        self.search_domain.clone()
     }
 
     pub(crate) fn set_new_dns_servers(&mut self, mapping: BiMap<IpAddr, SocketAddr>) {
@@ -599,23 +605,6 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn fully_qualify_using_search_domain(
-        &self,
-        domain: DomainName,
-    ) -> Result<DomainName> {
-        if domain.label_count() != 2 {
-            return Ok(domain); // If it is not a single-label domain, it is already fully qualified.
-        }
-
-        let search_domain = self.search_domain.clone().context("No search domain")?;
-        let label = domain.into_relative();
-
-        Ok(label
-            .chain(search_domain)
-            .context("Domain too long")?
-            .flatten_into())
-    }
-
     #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     pub(crate) fn on_icmp_packet(
         &mut self,
@@ -779,6 +768,11 @@ impl RefClient {
     }
 
     pub(crate) fn on_dns_query(&mut self, query: &DnsQuery) {
+        self.dns_records
+            .entry(query.domain.clone())
+            .or_default()
+            .insert(query.r_type);
+
         match query.transport {
             DnsTransport::Udp => {
                 self.expected_udp_dns_handshakes
@@ -789,18 +783,6 @@ impl RefClient {
                     .push_back((query.dns_server, query.query_id));
             }
         }
-
-        if query.domain.label_count() == 2 && self.dns_resource_by_domain(&query.domain).is_none() {
-            // DNS queries for single-label domains which are not resources are answered with NXDOMAIN.
-            tracing::debug!("No state change for non-resource single-label DNS query");
-
-            return;
-        }
-
-        self.dns_records
-            .entry(query.domain.clone())
-            .or_default()
-            .insert(query.r_type);
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
             self.set_resource_online(resource);
@@ -858,23 +840,6 @@ impl RefClient {
     }
 
     pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
-        let domain = domain.clone();
-
-        let domain = if domain.label_count() == 2 {
-            let Some(search_domain) = self.search_domain.clone() else {
-                tracing::error!("Must have search domain if we are handling single-label queries");
-                return None;
-            };
-
-            domain
-                .into_relative()
-                .chain(search_domain)
-                .unwrap()
-                .flatten_into()
-        } else {
-            domain
-        };
-
         self.resources
             .iter()
             .cloned()
@@ -966,6 +931,10 @@ impl RefClient {
             .iter()
             .map(|ip| SocketAddr::new(*ip, 53))
             .collect()
+    }
+
+    pub(crate) fn expected_search_domain(&self) -> Option<DomainName> {
+        self.search_domain.clone()
     }
 
     pub(crate) fn expected_routes(&self) -> (BTreeSet<Ipv4Network>, BTreeSet<Ipv6Network>) {
@@ -1084,6 +1053,10 @@ impl RefClient {
 
     pub(crate) fn set_upstream_dns_resolvers(&mut self, servers: &Vec<DnsServer>) {
         self.upstream_dns_resolvers.clone_from(servers);
+    }
+
+    pub(crate) fn set_upstream_search_domain(&mut self, domain: Option<&DomainName>) {
+        self.search_domain = domain.cloned()
     }
 
     pub(crate) fn upstream_dns_resolvers(&self) -> Vec<DnsServer> {

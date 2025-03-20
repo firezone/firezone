@@ -1,9 +1,9 @@
 use crate::client::IpProvider;
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use connlib_model::ResourceId;
 use dns_types::{
-    prelude::*, DomainName, DomainNameRef, OwnedRecordData, Query, RecordType, Response,
-    ResponseBuilder, ResponseCode,
+    DomainName, DomainNameRef, OwnedRecordData, Query, RecordType, Response, ResponseBuilder,
+    ResponseCode,
 };
 use firezone_logging::{err_with_src, telemetry_span};
 use itertools::Itertools;
@@ -254,14 +254,6 @@ impl StubResolver {
             return ResolveStrategy::LocalResponse(Response::nxdomain(query));
         }
 
-        // We override the `domain` here to ensure that we use the FQDN everywhere from here on.
-        let (domain, is_single_label_domain) = self
-            .fully_qualify_using_search_domain(domain.clone())
-            .inspect_err(
-                |e| tracing::debug!(%domain, "Failed to expand single-label domain: {e:#}"),
-            )
-            .unwrap_or((domain, true)); // Failure to fully-qualify it can only happen if it is a single-label domain.
-
         // `match_resource` is `O(N)` which we deem fine for DNS queries.
         let maybe_resource = self.match_resource_linear(&domain);
 
@@ -290,16 +282,6 @@ impl StubResolver {
 
                 return ResolveStrategy::LocalResponse(Response::no_error(query));
             }
-            (_, None) if is_single_label_domain => {
-                // Queries for single-label domains, i.e. local hostnames are never recursively resolved but are instead answered with nxdomain.
-
-                tracing::trace!(
-                    %domain,
-                    "Query for single-label non-resource domain, responding with NXDOMAIN"
-                );
-
-                return ResolveStrategy::LocalResponse(Response::nxdomain(query));
-            }
             _ => return ResolveStrategy::RecurseLocal,
         };
 
@@ -320,28 +302,6 @@ impl StubResolver {
         tracing::debug!(current = ?self.search_domain, new = ?new_search_domain, "Setting new search-domain");
 
         self.search_domain = new_search_domain;
-    }
-
-    fn fully_qualify_using_search_domain(&self, domain: DomainName) -> Result<(DomainName, bool)> {
-        // Root-label counts as a label.
-        if domain.label_count() != 2 {
-            return Ok((domain, false));
-        }
-
-        let search_domain = self
-            .search_domain
-            .clone()
-            .context("No search-domain configured to expand single-label domain")?;
-
-        let domain = domain
-            .into_relative()
-            .chain(search_domain)
-            .context("Query + search domain exceeds max allowed domain length")?
-            .flatten_into();
-
-        tracing::trace!(target: "tunnel_test_coverage", "Expanded single-label query into FQDN using search-domain");
-
-        Ok((domain, true))
     }
 }
 
@@ -720,7 +680,7 @@ mod tests {
 #[allow(clippy::unwrap_used)]
 mod benches {
     use super::*;
-    use rand::{distributions::DistString, seq::IteratorRandom, Rng};
+    use rand::{Rng, distributions::DistString, seq::IteratorRandom};
 
     #[divan::bench(
         consts = [10, 100, 1_000, 10_000, 100_000]

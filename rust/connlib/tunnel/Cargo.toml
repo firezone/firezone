@@ -17,6 +17,7 @@ divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
 firezone-logging = { workspace = true }
+firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 futures-bounded = { workspace = true }
 glob = { workspace = true }

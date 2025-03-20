@@ -1,6 +1,6 @@
 mod resource;
 
-use dns_types::DomainName;
+use dns_types::{DomainName, ResponseCode};
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
@@ -12,7 +12,7 @@ use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::unique_packet_buffer::UniquePacketBuffer;
-use crate::{dns, is_peer, p2p_control, IpConfig, TunConfig, IPV4_TUNNEL, IPV6_TUNNEL};
+use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_model::{GatewayId, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView};
@@ -23,8 +23,8 @@ use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
 
-use crate::peer::GatewayOnClient;
 use crate::ClientEvent;
+use crate::peer::GatewayOnClient;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
@@ -167,7 +167,7 @@ impl DnsResourceNatState {
         }
     }
 
-    fn confirm(&mut self) -> impl Iterator<Item = IpPacket> {
+    fn confirm(&mut self) -> impl Iterator<Item = IpPacket> + use<> {
         let buffered_packets = match std::mem::replace(self, DnsResourceNatState::Confirmed) {
             DnsResourceNatState::Pending {
                 buffered_packets, ..
@@ -720,7 +720,10 @@ impl ClientState {
 
         if let Some(old_gateway_id) = self.resources_gateways.insert(resource_id, gateway_id) {
             if self.peers.get(&old_gateway_id).is_some() {
-                assert_eq!(old_gateway_id, gateway_id, "Resources are not expected to change gateways without a previous message, resource_id = {resource_id}");
+                assert_eq!(
+                    old_gateway_id, gateway_id,
+                    "Resources are not expected to change gateways without a previous message, resource_id = {resource_id}"
+                );
             }
         }
 
@@ -1045,18 +1048,27 @@ impl ClientState {
     pub fn update_interface_config(&mut self, config: InterfaceConfig) {
         tracing::trace!(upstream_dns = ?config.upstream_dns, search_domain = ?config.search_domain, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
 
-        match self.tun_config.as_mut() {
-            Some(existing) => {
-                // We don't really expect these to change but let's update them anyway.
-                existing.ip.v4 = config.ipv4;
-                existing.ip.v6 = config.ipv6;
-            }
-            None => {
+        // Create a new `TunConfig` by patching the corresponding fields of the existing one.
+        let new_tun_config = self
+            .tun_config
+            .as_ref()
+            .map(|existing| TunConfig {
+                ip: IpConfig {
+                    v4: config.ipv4,
+                    v6: config.ipv6,
+                },
+                dns_by_sentinel: existing.dns_by_sentinel.clone(),
+                search_domain: config.search_domain.clone(),
+                ipv4_routes: existing.ipv4_routes.clone(),
+                ipv6_routes: existing.ipv6_routes.clone(),
+            })
+            .unwrap_or_else(|| {
                 let (ipv4_routes, ipv6_routes) = self.routes().partition_map(|route| match route {
                     IpNetwork::V4(v4) => itertools::Either::Left(v4),
                     IpNetwork::V6(v6) => itertools::Either::Right(v6),
                 });
-                let new_tun_config = TunConfig {
+
+                TunConfig {
                     ip: IpConfig {
                         v4: config.ipv4,
                         v6: config.ipv6,
@@ -1065,16 +1077,14 @@ impl ClientState {
                     search_domain: config.search_domain.clone(),
                     ipv4_routes,
                     ipv6_routes,
-                };
+                }
+            });
 
-                self.maybe_update_tun_config(new_tun_config);
-            }
-        }
+        // Apply the new `TunConfig` if it differs from the existing one.
+        self.maybe_update_tun_config(new_tun_config);
 
-        self.stub_resolver.set_search_domain(config.search_domain);
         self.upstream_dns = config.upstream_dns;
-
-        self.update_dns_mapping()
+        self.update_dns_mapping();
     }
 
     pub fn poll_packets(&mut self) -> Option<IpPacket> {
@@ -1259,6 +1269,12 @@ impl ClientState {
 
         match self.stub_resolver.handle(&message) {
             dns::ResolveStrategy::LocalResponse(response) => {
+                if response.response_code() == ResponseCode::NXDOMAIN
+                    && firezone_telemetry::feature_flags::drop_llmnr_nxdomain_responses()
+                {
+                    return;
+                }
+
                 self.clear_dns_resource_nat_for_domain(&response);
                 self.update_dns_resource_nat(now, iter::empty());
 
@@ -1477,6 +1493,9 @@ impl ClientState {
         }
 
         tracing::info!(config = ?new_tun_config, "Updating TUN device");
+
+        self.stub_resolver
+            .set_search_domain(new_tun_config.search_domain.clone());
 
         // Ensure we don't emit multiple interface updates in a row.
         self.buffered_events
@@ -1929,7 +1948,9 @@ fn effective_dns_servers(
         .peekable();
 
     if dns_servers.peek().is_none() {
-        tracing::info!("No system default DNS servers available! Can't initialize resolver. DNS resources won't work.");
+        tracing::info!(
+            "No system default DNS servers available! Can't initialize resolver. DNS resources won't work."
+        );
         return Vec::new();
     }
 
@@ -2120,9 +2141,11 @@ mod tests {
         let sentinel_dns = sentinel_dns_mapping(&servers, vec![]);
 
         for server in servers {
-            assert!(sentinel_dns
-                .get_by_right(&server)
-                .is_some_and(|s| sentinel_ranges().iter().any(|e| e.contains(*s))))
+            assert!(
+                sentinel_dns
+                    .get_by_right(&server)
+                    .is_some_and(|s| sentinel_ranges().iter().any(|e| e.contains(*s)))
+            )
         }
     }
 

@@ -89,7 +89,6 @@ ignore = [
 
   "RUSTSEC-2025-0012", # backoff, See #8386
   "RUSTSEC-2024-0436", # paste, See #8387
-  "RUSTSEC-2025-0014", # humantime, See #8414
 
   "RUSTSEC-2024-0429", # `glib`, need to wait for tauri to upgrade
 
@@ -123,7 +122,6 @@ allow = [
   "Unicode-DFS-2016",
   "BSL-1.0",
   "Zlib",
-  "OpenSSL",
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the
@@ -278,6 +276,7 @@ skip = [
   "windows-implement",
   "windows-interface",
   "windows-result",
+  "windows-strings",
   "windows-sys",
   "windows-targets",
   "windows_aarch64_gnullvm",

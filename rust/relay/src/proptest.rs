@@ -5,8 +5,8 @@ use proptest::strategy::Just;
 use proptest::strategy::Strategy;
 use proptest::string::string_regex;
 use std::time::Duration;
-use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, RequestedTransport};
 use stun_codec::TransactionId;
+use stun_codec::rfc5766::attributes::{ChannelNumber, Lifetime, RequestedTransport};
 use uuid::Uuid;
 
 pub fn transaction_id() -> impl Strategy<Value = TransactionId> {

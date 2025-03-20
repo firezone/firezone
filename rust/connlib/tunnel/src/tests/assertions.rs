@@ -8,7 +8,7 @@ use connlib_model::GatewayId;
 use ip_packet::IpPacket;
 use itertools::Itertools;
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque, hash_map::Entry},
     hash::Hash,
     marker::PhantomData,
     net::IpAddr,
@@ -206,18 +206,10 @@ fn assert_packets_properties<T, U>(
                     assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
                 }
                 Destination::DomainName { name, .. } => {
-                    let domain = match ref_client.fully_qualify_using_search_domain(name.clone()) {
-                        Ok(domain) => domain,
-                        Err(e) => {
-                            tracing::error!(target: "assertions", "Failed to fully-qualify domain: {e:#}");
-                            return;
-                        }
-                    };
-
                     assert_destination_is_dns_resource(
                         gateway_received_request,
                         global_dns_records,
-                        &domain,
+                        name,
                     );
 
                     assert_proxy_ip_mapping_is_stable(
@@ -237,6 +229,15 @@ pub(crate) fn assert_dns_servers_are_valid(ref_client: &RefClient, sim_client: &
 
     if actual != expected {
         tracing::error!(target: "assertions", ?actual, ?expected, "❌ Effective DNS servers are incorrect");
+    }
+}
+
+pub(crate) fn assert_search_domain_is_valid(ref_client: &RefClient, sim_client: &SimClient) {
+    let expected = ref_client.expected_search_domain();
+    let actual = sim_client.effective_search_domain();
+
+    if actual != expected {
+        tracing::error!(target: "assertions", ?actual, ?expected, "❌ Search domain is incorrect");
     }
 }
 

@@ -1,9 +1,9 @@
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use anyhow::{Context as _, Result};
-use etherparse::{icmpv4, icmpv6, Icmpv4Type, Icmpv6Type, LaxIpv4Slice, LaxIpv6Slice};
+use etherparse::{Icmpv4Type, Icmpv6Type, LaxIpv4Slice, LaxIpv6Slice, icmpv4, icmpv6};
 
-use crate::{nat46, nat64, Layer4Protocol, Protocol};
+use crate::{Layer4Protocol, Protocol, nat46, nat64};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DestUnreachable {

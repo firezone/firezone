@@ -1,10 +1,10 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::{
     borrow::Cow,
     collections::{HashMap, VecDeque},
     io,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    task::{ready, Context, Poll, Waker},
+    task::{Context, Poll, Waker, ready},
     time::Duration,
 };
 use stun_codec::rfc8656::attributes::AddressFamily;

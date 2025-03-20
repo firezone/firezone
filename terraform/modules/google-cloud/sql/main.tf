@@ -75,7 +75,7 @@ resource "google_sql_database_instance" "master" {
       point_in_time_recovery_enabled = length(var.database_read_replica_locations) > 0 ? true : var.database_backups_enabled
 
       backup_retention_settings {
-        retained_backups = 7
+        retained_backups = 30
       }
     }
 
@@ -125,6 +125,16 @@ resource "google_sql_database_instance" "master" {
     database_flags {
       name  = "cloudsql.iam_authentication"
       value = "on"
+    }
+
+    database_flags {
+      name  = "cloudsql.enable_pgaudit"
+      value = "on"
+    }
+
+    database_flags {
+      name  = "pgaudit.log"
+      value = "all"
     }
   }
 

@@ -1,6 +1,6 @@
-use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
-use crate::windows::TUNNEL_UUID;
 use crate::TUNNEL_NAME;
+use crate::windows::TUNNEL_UUID;
+use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
 use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -27,7 +27,7 @@ use windows::Win32::{
     NetworkManagement::{
         IpHelper::{
             CreateIpForwardEntry2, DeleteIpForwardEntry2, GetIpInterfaceEntry,
-            InitializeIpForwardEntry, SetIpInterfaceEntry, MIB_IPFORWARD_ROW2, MIB_IPINTERFACE_ROW,
+            InitializeIpForwardEntry, MIB_IPFORWARD_ROW2, MIB_IPINTERFACE_ROW, SetIpInterfaceEntry,
         },
         Ndis::NET_LUID_LH,
     },
@@ -204,10 +204,6 @@ pub struct Tun {
 
 /// All state relevant to the WinTUN device.
 struct TunState {
-    #[expect(
-        dead_code,
-        reason = "The send/recv threads have `Weak` references to this which we need to keep alive"
-    )]
     session: Arc<wintun::Session>,
 
     outbound_tx: PollSender<IpPacket>,
@@ -250,6 +246,12 @@ impl Drop for Tun {
         if let Err(error) = send_thread.join() {
             tracing::error!("`Tun::send_thread` panicked: {error:?}");
         }
+    }
+}
+
+impl Drop for TunState {
+    fn drop(&mut self) {
+        let _ = self.session.shutdown(); // Cancels any `receive_blocking` calls.
     }
 }
 
@@ -325,13 +327,14 @@ impl tun::Tun for Tun {
 
     /// Check if more packets can be sent.
     fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        ready!(self
-            .state
-            .as_mut()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Internal state gone"))?
-            .outbound_tx
-            .poll_reserve(cx)
-            .map_err(io::Error::other)?);
+        ready!(
+            self.state
+                .as_mut()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Internal state gone"))?
+                .outbound_tx
+                .poll_reserve(cx)
+                .map_err(io::Error::other)?
+        );
 
         Poll::Ready(Ok(()))
     }
@@ -413,60 +416,64 @@ fn start_recv_thread(
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
         .name("TUN recv".into())
-        .spawn(move || loop {
-            let Some(receive_result) = session.upgrade().map(|s| s.receive_blocking()) else {
-                tracing::debug!(
-                    "Stopping TUN recv worker thread because the `wintun::Session` was dropped"
-                );
-                break;
-            };
-
-            let pkt = match receive_result {
-                Ok(pkt) => pkt,
-                Err(wintun::Error::ShuttingDown) => {
-                    tracing::debug!("Stopping recv worker thread because Wintun is shutting down");
-                    break;
-                }
-                Err(e) => {
-                    tracing::error!("wintun::Session::receive_blocking: {e:#?}");
-                    break;
-                }
-            };
-
-            let mut ip_packet_buf = IpPacketBuf::new();
-
-            let src = pkt.bytes();
-            let dst = ip_packet_buf.buf();
-
-            if src.len() > dst.len() {
-                tracing::warn!(len = %src.len(), "Received too large packet");
-                continue;
-            }
-
-            dst[..src.len()].copy_from_slice(src);
-
-            let pkt = match IpPacket::new(ip_packet_buf, src.len()) {
-                Ok(pkt) => pkt,
-                Err(e) => {
-                    tracing::debug!("Failed to parse IP packet: {e:#}");
-                    continue;
-                }
-            };
-
-            // Use `blocking_send` so that if connlib is behind by a few packets,
-            // Wintun will queue up new packets in its ring buffer while we
-            // wait for our MPSC channel to clear.
-            // Unfortunately we don't know if Wintun is dropping packets, since
-            // it doesn't expose a sequence number or anything.
-            match packet_tx.blocking_send(pkt) {
-                Ok(()) => {}
-                Err(_) => {
+        .spawn(move || {
+            loop {
+                let Some(receive_result) = session.upgrade().map(|s| s.receive_blocking()) else {
                     tracing::debug!(
-                        "Stopping TUN recv worker thread because the packet channel closed"
+                        "Stopping TUN recv worker thread because the `wintun::Session` was dropped"
                     );
                     break;
+                };
+
+                let pkt = match receive_result {
+                    Ok(pkt) => pkt,
+                    Err(wintun::Error::ShuttingDown) => {
+                        tracing::debug!(
+                            "Stopping TUN recv worker thread because Wintun is shutting down"
+                        );
+                        break;
+                    }
+                    Err(e) => {
+                        tracing::error!("wintun::Session::receive_blocking: {e:#?}");
+                        break;
+                    }
+                };
+
+                let mut ip_packet_buf = IpPacketBuf::new();
+
+                let src = pkt.bytes();
+                let dst = ip_packet_buf.buf();
+
+                if src.len() > dst.len() {
+                    tracing::warn!(len = %src.len(), "Received too large packet");
+                    continue;
                 }
-            };
+
+                dst[..src.len()].copy_from_slice(src);
+
+                let pkt = match IpPacket::new(ip_packet_buf, src.len()) {
+                    Ok(pkt) => pkt,
+                    Err(e) => {
+                        tracing::debug!("Failed to parse IP packet: {e:#}");
+                        continue;
+                    }
+                };
+
+                // Use `blocking_send` so that if connlib is behind by a few packets,
+                // Wintun will queue up new packets in its ring buffer while we
+                // wait for our MPSC channel to clear.
+                // Unfortunately we don't know if Wintun is dropping packets, since
+                // it doesn't expose a sequence number or anything.
+                match packet_tx.blocking_send(pkt) {
+                    Ok(()) => {}
+                    Err(_) => {
+                        tracing::debug!(
+                            "Stopping TUN recv worker thread because the packet channel closed"
+                        );
+                        break;
+                    }
+                };
+            }
         })
 }
 
@@ -548,7 +555,7 @@ fn try_set_ip(luid: NET_LUID_LH, ip: IpAddr) -> Result<()> {
         }
         Err(e) if e.code() == OBJECT_EXISTS => {} // Happens if we are trying to set the exact same IP.
         Err(e) => {
-            return Err(anyhow::Error::new(e).context("Failed to create `UnicastIpAddressEntry`"))
+            return Err(anyhow::Error::new(e).context("Failed to create `UnicastIpAddressEntry`"));
         }
     }
 

@@ -37,7 +37,10 @@ defmodule Domain.Repo.Seeds do
     {:ok, account} =
       Accounts.create_account(%{
         name: "Firezone Account",
-        slug: "firezone"
+        slug: "firezone",
+        config: %{
+          search_domain: "httpbin.search.test"
+        }
       })
 
     account =
@@ -1017,6 +1020,23 @@ defmodule Domain.Repo.Seeds do
         admin_subject
       )
 
+    {:ok, search_domain_resource} =
+      Resources.create_resource(
+        %{
+          type: :dns,
+          name: "**.httpbin.search.test",
+          address: "**.httpbin.search.test",
+          address_description: "http://httpbin/",
+          connections: [%{gateway_group_id: gateway_group.id}],
+          filters: [
+            %{ports: ["80", "433"], protocol: :tcp},
+            %{ports: ["53"], protocol: :udp},
+            %{protocol: :icmp}
+          ]
+        },
+        admin_subject
+      )
+
     IO.puts("Created resources:")
     IO.puts("  #{dns_google_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{address_description_null_resource.address} - DNS - gateways: #{gateway_name}")
@@ -1027,6 +1047,7 @@ defmodule Domain.Repo.Seeds do
     IO.puts("  #{ip_resource.address} - IP - gateways: #{gateway_name}")
     IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
     IO.puts("  #{dns_httpbin_resource.address} - DNS - gateways: #{gateway_name}")
+    IO.puts("  #{search_domain_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("")
 
     {:ok, _} =
@@ -1112,9 +1133,19 @@ defmodule Domain.Repo.Seeds do
     {:ok, _} =
       Policies.create_policy(
         %{
-          name: "All Access To dns.httpbin",
+          name: "All Access To **.httpbin",
           actor_group_id: everyone_group.id,
           resource_id: dns_httpbin_resource.id
+        },
+        admin_subject
+      )
+
+    {:ok, _} =
+      Policies.create_policy(
+        %{
+          name: "All Access To **.httpbin.search.test",
+          actor_group_id: everyone_group.id,
+          resource_id: search_domain_resource.id
         },
         admin_subject
       )

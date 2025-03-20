@@ -163,7 +163,13 @@ defmodule Web.Live.Policies.NewTest do
     identity: identity,
     conn: conn
   } do
-    resource = Fixtures.Resources.create_resource(account: account, type: :internet)
+    internet_gateway_group = Fixtures.Gateways.create_internet_group(account: account)
+
+    resource =
+      Fixtures.Resources.create_internet_resource(
+        account: account,
+        connections: [%{gateway_group_id: internet_gateway_group.id}]
+      )
 
     {:ok, lv, _html} =
       conn

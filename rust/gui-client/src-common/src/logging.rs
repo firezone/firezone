@@ -1,6 +1,6 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use firezone_headless_client::known_dirs;
 use serde::Serialize;
 use std::{
@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use tokio::task::spawn_blocking;
-use tracing_subscriber::{layer::SubscriberExt, Layer, Registry};
+use tracing_subscriber::{Layer, Registry, layer::SubscriberExt};
 
 /// If you don't store `Handles` in a variable, the file logger handle will drop immediately,
 /// resulting in empty log files.

@@ -15,12 +15,12 @@ use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
-use crate::{dns, messages::Interface, ClientEvent, GatewayEvent};
+use crate::{ClientEvent, GatewayEvent, dns, messages::Interface};
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
-use dns_types::prelude::*;
 use dns_types::ResponseCode;
-use rand::distributions::DistString;
+use dns_types::prelude::*;
 use rand::SeedableRng;
+use rand::distributions::DistString;
 use sha2::Digest;
 use snownet::Transmit;
 use std::iter;
@@ -240,12 +240,24 @@ impl TunnelTest {
                     })
                 });
             }
+            Transition::UpdateUpstreamSearchDomain(search_domain) => {
+                state.client.exec_mut(|c| {
+                    c.sut.update_interface_config(Interface {
+                        ipv4: c.sut.tunnel_ip_config().unwrap().v4,
+                        ipv6: c.sut.tunnel_ip_config().unwrap().v6,
+                        upstream_dns: ref_state.client.inner().upstream_dns_resolvers(),
+                        search_domain,
+                    })
+                });
+            }
             Transition::RoamClient { ip4, ip6, port } => {
                 state.network.remove_host(&state.client);
                 state.client.update_interface(ip4, ip6, port);
-                debug_assert!(state
-                    .network
-                    .add_host(state.client.inner().id, &state.client));
+                debug_assert!(
+                    state
+                        .network
+                        .add_host(state.client.inner().id, &state.client)
+                );
 
                 state.client.exec_mut(|c| {
                     c.sut.reset(now);
@@ -357,6 +369,7 @@ impl TunnelTest {
         assert_udp_dns_packets_properties(ref_client, sim_client);
         assert_tcp_dns(ref_client, sim_client);
         assert_dns_servers_are_valid(ref_client, sim_client);
+        assert_search_domain_is_valid(ref_client, sim_client);
         assert_routes_are_valid(ref_client, sim_client);
         assert_resource_status(ref_client, sim_client);
     }
@@ -751,9 +764,10 @@ impl TunnelTest {
                 if self.client.inner().dns_mapping() == &config.dns_by_sentinel
                     && self.client.inner().ipv4_routes == config.ipv4_routes
                     && self.client.inner().ipv6_routes == config.ipv6_routes
+                    && self.client.inner().search_domain == config.search_domain
                 {
                     tracing::error!(
-                        "Emitted `TunInterfaceUpdated` without changing DNS servers or routes"
+                        "Emitted `TunInterfaceUpdated` without changing DNS servers, routes or search domain"
                     );
                 }
 
@@ -770,6 +784,7 @@ impl TunnelTest {
                     c.set_new_dns_servers(config.dns_by_sentinel);
                     c.ipv4_routes = config.ipv4_routes;
                     c.ipv6_routes = config.ipv6_routes;
+                    c.search_domain = config.search_domain
                 });
             }
         }
@@ -829,18 +844,18 @@ impl TunnelTest {
 fn address_from_destination(destination: &Destination, state: &TunnelTest, src: &IpAddr) -> IpAddr {
     match destination {
         Destination::DomainName { resolved_ip, name } => {
-            let dns_records = &state.client.inner().dns_records;
+            let available_ips = state
+                .client
+                .inner()
+                .dns_records
+                .get(name)
+                .unwrap()
+                .iter()
+                .filter(|ip| match ip {
+                    IpAddr::V4(_) => src.is_ipv4(),
+                    IpAddr::V6(_) => src.is_ipv6(),
+                });
 
-            let Some(ips) = dns_records.get(name) else {
-                tracing::error!(%name, ?dns_records, "No DNS records");
-
-                panic!("No DNS records")
-            };
-
-            let available_ips = ips.iter().filter(|ip| match ip {
-                IpAddr::V4(_) => src.is_ipv4(),
-                IpAddr::V6(_) => src.is_ipv6(),
-            });
             *resolved_ip.select(available_ips)
         }
         Destination::IpAddr(addr) => *addr,

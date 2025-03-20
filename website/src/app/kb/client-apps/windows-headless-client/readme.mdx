@@ -207,6 +207,8 @@ Get-DnsClientNrptRule | where Comment -eq firezone-fd0020211111 | foreach { Remo
 
 ## Known issues
 
+- If a search domain is applied, DNS suffix search list of other adapters are
+  ignored. [#8430](https://github.com/firezone/firezone/issues/8430).
 - The Windows client is not yet available for Arm64 devices
   [#2992](https://github.com/firezone/firezone/issues/2992)
 

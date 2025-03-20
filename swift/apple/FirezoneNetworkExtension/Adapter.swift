@@ -204,11 +204,6 @@ class Adapter {
 
     // Cancel network monitor
     networkMonitor?.cancel()
-
-    // Shutdown the tunnel
-    session?.disconnect()
-
-    session = nil
   }
 
   /// Start the tunnel.
@@ -263,7 +258,7 @@ class Adapter {
   public func stop() {
     Log.log("Adapter.stop")
 
-    session?.disconnect()
+    // Assigning `nil` will invoke `Drop` on the Rust side
     session = nil
 
     networkMonitor?.cancel()
@@ -360,6 +355,7 @@ extension Adapter {
 // MARK: Implementing CallbackHandlerDelegate
 
 extension Adapter: CallbackHandlerDelegate {
+  // swiftlint:disable:next function_parameter_count
   public func onSetInterfaceConfig(
     tunnelAddressIPv4: String,
     tunnelAddressIPv6: String,
@@ -415,10 +411,8 @@ extension Adapter: CallbackHandlerDelegate {
   }
 
   public func onDisconnect(error: String) {
-    // We must call disconnect() for connlib to free its session state
-    session?.disconnect()
-
-    // Immediately invalidate our session pointer to prevent workQueue items from trying to use it
+    // Immediately invalidate our session pointer to prevent workQueue items from trying to use it.
+    // Assigning to `nil` will invoke `Drop` on the Rust side.
     session = nil
 
     // Since connlib has already shutdown by this point, we queue this callback

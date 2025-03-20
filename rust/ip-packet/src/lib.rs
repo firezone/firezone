@@ -28,7 +28,7 @@ pub use icmp_dest_unreachable::{DestUnreachable, FailedPacket};
 #[cfg(all(test, feature = "proptest"))]
 mod proptests;
 
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use icmpv4_header_slice_mut::Icmpv4HeaderSliceMut;
 use icmpv6_header_slice_mut::Icmpv6EchoHeaderSliceMut;
 use ipv4_header_slice_mut::Ipv4HeaderSliceMut;
@@ -694,7 +694,9 @@ impl IpPacket {
                 Icmpv6Type::DestinationUnreachable(error) => DestUnreachable::V6Unreachable(error),
                 Icmpv6Type::PacketTooBig { mtu } => DestUnreachable::V6PacketTooBig { mtu },
                 other => {
-                    bail!("ICMP message is not `DestinationUnreachable` or `PacketTooBig` but {other:?}");
+                    bail!(
+                        "ICMP message is not `DestinationUnreachable` or `PacketTooBig` but {other:?}"
+                    );
                 }
             };
 

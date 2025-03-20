@@ -10,14 +10,22 @@ export default function Headless({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased></Unreleased>
+      <Entry version="1.4.5" date={new Date("2025-03-14")}>
+        {os === OS.Windows && (
+          <ChangeItem pull="8422">
+            Applies the search domain configured in the admin portal, if any.
+          </ChangeItem>
+        )}
+        {os === OS.Linux && (
+          <ChangeItem pull="8378">
+            Applies the search domain configured in the admin portal, if any.
+          </ChangeItem>
+        )}
+      </Entry>
       <Entry version="1.4.4" date={new Date("2025-03-10")}>
-        {(os === OS.Linux && (
+        {os === OS.Linux && (
           <ChangeItem pull="8117">
             Fixes an upload speed performance regression.
-          </ChangeItem>
-        )) || (
-          <ChangeItem>
-            This is a maintenance release with no user-facing changes.
           </ChangeItem>
         )}
       </Entry>

@@ -1,4 +1,4 @@
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use clap::{Args, Parser};
 use firezone_gui_client_common::{
     self as common, controller::Failure, deep_link, settings::AdvancedSettings,
@@ -129,7 +129,7 @@ fn run_gui(cli: Cli) -> Result<()> {
                 return Err(anyhow);
             }
 
-            common::errors::show_error_dialog(anyhow.to_string())?;
+            common::errors::show_error_dialog(common::errors::GENERIC_MSG.to_owned())?;
             tracing::error!("GUI failed: {anyhow:#}");
 
             Err(anyhow)

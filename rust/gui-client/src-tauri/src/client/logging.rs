@@ -1,5 +1,5 @@
 use crate::client::gui::Managed;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use firezone_gui_client_common::{
     controller::{ControllerRequest, CtlrTx},
     logging as common,

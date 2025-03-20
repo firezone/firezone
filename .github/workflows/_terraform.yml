@@ -28,9 +28,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cloud-init
-          sudo cloud-init schema --config-file terraform/modules/google-cloud/apps/relay/templates/cloud-init.yaml
-          sudo cloud-init schema --config-file terraform/modules/google-cloud/apps/elixir/templates/cloud-init.yaml
-          sudo cloud-init schema --config-file terraform/modules/google-cloud/apps/gateway-region-instance-group/templates/cloud-init.yaml
+          cloud-init schema --config-file terraform/modules/google-cloud/apps/relay/templates/cloud-init.yaml
+          # This doesn't work if the file contains interpolated variables
+          # cloud-init schema --config-file terraform/modules/google-cloud/apps/elixir/templates/cloud-init.yaml
       - name: Check Formatting
         working-directory: terraform
         run: |

@@ -1,15 +1,11 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{
-    sync::{Arc, LazyLock},
-    time::Duration,
-};
+use std::{sync::Arc, time::Duration};
 
-use anyhow::{bail, Context, Result};
 use env::ON_PREM;
-use parking_lot::RwLock;
 use sentry::protocol::SessionStatus;
-use serde::{Deserialize, Serialize};
+
+pub mod feature_flags;
 
 pub struct Dsn(&'static str);
 
@@ -18,31 +14,27 @@ pub struct Dsn(&'static str);
 // > DSNs are safe to keep public because they only allow submission of new events and related event data; they do not allow read access to any information.
 // <https://docs.sentry.io/concepts/key-terms/dsn-explainer/#dsn-utilization>
 
-pub const ANDROID_DSN: Dsn = Dsn("https://928a6ee1f6af9734100b8bc89b2dc87d@o4507971108339712.ingest.us.sentry.io/4508175126233088");
-pub const APPLE_DSN: Dsn = Dsn("https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488");
-pub const GATEWAY_DSN: Dsn = Dsn("https://f763102cc3937199ec483fbdae63dfdc@o4507971108339712.ingest.us.sentry.io/4508162914451456");
-pub const GUI_DSN: Dsn = Dsn("https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312");
-pub const HEADLESS_DSN: Dsn = Dsn("https://bc27dca8bb37be0142c48c4f89647c13@o4507971108339712.ingest.us.sentry.io/4508010028728320");
-pub const RELAY_DSN: Dsn = Dsn("https://9d5f664d8f8f7f1716d4b63a58bcafd5@o4507971108339712.ingest.us.sentry.io/4508373298970624");
-pub const TESTING: Dsn = Dsn("https://55ef451fca9054179a11f5d132c02f45@o4507971108339712.ingest.us.sentry.io/4508792604852224");
-
-const POSTHOG_API_KEY: &str = "phc_uXXl56plyvIBHj81WwXBLtdPElIRbm7keRTdUCmk8ll";
-
-// Process-wide storage of enabled feature flags.
-//
-// Defaults to everything off.
-static FEATURE_FLAGS: LazyLock<RwLock<FeatureFlags>> = LazyLock::new(RwLock::default);
-
-/// Exposes all feature flags as public, static functions.
-///
-/// These only ever hit an in-memory location so can even be called from hot paths.
-pub mod feature_flags {
-    use crate::*;
-
-    pub fn icmp_unreachable_instead_of_nat64() -> bool {
-        FEATURE_FLAGS.read().icmp_unreachable_instead_of_nat64
-    }
-}
+pub const ANDROID_DSN: Dsn = Dsn(
+    "https://928a6ee1f6af9734100b8bc89b2dc87d@o4507971108339712.ingest.us.sentry.io/4508175126233088",
+);
+pub const APPLE_DSN: Dsn = Dsn(
+    "https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488",
+);
+pub const GATEWAY_DSN: Dsn = Dsn(
+    "https://f763102cc3937199ec483fbdae63dfdc@o4507971108339712.ingest.us.sentry.io/4508162914451456",
+);
+pub const GUI_DSN: Dsn = Dsn(
+    "https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312",
+);
+pub const HEADLESS_DSN: Dsn = Dsn(
+    "https://bc27dca8bb37be0142c48c4f89647c13@o4507971108339712.ingest.us.sentry.io/4508010028728320",
+);
+pub const RELAY_DSN: Dsn = Dsn(
+    "https://9d5f664d8f8f7f1716d4b63a58bcafd5@o4507971108339712.ingest.us.sentry.io/4508373298970624",
+);
+pub const TESTING: Dsn = Dsn(
+    "https://55ef451fca9054179a11f5d132c02f45@o4507971108339712.ingest.us.sentry.io/4508792604852224",
+);
 
 mod env {
     use std::borrow::Cow;
@@ -115,11 +107,7 @@ impl Telemetry {
                 traces_sampler: Some(Arc::new(|tx| {
                     // Only submit `telemetry` spans to Sentry.
                     // Those get sampled at creation time (to save CPU power) so we want to submit all of them.
-                    if tx.name() == "telemetry" {
-                        1.0
-                    } else {
-                        0.0
-                    }
+                    if tx.name() == "telemetry" { 1.0 } else { 0.0 }
                 })),
                 max_breadcrumbs: 500,
                 ..Default::default()
@@ -181,19 +169,7 @@ impl Telemetry {
             |user| user.id = Some(id)
         });
 
-        std::thread::spawn(|| {
-            let flags = evaluate_feature_flags(id)
-                .inspect_err(|e| tracing::debug!("Failed to evaluate feature flags: {e:#}"))
-                .unwrap_or_default();
-
-            tracing::debug!(?flags, "Evaluated feature-flags");
-
-            *FEATURE_FLAGS.write() = flags;
-
-            sentry::Hub::main().configure_scope(|scope| {
-                scope.set_context("flags", sentry_flag_context(flags));
-            });
-        });
+        feature_flags::reevaluate(id);
     }
 }
 
@@ -208,75 +184,6 @@ fn update_user(update: impl FnOnce(&mut sentry::User)) {
 
 fn set_current_user(user: Option<sentry::User>) {
     sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
-}
-
-fn evaluate_feature_flags(distinct_id: String) -> Result<FeatureFlags> {
-    let response = reqwest::blocking::ClientBuilder::new()
-        .connection_verbose(true)
-        .build()?
-        .post("https://us.i.posthog.com/decide?v=3")
-        .json(&DecideRequest {
-            api_key: POSTHOG_API_KEY.to_string(),
-            distinct_id,
-        })
-        .send()
-        .context("Failed to send POST request")?;
-
-    let status = response.status();
-
-    if !status.is_success() {
-        let body = response.text().unwrap_or_default();
-
-        bail!("Failed to get feature flags; status={status}, body={body}")
-    }
-
-    let json = response
-        .json::<DecideResponse>()
-        .context("Failed to deserialize response")?;
-
-    Ok(json.feature_flags)
-}
-
-#[derive(Debug, Serialize)]
-struct DecideRequest {
-    api_key: String,
-    distinct_id: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct DecideResponse {
-    feature_flags: FeatureFlags,
-}
-
-#[derive(Debug, Deserialize, Default, Clone, Copy)]
-#[serde(rename_all = "kebab-case")]
-struct FeatureFlags {
-    #[serde(default)]
-    icmp_unreachable_instead_of_nat64: bool,
-}
-
-fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
-    #[derive(Debug, serde::Serialize)]
-    #[serde(tag = "flag", rename_all = "snake_case")]
-    enum SentryFlag {
-        IcmpUnreachableInsteadOfNat64 { result: bool },
-    }
-
-    // Exhaustive destruction so we don't forget to update this when we add a flag.
-    let FeatureFlags {
-        icmp_unreachable_instead_of_nat64,
-    } = flags;
-
-    let value = serde_json::json!({
-        "values": [
-            SentryFlag::IcmpUnreachableInsteadOfNat64 {
-                result: icmp_unreachable_instead_of_nat64,
-            }
-        ]
-    });
-
-    sentry::protocol::Context::Other(serde_json::from_value(value).expect("to and from json works"))
 }
 
 #[cfg(test)]

@@ -23,6 +23,11 @@ if [ -z "$FIREZONE_TOKEN" ]; then
     exit 1
 fi
 
+if [ -z "$FIREZONE_ID" ]; then
+    echo "FIREZONE_ID is required"
+    exit 1
+fi
+
 # Setup user and group
 sudo groupadd -f firezone
 id -u firezone >/dev/null 2>&1 || sudo useradd -r -g firezone -s /sbin/nologin firezone
@@ -43,8 +48,6 @@ User=firezone
 Group=firezone
 PermissionsStartOnly=true
 SyslogIdentifier=firezone-gateway
-StateDirectory=firezone
-StateDirectoryMode=0755
 
 # Environment variables
 Environment="FIREZONE_NAME=$FIREZONE_NAME"
@@ -61,7 +64,7 @@ Environment="OTLP_GRPC_ENDPOINT=$FIREZONE_OTLP_GRPC_ENDPOINT"
 ExecStartPre=/usr/local/bin/firezone-gateway-init
 
 # ExecStart script
-ExecStart=/usr/local/bin/firezone-gateway
+ExecStart=/opt/firezone/bin/firezone-gateway
 
 # Restart on failure
 TimeoutStartSec=3s
@@ -102,9 +105,6 @@ RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
 AmbientCapabilities=CAP_NET_ADMIN
 CapabilityBoundingSet=CAP_NET_ADMIN
 
-# Allow write access only to specific directories needed at runtime.
-ReadWriteDirectories=/var/lib/firezone
-
 # Make some sensitive paths inaccessible.
 InaccessiblePaths=/root /home
 
@@ -126,39 +126,52 @@ cat <<EOF | sudo tee /usr/local/bin/firezone-gateway-init
 
 set -ue
 
+# Define the target directory and binary path
+TARGET_DIR="/opt/firezone/bin"
+BINARY_PATH="\$TARGET_DIR/firezone-gateway"
+
+# Create the directory if it doesn’t exist
+if [ ! -d "\$TARGET_DIR" ]; then
+  mkdir -p "\$TARGET_DIR"
+  chown firezone:firezone "\$TARGET_DIR"
+  chmod 0755 "\$TARGET_DIR"
+fi
+
+
 # Download ${FIREZONE_VERSION} version of the gateway if it doesn't already exist
-if [ ! -e /usr/local/bin/firezone-gateway ]; then
-  echo "/usr/local/bin/firezone-gateway not found."
+if [ ! -e "\$BINARY_PATH" ]; then
+  echo "\$BINARY_PATH not found."
   echo "Downloading ${FIREZONE_VERSION} version from ${FIREZONE_ARTIFACT_URL}..."
   arch=\$(uname -m)
 
   # See https://www.firezone.dev/changelog for available binaries
-  curl -fsSL ${FIREZONE_ARTIFACT_URL}/${FIREZONE_VERSION}/\$arch -o /tmp/firezone-gateway
+  curl -fsSL ${FIREZONE_ARTIFACT_URL}/${FIREZONE_VERSION}/\$arch -o "\$BINARY_PATH.download"
 
-  if file /tmp/firezone-gateway | grep -q "ELF"; then
-    mv /tmp/firezone-gateway /usr/local/bin/firezone-gateway
+  if file "\$BINARY_PATH.download" | grep -q "ELF"; then
+    mv "\$BINARY_PATH.download" "\$BINARY_PATH"
   else
-    echo "/tmp/firezone-gateway is not an executable!"
+    echo "\$BINARY_PATH.download is not an executable!"
     echo "Ensure '${FIREZONE_ARTIFACT_URL}/${FIREZONE_VERSION}/\$arch' is accessible from this machine,"
     echo "or download binary manually and install to /usr/local/bin/firezone-gateway."
     exit 1
   fi
 else
-  echo "/usr/local/bin/firezone-gateway found. Skipping download."
+  echo "\$BINARY_PATH found. Skipping download."
 fi
 
 # Set proper permissions on each start
-chmod 0755 /usr/local/bin/firezone-gateway
+chmod 0755 "\$BINARY_PATH"
+chown firezone:firezone "\$BINARY_PATH"
 
-# Enable masquerading for ethernet and wireless interfaces
-iptables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -i tun-firezone -j ACCEPT
-iptables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -A FORWARD -o tun-firezone -j ACCEPT
-iptables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || iptables -t nat -A POSTROUTING -o e+ -j MASQUERADE
-iptables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || iptables -t nat -A POSTROUTING -o w+ -j MASQUERADE
-ip6tables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || ip6tables -A FORWARD -i tun-firezone -j ACCEPT
-ip6tables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || ip6tables -A FORWARD -o tun-firezone -j ACCEPT
-ip6tables -t nat -C POSTROUTING -o e+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -o e+ -j MASQUERADE
-ip6tables -t nat -C POSTROUTING -o w+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -o w+ -j MASQUERADE
+# Enable masquerading for Firezone tunnel traffic
+iptables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -I FORWARD 1 -i tun-firezone -j ACCEPT
+iptables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || iptables -I FORWARD 1 -o tun-firezone -j ACCEPT
+iptables -t nat -C POSTROUTING -s 100.64.0.0/11 -o e+ -j MASQUERADE > /dev/null 2>&1 || iptables -t nat -A POSTROUTING -s 100.64.0.0/11 -o e+ -j MASQUERADE
+iptables -t nat -C POSTROUTING -s 100.64.0.0/11 -o w+ -j MASQUERADE > /dev/null 2>&1 || iptables -t nat -A POSTROUTING -s 100.64.0.0/11 -o w+ -j MASQUERADE
+ip6tables -C FORWARD -i tun-firezone -j ACCEPT > /dev/null 2>&1 || ip6tables -I FORWARD 1 -i tun-firezone -j ACCEPT
+ip6tables -C FORWARD -o tun-firezone -j ACCEPT > /dev/null 2>&1 || ip6tables -I FORWARD 1 -o tun-firezone -j ACCEPT
+ip6tables -t nat -C POSTROUTING -s fd00:2021:1111::/107 -o e+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -s fd00:2021:1111::/107 -o e+ -j MASQUERADE
+ip6tables -t nat -C POSTROUTING -s fd00:2021:1111::/107 -o w+ -j MASQUERADE > /dev/null 2>&1 || ip6tables -t nat -A POSTROUTING -s fd00:2021:1111::/107 -o w+ -j MASQUERADE
 
 # Enable packet forwarding for IPv4 and IPv6
 sysctl -w net.ipv4.ip_forward=1

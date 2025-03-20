@@ -209,7 +209,7 @@ pub enum TranslateIncomingResult {
 #[cfg(all(test, feature = "proptest"))]
 mod tests {
     use super::*;
-    use ip_packet::{proptest::*, IpPacket};
+    use ip_packet::{IpPacket, proptest::*};
     use proptest::prelude::*;
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
