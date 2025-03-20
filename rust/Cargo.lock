@@ -1880,14 +1880,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d6ef0072f8a535281e4876be788938b528e9a1d43900b82c2569af7da799125"
 
 [[package]]
+name = "ebpf-shared"
+version = "0.1.0"
+dependencies = [
+ "aya",
+]
+
+[[package]]
 name = "ebpf-turn-router"
 version = "0.1.0"
 dependencies = [
  "aya-ebpf",
  "aya-log-ebpf",
+ "ebpf-shared",
  "etherparse",
  "etherparse-ext",
- "firezone-relay-ebpf-shared",
  "format_no_std",
  "hex",
  "hex-literal",
@@ -2346,10 +2353,10 @@ dependencies = [
  "clap",
  "derive_more 1.0.0",
  "difference",
+ "ebpf-shared",
  "env_logger",
  "firezone-bin-shared",
  "firezone-logging",
- "firezone-relay-ebpf-shared",
  "firezone-telemetry",
  "futures",
  "hex",
@@ -2382,13 +2389,6 @@ dependencies = [
  "trackable 1.3.0",
  "url",
  "uuid",
-]
-
-[[package]]
-name = "firezone-relay-ebpf-shared"
-version = "0.1.0"
-dependencies = [
- "aya",
 ]
 
 [[package]]

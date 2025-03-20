@@ -14,9 +14,9 @@ bytecodec = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 derive_more = { workspace = true, features = ["from"] }
+ebpf-shared = { workspace = true, features = ["userspace"] }
 firezone-bin-shared = { workspace = true }
 firezone-logging = { workspace = true }
-firezone-relay-ebpf-shared = { workspace = true, features = ["userspace"] }
 firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }

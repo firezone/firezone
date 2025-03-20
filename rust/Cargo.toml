@@ -97,7 +97,7 @@ firezone-gui-client-common = { path = "gui-client/src-common" }
 firezone-headless-client = { path = "headless-client" }
 firezone-logging = { path = "logging" }
 firezone-relay = { path = "relay/server" }
-firezone-relay-ebpf-shared = { path = "relay/ebpf-shared" }
+ebpf-shared = { path = "relay/ebpf-shared" }
 firezone-telemetry = { path = "telemetry" }
 firezone-tunnel = { path = "connlib/tunnel" }
 flume = { version = "0.11.1", features = ["async"] }

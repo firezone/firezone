@@ -11,12 +11,12 @@ use aya_ebpf::{
     programs::XdpContext,
 };
 use aya_log_ebpf::*;
+use ebpf_shared::{ClientAndChannelV4, PortAndPeerV4};
 use etherparse::{
     EtherType, Ethernet2Header, Ethernet2HeaderSlice, IpNumber, Ipv4Header, Ipv4HeaderSlice,
     Ipv6Header, UdpHeader, UdpHeaderSlice,
 };
 use etherparse_ext::{Ipv4HeaderSliceMut, UdpHeaderSliceMut};
-use firezone_relay_ebpf_shared::{ClientAndChannelV4, PortAndPeerV4};
 
 mod error;
 
