@@ -59,169 +59,186 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 
 #[inline(always)]
 fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
-    let ipv4hdr_slice = slice_mut_at::<{ Ipv4Header::MIN_LEN }>(ctx, Ethernet2Header::LEN)?;
-    let ipv4hdr = parse_ipv4(ipv4hdr_slice)?;
-
-    let src_addr = u32::from_be_bytes(ipv4hdr.source());
-    let dst_addr = u32::from_be_bytes(ipv4hdr.destination());
-    let tot_len = ipv4hdr.total_len();
-    let ipv4_checksum = ipv4hdr.header_checksum();
+    let ipv4_slice = slice_mut_at::<{ Ipv4Header::MIN_LEN }>(ctx, Ethernet2Header::LEN)?;
+    let ipv4 = parse_ipv4(ipv4_slice)?;
 
     // IPv4 packets with options are handled in user-space.
-    if usize::from(ipv4hdr.ihl() * 4) != Ipv4Header::MIN_LEN {
+    if usize::from(ipv4.ihl() * 4) != Ipv4Header::MIN_LEN {
         return Ok(xdp_action::XDP_PASS);
     }
 
-    let IpNumber::UDP = ipv4hdr.protocol() else {
+    // We only handle UDP packets.
+    let IpNumber::UDP = ipv4.protocol() else {
         return Ok(xdp_action::XDP_PASS);
     };
 
-    let udphdr_slice =
+    let udp_slice =
         slice_mut_at::<{ UdpHeader::LEN }>(ctx, Ethernet2Header::LEN + Ipv4Header::MIN_LEN)?;
-    let udphdr = parse_udp(udphdr_slice)?;
+    let udp = parse_udp(udp_slice)?;
 
-    let src_port = udphdr.source_port();
-    let dst_port = udphdr.destination_port();
-    let udp_payload_len = udphdr.length();
-    let udp_checksum = udphdr.checksum();
+    trace!(
+        ctx,
+        "New packet from {:i}:{}",
+        ipv4.source(),
+        udp.source_port()
+    );
 
-    trace!(ctx, "New packet from {:i}:{}", src_addr, src_port);
-
-    if dst_port == 3478 {
-        let cdhdr = slice_mut_at::<{ CHANNEL_DATA_HEADER_LEN }>(
-            ctx,
-            Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN,
-        )?;
-
-        if !(64..=79).contains(&cdhdr[0]) {
-            return Ok(xdp_action::XDP_PASS);
-        }
-
-        let channel_number = u16::from_be_bytes([cdhdr[0], cdhdr[1]]);
-
-        // Untrusted because we read it from the packet.
-        let untrusted_channel_data_length = u16::from_be_bytes([cdhdr[2], cdhdr[3]]);
-
-        let channel_data_length = remaining_bytes(
-            ctx,
-            Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN + CHANNEL_DATA_HEADER_LEN,
-        )?;
-
-        // We received less (or more) data than the header said we would.
-        if channel_data_length != usize::from(untrusted_channel_data_length) {
-            return Ok(xdp_action::XDP_DROP);
-        }
-
-        let client_and_channel = ClientAndChannelV4::new(src_addr, src_port, channel_number);
-
-        let binding = unsafe { CHAN_TO_UDP_44.get(&client_and_channel) };
-        let Some(port_and_peer) = binding else {
-            debug!(
-                ctx,
-                "No channel binding from {:x}:{:x} for channel {:x}",
-                src_addr,
-                src_port,
-                channel_number,
-            );
-
-            return Ok(xdp_action::XDP_PASS);
-        };
-
-        {
-            let mut ipv4hdr_mut = parse_ipv4_mut(ipv4hdr_slice)?;
-
-            let new_src_addr = dst_addr; // The IP we received the packet on will be the new source IP.
-            let new_dst_addr = port_and_peer.dest_ip();
-            let new_tot_len = tot_len - 4;
-
-            ipv4hdr_mut.set_source(new_src_addr.to_be_bytes());
-            ipv4hdr_mut.set_destination(new_dst_addr.to_be_bytes());
-            ipv4hdr_mut.set_total_length(new_tot_len.to_be_bytes());
-
-            let new_ipv4_checksum = recompute_checksum(
-                [
-                    fold_u32_into_u16(src_addr),
-                    fold_u32_into_u16(dst_addr),
-                    tot_len,
-                ],
-                [
-                    fold_u32_into_u16(new_src_addr),
-                    fold_u32_into_u16(new_dst_addr),
-                    new_tot_len,
-                ],
-                ipv4_checksum,
-            );
-
-            ipv4hdr_mut.set_checksum(new_ipv4_checksum);
-
-            trace!(
-                ctx,
-                "Updating IP checksum from {:x} to {:x}",
-                ipv4_checksum,
-                new_ipv4_checksum
-            );
-
-            let mut udphdr_mut = parse_udp_mut(udphdr_slice)?;
-
-            let new_src_port = port_and_peer.allocation_port();
-            let new_dst_port = port_and_peer.dest_port();
-            let new_udp_payload_len = udp_payload_len - 4;
-
-            udphdr_mut.set_source_port(new_src_port);
-            udphdr_mut.set_destination_port(new_dst_port);
-            udphdr_mut.set_length(new_udp_payload_len);
-
-            let new_udp_checksum = recompute_checksum(
-                [
-                    fold_u32_into_u16(src_addr),
-                    fold_u32_into_u16(dst_addr),
-                    // Yes the payload length needs to be in here twice because it is also used twice in the checksum calculation.
-                    // Thus, any difference between the lengths must be accounted for in the checksum twice as well.
-                    udp_payload_len,
-                    udp_payload_len,
-                    src_port,
-                    dst_port,
-                    channel_number,
-                    untrusted_channel_data_length,
-                ],
-                [
-                    fold_u32_into_u16(new_src_addr),
-                    fold_u32_into_u16(new_dst_addr),
-                    new_udp_payload_len,
-                    new_udp_payload_len,
-                    new_src_port,
-                    new_dst_port,
-                ],
-                udp_checksum,
-            );
-
-            udphdr_mut.set_checksum(new_udp_checksum);
-
-            trace!(
-                ctx,
-                "Updating UDP checksum from {:x} to {:x}",
-                udp_checksum,
-                new_udp_checksum
-            );
-        }
-
-        remove_channel_data_header_ipv4(ctx);
-
-        info!(
-            ctx,
-            "Redirecting message from {:i}:{} on channel {} to {:i}:{} on port {}",
-            src_addr,
-            src_port,
-            channel_number,
-            port_and_peer.dest_ip(),
-            port_and_peer.dest_port(),
-            port_and_peer.allocation_port()
-        );
-
-        Ok(xdp_action::XDP_TX)
+    if udp.destination_port() == 3478 {
+        try_handle_ipv4_channel_data_to_udp(ctx, ipv4_slice, udp_slice)
     } else {
         try_handle_peer(ctx)
     }
+}
+
+fn try_handle_ipv4_channel_data_to_udp(
+    ctx: &XdpContext,
+    ipv4_slice: &mut [u8],
+    udp_slice: &mut [u8],
+) -> Result<u32, Error> {
+    let cdhdr = slice_mut_at::<{ CHANNEL_DATA_HEADER_LEN }>(
+        ctx,
+        Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN,
+    )?;
+
+    if !(64..=79).contains(&cdhdr[0]) {
+        return Ok(xdp_action::XDP_PASS);
+    }
+
+    let channel_number = u16::from_be_bytes([cdhdr[0], cdhdr[1]]);
+
+    // Untrusted because we read it from the packet.
+    let untrusted_channel_data_length = u16::from_be_bytes([cdhdr[2], cdhdr[3]]);
+
+    let channel_data_length = remaining_bytes(
+        ctx,
+        Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN + CHANNEL_DATA_HEADER_LEN,
+    )?;
+
+    // We received less (or more) data than the header said we would.
+    if channel_data_length != usize::from(untrusted_channel_data_length) {
+        return Ok(xdp_action::XDP_DROP);
+    }
+
+    let ipv4 = parse_ipv4(ipv4_slice)?;
+    let udp = parse_udp(udp_slice)?;
+
+    let src_addr = u32::from_be_bytes(ipv4.source());
+    let dst_addr = u32::from_be_bytes(ipv4.destination());
+    let tot_len = ipv4.total_len();
+    let ipv4_checksum = ipv4.header_checksum();
+
+    let src_port = udp.source_port();
+    let dst_port = udp.destination_port();
+    let udp_payload_len = udp.length();
+    let udp_checksum = udp.checksum();
+
+    let client_and_channel = ClientAndChannelV4::new(src_addr, src_port, channel_number);
+
+    let binding = unsafe { CHAN_TO_UDP_44.get(&client_and_channel) };
+    let Some(port_and_peer) = binding else {
+        debug!(
+            ctx,
+            "No channel binding from {:x}:{:x} for channel {:x}",
+            src_addr,
+            src_port,
+            channel_number,
+        );
+
+        return Ok(xdp_action::XDP_PASS);
+    };
+
+    {
+        let new_src_addr = dst_addr; // The IP we received the packet on will be the new source IP.
+        let new_dst_addr = port_and_peer.dest_ip();
+        let new_tot_len = tot_len - 4;
+
+        let mut ipv4_mut = parse_ipv4_mut(ipv4_slice)?;
+
+        ipv4_mut.set_source(new_src_addr.to_be_bytes());
+        ipv4_mut.set_destination(new_dst_addr.to_be_bytes());
+        ipv4_mut.set_total_length(new_tot_len.to_be_bytes());
+
+        let new_ipv4_checksum = recompute_checksum(
+            [
+                fold_u32_into_u16(src_addr),
+                fold_u32_into_u16(dst_addr),
+                tot_len,
+            ],
+            [
+                fold_u32_into_u16(new_src_addr),
+                fold_u32_into_u16(new_dst_addr),
+                new_tot_len,
+            ],
+            ipv4_checksum,
+        );
+
+        ipv4_mut.set_checksum(new_ipv4_checksum);
+
+        trace!(
+            ctx,
+            "Updating IP checksum from {:x} to {:x}",
+            ipv4_checksum,
+            new_ipv4_checksum
+        );
+
+        let new_src_port = port_and_peer.allocation_port();
+        let new_dst_port = port_and_peer.dest_port();
+        let new_udp_payload_len = udp_payload_len - 4;
+
+        let mut udp_mut = parse_udp_mut(udp_slice)?;
+
+        udp_mut.set_source_port(new_src_port);
+        udp_mut.set_destination_port(new_dst_port);
+        udp_mut.set_length(new_udp_payload_len);
+
+        let new_udp_checksum = recompute_checksum(
+            [
+                fold_u32_into_u16(src_addr),
+                fold_u32_into_u16(dst_addr),
+                // Yes the payload length needs to be in here twice because it is also used twice in the checksum calculation.
+                // Thus, any difference between the lengths must be accounted for in the checksum twice as well.
+                udp_payload_len,
+                udp_payload_len,
+                src_port,
+                dst_port,
+                channel_number,
+                untrusted_channel_data_length,
+            ],
+            [
+                fold_u32_into_u16(new_src_addr),
+                fold_u32_into_u16(new_dst_addr),
+                new_udp_payload_len,
+                new_udp_payload_len,
+                new_src_port,
+                new_dst_port,
+            ],
+            udp_checksum,
+        );
+
+        udp_mut.set_checksum(new_udp_checksum);
+
+        trace!(
+            ctx,
+            "Updating UDP checksum from {:x} to {:x}",
+            udp_checksum,
+            new_udp_checksum
+        );
+    }
+
+    remove_channel_data_header_ipv4(ctx);
+
+    info!(
+        ctx,
+        "Redirecting message from {:i}:{} on channel {} to {:i}:{} on port {}",
+        src_addr,
+        src_port,
+        channel_number,
+        port_and_peer.dest_ip(),
+        port_and_peer.dest_port(),
+        port_and_peer.allocation_port()
+    );
+
+    Ok(xdp_action::XDP_TX)
 }
 
 fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u32, Error> {
