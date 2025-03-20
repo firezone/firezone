@@ -1,5 +1,5 @@
 [package]
-name = "firezone-relay-ebpf"
+name = "ebpf-turn-router"
 version = "0.1.0"
 edition = "2021"
 
@@ -20,5 +20,5 @@ ip-packet = { workspace = true }
 which = { version = "7.0.0", default-features = false }
 
 [[bin]]
-name = "firezone-relay-ebpf-main"
+name = "ebpf-turn-router-main" # This needs to be different from the package name otherwise the build-script fails to differentiate between the directory it is built in and the actual binary.
 path = "src/main.rs"

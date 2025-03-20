@@ -8,7 +8,7 @@ fn main() -> anyhow::Result<()> {
         .context("MetadataCommand::exec")?;
     let ebpf_package = packages
         .into_iter()
-        .find(|cargo_metadata::Package { name, .. }| name == "firezone-relay-ebpf")
-        .ok_or_else(|| anyhow!("firezone-relay-ebpf package not found"))?;
+        .find(|cargo_metadata::Package { name, .. }| name == "ebpf-turn-router")
+        .ok_or_else(|| anyhow!("`ebpf-turn-router` package not found"))?;
     aya_build::build_ebpf([ebpf_package])
 }

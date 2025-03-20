@@ -146,7 +146,7 @@ async fn try_main(args: Args) -> Result<()> {
 
     let mut bpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
         env!("OUT_DIR"),
-        "/firezone-relay-ebpf-main"
+        "/ebpf-turn-router-main"
     )))?;
     let _ = EbpfLogger::init(&mut bpf);
     let program: &mut Xdp = bpf
