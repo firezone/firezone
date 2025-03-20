@@ -118,7 +118,7 @@ defmodule Web.Live.Sites.IndexTest do
     identity: identity,
     conn: conn
   } do
-    {:ok, group} = Domain.Gateways.create_internet_group(account)
+    group = Fixtures.Gateways.create_internet_group(account: account)
 
     {:ok, lv, _html} =
       conn
@@ -139,7 +139,7 @@ defmodule Web.Live.Sites.IndexTest do
   } do
     account = Fixtures.Accounts.update_account(account, features: %{internet_resource: true})
 
-    {:ok, group} = Domain.Gateways.create_internet_group(account)
+    group = Fixtures.Gateways.create_internet_group(account: account)
     gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
     Domain.Config.put_env_override(:test_pid, self())
     :ok = Domain.Gateways.subscribe_to_gateways_presence_in_account(account)
