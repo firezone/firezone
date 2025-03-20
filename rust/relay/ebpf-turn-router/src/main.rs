@@ -51,10 +51,14 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     let ethhdr = parse_eth(ethhdr_slice)?;
 
     match ethhdr.ether_type() {
-        EtherType::IPV4 => {}
-        _ => return Ok(xdp_action::XDP_PASS),
+        EtherType::IPV4 => try_handle_turn_ipv4(ctx),
+        EtherType::IPV6 => try_handle_turn_ipv6(ctx),
+        _ => Ok(xdp_action::XDP_PASS),
     }
+}
 
+#[inline(always)]
+fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
     let ipv4hdr_slice = slice_mut_at::<{ Ipv4Header::MIN_LEN }>(ctx, Ethernet2Header::LEN)?;
     let ipv4hdr = parse_ipv4(ipv4hdr_slice)?;
 
@@ -218,6 +222,10 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     } else {
         try_handle_peer(ctx)
     }
+}
+
+fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u32, Error> {
+    Ok(xdp_action::XDP_PASS)
 }
 
 fn remove_channel_data_header_ipv4(ctx: &XdpContext) {
