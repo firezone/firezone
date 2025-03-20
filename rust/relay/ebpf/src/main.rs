@@ -95,19 +95,17 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 
         let channel_number = u16::from_be_bytes([cdhdr[0], cdhdr[1]]);
 
+        // Untrusted because we read it from the packet.
+        let untrusted_channel_data_length = u16::from_be_bytes([cdhdr[2], cdhdr[3]]);
+
         let channel_data_length = remaining_bytes(
             ctx,
             Ethernet2Header::LEN + ipv4hdr_length + UdpHeader::LEN + CHANNEL_DATA_HEADER_LEN,
         )?;
 
-        {
-            // Untrusted because we read it from the packet.
-            let untrusted_length = usize::from(u16::from_be_bytes([cdhdr[2], cdhdr[3]]));
-
-            // We received less (or more) data than the header said we would.
-            if channel_data_length != untrusted_length {
-                return Ok(xdp_action::XDP_DROP);
-            }
+        // We received less (or more) data than the header said we would.
+        if channel_data_length != usize::from(untrusted_channel_data_length) {
+            return Ok(xdp_action::XDP_DROP);
         }
 
         let client_and_channel = ClientAndChannel::new(src_addr, src_port, channel_number);
@@ -135,6 +133,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             ipv4hdr_mut.set_source(new_src_addr.to_be_bytes());
             ipv4hdr_mut.set_destination(new_dst_addr.to_be_bytes());
             ipv4hdr_mut.set_total_length(new_tot_len.to_be_bytes());
+            // ipv4hdr_mut.set_checksum(0);
 
             let new_ipv4_checksum = csum_fold_helper(unsafe {
                 bpf_csum_diff(
@@ -158,57 +157,38 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 
             let new_src_port = port_and_peer.allocation_port();
             let new_dst_port = port_and_peer.dest_port();
-            let new_length = udp_payload_len - 4;
+            let new_udp_payload_len = udp_payload_len - 4;
 
             udphdr_mut.set_source_port(new_src_port);
             udphdr_mut.set_destination_port(new_dst_port);
-            udphdr_mut.set_length(new_length);
+            udphdr_mut.set_length(new_udp_payload_len);
 
-            let ip_pseudo_header_checksum_delta = unsafe {
-                bpf_csum_diff(
-                    [src_addr, dst_addr, u32::from(udp_payload_len)].as_mut_ptr(),
-                    3,
-                    [new_src_addr, new_dst_addr, (u32::from(new_length))].as_mut_ptr(),
-                    3,
-                    0,
-                )
-            };
-
-            let udp_header_checksum_delta = unsafe {
+            let new_udp_checksum = csum_fold_helper(unsafe {
                 bpf_csum_diff(
                     [
+                        src_addr,
+                        dst_addr,
+                        u32::from(udp_payload_len),
                         u32::from(src_port),
                         u32::from(dst_port),
-                        u32::from(udp_payload_len),
+                        u32::from(channel_number),
+                        u32::from(untrusted_channel_data_length),
                     ]
                     .as_mut_ptr(),
-                    3,
+                    7,
                     [
+                        new_src_addr,
+                        new_dst_addr,
+                        u32::from(new_udp_payload_len),
                         u32::from(new_src_port),
                         u32::from(new_dst_port),
-                        (u32::from(new_length)),
                     ]
                     .as_mut_ptr(),
-                    3,
-                    0,
+                    5,
+                    u32::from(udp_checksum),
                 )
-            };
-            let payload_checksum_delta = unsafe {
-                bpf_csum_diff(
-                    cdhdr.as_mut_ptr() as *mut u32,
-                    1,                     // 4 bytes = 1 u32 word
-                    core::ptr::null_mut(), // No new bytes
-                    0,
-                    0,
-                )
-            };
-
-            let new_udp_checksum = csum_fold_helper(
-                (i64::from(udp_checksum)
-                    + ip_pseudo_header_checksum_delta
-                    + udp_header_checksum_delta
-                    + payload_checksum_delta) as u64,
-            );
+            } as u64);
+            udphdr_mut.set_checksum(new_udp_checksum);
 
             trace!(
                 ctx,
@@ -216,8 +196,6 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
                 udp_checksum,
                 new_udp_checksum
             );
-
-            udphdr_mut.set_checksum(new_udp_checksum);
         }
 
         let mut headers = [0u8; Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN];
@@ -292,11 +270,10 @@ fn try_handle_peer(_: &XdpContext) -> Result<u32, Error> {
 // Converts a checksum into u16
 #[inline(always)]
 pub fn csum_fold_helper(mut csum: u64) -> u16 {
-    for _i in 0..4 {
-        if (csum >> 16) > 0 {
-            csum = (csum & 0xffff) + (csum >> 16);
-        }
-    }
+    csum = (csum & 0xffff) + (csum >> 16);
+    csum = (csum & 0xffff) + (csum >> 16);
+    csum = (csum & 0xffff) + (csum >> 16);
+
     !(csum as u16)
 }
 
