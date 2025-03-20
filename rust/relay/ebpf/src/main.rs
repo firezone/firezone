@@ -64,16 +64,21 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     let src_addr = u32::from_be_bytes(ipv4hdr.source());
     let dst_addr = u32::from_be_bytes(ipv4hdr.destination());
     let tot_len = ipv4hdr.total_len();
-    // let ipv4hdr_length = usize::from(ipv4hdr.ihl() * 4);
-    let ipv4hdr_length = Ipv4Header::MIN_LEN;
+    let ipv4hdr_length = ipv4hdr.ihl() * 4;
     let ipv4_checksum = ipv4hdr.header_checksum();
+
+    if usize::from(ipv4hdr_length) != Ipv4Header::MIN_LEN {
+        return Ok(xdp_action::XDP_PASS);
+    }
 
     let IpNumber::UDP = ipv4hdr.protocol() else {
         return Ok(xdp_action::XDP_PASS);
     };
 
-    let udphdr_slice =
-        slice_mut_at::<{ UdpHeader::LEN }>(ctx, Ethernet2Header::LEN + ipv4hdr_length)?;
+    let udphdr_slice = slice_mut_at::<{ UdpHeader::LEN }>(
+        ctx,
+        Ethernet2Header::LEN + usize::from(ipv4hdr_length),
+    )?;
     let udphdr = parse_udp(udphdr_slice)?;
 
     let src_port = udphdr.source_port();
@@ -86,7 +91,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     if dst_port == 3478 {
         let cdhdr = slice_mut_at::<{ CHANNEL_DATA_HEADER_LEN }>(
             ctx,
-            Ethernet2Header::LEN + ipv4hdr_length + UdpHeader::LEN,
+            Ethernet2Header::LEN + usize::from(ipv4hdr_length) + UdpHeader::LEN,
         )?;
 
         if !(64..=79).contains(&cdhdr[0]) {
@@ -100,7 +105,10 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 
         let channel_data_length = remaining_bytes(
             ctx,
-            Ethernet2Header::LEN + ipv4hdr_length + UdpHeader::LEN + CHANNEL_DATA_HEADER_LEN,
+            Ethernet2Header::LEN
+                + usize::from(ipv4hdr_length)
+                + UdpHeader::LEN
+                + CHANNEL_DATA_HEADER_LEN,
         )?;
 
         // We received less (or more) data than the header said we would.
@@ -133,15 +141,14 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             ipv4hdr_mut.set_source(new_src_addr.to_be_bytes());
             ipv4hdr_mut.set_destination(new_dst_addr.to_be_bytes());
             ipv4hdr_mut.set_total_length(new_tot_len.to_be_bytes());
-            // ipv4hdr_mut.set_checksum(0);
 
             let new_ipv4_checksum = csum_fold_helper(unsafe {
                 bpf_csum_diff(
                     [src_addr, dst_addr, u32::from(tot_len)].as_mut_ptr(), // Original components
-                    3,
-                    [new_src_addr, new_dst_addr, (u32::from(new_tot_len))].as_mut_ptr(), // New components
-                    3,
-                    u32::from(ipv4_checksum),
+                    3 * 4,
+                    [new_src_addr, new_dst_addr, u32::from(new_tot_len)].as_mut_ptr(), // New components
+                    3 * 4,
+                    u32::from(!ipv4_checksum),
                 ) as u64
             });
             ipv4hdr_mut.set_checksum(new_ipv4_checksum);
@@ -171,11 +178,10 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
                         u32::from(udp_payload_len),
                         u32::from(src_port),
                         u32::from(dst_port),
-                        u32::from(channel_number),
-                        u32::from(untrusted_channel_data_length),
+                        u32::from_be_bytes([cdhdr[0], cdhdr[1], cdhdr[2], cdhdr[3]]),
                     ]
                     .as_mut_ptr(),
-                    7,
+                    6 * 4,
                     [
                         new_src_addr,
                         new_dst_addr,
@@ -184,8 +190,8 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
                         u32::from(new_dst_port),
                     ]
                     .as_mut_ptr(),
-                    5,
-                    u32::from(udp_checksum),
+                    5 * 4,
+                    u32::from(!udp_checksum),
                 )
             } as u64);
             udphdr_mut.set_checksum(new_udp_checksum);
@@ -200,6 +206,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 
         let mut headers = [0u8; Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN];
 
+        // TODO: See if we can combine this and avoid the intermediate copy of the headers.
         unsafe {
             bpf_xdp_load_bytes(
                 ctx.ctx,
@@ -270,6 +277,7 @@ fn try_handle_peer(_: &XdpContext) -> Result<u32, Error> {
 // Converts a checksum into u16
 #[inline(always)]
 pub fn csum_fold_helper(mut csum: u64) -> u16 {
+    csum = (csum & 0xffff) + (csum >> 16);
     csum = (csum & 0xffff) + (csum >> 16);
     csum = (csum & 0xffff) + (csum >> 16);
     csum = (csum & 0xffff) + (csum >> 16);
