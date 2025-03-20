@@ -209,28 +209,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             );
         }
 
-        let mut headers = [0u8; Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN];
-
-        // TODO: See if we can combine this and avoid the intermediate copy of the headers.
-        unsafe {
-            bpf_xdp_load_bytes(
-                ctx.ctx,
-                0,
-                headers.as_mut_ptr() as *mut c_void,
-                (Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN) as u32,
-            );
-        }
-
-        unsafe { bpf_xdp_adjust_head(ctx.ctx, 4) };
-
-        unsafe {
-            bpf_xdp_store_bytes(
-                ctx.ctx,
-                0,
-                headers.as_mut_ptr() as *mut c_void,
-                (Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN) as u32,
-            )
-        };
+        remove_channel_data_header(ctx, ipv4hdr_length);
 
         info!(
             ctx,
@@ -247,6 +226,45 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     } else {
         try_handle_peer(ctx)
     }
+}
+
+fn remove_channel_data_header(ctx: &XdpContext, ip_header_length: u8) {
+    move_headers::<{ CHANNEL_DATA_HEADER_LEN as i32 }>(ctx, ip_header_length)
+}
+
+fn add_channel_data_header(ctx: &XdpContext, ip_header_length: u8) {
+    move_headers::<{ -(CHANNEL_DATA_HEADER_LEN as i32) }>(ctx, ip_header_length)
+}
+
+fn move_headers<const DELTA: i32>(ctx: &XdpContext, ip_header_length: u8) {
+    // Scratch space for our headers.
+    // IPv6 headers are always 40 bytes long.
+    // IPv4 headers are between 20 and 60 bytes long.
+    // Thus, reserving space for the max length of an IPv4 header is enough.
+    let mut headers = [0u8; Ethernet2Header::LEN + Ipv4Header::MAX_LEN + UdpHeader::LEN];
+
+    // Copy headers into buffer.
+    unsafe {
+        bpf_xdp_load_bytes(
+            ctx.ctx,
+            0,
+            headers.as_mut_ptr() as *mut c_void,
+            (Ethernet2Header::LEN + usize::from(ip_header_length) + UdpHeader::LEN) as u32,
+        );
+    }
+
+    // Move the head for the packet by `DELTA`.
+    unsafe { bpf_xdp_adjust_head(ctx.ctx, DELTA) };
+
+    // Copy the headers back (because we )
+    unsafe {
+        bpf_xdp_store_bytes(
+            ctx.ctx,
+            0,
+            headers.as_mut_ptr() as *mut c_void,
+            (Ethernet2Header::LEN + usize::from(ip_header_length) + UdpHeader::LEN) as u32,
+        )
+    };
 }
 
 /// Recomputes an Internet checksum based on a list of removed and added fields to the packet.
