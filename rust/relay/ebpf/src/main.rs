@@ -16,7 +16,7 @@ use etherparse::{
     Ipv6Header, UdpHeader, UdpHeaderSlice,
 };
 use etherparse_ext::{Ipv4HeaderSliceMut, UdpHeaderSliceMut};
-use firezone_relay_ebpf_shared::{ClientAndChannel, PortAndPeer};
+use firezone_relay_ebpf_shared::{ClientAndChannelV4, PortAndPeerV4};
 
 mod error;
 
@@ -27,7 +27,7 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
 }
 
 #[map]
-static CHANNELS_TO_UDP: HashMap<ClientAndChannel, PortAndPeer> =
+static CHAN_TO_UDP_44: HashMap<ClientAndChannelV4, PortAndPeerV4> =
     HashMap::with_max_entries(0x1000, 0);
 
 // #[map]
@@ -111,9 +111,9 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             return Ok(xdp_action::XDP_DROP);
         }
 
-        let client_and_channel = ClientAndChannel::new(src_addr, src_port, channel_number);
+        let client_and_channel = ClientAndChannelV4::new(src_addr, src_port, channel_number);
 
-        let binding = unsafe { CHANNELS_TO_UDP.get(&client_and_channel) };
+        let binding = unsafe { CHAN_TO_UDP_44.get(&client_and_channel) };
         let Some(port_and_peer) = binding else {
             debug!(
                 ctx,

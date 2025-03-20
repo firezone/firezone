@@ -12,7 +12,7 @@ use firezone_relay::{
     sockets, AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack,
     PeerSocket, Server, Sleep, VERSION,
 };
-use firezone_relay_ebpf_shared::{ClientAndChannel, PortAndPeer};
+use firezone_relay_ebpf_shared::{ClientAndChannelV4, PortAndPeerV4};
 use firezone_telemetry::{Telemetry, RELAY_DSN};
 use futures::{future, FutureExt};
 use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel};
@@ -156,8 +156,8 @@ async fn try_main(args: Args) -> Result<()> {
     program.load()?;
     program.attach("eth0", XdpFlags::default())?;
 
-    let channel_data_to_udp = aya::maps::HashMap::<_, ClientAndChannel, PortAndPeer>::try_from(
-        bpf.map_mut("CHANNELS_TO_UDP").context("no map")?,
+    let channel_data_to_udp = aya::maps::HashMap::<_, ClientAndChannelV4, PortAndPeerV4>::try_from(
+        bpf.map_mut("CHAN_TO_UDP_44").context("no map")?,
     )?;
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {

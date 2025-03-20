@@ -7,7 +7,7 @@
 #[repr(C)]
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "userspace", derive(Debug))]
-pub struct ClientAndChannel {
+pub struct ClientAndChannelV4 {
     ipv4_address: u32,
     _padding_ipv4_address: [u8; 4],
 
@@ -20,7 +20,7 @@ pub struct ClientAndChannel {
     _padding_struct: [u8; 40],
 }
 
-impl ClientAndChannel {
+impl ClientAndChannelV4 {
     pub fn new(ipv4_address: u32, port: u16, channel: u16) -> Self {
         Self {
             ipv4_address: ipv4_address.to_be(),
@@ -44,7 +44,7 @@ impl ClientAndChannel {
 #[repr(C)]
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "userspace", derive(Debug))]
-pub struct PortAndPeer {
+pub struct PortAndPeerV4 {
     ipv4_address: u32,
     _padding_ipv4_address: [u8; 4],
 
@@ -55,7 +55,7 @@ pub struct PortAndPeer {
     _padding_dest_port: [u8; 6],
 }
 
-impl PortAndPeer {
+impl PortAndPeerV4 {
     pub fn from_socket(dst: core::net::SocketAddrV4, allocation_port: u16) -> Self {
         Self {
             ipv4_address: dst.ip().to_bits(),
@@ -84,9 +84,9 @@ impl PortAndPeer {
 mod userspace {
     use super::*;
 
-    unsafe impl aya::Pod for ClientAndChannel {}
+    unsafe impl aya::Pod for ClientAndChannelV4 {}
 
-    unsafe impl aya::Pod for PortAndPeer {}
+    unsafe impl aya::Pod for PortAndPeerV4 {}
 }
 
 #[cfg(all(test, feature = "userspace"))]
@@ -95,6 +95,6 @@ mod tests {
 
     #[test]
     fn client_and_channel_as_size_64() {
-        assert_eq!(std::mem::size_of::<ClientAndChannel>(), 64)
+        assert_eq!(std::mem::size_of::<ClientAndChannelV4>(), 64)
     }
 }

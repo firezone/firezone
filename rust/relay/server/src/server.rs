@@ -13,7 +13,7 @@ use anyhow::Result;
 use bytecodec::EncodeExt;
 use core::fmt;
 use firezone_logging::err_with_src;
-use firezone_relay_ebpf_shared::{ClientAndChannel, PortAndPeer};
+use firezone_relay_ebpf_shared::{ClientAndChannelV4, PortAndPeerV4};
 use hex_display::HexDisplayExt as _;
 use opentelemetry::metrics::{Counter, UpDownCounter};
 use opentelemetry::KeyValue;
@@ -75,7 +75,7 @@ pub struct Server<'a, R> {
     channel_numbers_by_client_and_peer: HashMap<(ClientSocket, PeerSocket), ChannelNumber>,
 
     channel_data_to_udp:
-        aya::maps::HashMap<&'a mut aya::maps::MapData, ClientAndChannel, PortAndPeer>,
+        aya::maps::HashMap<&'a mut aya::maps::MapData, ClientAndChannelV4, PortAndPeerV4>,
 
     pending_commands: VecDeque<Command>,
 
@@ -167,8 +167,8 @@ where
         ports: RangeInclusive<u16>,
         channel_data_to_udp: aya::maps::HashMap<
             &'a mut aya::maps::MapData,
-            ClientAndChannel,
-            PortAndPeer,
+            ClientAndChannelV4,
+            PortAndPeerV4,
         >,
     ) -> Self {
         // TODO: Validate that local IP isn't multicast / loopback etc.
@@ -926,8 +926,8 @@ where
             (SocketAddr::V4(client), SocketAddr::V4(peer)) => {
                 self.channel_data_to_udp
                     .insert(
-                        ClientAndChannel::from_socket(client, requested_channel.value()),
-                        PortAndPeer::from_socket(peer, id.0),
+                        ClientAndChannelV4::from_socket(client, requested_channel.value()),
+                        PortAndPeerV4::from_socket(peer, id.0),
                         0,
                     )
                     .expect("failed to insert into eBPF map");
