@@ -2,6 +2,7 @@
 #![cfg_attr(not(test), no_main)]
 
 use crate::error::Error;
+use crate::slice_mut_at::slice_mut_at;
 use aya_ebpf::{
     bindings::xdp_action,
     cty::c_void,
@@ -11,16 +12,18 @@ use aya_ebpf::{
     programs::XdpContext,
 };
 use aya_log_ebpf::*;
-use checksum::ChecksumUpdate;
 use ebpf_shared::{ClientAndChannelV4, PortAndPeerV4};
 use etherparse::{
-    EtherType, Ethernet2Header, Ethernet2HeaderSlice, IpNumber, Ipv4Header, Ipv4HeaderSlice,
-    Ipv6Header, UdpHeader, UdpHeaderSlice,
+    EtherType, Ethernet2Header, Ethernet2HeaderSlice, IpNumber, Ipv4Header, Ipv6Header, UdpHeader,
 };
-use etherparse_ext::{Ipv4HeaderSliceMut, UdpHeaderSliceMut};
+use ipv4::Ipv4;
+use udp::Udp;
 
 mod checksum;
 mod error;
+mod ipv4;
+mod slice_mut_at;
+mod udp;
 
 #[cfg(not(test))]
 #[panic_handler]
@@ -61,32 +64,18 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 
 #[inline(always)]
 fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
-    let ipv4_slice = slice_mut_at::<{ Ipv4Header::MIN_LEN }>(ctx, Ethernet2Header::LEN)?;
-    let ipv4 = parse_ipv4(ipv4_slice)?;
+    let ipv4 = Ipv4::parse(ctx)?;
 
-    // IPv4 packets with options are handled in user-space.
-    if usize::from(ipv4.ihl() * 4) != Ipv4Header::MIN_LEN {
+    if ipv4.protocol() != IpNumber::UDP {
         return Ok(xdp_action::XDP_PASS);
     }
 
-    // We only handle UDP packets.
-    let IpNumber::UDP = ipv4.protocol() else {
-        return Ok(xdp_action::XDP_PASS);
-    };
+    let udp = Udp::parse(ctx)?; // TODO: Change the API so we parse the UDP header _from_ the ipv4 struct?
 
-    let udp_slice =
-        slice_mut_at::<{ UdpHeader::LEN }>(ctx, Ethernet2Header::LEN + Ipv4Header::MIN_LEN)?;
-    let udp = parse_udp(udp_slice)?;
+    trace!(ctx, "New packet from {:i}:{}", ipv4.src(), udp.src());
 
-    trace!(
-        ctx,
-        "New packet from {:i}:{}",
-        ipv4.source(),
-        udp.source_port()
-    );
-
-    if udp.destination_port() == 3478 {
-        try_handle_ipv4_channel_data_to_udp(ctx, ipv4_slice, udp_slice)
+    if udp.dst() == 3478 {
+        try_handle_ipv4_channel_data_to_udp(ctx, ipv4, udp)
     } else {
         try_handle_ipv4_udp_to_channel_data(ctx)
     }
@@ -94,8 +83,8 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
 
 fn try_handle_ipv4_channel_data_to_udp(
     ctx: &XdpContext,
-    ipv4_slice: &mut [u8],
-    udp_slice: &mut [u8],
+    ipv4: Ipv4,
+    udp: Udp,
 ) -> Result<u32, Error> {
     let cdhdr = slice_mut_at::<{ CHANNEL_DATA_HEADER_LEN }>(
         ctx,
@@ -121,117 +110,34 @@ fn try_handle_ipv4_channel_data_to_udp(
         return Ok(xdp_action::XDP_DROP);
     }
 
-    let ipv4 = parse_ipv4(ipv4_slice)?;
-    let udp = parse_udp(udp_slice)?;
-
-    let ipv4_checksum = ipv4.header_checksum();
-
-    let dst_port = udp.destination_port();
-    let udp_payload_len = udp.length();
-    let udp_checksum = udp.checksum();
-
-    let client_and_channel =
-        ClientAndChannelV4::new(ipv4.source(), udp.source_port(), channel_number);
+    let client_and_channel = ClientAndChannelV4::new(ipv4.src(), udp.src(), channel_number);
 
     let binding = unsafe { CHAN_TO_UDP_44.get(&client_and_channel) };
     let Some(port_and_peer) = binding else {
         debug!(
             ctx,
             "No channel binding from {:i}:{} for channel {}",
-            ipv4.source(),
-            udp.source_port(),
+            ipv4.src(),
+            udp.src(),
             channel_number,
         );
 
         return Ok(xdp_action::XDP_PASS);
     };
 
-    let src_addr = ipv4.source();
-    let src_port = udp.source_port();
+    let new_src = ipv4.dst(); // The IP we received the packet on will be the new source IP.
+    let new_ipv4_total_len = ipv4.total_len() - CHANNEL_DATA_HEADER_LEN as u16;
+    let pseudo_header = ipv4.reroute(new_src, port_and_peer.dest_ip(), new_ipv4_total_len);
 
-    {
-        let dst_addr = ipv4.destination();
-        let tot_len = ipv4.total_len();
-
-        let new_src_addr = dst_addr; // The IP we received the packet on will be the new source IP.
-        let new_tot_len = tot_len - CHANNEL_DATA_HEADER_LEN as u16;
-
-        let mut ipv4_mut = parse_ipv4_mut(ipv4_slice)?;
-
-        ipv4_mut.set_source(new_src_addr);
-        ipv4_mut.set_destination(port_and_peer.dest_ip());
-        ipv4_mut.set_total_length(new_tot_len.to_be_bytes());
-
-        let new_ipv4_checksum = ChecksumUpdate::new(ipv4_checksum)
-            .remove_addr(src_addr)
-            .add_addr(new_src_addr)
-            .remove_addr(dst_addr)
-            .add_addr(port_and_peer.dest_ip())
-            .remove_u16(tot_len)
-            .add_u16(new_tot_len)
-            .into_checksum();
-
-        ipv4_mut.set_checksum(new_ipv4_checksum);
-
-        trace!(
-            ctx,
-            "Updating IP checksum from {:x} to {:x}",
-            ipv4_checksum,
-            new_ipv4_checksum
-        );
-
-        // Parts of the UDP checksum come from a pseudo header.
-        let ip_pseudo_header = ChecksumUpdate::new(udp_checksum)
-            .remove_addr(src_addr)
-            .add_addr(new_src_addr)
-            .remove_addr(dst_addr)
-            .add_addr(port_and_peer.dest_ip())
-            .remove_u16(udp_payload_len)
-            .add_u16(udp_payload_len);
-
-        let new_src_port = port_and_peer.allocation_port();
-        let new_dst_port = port_and_peer.dest_port();
-        let new_udp_payload_len = udp_payload_len - CHANNEL_DATA_HEADER_LEN as u16;
-
-        let mut udp_mut = parse_udp_mut(udp_slice)?;
-
-        udp_mut.set_source_port(new_src_port);
-        udp_mut.set_destination_port(new_dst_port);
-        udp_mut.set_length(new_udp_payload_len);
-
-        let new_udp_checksum = ip_pseudo_header
-            .remove_u16(src_port)
-            .add_u16(new_src_port)
-            .remove_u16(dst_port)
-            .add_u16(new_dst_port)
-            .remove_u16(udp_payload_len)
-            .add_u16(udp_payload_len)
-            .remove_u16(channel_number)
-            .remove_u16(untrusted_channel_data_length)
-            .into_checksum();
-
-        udp_mut.set_checksum(new_udp_checksum);
-
-        trace!(
-            ctx,
-            "Updating UDP checksum from {:x} to {:x}",
-            udp_checksum,
-            new_udp_checksum
-        );
-    }
+    let new_udp_len = udp.len() - CHANNEL_DATA_HEADER_LEN as u16;
+    udp.reroute(
+        pseudo_header,
+        port_and_peer.allocation_port(),
+        port_and_peer.dest_port(),
+        new_udp_len,
+    );
 
     remove_channel_data_header_ipv4(ctx);
-
-    info!(
-        ctx,
-        "Redirecting message from {:i}:{} on channel {} to {:i}:{} on port {}",
-        src_addr,
-        src_port,
-        channel_number,
-        port_and_peer.dest_ip(),
-        port_and_peer.dest_port(),
-        port_and_peer.allocation_port()
-    );
 
     Ok(xdp_action::XDP_TX)
 }
@@ -283,26 +189,6 @@ fn move_headers<const DELTA: i32, const IP_HEADER_LEN: usize>(ctx: &XdpContext) 
 }
 
 #[inline(always)]
-fn parse_udp(slice: &mut [u8]) -> Result<UdpHeaderSlice<'_>, Error> {
-    UdpHeaderSlice::from_slice(slice).map_err(|_| Error::UdpHeader)
-}
-
-#[inline(always)]
-fn parse_udp_mut(slice: &mut [u8]) -> Result<UdpHeaderSliceMut<'_>, Error> {
-    UdpHeaderSliceMut::from_slice(slice).map_err(|_| Error::UdpHeader)
-}
-
-#[inline(always)]
-fn parse_ipv4(slice: &mut [u8]) -> Result<Ipv4HeaderSlice<'_>, Error> {
-    Ipv4HeaderSlice::from_slice(slice).map_err(|_| Error::Ipv4Header)
-}
-
-#[inline(always)]
-fn parse_ipv4_mut(slice: &mut [u8]) -> Result<Ipv4HeaderSliceMut<'_>, Error> {
-    Ipv4HeaderSliceMut::from_slice(slice).map_err(|_| Error::Ipv4Header)
-}
-
-#[inline(always)]
 fn parse_eth(slice: &mut [u8]) -> Result<Ethernet2HeaderSlice<'_>, Error> {
     Ethernet2HeaderSlice::from_slice(slice).map_err(|_| Error::Ethernet2Header)
 }
@@ -310,18 +196,6 @@ fn parse_eth(slice: &mut [u8]) -> Result<Ethernet2HeaderSlice<'_>, Error> {
 #[inline(always)]
 fn try_handle_ipv4_udp_to_channel_data(_: &XdpContext) -> Result<u32, Error> {
     Err(Error::NotImplemented)
-}
-
-#[inline(always)]
-fn slice_mut_at<const LEN: usize>(ctx: &XdpContext, offset: usize) -> Result<&mut [u8], Error> {
-    let start = ctx.data();
-    let end = ctx.data_end();
-
-    if start + offset + LEN > end {
-        return Err(Error::PacketTooShort);
-    }
-
-    Ok(unsafe { core::slice::from_raw_parts_mut((start + offset) as *mut u8, LEN) })
 }
 
 #[inline(always)]

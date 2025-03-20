@@ -1,3 +1,4 @@
+#[derive(Default)]
 pub struct ChecksumUpdate {
     inner: u16,
 }
@@ -21,6 +22,10 @@ impl ChecksumUpdate {
 
     pub fn add_addr(self, val: [u8; 4]) -> Self {
         self.add_u16(fold_u32_into_u16(u32::from_be_bytes(val)))
+    }
+
+    pub fn add_update(self, update: ChecksumUpdate) -> Self {
+        self.add_u16(update.inner)
     }
 
     fn ones_complement_add(self, val: u16) -> Self {
