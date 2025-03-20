@@ -5,8 +5,6 @@ use crate::error::Error;
 use crate::slice_mut_at::slice_mut_at;
 use aya_ebpf::{
     bindings::xdp_action,
-    cty::c_void,
-    helpers::{bpf_xdp_adjust_head, bpf_xdp_load_bytes, bpf_xdp_store_bytes},
     macros::{map, xdp},
     maps::HashMap,
     programs::XdpContext,
@@ -14,14 +12,16 @@ use aya_ebpf::{
 use aya_log_ebpf::*;
 use ebpf_shared::{ClientAndChannelV4, PortAndPeerV4};
 use etherparse::{
-    EtherType, Ethernet2Header, Ethernet2HeaderSlice, IpNumber, Ipv4Header, Ipv6Header, UdpHeader,
+    EtherType, Ethernet2Header, Ethernet2HeaderSlice, IpNumber, Ipv4Header, UdpHeader,
 };
 use ipv4::Ipv4;
+use move_headers::remove_channel_data_header_ipv4;
 use udp::Udp;
 
 mod checksum;
 mod error;
 mod ipv4;
+mod move_headers;
 mod slice_mut_at;
 mod udp;
 
@@ -31,7 +31,11 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
+pub const CHANNEL_DATA_HEADER_LEN: usize = 4;
+
 /// Channel mappings from an IPv4 socket + channel number to an IPv4 socket + port.
+///
+/// TODO: Update flags to `BPF_F_NO_PREALLOC` to guarantee atomicity? Needs research.
 #[map]
 static CHAN_TO_UDP_44: HashMap<ClientAndChannelV4, PortAndPeerV4> =
     HashMap::with_max_entries(0x100000, 0);
@@ -47,8 +51,6 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
         }
     }
 }
-
-const CHANNEL_DATA_HEADER_LEN: usize = 4;
 
 #[inline(always)]
 fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
@@ -86,6 +88,7 @@ fn try_handle_ipv4_channel_data_to_udp(
     ipv4: Ipv4,
     udp: Udp,
 ) -> Result<u32, Error> {
+    // TODO: Create `ChannelData` struct.
     let cdhdr = slice_mut_at::<{ CHANNEL_DATA_HEADER_LEN }>(
         ctx,
         Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN,
@@ -110,9 +113,14 @@ fn try_handle_ipv4_channel_data_to_udp(
         return Ok(xdp_action::XDP_DROP);
     }
 
-    let client_and_channel = ClientAndChannelV4::new(ipv4.src(), udp.src(), channel_number);
-
-    let binding = unsafe { CHAN_TO_UDP_44.get(&client_and_channel) };
+    // SAFETY: ???
+    let binding = unsafe {
+        CHAN_TO_UDP_44.get(&ClientAndChannelV4::new(
+            ipv4.src(),
+            udp.src(),
+            channel_number,
+        ))
+    };
     let Some(port_and_peer) = binding else {
         debug!(
             ctx,
@@ -144,48 +152,6 @@ fn try_handle_ipv4_channel_data_to_udp(
 
 fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u32, Error> {
     Ok(xdp_action::XDP_PASS)
-}
-
-fn remove_channel_data_header_ipv4(ctx: &XdpContext) {
-    move_headers::<{ CHANNEL_DATA_HEADER_LEN as i32 }, { Ipv4Header::MIN_LEN }>(ctx)
-}
-
-fn add_channel_data_header_ipv4(ctx: &XdpContext) {
-    move_headers::<{ -(CHANNEL_DATA_HEADER_LEN as i32) }, { Ipv4Header::MIN_LEN }>(ctx)
-}
-
-fn move_headers<const DELTA: i32, const IP_HEADER_LEN: usize>(ctx: &XdpContext) {
-    // Scratch space for our headers.
-    // IPv6 headers are always 40 bytes long.
-    // IPv4 headers are between 20 and 60 bytes long.
-    // We restrict the eBPF program to only handle 20 byte long IPv4 headers.
-    // Therefore, we only need to reserver space for IPv6 headers.
-    //
-    // Ideally, we would just use the const-generic argument here but that is not yet supported ...
-    let mut headers = [0u8; Ethernet2Header::LEN + Ipv6Header::LEN + UdpHeader::LEN];
-
-    // Copy headers into buffer.
-    unsafe {
-        bpf_xdp_load_bytes(
-            ctx.ctx,
-            0,
-            headers.as_mut_ptr() as *mut c_void,
-            (Ethernet2Header::LEN + IP_HEADER_LEN + UdpHeader::LEN) as u32,
-        );
-    }
-
-    // Move the head for the packet by `DELTA`.
-    unsafe { bpf_xdp_adjust_head(ctx.ctx, DELTA) };
-
-    // Copy the headers back (because we )
-    unsafe {
-        bpf_xdp_store_bytes(
-            ctx.ctx,
-            0,
-            headers.as_mut_ptr() as *mut c_void,
-            (Ethernet2Header::LEN + IP_HEADER_LEN + UdpHeader::LEN) as u32,
-        )
-    };
 }
 
 #[inline(always)]
