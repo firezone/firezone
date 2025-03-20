@@ -11,6 +11,7 @@ use aya_ebpf::{
     programs::XdpContext,
 };
 use aya_log_ebpf::*;
+use checksum::ChecksumUpdate;
 use ebpf_shared::{ClientAndChannelV4, PortAndPeerV4};
 use etherparse::{
     EtherType, Ethernet2Header, Ethernet2HeaderSlice, IpNumber, Ipv4Header, Ipv4HeaderSlice,
@@ -18,6 +19,7 @@ use etherparse::{
 };
 use etherparse_ext::{Ipv4HeaderSliceMut, UdpHeaderSliceMut};
 
+mod checksum;
 mod error;
 
 #[cfg(not(test))]
@@ -148,7 +150,7 @@ fn try_handle_ipv4_channel_data_to_udp(
     let src_port = udp.source_port();
 
     {
-        let dst_addr = u32::from_be_bytes(ipv4.destination());
+        let dst_addr = ipv4.destination();
         let tot_len = ipv4.total_len();
 
         let new_src_addr = dst_addr; // The IP we received the packet on will be the new source IP.
@@ -156,23 +158,18 @@ fn try_handle_ipv4_channel_data_to_udp(
 
         let mut ipv4_mut = parse_ipv4_mut(ipv4_slice)?;
 
-        ipv4_mut.set_source(new_src_addr.to_be_bytes());
+        ipv4_mut.set_source(new_src_addr);
         ipv4_mut.set_destination(port_and_peer.dest_ip());
         ipv4_mut.set_total_length(new_tot_len.to_be_bytes());
 
-        let new_ipv4_checksum = recompute_checksum(
-            [
-                fold_u32_into_u16(u32::from_be_bytes(src_addr)),
-                fold_u32_into_u16(dst_addr),
-                tot_len,
-            ],
-            [
-                fold_u32_into_u16(new_src_addr),
-                fold_u32_into_u16(u32::from_be_bytes(port_and_peer.dest_ip())),
-                new_tot_len,
-            ],
-            ipv4_checksum,
-        );
+        let new_ipv4_checksum = ChecksumUpdate::new(ipv4_checksum)
+            .remove_addr(src_addr)
+            .add_addr(new_src_addr)
+            .remove_addr(dst_addr)
+            .add_addr(port_and_peer.dest_ip())
+            .remove_u16(tot_len)
+            .add_u16(new_tot_len)
+            .into_checksum();
 
         ipv4_mut.set_checksum(new_ipv4_checksum);
 
@@ -182,6 +179,15 @@ fn try_handle_ipv4_channel_data_to_udp(
             ipv4_checksum,
             new_ipv4_checksum
         );
+
+        // Parts of the UDP checksum come from a pseudo header.
+        let ip_pseudo_header = ChecksumUpdate::new(udp_checksum)
+            .remove_addr(src_addr)
+            .add_addr(new_src_addr)
+            .remove_addr(dst_addr)
+            .add_addr(port_and_peer.dest_ip())
+            .remove_u16(udp_payload_len)
+            .add_u16(udp_payload_len);
 
         let new_src_port = port_and_peer.allocation_port();
         let new_dst_port = port_and_peer.dest_port();
@@ -193,29 +199,16 @@ fn try_handle_ipv4_channel_data_to_udp(
         udp_mut.set_destination_port(new_dst_port);
         udp_mut.set_length(new_udp_payload_len);
 
-        let new_udp_checksum = recompute_checksum(
-            [
-                fold_u32_into_u16(u32::from_be_bytes(src_addr)),
-                fold_u32_into_u16(dst_addr),
-                // Yes the payload length needs to be in here twice because it is also used twice in the checksum calculation.
-                // Thus, any difference between the lengths must be accounted for in the checksum twice as well.
-                udp_payload_len,
-                udp_payload_len,
-                src_port,
-                dst_port,
-                channel_number,
-                untrusted_channel_data_length,
-            ],
-            [
-                fold_u32_into_u16(new_src_addr),
-                fold_u32_into_u16(u32::from_be_bytes(port_and_peer.dest_ip())),
-                new_udp_payload_len,
-                new_udp_payload_len,
-                new_src_port,
-                new_dst_port,
-            ],
-            udp_checksum,
-        );
+        let new_udp_checksum = ip_pseudo_header
+            .remove_u16(src_port)
+            .add_u16(new_src_port)
+            .remove_u16(dst_port)
+            .add_u16(new_dst_port)
+            .remove_u16(udp_payload_len)
+            .add_u16(udp_payload_len)
+            .remove_u16(channel_number)
+            .remove_u16(untrusted_channel_data_length)
+            .into_checksum();
 
         udp_mut.set_checksum(new_udp_checksum);
 
@@ -289,50 +282,6 @@ fn move_headers<const DELTA: i32, const IP_HEADER_LEN: usize>(ctx: &XdpContext) 
     };
 }
 
-/// Recomputes an Internet checksum based on a list of removed and added fields to the packet.
-///
-/// This function expects the checksum to be provided `as-is` from the packet, i.e. in the "one's complement" format.
-/// The return value is also in the "one's complement" format and can thus directly be written back to the packet.
-///
-/// # Example
-///
-/// If you change the destination port of a UDP packet, you would put the old destination port in `old_values` and the new destination port in `new_values`.
-/// If you change the IP addresses (or anything else that is bigger than a u16), you first need to convert the value into a u16 using [`fold_u32_into_u16`].
-fn recompute_checksum<const N1: usize, const N2: usize>(
-    old_values: [u16; N1],
-    new_values: [u16; N2],
-    checksum: u16,
-) -> u16 {
-    let internal = !checksum; // Checksums are stored in the "one's complement" format, we need to unpack it first in order to perform math on it.
-
-    let old_values = ones_complement_sum(old_values);
-    let new_values = ones_complement_sum(new_values);
-
-    // In one's complement arithmetic, we subtract the old values from the checksum by adding their one's complement.
-    let minus_old_values = !old_values;
-
-    let internal = ones_complement_sum([internal, minus_old_values, new_values]);
-
-    !internal // "Repack" the checksum into the one's complement format.
-}
-
-fn ones_complement_sum<const N: usize>(values: [u16; N]) -> u16 {
-    values.into_iter().fold(0u16, |acc, val| {
-        // In one's complement arithmetic, addition requires adding a carry bit in case of overflow.
-        let (acc, carry) = acc.overflowing_add(val);
-
-        acc + (carry as u16)
-    })
-}
-
-#[inline(always)]
-fn fold_u32_into_u16(mut csum: u32) -> u16 {
-    csum = (csum & 0xffff) + (csum >> 16);
-    csum = (csum & 0xffff) + (csum >> 16);
-
-    csum as u16
-}
-
 #[inline(always)]
 fn parse_udp(slice: &mut [u8]) -> Result<UdpHeaderSlice<'_>, Error> {
     UdpHeaderSlice::from_slice(slice).map_err(|_| Error::UdpHeader)
@@ -387,72 +336,4 @@ fn remaining_bytes(ctx: &XdpContext, offset: usize) -> Result<usize, Error> {
     let len = end - start;
 
     Ok(len)
-}
-
-#[cfg(test)]
-mod tests {
-    use core::net::Ipv4Addr;
-
-    use super::*;
-
-    #[test]
-    fn recompute_udp_checksum() {
-        let old_src_ip = Ipv4Addr::new(172, 28, 0, 100);
-        let old_dst_ip = Ipv4Addr::new(172, 28, 0, 101);
-        let old_src_port = 45088;
-        let old_dst_port = 3478;
-        let old_udp_payload = hex_literal::hex!("400100400101002c2112a44293d108418ca2a8fdf7e8930e002000080001b6c58d0ea42b00080014019672bb752bf292ecf95b498b8b4797eacef51d80280004a057ff1e");
-        let channel_number = 0x4001;
-        let channel_data_len = 0x0040;
-
-        let incoming_ip_packet = ip_packet::make::udp_packet(
-            old_src_ip,
-            old_dst_ip,
-            old_src_port,
-            old_dst_port,
-            old_udp_payload.to_vec(),
-        )
-        .unwrap();
-        let incoming_checksum = incoming_ip_packet.as_udp().unwrap().checksum();
-
-        let new_src_ip = Ipv4Addr::new(172, 28, 0, 101);
-        let new_dst_ip = Ipv4Addr::new(172, 28, 0, 105);
-        let new_src_port = 4324;
-        let new_dst_port = 59385;
-        let new_udp_payload = hex_literal::hex!("0101002c2112a44293d108418ca2a8fdf7e8930e002000080001b6c58d0ea42b00080014019672bb752bf292ecf95b498b8b4797eacef51d80280004a057ff1e");
-
-        let outgoing_ip_packet = ip_packet::make::udp_packet(
-            new_src_ip,
-            new_dst_ip,
-            new_src_port,
-            new_dst_port,
-            new_udp_payload.to_vec(),
-        )
-        .unwrap();
-        let outgoing_checksum = outgoing_ip_packet.as_udp().unwrap().checksum();
-
-        let computed_checksum = recompute_checksum(
-            [
-                fold_u32_into_u16(old_src_ip.to_bits()),
-                fold_u32_into_u16(old_dst_ip.to_bits()),
-                old_src_port,
-                old_dst_port,
-                old_udp_payload.len() as u16,
-                old_udp_payload.len() as u16,
-                channel_number,
-                channel_data_len,
-            ],
-            [
-                fold_u32_into_u16(new_src_ip.to_bits()),
-                fold_u32_into_u16(new_dst_ip.to_bits()),
-                new_src_port,
-                new_dst_port,
-                new_udp_payload.len() as u16,
-                new_udp_payload.len() as u16,
-            ],
-            incoming_checksum,
-        );
-
-        assert_eq!(computed_checksum, outgoing_checksum)
-    }
 }
