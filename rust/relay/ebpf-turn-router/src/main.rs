@@ -26,13 +26,10 @@ fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
+/// Channel mappings from an IPv4 socket + channel number to an IPv4 socket + port.
 #[map]
 static CHAN_TO_UDP_44: HashMap<ClientAndChannelV4, PortAndPeerV4> =
-    HashMap::with_max_entries(0x1000, 0);
-
-// #[map]
-// static UDP_TO_CHANNEL_DATA: HashMap<(AllocationPort, SocketAddr), (ChannelNumber, SocketAddr)> =
-//     HashMap::with_max_entries(1024, 0);
+    HashMap::with_max_entries(0x100000, 0);
 
 #[xdp]
 pub fn handle_turn(ctx: XdpContext) -> u32 {
