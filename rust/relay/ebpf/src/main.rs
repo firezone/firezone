@@ -179,6 +179,8 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
                 [
                     fold_u32_into_u16(src_addr),
                     fold_u32_into_u16(dst_addr),
+                    // Yes the payload length needs to be in here twice because it is also used twice in the checksum calculation.
+                    // Thus, any difference between the lengths must be accounted for in the checksum twice as well.
                     udp_payload_len,
                     udp_payload_len,
                     src_port,
@@ -247,26 +249,36 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     }
 }
 
+/// Recomputes an Internet checksum based on a list of removed and added fields to the packet.
+///
+/// This function expects the checksum to be provided `as-is` from the packet, i.e. in the "one's complement" format.
+/// The return value is also in the "one's complement" format and can thus directly be written back to the packet.
+///
+/// # Example
+///
+/// If you change the destination port of a UDP packet, you would put the old destination port in `old_values` and the new destination port in `new_values`.
+/// If you change the IP addresses (or anything else that is bigger than a u16), you first need to convert the value into a u16 using [`fold_u32_into_u16`].
 fn recompute_checksum<const N1: usize, const N2: usize>(
-    // ctx: &XdpContext,
     old_values: [u16; N1],
     new_values: [u16; N2],
-    old_checksum: u16,
+    checksum: u16,
 ) -> u16 {
-    let internal = !old_checksum; // Checksums are stored in the "one's complement" format, we need to unpack it first.
+    let internal = !checksum; // Checksums are stored in the "one's complement" format, we need to unpack it first in order to perform math on it.
 
     let old_values = ones_complement_sum(old_values);
     let new_values = ones_complement_sum(new_values);
 
     // In one's complement arithmetic, we subtract the old values from the checksum by adding their one's complement.
-    let internal = ones_complement_sum([internal, !old_values, new_values]);
+    let minus_old_values = !old_values;
 
-    !internal
+    let internal = ones_complement_sum([internal, minus_old_values, new_values]);
+
+    !internal // "Repack" the checksum into the one's complement format.
 }
 
-// In one's complement arithmetic, addition requires adding a carry bit in case of overflow.
 fn ones_complement_sum<const N: usize>(values: [u16; N]) -> u16 {
     values.into_iter().fold(0u16, |acc, val| {
+        // In one's complement arithmetic, addition requires adding a carry bit in case of overflow.
         let (acc, carry) = acc.overflowing_add(val);
 
         acc + (carry as u16)
