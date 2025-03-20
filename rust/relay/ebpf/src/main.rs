@@ -5,7 +5,7 @@ use crate::error::Error;
 use aya_ebpf::{
     bindings::xdp_action,
     cty::c_void,
-    helpers::{bpf_csum_diff, bpf_xdp_adjust_head, bpf_xdp_load_bytes, bpf_xdp_store_bytes},
+    helpers::{bpf_xdp_adjust_head, bpf_xdp_load_bytes, bpf_xdp_store_bytes},
     macros::{map, xdp},
     maps::HashMap,
     programs::XdpContext,
@@ -138,20 +138,26 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             let new_dst_addr = port_and_peer.dest_ip();
             let new_tot_len = tot_len - 4;
 
-            // ipv4hdr_mut.set_source(new_src_addr.to_be_bytes());
-            // ipv4hdr_mut.set_destination(new_dst_addr.to_be_bytes());
+            ipv4hdr_mut.set_source(new_src_addr.to_be_bytes());
+            ipv4hdr_mut.set_destination(new_dst_addr.to_be_bytes());
             ipv4hdr_mut.set_total_length(new_tot_len.to_be_bytes());
+
+            // let old_ = etherparse::checksum::Sum16BitWords::new()
+            //     .add_4bytes(src_addr.to_be_bytes())
+            //     .add_4bytes(dst_addr.to_be_bytes())
+            //     .add_2bytes(tot_len.to_be_bytes())
+            //     .ones_complement();
 
             let new_ipv4_checksum = recompute_checksum(
                 [
-                    // src_addr,
-                    // dst_addr,
-                    u32::from(tot_len),
+                    fold_u32_into_u16(src_addr),
+                    fold_u32_into_u16(dst_addr),
+                    tot_len,
                 ],
                 [
-                    // new_src_addr,
-                    // new_dst_addr,
-                    u32::from(new_tot_len),
+                    fold_u32_into_u16(new_src_addr),
+                    fold_u32_into_u16(new_dst_addr),
+                    new_tot_len,
                 ],
                 ipv4_checksum,
             );
@@ -171,28 +177,26 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             let new_dst_port = port_and_peer.dest_port();
             let new_udp_payload_len = udp_payload_len - 4;
 
-            // udphdr_mut.set_source_port(new_src_port);
-            // udphdr_mut.set_destination_port(new_dst_port);
+            udphdr_mut.set_source_port(new_src_port);
+            udphdr_mut.set_destination_port(new_dst_port);
             udphdr_mut.set_length(new_udp_payload_len);
 
             let new_udp_checksum = recompute_checksum(
                 [
-                    // src_addr,
-                    // dst_addr,
-                    u32::from(udp_payload_len),
-                    // u32::from(src_port),
-                    // u32::from(dst_port),
-                    u32::from(channel_number),
-                    u32::from(untrusted_channel_data_length),
+                    fold_u32_into_u16(src_addr),
+                    fold_u32_into_u16(dst_addr),
+                    udp_payload_len,
+                    src_port,
+                    dst_port,
+                    channel_number,
+                    untrusted_channel_data_length,
                 ],
                 [
-                    // new_src_addr,
-                    // new_dst_addr,
-                    u32::from(new_udp_payload_len),
-                    // u32::from(new_src_port).to_be(),
-                    // u32::from(new_dst_port).to_be(),
-                    0,
-                    0,
+                    fold_u32_into_u16(new_src_addr),
+                    fold_u32_into_u16(new_dst_addr),
+                    new_udp_payload_len,
+                    new_src_port,
+                    new_dst_port,
                 ],
                 udp_checksum,
             );
@@ -248,35 +252,33 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 }
 
 fn recompute_checksum<const N1: usize, const N2: usize>(
-    mut old_values: [u32; N1],
-    mut new_values: [u32; N2],
+    old_values: [u16; N1],
+    new_values: [u16; N2],
     old_checksum: u16,
 ) -> u16 {
-    let new_checksum = unsafe {
-        bpf_csum_diff(
-            old_values.as_mut_ptr(),
-            N1 as u32 * 4,
-            new_values.as_mut_ptr(),
-            N2 as u32 * 4,
-            !u32::from(old_checksum),
-        )
-    };
+    let seed = !old_checksum; // Checksums are stored in the "one's complement" format, we need to unpack it first.
 
-    !fold_u64_into_u16(new_checksum as u64)
+    let old_values = ones_complement_sum(old_values);
+    let new_values = ones_complement_sum(new_values);
+
+    !ones_complement_sum([
+        seed,
+        !old_values, // In one's complement arithmetic, we subtract the old values from the checksum by adding their one's complement.
+        new_values,
+    ])
+}
+
+// In one's complement arithmetic, addition requires adding a carry bit in case of overflow.
+fn ones_complement_sum<const N: usize>(values: [u16; N]) -> u16 {
+    values.into_iter().fold(0u16, |acc, val| {
+        let (acc, carry) = acc.overflowing_add(val);
+
+        acc + carry as u16
+    })
 }
 
 #[inline(always)]
-pub fn fold_u64_into_u16(mut csum: u64) -> u16 {
-    csum = (csum & 0xffff) + (csum >> 16);
-    csum = (csum & 0xffff) + (csum >> 16);
-    csum = (csum & 0xffff) + (csum >> 16);
-    csum = (csum & 0xffff) + (csum >> 16);
-
-    csum as u16
-}
-
-#[inline(always)]
-pub fn fold_u32_into_u16(mut csum: u32) -> u16 {
+fn fold_u32_into_u16(mut csum: u32) -> u16 {
     csum = (csum & 0xffff) + (csum >> 16);
     csum = (csum & 0xffff) + (csum >> 16);
 
