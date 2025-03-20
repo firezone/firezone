@@ -127,10 +127,10 @@ fn try_handle_ipv4_channel_data_to_udp(
 
     let new_src = ipv4.dst(); // The IP we received the packet on will be the new source IP.
     let new_ipv4_total_len = ipv4.total_len() - CHANNEL_DATA_HEADER_LEN as u16;
-    let pseudo_header = ipv4.reroute(new_src, port_and_peer.dest_ip(), new_ipv4_total_len);
+    let pseudo_header = ipv4.update(new_src, port_and_peer.dest_ip(), new_ipv4_total_len);
 
     let new_udp_len = udp.len() - CHANNEL_DATA_HEADER_LEN as u16;
-    udp.reroute(
+    udp.update(
         pseudo_header,
         port_and_peer.allocation_port(),
         port_and_peer.dest_port(),

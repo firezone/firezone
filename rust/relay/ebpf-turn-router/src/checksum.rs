@@ -1,3 +1,17 @@
+//! Incremental updates to Internet checksums.
+//!
+//! The Internet checksum is the one's complement of the one's complement sum of certain 16-bit words.
+//! The use of one's complement arithmetic allows us to make incremental updates to a checksum without requiring a full re-computation.
+//!
+//! That is what we are implementing in this module.
+//! There are three things you need to know:
+//!
+//! 1. The one's complement of a number `x` is `!x`.
+//! 2. Addition in one's complement arithmetic is the same as regular addition, except that upon overflow, we add an additional bit.
+//! 3. Subtraction in one's complement arithmetic is implemented as the addition of the one's complement of the number to be subtracted.
+//!
+//! This allows us to e.g. take an existing IP header checksum and update it to account for just the destination address changing.
+
 #[derive(Default)]
 pub struct ChecksumUpdate {
     inner: u16,

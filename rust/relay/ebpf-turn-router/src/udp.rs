@@ -49,12 +49,13 @@ impl<'a> Udp<'a> {
         self.checksum
     }
 
-    pub fn reroute(mut self, pseudo_header: ChecksumUpdate, src: u16, dst: u16, len: u16) {
+    /// Update this packet with a new source, destination, and length.
+    pub fn update(mut self, ip_pseudo_header: ChecksumUpdate, src: u16, dst: u16, len: u16) {
         self.slice_mut.set_source_port(src);
         self.slice_mut.set_destination_port(dst);
         self.slice_mut.set_length(len);
 
-        let ip_pseudo_header = pseudo_header.remove_u16(self.len).add_u16(len);
+        let ip_pseudo_header = ip_pseudo_header.remove_u16(self.len).add_u16(len);
 
         self.slice_mut.set_checksum(
             ChecksumUpdate::new(self.checksum)

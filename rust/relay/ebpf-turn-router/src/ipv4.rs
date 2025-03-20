@@ -56,7 +56,11 @@ impl<'a> Ipv4<'a> {
         self.total_len
     }
 
-    pub fn reroute(mut self, new_src: [u8; 4], new_dst: [u8; 4], new_len: u16) -> ChecksumUpdate {
+    /// Update this packet with a new source, destination, and total length.
+    ///
+    /// Returns a [`ChecksumUpdate`] representing the checksum-difference of the "IP pseudo-header."
+    /// which is used in certain L4 protocols (e.g. UDP).
+    pub fn update(mut self, new_src: [u8; 4], new_dst: [u8; 4], new_len: u16) -> ChecksumUpdate {
         self.slice_mut.set_source(new_src);
         self.slice_mut.set_destination(new_dst);
         self.slice_mut.set_total_length(new_len.to_be_bytes());
