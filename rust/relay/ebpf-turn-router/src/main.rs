@@ -88,7 +88,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
     if udp.destination_port() == 3478 {
         try_handle_ipv4_channel_data_to_udp(ctx, ipv4_slice, udp_slice)
     } else {
-        try_handle_peer(ctx)
+        try_handle_ipv4_udp_to_channel_data(ctx)
     }
 }
 
@@ -308,7 +308,7 @@ fn parse_eth(slice: &mut [u8]) -> Result<Ethernet2HeaderSlice<'_>, Error> {
 }
 
 #[inline(always)]
-fn try_handle_peer(_: &XdpContext) -> Result<u32, Error> {
+fn try_handle_ipv4_udp_to_channel_data(_: &XdpContext) -> Result<u32, Error> {
     Err(Error::NotImplemented)
 }
 
