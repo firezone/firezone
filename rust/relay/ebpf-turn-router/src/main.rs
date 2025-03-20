@@ -122,51 +122,53 @@ fn try_handle_ipv4_channel_data_to_udp(
     let ipv4 = parse_ipv4(ipv4_slice)?;
     let udp = parse_udp(udp_slice)?;
 
-    let src_addr = u32::from_be_bytes(ipv4.source());
-    let dst_addr = u32::from_be_bytes(ipv4.destination());
-    let tot_len = ipv4.total_len();
     let ipv4_checksum = ipv4.header_checksum();
 
-    let src_port = udp.source_port();
     let dst_port = udp.destination_port();
     let udp_payload_len = udp.length();
     let udp_checksum = udp.checksum();
 
-    let client_and_channel = ClientAndChannelV4::new(src_addr, src_port, channel_number);
+    let client_and_channel =
+        ClientAndChannelV4::new(ipv4.source(), udp.source_port(), channel_number);
 
     let binding = unsafe { CHAN_TO_UDP_44.get(&client_and_channel) };
     let Some(port_and_peer) = binding else {
         debug!(
             ctx,
-            "No channel binding from {:x}:{:x} for channel {:x}",
-            src_addr,
-            src_port,
+            "No channel binding from {:i}:{} for channel {}",
+            ipv4.source(),
+            udp.source_port(),
             channel_number,
         );
 
         return Ok(xdp_action::XDP_PASS);
     };
 
+    let src_addr = ipv4.source();
+    let src_port = udp.source_port();
+
     {
+        let dst_addr = u32::from_be_bytes(ipv4.destination());
+        let tot_len = ipv4.total_len();
+
         let new_src_addr = dst_addr; // The IP we received the packet on will be the new source IP.
-        let new_dst_addr = port_and_peer.dest_ip();
-        let new_tot_len = tot_len - 4;
+        let new_tot_len = tot_len - CHANNEL_DATA_HEADER_LEN as u16;
 
         let mut ipv4_mut = parse_ipv4_mut(ipv4_slice)?;
 
         ipv4_mut.set_source(new_src_addr.to_be_bytes());
-        ipv4_mut.set_destination(new_dst_addr.to_be_bytes());
+        ipv4_mut.set_destination(port_and_peer.dest_ip());
         ipv4_mut.set_total_length(new_tot_len.to_be_bytes());
 
         let new_ipv4_checksum = recompute_checksum(
             [
-                fold_u32_into_u16(src_addr),
+                fold_u32_into_u16(u32::from_be_bytes(src_addr)),
                 fold_u32_into_u16(dst_addr),
                 tot_len,
             ],
             [
                 fold_u32_into_u16(new_src_addr),
-                fold_u32_into_u16(new_dst_addr),
+                fold_u32_into_u16(u32::from_be_bytes(port_and_peer.dest_ip())),
                 new_tot_len,
             ],
             ipv4_checksum,
@@ -183,7 +185,7 @@ fn try_handle_ipv4_channel_data_to_udp(
 
         let new_src_port = port_and_peer.allocation_port();
         let new_dst_port = port_and_peer.dest_port();
-        let new_udp_payload_len = udp_payload_len - 4;
+        let new_udp_payload_len = udp_payload_len - CHANNEL_DATA_HEADER_LEN as u16;
 
         let mut udp_mut = parse_udp_mut(udp_slice)?;
 
@@ -193,7 +195,7 @@ fn try_handle_ipv4_channel_data_to_udp(
 
         let new_udp_checksum = recompute_checksum(
             [
-                fold_u32_into_u16(src_addr),
+                fold_u32_into_u16(u32::from_be_bytes(src_addr)),
                 fold_u32_into_u16(dst_addr),
                 // Yes the payload length needs to be in here twice because it is also used twice in the checksum calculation.
                 // Thus, any difference between the lengths must be accounted for in the checksum twice as well.
@@ -206,7 +208,7 @@ fn try_handle_ipv4_channel_data_to_udp(
             ],
             [
                 fold_u32_into_u16(new_src_addr),
-                fold_u32_into_u16(new_dst_addr),
+                fold_u32_into_u16(u32::from_be_bytes(port_and_peer.dest_ip())),
                 new_udp_payload_len,
                 new_udp_payload_len,
                 new_src_port,

@@ -8,7 +8,7 @@
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct ClientAndChannelV4 {
-    ipv4_address: u32,
+    ipv4_address: [u8; 4],
     _padding_ipv4_address: [u8; 4],
 
     port: u16,
@@ -21,9 +21,9 @@ pub struct ClientAndChannelV4 {
 }
 
 impl ClientAndChannelV4 {
-    pub fn new(ipv4_address: u32, port: u16, channel: u16) -> Self {
+    pub fn new(ipv4_address: [u8; 4], port: u16, channel: u16) -> Self {
         Self {
-            ipv4_address: ipv4_address.to_be(),
+            ipv4_address,
             _padding_ipv4_address: [0u8; 4],
 
             port: port.to_be(),
@@ -37,7 +37,7 @@ impl ClientAndChannelV4 {
     }
 
     pub fn from_socket(src: core::net::SocketAddrV4, channel: u16) -> Self {
-        Self::new(src.ip().to_bits(), src.port(), channel)
+        Self::new(src.ip().octets(), src.port(), channel)
     }
 }
 
@@ -45,7 +45,7 @@ impl ClientAndChannelV4 {
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct PortAndPeerV4 {
-    ipv4_address: u32,
+    ipv4_address: [u8; 4],
     _padding_ipv4_address: [u8; 4],
 
     allocation_port: u16,
@@ -58,7 +58,7 @@ pub struct PortAndPeerV4 {
 impl PortAndPeerV4 {
     pub fn from_socket(dst: core::net::SocketAddrV4, allocation_port: u16) -> Self {
         Self {
-            ipv4_address: dst.ip().to_bits(),
+            ipv4_address: dst.ip().octets(),
             _padding_ipv4_address: [0u8; 4],
             allocation_port,
             _padding_allocation_port: [0u8; 6],
@@ -67,7 +67,7 @@ impl PortAndPeerV4 {
         }
     }
 
-    pub fn dest_ip(&self) -> u32 {
+    pub fn dest_ip(&self) -> [u8; 4] {
         self.ipv4_address
     }
 
