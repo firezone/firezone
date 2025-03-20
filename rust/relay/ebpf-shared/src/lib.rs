@@ -2,11 +2,11 @@
 //!
 //! To learn more about the layout requirements of these structs, read <https://github.com/foniod/redbpf/issues/150#issuecomment-964017857>.
 
-#![cfg_attr(not(feature = "userspace"), no_std)]
+#![cfg_attr(not(feature = "std"), no_std)]
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-#[cfg_attr(feature = "userspace", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Debug))]
 pub struct ClientAndChannelV4 {
     ipv4_address: u32,
     _padding_ipv4_address: [u8; 4],
@@ -43,7 +43,7 @@ impl ClientAndChannelV4 {
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-#[cfg_attr(feature = "userspace", derive(Debug))]
+#[cfg_attr(feature = "std", derive(Debug))]
 pub struct PortAndPeerV4 {
     ipv4_address: u32,
     _padding_ipv4_address: [u8; 4],
@@ -80,7 +80,7 @@ impl PortAndPeerV4 {
     }
 }
 
-#[cfg(feature = "userspace")]
+#[cfg(feature = "std")]
 mod userspace {
     use super::*;
 
@@ -89,12 +89,12 @@ mod userspace {
     unsafe impl aya::Pod for PortAndPeerV4 {}
 }
 
-#[cfg(all(test, feature = "userspace"))]
+#[cfg(all(test, feature = "std"))]
 mod tests {
     use super::*;
 
     #[test]
-    fn client_and_channel_as_size_64() {
+    fn client_and_channel_has_size_64() {
         assert_eq!(std::mem::size_of::<ClientAndChannelV4>(), 64)
     }
 }
