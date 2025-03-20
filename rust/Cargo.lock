@@ -2378,6 +2378,9 @@ dependencies = [
  "etherparse-ext",
  "firezone-relay-ebpf-shared",
  "format_no_std",
+ "hex",
+ "hex-literal",
+ "ip-packet",
  "which 7.0.2",
 ]
 
