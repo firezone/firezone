@@ -257,23 +257,6 @@ defmodule Domain.Actors do
     end)
   end
 
-  def update_filtered_groups_for(
-        %Auth.Provider{} = provider,
-        included_ids,
-        excluded_ids,
-        %Auth.Subject{} = subject
-      ) do
-    # These should never overlap
-    if Enum.any?(included_ids, &Enum.member?(excluded_ids, &1)) do
-      {:error, :overlapping_ids}
-    else
-      {:ok, _groups} = exclude_groups_for(provider, excluded_ids, subject)
-      {:ok, _groups} = include_groups_for(provider, included_ids, subject)
-
-      :ok
-    end
-  end
-
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
     # includes excluded - we still want to mark those as deleted
     queryable =

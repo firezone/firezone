@@ -1,7 +1,6 @@
 defmodule Web.Settings.IdentityProviders.Components do
   use Web, :component_library
-  import Web.LiveTable
-  alias Domain.{Actors, Auth}
+  alias Domain.Auth
 
   def status(%{provider: %{deleted_at: deleted_at}} = assigns) when not is_nil(deleted_at) do
     ~H"""
@@ -373,159 +372,92 @@ defmodule Web.Settings.IdentityProviders.Components do
 
   def group_filters(assigns) do
     ~H"""
-    <.section>
-      <:title>
-        Group Filters
-      </:title>
-      <:help>
-        Group filters allow you to control which groups are synced from the Identity Provider.
-        By default, all groups are included.
-      </:help>
-      <:action>
-        <.docs_action path="/authenticate/directory-sync" fragment="group-filters" />
-      </:action>
-      <:content>
-        <%= if @provider.last_synced_at do %>
-          <form phx-change="toggle_filters">
-            <.switch
-              name="group_filters_enabled"
-              checked={@group_filters_enabled}
-              label="Enable group filters"
-              label_placement="left"
-            />
-          </form>
-          <fieldset
-            disabled={!@group_filters_enabled}
-            class={if @group_filters_enabled, do: "", else: "opacity-50"}
+    <%= if @fetched_groups do %>
+      <form phx-change="toggle_filters">
+        <.switch
+          name="enabled"
+          checked={@enabled}
+          label="Enable group filters"
+          label_placement="left"
+        />
+      </form>
+      <fieldset disabled={!@enabled} class={if @enabled, do: "", else: "opacity-50"}>
+        <ul id="groups">
+          <%= for {provider_identifier, group_name} <- @fetched_groups do %>
+            <li>{group_name}</li>
+          <% end %>
+        </ul>
+      </fieldset>
+      <div class="grid grid-cols-3 items-center">
+        <div class="justify-self-start">
+          <p class="px-4 text-sm text-gray-500">
+            {summary(
+              @provider.group_filters_enabled_at,
+              @enabled,
+              @to_include,
+              @to_exclude
+            )}
+          </p>
+        </div>
+
+        <div class="justify-self-center">
+          <.button_group style={(@enabled && "info") || "disabled"}>
+            <:button label="Select All" event="select_all" />
+            <:button label="Select None" event="select_none" />
+            <:button label="Reset" event="reset_selection" />
+          </.button_group>
+        </div>
+
+        <div class="justify-self-end">
+          <.button_with_confirmation
+            id="save_changes"
+            {group_filters_changed?(@provider.group_filters_enabled_at, @enabled, @to_include, @to_exclude) && %{} || %{disabled: "disabled"}}
+            style={
+              (group_filters_changed?(
+                 @provider.group_filters_enabled_at,
+                 @enabled,
+                 @to_include,
+                 @to_exclude
+               ) && "primary") || "disabled"
+            }
+            confirm_style="primary"
+            class="m-4"
+            on_confirm="submit"
           >
-            <.live_table
-              id="groups"
-              rows={@groups}
-              row_id={&"group-#{&1.id}"}
-              filters={@filters_by_table_id["groups"]}
-              filter={@filter_form_by_table_id["groups"]}
-              ordered_by={@order_by_table_id["groups"]}
-              metadata={@groups_metadata}
-            >
-              <:col :let={group} label="group">
-                <span class={included_excluded_class(@included, @excluded, group)}>
-                  {group.name |> String.trim_leading("Group:")}
-                </span>
-              </:col>
-              <:col :let={group} class="text-right" label="include in sync">
-                <div class="flex justify-end">
-                  <.input
-                    class={(@group_filters_enabled && "cursor-pointer") || "cursor-not-allowed"}
-                    type="checkbox"
-                    name={"group_inclusion_#{group.id}"}
-                    checked={checkbox_state(@included, @excluded, group)}
-                    phx-click="toggle_group_inclusion"
-                    phx-value-id={group.id}
-                    phx-value-name={group.name}
-                    phx-value-included_at={group.included_at}
-                  />
-                </div>
-              </:col>
-            </.live_table>
-          </fieldset>
-          <div class="grid grid-cols-3 items-center">
-            <div class="justify-self-start">
-              <p class="px-4 text-sm text-gray-500">
-                {summary(
-                  @provider.group_filters_enabled_at,
-                  @group_filters_enabled,
-                  @included,
-                  @excluded
-                )}
-              </p>
-            </div>
-
-            <div class="justify-self-center">
-              <.button_group style={(@group_filters_enabled && "info") || "disabled"}>
-                <:button label="Select All" event="select_all" />
-                <:button label="Select None" event="select_none" />
-                <:button label="Reset" event="reset_selection" />
-              </.button_group>
-            </div>
-
-            <div class="justify-self-end">
-              <.button_with_confirmation
-                id="save_changes"
-                {group_filters_changed?(@provider.group_filters_enabled_at, @group_filters_enabled, @included, @excluded) && %{} || %{disabled: "disabled"}}
-                style={
-                  (group_filters_changed?(
-                     @provider.group_filters_enabled_at,
-                     @group_filters_enabled,
-                     @included,
-                     @excluded
-                   ) && "primary") || "disabled"
-                }
-                confirm_style="primary"
-                class="m-4"
-                on_confirm="submit"
-              >
-                <:dialog_title>Confirm changes to Group filters</:dialog_title>
-                <:dialog_content>
-                  {confirm_message(@included, @excluded)}
-                </:dialog_content>
-                <:dialog_confirm_button>
-                  Save
-                </:dialog_confirm_button>
-                <:dialog_cancel_button>
-                  Cancel
-                </:dialog_cancel_button>
-                Save Selections…
-              </.button_with_confirmation>
-            </div>
-          </div>
-        <% else %>
-          <div class="flex items-center justify-center w-full h-12 bg-red-500 text-white">
-            <span>
-              Never synced
-            </span>
-          </div>
-        <% end %>
-      </:content>
-    </.section>
+            <:dialog_title>Confirm changes to Group filters</:dialog_title>
+            <:dialog_content>
+              {confirm_message(@to_include, @to_exclude)}
+            </:dialog_content>
+            <:dialog_confirm_button>
+              Save
+            </:dialog_confirm_button>
+            <:dialog_cancel_button>
+              Cancel
+            </:dialog_cancel_button>
+            Save Selections…
+          </.button_with_confirmation>
+        </div>
+      </div>
+    <% else %>
+      <div class="flex items-center justify-center w-full h-12 bg-red-500 text-white">
+        <span>
+          Fetching groups from the identity provider...
+        </span>
+      </div>
+    <% end %>
     """
   end
 
-  defp group_filters_changed?(enabled_at, enabled, inc, exc) do
-    !is_nil(enabled_at) != enabled or Enum.any?(inc) or Enum.any?(exc)
-  end
-
-  defp included_excluded_class(included, excluded, group) do
-    cond do
-      included?(included, group) -> "font-medium"
-      excluded?(excluded, group) -> "opacity-50"
-      is_nil(group.included_at) -> "opacity-50"
-      true -> "font-medium"
-    end
-  end
-
-  def checkbox_state(included, excluded, group) do
-    cond do
-      included?(included, group) -> true
-      excluded?(excluded, group) -> false
-      is_nil(group.included_at) -> false
-      true -> true
-    end
-  end
-
-  defp included?(included, group) do
-    Map.has_key?(included, group.id)
-  end
-
-  defp excluded?(excluded, group) do
-    Map.has_key?(excluded, group.id)
-  end
-
-  defp summary(group_filters_enabled_at, group_filters_enabled, included, excluded) do
-    if group_filters_changed?(group_filters_enabled_at, group_filters_enabled, included, excluded) do
-      "#{Enum.count(included)} included, #{Enum.count(excluded)} excluded"
+  defp summary(enabled_at, enabled, to_include, to_exclude) do
+    if group_filters_changed?(enabled_at, enabled, to_include, to_exclude) do
+      "#{map_size(to_include)} included, #{map_size(to_exclude)} excluded"
     else
       "No changes pending"
     end
+  end
+
+  defp group_filters_changed?(enabled_at, enabled, to_include, to_exclude) do
+    !is_nil(enabled_at) != enabled or Enum.any?(to_include) or Enum.any?(to_exclude)
   end
 
   defp confirm_message(added, removed) do
@@ -546,123 +478,97 @@ defmodule Web.Settings.IdentityProviders.Components do
 
   # Shared event handlers for group filters
 
-  def handle_group_filters_event(event, params, socket)
-      when event in ["paginate", "order_by", "filter"],
-      do: handle_live_table_event(event, params, socket)
-
   def handle_group_filters_event("toggle_filters", _params, socket) do
-    group_filters_enabled = not socket.assigns.group_filters_enabled
-    {:noreply, assign(socket, group_filters_enabled: group_filters_enabled)}
+    enabled = not socket.assigns.enabled
+
+    {:noreply, assign(socket, enabled: enabled)}
   end
 
   def handle_group_filters_event("select_all", _params, socket) do
-    all_groups =
-      Actors.all_groups_for!(socket.assigns.provider, socket.assigns.subject)
+    to_include =
+      socket.assigns.fetched_groups
+      |> Enum.into(%{})
 
-    included =
-      Enum.reduce(all_groups, %{}, fn group, acc ->
-        Map.put(acc, group.id, group.name)
-      end)
+    to_exclude = %{}
 
-    {:noreply, assign(socket, included: included, excluded: %{})}
+    {:noreply, assign(socket, to_include: to_include, to_exclude: to_exclude)}
   end
 
   def handle_group_filters_event("select_none", _params, socket) do
-    all_groups =
-      Actors.all_groups_for!(socket.assigns.provider, socket.assigns.subject)
+    to_include = %{}
 
-    excluded =
-      Enum.reduce(all_groups, %{}, fn group, acc ->
-        Map.put(acc, group.id, group.name)
-      end)
+    to_exclude =
+      socket.assigns.fetched_groups
+      |> Enum.into(%{})
 
-    {:noreply, assign(socket, included: %{}, excluded: excluded)}
+    {:noreply, assign(socket, to_include: to_include, to_exclude: to_exclude)}
   end
 
   def handle_group_filters_event("reset_selection", _params, socket) do
-    # Reset the selection to the DB state
-    socket =
-      socket
-      |> assign(included: %{}, excluded: %{})
-      |> reload_live_table!("groups")
+    to_include = %{}
+    to_exclude = %{}
 
-    {:noreply, socket}
+    {:noreply, assign(socket, to_include: to_include, to_exclude: to_exclude)}
   end
 
   # Checked; include in sync
   def handle_group_filters_event(
         "toggle_group_inclusion",
-        %{"id" => id, "name" => name, "value" => "true"} = params,
+        %{"provider_identifier" => provider_identifier, "name" => name, "value" => "true"},
         socket
       ) do
-    if params["included_at"] do
+    if MapSet.member?(socket.assigns.currently_included, provider_identifier) do
       # included in DB; remove pending inclusion
-      excluded = Map.delete(socket.assigns.excluded, id)
-      {:noreply, assign(socket, excluded: excluded)}
+      {:noreply,
+       assign(socket, to_exclude: Map.delete(socket.assigns.to_exclude, provider_identifier))}
     else
       # excluded in DB; mark as pending inclusion
-      included = Map.put(socket.assigns.included, id, name)
-      {:noreply, assign(socket, included: included)}
+      {:noreply,
+       assign(socket, to_include: Map.put(socket.assigns.to_include, provider_identifier, name))}
     end
   end
 
   # Unchecked; exclude from sync
   def handle_group_filters_event(
         "toggle_group_inclusion",
-        %{"id" => id, "name" => name} = params,
+        %{"provider_identifier" => provider_identifier, "name" => name},
         socket
       ) do
-    if params["included_at"] do
+    if MapSet.member?(socket.assigns.currently_included, provider_identifier) do
       # included in DB; mark as pending inclusion
-      excluded = Map.put(socket.assigns.excluded, id, name)
-      {:noreply, assign(socket, excluded: excluded)}
+      {:noreply,
+       assign(socket, to_exclude: Map.put(socket.assigns.to_exclude, provider_identifier, name))}
     else
       # excluded in DB; remove pending inclusion
-      included = Map.delete(socket.assigns.included, id)
-      {:noreply, assign(socket, included: included)}
+      {:noreply,
+       assign(socket, to_include: Map.delete(socket.assigns.to_include, provider_identifier))}
     end
   end
 
   def handle_group_filters_event("submit", _params, socket) do
-    socket =
-      socket
-      |> submit_group_filters()
-      |> assign(included: %{}, excluded: %{})
-      |> reload_live_table!("groups")
-
-    {:noreply, socket}
-  end
-
-  defp submit_group_filters(socket) do
-    enabled = socket.assigns.group_filters_enabled
     provider = socket.assigns.provider
     subject = socket.assigns.subject
-    included_ids = Map.keys(socket.assigns.included)
-    excluded_ids = Map.keys(socket.assigns.excluded)
+    enabled_at = if socket.assigns.enabled, do: DateTime.utc_now(), else: nil
 
-    {:ok, provider} =
-      if enabled do
-        :ok = Actors.update_group_filters_for(provider, included_ids, excluded_ids, subject)
-        Auth.enable_group_filters_for(provider, subject)
-      else
-        Auth.disable_group_filters_for(provider, subject)
-      end
+    included_groups =
+      socket.assigns.currently_included
+      |> MapSet.union(MapSet.new(Map.keys(socket.assigns.to_include)))
+      |> MapSet.difference(MapSet.new(Map.keys(socket.assigns.to_exclude)))
 
-    assign(socket, provider: provider)
-  end
+    attrs = %{group_filters_enabled_at: enabled_at, included_groups: included_groups}
 
-  def handle_group_filters_update!(socket, list_opts) do
-    with {:ok, groups, metadata} <-
-           Actors.list_all_groups_for(
-             socket.assigns.provider,
-             socket.assigns.subject,
-             list_opts
-           ) do
-      {:ok,
-       assign(socket,
-         groups: groups,
-         groups_metadata: metadata
-       )}
+    case Auth.update_provider(provider, attrs, subject) do
+      {:ok, provider} ->
+        {:noreply,
+         assign(socket,
+           provider: provider,
+           currently_included: MapSet.new(provider.included_groups),
+           to_include: %{},
+           to_exclude: %{}
+         )}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, errors: changeset.errors)}
     end
   end
 end

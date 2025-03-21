@@ -10,6 +10,7 @@ defmodule Domain.Actors.Group.Sync do
         {Map.fetch!(attrs, "provider_identifier"), attrs}
       end
 
+    # TODO: Use MapSet to make this more efficient
     provider_identifiers = Map.keys(attrs_by_provider_identifier)
 
     # We always want to keep our DB groups in sync with all provider groups, regardless of filtering.
@@ -23,7 +24,8 @@ defmodule Domain.Actors.Group.Sync do
         for group <- groups ++ upserted,
             group.provider_identifier not in delete,
             # Apply group filters if they are enabled
-            is_nil(provider.group_filters_enabled_at) or group.provider_identifier in provider.included_groups,
+            is_nil(provider.group_filters_enabled_at) or
+              group.provider_identifier in provider.included_groups,
             into: %{} do
           {group.provider_identifier, group.id}
         end

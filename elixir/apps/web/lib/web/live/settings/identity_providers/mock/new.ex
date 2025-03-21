@@ -65,7 +65,8 @@ defmodule Web.Settings.IdentityProviders.Mock.New do
            Auth.create_provider(socket.assigns.account, attrs, socket.assigns.subject) do
       socket =
         push_navigate(socket,
-          to: ~p"/#{socket.assigns.account.id}/settings/identity_providers/mock/#{provider}"
+          to:
+            ~p"/#{socket.assigns.account.id}/settings/identity_providers/mock/#{provider}/edit_filters"
         )
 
       {:noreply, socket}

@@ -276,14 +276,6 @@ defmodule Domain.Auth do
     end
   end
 
-  def enable_group_filters_for(%Provider{} = provider, %Subject{} = subject) do
-    mutate_provider(provider, subject, &Provider.Changeset.enable_group_filters/1)
-  end
-
-  def disable_group_filters_for(%Provider{} = provider, %Subject{} = subject) do
-    mutate_provider(provider, subject, &Provider.Changeset.disable_group_filters/1)
-  end
-
   defp mutate_provider(%Provider{} = provider, %Subject{} = subject, callback)
        when is_function(callback, 1) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do

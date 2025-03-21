@@ -22,7 +22,8 @@ defmodule Domain.Actors.Group.Query do
       [groups: groups, providers: providers],
       is_nil(groups.provider_id) or
         (not is_nil(groups.provider_id) and
-           (is_nil(providers.group_filters_enabled_at) or groups.provider_identifier in ^providers.included_groups))
+           (is_nil(providers.group_filters_enabled_at) or
+              groups.provider_identifier in providers.included_groups))
     )
   end
 
@@ -32,7 +33,8 @@ defmodule Domain.Actors.Group.Query do
     |> where(
       [groups: groups, providers: providers],
       not is_nil(groups.provider_id) and
-        (not is_nil(providers.group_filters_enabled_at) and groups.provider_identifier not in ^providers.included_groups)
+        (not is_nil(providers.group_filters_enabled_at) and
+           groups.provider_identifier not in providers.included_groups)
     )
   end
 
