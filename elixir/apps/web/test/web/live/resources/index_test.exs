@@ -206,6 +206,53 @@ defmodule Web.Live.Resources.IndexTest do
     end)
   end
 
+  test "renders Internet Resource section if enabled", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    account = Fixtures.Accounts.update_account(account, features: %{internet_resource: true})
+    group = Fixtures.Gateways.create_internet_group(account: account)
+
+    Fixtures.Resources.create_internet_resource(
+      account: account,
+      connections: [%{gateway_group_id: group.id}]
+    )
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources")
+
+    path = ~p"/#{account}/resources/internet"
+
+    assert {_, {:live_redirect, %{to: ^path}}} =
+             lv
+             |> element("#view-internet-resource")
+             |> render_click()
+  end
+
+  test "does not render Internet Resource section if disabled", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    group = Fixtures.Gateways.create_internet_group(account: account)
+
+    Fixtures.Resources.create_internet_resource(
+      account: account,
+      connections: [%{gateway_group_id: group.id}]
+    )
+
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources")
+
+    refute html =~ "view-internet-resource"
+    refute html =~ "View Internet Resource"
+  end
+
   describe "handle_info/2" do
     test "Shows reload button when resource is created", %{
       account: account,
