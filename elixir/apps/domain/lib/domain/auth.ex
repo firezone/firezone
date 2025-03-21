@@ -367,8 +367,8 @@ defmodule Domain.Auth do
     end
   end
 
-  def sync_provider_identities(%Provider{} = provider, attrs_list) do
-    Identity.Sync.sync_provider_identities(provider, attrs_list)
+  def sync_provider_identities(included_memberships, %Provider{} = provider, attrs_list) do
+    Identity.Sync.sync_provider_identities(included_memberships, provider, attrs_list)
   end
 
   def all_actor_ids_by_membership_rules!(account_id, membership_rules) do
@@ -524,6 +524,14 @@ defmodule Domain.Auth do
           {:error, reason}
       end
     end
+  end
+
+  # for idp sync
+  def delete_identities_for(%Actors.Actor{} = actor) do
+    Identity.Query.not_deleted()
+    |> Identity.Query.by_actor_id(actor.id)
+    |> Identity.Query.by_account_id(actor.account_id)
+    |> Repo.update_all(set: [deleted_at: DateTime.utc_now(), provider_state: %{}])
   end
 
   def delete_identities_for(%Actors.Actor{} = actor, %Subject{} = subject) do

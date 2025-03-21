@@ -243,6 +243,7 @@ defmodule Web.Router do
             live "/new", New
             live "/:provider_id", Show
             live "/:provider_id/edit", Edit
+            live "/:provider_id/edit_filters", EditFilters
 
             # OpenID Connection
             get "/:provider_id/redirect", Connect, :redirect_to_idp
@@ -253,6 +254,7 @@ defmodule Web.Router do
             live "/new", New
             live "/:provider_id", Show
             live "/:provider_id/edit", Edit
+            live "/:provider_id/edit_filters", EditFilters
 
             # OpenID Connection
             get "/:provider_id/redirect", Connect, :redirect_to_idp
@@ -263,6 +265,7 @@ defmodule Web.Router do
             live "/new", New
             live "/:provider_id", Show
             live "/:provider_id/edit", Edit
+            live "/:provider_id/edit_filters", EditFilters
 
             # OpenID Connection
             get "/:provider_id/redirect", Connect, :redirect_to_idp
@@ -284,6 +287,7 @@ defmodule Web.Router do
             live "/new", New
             live "/:provider_id", Show
             live "/:provider_id/edit", Edit
+            live "/:provider_id/edit_filters", EditFilters
           end
 
           scope "/system", System do

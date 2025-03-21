@@ -10,8 +10,12 @@ defmodule Domain.Actors.Group.Sync do
         {Map.fetch!(attrs, "provider_identifier"), attrs}
       end
 
+    # TODO: Use MapSet to make this more efficient
     provider_identifiers = Map.keys(attrs_by_provider_identifier)
 
+    # We always want to keep our DB groups in sync with all provider groups, regardless of filtering.
+    # However, if the provider has group filteres enabled, we only want to return provider identifiers
+    # that are included so that memberships and identities can be filtered accordingly.
     with {:ok, groups} <- all_provider_groups(provider),
          {:ok, {upsert, delete}} <- plan_groups_update(groups, provider_identifiers),
          {:ok, deleted} <- delete_groups(provider, delete),
@@ -19,13 +23,15 @@ defmodule Domain.Actors.Group.Sync do
       group_ids_by_provider_identifier =
         for group <- groups ++ upserted,
             group.provider_identifier not in delete,
+            # Apply group filters if they are enabled
+            is_nil(provider.group_filters_enabled_at) or
+              group.provider_identifier in provider.included_groups,
             into: %{} do
           {group.provider_identifier, group.id}
         end
 
       {:ok,
        %{
-         groups: groups,
          plan: {upsert, delete},
          deleted: deleted,
          upserted: upserted,
@@ -35,6 +41,7 @@ defmodule Domain.Actors.Group.Sync do
   end
 
   defp all_provider_groups(provider) do
+    # includes excluded - we want to include them for sync purposes
     groups =
       Group.Query.not_deleted()
       |> Group.Query.by_account_id(provider.account_id)
@@ -58,6 +65,7 @@ defmodule Domain.Actors.Group.Sync do
   end
 
   defp delete_groups(provider, provider_identifiers_to_delete) do
+    # includes excluded - we want to mark them deleted for sync purposes
     Group.Query.not_deleted()
     |> Group.Query.by_account_id(provider.account_id)
     |> Group.Query.by_provider_id(provider.id)
