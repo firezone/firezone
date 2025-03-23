@@ -11,6 +11,7 @@ members = [
   "connlib/tunnel",
   "dns-over-tcp",
   "dns-types",
+  "etherparse-ext",
   "gateway",
   "gui-client/src-common",
   "gui-client/src-tauri",
@@ -60,7 +61,8 @@ dns-over-tcp = { path = "dns-over-tcp" }
 dns-types = { path = "dns-types" }
 either = "1"
 env_logger = "0.11.6"
-etherparse = "0.16"
+etherparse = { version = "0.17", default-features = false }
+etherparse-ext = { path = "etherparse-ext" }
 firezone-bin-shared = { path = "bin-shared" }
 firezone-gui-client-common = { path = "gui-client/src-common" }
 firezone-headless-client = { path = "headless-client" }
