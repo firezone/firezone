@@ -22,7 +22,11 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="8383">
+          Deprecates the NAT64 functionality in favor of sending ICMP errors.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.5" date={new Date("2025-03-10")}>
         <ChangeItem pull="8124">
           Fixes a bug in the routing of DNS resources that would lead to "Source
