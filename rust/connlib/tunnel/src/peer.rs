@@ -838,10 +838,11 @@ mod tests {
             peer.translate_outbound(request, Instant::now()).unwrap(),
             crate::peer::TranslateOutboundResult::Send(_)
         ));
-        assert!(matches!(
-            peer.translate_outbound(response, Instant::now()).unwrap(),
-            crate::peer::TranslateOutboundResult::Send(_)
-        ));
+        assert!(
+            peer.translate_inbound(response, Instant::now())
+                .unwrap()
+                .is_some()
+        );
     }
 
     #[test]
