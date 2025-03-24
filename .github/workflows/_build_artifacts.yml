@@ -195,8 +195,8 @@ jobs:
         # Syntax is weird because https://github.com/actions/runner/issues/1512
         exclude:
           # Exclude debug builds for non-amd64 targets since they won't be used.
-          # - { stage: debug, arch: { platform: linux/arm/v7 } }
-          # - { stage: debug, arch: { platform: linux/arm64 } }
+          - { stage: debug, arch: { platform: linux/arm/v7 } }
+          - { stage: debug, arch: { platform: linux/arm64 } }
           # Exclude http-test-server from perf image builds
           - { image_prefix: perf, name: { package: http-test-server } }
 
