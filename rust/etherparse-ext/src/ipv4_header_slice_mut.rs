@@ -43,4 +43,12 @@ impl<'a> Ipv4HeaderSliceMut<'a> {
         // Safety: Slice it at least of length 20 as checked in the ctor.
         unsafe { write_to_offset_unchecked(self.slice, 2, len) };
     }
+
+    pub fn set_ecn(&mut self, ecn: u8) {
+        let current = self.slice[1];
+        let new = current & 0b1111_1100 | ecn;
+
+        // Safety: Slice it at least of length 20 as checked in the ctor.
+        unsafe { write_to_offset_unchecked(self.slice, 1, [new]) };
+    }
 }

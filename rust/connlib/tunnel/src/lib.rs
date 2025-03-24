@@ -12,6 +12,7 @@ use connlib_model::{ClientId, GatewayId, PublicKey, ResourceId, ResourceView};
 use dns_types::DomainName;
 use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
+use ip_packet::Ecn;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -142,7 +143,8 @@ impl ClientTunnel {
             }
 
             if let Some(trans) = self.role_state.poll_transmit() {
-                self.io.send_network(trans.src, trans.dst, &trans.payload);
+                self.io
+                    .send_network(trans.src, trans.dst, &trans.payload, Ecn::Ect0);
                 continue;
             }
 
@@ -164,13 +166,15 @@ impl ClientTunnel {
                     let now = Instant::now();
 
                     for packet in packets {
+                        let ecn = packet.ecn();
+
                         let Some(packet) = self.role_state.handle_tun_input(packet, now) else {
                             self.role_state.handle_timeout(now);
                             continue;
                         };
 
                         self.io
-                            .send_network(packet.src(), packet.dst(), packet.payload());
+                            .send_network(packet.src(), packet.dst(), packet.payload(), ecn);
                     }
 
                     continue;
@@ -189,7 +193,7 @@ impl ClientTunnel {
                             continue;
                         };
 
-                        self.io.send_tun(packet);
+                        self.io.send_tun(packet.with_ecn(received.ecn));
                     }
 
                     continue;
@@ -244,7 +248,8 @@ impl GatewayTunnel {
             }
 
             if let Some(trans) = self.role_state.poll_transmit() {
-                self.io.send_network(trans.src, trans.dst, &trans.payload);
+                self.io
+                    .send_network(trans.src, trans.dst, &trans.payload, Ecn::Ect0);
                 continue;
             }
 
@@ -279,6 +284,8 @@ impl GatewayTunnel {
                     let now = Instant::now();
 
                     for packet in packets {
+                        let ecn = packet.ecn();
+
                         let Some(packet) = self
                             .role_state
                             .handle_tun_input(packet, now)
@@ -289,7 +296,7 @@ impl GatewayTunnel {
                         };
 
                         self.io
-                            .send_network(packet.src(), packet.dst(), packet.payload());
+                            .send_network(packet.src(), packet.dst(), packet.payload(), ecn);
                     }
 
                     continue;
@@ -313,7 +320,7 @@ impl GatewayTunnel {
                             continue;
                         };
 
-                        self.io.send_tun(packet);
+                        self.io.send_tun(packet.with_ecn(received.ecn));
                     }
 
                     continue;
