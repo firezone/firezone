@@ -12,7 +12,7 @@ use dns_types::DomainName;
 use filter_engine::FilterEngine;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{icmpv4, icmpv6, IpPacket, PacketBuilder, Protocol, UnsupportedProtocol};
+use ip_packet::{IpPacket, PacketBuilder, Protocol, UnsupportedProtocol, icmpv4, icmpv6};
 
 use crate::utils::network_contains_network;
 use crate::{GatewayEvent, IpConfig};
