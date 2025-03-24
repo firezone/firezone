@@ -179,6 +179,19 @@ impl std::fmt::Debug for IpPacket {
                 .field("dst_port", &udp.destination_port());
         }
 
+        match self.ecn() {
+            Ecn::NonEct => {}
+            Ecn::Ect1 => {
+                dbg.field("ecn", &"ECT(1)");
+            }
+            Ecn::Ect0 => {
+                dbg.field("ecn", &"ECT(0)");
+            }
+            Ecn::Ce => {
+                dbg.field("ecn", &"CE");
+            }
+        };
+
         dbg.finish()
     }
 }
