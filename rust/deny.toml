@@ -230,8 +230,6 @@ deny = [
 skip = [
   "base64",
   "bitflags",
-  "cocoa",
-  "cocoa-foundation",
   "core-foundation",
   "core-graphics",
   "core-graphics-types",
@@ -266,7 +264,6 @@ skip = [
   "tauri-winrt-notification",
   "thiserror",
   "thiserror-impl",
-  "toml",
   "toml_edit",
   "tower",
   "trackable",
