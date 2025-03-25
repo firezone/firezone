@@ -3,7 +3,6 @@ description: "Sets up the correct Elixir version and installs deps"
 inputs:
   mix_env:
     description: "Limit deps to mix env"
-    type: string
     required: true
 outputs:
   otp-version:
