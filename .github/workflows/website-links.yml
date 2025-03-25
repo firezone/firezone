@@ -23,7 +23,7 @@ jobs:
         uses: lycheeverse/lychee-action@f613c4a64e50d792e0b31ec34bbcbba12263c6a6 # v2.3.0
         with:
           fail: false
-          args: --verbose --no-progress --exclude-all-private .
+          args: --verbose --no-progress --exclude-all-private --base https://firezone.dev .
 
       - name: Create Issue From File
         if: steps.lychee.outputs.exit_code != 0
