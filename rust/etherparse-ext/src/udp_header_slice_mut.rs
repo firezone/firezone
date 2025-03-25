@@ -13,6 +13,15 @@ impl<'a> UdpHeaderSliceMut<'a> {
         Ok(Self { slice })
     }
 
+    /// Creates a new [`UdpHeaderSliceMut`] without checking the slice.
+    ///
+    /// # Safety
+    ///
+    /// The caller must guarantee that the slice is at least of length 8.
+    pub unsafe fn from_slice_unchecked(slice: &'a mut [u8]) -> Self {
+        Self { slice }
+    }
+
     pub fn get_source_port(&self) -> u16 {
         u16::from_be_bytes([self.slice[0], self.slice[1]])
     }

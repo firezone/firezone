@@ -12,7 +12,8 @@ proptest = ["dep:proptest"]
 
 [dependencies]
 anyhow = { workspace = true }
-etherparse = { workspace = true }
+etherparse = { workspace = true, features = ["std"] }
+etherparse-ext = { workspace = true }
 lockfree-object-pool = { workspace = true }
 proptest = { workspace = true, optional = true }
 thiserror = { workspace = true }
