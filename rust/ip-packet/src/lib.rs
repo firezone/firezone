@@ -6,18 +6,12 @@ mod buffer_pool;
 mod fz_p2p_control;
 mod fz_p2p_control_slice;
 mod icmp_dest_unreachable;
-mod icmpv4_header_slice_mut;
-mod icmpv6_header_slice_mut;
-mod ipv4_header_slice_mut;
-mod ipv6_header_slice_mut;
+
 mod nat46;
 mod nat64;
 #[cfg(feature = "proptest")]
 #[allow(clippy::unwrap_used)]
 pub mod proptest;
-mod slice_utils;
-mod tcp_header_slice_mut;
-mod udp_header_slice_mut;
 
 use buffer_pool::Buffer;
 pub use etherparse::*;
@@ -29,13 +23,14 @@ pub use icmp_dest_unreachable::{DestUnreachable, FailedPacket};
 mod proptests;
 
 use anyhow::{Context as _, Result, bail};
-use icmpv4_header_slice_mut::Icmpv4HeaderSliceMut;
-use icmpv6_header_slice_mut::Icmpv6EchoHeaderSliceMut;
-use ipv4_header_slice_mut::Ipv4HeaderSliceMut;
-use ipv6_header_slice_mut::Ipv6HeaderSliceMut;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use tcp_header_slice_mut::TcpHeaderSliceMut;
-use udp_header_slice_mut::UdpHeaderSliceMut;
+
+use etherparse_ext::Icmpv4HeaderSliceMut;
+use etherparse_ext::Icmpv6EchoHeaderSliceMut;
+use etherparse_ext::Ipv4HeaderSliceMut;
+use etherparse_ext::Ipv6HeaderSliceMut;
+use etherparse_ext::TcpHeaderSliceMut;
+use etherparse_ext::UdpHeaderSliceMut;
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
