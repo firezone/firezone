@@ -1,5 +1,6 @@
 use bytes::Buf as _;
 use firezone_logging::err_with_src;
+use ip_packet::Ecn;
 use quinn_udp::Transmit;
 use std::collections::HashMap;
 use std::fmt;
@@ -198,6 +199,7 @@ pub struct DatagramIn<'a> {
     pub local: SocketAddr,
     pub from: SocketAddr,
     pub packet: &'a [u8],
+    pub ecn: Ecn,
 }
 
 /// An outbound UDP datagram.
@@ -206,6 +208,7 @@ pub struct DatagramOut<B> {
     pub dst: SocketAddr,
     pub packet: B,
     pub segment_size: Option<usize>,
+    pub ecn: Ecn,
 }
 
 impl UdpSocket {
@@ -257,7 +260,7 @@ impl UdpSocket {
                 let num_packets = meta.len / segment_size;
                 let trailing_bytes = meta.len % segment_size;
 
-                tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, %num_packets, %segment_size, %trailing_bytes);
+                tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, ecn = ?meta.ecn, %num_packets, %segment_size, %trailing_bytes);
 
                 let iter = buffer[..meta.len]
                     .chunks(meta.stride)
@@ -265,6 +268,12 @@ impl UdpSocket {
                         local,
                         from: meta.addr,
                         packet,
+                        ecn: match meta.ecn {
+                            Some(quinn_udp::EcnCodepoint::Ce) => Ecn::Ce,
+                            Some(quinn_udp::EcnCodepoint::Ect0) => Ecn::Ect0,
+                            Some(quinn_udp::EcnCodepoint::Ect1) => Ecn::Ect1,
+                            None => Ecn::NonEct,
+                        },
                     });
 
                 return Poll::Ready(Ok(iter));
@@ -285,6 +294,7 @@ impl UdpSocket {
             datagram.src.map(|s| s.ip()),
             datagram.packet.deref().chunk(),
             datagram.segment_size,
+            datagram.ecn,
         )?
         else {
             return Ok(());
@@ -305,7 +315,7 @@ impl UdpSocket {
                 {
                     let num_packets = transmit.contents.len() / segment_size;
 
-                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_packets, %segment_size);
+                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, ecn = ?transmit.ecn, %num_packets, %segment_size);
 
                     self.inner.try_io(Interest::WRITABLE, || {
                         self.state.try_send((&self.inner).into(), &transmit)
@@ -315,7 +325,7 @@ impl UdpSocket {
             None => {
                 let num_bytes = transmit.contents.len();
 
-                tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_bytes);
+                tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, ecn = ?transmit.ecn, %num_bytes);
 
                 self.inner.try_io(Interest::WRITABLE, || {
                     self.state.try_send((&self.inner).into(), &transmit)
@@ -343,7 +353,7 @@ impl UdpSocket {
         payload: &[u8],
     ) -> io::Result<Vec<u8>> {
         let transmit = self
-            .prepare_transmit(dst, None, payload, None)?
+            .prepare_transmit(dst, None, payload, None, Ecn::NonEct)?
             .ok_or_else(|| io::Error::other("Failed to prepare `Transmit`"))?;
 
         self.inner
@@ -373,6 +383,7 @@ impl UdpSocket {
         src_ip: Option<IpAddr>,
         packet: &'a [u8],
         segment_size: Option<usize>,
+        ecn: Ecn,
     ) -> io::Result<Option<quinn_udp::Transmit<'a>>> {
         let src_ip = match src_ip {
             Some(src_ip) => Some(src_ip),
@@ -390,7 +401,12 @@ impl UdpSocket {
 
         let transmit = quinn_udp::Transmit {
             destination: dst,
-            ecn: None,
+            ecn: match ecn {
+                Ecn::NonEct => None,
+                Ecn::Ect1 => Some(quinn_udp::EcnCodepoint::Ect1),
+                Ecn::Ect0 => Some(quinn_udp::EcnCodepoint::Ect0),
+                Ecn::Ce => Some(quinn_udp::EcnCodepoint::Ce),
+            },
             contents: packet,
             segment_size,
             src_ip,

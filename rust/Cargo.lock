@@ -6122,6 +6122,7 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "firezone-logging",
+ "ip-packet",
  "quinn-udp",
  "socket2",
  "tokio",

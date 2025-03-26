@@ -179,6 +179,19 @@ impl std::fmt::Debug for IpPacket {
                 .field("dst_port", &udp.destination_port());
         }
 
+        match self.ecn() {
+            Ecn::NonEct => {}
+            Ecn::Ect1 => {
+                dbg.field("ecn", &"ECT(1)");
+            }
+            Ecn::Ect0 => {
+                dbg.field("ecn", &"ECT(0)");
+            }
+            Ecn::Ce => {
+                dbg.field("ecn", &"CE");
+            }
+        };
+
         dbg.finish()
     }
 }
@@ -844,6 +857,30 @@ impl IpPacket {
         }
     }
 
+    pub fn with_ecn(mut self, ecn: Ecn) -> Self {
+        match &mut self {
+            IpPacket::Ipv4(ip) => ip.ip_header_mut().set_ecn(ecn as u8),
+            IpPacket::Ipv6(ip) => ip.header_mut().set_ecn(ecn as u8),
+        }
+
+        self
+    }
+
+    pub fn ecn(&self) -> Ecn {
+        let byte = match self {
+            IpPacket::Ipv4(ip) => ip.ip_header().ecn().value(),
+            IpPacket::Ipv6(ip) => ip.header().traffic_class(),
+        };
+
+        match byte & 0b00000011 {
+            0b00000000 => Ecn::NonEct,
+            0b00000001 => Ecn::Ect1,
+            0b00000010 => Ecn::Ect0,
+            0b00000011 => Ecn::Ce,
+            _ => unreachable!(),
+        }
+    }
+
     pub fn ipv4_header(&self) -> Option<Ipv4Header> {
         match self {
             Self::Ipv4(p) => Some(p.ip_header().to_header()),
@@ -988,6 +1025,17 @@ fn extract_l4_proto(payload: &[u8], protocol: IpNumber) -> Result<Layer4Protocol
     Ok(proto)
 }
 
+/// Models the possible ECN states.
+///
+/// See <https://www.rfc-editor.org/rfc/rfc3168#section-23.1> for details.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ecn {
+    NonEct = 0b00,
+    Ect1 = 0b01,
+    Ect0 = 0b10,
+    Ce = 0b11,
+}
+
 impl From<ConvertibleIpv4Packet> for IpPacket {
     fn from(value: ConvertibleIpv4Packet) -> Self {
         Self::Ipv4(value)
@@ -1033,5 +1081,27 @@ mod tests {
         let udp_payload = &ip_payload[etherparse::UdpHeader::LEN..];
 
         assert_eq!(udp_payload, b"foobar");
+    }
+
+    #[test]
+    fn ipv4_ecn() {
+        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+            .unwrap();
+
+        assert_eq!(p.clone().with_ecn(Ecn::NonEct).ecn(), Ecn::NonEct);
+        assert_eq!(p.clone().with_ecn(Ecn::Ect0).ecn(), Ecn::Ect0);
+        assert_eq!(p.clone().with_ecn(Ecn::Ect1).ecn(), Ecn::Ect1);
+        assert_eq!(p.with_ecn(Ecn::Ce).ecn(), Ecn::Ce);
+    }
+
+    #[test]
+    fn ipv6_ecn() {
+        let p = crate::make::udp_packet(Ipv6Addr::LOCALHOST, Ipv6Addr::LOCALHOST, 0, 0, vec![])
+            .unwrap();
+
+        assert_eq!(p.clone().with_ecn(Ecn::NonEct).ecn(), Ecn::NonEct);
+        assert_eq!(p.clone().with_ecn(Ecn::Ect1).ecn(), Ecn::Ect1);
+        assert_eq!(p.clone().with_ecn(Ecn::Ect0).ecn(), Ecn::Ect0);
+        assert_eq!(p.with_ecn(Ecn::Ce).ecn(), Ecn::Ce);
     }
 }
