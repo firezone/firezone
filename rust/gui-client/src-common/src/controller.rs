@@ -1,7 +1,5 @@
 use crate::{
-    auth, deep_link,
-    errors::Error,
-    ipc, logging,
+    auth, deep_link, ipc, logging,
     settings::{self, AdvancedSettings},
     system_tray::{self, Event as TrayMenuEvent},
     updates,
@@ -187,7 +185,7 @@ impl<I: GuiIntegration> Controller<I> {
         advanced_settings: AdvancedSettings,
         log_filter_reloader: FilterReloadHandle,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
         let (ipc_client, ipc_rx) = ipc::Client::new().await?;
@@ -218,7 +216,7 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    pub async fn main_loop(mut self) -> Result<(), Error> {
+    pub async fn main_loop(mut self) -> Result<()> {
         self.update_telemetry_context().await?;
 
         if let Some(token) = self
@@ -260,17 +258,19 @@ impl<I: GuiIntegration> Controller<I> {
                     self.try_retry_connection().await?
                 }
                 EventloopTick::NetworkChanged(Err(e)) | EventloopTick::DnsChanged(Err(e)) => {
-                    return Err(Error::Other(e));
+                    return Err(e);
                 }
 
-                EventloopTick::IpcMsg(Some(Ok(msg))) => {
+                EventloopTick::IpcMsg(msg) => {
+                    let msg = msg
+                        .context("IPC closed")?
+                        .context("Failed to read from IPC")?;
+
                     match self.handle_ipc_msg(msg).await? {
                         ControlFlow::Break(()) => break,
                         ControlFlow::Continue(()) => continue,
                     };
                 }
-                EventloopTick::IpcMsg(Some(Err(e))) => return Err(Error::IpcRead(e)),
-                EventloopTick::IpcMsg(None) => return Err(Error::IpcClosed),
 
                 EventloopTick::ControllerRequest(Some(req)) => self.handle_request(req).await?,
                 EventloopTick::ControllerRequest(None) => {
@@ -281,7 +281,7 @@ impl<I: GuiIntegration> Controller<I> {
                     self.handle_update_notification(notification)?
                 }
                 EventloopTick::UpdateNotification(None) => {
-                    return Err(Error::Other(anyhow!("Update checker task stopped")));
+                    return Err(anyhow!("Update checker task stopped"));
                 }
             }
         }
@@ -324,7 +324,7 @@ impl<I: GuiIntegration> Controller<I> {
         .await
     }
 
-    async fn start_session(&mut self, token: SecretString) -> Result<(), Error> {
+    async fn start_session(&mut self, token: SecretString) -> Result<()> {
         match self.status {
             Status::Disconnected | Status::RetryingConnection { .. } => {}
             Status::Quitting => Err(anyhow!("Can't connect to Firezone, we're quitting"))?,
@@ -372,7 +372,7 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn handle_deep_link(&mut self, url: &SecretString) -> Result<(), Error> {
+    async fn handle_deep_link(&mut self, url: &SecretString) -> Result<()> {
         let auth_response =
             deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
@@ -390,7 +390,7 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn handle_request(&mut self, req: ControllerRequest) -> Result<(), Error> {
+    async fn handle_request(&mut self, req: ControllerRequest) -> Result<()> {
         match req {
             Req::ApplySettings(settings) => {
                 self.log_filter_reloader
@@ -437,7 +437,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
             Req::SchemeRequest(url) => match self.handle_deep_link(&url).await {
                 Ok(()) => {}
-                Err(Error::Other(error))
+                Err(error)
                     if error
                         .root_cause()
                         .downcast_ref::<auth::Error>()
@@ -547,17 +547,16 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn handle_ipc_msg(&mut self, msg: IpcServerMsg) -> Result<ControlFlow<()>, Error> {
+    async fn handle_ipc_msg(&mut self, msg: IpcServerMsg) -> Result<ControlFlow<()>> {
         match msg {
             IpcServerMsg::ClearedLogs(result) => {
                 let Some(tx) = self.clear_logs_callback.take() else {
-                    return Err(Error::Other(anyhow!(
+                    return Err(anyhow!(
                         "Can't handle `IpcClearedLogs` when there's no callback waiting for a `ClearLogs` result"
-                    )));
+                    ));
                 };
-                tx.send(result).map_err(|_| {
-                    Error::Other(anyhow!("Couldn't send `ClearLogs` result to Tauri task"))
-                })?;
+                tx.send(result)
+                    .map_err(|_| anyhow!("Couldn't send `ClearLogs` result to Tauri task"))?;
             }
             IpcServerMsg::ConnectResult(result) => {
                 self.handle_connect_result(result).await?;
@@ -627,10 +626,7 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(ControlFlow::Continue(()))
     }
 
-    async fn handle_connect_result(
-        &mut self,
-        result: Result<(), IpcServiceError>,
-    ) -> Result<(), Error> {
+    async fn handle_connect_result(&mut self, result: Result<(), IpcServiceError>) -> Result<()> {
         let Status::WaitingForPortal {
             start_instant,
             token,

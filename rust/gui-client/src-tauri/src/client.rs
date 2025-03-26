@@ -1,8 +1,9 @@
 use anyhow::{Context as _, Result, bail};
 use clap::{Args, Parser};
 use firezone_gui_client_common::{
-    self as common, controller::Failure, deep_link, errors, settings::AdvancedSettings,
+    self as common, controller::Failure, deep_link, settings::AdvancedSettings,
 };
+use firezone_headless_client::ipc;
 use firezone_telemetry::Telemetry;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
@@ -14,12 +15,6 @@ mod gui;
 mod logging;
 mod settings;
 mod welcome;
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum Error {
-    #[error("GUI module error: {0}")]
-    Gui(#[from] common::errors::Error),
-}
 
 /// The program's entry point, equivalent to `main`
 #[instrument(skip_all)]
@@ -42,7 +37,7 @@ pub(crate) fn run() -> Result<()> {
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 #[cfg(not(target_os = "windows"))] // Windows elevation check never fails.
                 Err(error) => {
-                    common::errors::show_error_dialog(error.user_friendly_msg())?;
+                    show_error_dialog(&error.user_friendly_msg())?;
                     Err(error.into())
                 }
             }
@@ -117,26 +112,27 @@ fn run_gui(cli: Cli) -> Result<()> {
                 .find_map(|e| e.downcast_ref::<tauri_runtime::Error>())
                 .is_some_and(|e| matches!(e, tauri_runtime::Error::CreateWebview(_)))
             {
-                common::errors::show_error_dialog("Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-gui-client>.".to_string())?;
-                return Err(anyhow);
-            }
-
-            if anyhow.root_cause().is::<deep_link::CantListen>() {
-                common::errors::show_error_dialog(
-                    "Firezone is already running. If it's not responding, force-stop it."
-                        .to_string(),
+                show_error_dialog(
+                    "Firezone cannot start because WebView2 is not installed. Follow the instructions at <https://www.firezone.dev/kb/client-apps/windows-gui-client>.",
                 )?;
                 return Err(anyhow);
             }
 
-            // TODO: Get rid of `errors::Error` and check for sources individually like above.
-            if let Some(error) = anyhow.root_cause().downcast_ref::<errors::Error>() {
-                common::errors::show_error_dialog(error.user_friendly_msg())?;
-                tracing::error!("GUI failed: {anyhow:#}");
+            if anyhow.root_cause().is::<deep_link::CantListen>() {
+                show_error_dialog(
+                    "Firezone is already running. If it's not responding, force-stop it.",
+                )?;
                 return Err(anyhow);
             }
 
-            common::errors::show_error_dialog(common::errors::GENERIC_MSG.to_owned())?;
+            if anyhow.root_cause().is::<ipc::NotFound>() {
+                show_error_dialog("Couldn't find Firezone IPC service. Is the service running?")?;
+                return Err(anyhow);
+            }
+
+            show_error_dialog(
+                "An unexpected error occurred. Please try restarting Firezone. If the issue persists, contact your administrator.",
+            )?;
             tracing::error!("GUI failed: {anyhow:#}");
 
             Err(anyhow)
@@ -158,6 +154,21 @@ fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
         .show_alert()
         .context("Can't show log filter error dialog")?;
 
+    Ok(())
+}
+
+/// Blocks the thread and shows an error dialog
+///
+/// Doesn't play well with async, only use this if we're bailing out of the
+/// entire process.
+fn show_error_dialog(msg: &str) -> Result<()> {
+    // I tried the Tauri dialogs and for some reason they don't show our
+    // app icon.
+    native_dialog::MessageDialog::new()
+        .set_title("Firezone Error")
+        .set_text(msg)
+        .set_type(native_dialog::MessageType::Error)
+        .show_alert()?;
     Ok(())
 }
 

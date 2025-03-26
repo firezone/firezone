@@ -24,15 +24,9 @@ pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, Encoder<IpcClientMsg
 pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, Decoder<IpcClientMsg>>;
 pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, Encoder<IpcServerMsg>>;
 
-// pub so that the GUI can display a human-friendly message
 #[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Couldn't find IPC service `{0}`")]
-    NotFound(String),
-
-    #[error("{0:#}")] // Use alternate display here to log entire chain of errors.
-    Other(anyhow::Error),
-}
+#[error("Couldn't find IPC service `{0}`")]
+pub struct NotFound(String);
 
 /// A name that both the server and client can use to find each other
 ///
@@ -128,7 +122,7 @@ impl<E: serde::Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
 /// Connect to the IPC service
 ///
 /// Public because the GUI Client will need it
-pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrite), Error> {
+pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrite)> {
     // This is how ChatGPT recommended, and I couldn't think of any more clever
     // way before I asked it.
     let mut last_err = None;
@@ -279,12 +273,5 @@ mod tests {
             }
         }
         Ok(())
-    }
-
-    #[test]
-    fn error_logs_all_anyhow_sources_on_display() {
-        let err = Error::Other(anyhow::anyhow!("foo").context("bar").context("baz"));
-
-        assert_eq!(err.to_string(), "baz: bar: foo");
     }
 }
