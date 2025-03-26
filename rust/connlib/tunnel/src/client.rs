@@ -446,7 +446,11 @@ impl ClientState {
         let mut any_deleted = false;
 
         self.dns_resource_nat_by_gateway
-            .retain(|(_, candidate), _| {
+            .retain(|(_, candidate), state| {
+                let DnsResourceNatState::Confirmed = state else {
+                    return true;
+                };
+
                 if candidate == &message.domain() {
                     any_deleted = true;
                     return false;
