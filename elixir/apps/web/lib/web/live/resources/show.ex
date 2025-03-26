@@ -5,16 +5,7 @@ defmodule Web.Resources.Show do
   alias Domain.{Accounts, Resources, Policies, Flows}
 
   def mount(%{"id" => id} = params, _session, socket) do
-    with {:ok, resource} <-
-           Resources.fetch_resource_by_id_or_persistent_id(id, socket.assigns.subject,
-             preload: [
-               :gateway_groups,
-               :created_by_actor,
-               created_by_identity: [:actor],
-               replaced_by_resource: [],
-               replaces_resource: []
-             ]
-           ),
+    with {:ok, resource} <- fetch_resource(id, socket.assigns.subject),
          {:ok, actor_groups_peek} <-
            Resources.peek_resource_actor_groups([resource], 3, socket.assigns.subject) do
       if connected?(socket) do
@@ -442,5 +433,29 @@ defmodule Web.Resources.Show do
     else
       false
     end
+  end
+
+  defp fetch_resource("internet", subject) do
+    Resources.fetch_internet_resource(subject,
+      preload: [
+        :gateway_groups,
+        :created_by_actor,
+        created_by_identity: [:actor],
+        replaced_by_resource: [],
+        replaces_resource: []
+      ]
+    )
+  end
+
+  defp fetch_resource(id, subject) do
+    Resources.fetch_resource_by_id_or_persistent_id(id, subject,
+      preload: [
+        :gateway_groups,
+        :created_by_actor,
+        created_by_identity: [:actor],
+        replaced_by_resource: [],
+        replaces_resource: []
+      ]
+    )
   end
 end

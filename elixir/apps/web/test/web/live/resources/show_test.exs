@@ -45,6 +45,27 @@ defmodule Web.Live.Resources.ShowTest do
                }}}
   end
 
+  test "renders internet resource without action buttons", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    group = Fixtures.Gateways.create_internet_group(account: account)
+
+    resource =
+      Fixtures.Resources.create_internet_resource(
+        account: account,
+        connections: [%{gateway_group_id: group.id}]
+      )
+
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/#{resource}")
+
+    assert active_buttons(html) == []
+  end
+
   test "renders deleted resource without action buttons", %{
     account: account,
     resource: resource,
