@@ -496,7 +496,7 @@ dependencies = [
 [[package]]
 name = "aya-build"
 version = "0.1.2"
-source = "git+https://github.com/aya-rs/aya#8724cc1b2d61a006f74bc0aab77a5df6dd6b60f3"
+source = "git+https://github.com/thomaseizinger/aya?branch=fix%2Faya-build-pin-nightly#c766051000cc41e3409477a8fec8547acc4d72fd"
 dependencies = [
  "anyhow",
  "cargo_metadata",

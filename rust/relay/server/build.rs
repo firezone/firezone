@@ -12,7 +12,10 @@ fn main() -> anyhow::Result<()> {
         .find(|Package { name, .. }| name == "ebpf-turn-router")
         .context("`ebpf-turn-router` package not found")?;
 
-    aya_build::build_ebpf([package])?;
+    aya_build::build_ebpf(
+        [package],
+        aya_build::Toolchain::Custom("+nightly-2024-12-13"),
+    )?;
 
     Ok(())
 }

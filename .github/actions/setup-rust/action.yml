@@ -92,6 +92,7 @@ runs:
         NIGHTLY="nightly-2024-12-13"
 
         rustup toolchain install $NIGHTLY
+        rustup component add rust-src --toolchain $NIGHTLY
 
         echo "nightly=$NIGHTLY" >> $GITHUB_OUTPUT
       shell: bash

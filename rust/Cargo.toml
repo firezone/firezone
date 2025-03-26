@@ -42,7 +42,7 @@ async-trait = { version = "0.1", default-features = false }
 atomicwrites = "0.4.4"
 axum = { version = "0.7.7", default-features = false }
 aya = { git = "https://github.com/aya-rs/aya" }
-aya-build = { git = "https://github.com/aya-rs/aya" }
+aya-build = { git = "https://github.com/thomaseizinger/aya", branch = "fix/aya-build-pin-nightly" }
 aya-ebpf = { git = "https://github.com/aya-rs/aya" }
 aya-log = { git = "https://github.com/aya-rs/aya" }
 aya-log-ebpf = { git = "https://github.com/aya-rs/aya" }
