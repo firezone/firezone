@@ -144,7 +144,7 @@ impl ClientTunnel {
 
             if let Some(trans) = self.role_state.poll_transmit() {
                 self.io
-                    .send_network(trans.src, trans.dst, &trans.payload, Ecn::Ect0);
+                    .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
                 continue;
             }
 
