@@ -264,6 +264,7 @@ jobs:
           targets: ${{ matrix.arch.target }}
       - name: Install dependencies
         run: ${{ matrix.arch.install_dependencies }}
+      - uses: rui314/setup-mold@f80524ca6eeaa76759b57fb78ddce5d87a20c720 # v1
       - name: Build binaries
         run: |
           set -xe
