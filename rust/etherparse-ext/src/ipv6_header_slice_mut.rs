@@ -24,4 +24,27 @@ impl<'a> Ipv6HeaderSliceMut<'a> {
         // Safety: Slice it at least of length 40 as checked in the ctor.
         unsafe { write_to_offset_unchecked(self.slice, 24, dst) };
     }
+
+    /// Sets the ECN bits in the IPv6 header.
+    ///
+    /// Doing this is a bit trickier than for IPv4 due to the layout of the IPv6 header:
+    ///
+    /// ```text
+    /// 0               8              16              24              32
+    /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    /// |Version| Traffic Class |           Flow Label                  |
+    /// +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    /// ```
+    ///
+    /// The Traffic Class field (of which the lower two bits are used for ECN) is split across
+    /// two bytes. Thus, to set the ECN bits, we actually need to set bit 3 & 4 of the second byte.
+    pub fn set_ecn(&mut self, ecn: u8) {
+        let mask = 0b1100_1111; // Mask to clear the ecn bits.
+        let ecn = ecn << 4; // Shift the ecn bits to the correct position (so they fit the mask above).
+
+        let second_byte = self.slice[1];
+        let new = second_byte & mask | ecn;
+
+        unsafe { write_to_offset_unchecked(self.slice, 1, [new]) };
+    }
 }

@@ -9,7 +9,7 @@ use firezone_logging::{telemetry_event, telemetry_span};
 use futures::FutureExt as _;
 use futures_bounded::FuturesTupleSet;
 use gso_queue::GsoQueue;
-use ip_packet::{IpPacket, MAX_FZ_PAYLOAD};
+use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -296,8 +296,15 @@ impl Io {
         }
     }
 
-    pub fn send_network(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8]) {
-        self.gso_queue.enqueue(src, dst, payload, Instant::now())
+    pub fn send_network(
+        &mut self,
+        src: Option<SocketAddr>,
+        dst: SocketAddr,
+        payload: &[u8],
+        ecn: Ecn,
+    ) {
+        self.gso_queue
+            .enqueue(src, dst, payload, ecn, Instant::now())
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {

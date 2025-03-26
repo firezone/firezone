@@ -2,6 +2,7 @@
 
 use firezone_bin_shared::{TunDeviceManager, platform::udp_socket_factory};
 use ip_network::Ipv4Network;
+use ip_packet::Ecn;
 use socket_factory::DatagramOut;
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
@@ -45,6 +46,7 @@ async fn no_packet_loops_udp() {
             dst: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(141, 101, 90, 0), 3478)), // stun.cloudflare.com,
             packet: &hex_literal::hex!("000100002112A4420123456789abcdef01234567").as_ref(),
             segment_size: None,
+            ecn: Ecn::NonEct,
         })
         .unwrap();
 
