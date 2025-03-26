@@ -38,8 +38,8 @@ pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
     // SAFETY: Windows doesn't store this pointer or handle, and we just got the handle
     // from Tokio, so it should be valid.
     unsafe { GetNamedPipeServerProcessId(handle, &mut server_pid) }
-        .context("Couldn't get PID of named pipe server")
-        .map_err(Error::Other)?;
+        .context("Couldn't get PID of named pipe server")?;
+
     tracing::debug!(?server_pid, "Made IPC connection");
     Ok(stream)
 }

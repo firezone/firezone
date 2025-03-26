@@ -16,12 +16,6 @@ mod logging;
 mod settings;
 mod welcome;
 
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum Error {
-    #[error("GUI module error: {0}")]
-    Gui(#[from] common::errors::Error),
-}
-
 /// The program's entry point, equivalent to `main`
 #[instrument(skip_all)]
 pub(crate) fn run() -> Result<()> {
@@ -134,13 +128,6 @@ fn run_gui(cli: Cli) -> Result<()> {
                 common::errors::show_error_dialog(
                     "Couldn't find Firezone IPC service. Is the service running?".to_string(),
                 )?;
-                return Err(anyhow);
-            }
-
-            // TODO: Get rid of `errors::Error` and check for sources individually like above.
-            if let Some(error) = anyhow.root_cause().downcast_ref::<errors::Error>() {
-                common::errors::show_error_dialog(error.user_friendly_msg())?;
-                tracing::error!("GUI failed: {anyhow:#}");
                 return Err(anyhow);
             }
 
