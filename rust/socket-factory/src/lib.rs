@@ -260,7 +260,7 @@ impl UdpSocket {
                 let num_packets = meta.len / segment_size;
                 let trailing_bytes = meta.len % segment_size;
 
-                tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, %num_packets, %segment_size, %trailing_bytes);
+                tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, ecn = ?meta.ecn, %num_packets, %segment_size, %trailing_bytes);
 
                 let iter = buffer[..meta.len]
                     .chunks(meta.stride)
@@ -315,7 +315,7 @@ impl UdpSocket {
                 {
                     let num_packets = transmit.contents.len() / segment_size;
 
-                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_packets, %segment_size);
+                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, ecn = ?transmit.ecn, %num_packets, %segment_size);
 
                     self.inner.try_io(Interest::WRITABLE, || {
                         self.state.try_send((&self.inner).into(), &transmit)
@@ -325,7 +325,7 @@ impl UdpSocket {
             None => {
                 let num_bytes = transmit.contents.len();
 
-                tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, %num_bytes);
+                tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, ecn = ?transmit.ecn, %num_bytes);
 
                 self.inner.try_io(Interest::WRITABLE, || {
                     self.state.try_send((&self.inner).into(), &transmit)
