@@ -1,8 +1,5 @@
 use anyhow::{Context as _, Result};
-use firezone_headless_client::{
-    IpcClientMsg,
-    ipc::{self, Error},
-};
+use firezone_headless_client::{IpcClientMsg, ipc};
 use futures::SinkExt;
 use secrecy::{ExposeSecret, SecretString};
 use std::net::IpAddr;
@@ -15,7 +12,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn new() -> Result<(Self, ipc::ClientRead), ipc::Error> {
+    pub async fn new() -> Result<(Self, ipc::ClientRead)> {
         tracing::debug!(
             client_pid = std::process::id(),
             "Connecting to IPC service..."
@@ -38,19 +35,14 @@ impl Client {
         Ok(())
     }
 
-    pub async fn connect_to_firezone(
-        &mut self,
-        api_url: &str,
-        token: SecretString,
-    ) -> Result<(), Error> {
+    pub async fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<()> {
         let token = token.expose_secret().clone();
         self.send_msg(&IpcClientMsg::Connect {
             api_url: api_url.to_string(),
             token,
         })
         .await
-        .context("Couldn't send Connect message")
-        .map_err(Error::Other)?;
+        .context("Couldn't send Connect message")?;
         Ok(())
     }
 
