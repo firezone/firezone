@@ -7,17 +7,10 @@ defmodule Web.Resources.Index do
       :ok = Resources.subscribe_to_events_for_account(socket.assigns.account)
     end
 
-    internet_site =
-      case Domain.Gateways.fetch_internet_group(socket.assigns.account) do
-        {:ok, internet_site} -> internet_site
-        _ -> nil
-      end
-
     socket =
       socket
       |> assign(stale: false)
       |> assign(page_title: "Resources")
-      |> assign(internet_site: internet_site)
       |> assign_live_table("resources",
         query_module: Resources.Resource.Query,
         sortable_fields: [
@@ -69,12 +62,6 @@ defmodule Web.Resources.Index do
         <p class="mb-2">
           Resources define the subnets, hosts, and applications for which you want to manage access. You can manage Resources per Site
           in the <.link navigate={~p"/#{@account}/sites"} class={link_style()}>Sites</.link> section.
-        </p>
-        <p :if={Domain.Accounts.internet_resource_enabled?(@account) && @internet_site}>
-          The Internet Resource can now be managed in the
-          <.link navigate={~p"/#{@account}/sites/#{@internet_site}"} class={link_style()}>
-            Internet Site.
-          </.link>
         </p>
       </:help>
       <:action>
@@ -159,6 +146,21 @@ defmodule Web.Resources.Index do
           </:empty>
         </.live_table>
       </:content>
+    </.section>
+
+    <.section :if={Domain.Accounts.internet_resource_enabled?(@account)}>
+      <:title>
+        Internet
+      </:title>
+      <:help>
+        The Internet Resource is a special resource that matches all traffic not matched by any other resource.
+      </:help>
+      <:action>
+        <.button id="view-internet-resource" navigate={~p"/#{@account}/resources/internet"}>
+          View Internet Resource
+        </.button>
+      </:action>
+      <:content></:content>
     </.section>
     """
   end
