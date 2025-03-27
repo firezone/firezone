@@ -453,21 +453,25 @@ impl ClientOnGateway {
 
         // TODO: Should we use the source IP of the packet?
         let icmp_error = match dst {
-            IpAddr::V4(inside_dst) => icmpv4_unreachable(inside_dst, self.client_tun.v4, packet)?,
-            IpAddr::V6(inside_dst) => icmpv6_unreachable(inside_dst, self.client_tun.v6, packet)?,
+            IpAddr::V4(inside_dst) => {
+                icmpv4_network_unreachable(inside_dst, self.client_tun.v4, packet)?
+            }
+            IpAddr::V6(inside_dst) => {
+                icmpv6_address_unreachable(inside_dst, self.client_tun.v6, packet)?
+            }
         };
 
         Ok(TranslateOutboundResult::DestinationUnreachable(icmp_error))
     }
 }
 
-fn icmpv4_unreachable(
+fn icmpv4_network_unreachable(
     src: Ipv4Addr,
     dst: Ipv4Addr,
     original_packet: &IpPacket,
 ) -> Result<IpPacket, anyhow::Error> {
     let builder = PacketBuilder::ipv4(src.octets(), dst.octets(), 20).icmpv4(
-        ip_packet::Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Host),
+        ip_packet::Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Network),
     );
     let payload = original_packet.packet();
 
@@ -476,13 +480,13 @@ fn icmpv4_unreachable(
     Ok(ip_packet)
 }
 
-fn icmpv6_unreachable(
+fn icmpv6_address_unreachable(
     src: Ipv6Addr,
     dst: Ipv6Addr,
     original_packet: &IpPacket,
 ) -> Result<IpPacket, anyhow::Error> {
     let builder = PacketBuilder::ipv6(src.octets(), dst.octets(), 20).icmpv6(
-        ip_packet::Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::NoRoute),
+        ip_packet::Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Address),
     );
     let payload = original_packet.packet();
 
