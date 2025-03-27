@@ -55,6 +55,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: cargo-udeps,cargo-deny
+      - uses: taiki-e/install-action@0b63bc859f7224657cf7e39426848cabaa36f456 # v2.49.9
+        if: ${{ runner.os == 'Linux' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: bpf-linker
       - run: |
           cargo +${{ steps.setup-rust.outputs.nightly_version }} udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
         name: Check for unused dependencies
@@ -67,6 +73,7 @@ jobs:
         shell: bash
       - run: cargo deny check --hide-inclusion-graph
         shell: bash
+
   test:
     name: test-${{ matrix.runs-on }}
     strategy:
@@ -94,6 +101,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: ripgrep
+      - uses: taiki-e/install-action@0b63bc859f7224657cf7e39426848cabaa36f456 # v2.49.9
+        if: ${{ runner.os == 'Linux' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: bpf-linker
       - name: "cargo test"
         shell: bash
         run: |

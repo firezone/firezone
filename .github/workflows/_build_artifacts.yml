@@ -264,6 +264,11 @@ jobs:
           targets: ${{ matrix.arch.target }}
       - name: Install dependencies
         run: ${{ matrix.arch.install_dependencies }}
+      - uses: taiki-e/install-action@0b63bc859f7224657cf7e39426848cabaa36f456 # v2.49.9
+        with:
+          tool: bpf-linker
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build binaries
         run: |
           set -xe

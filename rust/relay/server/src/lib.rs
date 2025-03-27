@@ -5,6 +5,7 @@ mod server;
 mod sleep;
 
 pub mod auth;
+pub mod ebpf;
 #[cfg(feature = "proptest")]
 #[allow(clippy::unwrap_used)]
 pub mod proptest;
