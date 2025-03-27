@@ -965,8 +965,9 @@ impl ClientState {
             self.add_resource(resource.clone());
         }
 
-        for disabled_resource in &new_disabled_resources {
-            self.disable_resource(*disabled_resource);
+        for new_disabled_resource in new_disabled_resources.difference(&current_disabled_resources)
+        {
+            self.disable_resource(*new_disabled_resource);
         }
 
         self.maybe_update_cidr_resources();
