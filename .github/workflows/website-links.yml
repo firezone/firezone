@@ -6,10 +6,6 @@ on:
   schedule:
     - cron: "00 18 * * *"
 
-defaults:
-  run:
-    working-directory: website # Specify working directory to ensure the `.lycheeignore` file is picked up.
-
 jobs:
   linkChecker:
     runs-on: ubuntu-latest
@@ -23,7 +19,7 @@ jobs:
         uses: lycheeverse/lychee-action@f613c4a64e50d792e0b31ec34bbcbba12263c6a6 # v2.3.0
         with:
           fail: false
-          args: --verbose --no-progress --exclude-all-private --base https://firezone.dev .
+          args: --verbose --no-progress --exclude-all-private --base https://firezone.dev website/
 
       - name: Create Issue From File
         if: steps.lychee.outputs.exit_code != 0
