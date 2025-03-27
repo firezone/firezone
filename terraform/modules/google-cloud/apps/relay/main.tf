@@ -241,6 +241,9 @@ resource "google_compute_instance_template" "application" {
 
         volumes = []
 
+        # For loading eBPF programs
+        privileged = true
+
         restartPolicy = "Always"
       }
     })
