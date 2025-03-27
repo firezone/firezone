@@ -8,7 +8,7 @@ use firezone_logging::{err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, VERSION, sockets,
+    Sleep, VERSION, ebpf, sockets,
 };
 use firezone_telemetry::{RELAY_DSN, Telemetry};
 use futures::{FutureExt, future};
@@ -22,6 +22,7 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Poll, ready};
 use std::time::{Duration, Instant};
+use stun_codec::rfc5766::attributes::ChannelNumber;
 use tracing::{Subscriber, level_filters::LevelFilter};
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
@@ -130,6 +131,10 @@ fn main() {
 async fn try_main(args: Args) -> Result<()> {
     setup_tracing(&args)?;
 
+    let ebpf = ebpf::Program::try_load("eth0")
+        .inspect_err(|e| tracing::info!("Failed to load eBPF TURN router: {e:#}"))
+        .ok();
+
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },
         (Some(ip4), None) => IpStack::Ip4(ip4),
@@ -178,7 +183,7 @@ async fn try_main(args: Args) -> Result<()> {
     )?;
     channel.connect(NoParams);
 
-    let mut eventloop = Eventloop::new(server, channel, public_addr, last_heartbeat_sent)?;
+    let mut eventloop = Eventloop::new(server, ebpf, channel, public_addr, last_heartbeat_sent)?;
 
     tracing::info!(target: "relay", "Listening for incoming traffic on UDP port {0}", args.listen_port);
 
@@ -331,6 +336,8 @@ struct Eventloop<R> {
     channel: Option<PhoenixChannel<JoinMessage, IngressMessage, (), NoParams>>,
     sleep: Sleep,
 
+    ebpf: Option<ebpf::Program>,
+
     #[cfg(unix)]
     sigterm: tokio::signal::unix::Signal,
     shutting_down: bool,
@@ -349,6 +356,7 @@ where
 {
     fn new(
         server: Server<R>,
+        ebpf: Option<ebpf::Program>,
         channel: PhoenixChannel<JoinMessage, IngressMessage, (), NoParams>,
         public_address: IpStack,
         last_heartbeat_sent: Arc<Mutex<Option<Instant>>>,
@@ -383,6 +391,7 @@ where
             stats_log_interval: tokio::time::interval(STATS_LOG_INTERVAL),
             last_num_bytes_relayed: 0,
             sockets,
+            ebpf,
             buffer: [0u8; MAX_UDP_SIZE],
             last_heartbeat_sent,
             #[cfg(unix)]
@@ -432,6 +441,36 @@ where
                         })?;
 
                         tracing::info!(target: "relay", %port, %family, "Freeing allocation");
+                    }
+                    Command::CreateChannelBinding {
+                        client,
+                        channel_number,
+                        peer,
+                        allocation_port,
+                    } => {
+                        if let Err(e) = self.create_channel_binding_in_ebpf_map(
+                            client,
+                            channel_number,
+                            peer,
+                            allocation_port,
+                        ) {
+                            tracing::debug!(target: "relay", %client, "Failed to create channel binding in eBPF map: {e:#}");
+                        }
+                    }
+                    Command::DeleteChannelBinding {
+                        client,
+                        channel_number,
+                        peer,
+                        allocation_port,
+                    } => {
+                        if let Err(e) = self.delete_channel_binding_in_ebpf_map(
+                            client,
+                            channel_number,
+                            peer,
+                            allocation_port,
+                        ) {
+                            tracing::debug!(target: "relay", %client, "Failed to delete channel binding in eBPF map: {e:#}");
+                        }
                     }
                 }
 
@@ -593,6 +632,38 @@ where
                 break Poll::Pending;
             }
         }
+    }
+
+    fn create_channel_binding_in_ebpf_map(
+        &mut self,
+        client: ClientSocket,
+        channel_number: ChannelNumber,
+        peer: PeerSocket,
+        allocation_port: AllocationPort,
+    ) -> Result<()> {
+        let Some(ebpf) = self.ebpf.as_mut() else {
+            return Ok(()); // ebPF program not loaded ...
+        };
+
+        ebpf.add_channel_binding(client, channel_number, peer, allocation_port)?;
+
+        Ok(())
+    }
+
+    fn delete_channel_binding_in_ebpf_map(
+        &mut self,
+        client: ClientSocket,
+        channel_number: ChannelNumber,
+        peer: PeerSocket,
+        allocation_port: AllocationPort,
+    ) -> Result<()> {
+        let Some(ebpf) = self.ebpf.as_mut() else {
+            return Ok(()); // ebPF program not loaded ...
+        };
+
+        ebpf.remove_channel_binding(client, channel_number, peer, allocation_port)?;
+
+        Ok(())
     }
 
     fn handle_portal_event(&mut self, event: phoenix_channel::Event<IngressMessage, ()>) {
