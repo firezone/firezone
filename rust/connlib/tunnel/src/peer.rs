@@ -449,16 +449,11 @@ impl ClientOnGateway {
     }
 
     fn dst_unreachable(&self, packet: &IpPacket) -> Result<TranslateOutboundResult> {
-        let dst = packet.destination();
+        let src = packet.source();
 
-        // TODO: Should we use the source IP of the packet?
-        let icmp_error = match dst {
-            IpAddr::V4(inside_dst) => {
-                icmpv4_network_unreachable(inside_dst, self.client_tun.v4, packet)?
-            }
-            IpAddr::V6(inside_dst) => {
-                icmpv6_address_unreachable(inside_dst, self.client_tun.v6, packet)?
-            }
+        let icmp_error = match src {
+            IpAddr::V4(src) => icmpv4_network_unreachable(self.gateway_tun.v4, src, packet)?,
+            IpAddr::V6(src) => icmpv6_address_unreachable(self.gateway_tun.v6, src, packet)?,
         };
 
         Ok(TranslateOutboundResult::DestinationUnreachable(icmp_error))
