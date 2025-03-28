@@ -199,6 +199,12 @@ resource "google_compute_instance_template" "application" {
 
     nic_type = "GVNIC"
 
+    # Maximum NIC Rx/Tx queue count. The default is 1. Adjust this based on number of vCPUs.
+    # NOTE: Minimum of 2 is required for XDP programs to load onto the NIC.
+    # This is because the `gve` driver expects the number of active queues to be
+    # less than or equal to half the maximum number of queues.
+    queue_count = 2
+
     stack_type = "IPV4_IPV6"
 
     ipv6_access_config {
