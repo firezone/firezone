@@ -197,6 +197,8 @@ resource "google_compute_instance_template" "application" {
   network_interface {
     subnetwork = var.instances[each.key].subnet
 
+    nic_type = "GVNIC"
+
     stack_type = "IPV4_IPV6"
 
     ipv6_access_config {
