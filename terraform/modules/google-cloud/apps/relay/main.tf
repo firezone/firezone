@@ -54,7 +54,7 @@ locals {
 
 # Fetch most recent COS image
 data "google_compute_image" "coreos" {
-  family  = "cos-113-lts"
+  family  = "cos-117-lts"
   project = "cos-cloud"
 }
 
