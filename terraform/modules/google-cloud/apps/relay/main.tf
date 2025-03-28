@@ -197,13 +197,8 @@ resource "google_compute_instance_template" "application" {
   network_interface {
     subnetwork = var.instances[each.key].subnet
 
-    nic_type = "GVNIC"
-
-    # Maximum NIC Rx/Tx queue count. The default is 1. Adjust this based on number of vCPUs.
-    # NOTE: Minimum of 2 is required for XDP programs to load onto the NIC.
-    # This is because the `gve` driver expects the number of active queues to be
-    # less than or equal to half the maximum number of queues.
-    queue_count = 2
+    nic_type    = "GVNIC"
+    queue_count = var.queue_count
 
     stack_type = "IPV4_IPV6"
 
@@ -239,6 +234,9 @@ resource "google_compute_instance_template" "application" {
   }
 
   metadata = {
+    # RX and TX queue count should be half of queue_count above.
+    startup-script = "#!/bin/sh\nethtool -L eth0 rx ${var.queue_count / 2} tx ${var.queue_count / 2}"
+
     gce-container-declaration = yamlencode({
       spec = {
         containers = [{
