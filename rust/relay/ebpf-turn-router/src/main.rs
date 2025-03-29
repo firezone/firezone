@@ -15,7 +15,7 @@ use ebpf_shared::{ClientAndChannelV4, PortAndPeerV4};
 use eth2::Eth2;
 use etherparse::{EtherType, IpNumber};
 use ip4::Ip4;
-use move_headers::remove_channel_data_header_ipv4;
+use move_headers::{add_channel_data_header_ipv4, remove_channel_data_header_ipv4};
 use udp::Udp;
 
 mod channel_data;
@@ -121,15 +121,46 @@ fn try_handle_ipv4_channel_data_to_udp(
 }
 
 #[inline(always)]
-#[expect(unused_variables, reason = "Will be used in the future.")]
 fn try_handle_ipv4_udp_to_channel_data(
     ctx: &XdpContext,
     ipv4: Ip4,
     udp: Udp,
 ) -> Result<u32, Error> {
-    // Not yet implemented ...
+    let maybe_client =
+        unsafe { UDP_TO_CHAN_44.get(&PortAndPeerV4::new(ipv4.src(), udp.dst(), udp.src())) };
+    let Some(client_and_channel) = maybe_client else {
+        debug!(
+            ctx,
+            "No channel binding from {:i}:{} on allocation {}",
+            ipv4.src(),
+            udp.src(),
+            udp.dst(),
+        );
 
-    Ok(xdp_action::XDP_PASS)
+        return Ok(xdp_action::XDP_PASS);
+    };
+
+    let new_src = ipv4.dst(); // The IP we received the packet on will be the new source IP.
+    let new_ipv4_total_len = ipv4.total_len() + CHANNEL_DATA_HEADER_LEN as u16;
+    let pseudo_header = ipv4.update(new_src, client_and_channel.client_ip(), new_ipv4_total_len);
+
+    let udp_len = udp.len();
+    let new_udp_len = udp_len + CHANNEL_DATA_HEADER_LEN as u16;
+    udp.update(
+        pseudo_header,
+        3478,
+        client_and_channel.client_port(),
+        new_udp_len,
+    );
+
+    let cd_num = client_and_channel.channel().to_be_bytes();
+    let cd_len = udp_len.to_be_bytes();
+
+    let channel_data_header = [cd_num[0], cd_num[1], cd_len[0], cd_len[1]];
+
+    add_channel_data_header_ipv4(ctx, channel_data_header);
+
+    Ok(xdp_action::XDP_TX)
 }
 
 fn try_handle_turn_ipv6(_: &XdpContext) -> Result<u32, Error> {

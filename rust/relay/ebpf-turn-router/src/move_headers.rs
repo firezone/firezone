@@ -11,7 +11,6 @@ pub fn remove_channel_data_header_ipv4(ctx: &XdpContext) {
     move_headers::<{ CHANNEL_DATA_HEADER_LEN as i32 }, { Ipv4Header::MIN_LEN }>(ctx)
 }
 
-#[expect(dead_code, reason = "Will be used in the future.")]
 pub fn add_channel_data_header_ipv4(ctx: &XdpContext, mut header: [u8; 4]) {
     move_headers::<{ -(CHANNEL_DATA_HEADER_LEN as i32) }, { Ipv4Header::MIN_LEN }>(ctx);
     let offset = (Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN) as u32;
