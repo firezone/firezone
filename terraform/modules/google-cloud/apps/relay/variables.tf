@@ -35,9 +35,10 @@ variable "naming_suffix" {
 # less than or equal to half the maximum number of queues.
 # The active queue count will need to be set at boot in order to be half this, because
 # gve driver defaults to setting the active queue count to the maximum.
+# NOTE 2: The maximum number here should max the number of vCPUs.
 variable "queue_count" {
   type        = number
-  default     = 4
+  default     = 2
   description = "Number of max RX / TX queues to assign to the NIC."
 
   validation {
