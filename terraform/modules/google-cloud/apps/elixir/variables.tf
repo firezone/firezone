@@ -35,6 +35,27 @@ variable "compute_swap_size_gb" {
   description = "Size of the swap disk in GB."
 }
 
+variable "queue_count" {
+  type        = number
+  default     = 2
+  description = "Number of max RX / TX queues to assign to the NIC."
+
+  validation {
+    condition     = var.queue_count >= 2
+    error_message = "queue_count must be greater than or equal to 2."
+  }
+
+  validation {
+    condition     = var.queue_count % 2 == 0
+    error_message = "queue_count must be an even number."
+  }
+
+  validation {
+    condition     = var.queue_count <= 16
+    error_message = "queue_count must be less than or equal to 16."
+  }
+}
+
 ################################################################################
 ## VPC
 ################################################################################
