@@ -8,6 +8,7 @@ use ebpf_shared::Config;
 use stun_codec::rfc5766::attributes::ChannelNumber;
 
 #[tokio::test]
+#[ignore = "Needs root"]
 async fn ping_pong() {
     let _guard = firezone_logging::test("trace,mio=off");
 
