@@ -14,7 +14,7 @@ fn main() -> anyhow::Result<()> {
 
     aya_build::build_ebpf(
         [package],
-        aya_build::Toolchain::Custom("+nightly-2024-12-13"),
+        aya_build::Toolchain::Custom("nightly-2024-12-13"),
     )?;
 
     Ok(())
