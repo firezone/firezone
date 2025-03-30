@@ -65,6 +65,8 @@ pub struct PortAndPeerV4 {
 
     peer_port: u16,
     _padding_dest_port: [u8; 6],
+
+    _padding_struct: [u8; 40],
 }
 
 impl PortAndPeerV4 {
@@ -78,6 +80,8 @@ impl PortAndPeerV4 {
 
             peer_port,
             _padding_dest_port: [0u8; 6],
+
+            _padding_struct: [0u8; 40],
         }
     }
 
