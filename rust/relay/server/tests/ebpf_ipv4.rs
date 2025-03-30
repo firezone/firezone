@@ -19,6 +19,7 @@ async fn ping_pong() {
     program
         .set_config(Config {
             udp_checksum_enabled: false,
+            ..Config::default()
         })
         .unwrap();
 

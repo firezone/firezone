@@ -3,6 +3,7 @@
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
+use ebpf_shared::Config;
 use firezone_bin_shared::http_health_check;
 use firezone_logging::{err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
@@ -131,9 +132,18 @@ fn main() {
 async fn try_main(args: Args) -> Result<()> {
     setup_tracing(&args)?;
 
-    let ebpf = ebpf::Program::try_load("eth0")
+    let mut ebpf = ebpf::Program::try_load("eth0")
         .inspect_err(|e| tracing::info!("Failed to load eBPF TURN router: {e:#}"))
         .ok();
+
+    if let Some(ebpf) = ebpf.as_mut() {
+        ebpf.set_config(Config {
+            udp_checksum_enabled: true,
+            lowest_allocation_port: args.lowest_port,
+            highest_allocation_port: args.highest_port,
+        })
+        .context("Failed to set config of eBPF program")?;
+    }
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },

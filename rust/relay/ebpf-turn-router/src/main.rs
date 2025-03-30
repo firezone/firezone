@@ -75,10 +75,18 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
     trace!(ctx, "New packet from {:i}:{}", ipv4.src(), udp.src());
 
     if udp.dst() == 3478 {
-        try_handle_ipv4_channel_data_to_udp(ctx, ipv4, udp)
-    } else {
-        try_handle_ipv4_udp_to_channel_data(ctx, ipv4, udp)
+        let action = try_handle_ipv4_channel_data_to_udp(ctx, ipv4, udp)?;
+
+        return Ok(action);
     }
+
+    if config::allocation_range().contains(&udp.dst()) {
+        let action = try_handle_ipv4_udp_to_channel_data(ctx, ipv4, udp)?;
+
+        return Ok(action);
+    }
+
+    Ok(xdp_action::XDP_PASS)
 }
 
 fn try_handle_ipv4_channel_data_to_udp(

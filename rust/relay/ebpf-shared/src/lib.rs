@@ -103,10 +103,22 @@ impl PortAndPeerV4 {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct Config {
     pub udp_checksum_enabled: bool,
+    pub lowest_allocation_port: u16,
+    pub highest_allocation_port: u16,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            udp_checksum_enabled: true,
+            lowest_allocation_port: 49152,
+            highest_allocation_port: 65535,
+        }
+    }
 }
 
 #[cfg(all(feature = "std", target_os = "linux"))]
@@ -127,5 +139,10 @@ mod tests {
     #[test]
     fn client_and_channel_has_size_64() {
         assert_eq!(std::mem::size_of::<ClientAndChannelV4>(), 64)
+    }
+
+    #[test]
+    fn port_and_peer_has_size_64() {
+        assert_eq!(std::mem::size_of::<PortAndPeerV4>(), 64)
     }
 }
