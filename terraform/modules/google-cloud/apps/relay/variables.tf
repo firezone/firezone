@@ -29,6 +29,34 @@ variable "naming_suffix" {
   description = "Suffix to append to the name of resources."
 }
 
+# Maximum NIC Rx/Tx queue count. The default is 1. Adjust this based on number of vCPUs.
+# NOTE: Minimum of 2 is required for XDP programs to load onto the NIC.
+# This is because the `gve` driver expects the number of active queues to be
+# less than or equal to half the maximum number of queues.
+# The active queue count will need to be set at boot in order to be half this, because
+# gve driver defaults to setting the active queue count to the maximum.
+# NOTE 2: The maximum number here should max the number of vCPUs.
+variable "queue_count" {
+  type        = number
+  default     = 2
+  description = "Number of max RX / TX queues to assign to the NIC."
+
+  validation {
+    condition     = var.queue_count >= 2
+    error_message = "queue_count must be greater than or equal to 2."
+  }
+
+  validation {
+    condition     = var.queue_count % 2 == 0
+    error_message = "queue_count must be an even number."
+  }
+
+  validation {
+    condition     = var.queue_count <= 16
+    error_message = "queue_count must be less than or equal to 16."
+  }
+}
+
 ################################################################################
 ## Container Registry
 ################################################################################

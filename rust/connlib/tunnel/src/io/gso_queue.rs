@@ -6,6 +6,7 @@ use std::{
 };
 
 use bytes::BytesMut;
+use ip_packet::Ecn;
 use socket_factory::DatagramOut;
 
 use super::MAX_INBOUND_PACKET_BATCH;
@@ -55,6 +56,7 @@ impl GsoQueue {
         src: Option<SocketAddr>,
         dst: SocketAddr,
         payload: &[u8],
+        ecn: Ecn,
         now: Instant,
     ) {
         let segment_size = payload.len();
@@ -74,6 +76,7 @@ impl GsoQueue {
             .or_insert_with(|| DatagramBuffer {
                 inner: None,
                 last_access: now,
+                ecn,
             });
 
         buffer
@@ -81,6 +84,7 @@ impl GsoQueue {
             .get_or_insert_with(|| self.buffer_pool.pull_owned())
             .extend_from_slice(payload);
         buffer.last_access = now;
+        buffer.ecn = ecn;
     }
 
     pub fn datagrams(
@@ -88,6 +92,7 @@ impl GsoQueue {
     ) -> impl Iterator<Item = DatagramOut<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>> + '_
     {
         self.inner.iter_mut().filter_map(|(key, buffer)| {
+            let ecn = buffer.ecn;
             // It is really important that we `take` the buffer here, otherwise it is not returned to the pool after.
             let buffer = buffer.inner.take()?;
 
@@ -100,6 +105,7 @@ impl GsoQueue {
                 dst: key.dst,
                 packet: buffer,
                 segment_size: Some(key.segment_size),
+                ecn,
             })
         })
     }
@@ -119,6 +125,7 @@ struct Key {
 struct DatagramBuffer {
     inner: Option<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>,
     last_access: Instant,
+    ecn: Ecn,
 }
 
 #[cfg(test)]
@@ -132,7 +139,7 @@ mod tests {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST, b"foobar", now);
+        send_queue.enqueue(None, DST, b"foobar", Ecn::NonEct, now);
         for _entry in send_queue.datagrams() {}
 
         send_queue.handle_timeout(now + Duration::from_secs(60));
@@ -145,7 +152,7 @@ mod tests {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST, b"foobar", now);
+        send_queue.enqueue(None, DST, b"foobar", Ecn::NonEct, now);
 
         send_queue.handle_timeout(now + Duration::from_secs(60));
 
@@ -157,7 +164,7 @@ mod tests {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST, b"foobar", now);
+        send_queue.enqueue(None, DST, b"foobar", Ecn::NonEct, now);
 
         let datagrams = send_queue.datagrams();
         drop(datagrams);
@@ -174,8 +181,8 @@ mod tests {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST, b"foobar", now);
-        send_queue.enqueue(None, DST_2, b"bar", now);
+        send_queue.enqueue(None, DST, b"foobar", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_2, b"bar", Ecn::NonEct, now);
 
         // Taking it from the iterator is "sending" ...
         let _datagrams = send_queue.datagrams().collect::<Vec<_>>();

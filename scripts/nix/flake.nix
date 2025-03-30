@@ -11,6 +11,9 @@
         let
           pkgs = import nixpkgs {
             inherit system;
+            config = {
+              allowUnfree = true;
+            };
           };
 
           packages = with pkgs; [
@@ -29,6 +32,7 @@
             gnome.zenity
             desktop-file-utils
             android-tools
+            terraform
 
             # For Tauri
             at-spi2-atk

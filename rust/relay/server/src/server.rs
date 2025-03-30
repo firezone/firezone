@@ -110,6 +110,20 @@ pub enum Command {
         port: AllocationPort,
         family: AddressFamily,
     },
+    CreateChannelBinding {
+        client: ClientSocket,
+        channel_number: ChannelNumber,
+
+        peer: PeerSocket,
+        allocation_port: AllocationPort,
+    },
+    DeleteChannelBinding {
+        client: ClientSocket,
+        channel_number: ChannelNumber,
+
+        peer: PeerSocket,
+        allocation_port: AllocationPort,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
@@ -430,6 +444,14 @@ where
         {
             tracing::info!(target: "relay", channel = %number.value(), %client, peer = %channel.peer_address, allocation = %channel.allocation, "Channel is now expired");
 
+            self.pending_commands
+                .push_back(Command::DeleteChannelBinding {
+                    client: *client,
+                    channel_number: *number,
+                    peer: channel.peer_address,
+                    allocation_port: channel.allocation,
+                });
+
             channel.bound = false;
             if let Some((cs, n)) = self
                 .channel_and_client_by_port_and_peer
@@ -707,6 +729,13 @@ where
                 (channel.allocation, channel.peer_address),
                 (sender, requested_channel),
             );
+            self.pending_commands
+                .push_back(Command::CreateChannelBinding {
+                    client: sender,
+                    channel_number: requested_channel,
+                    peer: peer_address,
+                    allocation_port: channel.allocation,
+                });
 
             tracing::info!(target: "relay", "Refreshed channel binding");
 
@@ -911,6 +940,7 @@ where
                 bound: true,
             },
         );
+
         debug_assert!(existing.is_none());
 
         let existing = self

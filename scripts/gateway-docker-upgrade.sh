@@ -28,7 +28,7 @@ for RUNNING_CONTAINER in $CURRENTLY_RUNNING; do
         # Due to issues like https://github.com/firezone/firezone/issues/8471 we prefer to use the FIREZONE_ID
         # env var instead of volume-mapped id files on all deployment methods. This attempts to migrate the
         # FIREZONE_ID from the running container and set it as an env var in the new container.
-        FILE_FIREZONE_ID=$(docker exec "$RUNNING_CONTAINER" cat /var/lib/firezone/gateway_id)
+        FILE_FIREZONE_ID=$(docker exec "$RUNNING_CONTAINER" /bin/sh -c "cat /var/lib/firezone/gateway_id 2>/dev/null | tr -d '\n' || true")
         if [ -n "$FILE_FIREZONE_ID" ]; then
             # Replace FIREZONE_ID in variables.env if variables.env contains FIREZONE_ID
             if grep -q "^FIREZONE_ID=" variables.env; then

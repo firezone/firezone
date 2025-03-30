@@ -75,7 +75,7 @@ locals {
 
 # Fetch most recent COS image
 data "google_compute_image" "coreos" {
-  family  = "cos-113-lts"
+  family  = "cos-117-lts"
   project = "cos-cloud"
 }
 
@@ -153,8 +153,10 @@ resource "google_compute_instance_template" "application" {
   }
 
   network_interface {
-    subnetwork = var.vpc_subnetwork
-    stack_type = "IPV4_IPV6"
+    subnetwork  = var.vpc_subnetwork
+    nic_type    = "GVNIC"
+    queue_count = var.queue_count
+    stack_type  = "IPV4_IPV6"
 
     ipv6_access_config {
       network_tier = "PREMIUM"

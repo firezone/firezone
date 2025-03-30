@@ -94,8 +94,8 @@ defmodule Domain.Policies do
         with: &Policy.Changeset.update(&1, attrs),
         after_update_commit: &broadcast_policy_events(:update, &1),
         after_breaking_update_commit: fn updated_policy, _changeset ->
-          {:ok, _flows} = Flows.expire_flows_for(updated_policy, subject)
-          :ok = broadcast_policy_events(:delete, updated_policy)
+          {:ok, _flows} = Flows.expire_flows_for(policy, subject)
+          :ok = broadcast_policy_events(:delete, policy)
           :ok = broadcast_policy_events(:create, updated_policy)
         end
       )

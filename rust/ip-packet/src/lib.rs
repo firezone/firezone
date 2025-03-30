@@ -6,18 +6,12 @@ mod buffer_pool;
 mod fz_p2p_control;
 mod fz_p2p_control_slice;
 mod icmp_dest_unreachable;
-mod icmpv4_header_slice_mut;
-mod icmpv6_header_slice_mut;
-mod ipv4_header_slice_mut;
-mod ipv6_header_slice_mut;
+
 mod nat46;
 mod nat64;
 #[cfg(feature = "proptest")]
 #[allow(clippy::unwrap_used)]
 pub mod proptest;
-mod slice_utils;
-mod tcp_header_slice_mut;
-mod udp_header_slice_mut;
 
 use buffer_pool::Buffer;
 pub use etherparse::*;
@@ -29,13 +23,14 @@ pub use icmp_dest_unreachable::{DestUnreachable, FailedPacket};
 mod proptests;
 
 use anyhow::{Context as _, Result, bail};
-use icmpv4_header_slice_mut::Icmpv4HeaderSliceMut;
-use icmpv6_header_slice_mut::Icmpv6EchoHeaderSliceMut;
-use ipv4_header_slice_mut::Ipv4HeaderSliceMut;
-use ipv6_header_slice_mut::Ipv6HeaderSliceMut;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use tcp_header_slice_mut::TcpHeaderSliceMut;
-use udp_header_slice_mut::UdpHeaderSliceMut;
+
+use etherparse_ext::Icmpv4HeaderSliceMut;
+use etherparse_ext::Icmpv6EchoHeaderSliceMut;
+use etherparse_ext::Ipv4HeaderSliceMut;
+use etherparse_ext::Ipv6HeaderSliceMut;
+use etherparse_ext::TcpHeaderSliceMut;
+use etherparse_ext::UdpHeaderSliceMut;
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
@@ -183,6 +178,19 @@ impl std::fmt::Debug for IpPacket {
             dbg.field("src_port", &udp.source_port())
                 .field("dst_port", &udp.destination_port());
         }
+
+        match self.ecn() {
+            Ecn::NonEct => {}
+            Ecn::Ect1 => {
+                dbg.field("ecn", &"ECT(1)");
+            }
+            Ecn::Ect0 => {
+                dbg.field("ecn", &"ECT(0)");
+            }
+            Ecn::Ce => {
+                dbg.field("ecn", &"CE");
+            }
+        };
 
         dbg.finish()
     }
@@ -849,6 +857,30 @@ impl IpPacket {
         }
     }
 
+    pub fn with_ecn(mut self, ecn: Ecn) -> Self {
+        match &mut self {
+            IpPacket::Ipv4(ip) => ip.ip_header_mut().set_ecn(ecn as u8),
+            IpPacket::Ipv6(ip) => ip.header_mut().set_ecn(ecn as u8),
+        }
+
+        self
+    }
+
+    pub fn ecn(&self) -> Ecn {
+        let byte = match self {
+            IpPacket::Ipv4(ip) => ip.ip_header().ecn().value(),
+            IpPacket::Ipv6(ip) => ip.header().traffic_class(),
+        };
+
+        match byte & 0b00000011 {
+            0b00000000 => Ecn::NonEct,
+            0b00000001 => Ecn::Ect1,
+            0b00000010 => Ecn::Ect0,
+            0b00000011 => Ecn::Ce,
+            _ => unreachable!(),
+        }
+    }
+
     pub fn ipv4_header(&self) -> Option<Ipv4Header> {
         match self {
             Self::Ipv4(p) => Some(p.ip_header().to_header()),
@@ -993,6 +1025,17 @@ fn extract_l4_proto(payload: &[u8], protocol: IpNumber) -> Result<Layer4Protocol
     Ok(proto)
 }
 
+/// Models the possible ECN states.
+///
+/// See <https://www.rfc-editor.org/rfc/rfc3168#section-23.1> for details.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ecn {
+    NonEct = 0b00,
+    Ect1 = 0b01,
+    Ect0 = 0b10,
+    Ce = 0b11,
+}
+
 impl From<ConvertibleIpv4Packet> for IpPacket {
     fn from(value: ConvertibleIpv4Packet) -> Self {
         Self::Ipv4(value)
@@ -1038,5 +1081,27 @@ mod tests {
         let udp_payload = &ip_payload[etherparse::UdpHeader::LEN..];
 
         assert_eq!(udp_payload, b"foobar");
+    }
+
+    #[test]
+    fn ipv4_ecn() {
+        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+            .unwrap();
+
+        assert_eq!(p.clone().with_ecn(Ecn::NonEct).ecn(), Ecn::NonEct);
+        assert_eq!(p.clone().with_ecn(Ecn::Ect0).ecn(), Ecn::Ect0);
+        assert_eq!(p.clone().with_ecn(Ecn::Ect1).ecn(), Ecn::Ect1);
+        assert_eq!(p.with_ecn(Ecn::Ce).ecn(), Ecn::Ce);
+    }
+
+    #[test]
+    fn ipv6_ecn() {
+        let p = crate::make::udp_packet(Ipv6Addr::LOCALHOST, Ipv6Addr::LOCALHOST, 0, 0, vec![])
+            .unwrap();
+
+        assert_eq!(p.clone().with_ecn(Ecn::NonEct).ecn(), Ecn::NonEct);
+        assert_eq!(p.clone().with_ecn(Ecn::Ect1).ecn(), Ecn::Ect1);
+        assert_eq!(p.clone().with_ecn(Ecn::Ect0).ecn(), Ecn::Ect0);
+        assert_eq!(p.with_ecn(Ecn::Ce).ecn(), Ecn::Ce);
     }
 }

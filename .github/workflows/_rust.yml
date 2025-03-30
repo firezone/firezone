@@ -55,9 +55,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: cargo-udeps,cargo-deny
+      - uses: taiki-e/install-action@0b63bc859f7224657cf7e39426848cabaa36f456 # v2.49.9
+        if: ${{ runner.os == 'Linux' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: bpf-linker
       - run: |
-          rustup install --no-self-update nightly-2024-12-13 --profile minimal # The exact nightly version doesn't matter, just pin a random one.
-          cargo +nightly-2024-12-13 udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
+          cargo +${{ steps.setup-rust.outputs.nightly_version }} udeps --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
         name: Check for unused dependencies
       - run: cargo fmt -- --check
       - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.packages }}
@@ -68,6 +73,7 @@ jobs:
         shell: bash
       - run: cargo deny check --hide-inclusion-graph
         shell: bash
+
   test:
     name: test-${{ matrix.runs-on }}
     strategy:
@@ -95,6 +101,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: ripgrep
+      - uses: taiki-e/install-action@0b63bc859f7224657cf7e39426848cabaa36f456 # v2.49.9
+        if: ${{ runner.os == 'Linux' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: bpf-linker
       - name: "cargo test"
         shell: bash
         run: |

@@ -54,7 +54,7 @@ locals {
 
 # Fetch most recent COS image
 data "google_compute_image" "coreos" {
-  family  = "cos-113-lts"
+  family  = "cos-117-lts"
   project = "cos-cloud"
 }
 
@@ -197,6 +197,9 @@ resource "google_compute_instance_template" "application" {
   network_interface {
     subnetwork = var.instances[each.key].subnet
 
+    nic_type    = "GVNIC"
+    queue_count = var.queue_count
+
     stack_type = "IPV4_IPV6"
 
     ipv6_access_config {
@@ -231,12 +234,18 @@ resource "google_compute_instance_template" "application" {
   }
 
   metadata = {
+    # RX and TX queue count should be half of queue_count above.
+    startup-script = "#!/bin/sh\nethtool -L eth0 rx ${var.queue_count / 2} tx ${var.queue_count / 2}"
+
     gce-container-declaration = yamlencode({
       spec = {
         containers = [{
           name  = local.application_name != null ? local.application_name : var.image
           image = "${var.container_registry}/${var.image_repo}/${var.image}:${var.image_tag}"
           env   = local.environment_variables
+          securityContext = {
+            privileged = true # For loading eBPF programs
+          }
         }]
 
         volumes = []

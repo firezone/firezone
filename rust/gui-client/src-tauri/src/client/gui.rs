@@ -12,15 +12,14 @@ use common::system_tray::Event as TrayMenuEvent;
 use firezone_gui_client_common::{
     self as common,
     controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
-    deep_link, errors,
+    deep_link,
     settings::AdvancedSettings,
     updates,
 };
 use firezone_logging::err_with_src;
 use firezone_telemetry as telemetry;
-use futures::FutureExt;
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{panic::AssertUnwindSafe, str::FromStr, time::Duration};
+use std::{str::FromStr, time::Duration};
 use tauri::Manager;
 use tokio::sync::mpsc;
 use tracing::instrument;
@@ -55,6 +54,14 @@ pub(crate) struct Managed {
 struct TauriIntegration {
     app: tauri::AppHandle,
     tray: system_tray::Tray,
+}
+
+impl Drop for TauriIntegration {
+    fn drop(&mut self) {
+        tracing::debug!("Instructing Tauri to exit");
+
+        self.app.exit(0);
+    }
 }
 
 impl GuiIntegration for TauriIntegration {
@@ -124,6 +131,8 @@ pub(crate) fn run(
 ) -> Result<()> {
     // Needed for the deep link server
     let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
+    tauri::async_runtime::set(rt.handle().clone());
+
     let _guard = rt.enter();
 
     // Make sure we're single-instance
@@ -138,6 +147,8 @@ pub(crate) fn run(
         ctlr_tx: ctlr_tx.clone(),
         inject_faults: cli.inject_faults,
     };
+
+    let (handle_tx, handle_rx) = tokio::sync::oneshot::channel();
 
     let app = tauri::Builder::default()
         .manage(managed)
@@ -233,70 +244,54 @@ pub(crate) fn run(
             })?;
             let integration = TauriIntegration { app: app.handle().clone(), tray };
 
-            let app_handle = app.handle().clone();
-            let _ctlr_task = tokio::spawn(async move {
-                let result = AssertUnwindSafe(Controller::start(
-                    ctlr_tx,
-                    integration,
-                    ctlr_rx,
-                    advanced_settings,
-                    reloader,
-                    updates_rx,
-                )).catch_unwind().await;
+            // Spawn the controller
+            let ctrl_task = tokio::spawn(Controller::start(
+                ctlr_tx,
+                integration,
+                ctlr_rx,
+                advanced_settings,
+                reloader,
+                updates_rx,
+            ));
 
-                // See <https://github.com/tauri-apps/tauri/issues/8631>
-                // This should be the ONLY place we call `app.exit` or `app_handle.exit`,
-                // because it exits the entire process without dropping anything.
-                //
-                // This seems to be a platform limitation that Tauri is unable to hide
-                // from us. It was the source of much consternation at time of writing.
-
-                let exit_code = match result {
-                    Err(_panic) => {
-                        // The panic will have been recorded already by Sentry's panic hook.
-                        telemetry.stop_on_crash().await;
-
-                        1
-                    }
-                    Ok(Err(error)) => {
-                        tracing::error!("run_controller returned an error: {}", err_with_src(&error));
-                        if let Err(e) = errors::show_error_dialog(error.user_friendly_msg()) {
-                            tracing::error!("Failed to show error dialog: {e:#}");
-                        }
-                        telemetry.stop_on_crash().await;
-                        1
-                    }
-                    Ok(Ok(_)) => {
-                        telemetry.stop().await;
-
-                        0
-                    }
-                };
-
-                // But due to a limit in `tao` we cannot return from the event loop and must call `std::process::exit` (or Tauri's wrapper), so we explicitly flush here.
-                // TODO: This limit may not exist in Tauri v2
-
-                tracing::info!(%exit_code, "Goodbye!");
-                app_handle.exit(exit_code);
-                // In Tauri v1, calling `App::exit` internally exited the process.
-                // In Tauri v2, that doesn't happen, but `App::run` still doesn't return, so we have to bail out of the process manually.
-                std::process::exit(exit_code);
-            });
+            // Send the handle to the controller task back to the main thread.
+            // If the receiver is gone, we don't care.
+            let _ = handle_tx.send(ctrl_task);
 
             Ok(())
         })
         .build(tauri::generate_context!())
         .context("Failed to build Tauri app instance")?;
 
-    app.run(|_app_handle, event| {
-        if let tauri::RunEvent::ExitRequested { api, .. } = event {
+    // Run the Tauri app to completion, i.e. until `app_handle.exit(0)` is called.
+    app.run_return(|_app_handle, event| {
+        if let tauri::RunEvent::ExitRequested {
+            api, code: None, .. // `code: None` means the user closed the last window.
+        } = event
+        {
             // Don't exit if we close our main window
             // https://tauri.app/v1/guides/features/system-tray/#preventing-the-app-from-closing
-
             api.prevent_exit();
         }
     });
-    tracing::warn!("app.run returned, this is normally unreachable even in Tauri v2");
+
+    // Wait until the controller task finishes.
+    rt.block_on(async move {
+        let ctrl_task = handle_rx.await.context("Failed to complete setup hook")?;
+        let ctrl_or_timeout = tokio::time::timeout(Duration::from_secs(5), ctrl_task);
+
+        ctrl_or_timeout
+            .await
+            .context("Controller failed to exit within 5s after OS-eventloop finished")?
+            .context("Controller panicked")?
+            .context("Controller failed")?;
+
+        anyhow::Ok(())
+    })
+    .inspect_err(|_| rt.block_on(telemetry.stop_on_crash()))?;
+
+    tracing::info!("Controller exited gracefully");
+
     Ok(())
 }
 

@@ -446,7 +446,11 @@ impl ClientState {
         let mut any_deleted = false;
 
         self.dns_resource_nat_by_gateway
-            .retain(|(_, candidate), _| {
+            .retain(|(_, candidate), state| {
+                let DnsResourceNatState::Confirmed = state else {
+                    return true;
+                };
+
                 if candidate == &message.domain() {
                     any_deleted = true;
                     return false;
@@ -961,8 +965,9 @@ impl ClientState {
             self.add_resource(resource.clone());
         }
 
-        for disabled_resource in &new_disabled_resources {
-            self.disable_resource(*disabled_resource);
+        for new_disabled_resource in new_disabled_resources.difference(&current_disabled_resources)
+        {
+            self.disable_resource(*new_disabled_resource);
         }
 
         self.maybe_update_cidr_resources();
