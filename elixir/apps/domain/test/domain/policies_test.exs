@@ -582,25 +582,29 @@ defmodule Domain.PoliciesTest do
     } do
       flow = Fixtures.Flows.create_flow(account: account, subject: subject, policy: policy)
       new_resource = Fixtures.Resources.create_resource(account: account)
+      new_actor_group = Fixtures.Actors.create_group(account: account)
 
       :ok = subscribe_to_events_for_policy(policy)
       :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
       :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
 
-      attrs = %{resource_id: new_resource.id}
+      attrs = %{resource_id: new_resource.id, actor_group_id: new_actor_group.id}
 
-      assert {:updated, updated_policy} =
-               update_policy(policy, attrs, subject)
+      assert {:updated, updated_policy} = update_policy(policy, attrs, subject)
 
+      # Updating a policy sends delete and create events
       assert_receive {:delete_policy, policy_id}
+      assert policy_id == policy.id
+
+      assert_receive {:create_policy, policy_id}
       assert policy_id == updated_policy.id
 
       assert_receive {:reject_access, policy_id, actor_group_id, resource_id}
-      assert policy_id == updated_policy.id
-      assert actor_group_id == updated_policy.actor_group_id
-      assert resource_id == updated_policy.resource_id
+      assert policy_id == policy.id
+      assert actor_group_id == policy.actor_group_id
+      assert resource_id == policy.resource_id
 
-      assert_received {:expire_flow, flow_id, _flow_client_id, _flow_resource_id}
+      assert_receive {:expire_flow, flow_id, _flow_client_id, _flow_resource_id}
       assert flow_id == flow.id
     end
 

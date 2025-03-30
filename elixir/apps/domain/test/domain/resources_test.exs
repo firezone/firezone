@@ -1394,7 +1394,7 @@ defmodule Domain.ResourcesTest do
       assert resource.name == "foo"
     end
 
-    test "allows to update client address", %{resource: resource, subject: subject} do
+    test "allows to update resource address", %{resource: resource, subject: subject} do
       attrs = %{"address_description" => "http://#{resource.address}:1234/foo"}
       assert {:updated, resource} = update_resource(resource, attrs, subject)
       assert resource.address_description == attrs["address_description"]
@@ -1482,10 +1482,13 @@ defmodule Domain.ResourcesTest do
       assert {:updated, updated_resource} =
                update_resource(resource, attrs, subject)
 
+      # Resource id doesn't change when updated, but for clarity we still test that we receive the
+      # destructive events for the old resource id and the creation events for the new resource id.
       flow_id = flow.id
       updated_resource_id = updated_resource.id
-      assert_receive {:expire_flow, ^flow_id, _client_id, ^updated_resource_id}
-      assert_receive {:delete_resource, ^updated_resource_id}
+      resource_id = resource.id
+      assert_receive {:expire_flow, ^flow_id, _client_id, ^resource_id}
+      assert_receive {:delete_resource, ^resource_id}
       assert_receive {:create_resource, ^updated_resource_id}
     end
 
