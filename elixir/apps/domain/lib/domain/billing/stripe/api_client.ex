@@ -93,7 +93,7 @@ defmodule Domain.Billing.Stripe.APIClient do
       URI.encode_query(
         %{
           "customer" => customer_id,
-          "automatic_tax" => %{"enabled" => true},
+          "automatic_tax[enabled]" => true,
           "items[0][price]" => price_id
         },
         :www_form
