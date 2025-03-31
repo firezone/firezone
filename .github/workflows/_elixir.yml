@@ -44,7 +44,7 @@ jobs:
           mix_test="mix test --warnings-as-errors --exclude flaky:true --exclude acceptance:true"
           $mix_test || $mix_test --failed
       - name: Test Report
-        uses: dorny/test-reporter@31a54ee7ebcacc03a09ea97a7e5465a47b84aea5 # v1.9.1
+        uses: dorny/test-reporter@6e6a65b7a0bd2c9197df7d0ae36ac5cee784230c # v2.0.0
         if:
           ${{ github.event.pull_request.head.repo.full_name == github.repository
           && (success() || failure()) }}
@@ -297,7 +297,7 @@ jobs:
           name: screenshots-${{ matrix.MIX_TEST_PARTITION }}
           path: elixir/apps/web/screenshots
       - name: Test Report
-        uses: dorny/test-reporter@31a54ee7ebcacc03a09ea97a7e5465a47b84aea5 # v1.9.1
+        uses: dorny/test-reporter@6e6a65b7a0bd2c9197df7d0ae36ac5cee784230c # v2.0.0
         if:
           ${{ github.event.pull_request.head.repo.full_name == github.repository
           && (success() || failure()) }}
