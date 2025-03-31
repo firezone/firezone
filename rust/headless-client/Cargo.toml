@@ -62,7 +62,7 @@ dirs = { workspace = true }
 ipconfig = "0.3.2"
 itertools = { workspace = true }
 known-folders = { workspace = true }
-windows-service = "0.7.0"
+windows-service = "0.8.0"
 winreg = { workspace = true }
 
 [target.'cfg(windows)'.dependencies.windows]
