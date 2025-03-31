@@ -2,16 +2,18 @@ use aya_ebpf::programs::XdpContext;
 
 use crate::error::Error;
 
-/// Helper function to get a mutable slice of `LEN` bytes at `offset` from the packet data.
 #[inline(always)]
-pub fn slice_mut_at<const LEN: usize>(ctx: &XdpContext, offset: usize) -> Result<&mut [u8], Error> {
+pub(crate) fn slice_mut_at<T>(ctx: &XdpContext, offset: usize) -> Result<&mut T, Error> {
     let start = ctx.data();
     let end = ctx.data_end();
+    let len = core::mem::size_of::<T>();
 
-    // Ensure our access is not out-of-bounds.
-    if start + offset + LEN > end {
+    if start + offset + len > end {
         return Err(Error::PacketTooShort);
     }
 
-    Ok(unsafe { core::slice::from_raw_parts_mut((start + offset) as *mut u8, LEN) })
+    let ptr = (start + offset) as *mut T;
+
+    // SAFETY: Pointer to packet is always valid and we checked the length.
+    Ok(unsafe { &mut *ptr })
 }

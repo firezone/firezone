@@ -66,6 +66,7 @@ divan = "0.1.17"
 dns-lookup = "2.0"
 dns-over-tcp = { path = "dns-over-tcp" }
 dns-types = { path = "dns-types" }
+ebpf-shared = { path = "relay/ebpf-shared" }
 either = "1"
 env_logger = "0.11.6"
 etherparse = { version = "0.17", default-features = false }
@@ -75,7 +76,6 @@ firezone-gui-client-common = { path = "gui-client/src-common" }
 firezone-headless-client = { path = "headless-client" }
 firezone-logging = { path = "logging" }
 firezone-relay = { path = "relay/server" }
-ebpf-shared = { path = "relay/ebpf-shared" }
 firezone-telemetry = { path = "telemetry" }
 firezone-tunnel = { path = "connlib/tunnel" }
 flume = { version = "0.11.1", features = ["async"] }
@@ -102,6 +102,7 @@ lru = "0.12.5"
 mio = "1.0.3"
 moka = "0.12.10"
 native-dialog = "0.7.0"
+network-types = "0.0.7"
 nix = "0.29.0"
 nu-ansi-term = "0.50"
 once_cell = "1.17.1"
@@ -229,7 +230,3 @@ split-debuginfo = "packed"
 [profile.release.package.firezone-gui-client]
 debug = "full"
 split-debuginfo = "packed"
-
-[profile.release.package.ebpf-turn-router]
-debug = 2
-codegen-units = 1

@@ -1,99 +1,128 @@
+use core::net::Ipv4Addr;
+
 use crate::{Error, checksum::ChecksumUpdate, slice_mut_at::slice_mut_at};
 use aya_ebpf::programs::XdpContext;
 use aya_log_ebpf::debug;
-use etherparse::{Ethernet2Header, IpNumber, Ipv4Header, Ipv4HeaderSlice};
-use etherparse_ext::Ipv4HeaderSliceMut;
+use network_types::{eth::EthHdr, ip::IpProto};
 
 /// Represents an IPv4 header within our packet.
 pub struct Ip4<'a> {
-    src: [u8; 4],
-    dst: [u8; 4],
-    protocol: IpNumber,
-    checksum: u16,
-    total_len: u16,
-
     ctx: &'a XdpContext,
-
-    /// Mutable slice of the IPv4 header, allows us to modify the header in-place.
-    slice_mut: Ipv4HeaderSliceMut<'a>,
+    inner: &'a mut Ipv4Hdr,
 }
 
 impl<'a> Ip4<'a> {
+    #[inline(always)]
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
-        let slice_mut = slice_mut_at::<{ Ipv4Header::MIN_LEN }>(ctx, Ethernet2Header::LEN)?;
-        let ipv4_slice =
-            Ipv4HeaderSlice::from_slice(slice_mut).map_err(|_| Error::ParseIpv4Header)?;
+        let hdr = slice_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)?;
 
         // IPv4 packets with options are handled in user-space.
-        if usize::from(ipv4_slice.ihl() * 4) != Ipv4Header::MIN_LEN {
+        if usize::from(hdr.ihl()) * 4 != Ipv4Hdr::LEN {
             return Err(Error::Ipv4PacketWithOptions);
         }
 
-        Ok(Self {
-            ctx,
-            src: ipv4_slice.source(),
-            dst: ipv4_slice.destination(),
-            protocol: ipv4_slice.protocol(),
-            checksum: ipv4_slice.header_checksum(),
-            total_len: ipv4_slice.total_len(),
-            slice_mut: {
-                // SAFETY: We parsed the slice as an IPv4 header above.
-                unsafe { Ipv4HeaderSliceMut::from_slice_unchecked(slice_mut) }
-            },
-        })
+        Ok(Self { ctx, inner: hdr })
     }
 
-    pub fn src(&self) -> [u8; 4] {
-        self.src
+    pub fn src(&self) -> Ipv4Addr {
+        self.inner.src_addr.into()
     }
 
-    pub fn dst(&self) -> [u8; 4] {
-        self.dst
+    pub fn dst(&self) -> Ipv4Addr {
+        self.inner.dst_addr.into()
     }
 
-    pub fn protocol(&self) -> IpNumber {
-        self.protocol
+    pub fn protocol(&self) -> IpProto {
+        self.inner.proto
     }
 
     pub fn total_len(&self) -> u16 {
-        self.total_len
+        u16::from_be_bytes(self.inner.tot_len)
     }
 
     /// Update this packet with a new source, destination, and total length.
     ///
     /// Returns a [`ChecksumUpdate`] representing the checksum-difference of the "IP pseudo-header."
     /// which is used in certain L4 protocols (e.g. UDP).
-    pub fn update(mut self, new_src: [u8; 4], new_dst: [u8; 4], new_len: u16) -> ChecksumUpdate {
-        self.slice_mut.set_source(new_src);
-        self.slice_mut.set_destination(new_dst);
-        self.slice_mut.set_total_length(new_len.to_be_bytes());
+    #[inline(always)]
+    pub fn update(self, new_src: Ipv4Addr, new_dst: Ipv4Addr, new_len: u16) -> ChecksumUpdate {
+        let src = self.src();
+        let dst = self.dst();
+        let total_len = self.total_len();
+
+        self.inner.src_addr = new_src.octets();
+        self.inner.dst_addr = new_dst.octets();
+        self.inner.tot_len = new_len.to_be_bytes();
 
         let ip_pseudo_header = ChecksumUpdate::default()
-            .remove_addr(self.src)
-            .add_addr(new_src)
-            .remove_addr(self.dst)
-            .add_addr(new_dst);
+            .remove_u32(src.to_bits())
+            .add_u32(new_src.to_bits())
+            .remove_u32(dst.to_bits())
+            .add_u32(new_dst.to_bits());
 
-        self.slice_mut.set_checksum(
-            ChecksumUpdate::new(self.checksum)
-                .remove_addr(self.src)
-                .add_addr(new_src)
-                .remove_addr(self.dst)
-                .add_addr(new_dst)
-                .remove_u16(self.total_len)
-                .add_u16(new_len)
-                .into_checksum(),
-        );
+        self.inner.check = ChecksumUpdate::new(u16::from_be_bytes(self.inner.check))
+            .remove_u32(src.to_bits())
+            .add_u32(new_src.to_bits())
+            .remove_u32(dst.to_bits())
+            .add_u32(new_dst.to_bits())
+            .remove_u16(total_len)
+            .add_u16(new_len)
+            .into_checksum()
+            .to_be_bytes();
 
         debug!(
             self.ctx,
-            "IP4 header update: src {:i} -> {:i}; dst {:i} -> {:i}",
-            self.src,
-            new_src,
-            self.dst,
-            new_dst,
+            "IP4 header update: src {:i} -> {:i}; dst {:i} -> {:i}", src, new_src, dst, new_dst,
         );
 
         ip_pseudo_header
+    }
+}
+
+// Copied from `network-types` but uses byte-arrays instead of `u32` and `u16`
+// See <https://github.com/vadorovsky/network-types/issues/32>.
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct Ipv4Hdr {
+    pub version_ihl: u8,
+    pub tos: u8,
+    pub tot_len: [u8; 2],
+    pub id: [u8; 2],
+    pub frag_off: [u8; 2],
+    pub ttl: u8,
+    pub proto: IpProto,
+    pub check: [u8; 2],
+    pub src_addr: [u8; 4],
+    pub dst_addr: [u8; 4],
+}
+
+impl Ipv4Hdr {
+    pub const LEN: usize = core::mem::size_of::<Self>();
+
+    pub fn ihl(&self) -> u8 {
+        self.version_ihl & 0b00001111
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ihl() {
+        let ipv4_hdr = Ipv4Hdr {
+            version_ihl: 0b0100_0101,
+            tos: Default::default(),
+            tot_len: Default::default(),
+            id: Default::default(),
+            frag_off: Default::default(),
+            ttl: Default::default(),
+            proto: IpProto::Udp,
+            check: Default::default(),
+            src_addr: Default::default(),
+            dst_addr: Default::default(),
+        };
+
+        assert_eq!(ipv4_hdr.ihl(), 0b0101); // The lower 4 bits of `version_ihl` are the IHL,
     }
 }
