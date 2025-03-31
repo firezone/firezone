@@ -219,6 +219,13 @@ impl Default for Config {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct StatsEvent {
+    pub relayed_data: u64,
+}
+
 #[cfg(all(feature = "std", target_os = "linux"))]
 mod userspace {
     use super::*;

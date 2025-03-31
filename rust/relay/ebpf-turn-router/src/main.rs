@@ -33,6 +33,7 @@ mod ip4;
 mod ip6;
 mod move_headers;
 mod slice_mut_at;
+mod stats;
 mod udp;
 
 /// Channel mappings from an IPv4 socket + channel number to an IPv4 socket + port.
@@ -90,6 +91,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
     }
 
     let udp = Udp::parse(ctx, Ipv4Hdr::LEN)?; // TODO: Change the API so we parse the UDP header _from_ the ipv4 struct?
+    let udp_payload_len = udp.payload_len();
 
     trace!(
         ctx,
@@ -98,17 +100,19 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
         udp.src(),
         ipv4.dst(),
         udp.dst(),
-        udp.len()
+        udp_payload_len
     );
 
     if config::allocation_range().contains(&udp.dst()) {
         let action = try_handle_ipv4_udp_to_channel_data(ctx, ipv4, udp)?;
+        stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(action);
     }
 
     if udp.dst() == 3478 {
         let action = try_handle_ipv4_channel_data_to_udp(ctx, ipv4, udp)?;
+        stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(action);
     }
@@ -188,6 +192,8 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u32, Error> {
     }
 
     let udp = Udp::parse(ctx, Ipv6Hdr::LEN)?; // TODO: Change the API so we parse the UDP header _from_ the ipv6 struct?
+    let udp_payload_len = udp.payload_len();
+
     trace!(
         ctx,
         "New packet from {:i}:{} for {:i}:{} with UDP payload {}",
@@ -195,17 +201,19 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u32, Error> {
         udp.src(),
         ipv6.dst(),
         udp.dst(),
-        udp.len()
+        udp_payload_len
     );
 
     if config::allocation_range().contains(&udp.dst()) {
         let action = try_handle_ipv6_udp_to_channel_data(ctx, ipv6, udp)?;
+        stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(action);
     }
 
     if udp.dst() == 3478 {
         let action = try_handle_ipv6_channel_data_to_udp(ctx, ipv6, udp)?;
+        stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(action);
     }
