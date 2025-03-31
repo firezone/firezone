@@ -30,8 +30,8 @@ importers:
         specifier: ^2.51.0
         version: 2.51.0
       '@types/node':
-        specifier: 22.13.0
-        version: 22.13.0
+        specifier: 22.13.14
+        version: 22.13.14
       '@types/react':
         specifier: 18.3.11
         version: 18.3.11
@@ -363,12 +363,6 @@ packages:
     cpu: [ia32]
     os: [win32]
 
-  '@next/swc-win32-x64-msvc@14.2.25':
-    resolution: {integrity: sha512-KSznmS6eFjQ9RJ1nEc66kJvtGIL1iZMYmGEXsZPh2YtnLtqrgdVvKXJY2ScjjoFnG6nGLyPFR0UiEvDwVah4Tw==}
-    engines: {node: '>= 10'}
-    cpu: [x64]
-    os: [win32]
-
   '@next/third-parties@15.1.6':
     resolution: {integrity: sha512-F0uemUqFwD3lLx5SrWXYRe9dZvMVkO0rFuMnvLiPBcagxNc23Ufl5cNXEm4Yuo8O1Mu8dgh+VjExMz1Td4vBew==}
     peerDependencies:
@@ -466,8 +460,8 @@ packages:
   '@types/ms@0.7.34':
     resolution: {integrity: sha512-nG96G3Wp6acyAgJqGasjODb+acrI7KltPiRxzHPXnP3NgI28bpQDRv53olbqGXbfcgF5aiiHmO3xpwEpS5Ld9g==}
 
-  '@types/node@22.13.0':
-    resolution: {integrity: sha512-ClIbNe36lawluuvq3+YYhnIN2CELi+6q8NpnM7PYp4hBn/TatfboPgVSm2rwKRfnV2M+Ty9GWDFI64KEe+kysA==}
+  '@types/node@22.13.14':
+    resolution: {integrity: sha512-Zs/Ollc1SJ8nKUAgc7ivOEdIBM8JAKgrqqUYi2J997JuKO7/tpQC+WCetQ1sypiKCQWHdvdg9wBNpUPEWZae7w==}
 
   '@types/prop-types@15.7.13':
     resolution: {integrity: sha512-hCZTSvwbzWGvhqxp/RqVqwU999pBf2vp7hzIjiYOsl8wqOmUxkQ6ddw1cV3l8811+kdUFus/q4d1Y3E3SyEifA==}
@@ -2241,9 +2235,6 @@ snapshots:
   '@next/swc-win32-ia32-msvc@14.2.25':
     optional: true
 
-  '@next/swc-win32-x64-msvc@14.2.25':
-    optional: true
-
   '@next/third-parties@15.1.6(next@14.2.25(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)':
     dependencies:
       next: 14.2.25(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -2342,7 +2333,7 @@ snapshots:
 
   '@types/ms@0.7.34': {}
 
-  '@types/node@22.13.0':
+  '@types/node@22.13.14':
     dependencies:
       undici-types: 6.20.0
 
@@ -3105,7 +3096,7 @@ snapshots:
 
   jest-worker@27.5.1:
     dependencies:
-      '@types/node': 22.13.0
+      '@types/node': 22.13.14
       merge-stream: 2.0.0
       supports-color: 8.1.1
     optional: true
@@ -3710,7 +3701,6 @@ snapshots:
       '@next/swc-linux-x64-musl': 14.2.25
       '@next/swc-win32-arm64-msvc': 14.2.25
       '@next/swc-win32-ia32-msvc': 14.2.25
-      '@next/swc-win32-x64-msvc': 14.2.25
     transitivePeerDependencies:
       - '@babel/core'
       - babel-plugin-macros
