@@ -1,7 +1,7 @@
 use crate::{Error, checksum::ChecksumUpdate, slice_mut_at::slice_mut_at};
 use aya_ebpf::programs::XdpContext;
 use aya_log_ebpf::debug;
-use network_types::{eth::EthHdr, ip::Ipv4Hdr};
+use network_types::eth::EthHdr;
 
 /// Represents a UDP header within our packet.
 pub struct Udp<'a> {
@@ -11,10 +11,10 @@ pub struct Udp<'a> {
 
 impl<'a> Udp<'a> {
     #[inline(always)]
-    pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
+    pub fn parse(ctx: &'a XdpContext, ip_header_length: usize) -> Result<Self, Error> {
         Ok(Self {
             ctx,
-            inner: slice_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)?,
+            inner: slice_mut_at::<UdpHdr>(ctx, EthHdr::LEN + ip_header_length)?,
         })
     }
 
