@@ -6,7 +6,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use core::net::Ipv4Addr;
+use core::net::{Ipv4Addr, Ipv6Addr};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -22,6 +22,21 @@ pub struct ClientAndChannelV4 {
     _padding_channel: [u8; 6],
 
     _padding_struct: [u8; 40],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct ClientAndChannelV6 {
+    ipv6_address: [u8; 16],
+
+    port: [u8; 2],
+    _padding_port: [u8; 6],
+
+    channel: [u8; 2],
+    _padding_channel: [u8; 6],
+
+    _padding_struct: [u8; 32],
 }
 
 impl ClientAndChannelV4 {
@@ -57,6 +72,38 @@ impl ClientAndChannelV4 {
     }
 }
 
+impl ClientAndChannelV6 {
+    pub fn new(ipv6_address: Ipv6Addr, port: u16, channel: u16) -> Self {
+        Self {
+            ipv6_address: ipv6_address.octets(),
+
+            port: port.to_be_bytes(),
+            _padding_port: [0u8; 6],
+
+            channel: channel.to_be_bytes(),
+            _padding_channel: [0u8; 6],
+
+            _padding_struct: [0u8; 32],
+        }
+    }
+
+    pub fn from_socket(src: core::net::SocketAddrV6, channel: u16) -> Self {
+        Self::new(*src.ip(), src.port(), channel)
+    }
+
+    pub fn client_ip(&self) -> Ipv6Addr {
+        self.ipv6_address.into()
+    }
+
+    pub fn client_port(&self) -> u16 {
+        u16::from_be_bytes(self.port)
+    }
+
+    pub fn channel(&self) -> u16 {
+        u16::from_be_bytes(self.channel)
+    }
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "std", derive(Debug))]
@@ -71,6 +118,21 @@ pub struct PortAndPeerV4 {
     _padding_dest_port: [u8; 6],
 
     _padding_struct: [u8; 40],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct PortAndPeerV6 {
+    ipv6_address: [u8; 16],
+
+    allocation_port: [u8; 2],
+    _padding_allocation_port: [u8; 6],
+
+    peer_port: [u8; 2],
+    _padding_dest_port: [u8; 6],
+
+    _padding_struct: [u8; 32],
 }
 
 impl PortAndPeerV4 {
@@ -95,6 +157,38 @@ impl PortAndPeerV4 {
 
     pub fn peer_ip(&self) -> Ipv4Addr {
         self.ipv4_address.into()
+    }
+
+    pub fn allocation_port(&self) -> u16 {
+        u16::from_be_bytes(self.allocation_port)
+    }
+
+    pub fn peer_port(&self) -> u16 {
+        u16::from_be_bytes(self.peer_port)
+    }
+}
+
+impl PortAndPeerV6 {
+    pub fn new(ipv6_address: Ipv6Addr, allocation_port: u16, peer_port: u16) -> Self {
+        Self {
+            ipv6_address: ipv6_address.octets(),
+
+            allocation_port: allocation_port.to_be_bytes(),
+            _padding_allocation_port: [0u8; 6],
+
+            peer_port: peer_port.to_be_bytes(),
+            _padding_dest_port: [0u8; 6],
+
+            _padding_struct: [0u8; 32],
+        }
+    }
+
+    pub fn from_socket(dst: core::net::SocketAddrV6, allocation_port: u16) -> Self {
+        Self::new(*dst.ip(), allocation_port, dst.port())
+    }
+
+    pub fn peer_ip(&self) -> Ipv6Addr {
+        self.ipv6_address.into()
     }
 
     pub fn allocation_port(&self) -> u16 {
@@ -133,6 +227,10 @@ mod userspace {
 
     unsafe impl aya::Pod for PortAndPeerV4 {}
 
+    unsafe impl aya::Pod for ClientAndChannelV6 {}
+
+    unsafe impl aya::Pod for PortAndPeerV6 {}
+
     unsafe impl aya::Pod for Config {}
 }
 
@@ -141,12 +239,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn client_and_channel_has_size_64() {
+    fn client_and_channel_v4_has_size_64() {
         assert_eq!(std::mem::size_of::<ClientAndChannelV4>(), 64)
     }
 
     #[test]
-    fn port_and_peer_has_size_64() {
+    fn port_and_peer_v4_has_size_64() {
         assert_eq!(std::mem::size_of::<PortAndPeerV4>(), 64)
+    }
+
+    #[test]
+    fn client_and_channel_v6_has_size_64() {
+        assert_eq!(std::mem::size_of::<ClientAndChannelV6>(), 64)
+    }
+
+    #[test]
+    fn port_and_peer_v6_has_size_64() {
+        assert_eq!(std::mem::size_of::<PortAndPeerV6>(), 64)
     }
 }
