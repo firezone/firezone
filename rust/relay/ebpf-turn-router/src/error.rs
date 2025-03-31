@@ -25,7 +25,7 @@ impl aya_log_ebpf::WriteToBuf for Error {
     fn write(self, buf: &mut [u8]) -> Option<NonZeroUsize> {
         let msg = match self {
             Error::PacketTooShort => "Packet is too short",
-            Error::Ipv4PacketWithOptions => "IPv4 packet has optiosn",
+            Error::Ipv4PacketWithOptions => "IPv4 packet has options",
             Error::NotAChannelDataMessage => "Not a channel data message",
             Error::BadChannelDataLength => "Channel data length does not match packet length",
         };
