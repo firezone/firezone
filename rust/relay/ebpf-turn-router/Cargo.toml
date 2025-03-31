@@ -8,8 +8,7 @@ license = { workspace = true }
 aya-ebpf = { workspace = true }
 aya-log-ebpf = { workspace = true }
 ebpf-shared = { workspace = true }
-etherparse = { workspace = true }
-etherparse-ext = { workspace = true }
+network-types = { workspace = true }
 
 [dev-dependencies]
 hex-literal = { workspace = true }

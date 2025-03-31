@@ -19,6 +19,7 @@ async fn ping_pong() {
     program
         .set_config(Config {
             udp_checksum_enabled: false,
+            ..Config::default()
         })
         .unwrap();
 
@@ -40,25 +41,51 @@ async fn ping_pong() {
         )
         .unwrap();
 
-    let msg = b"ping";
-    let msg_len = msg.len();
-    let mut buf = [0u8; 512];
+    {
+        let msg = b"ping";
+        let msg_len = msg.len();
+        let mut buf = [0u8; 512];
 
-    let (header, payload) = buf.split_at_mut(4);
-    payload[..msg_len].copy_from_slice(msg);
+        let (header, payload) = buf.split_at_mut(4);
+        payload[..msg_len].copy_from_slice(msg);
 
-    let len =
-        firezone_relay::ChannelData::encode_header_to_slice(channel_number, msg_len as u16, header);
+        let len = firezone_relay::ChannelData::encode_header_to_slice(
+            channel_number,
+            msg_len as u16,
+            header,
+        );
 
-    client.send_to(&buf[..len], "127.0.0.1:3478").await.unwrap();
+        client.send_to(&buf[..len], "127.0.0.1:3478").await.unwrap();
 
-    let mut recv_buf = [0u8; 512];
+        let mut recv_buf = [0u8; 512];
 
-    let (len, from) = tokio::time::timeout(Duration::from_secs(1), peer.recv_from(&mut recv_buf))
-        .await
-        .unwrap()
-        .unwrap();
+        let (len, from) =
+            tokio::time::timeout(Duration::from_secs(1), peer.recv_from(&mut recv_buf))
+                .await
+                .unwrap()
+                .unwrap();
 
-    assert_eq!(from.port(), allocation_port);
-    assert_eq!(&recv_buf[..len], msg);
+        assert_eq!(from.port(), allocation_port);
+        assert_eq!(&recv_buf[..len], msg);
+    }
+
+    {
+        let msg = b"pong";
+
+        peer.send_to(msg, format!("127.0.0.1:{allocation_port}"))
+            .await
+            .unwrap();
+
+        let mut recv_buf = [0u8; 512];
+
+        let (len, from) =
+            tokio::time::timeout(Duration::from_secs(1), client.recv_from(&mut recv_buf))
+                .await
+                .unwrap()
+                .unwrap();
+        let channel_data = firezone_relay::ChannelData::parse(&recv_buf[..len]).unwrap();
+
+        assert_eq!(from.port(), 3478);
+        assert_eq!(channel_data.data(), msg);
+    }
 }
