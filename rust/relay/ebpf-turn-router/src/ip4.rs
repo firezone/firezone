@@ -12,6 +12,7 @@ pub struct Ip4<'a> {
 }
 
 impl<'a> Ip4<'a> {
+    #[inline(always)]
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
         let hdr = unsafe { &mut *mut_ptr_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
@@ -43,6 +44,7 @@ impl<'a> Ip4<'a> {
     ///
     /// Returns a [`ChecksumUpdate`] representing the checksum-difference of the "IP pseudo-header."
     /// which is used in certain L4 protocols (e.g. UDP).
+    #[inline(always)]
     pub fn update(self, new_src: Ipv4Addr, new_dst: Ipv4Addr, new_len: u16) -> ChecksumUpdate {
         let src = self.src();
         let dst = self.dst();

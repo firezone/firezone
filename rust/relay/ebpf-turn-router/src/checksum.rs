@@ -42,6 +42,7 @@ impl ChecksumUpdate {
         self.add_u16(update.inner)
     }
 
+    #[inline(always)]
     fn ones_complement_add(self, val: u16) -> Self {
         let (res, carry) = self.inner.overflowing_add(val);
 

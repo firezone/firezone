@@ -10,6 +10,7 @@ pub struct Udp<'a> {
 }
 
 impl<'a> Udp<'a> {
+    #[inline(always)]
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
         let hdr = unsafe { &mut *mut_ptr_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
 
@@ -29,6 +30,7 @@ impl<'a> Udp<'a> {
     }
 
     /// Update this packet with a new source, destination, and length.
+    #[inline(always)]
     pub fn update(
         self,
         ip_pseudo_header: ChecksumUpdate,

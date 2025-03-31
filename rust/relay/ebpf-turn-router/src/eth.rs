@@ -8,6 +8,7 @@ pub struct Eth<'a> {
 }
 
 impl<'a> Eth<'a> {
+    #[inline(always)]
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
         let hdr = unsafe { &mut *mut_ptr_at::<EthHdr>(ctx, 0)? };
 

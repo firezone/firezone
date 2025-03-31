@@ -11,10 +11,12 @@ use network_types::{
 
 use crate::channel_data::CdHdr;
 
+#[inline(always)]
 pub fn remove_channel_data_header_ipv4(ctx: &XdpContext) {
     move_headers::<{ CdHdr::LEN as i32 }, { Ipv4Hdr::LEN }>(ctx)
 }
 
+#[inline(always)]
 pub fn add_channel_data_header_ipv4(ctx: &XdpContext, mut header: [u8; 4]) {
     move_headers::<{ -(CdHdr::LEN as i32) }, { Ipv4Hdr::LEN }>(ctx);
     let offset = (EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN) as u32;
@@ -25,6 +27,7 @@ pub fn add_channel_data_header_ipv4(ctx: &XdpContext, mut header: [u8; 4]) {
     unsafe { bpf_xdp_store_bytes(ctx.ctx, offset, header_ptr, header_len) };
 }
 
+#[inline(always)]
 fn move_headers<const DELTA: i32, const IP_HEADER_LEN: usize>(ctx: &XdpContext) {
     // Scratch space for our headers.
     // IPv6 headers are always 40 bytes long.

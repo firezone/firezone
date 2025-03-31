@@ -10,6 +10,7 @@ pub struct ChannelData<'a> {
 }
 
 impl<'a> ChannelData<'a> {
+    #[inline(always)]
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
         let hdr =
             unsafe { &mut *mut_ptr_at::<CdHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN)? };
