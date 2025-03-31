@@ -560,7 +560,8 @@ defmodule Domain.BillingTest do
 
       assert params == %{
                "customer" => customer_id,
-               "items" => %{"0" => %{"price" => "price_1OkUIcADeNU9NGxvTNA4PPq6"}}
+               "items" => %{"0" => %{"price" => "price_1OkUIcADeNU9NGxvTNA4PPq6"}},
+               "automatic_tax" => %{"enabled" => true}
              }
     end
 
