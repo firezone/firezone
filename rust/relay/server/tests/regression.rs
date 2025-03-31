@@ -446,10 +446,10 @@ fn ping_pong_relay(
             .unwrap(),
             now,
         ),
-        [send_message(
-            source,
-            channel_bind_response(channel_bind_transaction_id),
-        )],
+        [
+            create_channel_binding(source, client_to_peer_ping.channel(), peer, 49152),
+            send_message(source, channel_bind_response(channel_bind_transaction_id)),
+        ],
     );
 
     assert_eq!(
@@ -557,10 +557,10 @@ fn allows_rebind_channel_after_expiry(
             .unwrap(),
             now,
         ),
-        [send_message(
-            source,
-            channel_bind_response(channel_bind_transaction_id),
-        )],
+        [
+            create_channel_binding(source, channel, peer, 49152),
+            send_message(source, channel_bind_response(channel_bind_transaction_id)),
+        ],
     );
 
     let channel_expiry = now + Duration::from_secs(60 * 10);
@@ -570,7 +570,10 @@ fn allows_rebind_channel_after_expiry(
 
     let now = now + Duration::from_secs(60 * 10 + 1);
 
-    server.server.handle_timeout(now);
+    server.assert_commands(
+        forward_time_to(now),
+        [delete_channel_binding(source, channel, peer, 49152)],
+    );
     assert_eq!(server.server.poll_timeout(), Some(channel_rebind));
 
     let now = now + Duration::from_secs(60 * 5 + 1);
@@ -593,10 +596,10 @@ fn allows_rebind_channel_after_expiry(
             .unwrap(),
             now,
         ),
-        [send_message(
-            source,
-            channel_bind_response(channel_bind_2_transaction_id),
-        )],
+        [
+            create_channel_binding(source, channel, peer2, 49152),
+            send_message(source, channel_bind_response(channel_bind_2_transaction_id)),
+        ],
     );
 
     assert_eq!(
@@ -678,10 +681,10 @@ fn ping_pong_ip6_relay(
             .unwrap(),
             now,
         ),
-        [send_message(
-            source,
-            channel_bind_response(channel_bind_transaction_id),
-        )],
+        [
+            create_channel_binding(source, channel, peer, 49152),
+            send_message(source, channel_bind_response(channel_bind_transaction_id)),
+        ],
     );
 
     assert_eq!(
@@ -758,6 +761,16 @@ impl TestServer {
                     FreeAllocation(port, family) => {
                         format!("to free allocation on port {port} for address family {family}")
                     }
+                    Output::CreateChannelBinding(client, channel, peer, port) => {
+                        format!(
+                            "to create a channel binding for channel {channel} from {client} to {peer} on allocation {port}"
+                        )
+                    }
+                    Output::DeleteChannelBinding(client, channel, peer, port) => {
+                        format!(
+                            "to remove a channel binding for channel {channel} from {client} to {peer} on allocation {port}"
+                        )
+                    }
                 };
 
                 panic!("No commands produced but expected {msg}");
@@ -807,6 +820,44 @@ impl TestServer {
                 ) => {
                     assert_eq!(port, actual_port);
                     assert_eq!(family, actual_family);
+                }
+                (
+                    Output::CreateChannelBinding(
+                        expected_client,
+                        expected_channel,
+                        expected_peer,
+                        expected_port,
+                    ),
+                    Command::CreateChannelBinding {
+                        client,
+                        channel_number,
+                        peer,
+                        allocation_port,
+                    },
+                ) => {
+                    assert_eq!(expected_client, client);
+                    assert_eq!(expected_channel, channel_number);
+                    assert_eq!(expected_peer, peer);
+                    assert_eq!(expected_port, allocation_port);
+                }
+                (
+                    Output::DeleteChannelBinding(
+                        expected_client,
+                        expected_channel,
+                        expected_peer,
+                        expected_port,
+                    ),
+                    Command::DeleteChannelBinding {
+                        client,
+                        channel_number,
+                        peer,
+                        allocation_port,
+                    },
+                ) => {
+                    assert_eq!(expected_client, client);
+                    assert_eq!(expected_channel, channel_number);
+                    assert_eq!(expected_peer, peer);
+                    assert_eq!(expected_port, allocation_port);
                 }
                 (expected, actual) => panic!("Unhandled combination: {expected:?} {actual:?}"),
             }
@@ -921,6 +972,8 @@ enum Output {
     SendMessage((ClientSocket, Message<Attribute>)),
     CreateAllocation(AllocationPort, AddressFamily),
     FreeAllocation(AllocationPort, AddressFamily),
+    CreateChannelBinding(ClientSocket, ChannelNumber, PeerSocket, AllocationPort),
+    DeleteChannelBinding(ClientSocket, ChannelNumber, PeerSocket, AllocationPort),
 }
 
 fn create_allocation(port: u16, fam: AddressFamily) -> Output {
@@ -933,4 +986,32 @@ fn free_allocation(port: u16, fam: AddressFamily) -> Output {
 
 fn send_message(source: impl Into<SocketAddr>, message: Message<Attribute>) -> Output {
     Output::SendMessage((ClientSocket::new(source.into()), message))
+}
+
+fn create_channel_binding(
+    client: impl Into<SocketAddr>,
+    channel: ChannelNumber,
+    peer: impl Into<SocketAddr>,
+    port: u16,
+) -> Output {
+    Output::CreateChannelBinding(
+        ClientSocket::new(client.into()),
+        channel,
+        PeerSocket::new(peer.into()),
+        AllocationPort::new(port),
+    )
+}
+
+fn delete_channel_binding(
+    client: impl Into<SocketAddr>,
+    channel: ChannelNumber,
+    peer: impl Into<SocketAddr>,
+    port: u16,
+) -> Output {
+    Output::DeleteChannelBinding(
+        ClientSocket::new(client.into()),
+        channel,
+        PeerSocket::new(peer.into()),
+        AllocationPort::new(port),
+    )
 }

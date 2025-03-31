@@ -729,13 +729,6 @@ where
                 (channel.allocation, channel.peer_address),
                 (sender, requested_channel),
             );
-            self.pending_commands
-                .push_back(Command::CreateChannelBinding {
-                    client: sender,
-                    channel_number: requested_channel,
-                    peer: peer_address,
-                    allocation_port: channel.allocation,
-                });
 
             tracing::info!(target: "relay", "Refreshed channel binding");
 
@@ -940,6 +933,13 @@ where
                 bound: true,
             },
         );
+        self.pending_commands
+            .push_back(Command::CreateChannelBinding {
+                client,
+                channel_number: requested_channel,
+                peer,
+                allocation_port: id,
+            });
 
         debug_assert!(existing.is_none());
 
