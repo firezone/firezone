@@ -101,3 +101,26 @@ impl Ipv4Hdr {
         self.version_ihl & 0b00001111
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ihl() {
+        let ipv4_hdr = Ipv4Hdr {
+            version_ihl: 0b0100_0101,
+            tos: Default::default(),
+            tot_len: Default::default(),
+            id: Default::default(),
+            frag_off: Default::default(),
+            ttl: Default::default(),
+            proto: IpProto::Udp,
+            check: Default::default(),
+            src_addr: Default::default(),
+            dst_addr: Default::default(),
+        };
+
+        assert_eq!(ipv4_hdr.ihl(), 0b0101); // The lower 4 bits of `version_ihl` are the IHL,
+    }
+}
