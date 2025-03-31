@@ -229,7 +229,3 @@ split-debuginfo = "packed"
 [profile.release.package.firezone-gui-client]
 debug = "full"
 split-debuginfo = "packed"
-
-[profile.release.package.ebpf-turn-router]
-debug = 2
-codegen-units = 1
