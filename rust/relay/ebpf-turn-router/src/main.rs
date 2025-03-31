@@ -15,7 +15,7 @@ use eth::Eth;
 use ip4::Ip4;
 use move_headers::{add_channel_data_header_ipv4, remove_channel_data_header_ipv4};
 use network_types::{eth::EtherType, ip::IpProto};
-use udp::Udp;
+use udp::{Udp, UdpHdr};
 
 mod channel_data;
 mod checksum;
@@ -84,7 +84,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
         udp.src(),
         ipv4.dst(),
         udp.dst(),
-        udp.payload_len()
+        udp.len()
     );
 
     if config::allocation_range().contains(&udp.dst()) {
@@ -129,7 +129,7 @@ fn try_handle_ipv4_channel_data_to_udp(
     let new_ipv4_total_len = ipv4.total_len() - CdHdr::LEN as u16;
     let pseudo_header = ipv4.update(new_src, port_and_peer.peer_ip(), new_ipv4_total_len);
 
-    let new_udp_len = udp.payload_len() - CdHdr::LEN as u16;
+    let new_udp_len = udp.len() - CdHdr::LEN as u16;
     udp.update(
         pseudo_header,
         port_and_peer.allocation_port(),
@@ -166,7 +166,7 @@ fn try_handle_ipv4_udp_to_channel_data(
     let new_ipv4_total_len = ipv4.total_len() + CdHdr::LEN as u16;
     let pseudo_header = ipv4.update(new_src, client_and_channel.client_ip(), new_ipv4_total_len);
 
-    let udp_len = udp.payload_len();
+    let udp_len = udp.len();
     let new_udp_len = udp_len + CdHdr::LEN as u16;
     udp.update(
         pseudo_header,
@@ -176,7 +176,7 @@ fn try_handle_ipv4_udp_to_channel_data(
     );
 
     let cd_num = client_and_channel.channel().to_be_bytes();
-    let cd_len = udp_len.to_be_bytes();
+    let cd_len = (udp_len - UdpHdr::LEN as u16).to_be_bytes(); // The `length` field in the UDP header includes the header itself. For the channel-data field, we only want the length of the payload.
 
     let channel_data_header = [cd_num[0], cd_num[1], cd_len[0], cd_len[1]];
 

@@ -26,8 +26,8 @@ impl<'a> Udp<'a> {
         u16::from_be_bytes(self.inner.dest)
     }
 
-    pub fn payload_len(&self) -> u16 {
-        u16::from_be_bytes(self.inner.len) - UdpHdr::LEN as u16
+    pub fn len(&self) -> u16 {
+        u16::from_be_bytes(self.inner.len)
     }
 
     /// Update this packet with a new source, destination, and length.
@@ -37,12 +37,11 @@ impl<'a> Udp<'a> {
         ip_pseudo_header: ChecksumUpdate,
         new_src: u16,
         new_dst: u16,
-        new_payload_len: u16,
+        new_len: u16,
     ) {
         let src = self.src();
         let dst = self.dst();
-        let len = self.payload_len() + UdpHdr::LEN as u16;
-        let new_len = new_payload_len + UdpHdr::LEN as u16;
+        let len = self.len();
 
         self.inner.source = new_src.to_be_bytes();
         self.inner.dest = new_dst.to_be_bytes();
