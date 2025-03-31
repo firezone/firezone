@@ -189,7 +189,7 @@ where
             .with_description("The number of responses")
             .init();
         let data_relayed_counter = meter
-            .u64_counter("data_relayed_bytes")
+            .u64_counter("data_relayed_userspace_bytes")
             .with_description("The number of bytes relayed")
             .with_unit("b")
             .init();
