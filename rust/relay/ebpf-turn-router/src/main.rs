@@ -305,7 +305,7 @@ mod tests {
 
     /// Memory overhead of an eBPF map.
     ///
-    /// Determined emperically.
+    /// Determined empirically.
     const HASH_MAP_OVERHEAD: f32 = 1.5;
 
     #[test]
