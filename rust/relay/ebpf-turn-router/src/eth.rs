@@ -1,7 +1,7 @@
 use aya_ebpf::programs::XdpContext;
 use network_types::eth::{EthHdr, EtherType};
 
-use crate::{error::Error, mut_ptr_at::mut_ptr_at};
+use crate::{error::Error, slice_mut_at::slice_mut_at};
 
 pub struct Eth<'a> {
     inner: &'a mut EthHdr,
@@ -10,9 +10,9 @@ pub struct Eth<'a> {
 impl<'a> Eth<'a> {
     #[inline(always)]
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
-        let hdr = unsafe { &mut *mut_ptr_at::<EthHdr>(ctx, 0)? };
-
-        Ok(Self { inner: hdr })
+        Ok(Self {
+            inner: slice_mut_at::<EthHdr>(ctx, 0)?,
+        })
     }
 
     pub fn ether_type(&self) -> EtherType {

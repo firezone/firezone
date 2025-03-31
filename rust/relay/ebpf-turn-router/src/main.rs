@@ -24,7 +24,7 @@ mod error;
 mod eth;
 mod ip4;
 mod move_headers;
-mod mut_ptr_at;
+mod slice_mut_at;
 mod udp;
 
 /// Channel mappings from an IPv4 socket + channel number to an IPv4 socket + port.

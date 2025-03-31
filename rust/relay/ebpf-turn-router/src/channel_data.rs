@@ -1,4 +1,4 @@
-use crate::{Error, ip4::Ipv4Hdr, mut_ptr_at::mut_ptr_at, udp::UdpHdr};
+use crate::{Error, ip4::Ipv4Hdr, slice_mut_at::slice_mut_at, udp::UdpHdr};
 use aya_ebpf::programs::XdpContext;
 use network_types::eth::EthHdr;
 
@@ -12,8 +12,7 @@ pub struct ChannelData<'a> {
 impl<'a> ChannelData<'a> {
     #[inline(always)]
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
-        let hdr =
-            unsafe { &mut *mut_ptr_at::<CdHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN)? };
+        let hdr = slice_mut_at::<CdHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN)?;
 
         if !(0x4000..0x4FFF).contains(&u16::from_be_bytes(hdr.number)) {
             return Err(Error::NotAChannelDataMessage);

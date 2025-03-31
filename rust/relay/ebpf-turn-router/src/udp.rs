@@ -1,4 +1,4 @@
-use crate::{Error, checksum::ChecksumUpdate, mut_ptr_at::mut_ptr_at};
+use crate::{Error, checksum::ChecksumUpdate, slice_mut_at::slice_mut_at};
 use aya_ebpf::programs::XdpContext;
 use aya_log_ebpf::debug;
 use network_types::{eth::EthHdr, ip::Ipv4Hdr};
@@ -12,9 +12,10 @@ pub struct Udp<'a> {
 impl<'a> Udp<'a> {
     #[inline(always)]
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
-        let hdr = unsafe { &mut *mut_ptr_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
-
-        Ok(Self { ctx, inner: hdr })
+        Ok(Self {
+            ctx,
+            inner: slice_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)?,
+        })
     }
 
     pub fn src(&self) -> u16 {
