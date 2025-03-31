@@ -207,8 +207,7 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u32, Error> {
         return Ok(xdp_action::XDP_PASS);
     }
 
-    let udp = Udp::parse(ctx, Ipv6Hdr::LEN)?; // TODO: Change the API so we parse the UDP header _from_ the ipv4 struct?
-
+    let udp = Udp::parse(ctx, Ipv6Hdr::LEN)?; // TODO: Change the API so we parse the UDP header _from_ the ipv6 struct?
     trace!(
         ctx,
         "New packet from {:i}:{} for {:i}:{} with UDP payload {}",

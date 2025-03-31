@@ -5,7 +5,7 @@ use aya_ebpf::programs::XdpContext;
 use aya_log_ebpf::debug;
 use network_types::{eth::EthHdr, ip::IpProto};
 
-/// Represents an IPv4 header within our packet.
+/// Represents an IPv6 header within our packet.
 pub struct Ip6<'a> {
     ctx: &'a XdpContext,
     inner: &'a mut Ipv6Hdr,
