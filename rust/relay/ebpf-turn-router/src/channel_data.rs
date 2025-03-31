@@ -1,51 +1,55 @@
-use crate::{CHANNEL_DATA_HEADER_LEN, Error, slice_mut_at::slice_mut_at};
+use crate::{Error, ip4::Ipv4Hdr, mut_ptr_at::mut_ptr_at, udp::UdpHdr};
 use aya_ebpf::programs::XdpContext;
-use etherparse::{Ethernet2Header, Ipv4Header, UdpHeader};
+use network_types::eth::EthHdr;
 
 /// Represents a channel-data header within our packet.
 pub struct ChannelData<'a> {
-    number: u16,
+    inner: &'a mut CdHdr,
 
     _ctx: &'a XdpContext,
 }
 
 impl<'a> ChannelData<'a> {
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
-        let cdhdr = slice_mut_at::<{ CHANNEL_DATA_HEADER_LEN }>(
-            ctx,
-            Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN,
-        )?;
+        let hdr =
+            unsafe { &mut *mut_ptr_at::<CdHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN)? };
 
-        if !(64..=79).contains(&cdhdr[0]) {
+        if !(0x4000..0x4FFF).contains(&u16::from_be_bytes(hdr.number)) {
             return Err(Error::NotAChannelDataMessage);
         }
-
-        let number = u16::from_be_bytes([cdhdr[0], cdhdr[1]]);
-
-        // Untrusted because we read it from the packet.
-        let untrusted_channel_data_length = u16::from_be_bytes([cdhdr[2], cdhdr[3]]);
 
         // The eBPF verifier doesn't allow you to use data read from the packet to index into the packet.
         // Hence, we cannot read the length of the channel-data message and use it on the packet.
         // So what we do instead is, we check how many bytes we have left in the packet and compare it to the length we read.
-        let length = remaining_bytes(
-            ctx,
-            Ethernet2Header::LEN + Ipv4Header::MIN_LEN + UdpHeader::LEN + CHANNEL_DATA_HEADER_LEN,
-        )?;
+        let length = remaining_bytes(ctx, EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN + CdHdr::LEN)?;
 
         // We received less (or more) data than the header said we would.
-        if length != usize::from(untrusted_channel_data_length) {
+        if length != usize::from(u16::from_be_bytes(hdr.length)) {
             return Err(Error::BadChannelDataLength);
         }
 
         // After we have verified the length, we don't need it anymore.
 
-        Ok(Self { number, _ctx: ctx })
+        Ok(Self {
+            inner: hdr,
+            _ctx: ctx,
+        })
     }
 
     pub fn number(&self) -> u16 {
-        self.number
+        u16::from_be_bytes(self.inner.number)
     }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct CdHdr {
+    pub number: [u8; 2],
+    pub length: [u8; 2],
+}
+
+impl CdHdr {
+    pub const LEN: usize = core::mem::size_of::<Self>();
 }
 
 /// Computes how many more bytes we have in the packet after a given offset.

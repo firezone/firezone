@@ -26,16 +26,16 @@ impl ChecksumUpdate {
         self.ones_complement_add(!val)
     }
 
-    pub fn remove_addr(self, val: [u8; 4]) -> Self {
-        self.remove_u16(fold_u32_into_u16(u32::from_be_bytes(val)))
+    pub fn remove_u32(self, val: u32) -> Self {
+        self.remove_u16(fold_u32_into_u16(val))
     }
 
     pub fn add_u16(self, val: u16) -> Self {
         self.ones_complement_add(val)
     }
 
-    pub fn add_addr(self, val: [u8; 4]) -> Self {
-        self.add_u16(fold_u32_into_u16(u32::from_be_bytes(val)))
+    pub fn add_u32(self, val: u32) -> Self {
+        self.add_u16(fold_u32_into_u16(val))
     }
 
     pub fn add_update(self, update: ChecksumUpdate) -> Self {
@@ -110,16 +110,16 @@ mod tests {
         let outgoing_checksum = outgoing_ip_packet.as_udp().unwrap().checksum();
 
         let computed_checksum = ChecksumUpdate::new(incoming_checksum)
-            .remove_addr(old_src_ip.octets())
-            .remove_addr(old_dst_ip.octets())
+            .remove_u32(old_src_ip.to_bits())
+            .remove_u32(old_dst_ip.to_bits())
             .remove_u16(old_src_port)
             .remove_u16(old_dst_port)
             .remove_u16(old_udp_payload.len() as u16)
             .remove_u16(old_udp_payload.len() as u16)
             .remove_u16(channel_number)
             .remove_u16(channel_data_len)
-            .add_addr(new_src_ip.octets())
-            .add_addr(new_dst_ip.octets())
+            .add_u32(new_src_ip.to_bits())
+            .add_u32(new_dst_ip.to_bits())
             .add_u16(new_src_port)
             .add_u16(new_dst_port)
             .add_u16(new_udp_payload.len() as u16)
