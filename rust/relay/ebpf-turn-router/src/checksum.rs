@@ -30,12 +30,20 @@ impl ChecksumUpdate {
         self.remove_u16(fold_u32_into_u16(val))
     }
 
+    pub fn remove_u128(self, val: u128) -> Self {
+        self.remove_u16(fold_u128_into_u16(val))
+    }
+
     pub fn add_u16(self, val: u16) -> Self {
         self.ones_complement_add(val)
     }
 
     pub fn add_u32(self, val: u32) -> Self {
         self.add_u16(fold_u32_into_u16(val))
+    }
+
+    pub fn add_u128(self, val: u128) -> Self {
+        self.add_u16(fold_u128_into_u16(val))
     }
 
     pub fn add_update(self, update: ChecksumUpdate) -> Self {
@@ -58,6 +66,20 @@ impl ChecksumUpdate {
 
 #[inline(always)]
 fn fold_u32_into_u16(mut csum: u32) -> u16 {
+    csum = (csum & 0xffff) + (csum >> 16);
+    csum = (csum & 0xffff) + (csum >> 16);
+
+    csum as u16
+}
+
+#[inline(always)]
+fn fold_u128_into_u16(mut csum: u128) -> u16 {
+    csum = (csum & 0xffff) + (csum >> 16);
+    csum = (csum & 0xffff) + (csum >> 16);
+    csum = (csum & 0xffff) + (csum >> 16);
+    csum = (csum & 0xffff) + (csum >> 16);
+    csum = (csum & 0xffff) + (csum >> 16);
+    csum = (csum & 0xffff) + (csum >> 16);
     csum = (csum & 0xffff) + (csum >> 16);
     csum = (csum & 0xffff) + (csum >> 16);
 
