@@ -1,6 +1,8 @@
 //! Shared data structures between the kernel and userspace.
 //!
 //! To learn more about the layout requirements of these structs, read <https://github.com/foniod/redbpf/issues/150#issuecomment-964017857>.
+//! In order to make sure endianess is correct, we store everything in byte-arrays in _big-endian_ order.
+//! This makes it easier to directly take the values from the network buffer and use them in these structs (and vice-versa).
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
