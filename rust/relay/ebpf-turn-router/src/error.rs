@@ -8,6 +8,7 @@ pub enum Error {
     Ipv4PacketWithOptions,
     NotAChannelDataMessage,
     BadChannelDataLength,
+    NoChannelBinding,
 }
 
 impl Error {
@@ -17,6 +18,7 @@ impl Error {
             Error::Ipv4PacketWithOptions => xdp_action::XDP_PASS,
             Error::BadChannelDataLength => xdp_action::XDP_DROP,
             Error::NotAChannelDataMessage => xdp_action::XDP_PASS,
+            Error::NoChannelBinding => xdp_action::XDP_PASS,
         }
     }
 }
@@ -28,6 +30,7 @@ impl aya_log_ebpf::WriteToBuf for Error {
             Error::Ipv4PacketWithOptions => "IPv4 packet has options",
             Error::NotAChannelDataMessage => "Not a channel data message",
             Error::BadChannelDataLength => "Channel data length does not match packet length",
+            Error::NoChannelBinding => "No channel binding",
         };
 
         msg.write(buf)

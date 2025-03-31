@@ -1,6 +1,11 @@
 #![allow(clippy::unwrap_used)]
 
 use firezone_relay::{AllocationPort, ClientSocket, PeerSocket};
+use opentelemetry::global;
+use opentelemetry_sdk::{
+    metrics::{PeriodicReader, SdkMeterProvider, data::Sum},
+    testing::metrics::InMemoryMetricsExporter,
+};
 use std::time::Duration;
 use tokio::net::UdpSocket;
 
@@ -11,6 +16,8 @@ use stun_codec::rfc5766::attributes::ChannelNumber;
 #[ignore = "Needs root"]
 async fn ping_pong() {
     let _guard = firezone_logging::test("trace,mio=off");
+
+    let (_meter_provider, exporter) = init_meter_provider();
 
     let mut program = firezone_relay::ebpf::Program::try_load("lo").unwrap();
 
@@ -88,4 +95,31 @@ async fn ping_pong() {
         assert_eq!(from.port(), 3478);
         assert_eq!(channel_data.data(), msg);
     }
+
+    tokio::time::sleep(Duration::from_millis(10)).await; // Wait for metrics to be exported.
+
+    let metrics = exporter.get_finished_metrics().unwrap();
+
+    assert!(!metrics.is_empty());
+
+    let metric = &metrics.iter().last().unwrap().scope_metrics[0].metrics[0];
+    let sum = metric.data.as_any().downcast_ref::<Sum<u64>>().unwrap();
+
+    assert_eq!(metric.name, "data_relayed_ebpf_bytes");
+    assert_eq!(sum.data_points[0].value, 12); // "ping" and "pong" are both 4 bytes, we also send 1 CD message, meaning + 4 bytes for that header.
+}
+
+fn init_meter_provider() -> (SdkMeterProvider, InMemoryMetricsExporter) {
+    let exporter = InMemoryMetricsExporter::default();
+
+    let provider = SdkMeterProvider::builder()
+        .with_reader(
+            PeriodicReader::builder(exporter.clone(), opentelemetry_sdk::runtime::Tokio)
+                .with_interval(Duration::from_millis(1))
+                .build(),
+        )
+        .build();
+    global::set_meter_provider(provider.clone());
+
+    (provider, exporter)
 }

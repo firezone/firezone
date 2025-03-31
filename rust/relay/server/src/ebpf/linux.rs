@@ -3,11 +3,14 @@ use std::net::SocketAddr;
 use anyhow::{Context as _, Result};
 use aya::{
     Pod,
-    maps::{Array, HashMap, MapData},
+    maps::{Array, AsyncPerfEventArray, HashMap, MapData},
     programs::{Xdp, XdpFlags},
 };
 use aya_log::EbpfLogger;
-use ebpf_shared::{ClientAndChannelV4, ClientAndChannelV6, Config, PortAndPeerV4, PortAndPeerV6};
+use bytes::BytesMut;
+use ebpf_shared::{
+    ClientAndChannelV4, ClientAndChannelV6, Config, PortAndPeerV4, PortAndPeerV6, StatsEvent,
+};
 use stun_codec::rfc5766::attributes::ChannelNumber;
 
 use crate::{AllocationPort, ClientSocket, PeerSocket};
@@ -31,6 +34,56 @@ impl Program {
         program
             .attach(interface, XdpFlags::default())
             .with_context(|| format!("Failed to attached to interface {interface}"))?;
+
+        let mut stats = AsyncPerfEventArray::try_from(
+            ebpf.take_map("STATS")
+                .context("`STATS` perf array not found")?,
+        )?;
+
+        let data_relayed = opentelemetry::global::meter("relay")
+            .u64_counter("data_relayed_ebpf_bytes")
+            .with_description("The number of bytes relayed by the eBPF kernel")
+            .with_unit("b")
+            .init();
+
+        for cpu_id in aya::util::online_cpus()
+            .map_err(|(_, error)| error)
+            .context("Failed to determine number of CPUs")?
+        {
+            // open a separate perf buffer for each cpu
+            let mut stats_array_buf = stats.open(cpu_id, None)?;
+
+            // process each perf buffer in a separate task
+            tokio::task::spawn({
+                let data_relayed = data_relayed.clone();
+
+                async move {
+                    let mut buffers = (0..1000)
+                        .map(|_| BytesMut::with_capacity(std::mem::size_of::<StatsEvent>()))
+                        .collect::<Vec<_>>();
+
+                    loop {
+                        let events = match stats_array_buf.read_events(&mut buffers).await {
+                            Ok(events) => events,
+                            Err(e) => {
+                                tracing::warn!("Failed to read perf events: {e}");
+                                break;
+                            }
+                        };
+
+                        tracing::debug!(%cpu_id, num_read = %events.read, "Read perf events from eBPF kernel");
+
+                        for bytes in buffers.iter().take(events.read) {
+                            let Some(stats) = StatsEvent::from_bytes(bytes) else {
+                                continue;
+                            };
+
+                            data_relayed.add(stats.relayed_data, &[]);
+                        }
+                    }
+                }
+            });
+        }
 
         Ok(Self { ebpf })
     }

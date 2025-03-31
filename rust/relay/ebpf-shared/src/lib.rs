@@ -219,6 +219,23 @@ impl Default for Config {
     }
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct StatsEvent {
+    pub relayed_data: u64,
+}
+
+impl StatsEvent {
+    #[cfg(feature = "std")]
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        let (chunk, _) = bytes.split_first_chunk()?;
+        let relayed_data = u64::from_ne_bytes(*chunk);
+
+        Some(Self { relayed_data })
+    }
+}
+
 #[cfg(all(feature = "std", target_os = "linux"))]
 mod userspace {
     use super::*;
