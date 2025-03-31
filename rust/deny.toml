@@ -237,6 +237,7 @@ skip = [
   "derive_more",
   "dirs",
   "dirs-sys",
+  "event-listener",
   "getrandom",
   "hashbrown",
   "heck",
