@@ -30,6 +30,10 @@ impl<'a> Udp<'a> {
         u16::from_be_bytes(self.inner.len)
     }
 
+    pub fn payload_len(&self) -> u16 {
+        self.len() - UdpHdr::LEN as u16
+    }
+
     /// Update this packet with a new source, destination, and length.
     #[inline(always)]
     pub fn update(

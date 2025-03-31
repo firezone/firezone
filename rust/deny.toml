@@ -228,6 +228,7 @@ deny = [
 
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
+  "async-channel",
   "base64",
   "bitflags",
   "core-foundation",
@@ -236,6 +237,7 @@ skip = [
   "derive_more",
   "dirs",
   "dirs-sys",
+  "event-listener",
   "getrandom",
   "hashbrown",
   "heck",

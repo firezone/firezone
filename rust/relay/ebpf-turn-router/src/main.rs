@@ -33,6 +33,7 @@ mod ip4;
 mod ip6;
 mod move_headers;
 mod slice_mut_at;
+mod stats;
 mod udp;
 
 /// Channel mappings from an IPv4 socket + channel number to an IPv4 socket + port.
@@ -90,6 +91,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
     }
 
     let udp = Udp::parse(ctx, Ipv4Hdr::LEN)?; // TODO: Change the API so we parse the UDP header _from_ the ipv4 struct?
+    let udp_payload_len = udp.payload_len();
 
     trace!(
         ctx,
@@ -98,17 +100,19 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
         udp.src(),
         ipv4.dst(),
         udp.dst(),
-        udp.len()
+        udp_payload_len
     );
 
     if config::allocation_range().contains(&udp.dst()) {
         let action = try_handle_ipv4_udp_to_channel_data(ctx, ipv4, udp)?;
+        stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(action);
     }
 
     if udp.dst() == 3478 {
         let action = try_handle_ipv4_channel_data_to_udp(ctx, ipv4, udp)?;
+        stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(action);
     }
@@ -125,19 +129,9 @@ fn try_handle_ipv4_channel_data_to_udp(
     let cd = ChannelData::parse(ctx, Ipv4Hdr::LEN)?;
 
     // SAFETY: ???
-    let maybe_peer =
-        unsafe { CHAN_TO_UDP_44.get(&ClientAndChannelV4::new(ipv4.src(), udp.src(), cd.number())) };
-    let Some(port_and_peer) = maybe_peer else {
-        debug!(
-            ctx,
-            "No channel binding from {:i}:{} for channel {}",
-            ipv4.src(),
-            udp.src(),
-            cd.number(),
-        );
-
-        return Ok(xdp_action::XDP_PASS);
-    };
+    let port_and_peer =
+        unsafe { CHAN_TO_UDP_44.get(&ClientAndChannelV4::new(ipv4.src(), udp.src(), cd.number())) }
+            .ok_or(Error::NoChannelBinding)?;
 
     let new_src = ipv4.dst(); // The IP we received the packet on will be the new source IP.
     let new_ipv4_total_len = ipv4.total_len() - CdHdr::LEN as u16;
@@ -162,19 +156,9 @@ fn try_handle_ipv4_udp_to_channel_data(
     ipv4: Ip4,
     udp: Udp,
 ) -> Result<u32, Error> {
-    let maybe_client =
-        unsafe { UDP_TO_CHAN_44.get(&PortAndPeerV4::new(ipv4.src(), udp.dst(), udp.src())) };
-    let Some(client_and_channel) = maybe_client else {
-        debug!(
-            ctx,
-            "No channel binding from {:i}:{} on allocation {}",
-            ipv4.src(),
-            udp.src(),
-            udp.dst(),
-        );
-
-        return Ok(xdp_action::XDP_PASS);
-    };
+    let client_and_channel =
+        unsafe { UDP_TO_CHAN_44.get(&PortAndPeerV4::new(ipv4.src(), udp.dst(), udp.src())) }
+            .ok_or(Error::NoChannelBinding)?;
 
     let new_src = ipv4.dst(); // The IP we received the packet on will be the new source IP.
     let new_ipv4_total_len = ipv4.total_len() + CdHdr::LEN as u16;
@@ -208,6 +192,8 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u32, Error> {
     }
 
     let udp = Udp::parse(ctx, Ipv6Hdr::LEN)?; // TODO: Change the API so we parse the UDP header _from_ the ipv6 struct?
+    let udp_payload_len = udp.payload_len();
+
     trace!(
         ctx,
         "New packet from {:i}:{} for {:i}:{} with UDP payload {}",
@@ -215,17 +201,19 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u32, Error> {
         udp.src(),
         ipv6.dst(),
         udp.dst(),
-        udp.len()
+        udp_payload_len
     );
 
     if config::allocation_range().contains(&udp.dst()) {
         let action = try_handle_ipv6_udp_to_channel_data(ctx, ipv6, udp)?;
+        stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(action);
     }
 
     if udp.dst() == 3478 {
         let action = try_handle_ipv6_channel_data_to_udp(ctx, ipv6, udp)?;
+        stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(action);
     }
@@ -238,19 +226,9 @@ fn try_handle_ipv6_udp_to_channel_data(
     ipv6: Ip6,
     udp: Udp,
 ) -> Result<u32, Error> {
-    let maybe_client =
-        unsafe { UDP_TO_CHAN_66.get(&PortAndPeerV6::new(ipv6.src(), udp.dst(), udp.src())) };
-    let Some(client_and_channel) = maybe_client else {
-        debug!(
-            ctx,
-            "No channel binding from {:i}:{} on allocation {}",
-            ipv6.src(),
-            udp.src(),
-            udp.dst(),
-        );
-
-        return Ok(xdp_action::XDP_PASS);
-    };
+    let client_and_channel =
+        unsafe { UDP_TO_CHAN_66.get(&PortAndPeerV6::new(ipv6.src(), udp.dst(), udp.src())) }
+            .ok_or(Error::NoChannelBinding)?;
 
     let new_src = ipv6.dst(); // The IP we received the packet on will be the new source IP.
     let new_ipv6_total_len = ipv6.payload_len() + CdHdr::LEN as u16;
@@ -283,19 +261,9 @@ fn try_handle_ipv6_channel_data_to_udp(
     let cd = ChannelData::parse(ctx, Ipv6Hdr::LEN)?;
 
     // SAFETY: ???
-    let maybe_peer =
-        unsafe { CHAN_TO_UDP_66.get(&ClientAndChannelV6::new(ipv6.src(), udp.src(), cd.number())) };
-    let Some(port_and_peer) = maybe_peer else {
-        debug!(
-            ctx,
-            "No channel binding from {:i}:{} for channel {}",
-            ipv6.src(),
-            udp.src(),
-            cd.number(),
-        );
-
-        return Ok(xdp_action::XDP_PASS);
-    };
+    let port_and_peer =
+        unsafe { CHAN_TO_UDP_66.get(&ClientAndChannelV6::new(ipv6.src(), udp.src(), cd.number())) }
+            .ok_or(Error::NoChannelBinding)?;
 
     let new_src = ipv6.dst(); // The IP we received the packet on will be the new source IP.
     let new_ipv6_payload_len = ipv6.payload_len() - CdHdr::LEN as u16;

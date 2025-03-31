@@ -50,12 +50,13 @@ url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-aya = { workspace = true }
+aya = { workspace = true, features = ["tokio"] }
 aya-log = { workspace = true }
 
 [dev-dependencies]
 difference = { workspace = true }
 env_logger = { workspace = true }
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
 test-strategy = { workspace = true }
 tokio = { workspace = true, features = ["process", "macros", "net"] }
 
