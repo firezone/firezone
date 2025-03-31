@@ -10,7 +10,7 @@ use aya_ebpf::{
 };
 use aya_log_ebpf::*;
 use channel_data::{CdHdr, ChannelData};
-use ebpf_shared::{ClientAndChannelV4, PortAndPeerV4};
+use ebpf_shared::{ClientAndChannelV4, ClientAndChannelV6, PortAndPeerV4, PortAndPeerV6};
 use eth::Eth;
 use ip4::Ip4;
 use move_headers::{add_channel_data_header_ipv4, remove_channel_data_header_ipv4};
@@ -35,6 +35,12 @@ static CHAN_TO_UDP_44: HashMap<ClientAndChannelV4, PortAndPeerV4> =
     HashMap::with_max_entries(0x100000, 0);
 #[map]
 static UDP_TO_CHAN_44: HashMap<PortAndPeerV4, ClientAndChannelV4> =
+    HashMap::with_max_entries(0x100000, 0);
+#[map]
+static CHAN_TO_UDP_66: HashMap<ClientAndChannelV6, PortAndPeerV6> =
+    HashMap::with_max_entries(0x100000, 0);
+#[map]
+static UDP_TO_CHAN_66: HashMap<PortAndPeerV6, ClientAndChannelV6> =
     HashMap::with_max_entries(0x100000, 0);
 
 #[xdp]

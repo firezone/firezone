@@ -7,7 +7,7 @@ use aya::{
     programs::{Xdp, XdpFlags},
 };
 use aya_log::EbpfLogger;
-use ebpf_shared::{ClientAndChannelV4, Config, PortAndPeerV4};
+use ebpf_shared::{ClientAndChannelV4, ClientAndChannelV6, Config, PortAndPeerV4, PortAndPeerV6};
 use stun_codec::rfc5766::attributes::ChannelNumber;
 
 use crate::{AllocationPort, ClientSocket, PeerSocket};
@@ -56,8 +56,15 @@ impl Program {
                 self.udp_to_chan_44_map_mut()?
                     .insert(port_and_peer, client_and_channel, 0)?;
             }
-            (SocketAddr::V6(_), SocketAddr::V6(_)) => {
-                // IPv6 is not yet supported in the eBPF kernel.
+            (SocketAddr::V6(client), SocketAddr::V6(peer)) => {
+                let client_and_channel =
+                    ClientAndChannelV6::from_socket(client, channel_number.value());
+                let port_and_peer = PortAndPeerV6::from_socket(peer, allocation_port.value());
+
+                self.chan_to_udp_66_map_mut()?
+                    .insert(client_and_channel, port_and_peer, 0)?;
+                self.udp_to_chan_66_map_mut()?
+                    .insert(port_and_peer, client_and_channel, 0)?;
             }
             (SocketAddr::V4(_), SocketAddr::V6(_)) | (SocketAddr::V6(_), SocketAddr::V4(_)) => {
                 // Relaying between IPv4 and IPv6 is not supported in the eBPF kernel.
@@ -86,8 +93,13 @@ impl Program {
                 self.chan_to_udp_44_map_mut()?.remove(&client_and_channel)?;
                 self.udp_to_chan_44_map_mut()?.remove(&port_and_peer)?;
             }
-            (SocketAddr::V6(_), SocketAddr::V6(_)) => {
-                // IPv6 is not yet supported in the eBPF kernel.
+            (SocketAddr::V6(client), SocketAddr::V6(peer)) => {
+                let client_and_channel =
+                    ClientAndChannelV6::from_socket(client, channel_number.value());
+                let port_and_peer = PortAndPeerV6::from_socket(peer, allocation_port.value());
+
+                self.chan_to_udp_66_map_mut()?.remove(&client_and_channel)?;
+                self.udp_to_chan_66_map_mut()?.remove(&port_and_peer)?;
             }
             (SocketAddr::V4(_), SocketAddr::V6(_)) | (SocketAddr::V6(_), SocketAddr::V4(_)) => {
                 // Relaying between IPv4 and IPv6 is not supported in the eBPF kernel.
@@ -113,6 +125,18 @@ impl Program {
         &mut self,
     ) -> Result<HashMap<&mut MapData, PortAndPeerV4, ClientAndChannelV4>> {
         self.hash_map_mut("UDP_TO_CHAN_44")
+    }
+
+    fn chan_to_udp_66_map_mut(
+        &mut self,
+    ) -> Result<HashMap<&mut MapData, ClientAndChannelV6, PortAndPeerV6>> {
+        self.hash_map_mut("CHAN_TO_UDP_66")
+    }
+
+    fn udp_to_chan_66_map_mut(
+        &mut self,
+    ) -> Result<HashMap<&mut MapData, PortAndPeerV6, ClientAndChannelV6>> {
+        self.hash_map_mut("UDP_TO_CHAN_66")
     }
 
     fn config_array_mut(&mut self) -> Result<Array<&mut MapData, Config>> {
