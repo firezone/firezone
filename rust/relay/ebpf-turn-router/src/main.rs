@@ -36,21 +36,23 @@ mod slice_mut_at;
 mod stats;
 mod udp;
 
+const NUM_ENTRIES: u32 = 0x10000;
+
 /// Channel mappings from an IPv4 socket + channel number to an IPv4 socket + port.
 ///
 /// TODO: Update flags to `BPF_F_NO_PREALLOC` to guarantee atomicity? Needs research.
 #[map]
 static CHAN_TO_UDP_44: HashMap<ClientAndChannelV4, PortAndPeerV4> =
-    HashMap::with_max_entries(0x100000, 0);
+    HashMap::with_max_entries(NUM_ENTRIES, 0);
 #[map]
 static UDP_TO_CHAN_44: HashMap<PortAndPeerV4, ClientAndChannelV4> =
-    HashMap::with_max_entries(0x100000, 0);
+    HashMap::with_max_entries(NUM_ENTRIES, 0);
 #[map]
 static CHAN_TO_UDP_66: HashMap<ClientAndChannelV6, PortAndPeerV6> =
-    HashMap::with_max_entries(0x100000, 0);
+    HashMap::with_max_entries(NUM_ENTRIES, 0);
 #[map]
 static UDP_TO_CHAN_66: HashMap<PortAndPeerV6, ClientAndChannelV6> =
-    HashMap::with_max_entries(0x100000, 0);
+    HashMap::with_max_entries(NUM_ENTRIES, 0);
 
 #[xdp]
 pub fn handle_turn(ctx: XdpContext) -> u32 {
@@ -295,4 +297,30 @@ fn on_panic(_: &core::panic::PanicInfo) -> ! {
 #[cfg(not(target_arch = "bpf"))]
 fn main() {
     panic!("This program is meant to be compiled as an eBPF program.");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Memory overhead of an eBPF map.
+    ///
+    /// Determined emperically.
+    const HASH_MAP_OVERHEAD: f32 = 1.5;
+
+    #[test]
+    fn hashmaps_are_less_than_100_mb() {
+        let ipv4_datatypes =
+            core::mem::size_of::<PortAndPeerV4>() + core::mem::size_of::<ClientAndChannelV4>();
+        let ipv6_datatypes =
+            core::mem::size_of::<PortAndPeerV6>() + core::mem::size_of::<ClientAndChannelV6>();
+
+        let ipv4_map_size = ipv4_datatypes as f32 * NUM_ENTRIES as f32 * HASH_MAP_OVERHEAD;
+        let ipv6_map_size = ipv6_datatypes as f32 * NUM_ENTRIES as f32 * HASH_MAP_OVERHEAD;
+
+        let total_map_size = (ipv4_map_size + ipv6_map_size) * 2_f32;
+        let total_map_size_mb = total_map_size / 1024_f32 / 1024_f32;
+
+        assert!(total_map_size_mb < 100_f32);
+    }
 }
