@@ -1,7 +1,5 @@
 use core::num::NonZeroUsize;
 
-use aya_ebpf::bindings::xdp_action;
-
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
     PacketTooShort,
