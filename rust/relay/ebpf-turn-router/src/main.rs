@@ -58,6 +58,7 @@ static UDP_TO_CHAN_66: HashMap<PortAndPeerV6, ClientAndChannelV6> =
 pub fn handle_turn(ctx: XdpContext) -> u32 {
     try_handle_turn(&ctx).unwrap_or_else(|e| match e {
         Error::NotUdp
+        | Error::Loopback
         | Error::NotTurn
         | Error::NotIp
         | Error::NotAChannelDataMessage
@@ -100,6 +101,10 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 #[inline(always)]
 fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
     let ipv4 = Ip4::parse(ctx)?;
+
+    if ipv4.src() == ipv4.dst() {
+        return Err(Error::Loopback); // We can't handle checksum updates for these properly due to checksum offloading onto the NIC.
+    }
 
     if ipv4.protocol() != IpProto::Udp {
         return Err(Error::NotUdp);
@@ -144,6 +149,10 @@ fn try_handle_ipv4_channel_data_to_udp(ctx: &XdpContext, ipv4: Ip4, udp: Udp) ->
         unsafe { CHAN_TO_UDP_44.get(&ClientAndChannelV4::new(ipv4.src(), udp.src(), cd.number())) }
             .ok_or(Error::NoChannelBinding)?;
 
+    if ipv4.dst() == port_and_peer.peer_ip() {
+        return Err(Error::Loopback); // We can't handle checksum updates for these properly due to checksum offloading onto the NIC.
+    }
+
     let new_src = ipv4.dst(); // The IP we received the packet on will be the new source IP.
     let new_ipv4_total_len = ipv4.total_len() - CdHdr::LEN as u16;
     let pseudo_header = ipv4.update(new_src, port_and_peer.peer_ip(), new_ipv4_total_len);
@@ -166,6 +175,10 @@ fn try_handle_ipv4_udp_to_channel_data(ctx: &XdpContext, ipv4: Ip4, udp: Udp) ->
     let client_and_channel =
         unsafe { UDP_TO_CHAN_44.get(&PortAndPeerV4::new(ipv4.src(), udp.dst(), udp.src())) }
             .ok_or(Error::NoChannelBinding)?;
+
+    if ipv4.dst() == client_and_channel.client_ip() {
+        return Err(Error::Loopback); // We can't handle checksum updates for these properly due to checksum offloading onto the NIC.
+    }
 
     let new_src = ipv4.dst(); // The IP we received the packet on will be the new source IP.
     let new_ipv4_total_len = ipv4.total_len() + CdHdr::LEN as u16;
@@ -233,6 +246,10 @@ fn try_handle_ipv6_udp_to_channel_data(ctx: &XdpContext, ipv6: Ip6, udp: Udp) ->
         unsafe { UDP_TO_CHAN_66.get(&PortAndPeerV6::new(ipv6.src(), udp.dst(), udp.src())) }
             .ok_or(Error::NoChannelBinding)?;
 
+    if ipv6.dst() == client_and_channel.client_ip() {
+        return Err(Error::Loopback); // We can't handle checksum updates for these properly due to checksum offloading onto the NIC.
+    }
+
     let new_src = ipv6.dst(); // The IP we received the packet on will be the new source IP.
     let new_ipv6_total_len = ipv6.payload_len() + CdHdr::LEN as u16;
     let pseudo_header = ipv6.update(new_src, client_and_channel.client_ip(), new_ipv6_total_len);
@@ -263,6 +280,10 @@ fn try_handle_ipv6_channel_data_to_udp(ctx: &XdpContext, ipv6: Ip6, udp: Udp) ->
     let port_and_peer =
         unsafe { CHAN_TO_UDP_66.get(&ClientAndChannelV6::new(ipv6.src(), udp.src(), cd.number())) }
             .ok_or(Error::NoChannelBinding)?;
+
+    if ipv6.dst() == port_and_peer.peer_ip() {
+        return Err(Error::Loopback); // We can't handle checksum updates for these properly due to checksum offloading onto the NIC.
+    }
 
     let new_src = ipv6.dst(); // The IP we received the packet on will be the new source IP.
     let new_ipv6_payload_len = ipv6.payload_len() - CdHdr::LEN as u16;
