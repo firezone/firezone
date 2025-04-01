@@ -147,7 +147,7 @@ fn try_handle_ipv4_channel_data_to_udp(
         new_udp_len,
     );
 
-    remove_channel_data_header_ipv4(ctx);
+    remove_channel_data_header_ipv4(ctx)?;
 
     Ok(xdp_action::XDP_TX)
 }
@@ -180,7 +180,7 @@ fn try_handle_ipv4_udp_to_channel_data(
 
     let channel_data_header = [cd_num[0], cd_num[1], cd_len[0], cd_len[1]];
 
-    add_channel_data_header_ipv4(ctx, channel_data_header);
+    add_channel_data_header_ipv4(ctx, channel_data_header)?;
 
     Ok(xdp_action::XDP_TX)
 }
@@ -250,7 +250,7 @@ fn try_handle_ipv6_udp_to_channel_data(
 
     let channel_data_header = [cd_num[0], cd_num[1], cd_len[0], cd_len[1]];
 
-    add_channel_data_header_ipv6(ctx, channel_data_header);
+    add_channel_data_header_ipv6(ctx, channel_data_header)?;
 
     Ok(xdp_action::XDP_TX)
 }
@@ -279,7 +279,7 @@ fn try_handle_ipv6_channel_data_to_udp(
         new_udp_len,
     );
 
-    remove_channel_data_header_ipv6(ctx);
+    remove_channel_data_header_ipv6(ctx)?;
 
     Ok(xdp_action::XDP_TX)
 }

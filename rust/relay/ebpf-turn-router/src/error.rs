@@ -9,6 +9,9 @@ pub enum Error {
     NotAChannelDataMessage,
     BadChannelDataLength,
     NoChannelBinding,
+    XdpLoadBytesFailed,
+    XdpAdjustHeadFailed,
+    XdpStoreBytesFailed,
 }
 
 impl Error {
@@ -19,6 +22,9 @@ impl Error {
             Error::BadChannelDataLength => xdp_action::XDP_DROP,
             Error::NotAChannelDataMessage => xdp_action::XDP_PASS,
             Error::NoChannelBinding => xdp_action::XDP_PASS,
+            Error::XdpLoadBytesFailed => xdp_action::XDP_PASS,
+            Error::XdpAdjustHeadFailed => xdp_action::XDP_PASS,
+            Error::XdpStoreBytesFailed => xdp_action::XDP_PASS,
         }
     }
 }
@@ -31,6 +37,9 @@ impl aya_log_ebpf::WriteToBuf for Error {
             Error::NotAChannelDataMessage => "Not a channel data message",
             Error::BadChannelDataLength => "Channel data length does not match packet length",
             Error::NoChannelBinding => "No channel binding",
+            Error::XdpLoadBytesFailed => "Failed to load bytes",
+            Error::XdpAdjustHeadFailed => "Failed to adjust head",
+            Error::XdpStoreBytesFailed => "Failed to store bytes",
         };
 
         msg.write(buf)
