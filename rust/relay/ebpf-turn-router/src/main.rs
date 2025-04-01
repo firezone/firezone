@@ -101,6 +101,8 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
         _ => return Err(Error::NotIp),
     };
 
+    // If we get to here, we modified the packet and need to send it back out again.
+
     Ok(xdp_action::XDP_TX)
 }
 
