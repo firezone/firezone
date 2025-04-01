@@ -1,7 +1,5 @@
 use core::num::NonZeroUsize;
 
-use aya_ebpf::bindings::xdp_action;
-
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
     PacketTooShort,
@@ -15,24 +13,6 @@ pub enum Error {
     XdpLoadBytesFailed,
     XdpAdjustHeadFailed,
     XdpStoreBytesFailed,
-}
-
-impl Error {
-    pub fn xdp_action(&self) -> xdp_action::Type {
-        match self {
-            Error::PacketTooShort => xdp_action::XDP_PASS,
-            Error::NotUdp => xdp_action::XDP_PASS,
-            Error::NotTurn => xdp_action::XDP_PASS,
-            Error::NotIp => xdp_action::XDP_PASS,
-            Error::Ipv4PacketWithOptions => xdp_action::XDP_PASS,
-            Error::BadChannelDataLength => xdp_action::XDP_DROP,
-            Error::NotAChannelDataMessage => xdp_action::XDP_PASS,
-            Error::NoChannelBinding => xdp_action::XDP_PASS,
-            Error::XdpLoadBytesFailed => xdp_action::XDP_PASS,
-            Error::XdpAdjustHeadFailed => xdp_action::XDP_PASS,
-            Error::XdpStoreBytesFailed => xdp_action::XDP_PASS,
-        }
-    }
 }
 
 impl aya_log_ebpf::WriteToBuf for Error {
