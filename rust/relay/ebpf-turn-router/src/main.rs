@@ -59,6 +59,7 @@ static UDP_TO_CHAN_66: HashMap<PortAndPeerV6, ClientAndChannelV6> =
 pub fn handle_turn(ctx: XdpContext) -> u32 {
     try_handle_turn(&ctx).unwrap_or_else(|e| match e {
         Error::NotUdp
+        | Error::Loopback
         | Error::NotTurn
         | Error::NotIp
         | Error::NotAChannelDataMessage
@@ -93,9 +94,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             let eth = Eth::parse(ctx)?;
             let ip4 = Ip4::parse(ctx)?;
 
-            let new_dst = arp::resolve_mac(ip4.dst())
-                .or_else(|| (ip4.dst() == ip4.src()).then_some(eth.dst())) // If we are sending a packet to ourselves, we need to use our own MAC address.
-                .ok_or(Error::NoMacAddress)?;
+            let new_dst = arp::resolve_mac(ip4.dst()).ok_or(Error::NoMacAddress)?;
 
             eth.update(new_dst);
         }
@@ -111,6 +110,10 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 #[inline(always)]
 fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
     let ipv4 = Ip4::parse(ctx)?;
+
+    if ipv4.src() == ipv4.dst() {
+        return Err(Error::Loopback); // We can't handle checksum updates for these properly due to checksum offloading onto the NIC.
+    }
 
     if ipv4.protocol() != IpProto::Udp {
         return Err(Error::NotUdp);
@@ -204,6 +207,10 @@ fn try_handle_ipv4_udp_to_channel_data(ctx: &XdpContext, ipv4: Ip4, udp: Udp) ->
 #[inline(always)]
 fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
     let ipv6 = Ip6::parse(ctx)?;
+
+    if ipv6.src() == ipv6.dst() {
+        return Err(Error::Loopback); // We can't handle checksum updates for these properly due to checksum offloading onto the NIC.
+    }
 
     if ipv6.protocol() != IpProto::Udp {
         return Err(Error::NotUdp);
