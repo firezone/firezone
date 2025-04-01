@@ -16,6 +16,7 @@ use stun_codec::rfc5766::attributes::ChannelNumber;
 use crate::{AllocationPort, ClientSocket, PeerSocket};
 
 pub struct Program {
+    interface: String,
     ebpf: aya::Ebpf,
 }
 
@@ -85,7 +86,10 @@ impl Program {
             });
         }
 
-        Ok(Self { ebpf })
+        Ok(Self {
+            ebpf,
+            interface: interface.to_owned(),
+        })
     }
 
     pub fn add_channel_binding(
@@ -169,12 +173,19 @@ impl Program {
     }
 
     pub fn refresh_arp_cache(&mut self) -> Result<()> {
+        let interface = self.interface.clone();
         let mut arp_cache = self.ip4_to_mac()?;
 
         for arp_entry in procfs::net::arp().context("Failed to read arp cache")? {
             let Some(mac) = arp_entry.hw_address else {
                 continue;
             };
+
+            if arp_entry.device != interface {
+                tracing::debug!(%interface, "Ignoring ARP entry for device {}", arp_entry.device);
+
+                continue;
+            }
 
             arp_cache.insert(arp_entry.ip_address.octets(), mac, 0)?;
         }
