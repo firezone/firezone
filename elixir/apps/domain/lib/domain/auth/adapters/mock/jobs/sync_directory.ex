@@ -1,6 +1,7 @@
 defmodule Domain.Auth.Adapters.Mock.Jobs.SyncDirectory do
   use Domain.Jobs.Job,
     otp_app: :domain,
+    # Database lock prevents updating more frequently than 10 minutes
     every: :timer.minutes(1),
     executor: Domain.Jobs.Executors.Concurrent
 

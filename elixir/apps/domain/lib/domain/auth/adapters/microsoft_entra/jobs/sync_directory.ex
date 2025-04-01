@@ -1,6 +1,7 @@
 defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory do
   use Domain.Jobs.Job,
     otp_app: :domain,
+    # Database lock prevents updating more frequently than 10 minutes
     every: :timer.minutes(5),
     executor: Domain.Jobs.Executors.Concurrent
 
