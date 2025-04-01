@@ -59,7 +59,7 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
     try_handle_turn(&ctx).unwrap_or_else(|e| {
         let action = e.xdp_action();
 
-        debug!(&ctx, "Failed to handle packet {}; action = {}", e, action);
+        debug!(&ctx, "Did not handle packet: {}; action = {}", e, action);
 
         action
     })
@@ -72,7 +72,7 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     let action = match eth.ether_type() {
         EtherType::Ipv4 => try_handle_turn_ipv4(ctx)?,
         EtherType::Ipv6 => try_handle_turn_ipv6(ctx)?,
-        _ => return Ok(xdp_action::XDP_PASS),
+        _ => return Err(Error::NotIp),
     };
 
     // If we send the packet back out, swap the source and destination MAC addresses.
@@ -89,7 +89,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
     let ipv4 = Ip4::parse(ctx)?;
 
     if ipv4.protocol() != IpProto::Udp {
-        return Ok(xdp_action::XDP_PASS);
+        return Err(Error::NotUdp);
     }
 
     let udp = Udp::parse(ctx, Ipv4Hdr::LEN)?; // TODO: Change the API so we parse the UDP header _from_ the ipv4 struct?
@@ -119,7 +119,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
         return Ok(action);
     }
 
-    Ok(xdp_action::XDP_PASS)
+    Err(Error::NotTurn)
 }
 
 #[inline(always)]
@@ -190,7 +190,7 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u32, Error> {
     let ipv6 = Ip6::parse(ctx)?;
 
     if ipv6.protocol() != IpProto::Udp {
-        return Ok(xdp_action::XDP_PASS);
+        return Err(Error::NotUdp);
     }
 
     let udp = Udp::parse(ctx, Ipv6Hdr::LEN)?; // TODO: Change the API so we parse the UDP header _from_ the ipv6 struct?
@@ -220,7 +220,7 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u32, Error> {
         return Ok(action);
     }
 
-    Ok(xdp_action::XDP_PASS)
+    Err(Error::NotTurn)
 }
 
 fn try_handle_ipv6_udp_to_channel_data(
