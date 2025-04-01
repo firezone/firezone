@@ -39,4 +39,8 @@ impl Program {
     pub fn set_config(&mut self, _: Config) -> Result<()> {
         Ok(())
     }
+
+    pub fn refresh_arp_cache(&mut self) -> Result<()> {
+        Ok(())
+    }
 }
