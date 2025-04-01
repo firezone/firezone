@@ -145,6 +145,8 @@ fn try_handle_ipv4_channel_data_to_udp(
         port_and_peer.allocation_port(),
         port_and_peer.peer_port(),
         new_udp_len,
+        cd.number(),
+        cd.length(),
     );
 
     remove_channel_data_header_ipv4(ctx);
@@ -168,15 +170,21 @@ fn try_handle_ipv4_udp_to_channel_data(
 
     let udp_len = udp.len();
     let new_udp_len = udp_len + CdHdr::LEN as u16;
+
+    let channel_number = client_and_channel.channel();
+    let channel_data_length = udp_len - UdpHdr::LEN as u16;
+
     udp.update(
         pseudo_header,
         3478,
         client_and_channel.client_port(),
         new_udp_len,
+        channel_number,
+        channel_data_length,
     );
 
-    let cd_num = client_and_channel.channel().to_be_bytes();
-    let cd_len = (udp_len - UdpHdr::LEN as u16).to_be_bytes(); // The `length` field in the UDP header includes the header itself. For the channel-data field, we only want the length of the payload.
+    let cd_num = channel_number.to_be_bytes();
+    let cd_len = channel_data_length.to_be_bytes(); // The `length` field in the UDP header includes the header itself. For the channel-data field, we only want the length of the payload.
 
     let channel_data_header = [cd_num[0], cd_num[1], cd_len[0], cd_len[1]];
 
@@ -238,15 +246,21 @@ fn try_handle_ipv6_udp_to_channel_data(
 
     let udp_len = udp.len();
     let new_udp_len = udp_len + CdHdr::LEN as u16;
+
+    let channel_number = client_and_channel.channel();
+    let channel_data_length = udp_len - UdpHdr::LEN as u16;
+
     udp.update(
         pseudo_header,
         3478,
         client_and_channel.client_port(),
         new_udp_len,
+        channel_number,
+        channel_data_length,
     );
 
-    let cd_num = client_and_channel.channel().to_be_bytes();
-    let cd_len = (udp_len - UdpHdr::LEN as u16).to_be_bytes(); // The `length` field in the UDP header includes the header itself. For the channel-data field, we only want the length of the payload.
+    let cd_num = channel_number.to_be_bytes();
+    let cd_len = channel_data_length.to_be_bytes(); // The `length` field in the UDP header includes the header itself. For the channel-data field, we only want the length of the payload.
 
     let channel_data_header = [cd_num[0], cd_num[1], cd_len[0], cd_len[1]];
 
@@ -277,6 +291,8 @@ fn try_handle_ipv6_channel_data_to_udp(
         port_and_peer.allocation_port(),
         port_and_peer.peer_port(),
         new_udp_len,
+        cd.number(),
+        cd.length(),
     );
 
     remove_channel_data_header_ipv6(ctx);
