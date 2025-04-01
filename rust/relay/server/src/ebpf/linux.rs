@@ -182,8 +182,6 @@ impl Program {
             };
 
             if arp_entry.device != interface {
-                tracing::debug!(%interface, "Ignoring ARP entry for device {}", arp_entry.device);
-
                 continue;
             }
 
