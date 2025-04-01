@@ -63,10 +63,6 @@ fn move_headers<const DELTA: i32, const IP_HEADER_LEN: usize>(ctx: &XdpContext) 
     // Move the head for the packet by `DELTA`.
     unsafe { bpf_xdp_adjust_head(ctx.ctx, DELTA) };
 
-    // if ctx.data() + EthHdr::LEN + IP_HEADER_LEN + UdpHdr::LEN + 6 > ctx.data_end() {
-    //     return Err(Error::PacketTooShort);
-    // }
-
     // Copy the headers back.
     unsafe { bpf_xdp_store_bytes(ctx.ctx, 0, headers_ptr, headers_len) };
 }
