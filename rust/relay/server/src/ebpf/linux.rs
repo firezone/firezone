@@ -168,6 +168,20 @@ impl Program {
         Ok(())
     }
 
+    pub fn refresh_arp_cache(&mut self) -> Result<()> {
+        let mut arp_cache = self.ip4_to_mac()?;
+
+        for arp_entry in procfs::net::arp().context("Failed to read arp cache")? {
+            let Some(mac) = arp_entry.hw_address else {
+                continue;
+            };
+
+            arp_cache.insert(arp_entry.ip_address.octets(), mac, 0)?;
+        }
+
+        Ok(())
+    }
+
     fn chan_to_udp_44_map_mut(
         &mut self,
     ) -> Result<HashMap<&mut MapData, ClientAndChannelV4, PortAndPeerV4>> {
@@ -190,6 +204,10 @@ impl Program {
         &mut self,
     ) -> Result<HashMap<&mut MapData, PortAndPeerV6, ClientAndChannelV6>> {
         self.hash_map_mut("UDP_TO_CHAN_66")
+    }
+
+    fn ip4_to_mac(&mut self) -> Result<HashMap<&mut MapData, [u8; 4], [u8; 6]>> {
+        self.hash_map_mut("IP4_TO_MAC")
     }
 
     fn config_array_mut(&mut self) -> Result<Array<&mut MapData, Config>> {

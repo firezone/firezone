@@ -628,6 +628,12 @@ where
             }
 
             if self.stats_log_interval.poll_tick(cx).is_ready() {
+                if let Some(ebpf) = self.ebpf.as_mut() {
+                    if let Err(e) = ebpf.refresh_arp_cache() {
+                        tracing::debug!("Failed to refresh ARP cache: {e:#}")
+                    }
+                }
+
                 let num_allocations = self.server.num_allocations();
                 let num_channels = self.server.num_active_channels();
 

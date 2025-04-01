@@ -24,6 +24,7 @@ use network_types::{
 };
 use udp::{Udp, UdpHdr};
 
+mod arp;
 mod channel_data;
 mod checksum;
 mod config;
@@ -70,14 +71,19 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     let eth = Eth::parse(ctx)?;
 
     match eth.ether_type() {
-        EtherType::Ipv4 => try_handle_turn_ipv4(ctx)?,
+        EtherType::Ipv4 => {
+            try_handle_turn_ipv4(ctx)?;
+
+            let eth = Eth::parse(ctx)?;
+            let ip4 = Ip4::parse(ctx)?;
+
+            let new_dst = arp::resolve_mac(ip4.dst()).ok_or(Error::NoMacAddress)?;
+
+            eth.update(new_dst);
+        }
         EtherType::Ipv6 => try_handle_turn_ipv6(ctx)?,
         _ => return Err(Error::NotIp),
     };
-
-    // If we send the packet back out, swap the source and destination MAC addresses.
-    // We will have adjusted the packet pointers so we need to reparse the packet.
-    Eth::parse(ctx)?.swap_src_and_dst();
 
     Ok(xdp_action::XDP_TX)
 }

@@ -19,7 +19,8 @@ impl<'a> Eth<'a> {
         self.inner.ether_type
     }
 
-    pub fn swap_src_and_dst(&mut self) {
-        core::mem::swap(&mut self.inner.src_addr, &mut self.inner.dst_addr);
+    pub fn update(self, new_dst: [u8; 6]) {
+        self.inner.src_addr = self.inner.dst_addr;
+        self.inner.dst_addr = new_dst;
     }
 }

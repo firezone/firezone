@@ -114,6 +114,7 @@ output_vt100 = "0.1"
 parking_lot = "0.12.3"
 phoenix-channel = { path = "phoenix-channel" }
 png = "0.17.16"
+procfs = "0.17.0"
 proptest = "1.6.0"
 proptest-state-machine = "0.3.1"
 quinn-udp = { version = "0.5.8", features = ["fast-apple-datapath"] }

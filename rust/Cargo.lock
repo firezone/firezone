@@ -2417,6 +2417,7 @@ dependencies = [
  "opentelemetry-otlp",
  "opentelemetry_sdk",
  "phoenix-channel",
+ "procfs",
  "proptest",
  "rand 0.8.5",
  "rustls",
@@ -5177,6 +5178,31 @@ dependencies = [
  "quote",
  "syn 2.0.87",
  "version_check",
+]
+
+[[package]]
+name = "procfs"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cc5b72d8145275d844d4b5f6d4e1eef00c8cd889edb6035c21675d1bb1f45c9f"
+dependencies = [
+ "bitflags 2.6.0",
+ "chrono",
+ "flate2",
+ "hex",
+ "procfs-core",
+ "rustix",
+]
+
+[[package]]
+name = "procfs-core"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "239df02d8349b06fc07398a3a1697b06418223b1c7725085e801e7c0fc6a12ec"
+dependencies = [
+ "bitflags 2.6.0",
+ "chrono",
+ "hex",
 ]
 
 [[package]]
