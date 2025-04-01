@@ -1,5 +1,6 @@
 defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
   use Supervisor
+  require Logger
 
   @pool_name __MODULE__.Finch
 
@@ -132,13 +133,24 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
   defp list(uri, api_token) do
     request = Finch.build(:get, uri, [{"Authorization", "Bearer #{api_token}"}])
 
-    with {:ok, %Finch.Response{body: response, status: status}} when status in 200..299 <-
+    with {:ok, %Finch.Response{body: response, status: 200}} <-
            Finch.request(request, @pool_name),
          {:ok, json_response} <- Jason.decode(response),
-         {:ok, list} <- Map.fetch(json_response, "value") do
+         {:ok, list} when is_list(list) <- Map.fetch(json_response, "value") do
       {:ok, list, json_response["@odata.nextLink"]}
     else
-      {:ok, %Finch.Response{status: status}} when status in 500..599 ->
+      {:ok, %Finch.Response{status: status} = response} when status in 201..299 ->
+        Logger.warning("API request succeeded with unexpected 2xx status #{status}",
+          response: inspect(response)
+        )
+
+        {:error, :retry_later}
+
+      {:ok, %Finch.Response{status: status} = response} when status in 500..599 ->
+        Logger.error("API request failed with 5xx status #{status}",
+          response: inspect(response)
+        )
+
         {:error, :retry_later}
 
       {:ok, %Finch.Response{body: response, status: status}} ->
@@ -150,10 +162,19 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
             {:error, {status, response}}
         end
 
+      # We're not sure why the expected key could be missing from the response, but don't
+      # disable the adapter if so.
       :error ->
-        {:ok, [], nil}
+        Logger.error(
+          "API request failed with an unexpected error response",
+          uri: inspect(uri)
+        )
+
+        {:error, :retry_later}
 
       other ->
+        Logger.error("Unexpected response from API", response: inspect(other))
+
         other
     end
   end

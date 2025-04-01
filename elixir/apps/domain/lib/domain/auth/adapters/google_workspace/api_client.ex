@@ -4,6 +4,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
   or they will not return you pagination cursor 🫠.
   """
   use Supervisor
+  require Logger
 
   @pool_name __MODULE__.Finch
 
@@ -173,12 +174,19 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
   defp list(uri, api_token, key) do
     request = Finch.build(:get, uri, [{"Authorization", "Bearer #{api_token}"}])
 
-    with {:ok, %Finch.Response{body: response, status: status}} when status in 200..299 <-
+    with {:ok, %Finch.Response{body: response, status: 200}} <-
            Finch.request(request, @pool_name),
          {:ok, json_response} <- Jason.decode(response),
-         {:ok, list} <- Map.fetch(json_response, key) do
+         {:ok, list} when is_list(list) <- Map.fetch(json_response, key) do
       {:ok, list, json_response["nextPageToken"]}
     else
+      {:ok, %Finch.Response{status: status} = response} when status in 201..299 ->
+        Logger.warning("API request succeeded with unexpected 2xx status #{status}",
+          response: inspect(response)
+        )
+
+        {:error, :retry_later}
+
       {:ok, %Finch.Response{status: status}} when status in 500..599 ->
         {:error, :retry_later}
 
@@ -191,10 +199,19 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
             {:error, {status, response}}
         end
 
+      # We're not sure why the expected key could be missing from the response, but don't
+      # disable the adapter if so.
       :error ->
-        {:ok, [], nil}
+        Logger.error("API request failed with an unexpected error response",
+          uri: inspect(uri),
+          key: key
+        )
+
+        {:error, :retry_later}
 
       other ->
+        Logger.error("Unexpected response from API", response: inspect(other))
+
         other
     end
   end
