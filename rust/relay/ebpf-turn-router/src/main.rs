@@ -67,6 +67,7 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
         | Error::XdpAdjustHeadFailed
         | Error::XdpLoadBytesFailed
         | Error::PacketTooShort
+        | Error::NoMacAddress
         | Error::NoChannelBinding => {
             debug!(&ctx, "Failed to handle packet: {}", e);
 
@@ -86,20 +87,22 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     let eth = Eth::parse(ctx)?;
 
     match eth.ether_type() {
-        EtherType::Ipv4 => try_handle_turn_ipv4(ctx)?,
-        EtherType::Ipv6 => try_handle_turn_ipv6(ctx)?,
+        EtherType::Ipv4 => try_handle_turn_ipv4(ctx, eth)?,
+        EtherType::Ipv6 => try_handle_turn_ipv6(ctx, eth)?,
         _ => return Err(Error::NotIp),
     };
 
     // If we get to here, we modified the packet and need to send it back out again.
-    Eth::parse(ctx)?.swap_src_and_dst();
 
     Ok(xdp_action::XDP_TX)
 }
 
 #[inline(always)]
-fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
+fn try_handle_turn_ipv4(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
     let ipv4 = Ip4::parse(ctx)?;
+
+    eth::save_mac_for_ipv4(ipv4.src(), eth.src());
+    eth::save_mac_for_ipv4(ipv4.dst(), eth.dst());
 
     if ipv4.protocol() != IpProto::Udp {
         return Err(Error::NotUdp);
@@ -119,14 +122,14 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
     );
 
     if config::allocation_range().contains(&udp.dst()) {
-        try_handle_ipv4_udp_to_channel_data(ctx, ipv4, udp)?;
+        try_handle_ipv4_udp_to_channel_data(ctx, eth, ipv4, udp)?;
         stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(());
     }
 
     if udp.dst() == 3478 {
-        try_handle_ipv4_channel_data_to_udp(ctx, ipv4, udp)?;
+        try_handle_ipv4_channel_data_to_udp(ctx, eth, ipv4, udp)?;
         stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
 
         return Ok(());
@@ -136,7 +139,12 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
 }
 
 #[inline(always)]
-fn try_handle_ipv4_channel_data_to_udp(ctx: &XdpContext, ipv4: Ip4, udp: Udp) -> Result<(), Error> {
+fn try_handle_ipv4_channel_data_to_udp(
+    ctx: &XdpContext,
+    eth: Eth,
+    ipv4: Ip4,
+    udp: Udp,
+) -> Result<(), Error> {
     let cd = ChannelData::parse(ctx, Ipv4Hdr::LEN)?;
 
     // SAFETY: ???
@@ -145,8 +153,12 @@ fn try_handle_ipv4_channel_data_to_udp(ctx: &XdpContext, ipv4: Ip4, udp: Udp) ->
             .ok_or(Error::NoChannelBinding)?;
 
     let new_src = ipv4.dst(); // The IP we received the packet on will be the new source IP.
+    let new_dst = port_and_peer.peer_ip();
     let new_ipv4_total_len = ipv4.total_len() - CdHdr::LEN as u16;
-    let pseudo_header = ipv4.update(new_src, port_and_peer.peer_ip(), new_ipv4_total_len);
+
+    eth.update(new_dst)?;
+
+    let pseudo_header = ipv4.update(new_src, new_dst, new_ipv4_total_len);
 
     let new_udp_len = udp.len() - CdHdr::LEN as u16;
     udp.update(
@@ -164,14 +176,23 @@ fn try_handle_ipv4_channel_data_to_udp(ctx: &XdpContext, ipv4: Ip4, udp: Udp) ->
 }
 
 #[inline(always)]
-fn try_handle_ipv4_udp_to_channel_data(ctx: &XdpContext, ipv4: Ip4, udp: Udp) -> Result<(), Error> {
+fn try_handle_ipv4_udp_to_channel_data(
+    ctx: &XdpContext,
+    eth: Eth,
+    ipv4: Ip4,
+    udp: Udp,
+) -> Result<(), Error> {
     let client_and_channel =
         unsafe { UDP_TO_CHAN_44.get(&PortAndPeerV4::new(ipv4.src(), udp.dst(), udp.src())) }
             .ok_or(Error::NoChannelBinding)?;
 
     let new_src = ipv4.dst(); // The IP we received the packet on will be the new source IP.
+    let new_dst = client_and_channel.client_ip();
     let new_ipv4_total_len = ipv4.total_len() + CdHdr::LEN as u16;
-    let pseudo_header = ipv4.update(new_src, client_and_channel.client_ip(), new_ipv4_total_len);
+
+    eth.update(new_dst)?;
+
+    let pseudo_header = ipv4.update(new_src, new_dst, new_ipv4_total_len);
 
     let udp_len = udp.len();
     let new_udp_len = udp_len + CdHdr::LEN as u16;
@@ -199,8 +220,11 @@ fn try_handle_ipv4_udp_to_channel_data(ctx: &XdpContext, ipv4: Ip4, udp: Udp) ->
 }
 
 #[inline(always)]
-fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
+fn try_handle_turn_ipv6(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
     let ipv6 = Ip6::parse(ctx)?;
+
+    eth::save_mac_for_ipv6(ipv6.src(), eth.src());
+    eth::save_mac_for_ipv6(ipv6.dst(), eth.dst());
 
     if ipv6.protocol() != IpProto::Udp {
         return Err(Error::NotUdp);
@@ -220,14 +244,14 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
     );
 
     if config::allocation_range().contains(&udp.dst()) {
-        try_handle_ipv6_udp_to_channel_data(ctx, ipv6, udp)?;
+        try_handle_ipv6_udp_to_channel_data(ctx, eth, ipv6, udp)?;
         stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(());
     }
 
     if udp.dst() == 3478 {
-        try_handle_ipv6_channel_data_to_udp(ctx, ipv6, udp)?;
+        try_handle_ipv6_channel_data_to_udp(ctx, eth, ipv6, udp)?;
         stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
 
         return Ok(());
@@ -236,14 +260,23 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
     Err(Error::NotTurn)
 }
 
-fn try_handle_ipv6_udp_to_channel_data(ctx: &XdpContext, ipv6: Ip6, udp: Udp) -> Result<(), Error> {
+fn try_handle_ipv6_udp_to_channel_data(
+    ctx: &XdpContext,
+    eth: Eth,
+    ipv6: Ip6,
+    udp: Udp,
+) -> Result<(), Error> {
     let client_and_channel =
         unsafe { UDP_TO_CHAN_66.get(&PortAndPeerV6::new(ipv6.src(), udp.dst(), udp.src())) }
             .ok_or(Error::NoChannelBinding)?;
 
     let new_src = ipv6.dst(); // The IP we received the packet on will be the new source IP.
+    let new_dst = client_and_channel.client_ip();
     let new_ipv6_total_len = ipv6.payload_len() + CdHdr::LEN as u16;
-    let pseudo_header = ipv6.update(new_src, client_and_channel.client_ip(), new_ipv6_total_len);
+
+    eth.update(new_dst)?;
+
+    let pseudo_header = ipv6.update(new_src, new_dst, new_ipv6_total_len);
 
     let udp_len = udp.len();
     let new_udp_len = udp_len + CdHdr::LEN as u16;
@@ -270,7 +303,12 @@ fn try_handle_ipv6_udp_to_channel_data(ctx: &XdpContext, ipv6: Ip6, udp: Udp) ->
     Ok(())
 }
 
-fn try_handle_ipv6_channel_data_to_udp(ctx: &XdpContext, ipv6: Ip6, udp: Udp) -> Result<(), Error> {
+fn try_handle_ipv6_channel_data_to_udp(
+    ctx: &XdpContext,
+    eth: Eth,
+    ipv6: Ip6,
+    udp: Udp,
+) -> Result<(), Error> {
     let cd = ChannelData::parse(ctx, Ipv6Hdr::LEN)?;
 
     // SAFETY: ???
@@ -279,8 +317,12 @@ fn try_handle_ipv6_channel_data_to_udp(ctx: &XdpContext, ipv6: Ip6, udp: Udp) ->
             .ok_or(Error::NoChannelBinding)?;
 
     let new_src = ipv6.dst(); // The IP we received the packet on will be the new source IP.
+    let new_dst = port_and_peer.peer_ip();
     let new_ipv6_payload_len = ipv6.payload_len() - CdHdr::LEN as u16;
-    let pseudo_header = ipv6.update(new_src, port_and_peer.peer_ip(), new_ipv6_payload_len);
+
+    eth.update(new_dst)?;
+
+    let pseudo_header = ipv6.update(new_src, new_dst, new_ipv6_payload_len);
 
     let new_udp_len = udp.len() - CdHdr::LEN as u16;
     udp.update(

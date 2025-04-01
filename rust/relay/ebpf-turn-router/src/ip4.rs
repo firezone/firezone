@@ -14,14 +14,17 @@ pub struct Ip4<'a> {
 impl<'a> Ip4<'a> {
     #[inline(always)]
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
-        let hdr = slice_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)?;
+        let ip4_hdr = slice_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)?;
 
         // IPv4 packets with options are handled in user-space.
-        if usize::from(hdr.ihl()) * 4 != Ipv4Hdr::LEN {
+        if usize::from(ip4_hdr.ihl()) * 4 != Ipv4Hdr::LEN {
             return Err(Error::Ipv4PacketWithOptions);
         }
 
-        Ok(Self { ctx, inner: hdr })
+        Ok(Self {
+            ctx,
+            inner: ip4_hdr,
+        })
     }
 
     pub fn src(&self) -> Ipv4Addr {
