@@ -20,7 +20,7 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn try_load(interface: &'static str) -> Result<Self> {
+    pub fn try_load(interface: &str) -> Result<Self> {
         let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
             env!("OUT_DIR"),
             "/ebpf-turn-router-main"
