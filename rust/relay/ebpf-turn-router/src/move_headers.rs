@@ -9,42 +9,52 @@ use network_types::{
     udp::UdpHdr,
 };
 
-use crate::channel_data::CdHdr;
+use crate::{channel_data::CdHdr, error::Error};
 
 #[inline(always)]
-pub fn remove_channel_data_header_ipv4(ctx: &XdpContext) {
+pub fn remove_channel_data_header_ipv4(ctx: &XdpContext) -> Result<(), Error> {
     move_headers::<{ CdHdr::LEN as i32 }, { Ipv4Hdr::LEN }>(ctx)
 }
 
 #[inline(always)]
-pub fn add_channel_data_header_ipv4(ctx: &XdpContext, mut header: [u8; 4]) {
-    move_headers::<{ -(CdHdr::LEN as i32) }, { Ipv4Hdr::LEN }>(ctx);
+pub fn add_channel_data_header_ipv4(ctx: &XdpContext, mut header: [u8; 4]) -> Result<(), Error> {
+    move_headers::<{ -(CdHdr::LEN as i32) }, { Ipv4Hdr::LEN }>(ctx)?;
     let offset = (EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN) as u32;
 
     let header_ptr = &mut header as *mut _ as *mut c_void;
     let header_len = CdHdr::LEN as u32;
 
-    unsafe { bpf_xdp_store_bytes(ctx.ctx, offset, header_ptr, header_len) };
+    if unsafe { bpf_xdp_store_bytes(ctx.ctx, offset, header_ptr, header_len) } < 0 {
+        return Err(Error::XdpStoreBytesFailed);
+    }
+
+    Ok(())
 }
 
 #[inline(always)]
-pub fn remove_channel_data_header_ipv6(ctx: &XdpContext) {
+pub fn remove_channel_data_header_ipv6(ctx: &XdpContext) -> Result<(), Error> {
     move_headers::<{ CdHdr::LEN as i32 }, { Ipv6Hdr::LEN }>(ctx)
 }
 
 #[inline(always)]
-pub fn add_channel_data_header_ipv6(ctx: &XdpContext, mut header: [u8; 4]) {
-    move_headers::<{ -(CdHdr::LEN as i32) }, { Ipv6Hdr::LEN }>(ctx);
+pub fn add_channel_data_header_ipv6(ctx: &XdpContext, mut header: [u8; 4]) -> Result<(), Error> {
+    move_headers::<{ -(CdHdr::LEN as i32) }, { Ipv6Hdr::LEN }>(ctx)?;
     let offset = (EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN) as u32;
 
     let header_ptr = &mut header as *mut _ as *mut c_void;
     let header_len = CdHdr::LEN as u32;
 
-    unsafe { bpf_xdp_store_bytes(ctx.ctx, offset, header_ptr, header_len) };
+    if unsafe { bpf_xdp_store_bytes(ctx.ctx, offset, header_ptr, header_len) } < 0 {
+        return Err(Error::XdpStoreBytesFailed);
+    }
+
+    Ok(())
 }
 
 #[inline(always)]
-fn move_headers<const DELTA: i32, const IP_HEADER_LEN: usize>(ctx: &XdpContext) {
+fn move_headers<const DELTA: i32, const IP_HEADER_LEN: usize>(
+    ctx: &XdpContext,
+) -> Result<(), Error> {
     // Scratch space for our headers.
     // IPv6 headers are always 40 bytes long.
     // IPv4 headers are between 20 and 60 bytes long.
@@ -58,11 +68,18 @@ fn move_headers<const DELTA: i32, const IP_HEADER_LEN: usize>(ctx: &XdpContext) 
     let headers_len = (EthHdr::LEN + IP_HEADER_LEN + UdpHdr::LEN) as u32;
 
     // Copy headers into buffer.
-    unsafe { bpf_xdp_load_bytes(ctx.ctx, 0, headers_ptr, headers_len) };
+    if unsafe { bpf_xdp_load_bytes(ctx.ctx, 0, headers_ptr, headers_len) } < 0 {
+        return Err(Error::XdpLoadBytesFailed);
+    }
 
-    // Move the head for the packet by `DELTA`.
-    unsafe { bpf_xdp_adjust_head(ctx.ctx, DELTA) };
+    if unsafe { bpf_xdp_adjust_head(ctx.ctx, DELTA) } < 0 {
+        return Err(Error::XdpAdjustHeadFailed);
+    }
 
     // Copy the headers back.
-    unsafe { bpf_xdp_store_bytes(ctx.ctx, 0, headers_ptr, headers_len) };
+    if unsafe { bpf_xdp_store_bytes(ctx.ctx, 0, headers_ptr, headers_len) } < 0 {
+        return Err(Error::XdpStoreBytesFailed);
+    }
+
+    Ok(())
 }
