@@ -93,7 +93,9 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
             let eth = Eth::parse(ctx)?;
             let ip4 = Ip4::parse(ctx)?;
 
-            let new_dst = arp::resolve_mac(ip4.dst()).ok_or(Error::NoMacAddress)?;
+            let new_dst = arp::resolve_mac(ip4.dst())
+                .or_else(|| (ip4.dst() == ip4.src()).then_some(eth.dst())) // If we are sending a packet to ourselves, we need to use our own MAC address.
+                .ok_or(Error::NoMacAddress)?;
 
             eth.update(new_dst);
         }

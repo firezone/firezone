@@ -19,6 +19,10 @@ impl<'a> Eth<'a> {
         self.inner.ether_type
     }
 
+    pub fn dst(&self) -> [u8; 6] {
+        self.inner.dst_addr
+    }
+
     pub fn update(self, new_dst: [u8; 6]) {
         self.inner.src_addr = self.inner.dst_addr;
         self.inner.dst_addr = new_dst;
