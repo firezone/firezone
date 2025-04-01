@@ -57,12 +57,28 @@ static UDP_TO_CHAN_66: HashMap<PortAndPeerV6, ClientAndChannelV6> =
 
 #[xdp]
 pub fn handle_turn(ctx: XdpContext) -> u32 {
-    try_handle_turn(&ctx).unwrap_or_else(|e| {
-        let action = e.xdp_action();
+    try_handle_turn(&ctx).unwrap_or_else(|e| match e {
+        Error::NotUdp
+        | Error::NotTurn
+        | Error::NotIp
+        | Error::NotAChannelDataMessage
+        | Error::Ipv4PacketWithOptions => xdp_action::XDP_PASS,
 
-        debug!(&ctx, "Did not handle packet: {}; action = {}", e, action);
+        Error::XdpStoreBytesFailed
+        | Error::XdpAdjustHeadFailed
+        | Error::XdpLoadBytesFailed
+        | Error::PacketTooShort
+        | Error::NoChannelBinding => {
+            debug!(&ctx, "Failed to handle packet: {}", e);
 
-        action
+            xdp_action::XDP_PASS
+        }
+
+        Error::BadChannelDataLength | Error::NoMacAddress => {
+            debug!(&ctx, "Failed to handle packet: {}; dropping", e);
+
+            xdp_action::XDP_DROP
+        }
     })
 }
 
