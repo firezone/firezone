@@ -112,7 +112,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u32, Error> {
 
     if udp.dst() == 3478 {
         let action = try_handle_ipv4_channel_data_to_udp(ctx, ipv4, udp)?;
-        stats::emit_data_relayed(ctx, udp_payload_len);
+        stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
 
         return Ok(action);
     }
@@ -213,7 +213,7 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u32, Error> {
 
     if udp.dst() == 3478 {
         let action = try_handle_ipv6_channel_data_to_udp(ctx, ipv6, udp)?;
-        stats::emit_data_relayed(ctx, udp_payload_len);
+        stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
 
         return Ok(action);
     }

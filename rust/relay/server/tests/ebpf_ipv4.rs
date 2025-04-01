@@ -106,7 +106,7 @@ async fn ping_pong() {
     let sum = metric.data.as_any().downcast_ref::<Sum<u64>>().unwrap();
 
     assert_eq!(metric.name, "data_relayed_ebpf_bytes");
-    assert_eq!(sum.data_points[0].value, 12); // "ping" and "pong" are both 4 bytes, we also send 1 CD message, meaning + 4 bytes for that header.
+    assert_eq!(sum.data_points[0].value, 4 + 4); // "ping" and "pong" are both 4 bytes.
 }
 
 fn init_meter_provider() -> (SdkMeterProvider, InMemoryMetricsExporter) {
