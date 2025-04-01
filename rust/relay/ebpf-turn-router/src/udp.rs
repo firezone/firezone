@@ -42,10 +42,22 @@ impl<'a> Udp<'a> {
         new_src: u16,
         new_dst: u16,
         new_len: u16,
+        channel_number: u16,
+        channel_data_len: u16,
     ) {
         let src = self.src();
         let dst = self.dst();
         let len = self.len();
+
+        let payload_checksum_update = if new_len > len {
+            ChecksumUpdate::default()
+                .add_u16(channel_number)
+                .add_u16(channel_data_len)
+        } else {
+            ChecksumUpdate::default()
+                .remove_u16(channel_number)
+                .remove_u16(channel_data_len)
+        };
 
         self.inner.source = new_src.to_be_bytes();
         self.inner.dest = new_dst.to_be_bytes();
@@ -56,6 +68,7 @@ impl<'a> Udp<'a> {
         if crate::config::udp_checksum_enabled() {
             self.inner.check = ChecksumUpdate::new(u16::from_be_bytes(self.inner.check))
                 .add_update(ip_pseudo_header)
+                .add_update(payload_checksum_update)
                 .remove_u16(len)
                 .add_u16(new_len)
                 .remove_u16(src)
