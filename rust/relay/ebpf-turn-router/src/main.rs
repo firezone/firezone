@@ -39,9 +39,8 @@ mod udp;
 
 const NUM_ENTRIES: u32 = 0x10000;
 
-/// Channel mappings from an IPv4 socket + channel number to an IPv4 socket + port.
-///
-/// TODO: Update flags to `BPF_F_NO_PREALLOC` to guarantee atomicity? Needs research.
+// TODO: Update flags to `BPF_F_NO_PREALLOC` to guarantee atomicity? Needs research.
+
 #[map]
 static CHAN_TO_UDP_44: HashMap<ClientAndChannelV4, PortAndPeerV4> =
     HashMap::with_max_entries(NUM_ENTRIES, 0);
