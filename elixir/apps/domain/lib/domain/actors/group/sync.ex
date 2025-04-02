@@ -45,9 +45,6 @@ defmodule Domain.Actors.Group.Sync do
   end
 
   defp plan_groups_update(groups, provider_identifiers) do
-    dbg(groups)
-    dbg(provider_identifiers)
-
     {upsert, delete} =
       Enum.reduce(groups, {provider_identifiers, []}, fn group, {upsert, delete} ->
         if group.provider_identifier in provider_identifiers do
@@ -57,7 +54,7 @@ defmodule Domain.Actors.Group.Sync do
         end
       end)
 
-    dbg({:ok, {upsert, delete}})
+    {:ok, {upsert, delete}}
   end
 
   defp delete_groups(provider, provider_identifiers_to_delete) do
@@ -91,6 +88,5 @@ defmodule Domain.Actors.Group.Sync do
       on_conflict: Group.Changeset.upsert_on_conflict(),
       returning: true
     )
-    |> dbg()
   end
 end

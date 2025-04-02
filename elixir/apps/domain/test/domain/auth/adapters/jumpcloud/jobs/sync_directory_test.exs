@@ -486,6 +486,7 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
     end
 
     test "resurrects deleted identities that reappear on the next sync", %{
+      bypass: bypass,
       account: account,
       provider: provider
     } do
@@ -509,7 +510,6 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
       assert Domain.Auth.all_identities_for(actor) == []
 
       # Simulate a sync
-      bypass = Bypass.open()
 
       users = [
         %{
@@ -538,12 +538,10 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
         }
       ]
 
-      WorkOSDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+      WorkOSDirectory.override_base_url("http://localhost:#{bypass.port}/")
       WorkOSDirectory.mock_list_directories_endpoint(bypass)
-      WorkOSDirectory.mock_groups_list_endpoint(bypass, [])
-      WorkOSDirectory.mock_organization_units_list_endpoint(bypass, [])
-      WorkOSDirectory.mock_users_list_endpoint(bypass, users)
-      WorkOSDirectory.mock_token_endpoint(bypass)
+      WorkOSDirectory.mock_list_groups_endpoint(bypass, [])
+      WorkOSDirectory.mock_list_users_endpoint(bypass, users)
 
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok
@@ -557,6 +555,7 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
     end
 
     test "resurrects deleted groups that reappear on the next sync", %{
+      bypass: bypass,
       account: account,
       provider: provider
     } do
@@ -564,7 +563,7 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
         Fixtures.Actors.create_group(
           account: account,
           provider: provider,
-          provider_identifier: "GROUP_ENGINEERING_ID"
+          provider_identifier: "G:GROUP_ENGINEERING_ID"
         )
 
       inserted_at = actor_group.inserted_at
@@ -577,7 +576,6 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
       assert Domain.Actors.Group.Query.not_deleted() |> Repo.all() == []
 
       # Simulate a sync
-      bypass = Bypass.open()
 
       groups = [
         %{
@@ -593,12 +591,10 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
         }
       ]
 
-      WorkOSDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+      WorkOSDirectory.override_base_url("http://localhost:#{bypass.port}/")
       WorkOSDirectory.mock_list_directories_endpoint(bypass)
-      WorkOSDirectory.mock_groups_list_endpoint(bypass, groups)
-      WorkOSDirectory.mock_organization_units_list_endpoint(bypass, [])
-      WorkOSDirectory.mock_users_list_endpoint(bypass, [])
-      WorkOSDirectory.mock_token_endpoint(bypass)
+      WorkOSDirectory.mock_list_groups_endpoint(bypass, groups)
+      WorkOSDirectory.mock_list_users_endpoint(bypass, [])
 
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok

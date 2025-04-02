@@ -741,6 +741,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
     end
 
     test "resurrects deleted identities that reappear on the next sync", %{
+      bypass: bypass,
       account: account,
       provider: provider
     } do
@@ -764,7 +765,6 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       assert Domain.Auth.all_identities_for(actor) == []
 
       # Simulate a sync
-      bypass = Bypass.open()
 
       users = [
         %{
@@ -808,6 +808,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
     end
 
     test "resurrects deleted groups that reappear on the next sync", %{
+      bypass: bypass,
       account: account,
       provider: provider
     } do
@@ -815,7 +816,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         Fixtures.Actors.create_group(
           account: account,
           provider: provider,
-          provider_identifier: "GROUP_DEVOPS_ID"
+          provider_identifier: "G:GROUP_DEVOPS_ID"
         )
 
       inserted_at = actor_group.inserted_at
@@ -828,7 +829,6 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       assert Domain.Actors.Group.Query.not_deleted() |> Repo.all() == []
 
       # Simulate a sync
-      bypass = Bypass.open()
 
       groups = [
         %{
@@ -867,8 +867,9 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         }
       ]
 
-      OktaDirectory.mock_groups_list_endpoint(bypass, groups)
       OktaDirectory.mock_users_list_endpoint(bypass, [])
+      OktaDirectory.mock_groups_list_endpoint(bypass, groups)
+      OktaDirectory.mock_group_members_list_endpoint(bypass, "GROUP_DEVOPS_ID", [])
 
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok

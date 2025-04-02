@@ -187,7 +187,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
         Fixtures.Actors.create_group(
           account: account,
           provider: provider,
-          provider_identifier: "GROUP_ALL_ID"
+          provider_identifier: "G:GROUP_ALL_ID"
         )
 
       inserted_at = actor_group.inserted_at
@@ -208,6 +208,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
 
       MicrosoftEntraDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
       MicrosoftEntraDirectory.mock_groups_list_endpoint(bypass, groups)
+      MicrosoftEntraDirectory.mock_group_members_list_endpoint(bypass, "GROUP_ALL_ID", [])
       MicrosoftEntraDirectory.mock_users_list_endpoint(bypass, [])
 
       {:ok, pid} = Task.Supervisor.start_link()

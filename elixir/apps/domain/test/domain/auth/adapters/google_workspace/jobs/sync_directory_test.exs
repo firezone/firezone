@@ -772,7 +772,6 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
 
       # Assert that the group has been resurrected
       assert resurrected_group = Repo.get(Domain.Actors.Group, id)
-      dbg(resurrected_group)
       assert resurrected_group.inserted_at == inserted_at
       assert resurrected_group.id == id
       assert resurrected_group.deleted_at == nil

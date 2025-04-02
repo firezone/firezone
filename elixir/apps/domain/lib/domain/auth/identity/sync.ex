@@ -49,9 +49,6 @@ defmodule Domain.Auth.Identity.Sync do
   end
 
   defp plan_identities_update(identities, provider_identifiers) do
-    dbg(identities)
-    dbg(provider_identifiers)
-
     {insert, update, delete} =
       Enum.reduce(
         identities,
