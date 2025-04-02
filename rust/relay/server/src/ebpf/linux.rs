@@ -135,8 +135,25 @@ impl Program {
                 self.udp_to_chan_66_map_mut()?
                     .insert(port_and_peer, client_and_channel, 0)?;
             }
-            (SocketAddr::V4(_), SocketAddr::V6(_)) | (SocketAddr::V6(_), SocketAddr::V4(_)) => {
-                // Relaying between IPv4 and IPv6 is not supported in the eBPF kernel.
+            (SocketAddr::V4(client), SocketAddr::V6(peer)) => {
+                let client_and_channel =
+                    ClientAndChannelV4::from_socket(client, channel_number.value());
+                let port_and_peer = PortAndPeerV6::from_socket(peer, allocation_port.value());
+
+                self.chan_to_udp_46_map_mut()?
+                    .insert(client_and_channel, port_and_peer, 0)?;
+                self.udp_to_chan_64_map_mut()?
+                    .insert(port_and_peer, client_and_channel, 0)?;
+            }
+            (SocketAddr::V6(client), SocketAddr::V4(peer)) => {
+                let client_and_channel =
+                    ClientAndChannelV6::from_socket(client, channel_number.value());
+                let port_and_peer = PortAndPeerV4::from_socket(peer, allocation_port.value());
+
+                self.chan_to_udp_64_map_mut()?
+                    .insert(client_and_channel, port_and_peer, 0)?;
+                self.udp_to_chan_46_map_mut()?
+                    .insert(port_and_peer, client_and_channel, 0)?;
             }
         }
 
@@ -170,8 +187,21 @@ impl Program {
                 self.chan_to_udp_66_map_mut()?.remove(&client_and_channel)?;
                 self.udp_to_chan_66_map_mut()?.remove(&port_and_peer)?;
             }
-            (SocketAddr::V4(_), SocketAddr::V6(_)) | (SocketAddr::V6(_), SocketAddr::V4(_)) => {
-                // Relaying between IPv4 and IPv6 is not supported in the eBPF kernel.
+            (SocketAddr::V4(client), SocketAddr::V6(peer)) => {
+                let client_and_channel =
+                    ClientAndChannelV4::from_socket(client, channel_number.value());
+                let port_and_peer = PortAndPeerV6::from_socket(peer, allocation_port.value());
+
+                self.chan_to_udp_46_map_mut()?.remove(&client_and_channel)?;
+                self.udp_to_chan_64_map_mut()?.remove(&port_and_peer)?;
+            }
+            (SocketAddr::V6(client), SocketAddr::V4(peer)) => {
+                let client_and_channel =
+                    ClientAndChannelV6::from_socket(client, channel_number.value());
+                let port_and_peer = PortAndPeerV4::from_socket(peer, allocation_port.value());
+
+                self.chan_to_udp_64_map_mut()?.remove(&client_and_channel)?;
+                self.udp_to_chan_46_map_mut()?.remove(&port_and_peer)?;
             }
         }
 
@@ -206,6 +236,30 @@ impl Program {
         &mut self,
     ) -> Result<HashMap<&mut MapData, PortAndPeerV6, ClientAndChannelV6>> {
         self.hash_map_mut("UDP_TO_CHAN_66")
+    }
+
+    fn chan_to_udp_46_map_mut(
+        &mut self,
+    ) -> Result<HashMap<&mut MapData, ClientAndChannelV4, PortAndPeerV6>> {
+        self.hash_map_mut("CHAN_TO_UDP_46")
+    }
+
+    fn udp_to_chan_46_map_mut(
+        &mut self,
+    ) -> Result<HashMap<&mut MapData, PortAndPeerV4, ClientAndChannelV6>> {
+        self.hash_map_mut("UDP_TO_CHAN_46")
+    }
+
+    fn chan_to_udp_64_map_mut(
+        &mut self,
+    ) -> Result<HashMap<&mut MapData, ClientAndChannelV6, PortAndPeerV4>> {
+        self.hash_map_mut("CHAN_TO_UDP_64")
+    }
+
+    fn udp_to_chan_64_map_mut(
+        &mut self,
+    ) -> Result<HashMap<&mut MapData, PortAndPeerV6, ClientAndChannelV4>> {
+        self.hash_map_mut("UDP_TO_CHAN_64")
     }
 
     fn config_array_mut(&mut self) -> Result<Array<&mut MapData, Config>> {
