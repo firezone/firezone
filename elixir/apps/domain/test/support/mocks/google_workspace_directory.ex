@@ -35,14 +35,14 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
     bypass
   end
 
-  def mock_users_list_endpoint(bypass, users \\ nil) do
+  def mock_users_list_endpoint(bypass, status, resp \\ nil) do
     users_list_endpoint_path = "/admin/directory/v1/users"
 
-    resp = %{
-      "kind" => "admin#directory#users",
-      "users" =>
-        users ||
-          [
+    resp =
+      resp ||
+        Jason.encode!(%{
+          "kind" => "admin#directory#users",
+          "users" => [
             %{
               "agreedToTerms" => true,
               "archived" => false,
@@ -211,14 +211,14 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
                 "https://lh3.google.com/ao/AP2z2aWvm9JM99oCFZ1TVOJgQZlmZdMMYNr7w9G0jZApdTuLHfAueGFb_XzgTvCNRhGw=s96-c"
             }
           ]
-    }
+        })
 
     test_pid = self()
 
     Bypass.expect(bypass, "GET", users_list_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, status, resp)
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}/")
@@ -226,15 +226,15 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
     bypass
   end
 
-  def mock_organization_units_list_endpoint(bypass, org_units \\ nil) do
+  def mock_organization_units_list_endpoint(bypass, status, resp \\ nil) do
     org_units_list_endpoint_path = "/admin/directory/v1/customer/my_customer/orgunits"
 
-    resp = %{
-      "kind" => "admin#directory#org_units",
-      "etag" => "\"FwDC5ZsOozt9qI9yuJfiMqwYO1K-EEG4flsXSov57CY/Y3F7O3B5N0h0C_3Pd3OMifRNUVc\"",
-      "organizationUnits" =>
-        org_units ||
-          [
+    resp =
+      resp ||
+        Jason.encode!(%{
+          "kind" => "admin#directory#org_units",
+          "etag" => "\"FwDC5ZsOozt9qI9yuJfiMqwYO1K-EEG4flsXSov57CY/Y3F7O3B5N0h0C_3Pd3OMifRNUVc\"",
+          "organizationUnits" => [
             %{
               "kind" => "admin#directory#orgUnit",
               "name" => "Engineering",
@@ -247,14 +247,14 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
               "parentOrgUnitPath" => "/"
             }
           ]
-    }
+        })
 
     test_pid = self()
 
     Bypass.expect(bypass, "GET", org_units_list_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, status, resp)
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}/")
@@ -262,15 +262,15 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
     bypass
   end
 
-  def mock_groups_list_endpoint(bypass, groups \\ nil) do
+  def mock_groups_list_endpoint(bypass, status, resp \\ nil) do
     groups_list_endpoint_path = "/admin/directory/v1/groups"
 
-    resp = %{
-      "kind" => "admin#directory#groups",
-      "etag" => "\"FwDC5ZsOozt9qI9yuJfiMqwYO1K-EEG4flsXSov57CY/Y3F7O3B5N0h0C_3Pd3OMifRNUVc\"",
-      "groups" =>
-        groups ||
-          [
+    resp =
+      resp ||
+        Jason.encode!(%{
+          "kind" => "admin#directory#groups",
+          "etag" => "\"FwDC5ZsOozt9qI9yuJfiMqwYO1K-EEG4flsXSov57CY/Y3F7O3B5N0h0C_3Pd3OMifRNUVc\"",
+          "groups" => [
             %{
               "kind" => "admin#directory#group",
               "id" => "GROUP_ID1",
@@ -314,14 +314,14 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
               ]
             }
           ]
-    }
+        })
 
     test_pid = self()
 
     Bypass.expect(bypass, "GET", groups_list_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, status, resp)
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}/")
@@ -329,15 +329,15 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
     bypass
   end
 
-  def mock_group_members_list_endpoint(bypass, group_id, members \\ nil) do
+  def mock_group_members_list_endpoint(bypass, group_id, status, resp \\ nil) do
     group_members_list_endpoint_path = "/admin/directory/v1/groups/#{group_id}/members"
 
-    resp = %{
-      "kind" => "admin#directory#members",
-      "etag" => "\"XXX\"",
-      "members" =>
-        members ||
-          [
+    resp =
+      resp ||
+        Jason.encode!(%{
+          "kind" => "admin#directory#members",
+          "etag" => "\"XXX\"",
+          "members" => [
             %{
               "kind" => "admin#directory#member",
               "etag" => "\"ET\"",
@@ -384,14 +384,14 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
               "status" => "ACTIVE"
             }
           ]
-    }
+        })
 
     test_pid = self()
 
     Bypass.expect(bypass, "GET", group_members_list_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, status, resp)
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}/")
