@@ -36,9 +36,25 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       bypass = Bypass.open()
 
       GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
-      GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, [])
-      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, [])
-      GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, [])
+
+      GoogleWorkspaceDirectory.mock_groups_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"groups" => []})
+      )
+
+      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"organizationUnits" => []})
+      )
+
+      GoogleWorkspaceDirectory.mock_users_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"users" => []})
+      )
+
       GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
 
       {:ok, pid} = Task.Supervisor.start_link()
@@ -80,9 +96,24 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       bypass = Bypass.open()
 
       GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
-      GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, [])
-      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, [])
-      GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, [])
+
+      GoogleWorkspaceDirectory.mock_groups_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"groups" => []})
+      )
+
+      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"organizationUnits" => []})
+      )
+
+      GoogleWorkspaceDirectory.mock_users_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"users" => []})
+      )
 
       provider
       |> Ecto.Changeset.change(
@@ -246,13 +277,34 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       ]
 
       GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
-      GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, groups)
-      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, organization_units)
-      GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, users)
+
+      GoogleWorkspaceDirectory.mock_groups_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"groups" => groups})
+      )
+
+      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"organizationUnits" => organization_units})
+      )
+
+      GoogleWorkspaceDirectory.mock_users_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"users" => users})
+      )
+
       GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
 
       Enum.each(groups, fn group ->
-        GoogleWorkspaceDirectory.mock_group_members_list_endpoint(bypass, group["id"], members)
+        GoogleWorkspaceDirectory.mock_group_members_list_endpoint(
+          bypass,
+          group["id"],
+          200,
+          Jason.encode!(%{"members" => members})
+        )
       end)
 
       {:ok, pid} = Task.Supervisor.start_link()
@@ -342,9 +394,25 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
         )
 
       GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
-      GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, [])
-      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, [])
-      GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, users)
+
+      GoogleWorkspaceDirectory.mock_groups_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"groups" => []})
+      )
+
+      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"organizationUnits" => []})
+      )
+
+      GoogleWorkspaceDirectory.mock_users_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"users" => users})
+      )
+
       GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
 
       {:ok, pid} = Task.Supervisor.start_link()
@@ -572,13 +640,40 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       :ok = Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{deleted_identity_token.id}")
 
       GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
-      GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, groups)
-      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, organization_units)
-      GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, users)
+
+      GoogleWorkspaceDirectory.mock_groups_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"groups" => groups})
+      )
+
+      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"organizationUnits" => organization_units})
+      )
+
+      GoogleWorkspaceDirectory.mock_users_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"users" => users})
+      )
+
       GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
 
-      GoogleWorkspaceDirectory.mock_group_members_list_endpoint(bypass, "GROUP_ID1", two_members)
-      GoogleWorkspaceDirectory.mock_group_members_list_endpoint(bypass, "GROUP_ID2", one_member)
+      GoogleWorkspaceDirectory.mock_group_members_list_endpoint(
+        bypass,
+        "GROUP_ID1",
+        200,
+        Jason.encode!(%{"members" => two_members})
+      )
+
+      GoogleWorkspaceDirectory.mock_group_members_list_endpoint(
+        bypass,
+        "GROUP_ID2",
+        200,
+        Jason.encode!(%{"members" => one_member})
+      )
 
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok

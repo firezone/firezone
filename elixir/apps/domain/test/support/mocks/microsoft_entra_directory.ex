@@ -7,15 +7,15 @@ defmodule Domain.Mocks.MicrosoftEntraDirectory do
     Domain.Config.put_env_override(:domain, MicrosoftEntra.APIClient, config)
   end
 
-  def mock_users_list_endpoint(bypass, users \\ nil) do
+  def mock_users_list_endpoint(bypass, status, resp \\ nil) do
     users_list_endpoint_path = "v1.0/users"
 
-    resp = %{
-      "@odata.context" =>
-        "https://graph.microsoft.com/v1.0/$metadata#users(id,displayName,userPrincipalName,mail,accountEnabled)",
-      "value" =>
-        users ||
-          [
+    resp =
+      resp ||
+        Jason.encode!(%{
+          "@odata.context" =>
+            "https://graph.microsoft.com/v1.0/$metadata#users(id,displayName,userPrincipalName,mail,accountEnabled)",
+          "value" => [
             %{
               "id" => "8FBDDD1B-0E73-4CD0-AD38-2ACEA67814EE",
               "displayName" => "John Doe",
@@ -44,14 +44,14 @@ defmodule Domain.Mocks.MicrosoftEntraDirectory do
               "accountEnabled" => true
             }
           ]
-    }
+        })
 
     test_pid = self()
 
     Bypass.expect(bypass, "GET", users_list_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, status, resp)
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}/")
@@ -59,14 +59,14 @@ defmodule Domain.Mocks.MicrosoftEntraDirectory do
     bypass
   end
 
-  def mock_groups_list_endpoint(bypass, groups \\ nil) do
+  def mock_groups_list_endpoint(bypass, status, resp \\ nil) do
     groups_list_endpoint_path = "v1.0/groups"
 
-    resp = %{
-      "@odata.context" => "https://graph.microsoft.com/v1.0/$metadata#groups(id,displayName)",
-      "value" =>
-        groups ||
-          [
+    resp =
+      resp ||
+        Jason.encode!(%{
+          "@odata.context" => "https://graph.microsoft.com/v1.0/$metadata#groups(id,displayName)",
+          "value" => [
             %{
               "id" => "962F077E-CAA2-4873-9D7D-A37CD58C06F5",
               "displayName" => "Engineering"
@@ -80,14 +80,14 @@ defmodule Domain.Mocks.MicrosoftEntraDirectory do
               "displayName" => "All"
             }
           ]
-    }
+        })
 
     test_pid = self()
 
     Bypass.expect(bypass, "GET", groups_list_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, status, resp)
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}/")
@@ -95,45 +95,46 @@ defmodule Domain.Mocks.MicrosoftEntraDirectory do
     bypass
   end
 
-  def mock_group_members_list_endpoint(bypass, group_id, members \\ nil) do
+  def mock_group_members_list_endpoint(bypass, group_id, status, resp \\ nil) do
     group_members_list_endpoint_path =
       "v1.0/groups/#{group_id}/transitiveMembers/microsoft.graph.user"
 
     memberships =
-      members ||
-        [
-          %{
-            "id" => "8FBDDD1B-0E73-4CD0-AD38-2ACEA67814EE",
-            "displayName" => "John Doe",
-            "userPrincipalName" => "jdoe@example.local",
-            "accountEnabled" => true
-          },
-          %{
-            "id" => "0B69CEE0-B884-4CAD-B7E3-DDD4D53034FB",
-            "displayName" => "Jane Smith",
-            "userPrincipalName" => "jsmith@example.local",
-            "accountEnabled" => true
-          },
-          %{
-            "id" => "84F44A7C-DC31-4B2B-83F6-6CFCF0AA2456",
-            "displayName" => "Bob Smith",
-            "userPrincipalName" => "bsmith@example.local",
-            "accountEnabled" => true
-          }
-        ]
+      [
+        %{
+          "id" => "8FBDDD1B-0E73-4CD0-AD38-2ACEA67814EE",
+          "displayName" => "John Doe",
+          "userPrincipalName" => "jdoe@example.local",
+          "accountEnabled" => true
+        },
+        %{
+          "id" => "0B69CEE0-B884-4CAD-B7E3-DDD4D53034FB",
+          "displayName" => "Jane Smith",
+          "userPrincipalName" => "jsmith@example.local",
+          "accountEnabled" => true
+        },
+        %{
+          "id" => "84F44A7C-DC31-4B2B-83F6-6CFCF0AA2456",
+          "displayName" => "Bob Smith",
+          "userPrincipalName" => "bsmith@example.local",
+          "accountEnabled" => true
+        }
+      ]
 
-    resp = %{
-      "@odata.context" =>
-        "https://graph.microsoft.com/v1.0/$metadata#users(id,displayName,userPrincipalName,accountEnabled)",
-      "value" => memberships
-    }
+    resp =
+      resp ||
+        Jason.encode!(%{
+          "@odata.context" =>
+            "https://graph.microsoft.com/v1.0/$metadata#users(id,displayName,userPrincipalName,accountEnabled)",
+          "value" => memberships
+        })
 
     test_pid = self()
 
     Bypass.expect(bypass, "GET", group_members_list_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, status, resp)
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}/")

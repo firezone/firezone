@@ -234,11 +234,16 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         }
       ]
 
-      OktaDirectory.mock_groups_list_endpoint(bypass, groups)
-      OktaDirectory.mock_users_list_endpoint(bypass, users)
+      OktaDirectory.mock_groups_list_endpoint(bypass, 200, Jason.encode!(groups))
+      OktaDirectory.mock_users_list_endpoint(bypass, 200, Jason.encode!(users))
 
       Enum.each(groups, fn group ->
-        OktaDirectory.mock_group_members_list_endpoint(bypass, group["id"], members)
+        OktaDirectory.mock_group_members_list_endpoint(
+          bypass,
+          group["id"],
+          200,
+          Jason.encode!(members)
+        )
       end)
 
       {:ok, pid} = Task.Supervisor.start_link()
@@ -334,8 +339,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
           provider_identifier: "USER_JDOE_ID"
         )
 
-      OktaDirectory.mock_groups_list_endpoint(bypass, [])
-      OktaDirectory.mock_users_list_endpoint(bypass, users)
+      OktaDirectory.mock_groups_list_endpoint(bypass, 200, Jason.encode!([]))
+      OktaDirectory.mock_users_list_endpoint(bypass, 200, Jason.encode!(users))
 
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok
@@ -652,19 +657,21 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       :ok = Domain.Flows.subscribe_to_flow_expiration_events(deleted_identity_flow)
       :ok = Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{deleted_identity_token.id}")
 
-      OktaDirectory.mock_groups_list_endpoint(bypass, groups)
-      OktaDirectory.mock_users_list_endpoint(bypass, users)
+      OktaDirectory.mock_groups_list_endpoint(bypass, 200, Jason.encode!(groups))
+      OktaDirectory.mock_users_list_endpoint(bypass, 200, Jason.encode!(users))
 
       OktaDirectory.mock_group_members_list_endpoint(
         bypass,
         "GROUP_ENGINEERING_ID",
-        two_members
+        200,
+        Jason.encode!(two_members)
       )
 
       OktaDirectory.mock_group_members_list_endpoint(
         bypass,
         "GROUP_DEVOPS_ID",
-        one_member
+        200,
+        Jason.encode!(one_member)
       )
 
       {:ok, pid} = Task.Supervisor.start_link()
