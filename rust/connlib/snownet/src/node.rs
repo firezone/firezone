@@ -1746,7 +1746,7 @@ where
 }
 
 fn idle_at(last_incoming: Instant, last_outgoing: Instant) -> Instant {
-    const MAX_IDLE: Duration = Duration::from_secs(10);
+    const MAX_IDLE: Duration = Duration::from_secs(15);
 
     last_incoming.max(last_outgoing) + MAX_IDLE
 }
