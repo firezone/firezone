@@ -60,11 +60,10 @@ defmodule Domain.Auth.Adapters.JumpCloud.APIClient do
     client = fetch_workos_client()
 
     case WorkOS.DirectorySync.list_groups(client, list_groups_params) do
-      {:ok, %WorkOS.List{data: groups, list_metadata: %{"after" => nil}}} when is_list(groups) ->
+      {:ok, %WorkOS.List{data: groups, list_metadata: %{"after" => nil}}} ->
         {:ok, List.flatten(Enum.reverse([groups | acc]))}
 
-      {:ok, %WorkOS.List{data: groups, list_metadata: %{"after" => last_record}}}
-      when is_list(groups) ->
+      {:ok, %WorkOS.List{data: groups, list_metadata: %{"after" => last_record}}} ->
         list_all_groups(directory_id, last_record, [groups | acc])
 
       {:error, %WorkOS.Error{} = error} ->
