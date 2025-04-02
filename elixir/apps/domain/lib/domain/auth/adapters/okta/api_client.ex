@@ -115,31 +115,32 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     # Crude request throttle, revisit for https://github.com/firezone/firezone/issues/6793
     throttle()
 
-    with {:ok, %Finch.Response{headers: headers, body: response, status: 200}} <-
-           Finch.request(request, @pool_name),
-         {:ok, list} when is_list(list) <- Jason.decode(response) do
+    response = Finch.request(request, @pool_name)
+
+    with {:ok, %Finch.Response{headers: headers, body: raw_body, status: 200}} <- response,
+         {:ok, list} when is_list(list) <- Jason.decode(raw_body) do
       {:ok, list, fetch_next_link(headers)}
     else
-      {:ok, %Finch.Response{status: status} = response} when status in 201..299 ->
+      {:ok, %Finch.Response{status: status}} when status in 201..299 ->
         Logger.warning("API request succeeded with unexpected 2xx status #{status}",
           response: inspect(response)
         )
 
         {:error, :retry_later}
 
-      {:ok, %Finch.Response{status: status} = response} when status in 300..399 ->
+      {:ok, %Finch.Response{status: status}} when status in 300..399 ->
         Logger.warning("API request succeeded with unexpected 3xx status #{status}",
           response: inspect(response)
         )
 
         {:error, :retry_later}
 
-      {:ok, %Finch.Response{body: response, status: status}} when status in 400..499 ->
+      {:ok, %Finch.Response{body: raw_body, status: status}} when status in 400..499 ->
         Logger.error("API request failed with 4xx status #{status}",
           response: inspect(response)
         )
 
-        case Jason.decode(response) do
+        case Jason.decode(raw_body) do
           {:ok, json_response} ->
             {:error, {status, json_response}}
 
@@ -147,7 +148,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
             {:error, {status, response}}
         end
 
-      {:ok, %Finch.Response{status: status} = response} when status in 500..599 ->
+      {:ok, %Finch.Response{status: status}} when status in 500..599 ->
         Logger.error("API request failed with 5xx status #{status}",
           response: inspect(response)
         )
@@ -156,13 +157,17 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
 
       {:ok, not_a_list} when not is_list(not_a_list) ->
         Logger.error("API request failed with unexpected data format",
+          response: inspect(response),
           uri: inspect(uri)
         )
 
         {:error, :retry_later}
 
       other ->
-        Logger.error("Unexpected response from API", response: inspect(other))
+        Logger.error("Unexpected response from API",
+          response: inspect(response),
+          other: inspect(other)
+        )
 
         other
     end
