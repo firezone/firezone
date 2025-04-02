@@ -33,6 +33,8 @@
             desktop-file-utils
             android-tools
             terraform
+            llvmPackages.bintools-unwrapped
+            bpftools
 
             # For Tauri
             at-spi2-atk
