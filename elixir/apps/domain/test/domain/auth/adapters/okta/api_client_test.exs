@@ -50,6 +50,14 @@ defmodule Domain.Auth.Adapters.Okta.APIClientTest do
       assert list_users(api_base_url, api_token) == {:error, :retry_later}
     end
 
+    test "returns retry_later when api responds with unexpected 3xx status" do
+      api_token = Ecto.UUID.generate()
+      bypass = Bypass.open()
+      api_base_url = "http://localhost:#{bypass.port}/"
+      OktaDirectory.mock_users_list_endpoint(bypass, 301)
+      assert list_users(api_base_url, api_token) == {:error, :retry_later}
+    end
+
     test "returns error when api responds with 4xx status" do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
@@ -144,6 +152,14 @@ defmodule Domain.Auth.Adapters.Okta.APIClientTest do
       assert list_groups(api_base_url, api_token) == {:error, :retry_later}
     end
 
+    test "returns retry_later when api responds with unexpected 3xx status" do
+      api_token = Ecto.UUID.generate()
+      bypass = Bypass.open()
+      api_base_url = "http://localhost:#{bypass.port}/"
+      OktaDirectory.mock_groups_list_endpoint(bypass, 301)
+      assert list_groups(api_base_url, api_token) == {:error, :retry_later}
+    end
+
     test "returns error when api responds with 4xx status" do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
@@ -234,6 +250,15 @@ defmodule Domain.Auth.Adapters.Okta.APIClientTest do
       bypass = Bypass.open()
       api_base_url = "http://localhost:#{bypass.port}/"
       OktaDirectory.mock_group_members_list_endpoint(bypass, group_id, 201)
+      assert list_group_members(api_base_url, api_token, group_id) == {:error, :retry_later}
+    end
+
+    test "returns retry_later when api responds with unexpected 3xx status" do
+      api_token = Ecto.UUID.generate()
+      group_id = Ecto.UUID.generate()
+      bypass = Bypass.open()
+      api_base_url = "http://localhost:#{bypass.port}/"
+      OktaDirectory.mock_group_members_list_endpoint(bypass, group_id, 301)
       assert list_group_members(api_base_url, api_token, group_id) == {:error, :retry_later}
     end
 
