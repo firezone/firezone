@@ -180,8 +180,18 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       ]
 
       MicrosoftEntraDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
-      MicrosoftEntraDirectory.mock_groups_list_endpoint(bypass, [])
-      MicrosoftEntraDirectory.mock_users_list_endpoint(bypass, users)
+
+      MicrosoftEntraDirectory.mock_groups_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"value" => []})
+      )
+
+      MicrosoftEntraDirectory.mock_users_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"value" => users})
+      )
 
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok
@@ -222,9 +232,25 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       ]
 
       MicrosoftEntraDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
-      MicrosoftEntraDirectory.mock_groups_list_endpoint(bypass, groups)
-      MicrosoftEntraDirectory.mock_group_members_list_endpoint(bypass, "GROUP_ALL_ID", [])
-      MicrosoftEntraDirectory.mock_users_list_endpoint(bypass, [])
+
+      MicrosoftEntraDirectory.mock_groups_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"value" => groups})
+      )
+
+      MicrosoftEntraDirectory.mock_group_members_list_endpoint(
+        bypass,
+        "GROUP_ALL_ID",
+        200,
+        Jason.encode!(%{"value" => []})
+      )
+
+      MicrosoftEntraDirectory.mock_users_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"value" => []})
+      )
 
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok
