@@ -36,45 +36,45 @@ pub enum UnsupportedChannel {
 impl aya_log_ebpf::WriteToBuf for Error {
     #[inline(always)]
     fn write(self, buf: &mut [u8]) -> Option<NonZeroUsize> {
-        let msg = match self {
-            Error::PacketTooShort => "Packet is too short",
-            Error::NotUdp => "Not a UDP packet",
-            Error::NotTurn => "Not TURN traffic",
-            Error::NotIp => "Not an IP packet",
-            Error::NoMacAddress => "No MAC address",
-            Error::Ipv4PacketWithOptions => "IPv4 packet has options",
-            Error::NotAChannelDataMessage => "Not a channel data message",
-            Error::BadChannelDataLength => "Channel data length does not match packet length",
+        match self {
+            Error::PacketTooShort => "Packet is too short".write(buf),
+            Error::NotUdp => "Not a UDP packet".write(buf),
+            Error::NotTurn => "Not TURN traffic".write(buf),
+            Error::NotIp => "Not an IP packet".write(buf),
+            Error::NoMacAddress => "No MAC address".write(buf),
+            Error::Ipv4PacketWithOptions => "IPv4 packet has options".write(buf),
+            Error::NotAChannelDataMessage => "Not a channel data message".write(buf),
+            Error::BadChannelDataLength => {
+                "Channel data length does not match packet length".write(buf)
+            }
             Error::NoEntry(SupportedChannel::UdpToChan44) => {
-                "No entry in UDPv4 to channel IPv4 map"
+                "No entry in UDPv4 to channel IPv4 map.write(buf)".write(buf)
             }
             Error::NoEntry(SupportedChannel::ChanToUdp44) => {
-                "No entry in channel IPv4 to UDPv4 map"
+                "No entry in channel IPv4 to UDPv4 map.write(buf)".write(buf)
             }
             Error::NoEntry(SupportedChannel::UdpToChan66) => {
-                "No entry in UDPv6 to channel IPv6 map"
+                "No entry in UDPv6 to channel IPv6 map.write(buf)".write(buf)
             }
             Error::NoEntry(SupportedChannel::ChanToUdp66) => {
-                "No entry in channel IPv6 to UDPv6 map"
+                "No entry in channel IPv6 to UDPv6 map.write(buf)".write(buf)
             }
             Error::UnsupportedChannel(UnsupportedChannel::UdpToChan46) => {
-                "Relaying UDPv4 to channel IPv6 is not supported"
+                "Relaying UDPv4 to channel IPv6 is not supported.write(buf)".write(buf)
             }
             Error::UnsupportedChannel(UnsupportedChannel::ChanToUdp46) => {
-                "Relaying channel IPv4 to UDPv6 is not supported"
+                "Relaying channel IPv4 to UDPv6 is not supported.write(buf)".write(buf)
             }
             Error::UnsupportedChannel(UnsupportedChannel::UdpToChan64) => {
-                "Relaying UDPv6 to channel IPv4 is not supported"
+                "Relaying UDPv6 to channel IPv4 is not supported.write(buf)".write(buf)
             }
             Error::UnsupportedChannel(UnsupportedChannel::ChanToUdp64) => {
-                "Relaying channel IPv6 to UDPv4 is not supported"
+                "Relaying channel IPv6 to UDPv4 is not supported.write(buf)".write(buf)
             }
-            Error::XdpLoadBytesFailed => "Failed to load bytes",
-            Error::XdpAdjustHeadFailed => "Failed to adjust head",
-            Error::XdpStoreBytesFailed => "Failed to store bytes",
-        };
-
-        msg.write(buf)
+            Error::XdpLoadBytesFailed => "Failed to load bytes".write(buf),
+            Error::XdpAdjustHeadFailed => "Failed to adjust head".write(buf),
+            Error::XdpStoreBytesFailed => "Failed to store bytes".write(buf),
+        }
     }
 }
 
