@@ -11,7 +11,7 @@ use aya_ebpf::{
 use aya_log_ebpf::*;
 use channel_data::{CdHdr, ChannelData};
 use ebpf_shared::{ClientAndChannelV4, ClientAndChannelV6, PortAndPeerV4, PortAndPeerV6};
-use error::SupportedChannel;
+use error::{SupportedChannel, UnsupportedChannel};
 use eth::Eth;
 use ip4::{Ip4, Ipv4Hdr};
 use ip6::Ip6;
@@ -54,6 +54,18 @@ static CHAN_TO_UDP_66: HashMap<ClientAndChannelV6, PortAndPeerV6> =
 #[map]
 static UDP_TO_CHAN_66: HashMap<PortAndPeerV6, ClientAndChannelV6> =
     HashMap::with_max_entries(NUM_ENTRIES, 0);
+#[map]
+static CHAN_TO_UDP_46: HashMap<ClientAndChannelV4, PortAndPeerV6> =
+    HashMap::with_max_entries(NUM_ENTRIES, 0);
+#[map]
+static UDP_TO_CHAN_46: HashMap<PortAndPeerV4, ClientAndChannelV6> =
+    HashMap::with_max_entries(NUM_ENTRIES, 0);
+#[map]
+static CHAN_TO_UDP_64: HashMap<ClientAndChannelV6, PortAndPeerV4> =
+    HashMap::with_max_entries(NUM_ENTRIES, 0);
+#[map]
+static UDP_TO_CHAN_64: HashMap<PortAndPeerV6, ClientAndChannelV4> =
+    HashMap::with_max_entries(NUM_ENTRIES, 0);
 
 #[xdp]
 pub fn handle_turn(ctx: XdpContext) -> u32 {
@@ -69,6 +81,7 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
         | Error::XdpLoadBytesFailed
         | Error::PacketTooShort
         | Error::NoMacAddress
+        | Error::UnsupportedChannel(_)
         | Error::NoEntry(_) => {
             debug!(&ctx, "Passing packet to userspace: {}", e);
 
@@ -148,10 +161,16 @@ fn try_handle_ipv4_channel_data_to_udp(
 ) -> Result<(), Error> {
     let cd = ChannelData::parse(ctx, Ipv4Hdr::LEN)?;
 
+    let key = ClientAndChannelV4::new(ipv4.src(), udp.src(), cd.number());
+
     // SAFETY: ???
-    let port_and_peer =
-        unsafe { CHAN_TO_UDP_44.get(&ClientAndChannelV4::new(ipv4.src(), udp.src(), cd.number())) }
-            .ok_or(Error::NoEntry(SupportedChannel::ChanToUdp44))?;
+    let port_and_peer = unsafe { CHAN_TO_UDP_44.get(&key) }.ok_or_else(|| {
+        if unsafe { CHAN_TO_UDP_46.get(&key) }.is_some() {
+            return Error::UnsupportedChannel(UnsupportedChannel::ChanToUdp46);
+        }
+
+        Error::NoEntry(SupportedChannel::ChanToUdp44)
+    })?;
 
     let new_src = ipv4.dst(); // The IP we received the packet on will be the new source IP.
     let new_dst = port_and_peer.peer_ip();
@@ -183,9 +202,15 @@ fn try_handle_ipv4_udp_to_channel_data(
     ipv4: Ip4,
     udp: Udp,
 ) -> Result<(), Error> {
-    let client_and_channel =
-        unsafe { UDP_TO_CHAN_44.get(&PortAndPeerV4::new(ipv4.src(), udp.dst(), udp.src())) }
-            .ok_or(Error::NoEntry(SupportedChannel::UdpToChan44))?;
+    let key = PortAndPeerV4::new(ipv4.src(), udp.dst(), udp.src());
+
+    let client_and_channel = unsafe { UDP_TO_CHAN_44.get(&key) }.ok_or_else(|| {
+        if unsafe { UDP_TO_CHAN_46.get(&key) }.is_some() {
+            return Error::UnsupportedChannel(UnsupportedChannel::UdpToChan46);
+        }
+
+        Error::NoEntry(SupportedChannel::UdpToChan44)
+    })?;
 
     let new_src = ipv4.dst(); // The IP we received the packet on will be the new source IP.
     let new_dst = client_and_channel.client_ip();
@@ -267,9 +292,15 @@ fn try_handle_ipv6_udp_to_channel_data(
     ipv6: Ip6,
     udp: Udp,
 ) -> Result<(), Error> {
-    let client_and_channel =
-        unsafe { UDP_TO_CHAN_66.get(&PortAndPeerV6::new(ipv6.src(), udp.dst(), udp.src())) }
-            .ok_or(Error::NoEntry(SupportedChannel::UdpToChan66))?;
+    let key = PortAndPeerV6::new(ipv6.src(), udp.dst(), udp.src());
+
+    let client_and_channel = unsafe { UDP_TO_CHAN_66.get(&key) }.ok_or_else(|| {
+        if unsafe { UDP_TO_CHAN_64.get(&key) }.is_some() {
+            return Error::UnsupportedChannel(UnsupportedChannel::UdpToChan64);
+        }
+
+        Error::NoEntry(SupportedChannel::UdpToChan66)
+    })?;
 
     let new_src = ipv6.dst(); // The IP we received the packet on will be the new source IP.
     let new_dst = client_and_channel.client_ip();
@@ -312,10 +343,16 @@ fn try_handle_ipv6_channel_data_to_udp(
 ) -> Result<(), Error> {
     let cd = ChannelData::parse(ctx, Ipv6Hdr::LEN)?;
 
+    let key = ClientAndChannelV6::new(ipv6.src(), udp.src(), cd.number());
+
     // SAFETY: ???
-    let port_and_peer =
-        unsafe { CHAN_TO_UDP_66.get(&ClientAndChannelV6::new(ipv6.src(), udp.src(), cd.number())) }
-            .ok_or(Error::NoEntry(SupportedChannel::ChanToUdp66))?;
+    let port_and_peer = unsafe { CHAN_TO_UDP_66.get(&key) }.ok_or_else(|| {
+        if unsafe { CHAN_TO_UDP_64.get(&key) }.is_some() {
+            return Error::UnsupportedChannel(UnsupportedChannel::ChanToUdp64);
+        }
+
+        Error::NoEntry(SupportedChannel::ChanToUdp66)
+    })?;
 
     let new_src = ipv6.dst(); // The IP we received the packet on will be the new source IP.
     let new_dst = port_and_peer.peer_ip();

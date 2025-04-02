@@ -11,6 +11,7 @@ pub enum Error {
     NotAChannelDataMessage,
     BadChannelDataLength,
     NoEntry(SupportedChannel),
+    UnsupportedChannel(UnsupportedChannel),
     XdpLoadBytesFailed,
     XdpAdjustHeadFailed,
     XdpStoreBytesFailed,
@@ -22,6 +23,14 @@ pub enum SupportedChannel {
     ChanToUdp44,
     UdpToChan66,
     ChanToUdp66,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum UnsupportedChannel {
+    UdpToChan46,
+    ChanToUdp46,
+    UdpToChan64,
+    ChanToUdp64,
 }
 
 impl aya_log_ebpf::WriteToBuf for Error {
@@ -46,6 +55,18 @@ impl aya_log_ebpf::WriteToBuf for Error {
             }
             Error::NoEntry(SupportedChannel::ChanToUdp66) => {
                 "No entry in channel IPv6 to UDPv6 map"
+            }
+            Error::UnsupportedChannel(UnsupportedChannel::UdpToChan46) => {
+                "Relaying UDPv4 to channel IPv6 is not supported"
+            }
+            Error::UnsupportedChannel(UnsupportedChannel::ChanToUdp46) => {
+                "Relaying channel IPv4 to UDPv6 is not supported"
+            }
+            Error::UnsupportedChannel(UnsupportedChannel::UdpToChan64) => {
+                "Relaying UDPv6 to channel IPv4 is not supported"
+            }
+            Error::UnsupportedChannel(UnsupportedChannel::ChanToUdp64) => {
+                "Relaying channel IPv6 to UDPv4 is not supported"
             }
             Error::XdpLoadBytesFailed => "Failed to load bytes",
             Error::XdpAdjustHeadFailed => "Failed to adjust head",
