@@ -1746,7 +1746,7 @@ where
 }
 
 fn idle_at(last_incoming: Instant, last_outgoing: Instant) -> Instant {
-    const MAX_IDLE: Duration = Duration::from_secs(10);
+    const MAX_IDLE: Duration = Duration::from_secs(20); // Must be longer than the ICE timeout otherwise we might not detect a failed connection early enough.
 
     last_incoming.max(last_outgoing) + MAX_IDLE
 }
