@@ -85,6 +85,8 @@ impl Program {
             });
         }
 
+        tracing::info!("eBPF TURN router loaded and attached to interface {interface}");
+
         Ok(Self { ebpf })
     }
 
