@@ -69,13 +69,13 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
         | Error::PacketTooShort
         | Error::NoMacAddress
         | Error::NoChannelBinding => {
-            debug!(&ctx, "Failed to handle packet: {}", e);
+            debug!(&ctx, "Passing packet to userspace: {}", e);
 
             xdp_action::XDP_PASS
         }
 
         Error::BadChannelDataLength => {
-            debug!(&ctx, "Failed to handle packet: {}; dropping", e);
+            debug!(&ctx, "Dropping packet: {}", e);
 
             xdp_action::XDP_DROP
         }
