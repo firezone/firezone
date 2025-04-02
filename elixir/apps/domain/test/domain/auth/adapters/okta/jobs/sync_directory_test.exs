@@ -740,6 +740,149 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       refute_received {:expire_flow, _flow_id, _client_id, _resource_id}
     end
 
+    test "resurrects deleted identities that reappear on the next sync", %{
+      account: account,
+      provider: provider
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      provider_identifier = "USER_JDOE_ID"
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: actor,
+          provider_identifier: provider_identifier
+        )
+
+      inserted_at = identity.inserted_at
+      id = identity.id
+
+      # Soft delete the identity
+      Repo.update_all(Domain.Auth.Identity, set: [deleted_at: DateTime.utc_now()])
+
+      assert Domain.Auth.all_identities_for(actor) == []
+
+      # Simulate a sync
+      bypass = Bypass.open()
+
+      users = [
+        %{
+          "id" => "USER_JDOE_ID",
+          "status" => "ACTIVE",
+          "created" => "2023-12-21T18:30:05.000Z",
+          "activated" => nil,
+          "statusChanged" => "2023-12-21T20:04:06.000Z",
+          "lastLogin" => "2024-02-08T05:14:25.000Z",
+          "lastUpdated" => "2023-12-21T20:04:06.000Z",
+          "passwordChanged" => "2023-12-21T20:04:06.000Z",
+          "type" => %{"id" => "otye1rmouoEfu7KCV5d7"},
+          "profile" => %{
+            "firstName" => "John",
+            "lastName" => "Doe",
+            "mobilePhone" => nil,
+            "secondEmail" => nil,
+            "login" => "jdoe@example.com",
+            "email" => "jdoe@example.com"
+          },
+          "_links" => %{
+            "self" => %{
+              "href" => "http://localhost:#{bypass.port}/api/v1/users/OT6AZkcmzkDXwkXcjTHY"
+            }
+          }
+        }
+      ]
+
+      OktaDirectory.mock_groups_list_endpoint(bypass, [])
+      OktaDirectory.mock_users_list_endpoint(bypass, users)
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      # Assert that the identity has been resurrected
+      assert resurrected_identity = Repo.get(Domain.Auth.Identity, id)
+      assert resurrected_identity.inserted_at == inserted_at
+      assert resurrected_identity.id == id
+      assert resurrected_identity.deleted_at == nil
+      assert Domain.Auth.all_identities_for(actor) == [resurrected_identity]
+    end
+
+    test "resurrects deleted groups that reappear on the next sync", %{
+      account: account,
+      provider: provider
+    } do
+      actor_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "GROUP_DEVOPS_ID"
+        )
+
+      inserted_at = actor_group.inserted_at
+      id = actor_group.id
+
+      # Soft delete the group
+      Repo.update_all(Domain.Actors.Group, set: [deleted_at: DateTime.utc_now()])
+
+      # Assert that the group and associated policy has been soft-deleted
+      assert Domain.Actors.Group.Query.not_deleted() |> Repo.all() == []
+
+      # Simulate a sync
+      bypass = Bypass.open()
+
+      groups = [
+        %{
+          "id" => "GROUP_DEVOPS_ID",
+          "created" => "2024-02-07T04:32:03.000Z",
+          "lastUpdated" => "2024-02-07T04:32:03.000Z",
+          "lastMembershipUpdated" => "2024-02-07T04:32:38.000Z",
+          "objectClass" => [
+            "okta:user_group"
+          ],
+          "type" => "OKTA_GROUP",
+          "profile" => %{
+            "name" => "DevOps",
+            "description" => ""
+          },
+          "_links" => %{
+            "logo" => [
+              %{
+                "name" => "medium",
+                "href" => "http://localhost/md/image.png",
+                "type" => "image/png"
+              },
+              %{
+                "name" => "large",
+                "href" => "http://localhost/lg/image.png",
+                "type" => "image/png"
+              }
+            ],
+            "users" => %{
+              "href" => "http://localhost:#{bypass.port}/api/v1/groups/00gezqhvv4IFj2Avg5d7/users"
+            },
+            "apps" => %{
+              "href" => "http://localhost:#{bypass.port}/api/v1/groups/00gezqhvv4IFj2Avg5d7/apps"
+            }
+          }
+        }
+      ]
+
+      OktaDirectory.mock_groups_list_endpoint(bypass, groups)
+      OktaDirectory.mock_users_list_endpoint(bypass, [])
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      # Assert that the group has been resurrected
+      assert resurrected_group = Repo.get(Domain.Actors.Group, id)
+      assert resurrected_group.inserted_at == inserted_at
+      assert resurrected_group.id == id
+      assert resurrected_group.deleted_at == nil
+      assert Domain.Actors.Group.Query.not_deleted() |> Repo.all() == [resurrected_group]
+
+      # TODO:: Test that associated policies are also resurrected as part of https://github.com/firezone/firezone/issues/8187
+    end
+
     test "persists the sync error on the provider", %{provider: provider, bypass: bypass} do
       response = %{
         "errorCode" => "E0000011",

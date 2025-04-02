@@ -485,6 +485,134 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
       refute_received {:expire_flow, _flow_id, _client_id, _resource_id}
     end
 
+    test "resurrects deleted identities that reappear on the next sync", %{
+      account: account,
+      provider: provider
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      provider_identifier = "USER_JDOE_ID"
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: actor,
+          provider_identifier: provider_identifier
+        )
+
+      inserted_at = identity.inserted_at
+      id = identity.id
+
+      # Soft delete the identity
+      Repo.update_all(Domain.Auth.Identity, set: [deleted_at: DateTime.utc_now()])
+
+      assert Domain.Auth.all_identities_for(actor) == []
+
+      # Simulate a sync
+      bypass = Bypass.open()
+
+      users = [
+        %{
+          "id" => "workos_user_jdoe_id",
+          "object" => "directory_user",
+          "custom_attributes" => %{},
+          "directory_id" => "dir_123",
+          "organization_id" => "org_123",
+          "emails" => [
+            %{
+              "primary" => true,
+              "type" => "type",
+              "value" => "jdoe@example.local"
+            }
+          ],
+          "groups" => [],
+          "idp_id" => "USER_JDOE_ID",
+          "first_name" => "John",
+          "last_name" => "Doe",
+          "job_title" => "Software Eng",
+          "raw_attributes" => %{},
+          "state" => "active",
+          "username" => "jdoe@example.local",
+          "created_at" => "2023-07-17T20:07:20.055Z",
+          "updated_at" => "2023-07-17T20:07:20.055Z"
+        }
+      ]
+
+      WorkOSDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+      WorkOSDirectory.mock_list_directories_endpoint(bypass)
+      WorkOSDirectory.mock_groups_list_endpoint(bypass, [])
+      WorkOSDirectory.mock_organization_units_list_endpoint(bypass, [])
+      WorkOSDirectory.mock_users_list_endpoint(bypass, users)
+      WorkOSDirectory.mock_token_endpoint(bypass)
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      # Assert that the identity has been resurrected
+      assert resurrected_identity = Repo.get(Domain.Auth.Identity, id)
+      assert resurrected_identity.inserted_at == inserted_at
+      assert resurrected_identity.id == id
+      assert resurrected_identity.deleted_at == nil
+      assert Domain.Auth.all_identities_for(actor) == [resurrected_identity]
+    end
+
+    test "resurrects deleted groups that reappear on the next sync", %{
+      account: account,
+      provider: provider
+    } do
+      actor_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "GROUP_ENGINEERING_ID"
+        )
+
+      inserted_at = actor_group.inserted_at
+      id = actor_group.id
+
+      # Soft delete the group
+      Repo.update_all(Domain.Actors.Group, set: [deleted_at: DateTime.utc_now()])
+
+      # Assert that the group and associated policy has been soft-deleted
+      assert Domain.Actors.Group.Query.not_deleted() |> Repo.all() == []
+
+      # Simulate a sync
+      bypass = Bypass.open()
+
+      groups = [
+        %{
+          "id" => "GROUP_ENGINEERING_ID",
+          "object" => "directory_group",
+          "idp_id" => "engineering",
+          "directory_id" => "dir_123",
+          "organization_id" => "org_123",
+          "name" => "Engineering",
+          "created_at" => "2021-10-27 15:21:50.640958",
+          "updated_at" => "2021-12-13 12:15:45.531847",
+          "raw_attributes" => %{}
+        }
+      ]
+
+      WorkOSDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+      WorkOSDirectory.mock_list_directories_endpoint(bypass)
+      WorkOSDirectory.mock_groups_list_endpoint(bypass, groups)
+      WorkOSDirectory.mock_organization_units_list_endpoint(bypass, [])
+      WorkOSDirectory.mock_users_list_endpoint(bypass, [])
+      WorkOSDirectory.mock_token_endpoint(bypass)
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      # Assert that the group has been resurrected
+      assert resurrected_group = Repo.get(Domain.Actors.Group, id)
+      assert resurrected_group.inserted_at == inserted_at
+      assert resurrected_group.id == id
+      assert resurrected_group.deleted_at == nil
+      assert Domain.Actors.Group.Query.not_deleted() |> Repo.all() == [resurrected_group]
+
+      # TODO:: Test that associated policies are also resurrected as part of https://github.com/firezone/firezone/issues/8187
+    end
+
     test "stops the sync retires on 401 error from WorkOS", %{provider: provider} do
       bypass = Bypass.open()
       WorkOSDirectory.override_base_url("http://localhost:#{bypass.port}")
