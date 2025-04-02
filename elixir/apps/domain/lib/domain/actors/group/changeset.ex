@@ -6,10 +6,10 @@ defmodule Domain.Actors.Group.Changeset do
   def upsert_conflict_target do
     {:unsafe_fragment,
      "(account_id, provider_id, provider_identifier) " <>
-       "WHERE deleted_at IS NULL AND provider_id IS NOT NULL AND provider_identifier IS NOT NULL"}
+       "WHERE provider_id IS NOT NULL AND provider_identifier IS NOT NULL"}
   end
 
-  def upsert_on_conflict, do: {:replace, ~w[name updated_at]a}
+  def upsert_on_conflict, do: {:replace, ~w[name updated_at deleted_at]a}
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Actors.Group{memberships: []}
@@ -41,6 +41,8 @@ defmodule Domain.Actors.Group.Changeset do
     |> changeset()
     |> put_change(:provider_id, provider.id)
     |> put_change(:account_id, provider.account_id)
+    # resurrect synced groups
+    |> put_change(:deleted_at, nil)
     |> put_change(:created_by, :provider)
   end
 

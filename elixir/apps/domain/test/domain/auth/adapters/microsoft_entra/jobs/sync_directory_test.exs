@@ -141,6 +141,130 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       assert updated_provider.last_synced_at != provider.last_synced_at
     end
 
+    test "resurrects deleted identities that reappear on the next sync", %{
+      account: account,
+      provider: provider
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      provider_identifier = "USER_JDOE_ID"
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: actor,
+          provider_identifier: provider_identifier
+        )
+
+      inserted_at = identity.inserted_at
+      id = identity.id
+
+      # Soft delete the identity
+      Repo.update_all(Domain.Auth.Identity, set: [deleted_at: DateTime.utc_now()])
+
+      assert Domain.Auth.all_identities_for(actor) == []
+
+      # Simulate a sync
+      bypass = Bypass.open()
+
+      users = [
+        %{
+          "id" => "USER_JDOE_ID",
+          "displayName" => "John Doe",
+          "givenName" => "John",
+          "surname" => "Doe",
+          "userPrincipalName" => "jdoe@example.local",
+          "mail" => "jdoe@example.local",
+          "accountEnabled" => true
+        }
+      ]
+
+      MicrosoftEntraDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+
+      MicrosoftEntraDirectory.mock_groups_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"value" => []})
+      )
+
+      MicrosoftEntraDirectory.mock_users_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"value" => users})
+      )
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      # Assert that the identity has been resurrected
+      assert resurrected_identity = Repo.get(Domain.Auth.Identity, id)
+      assert resurrected_identity.inserted_at == inserted_at
+      assert resurrected_identity.id == id
+      assert resurrected_identity.deleted_at == nil
+      assert Domain.Auth.all_identities_for(actor) == [resurrected_identity]
+    end
+
+    test "resurrects deleted groups that reappear on the next sync", %{
+      account: account,
+      provider: provider
+    } do
+      actor_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ALL_ID"
+        )
+
+      inserted_at = actor_group.inserted_at
+      id = actor_group.id
+
+      # Soft delete the group
+      Repo.update_all(Domain.Actors.Group, set: [deleted_at: DateTime.utc_now()])
+
+      # Assert that the group and associated policy has been soft-deleted
+      assert Domain.Actors.Group.Query.not_deleted() |> Repo.all() == []
+
+      # Simulate a sync
+      bypass = Bypass.open()
+
+      groups = [
+        %{"id" => "GROUP_ALL_ID", "displayName" => "All"}
+      ]
+
+      MicrosoftEntraDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+
+      MicrosoftEntraDirectory.mock_groups_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"value" => groups})
+      )
+
+      MicrosoftEntraDirectory.mock_group_members_list_endpoint(
+        bypass,
+        "GROUP_ALL_ID",
+        200,
+        Jason.encode!(%{"value" => []})
+      )
+
+      MicrosoftEntraDirectory.mock_users_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"value" => []})
+      )
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      # Assert that the group has been resurrected
+      assert resurrected_group = Repo.get(Domain.Actors.Group, id)
+      assert resurrected_group.inserted_at == inserted_at
+      assert resurrected_group.id == id
+      assert resurrected_group.deleted_at == nil
+      assert Domain.Actors.Group.Query.not_deleted() |> Repo.all() == [resurrected_group]
+
+      # TODO:: Test that associated policies are also resurrected as part of https://github.com/firezone/firezone/issues/8187
+    end
+
     test "does not crash on endpoint errors" do
       bypass = Bypass.open()
       Bypass.down(bypass)

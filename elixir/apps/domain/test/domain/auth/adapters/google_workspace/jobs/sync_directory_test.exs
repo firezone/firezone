@@ -750,6 +750,169 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       refute_received {:expire_flow, _flow_id, _client_id, _resource_id}
     end
 
+    test "resurrects deleted identities that reappear on the next sync", %{
+      account: account,
+      provider: provider
+    } do
+      actor = Fixtures.Actors.create_actor(account: account)
+      provider_identifier = "USER_ID1"
+
+      identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: actor,
+          provider_identifier: provider_identifier
+        )
+
+      inserted_at = identity.inserted_at
+      id = identity.id
+
+      # Soft delete the identity
+      Repo.update_all(Domain.Auth.Identity, set: [deleted_at: DateTime.utc_now()])
+
+      assert Domain.Auth.all_identities_for(actor) == []
+
+      # Simulate a sync
+      bypass = Bypass.open()
+
+      users = [
+        %{
+          "agreedToTerms" => true,
+          "archived" => false,
+          "creationTime" => "2023-06-10T17:32:06.000Z",
+          "id" => "USER_ID1",
+          "kind" => "admin#directory#user",
+          "lastLoginTime" => "2023-06-26T13:53:30.000Z",
+          "name" => %{
+            "familyName" => "Manifold",
+            "fullName" => "Brian Manifold",
+            "givenName" => "Brian"
+          },
+          "orgUnitPath" => "/Engineering",
+          "organizations" => [],
+          "phones" => [],
+          "primaryEmail" => "b@firez.xxx"
+        }
+      ]
+
+      GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+
+      GoogleWorkspaceDirectory.mock_groups_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"groups" => []})
+      )
+
+      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"organizationUnits" => []})
+      )
+
+      GoogleWorkspaceDirectory.mock_users_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"users" => users})
+      )
+
+      GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      # Assert that the identity has been resurrected
+      assert resurrected_identity = Repo.get(Domain.Auth.Identity, id)
+      assert resurrected_identity.inserted_at == inserted_at
+      assert resurrected_identity.id == id
+      assert resurrected_identity.deleted_at == nil
+      assert Domain.Auth.all_identities_for(actor) == [resurrected_identity]
+    end
+
+    test "resurrects deleted groups that reappear on the next sync", %{
+      account: account,
+      provider: provider
+    } do
+      actor_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID1"
+        )
+
+      inserted_at = actor_group.inserted_at
+      id = actor_group.id
+
+      # Soft delete the group
+      Repo.update_all(Domain.Actors.Group, set: [deleted_at: DateTime.utc_now()])
+
+      # Assert that the group and associated policy has been soft-deleted
+      assert Domain.Actors.Group.Query.not_deleted() |> Repo.all() == []
+
+      # Simulate a sync
+      bypass = Bypass.open()
+
+      groups = [
+        %{
+          "kind" => "admin#directory#group",
+          "id" => "GROUP_ID1",
+          "etag" => "\"ET\"",
+          "email" => "i@fiez.xxx",
+          "name" => "Infrastructure",
+          "directMembersCount" => "5",
+          "description" => "Group to handle infrastructure alerts and management",
+          "adminCreated" => true,
+          "aliases" => [
+            "pnr@firez.one"
+          ],
+          "nonEditableAliases" => [
+            "i@ext.fiez.xxx"
+          ]
+        }
+      ]
+
+      GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
+
+      GoogleWorkspaceDirectory.mock_groups_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"groups" => groups})
+      )
+
+      GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"organizationUnits" => []})
+      )
+
+      GoogleWorkspaceDirectory.mock_users_list_endpoint(
+        bypass,
+        200,
+        Jason.encode!(%{"users" => []})
+      )
+
+      GoogleWorkspaceDirectory.mock_group_members_list_endpoint(
+        bypass,
+        "GROUP_ID1",
+        200,
+        Jason.encode!(%{"members" => []})
+      )
+
+      GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      # Assert that the group has been resurrected
+      assert resurrected_group = Repo.get(Domain.Actors.Group, id)
+      assert resurrected_group.inserted_at == inserted_at
+      assert resurrected_group.id == id
+      assert resurrected_group.deleted_at == nil
+      assert Domain.Actors.Group.Query.not_deleted() |> Repo.all() == [resurrected_group]
+
+      # TODO:: Test that associated policies are also resurrected as part of https://github.com/firezone/firezone/issues/8187
+    end
+
     test "persists the sync error on the provider", %{provider: provider} do
       error_message =
         "Admin SDK API has not been used in project XXXX before or it is disabled. " <>

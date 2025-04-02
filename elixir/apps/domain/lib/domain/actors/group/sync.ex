@@ -36,7 +36,7 @@ defmodule Domain.Actors.Group.Sync do
 
   defp all_provider_groups(provider) do
     groups =
-      Group.Query.not_deleted()
+      Group.Query.all()
       |> Group.Query.by_account_id(provider.account_id)
       |> Group.Query.by_provider_id(provider.id)
       |> Repo.all()
