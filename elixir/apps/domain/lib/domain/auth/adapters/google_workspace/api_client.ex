@@ -173,33 +173,33 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
 
   defp list(uri, api_token, key) do
     request = Finch.build(:get, uri, [{"Authorization", "Bearer #{api_token}"}])
+    response = Finch.request(request, @pool_name)
 
-    with {:ok, %Finch.Response{body: response, status: 200}} <-
-           Finch.request(request, @pool_name),
-         {:ok, json_response} <- Jason.decode(response),
+    with {:ok, %Finch.Response{body: raw_body, status: 200}} <- response,
+         {:ok, json_response} <- Jason.decode(raw_body),
          {:ok, list} when is_list(list) <- Map.fetch(json_response, key) do
       {:ok, list, json_response["nextPageToken"]}
     else
-      {:ok, %Finch.Response{status: status} = response} when status in 201..299 ->
+      {:ok, %Finch.Response{status: status}} when status in 201..299 ->
         Logger.warning("API request succeeded with unexpected 2xx status #{status}",
           response: inspect(response)
         )
 
         {:error, :retry_later}
 
-      {:ok, %Finch.Response{status: status} = response} when status in 300..399 ->
+      {:ok, %Finch.Response{status: status}} when status in 300..399 ->
         Logger.warning("API request succeeded with unexpected 3xx status #{status}",
           response: inspect(response)
         )
 
         {:error, :retry_later}
 
-      {:ok, %Finch.Response{body: response, status: status}} when status in 400..499 ->
+      {:ok, %Finch.Response{body: raw_body, status: status}} when status in 400..499 ->
         Logger.error("API request failed with 4xx status #{status}",
           response: inspect(response)
         )
 
-        case Jason.decode(response) do
+        case Jason.decode(raw_body) do
           {:ok, json_response} ->
             {:error, {status, json_response}}
 
@@ -207,7 +207,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
             {:error, {status, response}}
         end
 
-      {:ok, %Finch.Response{status: status} = response} when status in 500..599 ->
+      {:ok, %Finch.Response{status: status}} when status in 500..599 ->
         Logger.error("API request failed with 5xx status #{status}",
           response: inspect(response)
         )
@@ -216,6 +216,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
 
       {:ok, not_a_list} when not is_list(not_a_list) ->
         Logger.error("API request failed with unexpected data format",
+          response: inspect(response),
           uri: inspect(uri),
           key: key
         )
@@ -224,6 +225,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
 
       :error ->
         Logger.error("API response did not contain expected key",
+          response: inspect(response),
           uri: inspect(uri),
           key: key
         )
@@ -231,7 +233,10 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
         {:error, :retry_later}
 
       other ->
-        Logger.error("Unexpected response from API", response: inspect(other))
+        Logger.error("Unexpected response from API",
+          response: inspect(response),
+          other: inspect(other)
+        )
 
         other
     end
