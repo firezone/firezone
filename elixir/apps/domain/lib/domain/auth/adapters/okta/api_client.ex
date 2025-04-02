@@ -1,5 +1,6 @@
 defmodule Domain.Auth.Adapters.Okta.APIClient do
   use Supervisor
+  require Logger
 
   @pool_name __MODULE__.Finch
 
@@ -114,15 +115,30 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     # Crude request throttle, revisit for https://github.com/firezone/firezone/issues/6793
     throttle()
 
-    with {:ok, %Finch.Response{headers: headers, body: response, status: status}}
-         when status in 200..299 <- Finch.request(request, @pool_name),
-         {:ok, list} <- Jason.decode(response) do
+    with {:ok, %Finch.Response{headers: headers, body: response, status: 200}} <-
+           Finch.request(request, @pool_name),
+         {:ok, list} when is_list(list) <- Jason.decode(response) do
       {:ok, list, fetch_next_link(headers)}
     else
-      {:ok, %Finch.Response{status: status}} when status in 500..599 ->
+      {:ok, %Finch.Response{status: status} = response} when status in 201..299 ->
+        Logger.warning("API request succeeded with unexpected 2xx status #{status}",
+          response: inspect(response)
+        )
+
         {:error, :retry_later}
 
-      {:ok, %Finch.Response{body: response, status: status}} ->
+      {:ok, %Finch.Response{status: status} = response} when status in 300..399 ->
+        Logger.warning("API request succeeded with unexpected 3xx status #{status}",
+          response: inspect(response)
+        )
+
+        {:error, :retry_later}
+
+      {:ok, %Finch.Response{body: response, status: status}} when status in 400..499 ->
+        Logger.error("API request failed with 4xx status #{status}",
+          response: inspect(response)
+        )
+
         case Jason.decode(response) do
           {:ok, json_response} ->
             {:error, {status, json_response}}
@@ -131,7 +147,23 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
             {:error, {status, response}}
         end
 
+      {:ok, %Finch.Response{status: status} = response} when status in 500..599 ->
+        Logger.error("API request failed with 5xx status #{status}",
+          response: inspect(response)
+        )
+
+        {:error, :retry_later}
+
+      {:ok, not_a_list} when not is_list(not_a_list) ->
+        Logger.error("API request failed with unexpected data format",
+          uri: inspect(uri)
+        )
+
+        {:error, :retry_later}
+
       other ->
+        Logger.error("Unexpected response from API", response: inspect(other))
+
         other
     end
   end
