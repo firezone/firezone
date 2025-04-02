@@ -223,7 +223,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
         {:error, :retry_later}
 
       :error ->
-        Logger.error("API request did not contain expected key",
+        Logger.error("API response did not contain expected key",
           uri: inspect(uri),
           key: key
         )

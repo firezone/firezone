@@ -146,14 +146,18 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
 
         {:error, :retry_later}
 
-      {:ok, %Finch.Response{status: status} = response} when status in 500..599 ->
-        Logger.error("API request failed with 5xx status #{status}",
+      {:ok, %Finch.Response{status: status} = response} when status in 300..399 ->
+        Logger.warning("API request succeeded with unexpected 3xx status #{status}",
           response: inspect(response)
         )
 
         {:error, :retry_later}
 
-      {:ok, %Finch.Response{body: response, status: status}} ->
+      {:ok, %Finch.Response{body: response, status: status}} when status in 400..499 ->
+        Logger.error("API request failed with 4xx status #{status}",
+          response: inspect(response)
+        )
+
         case Jason.decode(response) do
           {:ok, json_response} ->
             {:error, {status, json_response}}
@@ -162,11 +166,22 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
             {:error, {status, response}}
         end
 
-      # We're not sure why the expected key could be missing from the response, but don't
-      # disable the adapter if so.
+      {:ok, %Finch.Response{status: status} = response} when status in 500..599 ->
+        Logger.error("API request failed with 5xx status #{status}",
+          response: inspect(response)
+        )
+
+        {:error, :retry_later}
+
+      {:ok, not_a_list} when not is_list(not_a_list) ->
+        Logger.error("API request failed with unexpected data format",
+          uri: inspect(uri)
+        )
+
+        {:error, :retry_later}
+
       :error ->
-        Logger.error(
-          "API request failed with an unexpected error response",
+        Logger.error("API response did not contain expected 'value' key",
           uri: inspect(uri)
         )
 
