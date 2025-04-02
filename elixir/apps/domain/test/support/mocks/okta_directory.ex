@@ -2,13 +2,13 @@ defmodule Domain.Mocks.OktaDirectory do
   @okta_icon_md "https://ok12static.oktacdn.com/assets/img/logos/groups/odyssey/okta-medium.30ce6d4085dff29412984e4c191bc874.png"
   @okta_icon_lg "https://ok12static.oktacdn.com/assets/img/logos/groups/odyssey/okta-large.c3cb8cda8ae0add1b4fe928f5844dbe3.png"
 
-  def mock_users_list_endpoint(bypass, users \\ nil) do
+  def mock_users_list_endpoint(bypass, status, resp \\ nil) do
     users_list_endpoint_path = "api/v1/users"
     okta_base_url = "http://localhost:#{bypass.port}"
 
     resp =
-      users ||
-        [
+      resp ||
+        Jason.encode!([
           %{
             "id" => "OT6AZkcmzkDXwkXcjTHY",
             "status" => "ACTIVE",
@@ -57,26 +57,26 @@ defmodule Domain.Mocks.OktaDirectory do
               }
             }
           }
-        ]
+        ])
 
     test_pid = self()
 
     Bypass.expect(bypass, "GET", users_list_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, status, resp)
     end)
 
     bypass
   end
 
-  def mock_groups_list_endpoint(bypass, groups \\ nil) do
+  def mock_groups_list_endpoint(bypass, status, resp \\ nil) do
     groups_list_endpoint_path = "api/v1/groups"
     okta_base_url = "http://localhost:#{bypass.port}"
 
     resp =
-      groups ||
-        [
+      resp ||
+        Jason.encode!([
           %{
             "id" => "00gezqhvv4IFj2Avg5d7",
             "created" => "2024-02-07T04:32:03.000Z",
@@ -214,26 +214,26 @@ defmodule Domain.Mocks.OktaDirectory do
               }
             }
           }
-        ]
+        ])
 
     test_pid = self()
 
     Bypass.expect(bypass, "GET", groups_list_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, status, resp)
     end)
 
     bypass
   end
 
-  def mock_group_members_list_endpoint(bypass, group_id, members \\ nil) do
+  def mock_group_members_list_endpoint(bypass, group_id, status, resp \\ nil) do
     group_members_list_endpoint_path = "api/v1/groups/#{group_id}/users"
     okta_base_url = "http://localhost:#{bypass.port}"
 
     resp =
-      members ||
-        [
+      resp ||
+        Jason.encode!([
           %{
             "id" => "00ue1rr3zgV1DjyfL5d7",
             "status" => "ACTIVE",
@@ -314,14 +314,14 @@ defmodule Domain.Mocks.OktaDirectory do
               }
             }
           }
-        ]
+        ])
 
     test_pid = self()
 
     Bypass.expect(bypass, "GET", group_members_list_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, status, resp)
     end)
 
     bypass
