@@ -17,6 +17,9 @@ use crate::{AllocationPort, ClientSocket, PeerSocket};
 
 pub struct Program {
     ebpf: aya::Ebpf,
+
+    #[expect(dead_code, reason = "We are just keeping it alive.")]
+    stats: AsyncPerfEventArray<MapData>,
 }
 
 impl Program {
@@ -53,6 +56,8 @@ impl Program {
             // open a separate perf buffer for each cpu
             let mut stats_array_buf = stats.open(cpu_id, None)?;
 
+            tracing::debug!(%cpu_id, "Subscribing to stats events from eBPF kernel");
+
             // process each perf buffer in a separate task
             tokio::task::spawn({
                 let data_relayed = data_relayed.clone();
@@ -71,10 +76,19 @@ impl Program {
                             }
                         };
 
+                        if events.lost > 0 {
+                            tracing::warn!(%cpu_id, num_lost = %events.lost, "Lost perf events");
+                        }
+
                         tracing::debug!(%cpu_id, num_read = %events.read, "Read perf events from eBPF kernel");
 
                         for bytes in buffers.iter().take(events.read) {
                             let Some(stats) = StatsEvent::from_bytes(bytes) else {
+                                tracing::warn!(
+                                    ?bytes,
+                                    "Failed to create stats event from byte buffer"
+                                );
+
                                 continue;
                             };
 
@@ -87,7 +101,7 @@ impl Program {
 
         tracing::info!("eBPF TURN router loaded and attached to interface {interface}");
 
-        Ok(Self { ebpf })
+        Ok(Self { ebpf, stats })
     }
 
     pub fn add_channel_binding(
