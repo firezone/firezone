@@ -88,7 +88,7 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
         | Error::XdpStoreBytesFailed(_)
         | Error::XdpAdjustHeadFailed(_)
         | Error::XdpLoadBytesFailed(_) => {
-            debug!(&ctx, "Dropping packet: {}", e);
+            warn!(&ctx, "Dropping packet: {}", e);
 
             xdp_action::XDP_DROP
         }
