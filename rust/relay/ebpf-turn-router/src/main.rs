@@ -234,12 +234,13 @@ fn try_handle_ipv4_udp_to_channel_data(
         channel_data_length,
     );
 
-    let cd_num = channel_number.to_be_bytes();
-    let cd_len = channel_data_length.to_be_bytes();
-
-    let channel_data_header = [cd_num[0], cd_num[1], cd_len[0], cd_len[1]];
-
-    add_channel_data_header_ipv4(ctx, channel_data_header)?;
+    add_channel_data_header_ipv4(
+        ctx,
+        CdHdr {
+            number: channel_number.to_be_bytes(),
+            length: channel_data_length.to_be_bytes(),
+        },
+    )?;
 
     Ok(())
 }
@@ -324,12 +325,13 @@ fn try_handle_ipv6_udp_to_channel_data(
         channel_data_length,
     );
 
-    let cd_num = channel_number.to_be_bytes();
-    let cd_len = channel_data_length.to_be_bytes();
-
-    let channel_data_header = [cd_num[0], cd_num[1], cd_len[0], cd_len[1]];
-
-    add_channel_data_header_ipv6(ctx, channel_data_header)?;
+    add_channel_data_header_ipv6(
+        ctx,
+        CdHdr {
+            number: channel_number.to_be_bytes(),
+            length: channel_data_length.to_be_bytes(),
+        },
+    )?;
 
     Ok(())
 }
