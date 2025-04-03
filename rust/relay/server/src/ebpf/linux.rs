@@ -1,10 +1,10 @@
 use std::net::SocketAddr;
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, anyhow};
 use aya::{
     Pod,
     maps::{Array, AsyncPerfEventArray, HashMap, MapData},
-    programs::{Xdp, XdpFlags},
+    programs::{Xdp, XdpFlags, xdp::XdpLinkId},
 };
 use aya_log::EbpfLogger;
 use bytes::BytesMut;
@@ -34,9 +34,7 @@ impl Program {
             .context("No program")?
             .try_into()?;
         program.load().context("Failed to load program")?;
-        program
-            .attach(interface, XdpFlags::default())
-            .with_context(|| format!("Failed to attached to interface {interface}"))?;
+        let (_, flags) = attach(program, interface)?;
 
         let mut stats = AsyncPerfEventArray::try_from(
             ebpf.take_map("STATS")
@@ -99,7 +97,11 @@ impl Program {
             });
         }
 
-        tracing::info!("eBPF TURN router loaded and attached to interface {interface}");
+        tracing::info!(
+            %interface,
+            ?flags,
+            "eBPF TURN router loaded and attached"
+        );
 
         Ok(Self { ebpf, stats })
     }
@@ -292,4 +294,37 @@ impl Program {
 
         Ok(map)
     }
+}
+
+/// Attempts to attach the given XDP program to an interface in a variety of modes.
+///
+/// The modes are sorted from most to least preferred (which map to most to least efficient).
+fn attach(program: &mut Xdp, interface: &str) -> Result<(XdpLinkId, XdpFlags)> {
+    let modes = [XdpFlags::HW_MODE, XdpFlags::DRV_MODE, XdpFlags::SKB_MODE];
+    let mut errors = Vec::with_capacity(3);
+
+    for flags in modes {
+        match program.attach(interface, flags) {
+            Ok(id) => {
+                tracing::debug!(%interface, ?flags, "Successfully attached program");
+
+                return Ok((id, flags));
+            }
+            Err(e) => {
+                tracing::debug!(%interface, ?flags, "Failed to attach program: {e:#}");
+
+                errors.push(e);
+            }
+        }
+    }
+
+    let errors = errors
+        .into_iter()
+        .map(|e| format!("{e:#}"))
+        .collect::<Vec<_>>()
+        .join(" | ");
+
+    Err(anyhow!(
+        "Failed to attach program in all attempted modes to interface {interface}: [{errors}]"
+    ))
 }
