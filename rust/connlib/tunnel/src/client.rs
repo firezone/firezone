@@ -76,7 +76,7 @@ const IDS_EXPIRE: std::time::Duration = std::time::Duration::from_secs(60);
 ///
 /// 100 has been chosen as a pretty arbitrary value.
 /// We only store [`GatewayId`]s so the memory footprint is negligible.
-const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = unsafe { NonZeroUsize::new_unchecked(100) };
+const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = NonZeroUsize::new(100).expect("100 > 0");
 
 /// How many concurrent TCP DNS clients we can server _per_ sentinel DNS server IP.
 const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
