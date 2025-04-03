@@ -169,7 +169,11 @@ impl Telemetry {
             |user| user.id = Some(id)
         });
 
-        feature_flags::reevaluate(id);
+        let Some(client) = sentry::Hub::main().client() else {
+            return;
+        };
+
+        feature_flags::reevaluate(id, client.options().environment.to_owned());
     }
 }
 
