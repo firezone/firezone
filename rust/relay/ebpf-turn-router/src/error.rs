@@ -34,6 +34,7 @@ pub enum UnsupportedChannel {
 }
 
 impl aya_log_ebpf::WriteToBuf for Error {
+    #[inline(always)]
     fn write(self, buf: &mut [u8]) -> Option<NonZeroUsize> {
         let msg = match self {
             Error::PacketTooShort => "Packet is too short",

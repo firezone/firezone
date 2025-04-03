@@ -75,10 +75,7 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
         | Error::NotAChannelDataMessage
         | Error::Ipv4PacketWithOptions => xdp_action::XDP_PASS,
 
-        Error::XdpStoreBytesFailed
-        | Error::XdpAdjustHeadFailed
-        | Error::XdpLoadBytesFailed
-        | Error::PacketTooShort
+        Error::PacketTooShort
         | Error::NoMacAddress
         | Error::UnsupportedChannel(_)
         | Error::NoEntry(_) => {
@@ -87,7 +84,10 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
             xdp_action::XDP_PASS
         }
 
-        Error::BadChannelDataLength => {
+        Error::BadChannelDataLength
+        | Error::XdpStoreBytesFailed
+        | Error::XdpAdjustHeadFailed
+        | Error::XdpLoadBytesFailed => {
             debug!(&ctx, "Dropping packet: {}", e);
 
             xdp_action::XDP_DROP
