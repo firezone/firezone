@@ -85,9 +85,9 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
         }
 
         Error::BadChannelDataLength
-        | Error::XdpStoreBytesFailed
-        | Error::XdpAdjustHeadFailed
-        | Error::XdpLoadBytesFailed => {
+        | Error::XdpStoreBytesFailed(_)
+        | Error::XdpAdjustHeadFailed(_)
+        | Error::XdpLoadBytesFailed(_) => {
             debug!(&ctx, "Dropping packet: {}", e);
 
             xdp_action::XDP_DROP

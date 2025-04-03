@@ -24,8 +24,9 @@ pub fn add_channel_data_header_ipv4(ctx: &XdpContext, mut header: [u8; 4]) -> Re
     let header_ptr = &mut header as *mut _ as *mut c_void;
     let header_len = CdHdr::LEN as u32;
 
-    if unsafe { bpf_xdp_store_bytes(ctx.ctx, offset, header_ptr, header_len) } < 0 {
-        return Err(Error::XdpStoreBytesFailed);
+    let ret = unsafe { bpf_xdp_store_bytes(ctx.ctx, offset, header_ptr, header_len) };
+    if ret < 0 {
+        return Err(Error::XdpStoreBytesFailed(ret));
     }
 
     Ok(())
@@ -44,8 +45,9 @@ pub fn add_channel_data_header_ipv6(ctx: &XdpContext, mut header: [u8; 4]) -> Re
     let header_ptr = &mut header as *mut _ as *mut c_void;
     let header_len = CdHdr::LEN as u32;
 
-    if unsafe { bpf_xdp_store_bytes(ctx.ctx, offset, header_ptr, header_len) } < 0 {
-        return Err(Error::XdpStoreBytesFailed);
+    let ret = unsafe { bpf_xdp_store_bytes(ctx.ctx, offset, header_ptr, header_len) };
+    if ret < 0 {
+        return Err(Error::XdpStoreBytesFailed(ret));
     }
 
     Ok(())
@@ -68,17 +70,20 @@ fn move_headers<const DELTA: i32, const IP_HEADER_LEN: usize>(
     let headers_len = (EthHdr::LEN + IP_HEADER_LEN + UdpHdr::LEN) as u32;
 
     // Copy headers into buffer.
-    if unsafe { bpf_xdp_load_bytes(ctx.ctx, 0, headers_ptr, headers_len) } < 0 {
-        return Err(Error::XdpLoadBytesFailed);
+    let ret = unsafe { bpf_xdp_load_bytes(ctx.ctx, 0, headers_ptr, headers_len) };
+    if ret < 0 {
+        return Err(Error::XdpLoadBytesFailed(ret));
     }
 
-    if unsafe { bpf_xdp_adjust_head(ctx.ctx, DELTA) } < 0 {
-        return Err(Error::XdpAdjustHeadFailed);
+    let ret = unsafe { bpf_xdp_adjust_head(ctx.ctx, DELTA) };
+    if ret < 0 {
+        return Err(Error::XdpAdjustHeadFailed(ret));
     }
 
     // Copy the headers back.
-    if unsafe { bpf_xdp_store_bytes(ctx.ctx, 0, headers_ptr, headers_len) } < 0 {
-        return Err(Error::XdpStoreBytesFailed);
+    let ret = unsafe { bpf_xdp_store_bytes(ctx.ctx, 0, headers_ptr, headers_len) };
+    if ret < 0 {
+        return Err(Error::XdpStoreBytesFailed(ret));
     }
 
     Ok(())
