@@ -1,0 +1,27 @@
+# This Dockerfile can be used to build an xdp-tools debug image we can pull on the Relays
+# to help debugging our eBPF XDP TURN server.
+#
+# An image has already been built and pushed at us-east1-docker.pkg.dev/firezone-staging/firezone/xdp-tools:latest
+# To update it:
+#  > docker buildx build -f Dockerfile.xdp-tools -t us-east1-docker.pkg.dev/firezone-staging/firezone/xdp-tools:latest --platform linux/amd64,linux/arm64 .
+#  > docker push us-east1-docker.pkg.dev/firezone-staging/firezone/xdp-tools:latest
+
+# See https://github.com/xdp-project/xdp-tools for more information.
+
+FROM alpine:latest
+
+RUN apk add --no-cache \
+	git \
+	clang \
+	pkgconfig \
+	autoconf \
+	make \
+	m4 \
+	libbpf-dev \
+	libpcap-dev \
+	linux-headers
+
+RUN git clone https://github.com/xdp-project/xdp-tools.git
+RUN cd xdp-tools && ./configure && make && make install
+
+ENTRYPOINT ["/bin/sh"]
