@@ -1,5 +1,6 @@
 use aya_ebpf::programs::XdpContext;
 use aya_ebpf::{macros::map, maps::HashMap};
+use aya_log_ebpf::debug;
 use network_types::eth::{EthHdr, EtherType};
 
 use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -10,6 +11,7 @@ const MAX_ETHERNET_MAPPINGS: u32 = 0x100000;
 
 pub struct Eth<'a> {
     inner: &'a mut EthHdr,
+    ctx: &'a XdpContext,
 }
 
 impl<'a> Eth<'a> {
@@ -17,6 +19,7 @@ impl<'a> Eth<'a> {
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
         Ok(Self {
             inner: slice_mut_at::<EthHdr>(ctx, 0)?,
+            ctx,
         })
     }
 
@@ -33,14 +36,28 @@ impl<'a> Eth<'a> {
     }
 
     /// Update the Ethernet header with the appropriate destination MAC address based on the new destination IP.
+    #[inline(always)]
     pub fn update(self, new_dst_ip: impl Into<IpAddr>) -> Result<(), Error> {
         let new_dst_mac = match new_dst_ip.into() {
             IpAddr::V4(ip) => get_mac_for_ipv4(ip).ok_or(Error::NoMacAddress)?,
             IpAddr::V6(ip) => get_mac_for_ipv6(ip).ok_or(Error::NoMacAddress)?,
         };
 
-        self.inner.src_addr = self.inner.dst_addr;
+        let src = self.src();
+        let dst = self.dst();
+
+        let new_src_mac = self.inner.dst_addr;
+        self.inner.src_addr = new_src_mac;
         self.inner.dst_addr = new_dst_mac;
+
+        debug!(
+            self.ctx,
+            "ETH header update: src {:mac} -> {:mac}; dst {:mac} -> {:mac}",
+            src,
+            new_src_mac,
+            dst,
+            new_dst_mac,
+        );
 
         Ok(())
     }
