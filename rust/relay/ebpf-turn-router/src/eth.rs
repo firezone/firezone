@@ -56,7 +56,7 @@ impl<'a> Eth<'a> {
             src,
             new_src_mac,
             dst,
-            new_src_mac,
+            new_dst_mac,
         );
 
         Ok(())
