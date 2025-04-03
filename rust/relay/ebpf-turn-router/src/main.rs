@@ -76,7 +76,7 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
         | Error::Ipv4PacketWithOptions => xdp_action::XDP_PASS,
 
         Error::PacketTooShort
-        | Error::NoMacAddress
+        | Error::NoMacAddress(_)
         | Error::UnsupportedChannel(_)
         | Error::NoEntry(_) => {
             debug!(&ctx, "Passing packet to userspace: {}", e);

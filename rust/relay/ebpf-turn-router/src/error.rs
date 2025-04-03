@@ -1,4 +1,4 @@
-use core::num::NonZeroUsize;
+use core::{net::IpAddr, num::NonZeroUsize};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
@@ -6,7 +6,7 @@ pub enum Error {
     NotUdp,
     NotTurn,
     NotIp,
-    NoMacAddress,
+    NoMacAddress(IpAddr),
     Ipv4PacketWithOptions,
     NotAChannelDataMessage,
     BadChannelDataLength,
@@ -41,7 +41,14 @@ impl aya_log_ebpf::WriteToBuf for Error {
             Error::NotUdp => "Not a UDP packet".write(buf),
             Error::NotTurn => "Not TURN traffic".write(buf),
             Error::NotIp => "Not an IP packet".write(buf),
-            Error::NoMacAddress => "No MAC address".write(buf),
+            Error::NoMacAddress(ip) => {
+                let mut written = 0;
+
+                written += "No MAC address for IP ".write(buf)?.get();
+                written += ip.write(buf)?.get();
+
+                NonZeroUsize::new(written)
+            }
             Error::Ipv4PacketWithOptions => "IPv4 packet has options".write(buf),
             Error::NotAChannelDataMessage => "Not a channel data message".write(buf),
             Error::BadChannelDataLength => {

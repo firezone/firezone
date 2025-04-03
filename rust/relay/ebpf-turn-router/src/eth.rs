@@ -34,9 +34,10 @@ impl<'a> Eth<'a> {
 
     /// Update the Ethernet header with the appropriate destination MAC address based on the new destination IP.
     pub fn update(self, new_dst_ip: impl Into<IpAddr>) -> Result<(), Error> {
-        let new_dst_mac = match new_dst_ip.into() {
-            IpAddr::V4(ip) => get_mac_for_ipv4(ip).ok_or(Error::NoMacAddress)?,
-            IpAddr::V6(ip) => get_mac_for_ipv6(ip).ok_or(Error::NoMacAddress)?,
+        let ip_addr = new_dst_ip.into();
+        let new_dst_mac = match ip_addr {
+            IpAddr::V4(ip) => get_mac_for_ipv4(ip).ok_or(Error::NoMacAddress(ip_addr))?,
+            IpAddr::V6(ip) => get_mac_for_ipv6(ip).ok_or(Error::NoMacAddress(ip_addr))?,
         };
 
         self.inner.src_addr = self.inner.dst_addr;
