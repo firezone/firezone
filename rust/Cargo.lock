@@ -165,8 +165,9 @@ dependencies = [
 
 [[package]]
 name = "arboard"
-version = "3.4.1"
-source = "git+https://github.com/1Password/arboard#bbd06b4d575262f145bc8a56a978f5b12adf5f56"
+version = "3.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1df21f715862ede32a0c525ce2ca4d52626bb0007f8c18b87a384503ac33e70"
 dependencies = [
  "clipboard-win",
  "log",
@@ -174,6 +175,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "parking_lot",
+ "percent-encoding",
  "x11rb",
 ]
 
