@@ -37,7 +37,7 @@ edition = "2024"
 
 [workspace.dependencies]
 anyhow = "1.0.97"
-arboard = { version = "3.4.0", default-features = false }
+arboard = { version = "3.5.0", default-features = false }
 async-trait = { version = "0.1", default-features = false }
 atomicwrites = "0.4.4"
 axum = { version = "0.7.7", default-features = false }
@@ -206,7 +206,6 @@ boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.26" } # Waiting for release.
-arboard = { git = "https://github.com/1Password/arboard" } # Waiting for release.
 softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
