@@ -9,18 +9,9 @@ defmodule Domain.Repo.Migrations.RemoveDuplicateGroups do
     # Step 1: Remove all duplicate deleted groups
     execute("""
     DELETE FROM actor_groups
-    WHERE id IN (
-      SELECT a.id
-      FROM actor_groups a
-      INNER JOIN actor_groups b
-      ON a.account_id = b.account_id
-      AND a.provider_id = b.provider_id
-      AND a.provider_identifier = b.provider_identifier
-      WHERE a.deleted_at IS NOT NULL
-      AND b.deleted_at IS NULL
-      AND a.provider_id IS NOT NULL
-      AND a.provider_identifier IS NOT NULL
-    )
+    WHERE DELETED_AT IS NOT NULL
+    AND provider_identifier IS NOT NULL
+    AND provider_id IS NOT NULL
     """)
 
     # Step 2: Drop existing index
