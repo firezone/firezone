@@ -33,6 +33,7 @@ impl<'a> Eth<'a> {
     }
 
     /// Update the Ethernet header with the appropriate destination MAC address based on the new destination IP.
+    #[inline(always)]
     pub fn update(self, new_dst_ip: impl Into<IpAddr>) -> Result<(), Error> {
         let ip_addr = new_dst_ip.into();
         let new_dst_mac = match ip_addr {
@@ -53,18 +54,22 @@ static IP4_TO_MAC: HashMap<[u8; 4], [u8; 6]> = HashMap::with_max_entries(MAX_ETH
 #[map]
 static IP6_TO_MAC: HashMap<[u8; 16], [u8; 6]> = HashMap::with_max_entries(MAX_ETHERNET_MAPPINGS, 0);
 
+#[inline(always)]
 pub(crate) fn get_mac_for_ipv4(ip: Ipv4Addr) -> Option<[u8; 6]> {
     unsafe { IP4_TO_MAC.get(&ip.octets()).copied() }
 }
 
+#[inline(always)]
 pub(crate) fn get_mac_for_ipv6(ip: Ipv6Addr) -> Option<[u8; 6]> {
     unsafe { IP6_TO_MAC.get(&ip.octets()).copied() }
 }
 
+#[inline(always)]
 pub(crate) fn save_mac_for_ipv4(ip: Ipv4Addr, mac: [u8; 6]) {
     let _ = IP4_TO_MAC.insert(&ip.octets(), &mac, 0);
 }
 
+#[inline(always)]
 pub(crate) fn save_mac_for_ipv6(ip: Ipv6Addr, mac: [u8; 6]) {
     let _ = IP6_TO_MAC.insert(&ip.octets(), &mac, 0);
 }
