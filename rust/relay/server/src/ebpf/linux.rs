@@ -35,7 +35,7 @@ impl Program {
             .try_into()?;
         program.load().context("Failed to load program")?;
         program
-            .attach(interface, XdpFlags::default())
+            .attach(interface, XdpFlags::SKB_MODE)
             .with_context(|| format!("Failed to attached to interface {interface}"))?;
 
         let mut stats = AsyncPerfEventArray::try_from(
