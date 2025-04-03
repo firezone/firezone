@@ -54,7 +54,7 @@ impl Program {
             .context("Failed to determine number of CPUs")?
         {
             // open a separate perf buffer for each cpu
-            let mut stats_array_buf = stats.open(cpu_id, Some(1000))?;
+            let mut stats_array_buf = stats.open(cpu_id, Some(0x1000))?;
 
             tracing::debug!(%cpu_id, "Subscribing to stats events from eBPF kernel");
 
@@ -63,7 +63,7 @@ impl Program {
                 let data_relayed = data_relayed.clone();
 
                 async move {
-                    let mut buffers = (0..1000)
+                    let mut buffers = (0..0x1000)
                         .map(|_| BytesMut::with_capacity(std::mem::size_of::<StatsEvent>()))
                         .collect::<Vec<_>>();
 
