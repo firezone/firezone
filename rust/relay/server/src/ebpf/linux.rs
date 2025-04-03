@@ -54,7 +54,7 @@ impl Program {
             .context("Failed to determine number of CPUs")?
         {
             // open a separate perf buffer for each cpu
-            let mut stats_array_buf = stats.open(cpu_id, None)?;
+            let mut stats_array_buf = stats.open(cpu_id, Some(1000))?;
 
             tracing::debug!(%cpu_id, "Subscribing to stats events from eBPF kernel");
 
