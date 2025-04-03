@@ -17,12 +17,12 @@ pub fn remove_channel_data_header_ipv4(ctx: &XdpContext) -> Result<(), Error> {
 }
 
 #[inline(always)]
-pub fn add_channel_data_header_ipv4(ctx: &XdpContext, mut header: [u8; 4]) -> Result<(), Error> {
+pub fn add_channel_data_header_ipv4(ctx: &XdpContext, mut header: CdHdr) -> Result<(), Error> {
     move_headers::<{ -(CdHdr::LEN as i32) }, { Ipv4Hdr::LEN }>(ctx)?;
     let offset = (EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN) as u32;
 
     let header_ptr = &mut header as *mut _ as *mut c_void;
-    let header_len = CdHdr::LEN as u32;
+    let header_len = core::mem::size_of_val(&header) as u32;
 
     let ret = unsafe { bpf_xdp_store_bytes(ctx.ctx, offset, header_ptr, header_len) };
     if ret < 0 {
@@ -38,12 +38,12 @@ pub fn remove_channel_data_header_ipv6(ctx: &XdpContext) -> Result<(), Error> {
 }
 
 #[inline(always)]
-pub fn add_channel_data_header_ipv6(ctx: &XdpContext, mut header: [u8; 4]) -> Result<(), Error> {
+pub fn add_channel_data_header_ipv6(ctx: &XdpContext, mut header: CdHdr) -> Result<(), Error> {
     move_headers::<{ -(CdHdr::LEN as i32) }, { Ipv6Hdr::LEN }>(ctx)?;
     let offset = (EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN) as u32;
 
     let header_ptr = &mut header as *mut _ as *mut c_void;
-    let header_len = CdHdr::LEN as u32;
+    let header_len = core::mem::size_of_val(&header) as u32;
 
     let ret = unsafe { bpf_xdp_store_bytes(ctx.ctx, offset, header_ptr, header_len) };
     if ret < 0 {
