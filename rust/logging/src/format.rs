@@ -63,10 +63,7 @@ impl Default for Format {
 
 const TIMESTAMP_FORMAT_CONFIG: EncodedConfig = Config::DEFAULT
     .set_time_precision(TimePrecision::Second {
-        decimal_digits: Some({
-            // Safety: 3 > 0
-            unsafe { NonZeroU8::new_unchecked(3) }
-        }),
+        decimal_digits: Some(NonZeroU8::new(3).expect("3 > 0")),
     })
     .encode();
 

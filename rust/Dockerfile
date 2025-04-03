@@ -1,5 +1,5 @@
 # Keep synced with `rust-toolchain.toml`
-ARG RUST_VERSION="1.85.0"
+ARG RUST_VERSION="1.86.0"
 ARG ALPINE_VERSION="3.20"
 ARG CARGO_CHEF_VERSION="0.1.67"
 
