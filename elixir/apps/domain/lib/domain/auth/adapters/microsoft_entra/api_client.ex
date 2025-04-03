@@ -144,14 +144,14 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
           response: inspect(response)
         )
 
-        {:error, :retry_later}
+        {:error, :invalid_response}
 
       {:ok, %Finch.Response{status: status}} when status in 300..399 ->
         Logger.warning("API request succeeded with unexpected 3xx status #{status}",
           response: inspect(response)
         )
 
-        {:error, :retry_later}
+        {:error, :invalid_response}
 
       {:ok, %Finch.Response{body: raw_body, status: status}} when status in 400..499 ->
         Logger.error("API request failed with 4xx status #{status}",
@@ -179,7 +179,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
           uri: inspect(uri)
         )
 
-        {:error, :retry_later}
+        {:error, :invalid_response}
 
       :error ->
         Logger.error("API response did not contain expected 'value' key",
@@ -187,10 +187,10 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
           uri: inspect(uri)
         )
 
-        {:error, :retry_later}
+        {:error, :invalid_response}
 
       other ->
-        Logger.error("Unexpected response from API",
+        Logger.error("Invalid response from API",
           response: inspect(response),
           other: inspect(other)
         )
