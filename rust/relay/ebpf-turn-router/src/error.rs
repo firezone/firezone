@@ -12,9 +12,9 @@ pub enum Error {
     BadChannelDataLength,
     NoEntry(SupportedChannel),
     UnsupportedChannel(UnsupportedChannel),
-    XdpLoadBytesFailed,
-    XdpAdjustHeadFailed,
-    XdpStoreBytesFailed,
+    XdpLoadBytesFailed(i64),
+    XdpAdjustHeadFailed(i64),
+    XdpStoreBytesFailed(i64),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -71,9 +71,30 @@ impl aya_log_ebpf::WriteToBuf for Error {
             Error::UnsupportedChannel(UnsupportedChannel::ChanToUdp64) => {
                 "Relaying channel IPv6 to UDPv4 is not supported.write(buf)".write(buf)
             }
-            Error::XdpLoadBytesFailed => "Failed to load bytes".write(buf),
-            Error::XdpAdjustHeadFailed => "Failed to adjust head".write(buf),
-            Error::XdpStoreBytesFailed => "Failed to store bytes".write(buf),
+            Error::XdpLoadBytesFailed(ret) => {
+                let mut written = 0;
+
+                written += "Failed to load bytes: ".write(buf)?.get();
+                written += ret.write(buf)?.get();
+
+                NonZeroUsize::new(written)
+            }
+            Error::XdpAdjustHeadFailed(ret) => {
+                let mut written = 0;
+
+                written += "Failed to adjust head: ".write(buf)?.get();
+                written += ret.write(buf)?.get();
+
+                NonZeroUsize::new(written)
+            }
+            Error::XdpStoreBytesFailed(ret) => {
+                let mut written = 0;
+
+                written += "Failed to store bytes: ".write(buf)?.get();
+                written += ret.write(buf)?.get();
+
+                NonZeroUsize::new(written)
+            }
         }
     }
 }
