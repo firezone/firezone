@@ -48,28 +48,28 @@ impl aya_log_ebpf::WriteToBuf for Error {
                 "Channel data length does not match packet length".write(buf)
             }
             Error::NoEntry(SupportedChannel::UdpToChan44) => {
-                "No entry in UDPv4 to channel IPv4 map.write(buf)".write(buf)
+                "No entry in UDPv4 to channel IPv4 map".write(buf)
             }
             Error::NoEntry(SupportedChannel::ChanToUdp44) => {
-                "No entry in channel IPv4 to UDPv4 map.write(buf)".write(buf)
+                "No entry in channel IPv4 to UDPv4 map".write(buf)
             }
             Error::NoEntry(SupportedChannel::UdpToChan66) => {
-                "No entry in UDPv6 to channel IPv6 map.write(buf)".write(buf)
+                "No entry in UDPv6 to channel IPv6 map".write(buf)
             }
             Error::NoEntry(SupportedChannel::ChanToUdp66) => {
-                "No entry in channel IPv6 to UDPv6 map.write(buf)".write(buf)
+                "No entry in channel IPv6 to UDPv6 map".write(buf)
             }
             Error::UnsupportedChannel(UnsupportedChannel::UdpToChan46) => {
-                "Relaying UDPv4 to channel IPv6 is not supported.write(buf)".write(buf)
+                "Relaying UDPv4 to channel IPv6 is not supported".write(buf)
             }
             Error::UnsupportedChannel(UnsupportedChannel::ChanToUdp46) => {
-                "Relaying channel IPv4 to UDPv6 is not supported.write(buf)".write(buf)
+                "Relaying channel IPv4 to UDPv6 is not supported".write(buf)
             }
             Error::UnsupportedChannel(UnsupportedChannel::UdpToChan64) => {
-                "Relaying UDPv6 to channel IPv4 is not supported.write(buf)".write(buf)
+                "Relaying UDPv6 to channel IPv4 is not supported".write(buf)
             }
             Error::UnsupportedChannel(UnsupportedChannel::ChanToUdp64) => {
-                "Relaying channel IPv6 to UDPv4 is not supported.write(buf)".write(buf)
+                "Relaying channel IPv6 to UDPv4 is not supported".write(buf)
             }
             Error::XdpLoadBytesFailed(ret) => {
                 let mut written = 0;
