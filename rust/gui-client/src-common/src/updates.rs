@@ -262,7 +262,7 @@ fn parse_version_from_url(url: &Url) -> Result<Version> {
     let filename = url
         .path_segments()
         .context("URL must have a path")?
-        .last()
+        .next_back()
         .context("URL path must have a last segment")?;
     let version_str = filename
         .split('_')
