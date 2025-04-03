@@ -33,7 +33,7 @@ mod eth;
 mod ip4;
 mod ip6;
 mod move_headers;
-mod slice_mut_at;
+mod ref_mut_at;
 mod stats;
 mod udp;
 
