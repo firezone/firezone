@@ -55,18 +55,18 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       assert list_users(api_token) == {:error, %Mint.TransportError{reason: :econnrefused}}
     end
 
-    test "returns retry_later when api responds with unexpected 2xx status" do
+    test "returns invalid_response when api responds with unexpected 2xx status" do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
       MicrosoftEntraDirectory.mock_users_list_endpoint(bypass, 201)
-      assert list_users(api_token) == {:error, :retry_later}
+      assert list_users(api_token) == {:error, :invalid_response}
     end
 
-    test "returns retry_later when api responds with unexpected 3xx status" do
+    test "returns invalid_response when api responds with unexpected 3xx status" do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
       MicrosoftEntraDirectory.mock_users_list_endpoint(bypass, 301)
-      assert list_users(api_token) == {:error, :retry_later}
+      assert list_users(api_token) == {:error, :invalid_response}
     end
 
     test "returns error when api responds with 4xx status" do
@@ -90,7 +90,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       assert list_users(api_token) == {:error, :retry_later}
     end
 
-    test "returns retry_later when api responds without expected JSON keys" do
+    test "returns invalid_response when api responds without expected JSON keys" do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
 
@@ -100,10 +100,10 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
         Jason.encode!(%{})
       )
 
-      assert list_users(api_token) == {:error, :retry_later}
+      assert list_users(api_token) == {:error, :invalid_response}
     end
 
-    test "returns retry_later when api responds with unexpected data format" do
+    test "returns invalid_response when api responds with unexpected data format" do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
 
@@ -113,7 +113,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
         Jason.encode!(%{"users" => "invalid data"})
       )
 
-      assert list_users(api_token) == {:error, :retry_later}
+      assert list_users(api_token) == {:error, :invalid_response}
     end
 
     test "returns error when api responds with invalid JSON" do
@@ -156,18 +156,18 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       assert list_groups(api_token) == {:error, %Mint.TransportError{reason: :econnrefused}}
     end
 
-    test "returns retry_later when api responds with unexpected 2xx status" do
+    test "returns invalid_response when api responds with unexpected 2xx status" do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
       MicrosoftEntraDirectory.mock_groups_list_endpoint(bypass, 201)
-      assert list_groups(api_token) == {:error, :retry_later}
+      assert list_groups(api_token) == {:error, :invalid_response}
     end
 
-    test "returns retry_later when api responds with unexpected 3xx status" do
+    test "returns invalid_response when api responds with unexpected 3xx status" do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
       MicrosoftEntraDirectory.mock_groups_list_endpoint(bypass, 301)
-      assert list_groups(api_token) == {:error, :retry_later}
+      assert list_groups(api_token) == {:error, :invalid_response}
     end
 
     test "returns error when api responds with 4xx status" do
@@ -191,7 +191,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       assert list_groups(api_token) == {:error, :retry_later}
     end
 
-    test "returns retry_later when api responds without expected JSON keys" do
+    test "returns invalid_response when api responds without expected JSON keys" do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
 
@@ -201,10 +201,10 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
         Jason.encode!(%{})
       )
 
-      assert list_groups(api_token) == {:error, :retry_later}
+      assert list_groups(api_token) == {:error, :invalid_response}
     end
 
-    test "returns retry_later when api responds with unexpected data format" do
+    test "returns invalid_response when api responds with unexpected data format" do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
 
@@ -214,7 +214,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
         Jason.encode!(%{"groups" => "invalid data"})
       )
 
-      assert list_groups(api_token) == {:error, :retry_later}
+      assert list_groups(api_token) == {:error, :invalid_response}
     end
 
     test "returns error when api responds with invalid JSON" do
@@ -260,20 +260,20 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
                {:error, %Mint.TransportError{reason: :econnrefused}}
     end
 
-    test "returns retry_later when api responds with unexpected 2xx status" do
+    test "returns invalid_response when api responds with unexpected 2xx status" do
       api_token = Ecto.UUID.generate()
       group_id = Ecto.UUID.generate()
       bypass = Bypass.open()
       MicrosoftEntraDirectory.mock_group_members_list_endpoint(bypass, group_id, 201)
-      assert list_group_members(api_token, group_id) == {:error, :retry_later}
+      assert list_group_members(api_token, group_id) == {:error, :invalid_response}
     end
 
-    test "returns retry_later when api responds with unexpected 3xx status" do
+    test "returns invalid_response when api responds with unexpected 3xx status" do
       api_token = Ecto.UUID.generate()
       group_id = Ecto.UUID.generate()
       bypass = Bypass.open()
       MicrosoftEntraDirectory.mock_group_members_list_endpoint(bypass, group_id, 301)
-      assert list_group_members(api_token, group_id) == {:error, :retry_later}
+      assert list_group_members(api_token, group_id) == {:error, :invalid_response}
     end
 
     test "returns error when api responds with 4xx status" do
@@ -300,7 +300,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       assert list_group_members(api_token, group_id) == {:error, :retry_later}
     end
 
-    test "returns retry_later when api responds without expected JSON keys" do
+    test "returns invalid_response when api responds without expected JSON keys" do
       api_token = Ecto.UUID.generate()
       group_id = Ecto.UUID.generate()
       bypass = Bypass.open()
@@ -312,10 +312,10 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
         Jason.encode!(%{})
       )
 
-      assert list_group_members(api_token, group_id) == {:error, :retry_later}
+      assert list_group_members(api_token, group_id) == {:error, :invalid_response}
     end
 
-    test "returns retry_later when api responds with unexpected data format" do
+    test "returns invalid_response when api responds with unexpected data format" do
       api_token = Ecto.UUID.generate()
       group_id = Ecto.UUID.generate()
       bypass = Bypass.open()
@@ -327,7 +327,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
         Jason.encode!(%{"group_members" => "invalid data"})
       )
 
-      assert list_group_members(api_token, group_id) == {:error, :retry_later}
+      assert list_group_members(api_token, group_id) == {:error, :invalid_response}
     end
 
     test "returns error when api responds with invalid JSON" do
