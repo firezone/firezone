@@ -1,6 +1,6 @@
 use core::net::Ipv6Addr;
 
-use crate::{Error, checksum::ChecksumUpdate, slice_mut_at::slice_mut_at};
+use crate::{Error, checksum::ChecksumUpdate, ref_mut_at::ref_mut_at};
 use aya_ebpf::programs::XdpContext;
 use aya_log_ebpf::debug;
 use network_types::{eth::EthHdr, ip::IpProto};
@@ -16,7 +16,7 @@ impl<'a> Ip6<'a> {
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
         Ok(Self {
             ctx,
-            inner: slice_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)?,
+            inner: ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)?,
         })
     }
 

@@ -1,6 +1,6 @@
 use core::net::Ipv4Addr;
 
-use crate::{Error, checksum::ChecksumUpdate, slice_mut_at::slice_mut_at};
+use crate::{Error, checksum::ChecksumUpdate, ref_mut_at::ref_mut_at};
 use aya_ebpf::programs::XdpContext;
 use aya_log_ebpf::debug;
 use network_types::{eth::EthHdr, ip::IpProto};
@@ -14,7 +14,7 @@ pub struct Ip4<'a> {
 impl<'a> Ip4<'a> {
     #[inline(always)]
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
-        let ip4_hdr = slice_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)?;
+        let ip4_hdr = ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)?;
 
         // IPv4 packets with options are handled in user-space.
         if usize::from(ip4_hdr.ihl()) * 4 != Ipv4Hdr::LEN {

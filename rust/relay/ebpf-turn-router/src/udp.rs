@@ -1,4 +1,4 @@
-use crate::{Error, checksum::ChecksumUpdate, slice_mut_at::slice_mut_at};
+use crate::{Error, checksum::ChecksumUpdate, ref_mut_at::ref_mut_at};
 use aya_ebpf::programs::XdpContext;
 use aya_log_ebpf::debug;
 use network_types::eth::EthHdr;
@@ -14,7 +14,7 @@ impl<'a> Udp<'a> {
     pub fn parse(ctx: &'a XdpContext, ip_header_length: usize) -> Result<Self, Error> {
         Ok(Self {
             ctx,
-            inner: slice_mut_at::<UdpHdr>(ctx, EthHdr::LEN + ip_header_length)?,
+            inner: ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + ip_header_length)?,
         })
     }
 
