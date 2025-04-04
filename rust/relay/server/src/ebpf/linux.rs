@@ -231,6 +231,7 @@ impl Program {
             return Ok(());
         }
 
+        self.config = config;
         self.config_array_mut()?.set(0, config, 0)?;
 
         Ok(())
