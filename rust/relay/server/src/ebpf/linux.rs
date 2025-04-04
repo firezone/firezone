@@ -18,7 +18,7 @@ use crate::{AllocationPort, ClientSocket, PeerSocket};
 /// How many [`StatsEvent`]s we will at most read in one batch.
 ///
 /// Must be a power of two, hence it is defined as a hex value.
-/// Must be sufficiently large for in order to read large batches from the kernel every time we get scheduled.
+/// Must be sufficiently large to read large batches from the kernel every time we get scheduled.
 /// Otherwise the kernel has to drop some and we skew our metrics.
 const PAGE_COUNT: usize = 0x1000;
 
