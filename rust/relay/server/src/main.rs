@@ -82,9 +82,11 @@ struct Args {
     #[arg(long, env, hide = true)]
     google_cloud_project_id: Option<String>,
 
-    /// Which interface to load the eBPF program onto.
-    #[arg(long, env, hide = true, default_value = "eth0")]
-    primary_interface: String,
+    /// Enable offloading of TURN traffic to an eBPF program.
+    ///
+    /// Requires the name of the network interface the XDP program should be loaded onto.
+    #[arg(long, env, hide = true)]
+    ebpf_offloading: Option<String>,
 
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
@@ -136,9 +138,12 @@ fn main() {
 async fn try_main(args: Args) -> Result<()> {
     setup_tracing(&args)?;
 
-    let mut ebpf = ebpf::Program::try_load(&args.primary_interface)
-        .inspect_err(|e| tracing::info!("Failed to load eBPF TURN router: {e:#}"))
-        .ok();
+    let mut ebpf = args
+        .ebpf_offloading
+        .as_deref()
+        .map(ebpf::Program::try_load)
+        .transpose()
+        .context("Failed to load eBPF TURN router")?;
 
     if let Some(ebpf) = ebpf.as_mut() {
         ebpf.set_config(Config {

@@ -48,6 +48,10 @@ locals {
     {
       name  = "FIREZONE_API_URL"
       value = var.api_url
+    },
+    {
+      name  = "EBPF_OFFLOADING"
+      value = "eth0"
     }
   ], var.application_environment_variables)
 }
