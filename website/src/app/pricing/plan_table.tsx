@@ -37,7 +37,7 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="font-semibold gmx-1 py-4 text-center">6</td>
-          <td className="font-semibold gmx-1 py-4 text-center">100</td>
+          <td className="font-semibold gmx-1 py-4 text-center">500</td>
           <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
@@ -67,7 +67,7 @@ export default function PlanTable() {
             </Tooltip>
           </td>
           <td className="font-semibold gmx-1 py-4 text-center">1</td>
-          <td className="font-semibold gmx-1 py-4 text-center">10</td>
+          <td className="font-semibold gmx-1 py-4 text-center">20</td>
           <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
