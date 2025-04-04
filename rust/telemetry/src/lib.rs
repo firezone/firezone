@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{sync::Arc, time::Duration};
+use std::{borrow::Cow, sync::Arc, time::Duration};
 
 use env::ON_PREM;
 use sentry::protocol::SessionStatus;
@@ -37,11 +37,9 @@ pub const TESTING: Dsn = Dsn(
 );
 
 mod env {
-    use std::borrow::Cow;
-
-    pub const PRODUCTION: Cow<'static, str> = Cow::Borrowed("production");
-    pub const STAGING: Cow<'static, str> = Cow::Borrowed("staging");
-    pub const ON_PREM: Cow<'static, str> = Cow::Borrowed("on-prem");
+    pub const PRODUCTION: &str = "production";
+    pub const STAGING: &str = "staging";
+    pub const ON_PREM: &str = "on-prem";
 }
 
 #[derive(Default)]
@@ -74,7 +72,7 @@ impl Telemetry {
             .inner
             .as_ref()
             .and_then(|i| i.options().environment.as_ref())
-            .is_some_and(|env| env == &environment)
+            .is_some_and(|env| env == environment)
         {
             tracing::debug!(%environment, "Telemetry already initialised");
 
@@ -101,7 +99,7 @@ impl Telemetry {
         let inner = sentry::init((
             dsn.0,
             sentry::ClientOptions {
-                environment: Some(environment),
+                environment: Some(Cow::Borrowed(environment)),
                 // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
                 release: Some(release.to_owned().into()),
                 traces_sampler: Some(Arc::new(|tx| {
@@ -173,7 +171,11 @@ impl Telemetry {
             return;
         };
 
-        feature_flags::reevaluate(id, client.options().environment.to_owned());
+        let Some(env) = client.options().environment.as_ref() else {
+            return; // Nothing to do if we don't have an environment set.
+        };
+
+        feature_flags::reevaluate(id, env);
     }
 }
 
