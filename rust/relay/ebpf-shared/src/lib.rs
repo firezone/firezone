@@ -201,7 +201,7 @@ impl PortAndPeerV6 {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct Config {
     pub udp_checksum_enabled: bool,
