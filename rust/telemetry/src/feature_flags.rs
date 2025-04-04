@@ -1,11 +1,12 @@
-use std::{borrow::Cow, sync::LazyLock, time::Duration};
+use std::{sync::LazyLock, time::Duration};
 
 use anyhow::{Context as _, Result, bail};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use tokio::runtime::Runtime;
 
-const POSTHOG_API_KEY: &str = "phc_uXXl56plyvIBHj81WwXBLtdPElIRbm7keRTdUCmk8ll";
+const POSTHOG_API_KEY_PROD: &str = "phc_uXXl56plyvIBHj81WwXBLtdPElIRbm7keRTdUCmk8ll";
+const POSTHOG_API_KEY_STAGING: &str = "phc_tHOVtq183RpfKmzadJb4bxNpLM5jzeeb1Gu8YSH3nsK";
 const RE_EVAL_DURATION: Duration = Duration::from_secs(5 * 60);
 
 static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
@@ -23,9 +24,15 @@ pub fn drop_llmnr_nxdomain_responses() -> bool {
     FEATURE_FLAGS.read().drop_llmnr_nxdomain_responses
 }
 
-pub(crate) fn reevaluate(user_id: String, env: Option<Cow<'static, str>>) {
+pub(crate) fn reevaluate(user_id: String, env: &str) {
+    let api_key = match env {
+        crate::env::PRODUCTION => POSTHOG_API_KEY_PROD,
+        crate::env::STAGING => POSTHOG_API_KEY_STAGING,
+        _ => return,
+    };
+
     RUNTIME.spawn(async move {
-        let flags = decide(user_id, env)
+        let flags = decide(user_id, api_key.to_owned())
             .await
             .inspect_err(|e| tracing::debug!("Failed to evaluate feature flags: {e:#}"))
             .unwrap_or_default();
@@ -58,31 +65,31 @@ fn init_runtime() -> Runtime {
                 continue;
             };
 
+            let Some(env) = client.options().environment.as_ref() else {
+                continue; // Nothing to do if we don't have an environment set.
+            };
+
             let Some(user_id) = sentry::Hub::main()
                 .configure_scope(|scope| scope.user().and_then(|u| u.id.clone()))
             else {
                 continue; // Nothing to do if we don't have a user-id set.
             };
 
-            reevaluate(user_id, client.options().environment.to_owned());
+            reevaluate(user_id, env);
         }
     });
 
     runtime
 }
 
-async fn decide(
-    distinct_id: String,
-    environment: Option<Cow<'static, str>>,
-) -> Result<FeatureFlags> {
+async fn decide(distinct_id: String, api_key: String) -> Result<FeatureFlags> {
     let response = reqwest::ClientBuilder::new()
         .connection_verbose(true)
         .build()?
         .post("https://us.i.posthog.com/decide?v=3")
         .json(&DecideRequest {
-            api_key: POSTHOG_API_KEY.to_string(),
+            api_key,
             distinct_id,
-            groups: Groups { environment },
         })
         .send()
         .await
@@ -108,13 +115,6 @@ async fn decide(
 struct DecideRequest {
     api_key: String,
     distinct_id: String,
-    groups: Groups,
-}
-
-#[derive(Debug, Serialize)]
-struct Groups {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    environment: Option<Cow<'static, str>>,
 }
 
 #[derive(Debug, Deserialize)]
