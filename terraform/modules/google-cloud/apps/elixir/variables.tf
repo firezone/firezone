@@ -122,6 +122,19 @@ variable "scaling_horizontal_replicas" {
   description = "Number of replicas in an instance group."
 }
 
+variable "reservation_size" {
+  type     = number
+  nullable = false
+  default  = 1
+
+  validation {
+    condition     = var.reservation_size >= var.scaling_horizontal_replicas
+    error_message = "Reservation size should be greater or equal to the number of scaling_horizontal_replicas."
+  }
+
+  description = "Number of reservations to create."
+}
+
 variable "scaling_max_horizontal_replicas" {
   type     = number
   nullable = true

@@ -95,8 +95,7 @@ resource "google_compute_reservation" "reservation" {
   specific_reservation_required = true
 
   specific_reservation {
-    count = var.scaling_horizontal_replicas
-    # count = ceil(var.scaling_horizontal_replicas / length(var.compute_instance_availability_zones))
+    count = var.reservation_size
 
     instance_properties {
       machine_type = var.compute_instance_type
