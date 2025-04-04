@@ -15,6 +15,13 @@ use stun_codec::rfc5766::attributes::ChannelNumber;
 
 use crate::{AllocationPort, ClientSocket, PeerSocket};
 
+/// How many [`StatsEvent`]s we will at most read in one batch.
+///
+/// Must be a power of two, hence it is defined as a hex value.
+/// Must be sufficiently large to read large batches from the kernel every time we get scheduled.
+/// Otherwise the kernel has to drop some and we skew our metrics.
+const PAGE_COUNT: usize = 0x1000;
+
 pub struct Program {
     ebpf: aya::Ebpf,
 
@@ -54,7 +61,7 @@ impl Program {
             .context("Failed to determine number of CPUs")?
         {
             // open a separate perf buffer for each cpu
-            let mut stats_array_buf = stats.open(cpu_id, None)?;
+            let mut stats_array_buf = stats.open(cpu_id, Some(PAGE_COUNT))?;
 
             tracing::debug!(%cpu_id, "Subscribing to stats events from eBPF kernel");
 
@@ -63,7 +70,7 @@ impl Program {
                 let data_relayed = data_relayed.clone();
 
                 async move {
-                    let mut buffers = (0..1000)
+                    let mut buffers = (0..PAGE_COUNT)
                         .map(|_| BytesMut::with_capacity(std::mem::size_of::<StatsEvent>()))
                         .collect::<Vec<_>>();
 
