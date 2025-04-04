@@ -204,6 +204,7 @@ impl PortAndPeerV6 {
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct Config {
+    pub relaying_enabled: bool,
     pub udp_checksum_enabled: bool,
     pub lowest_allocation_port: u16,
     pub highest_allocation_port: u16,
@@ -212,6 +213,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            relaying_enabled: true,
             udp_checksum_enabled: true,
             lowest_allocation_port: 49152,
             highest_allocation_port: 65535,
