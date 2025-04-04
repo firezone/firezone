@@ -24,6 +24,10 @@ pub fn drop_llmnr_nxdomain_responses() -> bool {
     FEATURE_FLAGS.read().drop_llmnr_nxdomain_responses
 }
 
+pub fn ebpf_turn_router_enabled() -> bool {
+    FEATURE_FLAGS.read().ebpf_turn_router_enabled
+}
+
 pub(crate) fn reevaluate(user_id: String, env: &str) {
     let api_key = match env {
         crate::env::PRODUCTION => POSTHOG_API_KEY_PROD,
@@ -130,6 +134,8 @@ struct FeatureFlags {
     icmp_unreachable_instead_of_nat64: bool,
     #[serde(default)]
     drop_llmnr_nxdomain_responses: bool,
+    #[serde(default)]
+    ebpf_turn_router_enabled: bool,
 }
 
 fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
@@ -138,12 +144,14 @@ fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
     enum SentryFlag {
         IcmpUnreachableInsteadOfNat64 { result: bool },
         DropLlmnrNxdomainResponses { result: bool },
+        EbpfTurnRouterEnabled { result: bool },
     }
 
     // Exhaustive destruction so we don't forget to update this when we add a flag.
     let FeatureFlags {
         icmp_unreachable_instead_of_nat64,
         drop_llmnr_nxdomain_responses,
+        ebpf_turn_router_enabled,
     } = flags;
 
     let value = serde_json::json!({
@@ -151,7 +159,8 @@ fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
             SentryFlag::IcmpUnreachableInsteadOfNat64 {
                 result: icmp_unreachable_instead_of_nat64,
             },
-            SentryFlag::DropLlmnrNxdomainResponses { result: drop_llmnr_nxdomain_responses }
+            SentryFlag::DropLlmnrNxdomainResponses { result: drop_llmnr_nxdomain_responses },
+            SentryFlag::EbpfTurnRouterEnabled { result: ebpf_turn_router_enabled }
         ]
     });
 

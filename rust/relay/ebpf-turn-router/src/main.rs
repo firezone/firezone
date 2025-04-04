@@ -97,6 +97,10 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
 
 #[inline(always)]
 fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
+    if !config::relaying_enabled() {
+        return Ok(xdp_action::XDP_PASS);
+    }
+
     let eth = Eth::parse(ctx)?;
 
     match eth.ether_type() {

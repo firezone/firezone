@@ -39,4 +39,8 @@ impl Program {
     pub fn set_config(&mut self, _: Config) -> Result<()> {
         Ok(())
     }
+
+    pub fn config(&self) -> Config {
+        Config::default()
+    }
 }

@@ -25,6 +25,11 @@ const PAGE_COUNT: usize = 0x1000;
 pub struct Program {
     ebpf: aya::Ebpf,
 
+    /// A cached version of our current config.
+    ///
+    /// Allows for faster access without issuing sys-calls to read it from the map.
+    config: Config,
+
     #[expect(dead_code, reason = "We are just keeping it alive.")]
     stats: AsyncPerfEventArray<MapData>,
 }
@@ -108,7 +113,11 @@ impl Program {
 
         tracing::info!("eBPF TURN router loaded and attached to interface {interface}");
 
-        Ok(Self { ebpf, stats })
+        Ok(Self {
+            ebpf,
+            stats,
+            config: Config::default(),
+        })
     }
 
     pub fn add_channel_binding(
@@ -216,9 +225,19 @@ impl Program {
     }
 
     pub fn set_config(&mut self, config: Config) -> Result<()> {
+        if config == self.config {
+            tracing::debug!(config = ?self.config, "No change to config, skipping update");
+
+            return Ok(());
+        }
+
         self.config_array_mut()?.set(0, config, 0)?;
 
         Ok(())
+    }
+
+    pub fn config(&self) -> Config {
+        self.config
     }
 
     fn chan_to_udp_44_map_mut(
