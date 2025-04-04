@@ -51,8 +51,8 @@ importers:
         specifier: 10.4.21
         version: 10.4.21(postcss@8.5.1)
       fast-xml-parser:
-        specifier: ^5.0.8
-        version: 5.0.8
+        specifier: ^5.2.0
+        version: 5.2.0
       flowbite-react:
         specifier: ^0.10.2
         version: 0.10.2(react-dom@18.3.1(react@18.3.1))(react@18.3.1)(tailwindcss@3.4.17)
@@ -898,8 +898,8 @@ packages:
   fast-uri@3.0.6:
     resolution: {integrity: sha512-Atfo14OibSv5wAp4VWNsFYE1AchQRTv9cBGWET4pZWHzYshFSS9NQI6I57rdKn9croWVMbYFbLhJ+yJvmZIIHw==}
 
-  fast-xml-parser@5.0.8:
-    resolution: {integrity: sha512-qY8NiI5L8ff00F2giyICiJxSSKHO52tC36LJqx2JtvGyAd5ZfehC/l4iUVVHpmpIa6sM9N5mneSLHQG2INGoHA==}
+  fast-xml-parser@5.2.0:
+    resolution: {integrity: sha512-Uw9+Mjt4SBRud1IcaYuW/O0lW8SKKdMl5g7g24HiIuyH5fQSD+AVLybSlJtqLYEbytVFjWQa5DMGcNgeksdRBg==}
     hasBin: true
 
   fastq@1.17.1:
@@ -2811,7 +2811,7 @@ snapshots:
   fast-uri@3.0.6:
     optional: true
 
-  fast-xml-parser@5.0.8:
+  fast-xml-parser@5.2.0:
     dependencies:
       strnum: 2.0.5
 
