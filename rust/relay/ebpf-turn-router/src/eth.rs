@@ -5,7 +5,7 @@ use network_types::eth::{EthHdr, EtherType};
 
 use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-use crate::{error::Error, slice_mut_at::slice_mut_at};
+use crate::{error::Error, ref_mut_at::ref_mut_at};
 
 const MAX_ETHERNET_MAPPINGS: u32 = 0x100000;
 
@@ -18,7 +18,7 @@ impl<'a> Eth<'a> {
     #[inline(always)]
     pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
         Ok(Self {
-            inner: slice_mut_at::<EthHdr>(ctx, 0)?,
+            inner: ref_mut_at::<EthHdr>(ctx, 0)?,
             ctx,
         })
     }
