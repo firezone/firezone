@@ -1,6 +1,3 @@
-==> domain
-Compiling 12 files (.ex)
-Generated domain app
 defmodule Web.CoreComponents do
   @moduledoc """
   Provides core UI components.

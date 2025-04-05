@@ -3,7 +3,7 @@ defmodule Domain.Geo do
 
   # ISO 3166-1 alpha-2
   # https://en.wikipedia.org/wiki/ISO_3166-1_alpha-2
-  @countries %{
+  @counties %{
     "LT" => %{common_name: "Lithuania", coordinates: {56.0, 24.0}},
     "GU" => %{common_name: "Guam", coordinates: {13.46666666, 144.78333333}},
     "BA" => %{common_name: "Bosnia and Herzegovina", coordinates: {44.0, 18.0}},
@@ -283,7 +283,7 @@ defmodule Domain.Geo do
   end
 
   def maybe_put_default_coordinates(country_code, {nil, nil}) do
-    with {:ok, country} <- Map.fetch(@countries, country_code),
+    with {:ok, country} <- Map.fetch(@counties, country_code),
          {:ok, {lat, lon}} <- Map.fetch(country, :coordinates) do
       {lat, lon}
     else
@@ -296,17 +296,17 @@ defmodule Domain.Geo do
   end
 
   def all_country_codes! do
-    Enum.map(@countries, fn {code, _} -> code end)
+    Enum.map(@counties, fn {code, _} -> code end)
   end
 
   def all_country_options! do
-    @countries
+    @counties
     |> Enum.map(fn {code, %{common_name: common_name}} -> {common_name, code} end)
     |> Enum.sort_by(fn {common_name, _} -> common_name end)
   end
 
   def country_common_name!(country_code) do
-    case Map.fetch(@countries, country_code) do
+    case Map.fetch(@counties, country_code) do
       {:ok, %{common_name: common_name}} -> common_name
       :error -> country_code
     end
