@@ -1,3 +1,6 @@
+==> domain
+Compiling 12 files (.ex)
+Generated domain app
 defmodule Web.CoreComponents do
   @moduledoc """
   Provides core UI components.
@@ -1328,8 +1331,8 @@ defmodule Web.CoreComponents do
     </span>
     <span class="inline-block">
       {[
-        Domain.Geo.country_common_name!(@schema.last_seen_remote_ip_location_region),
-        @schema.last_seen_remote_ip_location_city
+        @schema.last_seen_remote_ip_location_city,
+        Domain.Geo.country_common_name!(@schema.last_seen_remote_ip_location_region)
       ]
       |> Enum.reject(&is_nil/1)
       |> Enum.join(", ")}
