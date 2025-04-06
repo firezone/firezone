@@ -244,13 +244,6 @@ Prerequisites:
 
 Steps:
 
-1. Use static seeds to provision account ID that corresponds to staging setup on
-   Stripe:
-
-   ```bash
-   STATIC_SEEDS=true mix do ecto.reset, ecto.seed
-   ```
-
 1. Start Stripe CLI webhook proxy:
 
    ```bash

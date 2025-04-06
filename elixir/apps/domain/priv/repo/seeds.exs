@@ -23,17 +23,6 @@ defmodule Domain.Repo.Seeds do
     # Ensure seeds are deterministic
     :rand.seed(:exsss, {1, 2, 3})
 
-    # This function is used to update fields if STATIC_SEEDS is set,
-    # which helps with static docker-compose environment for local development.
-    maybe_repo_update = fn resource, values ->
-      if System.get_env("STATIC_SEEDS") == "true" do
-        Ecto.Changeset.change(resource, values)
-        |> Repo.update!()
-      else
-        resource
-      end
-    end
-
     {:ok, account} =
       Accounts.create_account(%{
         name: "Firezone Account",
@@ -60,7 +49,8 @@ defmodule Domain.Repo.Seeds do
       |> Repo.update!()
 
     account =
-      maybe_repo_update.(account,
+      account
+      |> Ecto.Changeset.change(
         id: "c89bcc8c-9392-4dae-a40d-888aef6d28e0",
         metadata: %{
           stripe: %{
@@ -79,6 +69,7 @@ defmodule Domain.Repo.Seeds do
           account_admin_users_count: 5
         }
       )
+      |> Repo.update!()
 
     {:ok, other_account} =
       Accounts.create_account(%{
@@ -86,7 +77,10 @@ defmodule Domain.Repo.Seeds do
         slug: "not_firezone"
       })
 
-    other_account = maybe_repo_update.(other_account, id: "9b9290bf-e1bc-4dd3-b401-511908262690")
+    other_account =
+      other_account
+      |> Ecto.Changeset.change(id: "9b9290bf-e1bc-4dd3-b401-511908262690")
+      |> Repo.update!()
 
     IO.puts("Created accounts: ")
 
@@ -215,9 +209,9 @@ defmodule Domain.Repo.Seeds do
       })
 
     _unprivileged_actor_userpass_identity =
-      maybe_repo_update.(unprivileged_actor_userpass_identity,
-        id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5"
-      )
+      unprivileged_actor_userpass_identity
+      |> Ecto.Changeset.change(id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5")
+      |> Repo.update!()
 
     {:ok, admin_actor_email_identity} =
       Auth.create_identity(admin_actor, email_provider, %{
@@ -666,12 +660,13 @@ defmodule Domain.Repo.Seeds do
 
     global_relay_group_token =
       global_relay_group_token
-      |> maybe_repo_update.(
+      |> Ecto.Changeset.change(
         id: "e82fcdc1-057a-4015-b90b-3b18f0f28053",
         secret_salt: "lZWUdgh-syLGVDsZEu_29A",
         secret_fragment: "C14NGA87EJRR03G4QPR07A9C6G784TSSTHSF4TI5T0GD8D6L0VRG====",
         secret_hash: "c3c9a031ae98f111ada642fddae546de4e16ceb85214ab4f1c9d0de1fc472797"
       )
+      |> Repo.update!()
 
     global_relay_group_encoded_token = Tokens.encode_fragment!(global_relay_group_token)
 
@@ -730,12 +725,13 @@ defmodule Domain.Repo.Seeds do
 
     relay_group_token =
       relay_group_token
-      |> maybe_repo_update.(
+      |> Ecto.Changeset.change(
         id: "549c4107-1492-4f8f-a4ec-a9d2a66d8aa9",
         secret_salt: "jaJwcwTRhzQr15SgzTB2LA",
         secret_fragment: "PU5AITE1O8VDVNMHMOAC77DIKMOGTDIA672S6G1AB02OS34H5ME0====",
         secret_hash: "af133f7efe751ca978ec3e5fadf081ce9ab50138ff52862395858c3d2c11c0c5"
       )
+      |> Repo.update!()
 
     relay_group_encoded_token = Tokens.encode_fragment!(relay_group_token)
 
@@ -801,12 +797,13 @@ defmodule Domain.Repo.Seeds do
 
     gateway_group_token =
       gateway_group_token
-      |> maybe_repo_update.(
+      |> Ecto.Changeset.change(
         id: "2274560b-e97b-45e4-8b34-679c7617e98d",
         secret_salt: "uQyisyqrvYIIitMXnSJFKQ",
         secret_fragment: "O02L7US2J3VINOMPR9J6IL88QIQP6UO8AQVO6U5IPL0VJC22JGH0====",
         secret_hash: "876f20e8d4de25d5ffac40733f280782a7d8097347d77415ab6e4e548f13d2ee"
       )
+      |> Repo.update!()
 
     gateway_group_encoded_token = Tokens.encode_fragment!(gateway_group_token)
 
@@ -1162,12 +1159,14 @@ defmodule Domain.Repo.Seeds do
       )
 
     unprivileged_subject_client_token =
-      maybe_repo_update.(unprivileged_subject_client_token,
+      unprivileged_subject_client_token
+      |> Ecto.Changeset.change(
         id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5",
         secret_salt: "kKKA7dtf3TJk0-1O2D9N1w",
         secret_fragment: "AiIy_6pBk-WLeRAPzzkCFXNqIZKWBs2Ddw_2vgIQvFg",
         secret_hash: "5c1d6795ea1dd08b6f4fd331eeaffc12032ba171d227f328446f2d26b96437e5"
       )
+      |> Repo.update!()
 
     IO.puts("Created client tokens:")
 
