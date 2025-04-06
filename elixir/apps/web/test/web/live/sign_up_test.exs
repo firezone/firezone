@@ -32,13 +32,6 @@ defmodule Web.Live.SignUpTest do
       email: email
     }
 
-    Bypass.open()
-    |> Domain.Mocks.Stripe.mock_create_customer_endpoint(%{
-      id: Ecto.UUID.generate(),
-      name: account_name
-    })
-    |> Domain.Mocks.Stripe.mock_create_subscription_endpoint()
-
     assert html =
              lv
              |> form("form", registration: attrs)
@@ -49,8 +42,6 @@ defmodule Web.Live.SignUpTest do
 
     account = Repo.one(Domain.Accounts.Account)
     assert account.name == account_name
-    assert account.metadata.stripe.customer_id
-    assert account.metadata.stripe.billing_email == email
 
     group = Repo.one(Domain.Actors.Group)
     assert group.account_id == account.id
@@ -100,13 +91,6 @@ defmodule Web.Live.SignUpTest do
       email: email
     }
 
-    Bypass.open()
-    |> Domain.Mocks.Stripe.mock_create_customer_endpoint(%{
-      id: Ecto.UUID.generate(),
-      name: account_name
-    })
-    |> Domain.Mocks.Stripe.mock_create_subscription_endpoint()
-
     for _ <- 1..3 do
       {:ok, lv, _html} = live(conn, ~p"/sign_up")
 
@@ -143,21 +127,12 @@ defmodule Web.Live.SignUpTest do
       email: " " <> email <> " "
     }
 
-    Bypass.open()
-    |> Domain.Mocks.Stripe.mock_create_customer_endpoint(%{
-      id: Ecto.UUID.generate(),
-      name: account_name
-    })
-    |> Domain.Mocks.Stripe.mock_create_subscription_endpoint()
-
     lv
     |> form("form", registration: attrs)
     |> render_submit()
 
     account = Repo.one(Domain.Accounts.Account)
     assert account.name == account_name
-    assert account.metadata.stripe.customer_id
-    assert account.metadata.stripe.billing_email == email
 
     identity = Repo.one(Domain.Auth.Identity)
     assert identity.account_id == account.id
@@ -176,13 +151,6 @@ defmodule Web.Live.SignUpTest do
       actor: %{name: "John Doe"},
       email: Fixtures.Auth.email(whitelisted_domain)
     }
-
-    Bypass.open()
-    |> Domain.Mocks.Stripe.mock_create_customer_endpoint(%{
-      id: Ecto.UUID.generate(),
-      name: account_name
-    })
-    |> Domain.Mocks.Stripe.mock_create_subscription_endpoint()
 
     {:ok, lv, _html} = live(conn, ~p"/sign_up")
 

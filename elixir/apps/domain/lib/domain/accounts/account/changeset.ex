@@ -2,6 +2,15 @@ defmodule Domain.Accounts.Account.Changeset do
   use Domain, :changeset
   alias Domain.Accounts.{Account, Config, Features, Limits}
 
+  # Starter plan
+  @default_limits %{
+    users_count: 6,
+    monthly_active_users_count: nil,
+    service_accounts_count: 10,
+    gateway_groups_count: 10,
+    account_admin_users_count: 1
+  }
+
   @blacklisted_slugs ~w[
     sign_up signup register
     sign_in signin log_in login
@@ -17,6 +26,7 @@ defmodule Domain.Accounts.Account.Changeset do
   def create(attrs) do
     %Account{}
     |> cast(attrs, [:name, :legal_name, :slug])
+    |> prepare_changes(&put_default_limits/1)
     |> changeset()
   end
 
@@ -89,6 +99,10 @@ defmodule Domain.Accounts.Account.Changeset do
 
   defp put_default_slug(changeset) do
     put_default_value(changeset, :slug, &Domain.Accounts.generate_unique_slug/0)
+  end
+
+  defp put_default_limits(changeset) do
+    put_default_value(changeset, :limits, @default_limits)
   end
 
   def metadata_changeset(metadata \\ %Account.Metadata{}, attrs) do

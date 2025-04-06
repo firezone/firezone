@@ -43,7 +43,6 @@ if config_env() == :prod do
     finch_transport_opts: []
 
   config :domain, Domain.Billing,
-    enabled: compile_config!(:billing_enabled),
     secret_key: compile_config!(:stripe_secret_key),
     webhook_signing_secret: compile_config!(:stripe_webhook_signing_secret),
     default_price_id: compile_config!(:stripe_default_price_id)
@@ -88,7 +87,7 @@ if config_env() == :prod do
   config :domain, Domain.Tokens.Jobs.DeleteExpiredTokens,
     enabled: compile_config!(:background_jobs_enabled)
 
-  config :domain, Domain.Billing.Jobs.CheckAccountLimits,
+  config :domain, Domain.Accounts.Jobs.CheckAccountLimits,
     enabled: compile_config!(:background_jobs_enabled)
 
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.RefreshAccessTokens,

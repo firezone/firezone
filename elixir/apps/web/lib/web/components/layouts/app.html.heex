@@ -62,12 +62,7 @@
     <:name>Settings</:name>
 
     <:item navigate={~p"/#{@account}/settings/account"}>Account</:item>
-    <:item
-      :if={Domain.Billing.account_provisioned?(@account)}
-      navigate={~p"/#{@account}/settings/billing"}
-    >
-      Billing
-    </:item>
+    <:item navigate={~p"/#{@account}/settings/billing"}>Billing</:item>
     <:item navigate={~p"/#{@account}/settings/identity_providers"}>
       Identity Providers
     </:item>
@@ -101,7 +96,7 @@
 <main class="lg:ml-64 h-auto pt-14">
   <.flash :if={@account.warning} kind={:warning} class="m-1">
     {@account.warning}.
-    <span :if={Domain.Billing.account_provisioned?(@account)}>
+    <span>
       Please
       <.link navigate={~p"/#{@account}/settings/billing"} class={link_style()}>
         check your billing information

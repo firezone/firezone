@@ -59,7 +59,6 @@ config :domain, Domain.Billing.Stripe.APIClient,
   finch_transport_opts: []
 
 config :domain, Domain.Billing,
-  enabled: true,
   secret_key: "sk_test_1111",
   webhook_signing_secret: "whsec_test_1111",
   default_price_id: "price_1OkUIcADeNU9NGxvTNA4PPq6"

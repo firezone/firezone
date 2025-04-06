@@ -106,6 +106,84 @@ defmodule Domain.Accounts do
     end
   end
 
+  def current_plan(%Account{metadata: %{stripe: %{product_name: plan}}}) when is_binary(plan) do
+    plan
+  end
+
+  def current_plan(%Account{}) do
+    "Starter"
+  end
+
+  # Limits and Features
+
+  def users_limit_exceeded?(%Accounts.Account{} = account, users_count) do
+    not is_nil(account.limits.users_count) and
+      users_count > account.limits.users_count
+  end
+
+  def seats_limit_exceeded?(%Accounts.Account{} = account, active_users_count) do
+    not is_nil(account.limits.monthly_active_users_count) and
+      active_users_count > account.limits.monthly_active_users_count
+  end
+
+  def can_create_users?(%Accounts.Account{} = account) do
+    users_count = Actors.count_users_for_account(account)
+    active_users_count = Clients.count_1m_active_users_for_account(account)
+
+    cond do
+      not Accounts.account_active?(account) ->
+        false
+
+      not is_nil(account.limits.monthly_active_users_count) ->
+        active_users_count < account.limits.monthly_active_users_count
+
+      not is_nil(account.limits.users_count) ->
+        users_count < account.limits.users_count
+
+      true ->
+        true
+    end
+  end
+
+  def service_accounts_limit_exceeded?(%Accounts.Account{} = account, service_accounts_count) do
+    not is_nil(account.limits.service_accounts_count) and
+      service_accounts_count > account.limits.service_accounts_count
+  end
+
+  def can_create_service_accounts?(%Accounts.Account{} = account) do
+    service_accounts_count = Actors.count_service_accounts_for_account(account)
+
+    Accounts.account_active?(account) and
+      (is_nil(account.limits.service_accounts_count) or
+         service_accounts_count < account.limits.service_accounts_count)
+  end
+
+  def gateway_groups_limit_exceeded?(%Accounts.Account{} = account, gateway_groups_count) do
+    not is_nil(account.limits.gateway_groups_count) and
+      gateway_groups_count > account.limits.gateway_groups_count
+  end
+
+  def can_create_gateway_groups?(%Accounts.Account{} = account) do
+    gateway_groups_count = Gateways.count_groups_for_account(account)
+
+    Accounts.account_active?(account) and
+      (is_nil(account.limits.gateway_groups_count) or
+         gateway_groups_count < account.limits.gateway_groups_count)
+  end
+
+  def admins_limit_exceeded?(%Accounts.Account{} = account, account_admins_count) do
+    not is_nil(account.limits.account_admin_users_count) and
+      account_admins_count > account.limits.account_admin_users_count
+  end
+
+  def can_create_admin_users?(%Accounts.Account{} = account) do
+    account_admins_count = Actors.count_account_admin_users_for_account(account)
+
+    Accounts.account_active?(account) and
+      (is_nil(account.limits.account_admin_users_count) or
+         account_admins_count < account.limits.account_admin_users_count)
+  end
+
   defp on_account_update(account, changeset) do
     :ok = Billing.on_account_update(account, changeset)
 
