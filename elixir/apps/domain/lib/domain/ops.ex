@@ -1,5 +1,5 @@
 defmodule Domain.Ops do
-  def create_and_provision_account(opts) do
+  def create_account(opts) do
     %{
       name: account_name,
       slug: account_slug,
@@ -11,15 +11,8 @@ defmodule Domain.Ops do
       {:ok, account} =
         Domain.Accounts.create_account(%{
           name: account_name,
-          slug: account_slug,
-          metadata: %{
-            stripe: %{
-              billing_email: account_admin_email
-            }
-          }
+          slug: account_slug
         })
-
-      {:ok, account} = Domain.Billing.provision_account(account)
 
       {:ok, _everyone_group} =
         Domain.Actors.create_managed_group(account, %{
@@ -46,11 +39,25 @@ defmodule Domain.Ops do
           provider_identifier_confirmation: account_admin_email
         })
 
-      %{account: account, provider: email_provider, actor: actor, identity: identity}
+      {:ok, default_site} = Domain.Gateways.create_group(account, %{name: "Default Site"})
+
+      {:ok, internet_site} = Domain.Gateways.create_internet_group(account)
+
+      {:ok, internet_resource} = Domain.Resources.create_internet_resource(account, internet_site)
+
+      %{
+        account: account,
+        provider: email_provider,
+        actor: actor,
+        identity: identity,
+        default_site: default_site,
+        internet_site: internet_site,
+        internet_resource: internet_resource
+      }
     end)
   end
 
-  def provision_account_user(account_id, type, name, email) do
+  def create_account_user(account_id, type, name, email) do
     account = Domain.Accounts.fetch_account_by_id!(account_id)
 
     provider =
