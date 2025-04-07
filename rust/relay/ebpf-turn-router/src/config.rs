@@ -11,10 +11,6 @@ pub fn udp_checksum_enabled() -> bool {
     config().udp_checksum_enabled
 }
 
-pub fn relaying_enabled() -> bool {
-    config().relaying_enabled
-}
-
 pub fn allocation_range() -> RangeInclusive<u16> {
     let config = config();
 
