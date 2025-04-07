@@ -117,7 +117,6 @@ fn main() {
             VERSION.unwrap_or("unknown"),
             RELAY_DSN,
         );
-        Telemetry::set_firezone_id(uuid::Uuid::new_v4().to_string());
     }
 
     let runtime = tokio::runtime::Builder::new_current_thread()
