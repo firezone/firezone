@@ -185,13 +185,9 @@ jobs:
           docker compose up -d client --no-build
       - name: Add 10ms simulated latency
         run: |
-          # Add 10ms latency to the client
           docker compose exec -d client tc qdisc add dev eth0 root netem delay 10ms
-          # Add 10ms latency to the gateway
           docker compose exec -d gateway tc qdisc add dev eth0 root netem delay 10ms
-          # Add 10ms latency to the relay-1
           docker compose exec -d relay-1 tc qdisc add dev eth0 root netem delay 10ms
-          # Add 10ms latency to the relay-2
           docker compose exec -d relay-2 tc qdisc add dev eth0 root netem delay 10ms
       - name: "Performance test: ${{ matrix.test_name }}"
         timeout-minutes: 5
