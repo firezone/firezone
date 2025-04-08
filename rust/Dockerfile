@@ -43,13 +43,10 @@ ENV PACKAGE=${PACKAGE}
 
 CMD ${PACKAGE}
 
-# used as a base for dev and test
-FROM runtime AS test
+# Build an image for GitHub Actions which includes debug asserts and more test utilities
+FROM runtime AS debug
 
 RUN apk add --no-cache iperf3 bind-tools iproute2 jq procps
-
-# Build an image for GitHub Actions which includes debug asserts and more test utilities
-FROM test AS debug
 
 ## Build first with `cross build --target ${TARGET} -p ${PACKAGE} && mv /target/${TARGET}/release/${PACKAGE} .`
 ARG PACKAGE
