@@ -70,7 +70,7 @@ jobs:
           mix_env: ${{ env.MIX_ENV }}
       - name: Compile Application
         run: mix compile --warnings-as-errors
-      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         name: Restore PLT cache
         id: plt_cache
         with:
@@ -82,7 +82,7 @@ jobs:
       - name: Create PLTs
         if: ${{ steps.plt_cache.outputs.cache-hit != 'true' }}
         run: mix dialyzer --plt
-      - uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      - uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         if: ${{ github.ref_name == 'main' }}
         name: Save PLT cache
         with:
@@ -216,7 +216,7 @@ jobs:
       - name: Compile Application
         run: mix compile --warnings-as-errors
       # Front-End deps cache
-      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         name: pnpm Web Deps Cache
         id: pnpm-web-deps-cache
         env:
@@ -232,7 +232,7 @@ jobs:
         run: |
           cd apps/web
           mix assets.setup
-      - uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      - uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         name: Save pnpm Deps Cache
         if: ${{ github.ref_name == 'main' }}
         env:
@@ -244,7 +244,7 @@ jobs:
             elixir/tailwind-*
           key: ubuntu-22.04-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/pnpm-lock.yaml') }}
       # Front-End build cache, it rarely changes so we cache it aggressively too
-      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         name: Web Assets Cache
         id: pnpm-web-build-cache
         env:
@@ -259,7 +259,7 @@ jobs:
         run: |
           cd apps/web
           mix assets.build
-      - uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      - uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         name: Save Web Assets Cache
         if: ${{ github.ref_name == 'main' }}
         env:
