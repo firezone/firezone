@@ -23,22 +23,9 @@ updates:
       interval: weekly
     groups:
       tauri:
-        # See https://github.com/tauri-apps/tauri/blob/dev/Cargo.toml
         patterns:
           - tauri
-          - tauri-runtime
-          - tauri-runtime-wry
-          - tauri-macros
-          - tauri-utils
-          - tauri-build
-          - tauri-codegen
-          - tauri-plugin
-          - tauri-schema-generator
-          - tauri-schema-worker
-          - tauri-cli
-          - tauri-bundler
-          - tauri-macos-sign
-          - tauri-driver
+          - tauri-*
       netlink:
         patterns:
           - rtnetlink
