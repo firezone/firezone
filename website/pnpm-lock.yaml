@@ -45,8 +45,8 @@ importers:
         specifier: ^1.4.0
         version: 1.4.0
       asciinema-player:
-        specifier: ^3.8.2
-        version: 3.8.2
+        specifier: ^3.9.0
+        version: 3.9.0
       autoprefixer:
         specifier: 10.4.21
         version: 10.4.21(postcss@8.5.1)
@@ -210,6 +210,10 @@ packages:
 
   '@babel/runtime@7.26.10':
     resolution: {integrity: sha512-2WJMeRQPHKSPemqk/awGrAiuFfzBmOIPXKizAsVhWH9YJqLZ0H+HS4c8loHGgW6utJ3E/ejXQUsiGaQy2NZ9Fw==}
+    engines: {node: '>=6.9.0'}
+
+  '@babel/runtime@7.27.0':
+    resolution: {integrity: sha512-VtPOkrdPHZsKc/clNqyi9WUA8TINkZ4cGk63UUE3u4pmB2k+ZMQRDuIOagv8UVd6j7k0T3+RRIb7beKTebNbcw==}
     engines: {node: '>=6.9.0'}
 
   '@corex/deepmerge@4.0.43':
@@ -636,8 +640,8 @@ packages:
   arg@5.0.2:
     resolution: {integrity: sha512-PYjyFOLKQ9y57JvQ6QLo8dAgNqswh8M1RMJYdQduT6xbWSgK36P/Z/v+p888pM69jMMfS8Xd8F6I1kQ/I9HUGg==}
 
-  asciinema-player@3.8.2:
-    resolution: {integrity: sha512-Lgcnj9u/H6sRpGRX1my7Azcay6llLmB/GVkCGcDbPwdTVTisS1ir8SQ9jRWRvjlLUjpSJkN0euruvy3sLRM8tw==}
+  asciinema-player@3.9.0:
+    resolution: {integrity: sha512-SXVFImVzeNr8ZUdNIHABGuzlbnGWTKy245AquAjODsAnv+Lp6vxjYGN0LfA8ns30tnx/ag/bMrTbLq13TpHE6w==}
 
   astring@1.9.0:
     resolution: {integrity: sha512-LElXdjswlqjWrPpJFg1Fx4wpkOCxj1TDHlSV4PlaRxHGWko024xICaa97ZkMfs6DRKlCguiAI+rbXv5GWwXIkg==}
@@ -1713,14 +1717,14 @@ packages:
   serialize-javascript@6.0.2:
     resolution: {integrity: sha512-Saa1xPByTTq2gdeFZYLLo+RFE35NHZkAbqZeWNd3BpzppeVisAqpDjcp8dyf6uIvEqJRd46jemmyA4iFIeVk8g==}
 
-  seroval-plugins@1.2.0:
-    resolution: {integrity: sha512-hULTbfzSe81jGWLH8TAJjkEvw6JWMqOo9Uq+4V4vg+HNq53hyHldM9ZOfjdzokcFysiTp9aFdV2vJpZFqKeDjQ==}
+  seroval-plugins@1.2.1:
+    resolution: {integrity: sha512-H5vs53+39+x4Udwp4J5rNZfgFuA+Lt+uU+09w1gYBVWomtAl98B+E9w7yC05Xc81/HgLvJdlyqJbU0fJCKCmdw==}
     engines: {node: '>=10'}
     peerDependencies:
       seroval: ^1.0
 
-  seroval@1.2.0:
-    resolution: {integrity: sha512-GURoU99ko2UiAgUC3qDCk59Jb3Ss4Po8VIMGkG8j5PFo2Q7y0YSMP8QG9NuL/fJCoTz9V1XZUbpNIMXPOfaGpA==}
+  seroval@1.2.1:
+    resolution: {integrity: sha512-yBxFFs3zmkvKNmR0pFSU//rIsYjuX418TnlDmc2weaq5XFDqDIV/NOMPBoLrbxjLH42p4UzRuXHryXh9dYcKcw==}
     engines: {node: '>=10'}
 
   shebang-command@2.0.0:
@@ -1735,8 +1739,8 @@ packages:
     resolution: {integrity: sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==}
     engines: {node: '>=14'}
 
-  solid-js@1.9.4:
-    resolution: {integrity: sha512-ipQl8FJ31bFUoBNScDQTG3BjN6+9Rg+Q+f10bUbnO6EOTTf5NGerJeHc7wyu5I4RMHEl/WwZwUmy/PTRgxxZ8g==}
+  solid-js@1.9.5:
+    resolution: {integrity: sha512-ogI3DaFcyn6UhYhrgcyRAMbu/buBJitYQASZz5WzfQVPP10RD2AbCoRZ517psnezrasyCbWzIxZ6kVqet768xw==}
 
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
@@ -2085,6 +2089,10 @@ snapshots:
   '@alloc/quick-lru@5.2.0': {}
 
   '@babel/runtime@7.26.10':
+    dependencies:
+      regenerator-runtime: 0.14.1
+
+  '@babel/runtime@7.27.0':
     dependencies:
       regenerator-runtime: 0.14.1
 
@@ -2559,10 +2567,10 @@ snapshots:
 
   arg@5.0.2: {}
 
-  asciinema-player@3.8.2:
+  asciinema-player@3.9.0:
     dependencies:
-      '@babel/runtime': 7.26.10
-      solid-js: 1.9.4
+      '@babel/runtime': 7.27.0
+      solid-js: 1.9.5
 
   astring@1.9.0: {}
 
@@ -4056,11 +4064,11 @@ snapshots:
       randombytes: 2.1.0
     optional: true
 
-  seroval-plugins@1.2.0(seroval@1.2.0):
+  seroval-plugins@1.2.1(seroval@1.2.1):
     dependencies:
-      seroval: 1.2.0
+      seroval: 1.2.1
 
-  seroval@1.2.0: {}
+  seroval@1.2.1: {}
 
   shebang-command@2.0.0:
     dependencies:
@@ -4070,11 +4078,11 @@ snapshots:
 
   signal-exit@4.1.0: {}
 
-  solid-js@1.9.4:
+  solid-js@1.9.5:
     dependencies:
       csstype: 3.1.3
-      seroval: 1.2.0
-      seroval-plugins: 1.2.0(seroval@1.2.0)
+      seroval: 1.2.1
+      seroval-plugins: 1.2.1(seroval@1.2.1)
 
   source-map-js@1.2.1: {}
 
