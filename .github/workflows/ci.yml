@@ -183,8 +183,10 @@ jobs:
           docker compose up -d relay-1 relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
-      - name: Add 10ms simulated latency to gateway and relays
+      - name: Add 10ms simulated latency
         run: |
+          # Add 10ms latency to the client
+          docker compose exec -d client tc qdisc add dev eth0 root netem delay 10ms
           # Add 10ms latency to the gateway
           docker compose exec -d gateway tc qdisc add dev eth0 root netem delay 10ms
           # Add 10ms latency to the relay-1
