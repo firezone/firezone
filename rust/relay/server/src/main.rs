@@ -117,7 +117,6 @@ fn main() {
             VERSION.unwrap_or("unknown"),
             RELAY_DSN,
         );
-        Telemetry::set_firezone_id(uuid::Uuid::new_v4().to_string());
     }
 
     let runtime = tokio::runtime::Builder::new_current_thread()
@@ -148,7 +147,6 @@ async fn try_main(args: Args) -> Result<()> {
 
     if let Some(ebpf) = ebpf.as_mut() {
         ebpf.set_config(Config {
-            relaying_enabled: true,
             udp_checksum_enabled: true,
             lowest_allocation_port: args.lowest_port,
             highest_allocation_port: args.highest_port,
@@ -647,21 +645,6 @@ where
                 tracing::info!(target: "relay", "Allocations = {num_allocations} Channels = {num_channels} Throughput = {}", fmt_human_throughput(avg_throughput as f64));
 
                 ready = true;
-            }
-
-            if let Some(ebpf) = self.ebpf.as_mut() {
-                let is_enabled = ebpf.config().relaying_enabled;
-                let should_be_enabled =
-                    firezone_telemetry::feature_flags::ebpf_turn_router_enabled();
-
-                if is_enabled != should_be_enabled {
-                    tracing::info!(%is_enabled, %should_be_enabled, "eBPF router feature-flag changed");
-
-                    ebpf.set_config(Config {
-                        relaying_enabled: should_be_enabled,
-                        ..ebpf.config()
-                    })?;
-                }
             }
 
             if !ready {
