@@ -233,7 +233,7 @@ struct Cli {
     pub firezone_id: Option<String>,
 
     /// How many threads to use for reading and writing to the TUN device.
-    #[arg(long, env = "FIREZONE_NUM_TUN_THREADS", default_value_t = 2)]
+    #[arg(long, env = "FIREZONE_NUM_TUN_THREADS", default_value_t = 1)]
     tun_threads: usize,
 }
 
