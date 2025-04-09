@@ -80,8 +80,8 @@ impl Default for Buffers {
 
         Self {
             ip: Vec::with_capacity(MAX_INBOUND_PACKET_BATCH),
-            udp4: Vec::from([0; ONE_MB]),
-            udp6: Vec::from([0; ONE_MB]),
+            udp4: vec![0; ONE_MB],
+            udp6: vec![0; ONE_MB],
         }
     }
 }
