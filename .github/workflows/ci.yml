@@ -189,7 +189,7 @@ jobs:
           TEST_NAME: ${{ matrix.test_name }}
         run: |
           ./scripts/tests/perf/${{ matrix.test_name }}.sh
-          jq '{ "${{ matrix.test_name }}": { "retransmits": { "value": .end.sum_sent.retransmits }, "throughput": { "value": .end.sum_received.bits_per_second } } }' ./${{ matrix.test_name }}.json > ./${{ matrix.test_name }}.bmf.json
+          jq '{ "${{ matrix.test_name }}": { "retransmits": { "value": (.end.sum_sent.retransmits // -1) }, "throughput": { "value": .end.sum_received.bits_per_second } } }' ./${{ matrix.test_name }}.json > ./${{ matrix.test_name }}.bmf.json
       - name: "Save performance test results: ${{ matrix.test_name }}"
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
