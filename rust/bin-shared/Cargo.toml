@@ -48,7 +48,6 @@ tokio-util = { workspace = true }
 workspace = true
 features = [
   # For implementing COM interfaces
-  "implement",
   "Win32_Foundation",
   # For listening for network change events
   "Win32_Networking_NetworkListManager",

@@ -2185,9 +2185,9 @@ dependencies = [
  "tracing",
  "tun",
  "uuid",
- "windows 0.58.0",
- "windows-core 0.58.0",
- "windows-implement 0.58.0",
+ "windows 0.61.1",
+ "windows-core 0.61.0",
+ "windows-implement 0.60.0",
  "winreg 0.52.0",
  "wintun",
  "zbus 5.5.0",
@@ -2283,7 +2283,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "windows 0.58.0",
+ "windows 0.61.1",
 ]
 
 [[package]]
@@ -2376,7 +2376,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "windows 0.58.0",
+ "windows 0.61.1",
  "windows-service",
  "winreg 0.52.0",
 ]
