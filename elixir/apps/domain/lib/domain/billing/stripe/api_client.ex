@@ -25,30 +25,19 @@ defmodule Domain.Billing.Stripe.APIClient do
     [conn_opts: [transport_opts: transport_opts]]
   end
 
-  def create_customer(api_token, name, email, metadata) do
-    metadata_params =
-      for {key, value} <- metadata, into: %{} do
-        {"metadata[#{key}]", value}
-      end
-
+  def create_customer(api_token, attrs) do
     body =
-      metadata_params
-      |> Map.put("name", name)
-      |> put_if_not_nil("email", email)
+      attrs
+      |> map_to_stripe_params()
       |> URI.encode_query(:www_form)
 
     request(api_token, :post, "customers", body)
   end
 
-  def update_customer(api_token, customer_id, name, metadata) do
-    metadata_params =
-      for {key, value} <- metadata, into: %{} do
-        {"metadata[#{key}]", value}
-      end
-
+  def update_customer(api_token, customer_id, attrs) do
     body =
-      metadata_params
-      |> Map.put("name", name)
+      attrs
+      |> map_to_stripe_params()
       |> URI.encode_query(:www_form)
 
     request(api_token, :post, "customers/#{customer_id}", body)
@@ -88,19 +77,20 @@ defmodule Domain.Billing.Stripe.APIClient do
     request(api_token, :post, "billing_portal/sessions", body)
   end
 
-  def create_subscription(api_token, customer_id, price_id) do
-    body =
-      URI.encode_query(
-        %{
-          "customer" => customer_id,
-          "automatic_tax[enabled]" => true,
-          "items[0][price]" => price_id
-        },
-        :www_form
-      )
-
-    request(api_token, :post, "subscriptions", body)
-  end
+  #
+  # def create_subscription(api_token, customer_id, price_id) do
+  #   body =
+  #     URI.encode_query(
+  #       %{
+  #         "customer" => customer_id,
+  #         "automatic_tax[enabled]" => true,
+  #         "items[0][price]" => price_id
+  #       },
+  #       :www_form
+  #     )
+  #
+  #   request(api_token, :post, "subscriptions", body)
+  # end
 
   def request(api_token, method, path, body) do
     endpoint = fetch_config!(:endpoint)
@@ -135,8 +125,27 @@ defmodule Domain.Billing.Stripe.APIClient do
     end
   end
 
-  defp put_if_not_nil(map, _key, nil), do: map
-  defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
+  # Turn %{"address" => %{"city" => "Paris"}} into %{"address[city]" => "Paris"}
+  # ommitting nil values
+  defp map_to_stripe_params(map) when is_map(map) do
+    map
+    |> Enum.reduce(%{}, fn {k, v}, acc ->
+      case v do
+        %{} ->
+          v
+          |> Enum.reject(fn {_, sv} -> is_nil(sv) end)
+          |> Enum.map(fn {sk, sv} -> {"#{k}[#{sk}]", sv} end)
+          |> Enum.into(acc)
+
+        other ->
+          if is_nil(other) do
+            acc
+          else
+            Map.put(acc, to_string(k), other)
+          end
+      end
+    end)
+  end
 
   defp fetch_config!(key) do
     Domain.Config.fetch_env!(:domain, __MODULE__)

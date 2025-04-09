@@ -2,7 +2,7 @@ defmodule Domain.Gateways do
   use Supervisor
   alias Domain.Accounts.Account
   alias Domain.{Repo, Auth, Geo, PubSub}
-  alias Domain.{Accounts, Resources, Tokens, Billing}
+  alias Domain.{Accounts, Resources, Tokens}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Presence}
 
   def start_link(opts) do
@@ -72,7 +72,7 @@ defmodule Domain.Gateways do
 
   def create_group(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
-         true <- Billing.can_create_gateway_groups?(subject.account) do
+         true <- Accounts.can_create_gateway_groups?(subject.account) do
       subject.account
       |> Group.Changeset.create(attrs, subject)
       |> Repo.insert()

@@ -25,7 +25,7 @@ defmodule Domain.Accounts.Account.Changeset do
 
   def create(attrs) do
     %Account{}
-    |> cast(attrs, [:name, :legal_name, :slug])
+    |> cast(attrs, [:name, :legal_name, :slug, :stripe_customer_id])
     |> prepare_changes(&put_default_limits/1)
     |> changeset()
   end
@@ -44,6 +44,7 @@ defmodule Domain.Accounts.Account.Changeset do
       :slug,
       :name,
       :legal_name,
+      :stripe_customer_id,
       :disabled_reason,
       :disabled_at,
       :warning,
@@ -58,11 +59,12 @@ defmodule Domain.Accounts.Account.Changeset do
     |> validate_name()
     |> validate_legal_name()
     |> validate_slug()
+    # Stripe docs say max is 255
+    |> validate_length(:stripe_customer_id, max: 255)
     |> prepare_changes(&put_default_slug/1)
     |> cast_embed(:config, with: &Config.Changeset.changeset/2)
     |> cast_embed(:features, with: &Features.Changeset.changeset/2)
     |> cast_embed(:limits, with: &Limits.Changeset.changeset/2)
-    |> cast_embed(:metadata, with: &metadata_changeset/2)
   end
 
   defp validate_name(changeset) do
@@ -103,24 +105,6 @@ defmodule Domain.Accounts.Account.Changeset do
 
   defp put_default_limits(changeset) do
     put_default_value(changeset, :limits, @default_limits)
-  end
-
-  def metadata_changeset(metadata \\ %Account.Metadata{}, attrs) do
-    metadata
-    |> cast(attrs, [])
-    |> cast_embed(:stripe, with: &stripe_metadata_changeset/2)
-  end
-
-  def stripe_metadata_changeset(stripe \\ %Account.Metadata.Stripe{}, attrs) do
-    stripe
-    |> cast(attrs, [
-      :customer_id,
-      :subscription_id,
-      :product_name,
-      :billing_email,
-      :trial_ends_at,
-      :support_type
-    ])
   end
 
   def validate_account_id_or_slug(account_id_or_slug) do

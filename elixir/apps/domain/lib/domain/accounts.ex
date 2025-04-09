@@ -1,7 +1,7 @@
 defmodule Domain.Accounts do
   alias Web.Settings.Account
   alias Domain.{Repo, Config, PubSub}
-  alias Domain.{Auth, Billing}
+  alias Domain.{Auth, Actors, Clients, Gateways, Billing}
   alias Domain.Accounts.{Account, Features, Authorizer}
 
   def all_active_accounts! do
@@ -19,14 +19,8 @@ defmodule Domain.Accounts do
     end
   end
 
-  def all_active_paid_accounts_pending_notification! do
-    ["Team", "Enterprise"]
-    |> Enum.flat_map(&all_active_accounts_by_subscription_name_pending_notification!/1)
-  end
-
-  def all_active_accounts_by_subscription_name_pending_notification!(subscription_name) do
+  def all_active_accounts_pending_notification! do
     Account.Query.not_disabled()
-    |> Account.Query.by_stripe_product_name(subscription_name)
     |> Account.Query.by_notification_enabled("outdated_gateway")
     |> Account.Query.by_notification_last_notified("outdated_gateway", 24)
     |> Repo.all()
@@ -106,32 +100,24 @@ defmodule Domain.Accounts do
     end
   end
 
-  def current_plan(%Account{metadata: %{stripe: %{product_name: plan}}}) when is_binary(plan) do
-    plan
-  end
-
-  def current_plan(%Account{}) do
-    "Starter"
-  end
-
   # Limits and Features
 
-  def users_limit_exceeded?(%Accounts.Account{} = account, users_count) do
+  def users_limit_exceeded?(%Account{} = account, users_count) do
     not is_nil(account.limits.users_count) and
       users_count > account.limits.users_count
   end
 
-  def seats_limit_exceeded?(%Accounts.Account{} = account, active_users_count) do
+  def seats_limit_exceeded?(%Account{} = account, active_users_count) do
     not is_nil(account.limits.monthly_active_users_count) and
       active_users_count > account.limits.monthly_active_users_count
   end
 
-  def can_create_users?(%Accounts.Account{} = account) do
+  def can_create_users?(%Account{} = account) do
     users_count = Actors.count_users_for_account(account)
     active_users_count = Clients.count_1m_active_users_for_account(account)
 
     cond do
-      not Accounts.account_active?(account) ->
+      not account_active?(account) ->
         false
 
       not is_nil(account.limits.monthly_active_users_count) ->
@@ -145,41 +131,41 @@ defmodule Domain.Accounts do
     end
   end
 
-  def service_accounts_limit_exceeded?(%Accounts.Account{} = account, service_accounts_count) do
+  def service_accounts_limit_exceeded?(%Account{} = account, service_accounts_count) do
     not is_nil(account.limits.service_accounts_count) and
       service_accounts_count > account.limits.service_accounts_count
   end
 
-  def can_create_service_accounts?(%Accounts.Account{} = account) do
+  def can_create_service_accounts?(%Account{} = account) do
     service_accounts_count = Actors.count_service_accounts_for_account(account)
 
-    Accounts.account_active?(account) and
+    account_active?(account) and
       (is_nil(account.limits.service_accounts_count) or
          service_accounts_count < account.limits.service_accounts_count)
   end
 
-  def gateway_groups_limit_exceeded?(%Accounts.Account{} = account, gateway_groups_count) do
+  def gateway_groups_limit_exceeded?(%Account{} = account, gateway_groups_count) do
     not is_nil(account.limits.gateway_groups_count) and
       gateway_groups_count > account.limits.gateway_groups_count
   end
 
-  def can_create_gateway_groups?(%Accounts.Account{} = account) do
+  def can_create_gateway_groups?(%Account{} = account) do
     gateway_groups_count = Gateways.count_groups_for_account(account)
 
-    Accounts.account_active?(account) and
+    account_active?(account) and
       (is_nil(account.limits.gateway_groups_count) or
          gateway_groups_count < account.limits.gateway_groups_count)
   end
 
-  def admins_limit_exceeded?(%Accounts.Account{} = account, account_admins_count) do
+  def admins_limit_exceeded?(%Account{} = account, account_admins_count) do
     not is_nil(account.limits.account_admin_users_count) and
       account_admins_count > account.limits.account_admin_users_count
   end
 
-  def can_create_admin_users?(%Accounts.Account{} = account) do
+  def can_create_admin_users?(%Account{} = account) do
     account_admins_count = Actors.count_account_admin_users_for_account(account)
 
-    Accounts.account_active?(account) and
+    account_active?(account) and
       (is_nil(account.limits.account_admin_users_count) or
          account_admins_count < account.limits.account_admin_users_count)
   end
@@ -228,14 +214,6 @@ defmodule Domain.Accounts do
     else
       slug_candidate
     end
-  end
-
-  def type(%Account{metadata: %{stripe: %{product_name: type}}}) do
-    type || "Starter"
-  end
-
-  def type(%Account{}) do
-    "Starter"
   end
 
   ### PubSub

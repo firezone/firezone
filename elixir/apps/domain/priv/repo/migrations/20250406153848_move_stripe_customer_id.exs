@@ -3,7 +3,7 @@ defmodule Domain.Repo.Migrations.MoveStripeCustomerId do
 
   def change do
     # --- Step 1: Add a new top-level stripe_customer_id column ---
-    alter table(@accounts_table) do
+    alter table(:accounts) do
       add(:stripe_customer_id, :string)
     end
 
@@ -16,11 +16,13 @@ defmodule Domain.Repo.Migrations.MoveStripeCustomerId do
     """)
 
     # --- Step 3: Remove the old nested field ---
-    drop(column(@accounts_table, :metadata))
+    alter table(:accounts) do
+      remove(:metadata)
+    end
 
     # --- Step 4: Add a new index on the new column ---
     create(
-      index(@accounts_table, [:stripe_customer_id],
+      index(:accounts, [:stripe_customer_id],
         unique: true,
         where: "stripe_customer_id IS NOT NULL"
       )

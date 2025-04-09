@@ -36,11 +36,11 @@ defmodule Domain.Mocks.Stripe do
   end
 
   def mock_update_customer_endpoint(bypass, account, resp \\ %{}) do
-    customer_endpoint_path = "v1/customers/#{account.metadata.stripe.customer_id}"
+    customer_endpoint_path = "v1/customers/#{account.stripe_customer_id}"
 
     resp =
       Map.merge(
-        customer_object(account.metadata.stripe.customer_id, account.name, "foo@example.com", %{
+        customer_object(account.stripe_customer_id, account.name, "foo@example.com", %{
           "account_id" => account.id
         }),
         resp
@@ -61,11 +61,11 @@ defmodule Domain.Mocks.Stripe do
   end
 
   def mock_fetch_customer_endpoint(bypass, account, resp \\ %{}) do
-    customer_endpoint_path = "v1/customers/#{account.metadata.stripe.customer_id}"
+    customer_endpoint_path = "v1/customers/#{account.stripe_customer_id}"
 
     resp =
       Map.merge(
-        customer_object(account.metadata.stripe.customer_id, account.name, "foo@example.com", %{
+        customer_object(account.stripe_customer_id, account.name, "foo@example.com", %{
           "account_id" => account.id
         }),
         resp
@@ -135,7 +135,7 @@ defmodule Domain.Mocks.Stripe do
           "object" => "billing_portal.session",
           "configuration" => "bpc_1MAhNDLkdIwHu7ixckACO1Jq",
           "created" => 1_680_210_639,
-          "customer" => account.metadata.stripe.customer_id,
+          "customer" => account.stripe_customer_id,
           "flow" => nil,
           "livemode" => false,
           "locale" => nil,

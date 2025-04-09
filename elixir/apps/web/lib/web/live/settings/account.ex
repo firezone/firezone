@@ -1,13 +1,11 @@
 defmodule Web.Settings.Account do
   use Web, :live_view
-  alias Domain.Accounts
 
   def mount(_params, _session, socket) do
     socket =
       assign(socket,
         page_title: "Account",
-        delete_requested: false,
-        account_type: Accounts.type(socket.assigns.account)
+        delete_requested: false
       )
 
     {:ok, socket}
@@ -53,13 +51,9 @@ defmodule Web.Settings.Account do
         Notifications
       </:title>
       <:action>
-        <.edit_button
-          :if={@account_type != "Starter"}
-          navigate={~p"/#{@account}/settings/account/notifications/edit"}
-        >
+        <.edit_button navigate={~p"/#{@account}/settings/account/notifications/edit"}>
           Edit Notifications
         </.edit_button>
-        <.upgrade_badge :if={@account_type == "Starter"} account={@account} />
       </:action>
       <:content>
         <div class="relative overflow-x-auto">
@@ -152,16 +146,6 @@ defmodule Web.Settings.Account do
         </tbody>
       </table>
     </div>
-    """
-  end
-
-  defp upgrade_badge(assigns) do
-    ~H"""
-    <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
-      <.badge type="primary" title="Feature available on a higher pricing plan">
-        <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
-      </.badge>
-    </.link>
     """
   end
 

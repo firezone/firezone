@@ -23,7 +23,6 @@ defmodule Domain.Billing.EventHandler do
             %{
               "id" => customer_id,
               "name" => customer_name,
-              "email" => customer_email,
               "metadata" => customer_metadata
             } = customer
         },
@@ -32,8 +31,7 @@ defmodule Domain.Billing.EventHandler do
     attrs =
       %{
         name: customer_metadata["account_name"] || customer_name,
-        legal_name: customer_name,
-        metadata: %{stripe: %{billing_email: customer_email}}
+        legal_name: customer_name
       }
       |> put_if_not_nil(:slug, customer_metadata["account_slug"])
 
@@ -153,11 +151,8 @@ defmodule Domain.Billing.EventHandler do
         "object" => "event",
         "data" => %{
           "object" => %{
-            "id" => subscription_id,
             "customer" => customer_id,
             "metadata" => subscription_metadata,
-            "trial_end" => trial_end,
-            "status" => status,
             "items" => %{
               "data" => [
                 %{
@@ -179,18 +174,11 @@ defmodule Domain.Billing.EventHandler do
            ] do
     {:ok,
      %{
-       "name" => product_name,
        "metadata" => product_metadata
      }} = Billing.fetch_product(product_id)
 
-    subscription_trialing? = not is_nil(trial_end) and status in ["trialing", "paused"]
-
     attrs =
-      account_update_attrs(quantity, product_metadata, subscription_metadata, %{
-        "subscription_id" => subscription_id,
-        "product_name" => product_name,
-        "trial_ends_at" => if(subscription_trialing?, do: DateTime.from_unix!(trial_end))
-      })
+      account_update_attrs(quantity, product_metadata, subscription_metadata)
       |> Map.put(:disabled_at, nil)
       |> Map.put(:disabled_reason, nil)
 
@@ -258,19 +246,13 @@ defmodule Domain.Billing.EventHandler do
       name: metadata["account_name"] || customer_name,
       legal_name: customer_name,
       slug: account_slug,
-      metadata: %{
-        stripe: %{
-          customer_id: customer_id,
-          billing_email: account_email
-        }
-      }
+      stripe_customer_id: customer_id
     }
 
     Repo.transaction(fn ->
       :ok =
         with {:ok, account} <- Domain.Accounts.create_account(attrs),
-             {:ok, account} <- Billing.update_customer(account),
-             {:ok, account} <- Domain.Billing.create_subscription(account) do
+             {:ok, account} <- Billing.update_customer(account) do
           {:ok, _everyone_group} =
             Domain.Actors.create_managed_group(account, %{
               name: "Everyone",
@@ -353,7 +335,8 @@ defmodule Domain.Billing.EventHandler do
   end
 
   defp update_account_by_stripe_customer_id(customer_id, attrs) do
-    with {:ok, account_id} <- Billing.fetch_customer_account_id(customer_id) do
+    with {:ok, %{"metadata" => %{"account_id" => account_id}}} <-
+           Billing.fetch_customer(customer_id) do
       Accounts.update_account_by_id(account_id, attrs)
     end
   end
@@ -361,8 +344,7 @@ defmodule Domain.Billing.EventHandler do
   defp account_update_attrs(
          quantity,
          product_metadata,
-         subscription_metadata,
-         stripe_metadata_overrides
+         subscription_metadata
        ) do
     # feature_fields = Accounts.Features.__schema__(:fields) |> Enum.map(&to_string/1)
     limit_fields = Accounts.Limits.__schema__(:fields) |> Enum.map(&to_string/1)
@@ -392,15 +374,11 @@ defmodule Domain.Billing.EventHandler do
       |> Enum.into(%{})
 
     {users_count, params} = Map.pop(params, "users_count", quantity)
-    {metadata, params} = Map.split(params, metadata_fields)
+    {_metadata, params} = Map.split(params, metadata_fields)
     {limits, features} = Map.split(params, limit_fields)
     limits = Map.merge(limits, %{"users_count" => users_count})
 
-    %{
-      features: features,
-      limits: limits,
-      metadata: %{stripe: Map.merge(metadata, stripe_metadata_overrides)}
-    }
+    %{features: features, limits: limits}
   end
 
   defp cast_limit(number) when is_number(number), do: number
