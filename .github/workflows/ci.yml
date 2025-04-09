@@ -189,6 +189,14 @@ jobs:
           docker compose exec -d gateway tc qdisc add dev eth0 root netem delay 10ms
           docker compose exec -d relay-1 tc qdisc add dev eth0 root netem delay 10ms
           docker compose exec -d relay-2 tc qdisc add dev eth0 root netem delay 10ms
+      - name: Set TCP tuning parameters
+        run: |
+          sudo sysctl -w net.ipv4.tcp_congestion_control=bbr
+          sudo sysctl -w net.ipv4.tcp_rmem="4096 87380 16777216"
+          sudo sysctl -w net.ipv4.tcp_wmem="4096 65536 16777216"
+          sudo sysctl -w net.core.rmem_max=16777216
+          sudo sysctl -w net.core.wmem_max=16777216
+          sudo sysctl -w net.ipv4.tcp_window_scaling=1
       - name: "Performance test: ${{ matrix.test_name }}"
         timeout-minutes: 5
         env:
