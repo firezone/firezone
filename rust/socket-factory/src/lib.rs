@@ -441,16 +441,33 @@ pub struct DatagramSegmentIter<
 
     buf_index: usize,
     segment_index: usize,
+
+    total_bytes: usize,
+    num_packets: usize,
 }
 
 impl<B, const N: usize> DatagramSegmentIter<N, B> {
     fn new(buffers: [B; N], metas: [quinn_udp::RecvMeta; N], port: u16) -> Self {
+        let total_bytes = metas.iter().map(|m| m.len).sum::<usize>();
+        let num_packets = metas
+            .iter()
+            .map(|meta| {
+                if meta.len == 0 {
+                    return 0;
+                }
+
+                meta.len / meta.stride
+            })
+            .sum::<usize>();
+
         Self {
             buffers,
             metas,
             port,
             buf_index: 0,
             segment_index: 0,
+            total_bytes,
+            num_packets,
         }
     }
 }
@@ -506,7 +523,7 @@ where
 
             let segment_size = meta.stride;
 
-            tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, ecn = ?meta.ecn, len = %segment_size);
+            tracing::trace!(target: "wire::net::recv", num_p = %self.num_packets, tot_b = %self.total_bytes, src = %meta.addr, dst = %local, ecn = ?meta.ecn, len = %segment_size);
 
             let segment_start = self.segment_index;
             let segment_end = std::cmp::min(segment_start + segment_size, meta.len);
