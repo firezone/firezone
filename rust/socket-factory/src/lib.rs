@@ -231,19 +231,24 @@ impl UdpSocket {
             port, inner, state, ..
         } = self;
 
+        // Stack-allocate arrays for buffers and meta. The size is implied from the const-generic default on `DatagramSegmentIter`.
         let mut bufs = std::array::from_fn(|_| self.buffer_pool.pull_owned());
         let mut meta = std::array::from_fn(|_| quinn_udp::RecvMeta::default());
 
         loop {
             ready!(inner.poll_recv_ready(cx)).context("Failed to poll UDP socket for readiness")?;
 
-            if let Ok(_len) = inner.try_io(Interest::READABLE, || {
-                state.recv(
-                    (&inner).into(),
-                    &mut bufs.each_mut().map(|b| IoSliceMut::new(b)),
-                    &mut meta,
-                )
-            }) {
+            let recv = || {
+                // Fancy std-functions ahead: `each_mut` transforms our array into an array of references to our items and `map` allows us to create an `IoSliceMut` out of each element.
+                // `state.recv` requires us to pass `IoSliceMut` but later on, we need the original buffer again because `DatagramSegmentIter` needs to own them.
+                // That is why we cannot just create an `IoSliceMut` to begin with.
+                let mut bufs = bufs.each_mut().map(|b| IoSliceMut::new(b));
+                let socket = (&inner).into();
+
+                state.recv(socket, &mut bufs, &mut meta)
+            };
+
+            if let Ok(_len) = inner.try_io(Interest::READABLE, recv) {
                 // Note: We don't need to use `len` here because the iterator will stop once it encounteres `meta.len == 0`.
 
                 return Poll::Ready(Ok(DatagramSegmentIter::new(bufs, meta, *port)));
@@ -428,9 +433,22 @@ impl UdpSocket {
     }
 }
 
-/// An iterator that segments a given buffer into individual datagrams.
+/// An iterator that segments an array of buffers into individual datagrams.
 ///
-/// This iterator is generic over its buffer to allow easier testing without a buffer pool.
+/// This iterator is generic over its buffer type and the number of buffers to allow easier testing without a buffer pool.
+///
+/// This implementation might look like dark arts but it is actually quite simple.
+/// Its design is driven by two main ideas:
+///
+/// - We want the return a single `Iterator`-like type from a `recv` call on the socket.
+/// - We want to avoid copying buffers around.
+///
+/// To achieve this, this type doesn't implement `Iterator` but `LendingIterator` instead.
+/// A `LendingIterator` adds a lifetime to the `Item` type, allowing us to return a reference to something the iterator owns.
+///
+/// Composing `LendingIterator`s itself is difficult which is why we implement the entire segmentation of the buffers within a single type.
+/// When [`quinn_udp`] returns us the buffers, it will have populated the [`quinn_udp::RecvMeta`]s accordingly.
+/// Thus, our main job within this iterator is to loop over the `buffers` and `meta` pair-wise, inspect the `meta` and segment the data within the buffer accordingly.
 #[derive(derive_more::Debug)]
 pub struct DatagramSegmentIter<
     const N: usize = 10,
