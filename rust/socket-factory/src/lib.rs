@@ -230,19 +230,21 @@ impl UdpSocket {
             port, inner, state, ..
         } = self;
 
+        // Stack-allocate arrays for buffers and meta. The size is implied from the const-generic default on `DatagramSegmentIter`.
         let mut bufs = std::array::from_fn(|_| self.buffer_pool.pull_owned());
         let mut meta = std::array::from_fn(|_| quinn_udp::RecvMeta::default());
 
         loop {
             ready!(inner.poll_recv_ready(cx))?;
 
-            if let Ok(_len) = inner.try_io(Interest::READABLE, || {
-                state.recv(
-                    (&inner).into(),
-                    &mut bufs.each_mut().map(|b| IoSliceMut::new(b)),
-                    &mut meta,
-                )
-            }) {
+            let recv = || {
+                let mut bufs = bufs.each_mut().map(|b| IoSliceMut::new(b));
+                let socket = (&inner).into();
+
+                state.recv(socket, &mut bufs, &mut meta)
+            };
+
+            if let Ok(_len) = inner.try_io(Interest::READABLE, recv) {
                 // Note: We don't need to use `len` here because the iterator will stop once it encounteres `meta.len == 0`.
 
                 return Poll::Ready(Ok(DatagramSegmentIter::new(bufs, meta, *port)));
@@ -407,9 +409,9 @@ impl UdpSocket {
     }
 }
 
-/// An iterator that segments a given buffer into individual datagrams.
+/// An iterator that segments an array of buffers into individual datagrams.
 ///
-/// This iterator is generic over its buffer to allow easier testing without a buffer pool.
+/// This iterator is generic over its buffer type and the number of buffers to allow easier testing without a buffer pool.
 #[derive(derive_more::Debug)]
 pub struct DatagramSegmentIter<
     const N: usize = 10,
