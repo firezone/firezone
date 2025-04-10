@@ -1,13 +1,15 @@
 use anyhow::{Context as _, Result};
 use bytes::Buf as _;
 use firezone_logging::err_with_src;
+use gat_lending_iterator::LendingIterator;
 use ip_packet::Ecn;
-use quinn_udp::Transmit;
+use quinn_udp::{EcnCodepoint, Transmit};
 use std::collections::HashMap;
-use std::fmt;
+use std::io::IoSliceMut;
 use std::ops::Deref;
+use std::sync::Arc;
+use std::{fmt, io};
 use std::{
-    io::{self, IoSliceMut},
     net::{IpAddr, SocketAddr},
     task::{Context, Poll, ready},
 };
@@ -147,6 +149,9 @@ pub struct UdpSocket {
     /// A cache of source IPs by their destination IPs.
     src_by_dst_cache: HashMap<IpAddr, IpAddr>,
 
+    /// A buffer pool for batches of incoming UDP packets.
+    buffer_pool: Arc<lockfree_object_pool::MutexObjectPool<Vec<u8>>>,
+
     port: u16,
 }
 
@@ -160,6 +165,10 @@ impl UdpSocket {
             inner,
             source_ip_resolver: Box::new(|_| Ok(None)),
             src_by_dst_cache: Default::default(),
+            buffer_pool: Arc::new(lockfree_object_pool::MutexObjectPool::new(
+                || vec![0u8; u16::MAX as usize],
+                |_| {},
+            )),
         })
     }
 
@@ -212,75 +221,32 @@ pub struct DatagramOut<B> {
 }
 
 impl UdpSocket {
-    pub fn poll_recv_from<'b>(
+    pub fn poll_recv_from(
         &self,
-        buffer: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<Result<impl Iterator<Item = DatagramIn<'b>> + fmt::Debug + use<'b>>> {
+    ) -> Poll<Result<impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + fmt::Debug + use<>>>
+    {
         const NUM_BUFFERS: usize = 10;
-
         let Self {
             port, inner, state, ..
         } = self;
 
-        let mut bufs = split_buffer_equal::<NUM_BUFFERS>(buffer).map(IoSliceMut::new);
+        let mut bufs = std::array::from_fn::<_, NUM_BUFFERS, _>(|_| self.buffer_pool.pull_owned());
         let mut meta = std::array::from_fn::<_, NUM_BUFFERS, _>(|_| quinn_udp::RecvMeta::default());
 
         loop {
             ready!(inner.poll_recv_ready(cx)).context("Failed to poll UDP socket for readiness")?;
 
-            if let Ok(len) = inner.try_io(Interest::READABLE, || {
-                state.recv((&inner).into(), &mut bufs, &mut meta)
+            if let Ok(_len) = inner.try_io(Interest::READABLE, || {
+                state.recv(
+                    (&inner).into(),
+                    &mut bufs.each_mut().map(|b| IoSliceMut::new(b)),
+                    &mut meta,
+                )
             }) {
-                let bufs = split_buffer_equal::<NUM_BUFFERS>(buffer);
-                let port = *port;
+                // Note: We don't need to use `len` here because the iterator will stop once it encounteres `meta.len == 0`.
 
-                let datagrams = bufs.into_iter().zip(meta).take(len).flat_map(move |(buffer, meta)| {
-                    if meta.len == 0 {
-                        return None;
-                    }
-
-                    let Some(local_ip) = meta.dst_ip else {
-                        tracing::warn!("Skipping packet without local IP");
-                        return None;
-                    };
-
-                    match meta.stride.cmp(&meta.len) {
-                        std::cmp::Ordering::Equal | std::cmp::Ordering::Less => {}
-                        std::cmp::Ordering::Greater => {
-                            tracing::warn!("stride ({}) is larger than buffer len ({})", meta.stride, meta.len);
-
-                            return None;
-                        }
-                    }
-
-                    let local = SocketAddr::new(local_ip, port);
-
-                    let segment_size = meta.stride;
-                    let num_packets = meta.len / segment_size;
-                    let trailing_bytes = meta.len % segment_size;
-
-                    tracing::trace!(target: "wire::net::recv", src = %meta.addr, dst = %local, ecn = ?meta.ecn, %num_packets, %segment_size, %trailing_bytes);
-
-                    let iter = buffer[..meta.len]
-                        .chunks(meta.stride)
-                        .map(move |packet| DatagramIn {
-                            local,
-                            from: meta.addr,
-                            packet,
-                            ecn: match meta.ecn {
-                                Some(quinn_udp::EcnCodepoint::Ce) => Ecn::Ce,
-                                Some(quinn_udp::EcnCodepoint::Ect0) => Ecn::Ect0,
-                                Some(quinn_udp::EcnCodepoint::Ect1) => Ecn::Ect1,
-                                None => Ecn::NonEct,
-                            },
-                        });
-
-                    Some(iter)
-                })
-                .flatten();
-
-                return Poll::Ready(Ok(datagrams));
+                return Poll::Ready(Ok(DatagramSegmentIter::new(bufs, meta, *port)));
             }
         }
     }
@@ -464,16 +430,173 @@ impl UdpSocket {
     }
 }
 
-fn split_buffer_equal<const N: usize>(s: &mut [u8]) -> [&mut [u8]; N] {
-    let chunk_size = s.len() / N;
-    let mut chunks: [&mut [u8]; N] = std::array::from_fn(|_| [].as_mut());
+/// An iterator that segments a given buffer into individual datagrams.
+///
+/// This iterator is generic over its buffer to allow easier testing without a buffer pool.
+#[derive(derive_more::Debug)]
+struct DatagramSegmentIter<B, const N: usize> {
+    #[debug(skip)]
+    buffers: [B; N],
+    metas: [quinn_udp::RecvMeta; N],
 
-    let mut rest = s;
-    for chunk in &mut chunks {
-        let (head, tail) = rest.split_at_mut(chunk_size);
-        *chunk = head;
-        rest = tail;
+    port: u16,
+
+    buf_index: usize,
+    segment_index: usize,
+
+    total_bytes: usize,
+    num_packets: usize,
+}
+
+impl<B, const N: usize> DatagramSegmentIter<B, N> {
+    fn new(buffers: [B; N], metas: [quinn_udp::RecvMeta; N], port: u16) -> Self {
+        let total_bytes = metas.iter().map(|m| m.len).sum::<usize>();
+        let num_packets = metas
+            .iter()
+            .map(|meta| {
+                if meta.len == 0 {
+                    return 0;
+                }
+
+                meta.len / meta.stride
+            })
+            .sum::<usize>();
+
+        Self {
+            buffers,
+            metas,
+            port,
+            buf_index: 0,
+            segment_index: 0,
+            total_bytes,
+            num_packets,
+        }
     }
+}
 
-    chunks
+impl<B, const N: usize> LendingIterator for DatagramSegmentIter<B, N>
+where
+    B: Deref<Target = Vec<u8>> + 'static,
+{
+    type Item<'a> = DatagramIn<'a>;
+
+    fn next(&mut self) -> Option<Self::Item<'_>> {
+        loop {
+            if self.buf_index >= N {
+                return None;
+            }
+
+            let buf = &self.buffers[self.buf_index];
+            let meta = &self.metas[self.buf_index];
+
+            if meta.len == 0 {
+                self.buf_index += 1;
+                continue;
+            }
+
+            let Some(local_ip) = meta.dst_ip else {
+                tracing::warn!("Skipping packet without local IP");
+
+                self.buf_index += 1;
+                continue;
+            };
+
+            match meta.stride.cmp(&meta.len) {
+                std::cmp::Ordering::Equal | std::cmp::Ordering::Less => {}
+                std::cmp::Ordering::Greater => {
+                    tracing::warn!(
+                        "stride ({}) is larger than buffer len ({})",
+                        meta.stride,
+                        meta.len
+                    );
+
+                    self.buf_index += 1;
+                    continue;
+                }
+            }
+
+            if self.segment_index >= meta.len {
+                self.buf_index += 1;
+                self.segment_index = 0;
+                continue;
+            }
+
+            let local = SocketAddr::new(local_ip, self.port);
+
+            let segment_size = meta.stride;
+
+            tracing::trace!(target: "wire::net::recv", num_p = %self.num_packets, tot_b = %self.total_bytes, src = %meta.addr, dst = %local, ecn = ?meta.ecn, len = %segment_size);
+
+            let segment_start = self.segment_index;
+            let segment_end = std::cmp::min(segment_start + segment_size, meta.len);
+
+            self.segment_index += segment_size;
+
+            return Some(DatagramIn {
+                local,
+                from: meta.addr,
+                packet: &buf[segment_start..segment_end],
+                ecn: match meta.ecn {
+                    Some(EcnCodepoint::Ce) => Ecn::Ce,
+                    Some(EcnCodepoint::Ect0) => Ecn::Ect0,
+                    Some(EcnCodepoint::Ect1) => Ecn::Ect1,
+                    None => Ecn::NonEct,
+                },
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gat_lending_iterator::LendingIterator as _;
+    use std::net::Ipv4Addr;
+
+    use super::*;
+
+    #[derive(derive_more::Deref)]
+    struct DummyBuffer(Vec<u8>);
+
+    #[test]
+    fn datagram_iter_segments_buffer_correctly() {
+        let mut iter = DatagramSegmentIter::new(
+            [
+                DummyBuffer(b"foobar1foobar2foobar3foobar4foobar5foo                 ".to_vec()),
+                DummyBuffer(b"baz1baz2baz3baz4baz5foo       ".to_vec()),
+                DummyBuffer(b"".to_vec()),
+            ],
+            [
+                quinn_udp::RecvMeta {
+                    addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                    dst_ip: Some(IpAddr::V4(Ipv4Addr::LOCALHOST)),
+                    stride: 7,
+                    len: 38,
+                    ecn: None,
+                },
+                quinn_udp::RecvMeta {
+                    addr: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 0),
+                    dst_ip: Some(IpAddr::V4(Ipv4Addr::LOCALHOST)),
+                    stride: 4,
+                    len: 23,
+                    ecn: None,
+                },
+                quinn_udp::RecvMeta::default(),
+            ],
+            0,
+        );
+
+        assert_eq!(iter.next().unwrap().packet, b"foobar1");
+        assert_eq!(iter.next().unwrap().packet, b"foobar2");
+        assert_eq!(iter.next().unwrap().packet, b"foobar3");
+        assert_eq!(iter.next().unwrap().packet, b"foobar4");
+        assert_eq!(iter.next().unwrap().packet, b"foobar5");
+        assert_eq!(iter.next().unwrap().packet, b"foo");
+        assert_eq!(iter.next().unwrap().packet, b"baz1");
+        assert_eq!(iter.next().unwrap().packet, b"baz2");
+        assert_eq!(iter.next().unwrap().packet, b"baz3");
+        assert_eq!(iter.next().unwrap().packet, b"baz4");
+        assert_eq!(iter.next().unwrap().packet, b"baz5");
+        assert_eq!(iter.next().unwrap().packet, b"foo");
+        assert!(iter.next().is_none());
+    }
 }
