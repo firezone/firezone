@@ -170,7 +170,7 @@ impl Io {
             >,
         >,
     > {
-        ready!(self.flush_send_queue(cx)?);
+        ready!(self.flush(cx)?);
         ready!(self.nameservers.poll(cx));
 
         if let Poll::Ready(network) =
@@ -240,11 +240,15 @@ impl Io {
         Poll::Pending
     }
 
-    fn flush_send_queue(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
         let mut datagrams = self.gso_queue.datagrams();
+        let mut any_pending = false;
 
         loop {
-            ready!(self.sockets.poll_send_ready(cx))?;
+            if self.sockets.poll_send_ready(cx)?.is_pending() {
+                any_pending = true;
+                break;
+            }
 
             let Some(datagram) = datagrams.next() else {
                 break;
@@ -255,7 +259,10 @@ impl Io {
 
         loop {
             // First, check if we can send more packets.
-            ready!(self.tun.poll_send_ready(cx))?;
+            if self.tun.poll_send_ready(cx)?.is_pending() {
+                any_pending = true;
+                break;
+            }
 
             // Second, check if we have any buffer packets.
             let Some(packet) = self.outbound_packet_buffer.pop_front() else {
@@ -264,6 +271,10 @@ impl Io {
 
             // Third, send the packet.
             self.tun.send(packet)?;
+        }
+
+        if any_pending {
+            return Poll::Pending;
         }
 
         Poll::Ready(Ok(()))
