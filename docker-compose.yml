@@ -327,7 +327,7 @@ services:
       FIREZONE_API_URL: ws://api:8081
     init: true
     build:
-      target: dev
+      target: debug
       context: rust
       dockerfile: Dockerfile
       cache_from:
@@ -359,7 +359,7 @@ services:
       FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
     init: true
     build:
-      target: dev
+      target: debug
       context: rust
       dockerfile: Dockerfile
       cache_from:
@@ -446,7 +446,7 @@ services:
       FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
     build:
-      target: dev
+      target: debug
       context: rust
       dockerfile: Dockerfile
       cache_from:
@@ -487,7 +487,7 @@ services:
       FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
     build:
-      target: dev
+      target: debug
       context: rust
       dockerfile: Dockerfile
       cache_from:
