@@ -320,8 +320,6 @@ defmodule Web.SignUp do
 
       case register_account(socket, registration) do
         {:ok, %{account: account, provider: provider, identity: identity, actor: actor}} ->
-          {:ok, account} = Domain.Billing.provision_account(account)
-
           socket =
             assign(socket,
               account: account,
@@ -383,10 +381,7 @@ defmodule Web.SignUp do
     |> Ecto.Multi.run(
       :account,
       fn _repo, _changes ->
-        Accounts.create_account(%{
-          name: registration.account.name,
-          metadata: %{stripe: %{billing_email: registration.email}}
-        })
+        Accounts.create_account(%{name: registration.account.name})
       end
     )
     |> Ecto.Multi.run(:everyone_group, fn _repo, %{account: account} ->

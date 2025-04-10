@@ -4,27 +4,43 @@ defmodule Web.Settings.Billing do
   require Logger
 
   def mount(_params, _session, socket) do
-    if Billing.account_provisioned?(socket.assigns.account) do
-      admins_count = Actors.count_account_admin_users_for_account(socket.assigns.account)
-      service_accounts_count = Actors.count_service_accounts_for_account(socket.assigns.account)
-      users_count = Actors.count_users_for_account(socket.assigns.account)
-      active_users_count = Clients.count_1m_active_users_for_account(socket.assigns.account)
-      gateway_groups_count = Gateways.count_groups_for_account(socket.assigns.account)
+    admins_count = Actors.count_account_admin_users_for_account(socket.assigns.account)
+    service_accounts_count = Actors.count_service_accounts_for_account(socket.assigns.account)
+    users_count = Actors.count_users_for_account(socket.assigns.account)
+    active_users_count = Clients.count_1m_active_users_for_account(socket.assigns.account)
+    gateway_groups_count = Gateways.count_groups_for_account(socket.assigns.account)
+    stripe_customer_id = socket.assigns.account.stripe_customer_id
 
-      socket =
-        assign(socket,
-          page_title: "Billing",
-          error: nil,
-          admins_count: admins_count,
-          users_count: users_count,
-          active_users_count: active_users_count,
-          service_accounts_count: service_accounts_count,
-          gateway_groups_count: gateway_groups_count
-        )
+    socket =
+      assign(socket,
+        page_title: "Billing",
+        error: nil,
+        admins_count: admins_count,
+        users_count: users_count,
+        active_users_count: active_users_count,
+        service_accounts_count: service_accounts_count,
+        gateway_groups_count: gateway_groups_count,
+        customer: nil,
+        loading: true
+      )
 
-      {:ok, socket}
+    if connected?(socket) do
+      if is_nil(stripe_customer_id) do
+        {:ok, assign(socket, loading: false)}
+      else
+        with {:ok, customer} <- Billing.fetch_customer(stripe_customer_id) do
+          {:ok, assign(socket, loading: false, customer: customer)}
+        else
+          _ ->
+            {:ok,
+             assign(socket,
+               loading: false,
+               error: "Unable to load billing information. Please try again later."
+             )}
+        end
+      end
     else
-      raise Web.LiveErrors.NotFoundError
+      {:ok, socket}
     end
   end
 
@@ -38,12 +54,12 @@ defmodule Web.Settings.Billing do
       <:title>
         Billing Information
       </:title>
-      <:action>
+      <:action :if={not is_nil(@account.stripe_customer_id)}>
         <.button icon="hero-pencil" phx-click="redirect_to_billing_portal">
           Manage
         </.button>
       </:action>
-      <:content>
+      <:content :if={not @loading}>
         <.flash :if={@error} kind={:error}>
           <p>{@error}</p>
 
@@ -65,7 +81,7 @@ defmodule Web.Settings.Billing do
           <.vertical_table_row>
             <:label>Current Plan</:label>
             <:value>
-              {@account.metadata.stripe.product_name}
+              {current_plan(@customer)}
               <span class="ml-1">
                 <.link
                   class={link_style()}
@@ -84,20 +100,34 @@ defmodule Web.Settings.Billing do
             </:value>
           </.vertical_table_row>
 
-          <.vertical_table_row>
-            <:label>Billing Email</:label>
-            <:value>
-              {@account.metadata.stripe.billing_email}
-            </:value>
-          </.vertical_table_row>
+          <%= if not is_nil(@customer) do %>
+            <.vertical_table_row>
+              <:label>Billing Email</:label>
+              <:value>
+                {@customer.email}
+              </:value>
+            </.vertical_table_row>
 
-          <.vertical_table_row>
-            <:label>Billing Name</:label>
-            <:value>
-              {@account.legal_name}
-            </:value>
-          </.vertical_table_row>
+            <.vertical_table_row>
+              <:label>Billing Name</:label>
+              <:value>
+                {@customer.name}
+              </:value>
+            </.vertical_table_row>
+
+            <.vertical_table_row>
+              <:label>Billing Address</:label>
+              <:value>
+                {@customer.address}
+              </:value>
+            </.vertical_table_row>
+          <% end %>
         </.vertical_table>
+      </:content>
+      <:content :if={@loading}>
+        <.flash kind={:info}>
+          <p>Loading billing information...</p>
+        </.flash>
       </:content>
     </.section>
 
@@ -197,7 +227,7 @@ defmodule Web.Settings.Billing do
       </:title>
       <:content>
         <div class="ml-4 mb-4 text-neutral-600">
-          <span :if={@account.metadata.stripe.support_type == "email"}>
+          <span :if={support_type(@customer) == "email"}>
             Please send
             <.link
               class={link_style()}
@@ -215,7 +245,7 @@ defmodule Web.Settings.Billing do
             and we will get back to you as soon as possible.
           </span>
 
-          <span :if={@account.metadata.stripe.support_type == "email_and_slack"}>
+          <span :if={support_type(@customer) == "email_and_slack"}>
             Please send us a message in the shared Slack channel or <.link
               class={link_style()}
               target="_blank"
@@ -229,7 +259,7 @@ defmodule Web.Settings.Billing do
             >an email</.link>.
           </span>
 
-          <span :if={@account.metadata.stripe.support_type not in ["email", "email_and_slack"]}>
+          <span :if={support_type(@customer) not in ["email", "email_and_slack"]}>
             Ask questions, get help from other Firezone users on
             <.link class={link_style()} href="https://discourse.firez.one/">
               Discourse
@@ -280,10 +310,25 @@ defmodule Web.Settings.Billing do
 
         socket =
           assign(socket,
-            error: "Billing portal is temporarily unavailable, please try again later."
+            error: "The billing portal is temporarily unavailable. Please try again later."
           )
 
         {:noreply, socket}
     end
+  end
+
+  defp current_plan(nil), do: "Starter"
+
+  defp current_plan(customer) do
+    dbg(customer)
+
+    "TODO"
+  end
+
+  defp support_type(nil), do: nil
+
+  defp support_type(customer) do
+    # TODO: Get this from product object
+    customer["metadata"]["support_type"]
   end
 end

@@ -827,4 +827,311 @@ defmodule Domain.AccountsTest do
       assert is_binary(slug)
     end
   end
+
+  describe "users_limit_exceeded?/2" do
+    test "returns false when seats limit is not exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{monthly_active_users_count: 10}
+        })
+
+      assert users_limit_exceeded?(account, 10) == false
+    end
+
+    test "returns true when seats limit is exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{users_count: 10}
+        })
+
+      assert users_limit_exceeded?(account, 11) == true
+    end
+
+    test "returns false when seats limit is not set", %{account: account} do
+      assert users_limit_exceeded?(account, 0) == false
+    end
+  end
+
+  describe "seats_limit_exceeded?/2" do
+    test "returns false when seats limit is not exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{monthly_active_users_count: 10}
+        })
+
+      assert seats_limit_exceeded?(account, 10) == false
+    end
+
+    test "returns true when seats limit is exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{monthly_active_users_count: 10}
+        })
+
+      assert seats_limit_exceeded?(account, 11) == true
+    end
+
+    test "returns false when seats limit is not set", %{account: account} do
+      assert seats_limit_exceeded?(account, 0) == false
+    end
+  end
+
+  describe "can_create_users?/1" do
+    test "returns true when seats limit is not exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{monthly_active_users_count: 3}
+        })
+
+      actor1 = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      Fixtures.Clients.create_client(account: account, actor: actor1)
+      Fixtures.Clients.create_client(account: account, actor: actor1)
+
+      actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      Fixtures.Clients.create_client(account: account, actor: actor2)
+
+      assert can_create_users?(account) == true
+    end
+
+    test "returns false when seats limit is exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{monthly_active_users_count: 1}
+        })
+
+      actor1 = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      Fixtures.Clients.create_client(account: account, actor: actor1)
+      Fixtures.Clients.create_client(account: account, actor: actor1)
+
+      actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      Fixtures.Clients.create_client(account: account, actor: actor2)
+
+      assert can_create_users?(account) == false
+    end
+
+    test "returns false when users limit is exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{users_count: 1}
+        })
+
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      Fixtures.Actors.create_actor(type: :account_user, account: account)
+
+      assert can_create_users?(account) == false
+    end
+
+    test "returns false when account is disabled", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          disabled_at: DateTime.utc_now(),
+          disabled_reason: "Stripe subscription deleted"
+        })
+
+      assert can_create_users?(account) == false
+    end
+
+    test "returns false when seats limit is not set", %{account: account} do
+      assert can_create_users?(account) == true
+    end
+  end
+
+  describe "service_accounts_limit_exceeded?/2" do
+    test "returns false when service accounts limit is not exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{service_accounts_count: 10}
+        })
+
+      assert service_accounts_limit_exceeded?(account, 10) == false
+    end
+
+    test "returns true when service accounts limit is exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{service_accounts_count: 10}
+        })
+
+      assert service_accounts_limit_exceeded?(account, 11) == true
+    end
+
+    test "returns true when service accounts limit is not set", %{account: account} do
+      assert service_accounts_limit_exceeded?(account, 0) == false
+    end
+  end
+
+  describe "can_create_service_accounts?/1" do
+    test "returns true when service accounts limit is not exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{service_accounts_count: 3}
+        })
+
+      actor1 = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      Fixtures.Clients.create_client(account: account, actor: actor1)
+      Fixtures.Clients.create_client(account: account, actor: actor1)
+
+      actor2 = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      Fixtures.Clients.create_client(account: account, actor: actor2)
+
+      assert can_create_service_accounts?(account) == true
+    end
+
+    test "returns false when service accounts limit is exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{service_accounts_count: 1}
+        })
+
+      actor1 = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      Fixtures.Clients.create_client(account: account, actor: actor1)
+      Fixtures.Clients.create_client(account: account, actor: actor1)
+
+      actor2 = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      Fixtures.Clients.create_client(account: account, actor: actor2)
+
+      assert can_create_service_accounts?(account) == false
+    end
+
+    test "returns false when account is disabled", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          disabled_at: DateTime.utc_now(),
+          disabled_reason: "Stripe subscription deleted"
+        })
+
+      assert can_create_service_accounts?(account) == false
+    end
+
+    test "returns true when service accounts limit is not set", %{account: account} do
+      assert can_create_service_accounts?(account) == true
+    end
+  end
+
+  describe "gateway_groups_limit_exceeded?/2" do
+    test "returns false when gateway groups limit is not exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{gateway_groups_count: 10}
+        })
+
+      assert gateway_groups_limit_exceeded?(account, 10) == false
+    end
+
+    test "returns true when gateway groups limit is exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{gateway_groups_count: 10}
+        })
+
+      assert gateway_groups_limit_exceeded?(account, 11) == true
+    end
+
+    test "returns true when gateway groups limit is not set", %{account: account} do
+      assert gateway_groups_limit_exceeded?(account, 0) == false
+    end
+  end
+
+  describe "can_create_gateway_groups?/1" do
+    test "returns true when gateway groups limit is not exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{gateway_groups_count: 3}
+        })
+
+      Fixtures.Gateways.create_group(account: account)
+      Fixtures.Gateways.create_group(account: account)
+      Fixtures.Gateways.create_group()
+
+      assert can_create_gateway_groups?(account) == true
+    end
+
+    test "returns false when gateway groups limit is exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{gateway_groups_count: 1}
+        })
+
+      Fixtures.Gateways.create_group(account: account)
+
+      assert can_create_gateway_groups?(account) == false
+    end
+
+    test "returns false when account is disabled", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          disabled_at: DateTime.utc_now(),
+          disabled_reason: "Stripe subscription deleted"
+        })
+
+      assert can_create_gateway_groups?(account) == false
+    end
+
+    test "returns true when gateway groups limit is not set", %{account: account} do
+      assert can_create_gateway_groups?(account) == true
+    end
+  end
+
+  describe "admins_limit_exceeded?/2" do
+    test "returns false when admins limit is not exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{account_admin_users_count: 10}
+        })
+
+      assert admins_limit_exceeded?(account, 10) == false
+    end
+
+    test "returns true when admins limit is exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{account_admin_users_count: 10}
+        })
+
+      assert admins_limit_exceeded?(account, 11) == true
+    end
+
+    test "returns true when admins limit is not set", %{account: account} do
+      assert gateway_groups_limit_exceeded?(account, 0) == false
+    end
+  end
+
+  describe "can_create_admin_users?/1" do
+    test "returns true when admins limit is not exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{account_admin_users_count: 5}
+        })
+
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+
+      assert can_create_admin_users?(account) == true
+    end
+
+    test "returns false when admins limit is exceeded", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          limits: %{account_admin_users_count: 1}
+        })
+
+      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+
+      assert can_create_admin_users?(account) == false
+    end
+
+    test "returns false when account is disabled", %{account: account} do
+      {:ok, account} =
+        update_account(account, %{
+          disabled_at: DateTime.utc_now(),
+          disabled_reason: "Stripe subscription deleted"
+        })
+
+      assert can_create_admin_users?(account) == false
+    end
+
+    test "returns true when admins limit is not set", %{account: account} do
+      assert can_create_admin_users?(account) == true
+    end
+  end
 end

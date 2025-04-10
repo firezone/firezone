@@ -2,7 +2,7 @@ defmodule Domain.Actors do
   alias Domain.Actors.Membership
   alias Web.Clients
   alias Domain.{Repo, PubSub}
-  alias Domain.{Accounts, Auth, Tokens, Clients, Policies, Billing}
+  alias Domain.{Accounts, Auth, Tokens, Clients, Policies}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
 
@@ -468,21 +468,21 @@ defmodule Domain.Actors do
   defp ensure_billing_limits_not_exceeded(account, %{valid?: true} = changeset) do
     case Ecto.Changeset.fetch_field!(changeset, :type) do
       :service_account ->
-        if Billing.can_create_service_accounts?(account) do
+        if Accounts.can_create_service_accounts?(account) do
           :ok
         else
           {:error, :service_accounts_limit_reached}
         end
 
       :account_admin_user ->
-        if Billing.can_create_users?(account) and Billing.can_create_admin_users?(account) do
+        if Accounts.can_create_users?(account) and Accounts.can_create_admin_users?(account) do
           :ok
         else
           {:error, :seats_limit_reached}
         end
 
       :account_user ->
-        if Billing.can_create_users?(account) do
+        if Accounts.can_create_users?(account) do
           :ok
         else
           {:error, :seats_limit_reached}

@@ -31,15 +31,7 @@ defmodule Domain.Accounts.Account.Query do
     where(
       queryable,
       [accounts: accounts],
-      fragment("?->'stripe'->>'customer_id' = ?", accounts.metadata, ^customer_id)
-    )
-  end
-
-  def by_stripe_product_name(queryable, account_type) do
-    where(
-      queryable,
-      [accounts: accounts],
-      fragment("?->'stripe'->>'product_name' = ?", accounts.metadata, ^account_type)
+      stripe_customer_id: ^customer_id
     )
   end
 

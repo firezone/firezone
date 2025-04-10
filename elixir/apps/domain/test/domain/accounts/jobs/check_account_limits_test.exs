@@ -1,6 +1,6 @@
-defmodule Domain.Billing.Jobs.CheckAccountLimitsTest do
+defmodule Domain.Accounts.Jobs.CheckAccountLimitsTest do
   use Domain.DataCase, async: true
-  import Domain.Billing.Jobs.CheckAccountLimits
+  import Domain.Accounts.Jobs.CheckAccountLimits
 
   describe "execute/1" do
     setup do

@@ -7,21 +7,12 @@ defmodule Domain.Accounts.Account do
 
     field :legal_name, :string
 
+    field :stripe_customer_id, :string
+
     # Updated by the billing subscription metadata fields
     embeds_one :features, Domain.Accounts.Features, on_replace: :delete
     embeds_one :limits, Domain.Accounts.Limits, on_replace: :delete
     embeds_one :config, Domain.Accounts.Config, on_replace: :update
-
-    embeds_one :metadata, Metadata, primary_key: false, on_replace: :update do
-      embeds_one :stripe, Stripe, primary_key: false, on_replace: :update do
-        field :customer_id, :string
-        field :subscription_id, :string
-        field :product_name, :string
-        field :billing_email, :string
-        field :trial_ends_at, :utc_datetime_usec
-        field :support_type, :string
-      end
-    end
 
     # We mention all schemas here to leverage Ecto compile-time reference checks,
     # because later we will have to shard data by account_id.

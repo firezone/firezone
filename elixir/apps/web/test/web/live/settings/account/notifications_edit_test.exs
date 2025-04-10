@@ -6,13 +6,6 @@ defmodule Web.Live.Settings.Account.NotificationsEditTest do
 
     account =
       Fixtures.Accounts.create_account(
-        metadata: %{
-          stripe: %{
-            customer_id: "cus_NffrFeUfNV2Hib",
-            subscription_id: "sub_NffrFeUfNV2Hib",
-            product_name: "Enterprise"
-          }
-        },
         limits: %{
           monthly_active_users_count: 100
         }
