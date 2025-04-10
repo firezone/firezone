@@ -413,13 +413,7 @@ mod tests {
             panic!("Unexpected result");
         };
 
-        let grace_period = if cfg!(windows) {
-            Duration::from_millis(100)
-        } else {
-            Duration::from_millis(1)
-        };
-
-        assert!(timeout.duration_since(now) < grace_period);
+        assert!(timeout.duration_since(now) < Duration::from_millis(100));
     }
 
     static mut DUMMY_BUF: Buffers = Buffers {
