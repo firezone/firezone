@@ -1,7 +1,6 @@
 name: Website Links
 
 on:
-  repository_dispatch:
   workflow_dispatch:
   schedule:
     - cron: "00 18 * * *"

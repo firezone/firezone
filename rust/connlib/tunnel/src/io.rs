@@ -39,8 +39,6 @@ const MAX_INBOUND_PACKET_BATCH: usize = {
     }
 };
 
-const MAX_UDP_SIZE: usize = (1 << 16) - 1;
-
 /// Bundles together all side-effects that connlib needs to have access to.
 pub struct Io {
     /// The UDP sockets used to send & receive packets from the network.
@@ -78,10 +76,12 @@ pub(crate) struct Buffers {
 
 impl Default for Buffers {
     fn default() -> Self {
+        const ONE_MB: usize = 1024 * 1024;
+
         Self {
             ip: Vec::with_capacity(MAX_INBOUND_PACKET_BATCH),
-            udp4: Vec::from([0; MAX_UDP_SIZE]),
-            udp6: Vec::from([0; MAX_UDP_SIZE]),
+            udp4: vec![0; ONE_MB],
+            udp6: vec![0; ONE_MB],
         }
     }
 }

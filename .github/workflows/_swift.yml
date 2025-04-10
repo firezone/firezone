@@ -63,7 +63,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.rust-targets }}
-      - uses: actions/cache/restore@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         name: Restore Swift DerivedData Cache
         id: cache
         with:
@@ -128,7 +128,7 @@ jobs:
 
           sentry-cli debug-files upload --log-level info --project apple-client --include-sources ${{ runner.temp }}
           sentry-cli debug-files upload --log-level info --project apple-client --include-sources ./rust/target
-      - uses: actions/cache/save@1bd1e32a3bdc45362d1e726936510720a7c30a57 # v4.2.0
+      - uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         if: ${{ steps.cache.outputs.cache-hit != 'true'}}
         name: Save Swift DerivedData Cache
         with:
