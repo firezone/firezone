@@ -10,7 +10,7 @@ type BufferPool = Arc<lockfree_object_pool::MutexObjectPool<Vec<u8>>>;
 static BUFFER_POOL: LazyLock<BufferPool> = LazyLock::new(|| {
     Arc::new(lockfree_object_pool::MutexObjectPool::new(
         || vec![0; MAX_FZ_PAYLOAD],
-        |v| v.fill(0),
+        |_| {},
     ))
 });
 

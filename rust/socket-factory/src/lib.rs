@@ -166,8 +166,8 @@ impl UdpSocket {
             source_ip_resolver: Box::new(|_| Ok(None)),
             src_by_dst_cache: Default::default(),
             buffer_pool: Arc::new(lockfree_object_pool::MutexObjectPool::new(
-                || vec![0u8; 1 << 16], // 65k
-                |b| b.fill(0),
+                || vec![0u8; u16::MAX as usize],
+                |_| {},
             )),
         })
     }
