@@ -302,12 +302,17 @@ defmodule Domain.Fixtures.Auth do
         Fixtures.Accounts.create_account(assoc_attrs)
       end)
 
+    {access_token, attrs} =
+      pop_assoc_fixture(attrs, :access_token, & &1)
+
     {:ok, provider} = Auth.create_provider(account, attrs)
+
+    access_token = access_token || "OIDC_ACCESS_TOKEN"
 
     update!(provider,
       disabled_at: nil,
       adapter_state: %{
-        "access_token" => "OIDC_ACCESS_TOKEN",
+        "access_token" => access_token,
         "refresh_token" => "OIDC_REFRESH_TOKEN",
         "expires_at" => DateTime.utc_now() |> DateTime.add(1, :day),
         "claims" => "openid email profile offline_access"
