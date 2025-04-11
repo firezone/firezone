@@ -53,11 +53,12 @@ config :logger,
 
 config :logger, :default_handler,
   formatter:
-    {LoggerJSON.Formatters.GoogleCloud,
-     metadata: {:all_except, [:socket, :conn]},
-     redactors: [
-       {LoggerJSON.Redactors.RedactKeys, secret_keys}
-     ]}
+    LoggerJSON.Formatters.GoogleCloud.new(
+      metadata: {:all_except, [:socket, :conn]},
+      redactors: [
+        {LoggerJSON.Redactors.RedactKeys, secret_keys}
+      ]
+    )
 
 config :logger, level: :info
 

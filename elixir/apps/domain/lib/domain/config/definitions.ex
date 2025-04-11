@@ -540,29 +540,6 @@ defmodule Domain.Config.Definitions do
     dump: &Dumper.keyword/1
   )
 
-  @doc """
-  A formatter to use for the Elixir's Logger. If not set, the default formatter will be used.
-  """
-  defconfig(
-    :logger_formatter,
-    Ecto.ParameterizedType.init(Ecto.Enum,
-      values: [
-        Elixir.LoggerJSON.Formatters.GoogleCloud,
-        Elixir.LoggerJSON.Formatters.Basic,
-        Elixir.LoggerJSON.Formatters.Datadog
-      ]
-    ),
-    default: nil
-  )
-
-  @doc """
-  Options for the logger formatter that is set by `logger_formatter` option.
-  """
-  defconfig(:logger_formatter_opts, :map,
-    default: %{},
-    dump: &Dumper.keyword/1
-  )
-
   ##############################################
   ## Gateways
   ##############################################
