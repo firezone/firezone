@@ -11,7 +11,6 @@ use futures_bounded::FuturesTupleSet;
 use gso_queue::GsoQueue;
 use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
-use opentelemetry::KeyValue;
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeSet, VecDeque},
@@ -199,15 +198,15 @@ impl Io {
             self.packet_counter.add(
                 num_ipv4 as u64,
                 &[
-                    KeyValue::new("network.type", "ipv4"),
-                    KeyValue::new("network.io.direction", "receive"),
+                    crate::otel::network_type_ipv4(),
+                    crate::otel::network_io_direction_receive(),
                 ],
             );
             self.packet_counter.add(
                 num_ipv6 as u64,
                 &[
-                    KeyValue::new("network.type", "ipv6"),
-                    KeyValue::new("network.io.direction", "receive"),
+                    crate::otel::network_type_ipv6(),
+                    crate::otel::network_io_direction_receive(),
                 ],
             );
 
@@ -315,14 +314,8 @@ impl Io {
         self.packet_counter.add(
             1,
             &[
-                KeyValue::new(
-                    "network.type",
-                    match &packet {
-                        IpPacket::Ipv4(_) => "ipv4",
-                        IpPacket::Ipv6(_) => "ipv6",
-                    },
-                ),
-                KeyValue::new("network.io.direction", "transmit"),
+                crate::otel::network_type_for_packet(&packet),
+                crate::otel::network_io_direction_transmit(),
             ],
         );
 
@@ -361,9 +354,9 @@ impl Io {
         self.packet_counter.add(
             1,
             &[
-                KeyValue::new("network.peer.port", dst.port() as i64),
-                KeyValue::new("network.transport", "udp"),
-                KeyValue::new("network.io.direction", "transmit"),
+                crate::otel::network_peer_port(dst.port()),
+                crate::otel::network_transport_udp(),
+                crate::otel::network_io_direction_transmit(),
             ],
         );
     }

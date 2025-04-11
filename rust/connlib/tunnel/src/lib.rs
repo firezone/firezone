@@ -13,7 +13,6 @@ use dns_types::DomainName;
 use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::Ecn;
-use opentelemetry::KeyValue;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -32,6 +31,7 @@ mod expiring_map;
 mod gateway;
 mod io;
 pub mod messages;
+mod otel;
 mod p2p_control;
 mod peer;
 mod peer_store;
@@ -193,9 +193,9 @@ impl ClientTunnel {
                         self.packet_counter.add(
                             1,
                             &[
-                                KeyValue::new("network.peer.port", received.from.port() as i64),
-                                KeyValue::new("network.transport", "udp"),
-                                KeyValue::new("network.io.direction", "receive"),
+                                crate::otel::network_peer_port(received.from.port()),
+                                crate::otel::network_transport_udp(),
+                                crate::otel::network_io_direction_receive(),
                             ],
                         );
 
@@ -329,9 +329,9 @@ impl GatewayTunnel {
                         self.packet_counter.add(
                             1,
                             &[
-                                KeyValue::new("network.peer.port", received.from.port() as i64),
-                                KeyValue::new("network.transport", "udp"),
-                                KeyValue::new("network.io.direction", "receive"),
+                                crate::otel::network_peer_port(received.from.port()),
+                                crate::otel::network_transport_udp(),
+                                crate::otel::network_io_direction_receive(),
                             ],
                         );
 
