@@ -11,6 +11,7 @@ use futures_bounded::FuturesTupleSet;
 use gso_queue::GsoQueue;
 use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
+use opentelemetry::KeyValue;
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::{BTreeSet, VecDeque},
@@ -59,6 +60,7 @@ pub struct Io {
 
     tun: Device,
     outbound_packet_buffer: VecDeque<IpPacket>,
+    packet_counter: opentelemetry::metrics::Counter<u64>,
 }
 
 #[derive(Debug)]
@@ -128,6 +130,10 @@ impl Io {
             tun: Device::new(),
             udp_dns_server: Default::default(),
             tcp_dns_server: Default::default(),
+            packet_counter: opentelemetry::global::meter("connlib")
+                .u64_counter("system.network.packets")
+                .with_description("The number of packets processed.")
+                .init(),
         }
     }
 
@@ -184,6 +190,27 @@ impl Io {
             self.tun
                 .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
         {
+            let num_ipv4 = buffers.ip[..num_packets]
+                .iter()
+                .filter(|p| p.ipv4_header().is_some())
+                .count();
+            let num_ipv6 = num_packets - num_ipv4;
+
+            self.packet_counter.add(
+                num_ipv4 as u64,
+                &[
+                    KeyValue::new("network.type", "ipv4"),
+                    KeyValue::new("network.io.direction", "receive"),
+                ],
+            );
+            self.packet_counter.add(
+                num_ipv6 as u64,
+                &[
+                    KeyValue::new("network.type", "ipv6"),
+                    KeyValue::new("network.io.direction", "receive"),
+                ],
+            );
+
             return Poll::Ready(Ok(Input::Device(buffers.ip.drain(..num_packets))));
         }
 
@@ -285,6 +312,20 @@ impl Io {
     }
 
     pub fn send_tun(&mut self, packet: IpPacket) {
+        self.packet_counter.add(
+            1,
+            &[
+                KeyValue::new(
+                    "network.type",
+                    match &packet {
+                        IpPacket::Ipv4(_) => "ipv4",
+                        IpPacket::Ipv6(_) => "ipv6",
+                    },
+                ),
+                KeyValue::new("network.io.direction", "transmit"),
+            ],
+        );
+
         self.outbound_packet_buffer.push_back(packet);
     }
 
@@ -315,7 +356,16 @@ impl Io {
         ecn: Ecn,
     ) {
         self.gso_queue
-            .enqueue(src, dst, payload, ecn, Instant::now())
+            .enqueue(src, dst, payload, ecn, Instant::now());
+
+        self.packet_counter.add(
+            1,
+            &[
+                KeyValue::new("network.peer.port", dst.port() as i64),
+                KeyValue::new("network.transport", "udp"),
+                KeyValue::new("network.io.direction", "transmit"),
+            ],
+        );
     }
 
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
