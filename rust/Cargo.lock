@@ -2184,9 +2184,9 @@ dependencies = [
  "tracing",
  "tun",
  "uuid",
- "windows 0.58.0",
- "windows-core 0.58.0",
- "windows-implement 0.58.0",
+ "windows 0.60.0",
+ "windows-core 0.60.1",
+ "windows-implement 0.60.0",
  "winreg 0.52.0",
  "wintun",
  "zbus 5.5.0",
@@ -2277,7 +2277,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "windows 0.58.0",
+ "windows 0.60.0",
 ]
 
 [[package]]
@@ -2367,7 +2367,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
- "windows 0.58.0",
+ "windows 0.60.0",
  "windows-service",
  "winreg 0.52.0",
 ]
@@ -8383,6 +8383,17 @@ name = "windows-implement"
 version = "0.59.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "83577b051e2f49a058c308f17f273b570a6a758386fc291b5f6a934dd84e48c1"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.87",
+]
+
+[[package]]
+name = "windows-implement"
+version = "0.60.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a47fddd13af08290e67f4acabf4b459f647552718f683a7b415d290ac744a836"
 dependencies = [
  "proc-macro2",
  "quote",
