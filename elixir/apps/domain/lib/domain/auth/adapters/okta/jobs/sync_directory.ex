@@ -24,21 +24,18 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectory do
   end
 
   def gather_provider_data(provider, task_supervisor_pid) do
-    endpoint = provider.adapter_config["api_base_url"]
-    access_token = provider.adapter_state["access_token"]
-
     async_results =
       DirectorySync.run_async_requests(task_supervisor_pid,
         users: fn ->
-          Okta.APIClient.list_users(endpoint, access_token)
+          Okta.APIClient.list_users(provider)
         end,
         groups: fn ->
-          Okta.APIClient.list_groups(endpoint, access_token)
+          Okta.APIClient.list_groups(provider)
         end
       )
 
     with {:ok, %{users: users, groups: groups}} <- async_results,
-         {:ok, membership_tuples} <- list_membership_tuples(endpoint, access_token, groups) do
+         {:ok, membership_tuples} <- list_membership_tuples(provider, groups) do
       identities_attrs = map_identity_attrs(users)
       actor_groups_attrs = map_group_attrs(groups)
       {:ok, {identities_attrs, actor_groups_attrs, membership_tuples}}
@@ -66,10 +63,10 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectory do
     end
   end
 
-  defp list_membership_tuples(endpoint, access_token, groups) do
+  defp list_membership_tuples(provider, groups) do
     OpenTelemetry.Tracer.with_span "sync_provider.fetch_data.memberships" do
       Enum.reduce_while(groups, {:ok, []}, fn group, {:ok, tuples} ->
-        case Okta.APIClient.list_group_members(endpoint, access_token, group["id"]) do
+        case Okta.APIClient.list_group_members(provider, group["id"]) do
           {:ok, members} ->
             tuples = Enum.map(members, &{"G:" <> group["id"], &1["id"]}) ++ tuples
             {:cont, {:ok, tuples}}

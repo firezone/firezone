@@ -6,10 +6,30 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
 
   describe "execute/1" do
     setup do
+      jwk = %{
+        "kty" => "oct",
+        "k" => :jose_base64url.encode("super_secret_key")
+      }
+
+      jws = %{
+        "alg" => "HS256"
+      }
+
+      claims = %{
+        "sub" => "1234567890",
+        "name" => "FooBar",
+        "iat" => DateTime.utc_now() |> DateTime.to_unix(),
+        "exp" => DateTime.utc_now() |> DateTime.add(3600, :second) |> DateTime.to_unix()
+      }
+
+      {_, jwt} =
+        JOSE.JWT.sign(jwk, jws, claims)
+        |> JOSE.JWS.compact()
+
       account = Fixtures.Accounts.create_account()
 
       {provider, bypass} =
-        Fixtures.Auth.start_and_create_okta_provider(account: account)
+        Fixtures.Auth.start_and_create_okta_provider(account: account, access_token: jwt)
 
       %{
         bypass: bypass,

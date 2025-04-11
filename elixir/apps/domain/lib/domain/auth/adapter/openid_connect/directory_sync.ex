@@ -140,12 +140,12 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
     )
 
     finish_time = System.monotonic_time(:millisecond)
-    Logger.info("Finished syncing in #{time_taken(start_time, finish_time)}")
+    Logger.info("Finished syncing #{adapter} providers in #{time_taken(start_time, finish_time)}")
   end
 
   defp sync_provider(module, provider) do
     start_time = System.monotonic_time(:millisecond)
-    Logger.debug("Syncing provider")
+    Logger.info("Syncing provider: #{provider.id}")
 
     if Domain.Accounts.idp_sync_enabled?(provider.account) do
       {:ok, pid} = Task.Supervisor.start_link()
