@@ -9,7 +9,6 @@ use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
 use std::net::IpAddr;
 use std::sync::Weak;
-use std::task::ready;
 use std::time::{Duration, Instant};
 use std::{
     collections::HashSet,
@@ -20,7 +19,6 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::sync::mpsc;
-use tokio_util::sync::PollSender;
 use windows::Win32::NetworkManagement::IpHelper::{
     CreateUnicastIpAddressEntry, InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW,
 };
@@ -298,6 +296,7 @@ impl Tun {
             state: Some(TunState {
                 session,
                 outbound_tx,
+                outbound_waker,
                 inbound_rx,
             }),
             send_thread: Some(send_thread),
