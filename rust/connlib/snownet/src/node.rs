@@ -186,7 +186,7 @@ where
             stats: Default::default(),
             buffer_pool: Arc::new(lockfree_object_pool::SpinLockObjectPool::new(
                 || vec![0; ip_packet::MAX_FZ_PAYLOAD],
-                |v| v.fill(0),
+                |_| {},
             )),
         }
     }
