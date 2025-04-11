@@ -1,9 +1,9 @@
 defmodule Domain.Telemetry.Sentry do
-  def before_send(%{original_exception: %{report_to_sentry: report_to_sentry}} = event) do
-    if report_to_sentry do
-      event
-    else
+  def before_send(%{original_exception: %{skip_sentry: skip_sentry}} = event) do
+    if skip_sentry do
       nil
+    else
+      event
     end
   end
 
