@@ -285,8 +285,12 @@ impl Tun {
         let (inbound_tx, inbound_rx) = mpsc::channel(1000); // We want to be able to batch-receive from this.
         let outbound_waker = Arc::new(AtomicWaker::default());
 
-        let send_thread = start_send_thread(outbound_rx, outbound_waker, Arc::downgrade(&session))
-            .context("Failed to start send thread")?;
+        let send_thread = start_send_thread(
+            outbound_rx,
+            outbound_waker.clone(),
+            Arc::downgrade(&session),
+        )
+        .context("Failed to start send thread")?;
         let recv_thread = start_recv_thread(inbound_tx, Arc::downgrade(&session))
             .context("Failed to start recv thread")?;
 
