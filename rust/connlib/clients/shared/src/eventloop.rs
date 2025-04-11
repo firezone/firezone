@@ -102,11 +102,7 @@ where
                         "Tunnel should never emit WouldBlock errors but suspend instead"
                     );
 
-                    let e = anyhow::Error::new(e);
-
-                    tracing::warn!("{e:#}");
-
-                    // telemetry_event!("Tunnel error: {}", err_with_src(&e));
+                    telemetry_event!("Tunnel error: {}", err_with_src(&e));
                     continue;
                 }
                 Poll::Pending => {}
