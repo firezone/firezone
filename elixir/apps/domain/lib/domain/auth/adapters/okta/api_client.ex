@@ -235,15 +235,8 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     end
   end
 
-  defp access_token_active?(nil) do
-    Logger.info("JWT is nil")
-    false
-  end
-
-  defp access_token_active?("") do
-    Logger.info("JWT is empty")
-    false
-  end
+  defp access_token_active?(nil), do: false
+  defp access_token_active?(""), do: false
 
   defp access_token_active?(token) when is_binary(token) do
     current_time = DateTime.utc_now()
