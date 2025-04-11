@@ -36,6 +36,7 @@ defmodule Firezone.MixProject do
     [
       # Shared deps
       {:jason, "~> 1.2"},
+      {:logger_json, "~> 7.0"},
 
       # Shared test deps
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
