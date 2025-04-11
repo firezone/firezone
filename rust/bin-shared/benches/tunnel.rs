@@ -80,9 +80,7 @@ mod platform {
                     panic!("Wrong request code");
                 }
 
-                poll_fn(|cx| tun.poll_send_ready(cx)).await.unwrap();
-
-                tun.send(
+                poll_fn(|cx| tun.poll_send_many(cx, &mut vec![
                     ip_packet::make::udp_packet(
                         original_pkt.destination(),
                         original_pkt.source(),
@@ -90,8 +88,9 @@ mod platform {
                         original_udp.source_port(),
                         vec![RESP_CODE],
                     )
-                    .unwrap(),
-                )?;
+                    .unwrap()
+                ])).await.unwrap();
+
                 requests_served += 1;
                 time_spent += start.elapsed();
                 if requests_served >= NUM_REQUESTS {
