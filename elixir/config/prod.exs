@@ -51,15 +51,6 @@ config :logger,
   handle_sasl_reports: false,
   handle_otp_reports: true
 
-config :logger, :default_handler,
-  formatter:
-    LoggerJSON.Formatters.GoogleCloud.new(
-      metadata: {:all_except, [:socket, :conn]},
-      redactors: [
-        {LoggerJSON.Redactors.RedactKeys, secret_keys}
-      ]
-    )
-
 config :logger, level: :info
 
 config :swoosh, local: false

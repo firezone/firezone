@@ -7,6 +7,16 @@ defmodule Web.Application do
     _ = :opentelemetry_cowboy.setup()
     _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
+    formatter =
+      LoggerJSON.Formatters.GoogleCloud.new(
+        metadata: {:all_except, [:socket, :conn]},
+        redactors: [
+          {LoggerJSON.Redactors.RedactKeys, secret_keys}
+        ]
+      )
+
+    :logger.update_handler_config(:default, :formatter, formatter)
+
     # Configure Sentry to capture Logger messages
     :logger.add_handler(:sentry, Sentry.LoggerHandler, %{
       config: %{
