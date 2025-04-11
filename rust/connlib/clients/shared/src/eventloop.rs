@@ -101,7 +101,6 @@ where
                         io::ErrorKind::WouldBlock,
                         "Tunnel should never emit WouldBlock errors but suspend instead"
                     );
-
                     telemetry_event!("Tunnel error: {}", err_with_src(&e));
                     continue;
                 }
