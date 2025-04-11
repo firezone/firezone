@@ -235,19 +235,51 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     end
   end
 
-  defp access_token_active?(nil), do: false
-  defp access_token_active?(""), do: false
-
-  defp access_token_active?(token) when is_binary(token) do
+  defp access_token_active?(token) do
     current_time = DateTime.utc_now()
 
-    with jwt <- JOSE.JWT.peek(token),
-         {:ok, timestamp_time} <- DateTime.from_unix(jwt.fields["exp"]),
-         :lt <- DateTime.compare(current_time, timestamp_time),
-         time_diff <- DateTime.diff(timestamp_time, current_time) do
-      time_diff >= 2 * 60
+    with {:ok, exp} <- fetch_exp(token),
+         {:ok, timestamp_time} <- DateTime.from_unix(exp) do
+      case DateTime.compare(current_time, timestamp_time) do
+        :lt ->
+          time_diff = DateTime.diff(timestamp_time, current_time)
+          time_diff >= 2 * 60
+
+        _gt_or_eq ->
+          false
+      end
     else
-      _ -> false
+      {:error, msg} when is_binary(msg) ->
+        Logger.info(msg)
+        false
+
+      unknown_error ->
+        Logger.warning("Error while checking access token expiration",
+          unknown_error: inspect(unknown_error)
+        )
+
+        false
+    end
+  end
+
+  defp fetch_exp(token) do
+    with {:ok, decoded_jwt} <- parse_jwt(token),
+         fields when not is_nil(fields) <- decoded_jwt.fields,
+         exp when is_integer(exp) <- fields["exp"] do
+      {:ok, exp}
+    else
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, "exp field is missing or invalid"}
+    end
+  end
+
+  defp parse_jwt(token) do
+    try do
+      {:ok, JOSE.JWT.peek(token)}
+    rescue
+      ArgumentError -> {:error, "Could not parse token"}
+      Jason.DecodeError -> {:error, "Could not decode token json"}
+      _ -> {:error, "Unknown error while parsing jwt"}
     end
   end
 end
