@@ -1,6 +1,7 @@
 defmodule Domain.Auth.Adapters.Okta.APIClient do
   use Supervisor
   require Logger
+  alias Domain.Auth.Provider
 
   @pool_name __MODULE__.Finch
 
@@ -29,7 +30,9 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     [conn_opts: [transport_opts: transport_opts]]
   end
 
-  def list_users(endpoint, api_token) do
+  def list_users(%Provider{} = provider) do
+    endpoint = provider.adapter_config["api_base_url"]
+
     uri =
       URI.parse("#{endpoint}/api/v1/users")
       |> URI.append_query(
@@ -42,7 +45,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
       {"Content-Type", "application/json; okta-response=omitCredentials,omitCredentialsLinks"}
     ]
 
-    with {:ok, users} <- list_all(uri, headers, api_token) do
+    with {:ok, users} <- list_all(uri, headers, provider) do
       active_users =
         Enum.filter(users, fn user ->
           user["status"] == "ACTIVE"
@@ -52,7 +55,9 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     end
   end
 
-  def list_groups(endpoint, api_token) do
+  def list_groups(%Provider{} = provider) do
+    endpoint = provider.adapter_config["api_base_url"]
+
     uri =
       URI.parse("#{endpoint}/api/v1/groups")
       |> URI.append_query(
@@ -63,10 +68,12 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
 
     headers = []
 
-    list_all(uri, headers, api_token)
+    list_all(uri, headers, provider)
   end
 
-  def list_group_members(endpoint, api_token, group_id) do
+  def list_group_members(%Provider{} = provider, group_id) do
+    endpoint = provider.adapter_config["api_base_url"]
+
     uri =
       URI.parse("#{endpoint}/api/v1/groups/#{group_id}/users")
       |> URI.append_query(
@@ -77,7 +84,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
 
     headers = []
 
-    with {:ok, members} <- list_all(uri, headers, api_token) do
+    with {:ok, members} <- list_all(uri, headers, provider) do
       enabled_members =
         Enum.filter(members, fn member ->
           member["status"] == "ACTIVE"
@@ -87,14 +94,14 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     end
   end
 
-  defp list_all(uri, headers, api_token, acc \\ []) do
-    case list(uri, headers, api_token) do
+  defp list_all(uri, headers, provider, acc \\ []) do
+    case list(uri, headers, provider) do
       {:ok, list, nil} ->
         {:ok, List.flatten(Enum.reverse([list | acc]))}
 
       {:ok, list, next_page_uri} ->
         URI.parse(next_page_uri)
-        |> list_all(headers, api_token, [list | acc])
+        |> list_all(headers, provider, [list | acc])
 
       {:error, reason} ->
         {:error, reason}
@@ -108,7 +115,8 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
   end
 
   # TODO: Need to catch 401/403 specifically when error message is in header
-  defp list(uri, headers, api_token) do
+  defp list(uri, headers, %Provider{} = provider) do
+    api_token = fetch_latest_access_token(provider)
     headers = headers ++ [{"Authorization", "Bearer #{api_token}"}]
     request = Finch.build(:get, uri, headers)
 
@@ -135,17 +143,21 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
 
         {:error, :invalid_response}
 
-      {:ok, %Finch.Response{body: raw_body, status: status}} when status in 400..499 ->
+      {:ok, %Finch.Response{body: raw_body, status: status, headers: headers}}
+      when status in 400..499 ->
         Logger.error("API request failed with 4xx status #{status}",
           response: inspect(response)
         )
 
         case Jason.decode(raw_body) do
           {:ok, json_response} ->
+            # Errors are in JSON body
             {:error, {status, json_response}}
 
           _error ->
-            {:error, {status, response}}
+            # Errors should be in www-authenticate header
+            error_map = parse_headers_for_errors(headers)
+            {:error, {status, error_map}}
         end
 
       {:ok, %Finch.Response{status: status}} when status in 500..599 ->
@@ -190,4 +202,82 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
   end
 
   defp parse_link_header(nil), do: nil
+
+  defp parse_headers_for_errors(headers) do
+    headers
+    |> Enum.find({}, fn {key, _val} -> key == "www-authenticate" end)
+    |> parse_error_header()
+  end
+
+  defp parse_error_header({"www-authenticate", errors}) do
+    String.split(errors, ",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&String.starts_with?(&1, "error"))
+    |> Enum.map(&String.replace(&1, "\"", ""))
+    |> Enum.map(&String.split(&1, "="))
+    |> Enum.into(%{}, fn [k, v] -> {k, v} end)
+  end
+
+  defp parse_error_header(_) do
+    Logger.info("No www-authenticate header present")
+    %{"error" => "unknown", "error_message" => "no www-authenticate header present"}
+  end
+
+  defp fetch_latest_access_token(provider) do
+    access_token = provider.adapter_state["access_token"]
+
+    if access_token_active?(access_token) do
+      access_token
+    else
+      # Fetch provider from DB and return latest access token
+      {:ok, provider} = Domain.Auth.fetch_active_provider_by_id(provider.id)
+      provider.adapter_state["access_token"]
+    end
+  end
+
+  defp access_token_active?(token) do
+    current_time = DateTime.utc_now()
+
+    with {:ok, exp} <- fetch_exp(token),
+         {:ok, timestamp_time} <- DateTime.from_unix(exp) do
+      case DateTime.compare(current_time, timestamp_time) do
+        :lt ->
+          time_diff = DateTime.diff(timestamp_time, current_time)
+          time_diff >= 2 * 60
+
+        _gt_or_eq ->
+          false
+      end
+    else
+      {:error, msg} when is_binary(msg) ->
+        Logger.info(msg)
+        false
+
+      unknown_error ->
+        Logger.warning("Error while checking access token expiration",
+          unknown_error: inspect(unknown_error)
+        )
+
+        false
+    end
+  end
+
+  defp fetch_exp(token) do
+    with {:ok, decoded_jwt} <- parse_jwt(token),
+         fields when not is_nil(fields) <- decoded_jwt.fields,
+         exp when is_integer(exp) <- fields["exp"] do
+      {:ok, exp}
+    else
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, "exp field is missing or invalid"}
+    end
+  end
+
+  defp parse_jwt(token) do
+    {:ok, JOSE.JWT.peek(token)}
+  rescue
+    ArgumentError -> {:error, "Could not parse token"}
+    Jason.DecodeError -> {:error, "Could not decode token json"}
+    _ -> {:error, "Unknown error while parsing jwt"}
+  end
 end
