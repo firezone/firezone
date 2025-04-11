@@ -1,14 +1,16 @@
 use anyhow::{Context as _, Result, bail};
-use futures::StreamExt as _;
+use futures::task::AtomicWaker;
 use ip_packet::{IpPacket, IpPacketBuf};
 use std::io;
 use std::os::fd::AsRawFd;
+use std::sync::Arc;
 use tokio::io::unix::AsyncFd;
 use tokio::sync::mpsc;
 
 pub fn tun_send<T>(
     fd: T,
-    mut outbound_rx: flume::r#async::RecvStream<'_, IpPacket>,
+    mut outbound_rx: tokio::sync::mpsc::Receiver<IpPacket>,
+    waker: Arc<AtomicWaker>,
     write: impl Fn(i32, &IpPacket) -> std::result::Result<usize, io::Error>,
 ) -> Result<()>
 where
@@ -21,15 +23,27 @@ where
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
 
-            while let Some(packet) = outbound_rx.next().await {
-                if let Err(e) = fd
-                    .async_io(tokio::io::Interest::WRITABLE, |fd| {
-                        write(fd.as_raw_fd(), &packet)
-                    })
-                    .await
-                {
-                    tracing::warn!("Failed to write to TUN FD: {e}");
+            let mut buffer = Vec::with_capacity(100);
+
+            loop {
+                let num_received = outbound_rx.recv_many(&mut buffer, 100).await;
+
+                if num_received == 0 {
+                    break;
                 }
+
+                for packet in buffer.drain(..num_received) {
+                    if let Err(e) = fd
+                        .async_io(tokio::io::Interest::WRITABLE, |fd| {
+                            write(fd.as_raw_fd(), &packet)
+                        })
+                        .await
+                    {
+                        tracing::warn!("Failed to write to TUN FD: {e}");
+                    }
+                }
+
+                waker.wake(); // Every time we read a batch, call the waker to notify about more space.
             }
 
             anyhow::Ok(())

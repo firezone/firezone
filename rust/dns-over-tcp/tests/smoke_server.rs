@@ -98,13 +98,15 @@ impl Eventloop {
     }
 
     fn poll(&mut self, cx: &mut Context) -> Poll<()> {
-        loop {
-            ready!(self.tun.poll_send_ready(cx)).unwrap();
+        let mut packets = Vec::default();
 
+        loop {
             if let Some(packet) = self.dns_server.poll_outbound() {
-                self.tun.send(packet).unwrap();
+                packets.push(packet);
                 continue;
             }
+
+            ready!(self.tun.poll_send_many(cx, &mut packets)).unwrap();
 
             if let Some(query) = self.dns_server.poll_queries() {
                 self.dns_server

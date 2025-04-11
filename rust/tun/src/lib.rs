@@ -11,10 +11,11 @@ pub mod ioctl;
 pub mod unix;
 
 pub trait Tun: Send + Sync + 'static {
-    /// Check if more packets can be sent.
-    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>>;
-    /// Send a packet.
-    fn send(&mut self, packet: IpPacket) -> io::Result<()>;
+    fn poll_send_many(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut Vec<IpPacket>,
+    ) -> Poll<io::Result<usize>>;
 
     /// Receive a batch of packets up to `max`.
     fn poll_recv_many(
