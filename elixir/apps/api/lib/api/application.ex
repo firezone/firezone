@@ -6,6 +6,15 @@ defmodule API.Application do
     _ = :opentelemetry_cowboy.setup()
     _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
+    # Configure Sentry to capture Logger messages
+    :logger.add_handler(:sentry, Sentry.LoggerHandler, %{
+      config: %{
+        level: :warning,
+        metadata: :all,
+        capture_log_messages: true
+      }
+    })
+
     children = [
       API.Endpoint,
       API.RateLimit

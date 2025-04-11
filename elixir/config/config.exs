@@ -168,17 +168,6 @@ config :web, api_url_override: "ws://localhost:13001/"
 ##### API #####################
 ###############################
 
-config :api, :logger, [
-  {:handler, :api, Sentry.LoggerHandler,
-   %{
-     config: %{
-       level: :warning,
-       metadata: :all,
-       capture_log_messages: true
-     }
-   }}
-]
-
 config :api, ecto_repos: [Domain.Repo]
 config :api, generators: [binary_id: true, context_app: :domain]
 

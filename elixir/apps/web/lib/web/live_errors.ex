@@ -1,6 +1,6 @@
 defmodule Web.LiveErrors do
   defmodule NotFoundError do
-    defexception message: "Not Found", report_to_sentry: true
+    defexception message: "Not Found", skip_sentry: false
 
     defimpl Plug.Exception do
       def status(_exception), do: 404
