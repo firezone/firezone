@@ -19,7 +19,12 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="8754">
+          Fixes a performance regression that could lead to packet drops under
+          high load.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.5" date={new Date("2025-03-15")}>
         <ChangeItem pull="8445">
           Fixes a bug where search domains changes weren't applied if already signed in.
