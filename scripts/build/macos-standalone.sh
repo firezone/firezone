@@ -126,4 +126,6 @@ fi
 # Move to final location the uploader expects
 if [[ -n "${ARTIFACT_PATH:-}" ]]; then
     mv "$dmg_path" "$ARTIFACT_PATH"
+
+    echo "Moved disk image to $ARTIFACT_PATH"
 fi
