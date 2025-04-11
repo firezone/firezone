@@ -13,7 +13,7 @@ use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeSet, VecDeque},
+    collections::BTreeSet,
     io,
     net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
     pin::Pin,
@@ -58,7 +58,7 @@ pub struct Io {
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
 
     tun: Device,
-    outbound_packet_buffer: VecDeque<IpPacket>,
+    outbound_packet_buffer: Vec<IpPacket>,
 }
 
 #[derive(Debug)]
@@ -117,7 +117,7 @@ impl Io {
         nameservers.evaluate();
 
         Self {
-            outbound_packet_buffer: VecDeque::with_capacity(10), // It is unlikely that we process more than 10 packets after 1 GRO call.
+            outbound_packet_buffer: Vec::default(),
             timeout: None,
             sockets,
             nameservers,
@@ -257,20 +257,19 @@ impl Io {
             self.sockets.send(datagram)?;
         }
 
-        loop {
-            // First, check if we can send more packets.
-            if self.tun.poll_send_ready(cx)?.is_pending() {
-                any_pending = true;
-                break;
-            }
+        if !self.outbound_packet_buffer.is_empty() {
+            let poll_result = self
+                .tun
+                .poll_send_many(cx, &mut self.outbound_packet_buffer);
 
-            // Second, check if we have any buffer packets.
-            let Some(packet) = self.outbound_packet_buffer.pop_front() else {
-                break; // No more packets? All done.
+            match poll_result {
+                Poll::Ready(res) => {
+                    res?;
+                }
+                Poll::Pending => {
+                    any_pending = true;
+                }
             };
-
-            // Third, send the packet.
-            self.tun.send(packet)?;
         }
 
         if any_pending {
@@ -285,7 +284,7 @@ impl Io {
     }
 
     pub fn send_tun(&mut self, packet: IpPacket) {
-        self.outbound_packet_buffer.push_back(packet);
+        self.outbound_packet_buffer.push(packet);
     }
 
     pub fn reset(&mut self) {
@@ -484,14 +483,6 @@ mod tests {
     struct DummyTun;
 
     impl Tun for DummyTun {
-        fn poll_send_ready(&mut self, _: &mut Context) -> Poll<io::Result<()>> {
-            Poll::Ready(Ok(()))
-        }
-
-        fn send(&mut self, _: IpPacket) -> io::Result<()> {
-            Ok(())
-        }
-
         fn poll_recv_many(
             &mut self,
             _: &mut Context,
@@ -503,6 +494,14 @@ mod tests {
 
         fn name(&self) -> &str {
             "dummy"
+        }
+
+        fn poll_send_many(
+            &mut self,
+            _: &mut Context,
+            _: &mut Vec<IpPacket>,
+        ) -> Poll<io::Result<usize>> {
+            Poll::Pending
         }
     }
 }

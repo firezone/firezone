@@ -3,12 +3,12 @@ use crate::windows::TUNNEL_UUID;
 use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
 use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
+use futures::task::AtomicWaker;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
 use std::net::IpAddr;
 use std::sync::Weak;
-use std::task::ready;
 use std::time::{Duration, Instant};
 use std::{
     collections::HashSet,
@@ -19,7 +19,6 @@ use std::{
     task::{Context, Poll},
 };
 use tokio::sync::mpsc;
-use tokio_util::sync::PollSender;
 use windows::Win32::NetworkManagement::IpHelper::{
     CreateUnicastIpAddressEntry, InitializeUnicastIpAddressEntry, MIB_UNICASTIPADDRESS_ROW,
 };
@@ -206,7 +205,8 @@ pub struct Tun {
 struct TunState {
     session: Arc<wintun::Session>,
 
-    outbound_tx: PollSender<IpPacket>,
+    outbound_tx: mpsc::Sender<IpPacket>,
+    outbound_waker: Arc<AtomicWaker>,
     inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
@@ -283,8 +283,14 @@ impl Tun {
         );
         let (outbound_tx, outbound_rx) = mpsc::channel(1000);
         let (inbound_tx, inbound_rx) = mpsc::channel(1000); // We want to be able to batch-receive from this.
-        let send_thread = start_send_thread(outbound_rx, Arc::downgrade(&session))
-            .context("Failed to start send thread")?;
+        let outbound_waker = Arc::new(AtomicWaker::default());
+
+        let send_thread = start_send_thread(
+            outbound_rx,
+            outbound_waker.clone(),
+            Arc::downgrade(&session),
+        )
+        .context("Failed to start send thread")?;
         let recv_thread = start_recv_thread(inbound_tx, Arc::downgrade(&session))
             .context("Failed to start recv thread")?;
 
@@ -293,7 +299,8 @@ impl Tun {
             luid,
             state: Some(TunState {
                 session,
-                outbound_tx: PollSender::new(outbound_tx),
+                outbound_tx,
+                outbound_waker,
                 inbound_rx,
             }),
             send_thread: Some(send_thread),
@@ -325,36 +332,44 @@ impl tun::Tun for Tun {
         TUNNEL_NAME
     }
 
-    /// Check if more packets can be sent.
-    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        ready!(
-            self.state
-                .as_mut()
-                .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Internal state gone"))?
-                .outbound_tx
-                .poll_reserve(cx)
-                .map_err(io::Error::other)?
-        );
-
-        Poll::Ready(Ok(()))
-    }
-
-    /// Send a packet.
-    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
-        self.state
+    fn poll_send_many(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut Vec<IpPacket>,
+    ) -> Poll<io::Result<usize>> {
+        let state = self
+            .state
             .as_mut()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Internal state gone"))?
-            .outbound_tx
-            .send_item(packet)
-            .map_err(io::Error::other)?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Internal state gone"))?;
 
-        Ok(())
+        let num_packets = buf.len();
+
+        let permits = match state.outbound_tx.try_reserve_many(num_packets) {
+            Ok(permits) => permits,
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "Outbound channel closed",
+                )));
+            }
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                state.outbound_waker.register(cx.waker());
+                return Poll::Pending;
+            }
+        };
+
+        for (permit, packet) in permits.zip(buf.drain(..num_packets)) {
+            permit.send(packet);
+        }
+
+        Poll::Ready(Ok(num_packets))
     }
 }
 
 // Moves packets from Internet towards the user
 fn start_send_thread(
     mut packet_rx: mpsc::Receiver<IpPacket>,
+    waker: Arc<AtomicWaker>,
     session: Weak<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     // See <https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->.
@@ -362,48 +377,57 @@ fn start_send_thread(
 
     std::thread::Builder::new()
         .name("TUN send".into())
-        .spawn(move || loop {
-            let Some(packet) = packet_rx.blocking_recv() else {
-                tracing::debug!(
-                    "Stopping TUN send worker thread because the packet channel closed"
-                );
-                break;
-            };
-
-            let bytes = packet.packet();
-
-            let Ok(len) = bytes.len().try_into() else {
-                tracing::warn!("Packet too large; length does not fit into u16");
-                continue;
-            };
+        .spawn(move || {
+            let mut buffer = Vec::with_capacity(100);
 
             loop {
-                let Some(session) = session.upgrade() else {
+                let num_packets = packet_rx.blocking_recv_many(&mut buffer, 100);
+
+                if num_packets == 0 {
                     tracing::debug!(
-                        "Stopping TUN send worker thread because the `wintun::Session` was dropped"
+                        "Stopping TUN send worker thread because the packet channel closed"
                     );
-                    return;
-                };
+                    break;
+                }
 
-                match session.allocate_send_packet(len) {
-                    Ok(mut pkt) => {
-                        pkt.bytes_mut().copy_from_slice(bytes);
-                        // `send_packet` cannot fail to enqueue the packet, since we already allocated
-                        // space in the ring buffer.
-                        session.send_packet(pkt);
+                for packet in buffer.drain(..num_packets) {
+                    let bytes = packet.packet();
 
-                        break;
-                    }
-                    Err(wintun::Error::Io(e))
-                        if e.raw_os_error()
-                            .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
-                    {
-                        tracing::debug!("WinTUN ring buffer is full");
-                        std::thread::sleep(Duration::from_millis(10)); // Suspend for a bit to avoid busy-looping.
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to allocate WinTUN packet: {e}");
-                        break;
+                    let Ok(len) = bytes.len().try_into() else {
+                        tracing::warn!("Packet too large; length does not fit into u16");
+                        continue;
+                    };
+
+                    loop {
+                        let Some(session) = session.upgrade() else {
+                            tracing::debug!(
+                                "Stopping TUN send worker thread because the `wintun::Session` was dropped"
+                            );
+                            return;
+                        };
+
+                        match session.allocate_send_packet(len) {
+                            Ok(mut pkt) => {
+                                pkt.bytes_mut().copy_from_slice(bytes);
+                                // `send_packet` cannot fail to enqueue the packet, since we already allocated
+                                // space in the ring buffer.
+                                session.send_packet(pkt);
+                                waker.wake();
+
+                                break;
+                            }
+                            Err(wintun::Error::Io(e))
+                                if e.raw_os_error()
+                                    .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
+                            {
+                                tracing::debug!("WinTUN ring buffer is full");
+                                std::thread::sleep(Duration::from_millis(10)); // Suspend for a bit to avoid busy-looping.
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to allocate WinTUN packet: {e}");
+                                break;
+                            }
+                        }
                     }
                 }
             }
