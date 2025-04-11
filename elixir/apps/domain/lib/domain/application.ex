@@ -41,7 +41,7 @@ defmodule Domain.Application do
     ]
   end
 
-  defp configure_logger_json do
+  defp configure_logger do
     # Configure Logger severity at runtime
     :ok = LoggerJSON.configure_log_level_from_env!("LOG_LEVEL")
 
