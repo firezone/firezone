@@ -8,7 +8,7 @@ use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
 use std::net::IpAddr;
-use std::sync::{Arc, Weak};
+use std::sync::Weak;
 use std::task::ready;
 use std::time::{Duration, Instant};
 use std::{
