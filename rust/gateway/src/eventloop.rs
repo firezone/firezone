@@ -119,8 +119,6 @@ impl Eventloop {
 
                     let e = anyhow::Error::from(e);
 
-                    tracing::warn!("{e:#}");
-
                     if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
                         // Some IP packets cannot be translated and should be dropped "silently".
                         // Do so by ignoring the error here.
