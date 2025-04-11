@@ -67,6 +67,21 @@ impl Device {
             return Poll::Pending;
         };
 
+        for packet in buf.iter() {
+            if tracing::event_enabled!(target: "wire::dns::res", Level::TRACE) {
+                if let Some(response) = parse_dns_response(packet) {
+                    tracing::trace!(target: "wire::dns::res", ?response);
+                }
+            }
+
+            tracing::trace!(target: "wire::dev::send", ?packet);
+
+            debug_assert!(
+                !packet.is_fz_p2p_control(),
+                "FZ p2p control protocol packets should never leave `connlib`"
+            );
+        }
+
         tun.poll_send_many(cx, buf)
     }
 }
@@ -78,4 +93,13 @@ fn parse_dns_query(packet: &IpPacket) -> Option<dns_types::Query> {
     }
 
     dns_types::Query::parse(udp.payload()).ok()
+}
+
+fn parse_dns_response(packet: &IpPacket) -> Option<dns_types::Response> {
+    let udp = packet.as_udp()?;
+    if udp.source_port() != crate::dns::DNS_PORT {
+        return None;
+    }
+
+    dns_types::Response::parse(udp.payload()).ok()
 }
