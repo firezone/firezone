@@ -257,12 +257,19 @@ impl Io {
             self.sockets.send(datagram)?;
         }
 
-        if self
-            .tun
-            .poll_send_many(cx, &mut self.outbound_packet_buffer)
-            .is_pending()
-        {
-            any_pending = true;
+        if !self.outbound_packet_buffer.is_empty() {
+            let poll_result = self
+                .tun
+                .poll_send_many(cx, &mut self.outbound_packet_buffer);
+
+            match poll_result {
+                Poll::Ready(res) => {
+                    res?;
+                }
+                Poll::Pending => {
+                    any_pending = true;
+                }
+            };
         }
 
         if any_pending {
