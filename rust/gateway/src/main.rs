@@ -9,6 +9,7 @@ use firezone_bin_shared::{
 
 use firezone_telemetry::Telemetry;
 use firezone_tunnel::GatewayTunnel;
+use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
 
@@ -99,6 +100,14 @@ fn has_necessary_permissions() -> bool {
 async fn try_main(cli: Cli) -> Result<ExitCode> {
     firezone_logging::setup_global_subscriber(layer::Identity::default())
         .context("Failed to set up logging")?;
+
+    if cli.metrics {
+        let exporter = opentelemetry_stdout::MetricsExporter::default();
+        let reader = PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio).build();
+        let provider = SdkMeterProvider::builder().with_reader(reader).build();
+
+        opentelemetry::global::set_meter_provider(provider);
+    }
 
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
@@ -235,6 +244,10 @@ struct Cli {
     /// How many threads to use for reading and writing to the TUN device.
     #[arg(long, env = "FIREZONE_NUM_TUN_THREADS", default_value_t = 2)]
     tun_threads: usize,
+
+    /// Dump internal metrics to stdout every 60s.
+    #[arg(long, env = "FIREZONE_METRICS", default_value_t = false)]
+    metrics: bool,
 }
 
 impl Cli {
