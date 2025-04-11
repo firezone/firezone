@@ -108,8 +108,7 @@ jobs:
         if: "${{ github.job_name == 'build-macos-standalone' }}"
         with:
           name: ${{ matrix.artifact-file }}
-          path: |
-            "${{ runner.temp }}/${{ matrix.artifact-file }}"
+          path: "${{ runner.temp }}/${{ matrix.artifact-file }}"
       - run: ${{ matrix.upload-script }}
         if: "${{ github.event_name == 'workflow_dispatch' }}"
         env:
