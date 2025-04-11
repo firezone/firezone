@@ -46,9 +46,6 @@ pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
     socket.set_nonblocking(true)?;
     socket.bind(&addr)?;
 
-    socket.set_send_buffer_size(10 * 1024 * 1024)?;
-    socket.set_recv_buffer_size(10 * 1024 * 1024)?;
-
     let send_buf_size = socket.send_buffer_size()?;
     let recv_buf_size = socket.recv_buffer_size()?;
 
