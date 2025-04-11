@@ -226,7 +226,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
   defp fetch_latest_access_token(provider) do
     access_token = provider.adapter_state["access_token"]
 
-    if is_access_token_active?(access_token) do
+    if access_token_active?(access_token) do
       access_token
     else
       # Fetch provider from DB and return latest access token
@@ -235,17 +235,17 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     end
   end
 
-  defp is_access_token_active?(nil) do
+  defp access_token_active?(nil) do
     Logger.info("JWT is nil")
     false
   end
 
-  defp is_access_token_active?("") do
+  defp access_token_active?("") do
     Logger.info("JWT is empty")
     false
   end
 
-  defp is_access_token_active?(token) when is_binary(token) do
+  defp access_token_active?(token) when is_binary(token) do
     current_time = DateTime.utc_now()
 
     with jwt <- JOSE.JWT.peek(token),
