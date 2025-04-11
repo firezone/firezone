@@ -3,11 +3,12 @@ use crate::windows::TUNNEL_UUID;
 use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
 use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
+use futures::task::AtomicWaker;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
 use std::net::IpAddr;
-use std::sync::Weak;
+use std::sync::{Arc, Weak};
 use std::task::ready;
 use std::time::{Duration, Instant};
 use std::{
@@ -206,7 +207,8 @@ pub struct Tun {
 struct TunState {
     session: Arc<wintun::Session>,
 
-    outbound_tx: PollSender<IpPacket>,
+    outbound_tx: mpsc::Sender<IpPacket>,
+    outbound_waker: Arc<AtomicWaker>,
     inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
@@ -283,7 +285,9 @@ impl Tun {
         );
         let (outbound_tx, outbound_rx) = mpsc::channel(1000);
         let (inbound_tx, inbound_rx) = mpsc::channel(1000); // We want to be able to batch-receive from this.
-        let send_thread = start_send_thread(outbound_rx, Arc::downgrade(&session))
+        let outbound_waker = Arc::new(AtomicWaker::default());
+
+        let send_thread = start_send_thread(outbound_rx, outbound_waker, Arc::downgrade(&session))
             .context("Failed to start send thread")?;
         let recv_thread = start_recv_thread(inbound_tx, Arc::downgrade(&session))
             .context("Failed to start recv thread")?;
@@ -293,7 +297,7 @@ impl Tun {
             luid,
             state: Some(TunState {
                 session,
-                outbound_tx: PollSender::new(outbound_tx),
+                outbound_tx,
                 inbound_rx,
             }),
             send_thread: Some(send_thread),
@@ -325,36 +329,44 @@ impl tun::Tun for Tun {
         TUNNEL_NAME
     }
 
-    /// Check if more packets can be sent.
-    fn poll_send_ready(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        ready!(
-            self.state
-                .as_mut()
-                .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Internal state gone"))?
-                .outbound_tx
-                .poll_reserve(cx)
-                .map_err(io::Error::other)?
-        );
-
-        Poll::Ready(Ok(()))
-    }
-
-    /// Send a packet.
-    fn send(&mut self, packet: IpPacket) -> io::Result<()> {
-        self.state
+    fn poll_send_many(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut Vec<IpPacket>,
+    ) -> Poll<io::Result<usize>> {
+        let state = self
+            .state
             .as_mut()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Internal state gone"))?
-            .outbound_tx
-            .send_item(packet)
-            .map_err(io::Error::other)?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Internal state gone"))?;
 
-        Ok(())
+        let num_packets = buf.len();
+
+        let permits = match state.outbound_tx.try_reserve_many(num_packets) {
+            Ok(permits) => permits,
+            Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "Outbound channel closed",
+                )));
+            }
+            Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                state.outbound_waker.register(cx.waker());
+                return Poll::Pending;
+            }
+        };
+
+        for (permit, packet) in permits.zip(buf.drain(..num_packets)) {
+            permit.send(packet);
+        }
+
+        Poll::Ready(Ok(num_packets))
     }
 }
 
 // Moves packets from Internet towards the user
 fn start_send_thread(
     mut packet_rx: mpsc::Receiver<IpPacket>,
+    waker: Arc<AtomicWaker>,
     session: Weak<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     // See <https://learn.microsoft.com/en-us/windows/win32/debug/system-error-codes--0-499->.
@@ -391,6 +403,7 @@ fn start_send_thread(
                         // `send_packet` cannot fail to enqueue the packet, since we already allocated
                         // space in the ring buffer.
                         session.send_packet(pkt);
+                        waker.wake();
 
                         break;
                     }
