@@ -274,12 +274,10 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
   end
 
   defp parse_jwt(token) do
-    try do
-      {:ok, JOSE.JWT.peek(token)}
-    rescue
-      ArgumentError -> {:error, "Could not parse token"}
-      Jason.DecodeError -> {:error, "Could not decode token json"}
-      _ -> {:error, "Unknown error while parsing jwt"}
-    end
+    {:ok, JOSE.JWT.peek(token)}
+  rescue
+    ArgumentError -> {:error, "Could not parse token"}
+    Jason.DecodeError -> {:error, "Could not decode token json"}
+    _ -> {:error, "Unknown error while parsing jwt"}
   end
 end
