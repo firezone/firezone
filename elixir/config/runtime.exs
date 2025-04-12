@@ -209,14 +209,6 @@ if config_env() == :prod do
   ##### Third-party configs #####
   ###############################
 
-  if logger_formatter = compile_config!(:logger_formatter) do
-    logger_formatter_opts =
-      compile_config!(:logger_formatter_opts) ++
-        [metadata: {:all_except, [:socket, :conn, :otel_trace_flags]}]
-
-    config :logger, :default_handler, formatter: {logger_formatter, logger_formatter_opts}
-  end
-
   if System.get_env("OTLP_ENDPOINT") do
     config :opentelemetry, resource_detectors: [:otel_resource_env_var, :otel_resource_app_env]
 

@@ -68,6 +68,7 @@ defmodule Web.MixProject do
       {:nimble_options, "~> 1.0", override: true},
       {:sentry, "~> 10.0"},
       {:hackney, "~> 1.19"},
+      {:logger_json, "~> 7.0"},
 
       # Other deps
       {:jason, "~> 1.2"},
