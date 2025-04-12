@@ -8,7 +8,14 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        {os === OS.Linux && (
+          <ChangeItem pull="8754">
+            Fixes a performance regression that could lead to packet drops under
+            high load.
+          </ChangeItem>
+        )}
+      </Unreleased>
       <Entry version="1.4.9" date={new Date("2025-03-14")}>
         {os === OS.Windows && (
           <ChangeItem pull="8422">

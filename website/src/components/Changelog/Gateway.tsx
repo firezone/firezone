@@ -26,6 +26,10 @@ export default function Gateway() {
         <ChangeItem pull="8383">
           Deprecates the NAT64 functionality in favor of sending ICMP errors.
         </ChangeItem>
+        <ChangeItem pull="8754">
+          Fixes a performance regression that could lead to packet drops under
+          high load.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.5" date={new Date("2025-03-10")}>
         <ChangeItem pull="8124">
