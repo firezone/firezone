@@ -125,9 +125,7 @@ defmodule Domain.Config.Definitions do
          :instrumentation_client_logs_enabled,
          :instrumentation_client_logs_bucket,
          :telemetry_metrics_reporter,
-         :telemetry_metrics_reporter_opts,
-         :logger_formatter,
-         :logger_formatter_opts
+         :telemetry_metrics_reporter_opts
        ]},
       {"Analytics",
        [

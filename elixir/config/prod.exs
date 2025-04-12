@@ -52,7 +52,7 @@ config :logger,
   handle_otp_reports: true
 
 config :logger_json, :config,
-  metadata: {:all_except, [:socket, :conn]},
+  metadata: {:all_except, [:socket, :conn, :otel_trace_flags]},
   redactors: [
     {LoggerJSON.Redactors.RedactKeys, secret_keys}
   ]
