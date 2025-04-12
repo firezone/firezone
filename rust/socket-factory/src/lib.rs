@@ -305,9 +305,11 @@ impl UdpSocket {
 
         match transmit.segment_size {
             Some(segment_size) => {
+                let chunk_size = self.calculate_chunk_size(segment_size);
+
                 for transmit in transmit
                     .contents
-                    .chunks(segment_size * self.state.max_gso_segments())
+                    .chunks(chunk_size)
                     .map(|contents| Transmit {
                         destination: transmit.destination,
                         ecn: transmit.ecn,
@@ -337,6 +339,20 @@ impl UdpSocket {
         }
 
         Ok(())
+    }
+
+    /// Calculate the chunk size for a given segment size.
+    ///
+    /// At most, a UDP packet passed to the kernel can be 65535 (`u16::MAX`) bytes.
+    /// In case GSO is not supported at all by the kernel, `quinn_udp` will detect this and set `max_gso_segments` to 1.
+    /// We need to honor both of these constraints when calculating the chunk size.
+    fn calculate_chunk_size(&self, segment_size: usize) -> usize {
+        let max_segments_by_config = self.state.max_gso_segments();
+        let max_segments_by_size = u16::MAX as usize / segment_size;
+
+        let max_segments = std::cmp::min(max_segments_by_config, max_segments_by_size);
+
+        segment_size * max_segments
     }
 
     /// Performs a single request-response handshake with the specified destination socket address.
