@@ -51,13 +51,11 @@ config :logger,
   handle_sasl_reports: false,
   handle_otp_reports: true
 
-config :logger, :default_handler,
-  formatter:
-    {LoggerJSON.Formatters.GoogleCloud,
-     metadata: {:all_except, [:socket, :conn]},
-     redactors: [
-       {LoggerJSON.Redactors.RedactKeys, secret_keys}
-     ]}
+config :logger_json, :config,
+  metadata: {:all_except, [:socket, :conn, :otel_trace_flags]},
+  redactors: [
+    {LoggerJSON.Redactors.RedactKeys, secret_keys}
+  ]
 
 config :logger, level: :info
 

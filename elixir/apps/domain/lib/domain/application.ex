@@ -2,20 +2,10 @@ defmodule Domain.Application do
   use Application
 
   def start(_type, _args) do
-    # Configure Logger severity at runtime
-    :ok = LoggerJSON.configure_log_level_from_env!("LOG_LEVEL")
+    configure_logger()
 
     _ = OpentelemetryLoggerMetadata.setup()
     _ = OpentelemetryEcto.setup([:domain, :repo])
-
-    # Configure Sentry to capture Logger messages
-    :logger.add_handler(:sentry, Sentry.LoggerHandler, %{
-      config: %{
-        level: :warning,
-        metadata: :all,
-        capture_log_messages: true
-      }
-    })
 
     # Can be uncommented when this bug is fixed: https://github.com/open-telemetry/opentelemetry-erlang-contrib/issues/327
     # _ = OpentelemetryFinch.setup()
@@ -49,5 +39,24 @@ defmodule Domain.Application do
       # Observability
       Domain.Telemetry
     ]
+  end
+
+  defp configure_logger do
+    # Configure Logger severity at runtime
+    :ok = LoggerJSON.configure_log_level_from_env!("LOG_LEVEL")
+
+    if config = Application.get_env(:logger_json, :config) do
+      formatter = LoggerJSON.Formatters.GoogleCloud.new(config)
+      :logger.update_handler_config(:default, :formatter, formatter)
+    end
+
+    # Configure Sentry to capture Logger messages
+    :logger.add_handler(:sentry, Sentry.LoggerHandler, %{
+      config: %{
+        level: :warning,
+        metadata: :all,
+        capture_log_messages: true
+      }
+    })
   end
 end

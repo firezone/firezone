@@ -55,6 +55,7 @@ defmodule API.MixProject do
       {:opentelemetry_phoenix, "~> 2.0"},
       {:sentry, "~> 10.0"},
       {:hackney, "~> 1.19"},
+      {:logger_json, "~> 7.0"},
 
       # Other deps
       {:jason, "~> 1.2"},
