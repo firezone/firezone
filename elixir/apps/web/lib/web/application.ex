@@ -24,8 +24,7 @@ defmodule Web.Application do
   end
 
   defp configure_logger do
-    if Mix.env() == :prod do
-      config = Application.get_env(:logger_json, :config)
+    if config = Application.get_env(:logger_json, :config) do
       formatter = LoggerJSON.Formatters.GoogleCloud.new(config)
       :logger.update_handler_config(:default, :formatter, formatter)
     end

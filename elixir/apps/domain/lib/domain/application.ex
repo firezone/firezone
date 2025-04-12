@@ -45,8 +45,7 @@ defmodule Domain.Application do
     # Configure Logger severity at runtime
     :ok = LoggerJSON.configure_log_level_from_env!("LOG_LEVEL")
 
-    if Mix.env() == :prod do
-      config = Application.get_env(:logger_json, :config)
+    if config = Application.get_env(:logger_json, :config) do
       formatter = LoggerJSON.Formatters.GoogleCloud.new(config)
       :logger.update_handler_config(:default, :formatter, formatter)
     end
