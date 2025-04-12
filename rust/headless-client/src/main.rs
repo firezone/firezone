@@ -16,6 +16,7 @@ use firezone_headless_client::{
 use firezone_logging::telemetry_span;
 use firezone_telemetry::Telemetry;
 use futures::StreamExt as _;
+use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
 use phoenix_channel::get_user_agent;
@@ -84,6 +85,10 @@ struct Cli {
     /// Disable sentry.io crash-reporting agent.
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
+
+    /// Dump internal metrics to stdout every 60s.
+    #[arg(long, env = "FIREZONE_METRICS", default_value_t = false)]
+    metrics: bool,
 
     /// A filesystem path where the token can be found
     // Apparently passing secrets through stdin is the most secure method, but
@@ -200,6 +205,15 @@ fn main() -> Result<()> {
     let mut last_connlib_start_instant = Some(Instant::now());
 
     rt.block_on(async {
+        if cli.metrics {
+            let exporter = opentelemetry_stdout::MetricsExporter::default();
+            let reader =
+                PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio).build();
+            let provider = SdkMeterProvider::builder().with_reader(reader).build();
+
+            opentelemetry::global::set_meter_provider(provider);
+        }
+
         let connect_span = telemetry_span!("connect_to_firezone").entered();
 
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
