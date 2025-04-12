@@ -36,6 +36,8 @@ defmodule Firezone.MixProject do
     [
       # Shared deps
       {:jason, "~> 1.2"},
+      {:sentry, "~> 10.0"},
+      {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},
 
       # Shared test deps

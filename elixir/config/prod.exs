@@ -1,6 +1,32 @@
 import Config
 
-logger_secret_keys = [
+###############################
+##### Domain ##################
+###############################
+
+config :domain, Domain.Repo,
+  pool_size: 10,
+  show_sensitive_data_on_connection_error: false
+
+###############################
+##### Web #####################
+###############################
+
+config :web, Web.Endpoint,
+  cache_static_manifest: "priv/static/cache_manifest.json",
+  server: true
+
+###############################
+##### API #####################
+###############################
+
+config :api, API.Endpoint, server: true
+
+###############################
+##### Third-party configs #####
+###############################
+
+secret_keys = [
   "password",
   "secret",
   "nonce",
@@ -14,51 +40,7 @@ logger_secret_keys = [
   "sessions"
 ]
 
-###############################
-##### Domain ##################
-###############################
-
-config :domain, Domain.Repo,
-  pool_size: 10,
-  show_sensitive_data_on_connection_error: false
-
-config :domain, :logger_json,
-  metadata: {:all_except, [:socket, :conn]},
-  redactors: [
-    {LoggerJSON.Redactors.RedactKeys, logger_secret_keys}
-  ]
-
-###############################
-##### Web #####################
-###############################
-
-config :web, Web.Endpoint,
-  cache_static_manifest: "priv/static/cache_manifest.json",
-  server: true
-
-config :web, :logger_json,
-  metadata: {:all_except, [:socket, :conn]},
-  redactors: [
-    {LoggerJSON.Redactors.RedactKeys, logger_secret_keys}
-  ]
-
-###############################
-##### API #####################
-###############################
-
-config :api, API.Endpoint, server: true
-
-config :api, :logger_json,
-  metadata: {:all_except, [:socket, :conn]},
-  redactors: [
-    {LoggerJSON.Redactors.RedactKeys, logger_secret_keys}
-  ]
-
-###############################
-##### Third-party configs #####
-###############################
-
-config :phoenix, :filter_parameters, logger_secret_keys
+config :phoenix, :filter_parameters, secret_keys
 
 # Do not print debug messages in production and handle all
 # other reports by Elixir Logger with JSON back-end so that.
@@ -68,6 +50,12 @@ config :phoenix, :filter_parameters, logger_secret_keys
 config :logger,
   handle_sasl_reports: false,
   handle_otp_reports: true
+
+config :logger_json, :config,
+  metadata: {:all_except, [:socket, :conn]},
+  redactors: [
+    {LoggerJSON.Redactors.RedactKeys, secret_keys}
+  ]
 
 config :logger, level: :info
 
