@@ -31,6 +31,7 @@ mod expiring_map;
 mod gateway;
 mod io;
 pub mod messages;
+mod otel;
 mod p2p_control;
 mod peer;
 mod peer_store;
@@ -84,6 +85,8 @@ pub struct Tunnel<TRoleState> {
     /// Handles all side-effects.
     io: Io,
     buffers: Buffers,
+
+    packet_counter: opentelemetry::metrics::Counter<u64>,
 }
 
 impl<TRoleState> Tunnel<TRoleState> {
@@ -117,6 +120,10 @@ impl ClientTunnel {
             ),
             role_state: ClientState::new(rand::random(), Instant::now()),
             buffers: Buffers::default(),
+            packet_counter: opentelemetry::global::meter("connlib")
+                .u64_counter("system.network.packets")
+                .with_description("The number of packets processed.")
+                .init(),
         }
     }
 
@@ -183,6 +190,15 @@ impl ClientTunnel {
                     let now = Instant::now();
 
                     for received in packets {
+                        self.packet_counter.add(
+                            1,
+                            &[
+                                crate::otel::network_peer_port(received.from.port()),
+                                crate::otel::network_transport_udp(),
+                                crate::otel::network_io_direction_receive(),
+                            ],
+                        );
+
                         let Some(packet) = self.role_state.handle_network_input(
                             received.local,
                             received.from,
@@ -232,6 +248,10 @@ impl GatewayTunnel {
             io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
             role_state: GatewayState::new(rand::random(), Instant::now()),
             buffers: Buffers::default(),
+            packet_counter: opentelemetry::global::meter("connlib")
+                .u64_counter("system.network.packets")
+                .with_description("The number of packets processed.")
+                .init(),
         }
     }
 
@@ -306,6 +326,15 @@ impl GatewayTunnel {
                     let utc_now = Utc::now();
 
                     for received in packets {
+                        self.packet_counter.add(
+                            1,
+                            &[
+                                crate::otel::network_peer_port(received.from.port()),
+                                crate::otel::network_transport_udp(),
+                                crate::otel::network_io_direction_receive(),
+                            ],
+                        );
+
                         let Some(packet) = self
                             .role_state
                             .handle_network_input(
