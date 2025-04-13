@@ -8,11 +8,11 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
   # The Finch will timeout requests after 30 seconds,
   # but there are a lot of requests that need to be made
   # so we don't want to limit the timeout here
-  @async_data_fetch_timeout :timer.minutes(30)
+  @async_data_fetch_timeout :timer.hours(4)
 
   # This timeout is used to limit the time spent on a single provider
   # inserting the records into the database
-  @database_operations_timeout :timer.minutes(30)
+  @database_operations_timeout :timer.hours(4)
 
   @provider_sync_timeout @async_data_fetch_timeout + @database_operations_timeout
 
