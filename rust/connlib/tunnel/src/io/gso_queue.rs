@@ -139,7 +139,7 @@ mod tests {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST, b"foobar", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct, now);
         for _entry in send_queue.datagrams() {}
 
         send_queue.handle_timeout(now + Duration::from_secs(60));
@@ -152,7 +152,7 @@ mod tests {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST, b"foobar", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct, now);
 
         send_queue.handle_timeout(now + Duration::from_secs(60));
 
@@ -164,7 +164,7 @@ mod tests {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST, b"foobar", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct, now);
 
         let datagrams = send_queue.datagrams();
         drop(datagrams);
@@ -172,7 +172,7 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 1);
-        assert_eq!(datagrams[0].dst, DST);
+        assert_eq!(datagrams[0].dst, DST_1);
         assert_eq!(datagrams[0].packet.as_ref(), b"foobar");
     }
 
@@ -181,7 +181,7 @@ mod tests {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST, b"foobar", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct, now);
         send_queue.enqueue(None, DST_2, b"bar", Ecn::NonEct, now);
 
         // Taking it from the iterator is "sending" ...
@@ -192,6 +192,6 @@ mod tests {
         }
     }
 
-    const DST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1234));
-    const DST_2: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 5678));
+    const DST_1: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
+    const DST_2: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 2222));
 }
