@@ -209,6 +209,7 @@ ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "mas
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.26" } # Waiting for release.
 softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
+quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
