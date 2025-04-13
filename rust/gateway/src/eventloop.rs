@@ -4,7 +4,7 @@ use boringtun::x25519::PublicKey;
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use dns_types::DomainName;
 use firezone_bin_shared::TunDeviceManager;
-use firezone_logging::{telemetry_event, telemetry_span};
+use firezone_logging::telemetry_span;
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
@@ -94,28 +94,23 @@ impl Eventloop {
                     self.handle_tunnel_event(event);
                     continue;
                 }
-                Poll::Ready(Err(e))
+                Poll::Ready(Err(e)) => {
                     if e.kind() == io::ErrorKind::NetworkUnreachable
-                        || e.kind() == io::ErrorKind::HostUnreachable =>
-                {
-                    // Network unreachable most likely means we don't have IPv4 or IPv6 connectivity.
-                    continue;
-                }
-                Poll::Ready(Err(e)) if e.kind() == io::ErrorKind::PermissionDenied => {
-                    if !mem::replace(&mut self.logged_permission_denied, true) {
-                        tracing::info!(
-                            "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
-                        )
+                        || e.kind() == io::ErrorKind::HostUnreachable
+                    {
+                        // Network unreachable most likely means we don't have IPv4 or IPv6 connectivity.
+                        continue;
                     }
 
-                    continue;
-                }
-                Poll::Ready(Err(e)) => {
-                    debug_assert_ne!(
-                        e.kind(),
-                        io::ErrorKind::WouldBlock,
-                        "Tunnel should never emit WouldBlock errors but suspend instead"
-                    );
+                    if e.kind() == io::ErrorKind::PermissionDenied {
+                        if !mem::replace(&mut self.logged_permission_denied, true) {
+                            tracing::info!(
+                                "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
+                            )
+                        }
+
+                        continue;
+                    }
 
                     let e = anyhow::Error::from(e);
 
@@ -131,7 +126,7 @@ impl Eventloop {
                         return Poll::Ready(Err(Error::NoNameserversAvailable(e)));
                     }
 
-                    telemetry_event!("Tunnel error: {e:#}");
+                    tracing::warn!("Tunnel error: {e:#}");
                     continue;
                 }
                 Poll::Pending => {}
