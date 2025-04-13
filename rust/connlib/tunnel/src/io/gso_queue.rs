@@ -117,7 +117,7 @@ impl GsoQueue {
 
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
 struct Key {
-    segment_size: usize,
+    segment_size: usize, // `segment_size` coems first to ensure that the datagrams are flushed to the socket in ascending order.
     src: Option<SocketAddr>,
     dst: SocketAddr,
 }
