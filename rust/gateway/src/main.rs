@@ -16,10 +16,10 @@ use phoenix_channel::get_user_agent;
 use futures::{TryFutureExt, future};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
-use std::pin::pin;
-use std::process::ExitCode;
 use std::sync::Arc;
 use std::{collections::BTreeSet, path::Path};
+use std::{fmt, pin::pin};
+use std::{process::ExitCode, str::FromStr};
 use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
 use tracing_subscriber::layer;
@@ -150,7 +150,7 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
     )
     .context("Failed to resolve portal URL")?;
 
-    let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, cli.tun_threads)
+    let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, cli.tun_threads.0)
         .context("Failed to create TUN device manager")?;
     let tun = tun_device_manager
         .make_tun()
@@ -242,8 +242,8 @@ struct Cli {
     pub firezone_id: Option<String>,
 
     /// How many threads to use for reading and writing to the TUN device.
-    #[arg(long, env = "FIREZONE_NUM_TUN_THREADS", default_value_t = 2)]
-    tun_threads: usize,
+    #[arg(long, env = "FIREZONE_NUM_TUN_THREADS", default_value_t)]
+    tun_threads: NumThreads,
 
     /// Dump internal metrics to stdout every 60s.
     #[arg(long, env = "FIREZONE_METRICS", default_value_t = false)]
@@ -253,5 +253,32 @@ struct Cli {
 impl Cli {
     fn is_telemetry_allowed(&self) -> bool {
         !self.no_telemetry
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct NumThreads(pub usize);
+
+impl Default for NumThreads {
+    fn default() -> Self {
+        if num_cpus::get() < 2 {
+            return Self(1);
+        }
+
+        Self(2)
+    }
+}
+
+impl fmt::Display for NumThreads {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl FromStr for NumThreads {
+    type Err = <usize as FromStr>::Err;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(Self(s.parse()?))
     }
 }

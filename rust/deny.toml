@@ -241,6 +241,7 @@ skip = [
   "getrandom",
   "hashbrown",
   "heck",
+  "hermit-abi",
   "indexmap",
   "itertools",
   "itoa",

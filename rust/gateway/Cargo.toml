@@ -28,6 +28,7 @@ ip_network = { workspace = true }
 libc = { workspace = true, features = ["std", "const-extern-fn", "extra_traits"] }
 moka = { workspace = true, features = ["future"] }
 nix = { workspace = true }
+num_cpus = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }
 opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
