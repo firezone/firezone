@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
@@ -19,7 +19,7 @@ const MAX_SEGMENT_SIZE: usize =
 /// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
 /// The buffer is then flushed using GSO in a single syscall.
 pub struct GsoQueue {
-    inner: HashMap<Key, DatagramBuffer>,
+    inner: BTreeMap<Key, DatagramBuffer>,
     buffer_pool: Arc<lockfree_object_pool::SpinLockObjectPool<BytesMut>>,
 }
 
@@ -117,9 +117,9 @@ impl GsoQueue {
 
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
 struct Key {
+    segment_size: usize,
     src: Option<SocketAddr>,
     dst: SocketAddr,
-    segment_size: usize,
 }
 
 struct DatagramBuffer {
