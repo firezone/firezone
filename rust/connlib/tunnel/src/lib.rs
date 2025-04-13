@@ -306,11 +306,7 @@ impl GatewayTunnel {
                     for packet in packets {
                         let ecn = packet.ecn();
 
-                        let Some(packet) = self
-                            .role_state
-                            .handle_tun_input(packet, now)
-                            .map_err(std::io::Error::other)?
-                        else {
+                        let Some(packet) = self.role_state.handle_tun_input(packet, now)? else {
                             self.role_state.handle_timeout(now, Utc::now());
                             continue;
                         };
@@ -335,15 +331,12 @@ impl GatewayTunnel {
                             ],
                         );
 
-                        let Some(packet) = self
-                            .role_state
-                            .handle_network_input(
-                                received.local,
-                                received.from,
-                                received.packet,
-                                now,
-                            )
-                            .map_err(std::io::Error::other)?
+                        let Some(packet) = self.role_state.handle_network_input(
+                            received.local,
+                            received.from,
+                            received.packet,
+                            now,
+                        )?
                         else {
                             self.role_state.handle_timeout(now, utc_now);
                             continue;
