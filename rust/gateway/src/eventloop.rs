@@ -94,23 +94,24 @@ impl Eventloop {
                     self.handle_tunnel_event(event);
                     continue;
                 }
-                Poll::Ready(Err(e))
+                Poll::Ready(Err(e)) => {
                     if e.kind() == io::ErrorKind::NetworkUnreachable
-                        || e.kind() == io::ErrorKind::HostUnreachable =>
-                {
-                    // Network unreachable most likely means we don't have IPv4 or IPv6 connectivity.
-                    continue;
-                }
-                Poll::Ready(Err(e)) if e.kind() == io::ErrorKind::PermissionDenied => {
-                    if !mem::replace(&mut self.logged_permission_denied, true) {
-                        tracing::info!(
-                            "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
-                        )
+                        || e.kind() == io::ErrorKind::HostUnreachable
+                    {
+                        // Network unreachable most likely means we don't have IPv4 or IPv6 connectivity.
+                        continue;
                     }
 
-                    continue;
-                }
-                Poll::Ready(Err(e)) => {
+                    if e.kind() == io::ErrorKind::PermissionDenied {
+                        if !mem::replace(&mut self.logged_permission_denied, true) {
+                            tracing::info!(
+                                "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
+                            )
+                        }
+
+                        continue;
+                    }
+
                     let e = anyhow::Error::from(e);
 
                     if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
