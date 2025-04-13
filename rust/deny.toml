@@ -264,7 +264,6 @@ skip = [
   "regex-syntax",
   "syn",
   "sync_wrapper",
-  "tauri-winrt-notification",
   "thiserror",
   "thiserror-impl",
   "toml_edit",
