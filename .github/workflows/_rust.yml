@@ -71,7 +71,7 @@ jobs:
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.packages }}
         name: "cargo clippy"
         shell: bash
-      - run: cargo deny check --hide-inclusion-graph
+      - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip
         shell: bash
 
   test:
