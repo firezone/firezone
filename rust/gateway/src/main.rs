@@ -261,6 +261,10 @@ struct NumThreads(pub usize);
 
 impl Default for NumThreads {
     fn default() -> Self {
+        if num_cpus::get() < 2 {
+            return Self(1);
+        }
+
         Self(2)
     }
 }
