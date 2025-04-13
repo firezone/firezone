@@ -30,6 +30,10 @@ export default function Gateway() {
           Fixes a performance regression that could lead to packet drops under
           high load.
         </ChangeItem>
+        <ChangeItem pull="8765">
+          Improves performance by defaulting to only 1 TUN thread on single-core
+          systems.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.5" date={new Date("2025-03-10")}>
         <ChangeItem pull="8124">
