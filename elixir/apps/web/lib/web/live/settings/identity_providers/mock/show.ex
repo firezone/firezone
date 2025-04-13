@@ -177,7 +177,7 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
                   class="w-fit p-3 mt-2 border-l-4 border-red-500 bg-red-100 rounded-md"
                 >
                   <p class="font-medium text-red-700">
-                    IdP provider reported an error during the last sync:
+                    The identity provider reported an error during the last sync:
                   </p>
                   <div class="flex items-center mt-1">
                     <span class="text-red-500 font-mono">{@provider.last_sync_error}</span>

@@ -7,6 +7,14 @@ defmodule Domain.Auth.Provider.Changeset do
   @update_fields ~w[name adapter_config
                     last_syncs_failed last_sync_error sync_disabled_at sync_error_emailed_at
                     adapter_state provisioner disabled_at deleted_at]a
+  @sync_started_fields ~w[
+    user_delta_sync_started_at group_delta_sync_started_at member_delta_sync_started_at
+    user_full_sync_started_at group_full_sync_started_at member_full_sync_started_at
+  ]a
+  @sync_finished_fields ~w[
+    user_delta_sync_finished_at group_delta_sync_finished_at member_delta_sync_finished_at
+    user_full_sync_finished_at group_full_sync_finished_at member_full_sync_finished_at
+  ]
   @required_fields ~w[name adapter adapter_config provisioner]a
 
   def create(account, attrs, %Subject{} = subject) do
@@ -43,10 +51,21 @@ defmodule Domain.Auth.Provider.Changeset do
     |> changeset()
   end
 
-  def sync_finished(%Provider{} = provider) do
+  def sync_started(%Provider{} = provider, field) when field in @sync_started_fields do
     provider
     |> change()
-    |> put_change(:last_synced_at, DateTime.utc_now())
+    |> put_change(field, DateTime.utc_now())
+  end
+
+  def sync_finished(%Provider{} = provider, field) when field in @sync_finished_fields do
+    provider
+    |> change()
+    |> put_change(field, DateTime.utc_now())
+    |> reset_sync_error_fields()
+  end
+
+  defp reset_sync_error_fields(changeset) do
+    changeset
     |> put_change(:last_syncs_failed, 0)
     |> put_change(:sync_disabled_at, nil)
     |> put_change(:sync_error_emailed_at, nil)
@@ -57,7 +76,6 @@ defmodule Domain.Auth.Provider.Changeset do
 
     provider
     |> change()
-    |> put_change(:last_synced_at, nil)
     |> put_change(:last_sync_error, error)
     |> put_change(:last_syncs_failed, last_syncs_failed + 1)
   end

@@ -630,7 +630,6 @@ defmodule Domain.Repo.Seeds do
     |> Repo.update!()
 
     oidc_provider
-    |> Ecto.Changeset.change(last_synced_at: DateTime.utc_now())
     |> Repo.update!()
 
     for name <- [

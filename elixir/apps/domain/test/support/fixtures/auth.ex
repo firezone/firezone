@@ -389,7 +389,9 @@ defmodule Domain.Fixtures.Auth do
 
   def finish_provider_sync(provider) do
     update!(provider,
-      last_synced_at: DateTime.utc_now(),
+      group_full_sync_finished_at: DateTime.utc_now(),
+      user_full_sync_finished_at: DateTime.utc_now(),
+      member_full_sync_finished_at: DateTime.utc_now(),
       last_sync_error: nil,
       last_syncs_failed: 0
     )

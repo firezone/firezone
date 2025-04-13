@@ -241,6 +241,13 @@ defmodule Domain.Auth do
     end)
   end
 
+  # for sync
+  def update_provider(%Provider{} = provider, attrs) do
+    Provider.Changeset.update(provider, attrs)
+    |> Adapters.provider_changeset()
+    |> Repo.update()
+  end
+
   def disable_provider(%Provider{} = provider, %Subject{} = subject) do
     mutate_provider(provider, subject, fn provider ->
       if other_active_providers_exist?(provider) do
