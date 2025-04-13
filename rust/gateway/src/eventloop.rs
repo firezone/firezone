@@ -4,7 +4,7 @@ use boringtun::x25519::PublicKey;
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use dns_types::DomainName;
 use firezone_bin_shared::TunDeviceManager;
-use firezone_logging::{telemetry_event, telemetry_span};
+use firezone_logging::telemetry_span;
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
@@ -111,12 +111,6 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    debug_assert_ne!(
-                        e.kind(),
-                        io::ErrorKind::WouldBlock,
-                        "Tunnel should never emit WouldBlock errors but suspend instead"
-                    );
-
                     let e = anyhow::Error::from(e);
 
                     if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
@@ -131,7 +125,7 @@ impl Eventloop {
                         return Poll::Ready(Err(Error::NoNameserversAvailable(e)));
                     }
 
-                    telemetry_event!("Tunnel error: {e:#}");
+                    tracing::warn!("Tunnel error: {e:#}");
                     continue;
                 }
                 Poll::Pending => {}

@@ -1,7 +1,6 @@
 use crate::{PHOENIX_TOPIC, callbacks::Callbacks};
 use anyhow::Result;
 use connlib_model::{PublicKey, ResourceId};
-use firezone_logging::{err_with_src, telemetry_event};
 use firezone_tunnel::messages::RelaysPresence;
 use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
@@ -96,12 +95,9 @@ where
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    debug_assert_ne!(
-                        e.kind(),
-                        io::ErrorKind::WouldBlock,
-                        "Tunnel should never emit WouldBlock errors but suspend instead"
-                    );
-                    telemetry_event!("Tunnel error: {}", err_with_src(&e));
+                    let e = anyhow::Error::new(e);
+
+                    tracing::warn!("Tunnel error: {e:#}");
                     continue;
                 }
                 Poll::Pending => {}
