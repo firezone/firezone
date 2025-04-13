@@ -192,6 +192,35 @@ mod tests {
         }
     }
 
+    #[test]
+    fn prioritises_small_packets() {
+        let now = Instant::now();
+        let mut send_queue = GsoQueue::new();
+
+        send_queue.enqueue(
+            None,
+            DST_1,
+            b"foobarfoobarfoobarfoobarfoobarfoobarfoobarfoobar",
+            Ecn::NonEct,
+            now,
+        );
+        send_queue.enqueue(None, DST_2, b"barbaz", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_3, b"barbaz1234", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_4, b"b", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_5, b"barbazfoobafoobarfoobar", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_2, b"baz", Ecn::NonEct, now);
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        let is_sorted = datagrams.is_sorted_by_key(|datagram| datagram.segment_size);
+
+        assert!(is_sorted);
+        assert_eq!(datagrams[0].segment_size, Some(1));
+    }
+
     const DST_1: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
     const DST_2: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 2222));
+    const DST_3: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3333));
+    const DST_4: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 4444));
+    const DST_5: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 5555));
 }
