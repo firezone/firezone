@@ -4,7 +4,7 @@ mod tcp_dns;
 mod udp_dns;
 
 use crate::{device_channel::Device, dns, sockets::Sockets};
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use firezone_logging::{telemetry_event, telemetry_span};
 use futures::FutureExt as _;
 use futures_bounded::FuturesTupleSet;
@@ -168,7 +168,7 @@ impl Io {
         cx: &mut Context<'_>,
         buffers: &'b mut Buffers,
     ) -> Poll<
-        io::Result<
+        Result<
             Input<
                 impl Iterator<Item = IpPacket> + use<'b>,
                 impl Iterator<Item = DatagramIn<'b>> + use<'b>,
@@ -180,9 +180,13 @@ impl Io {
 
         if let Poll::Ready(network) =
             self.sockets
-                .poll_recv_from(&mut buffers.udp4, &mut buffers.udp6, cx)?
+                .poll_recv_from(&mut buffers.udp4, &mut buffers.udp6, cx)
         {
-            return Poll::Ready(Ok(Input::Network(network.filter(is_max_wg_packet_size))));
+            return Poll::Ready(Ok(Input::Network(
+                network
+                    .context("Failed to receive from UDP sockets")?
+                    .filter(is_max_wg_packet_size),
+            )));
         }
 
         if let Poll::Ready(num_packets) =
@@ -213,12 +217,16 @@ impl Io {
             return Poll::Ready(Ok(Input::Device(buffers.ip.drain(..num_packets))));
         }
 
-        if let Poll::Ready(query) = self.udp_dns_server.poll(cx)? {
-            return Poll::Ready(Ok(Input::UdpDnsQuery(query)));
+        if let Poll::Ready(query) = self.udp_dns_server.poll(cx) {
+            return Poll::Ready(Ok(Input::UdpDnsQuery(
+                query.context("Failed to poll UDP DNS server")?,
+            )));
         }
 
-        if let Poll::Ready(query) = self.tcp_dns_server.poll(cx)? {
-            return Poll::Ready(Ok(Input::TcpDnsQuery(query)));
+        if let Poll::Ready(query) = self.tcp_dns_server.poll(cx) {
+            return Poll::Ready(Ok(Input::TcpDnsQuery(
+                query.context("Failed to poll TCP DNS server")?,
+            )));
         }
 
         match self.dns_queries.poll_unpin(cx) {
@@ -266,7 +274,7 @@ impl Io {
         Poll::Pending
     }
 
-    fn flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut datagrams = self.gso_queue.datagrams();
         let mut any_pending = false;
 
@@ -296,7 +304,9 @@ impl Io {
             };
 
             // Third, send the packet.
-            self.tun.send(packet)?;
+            self.tun
+                .send(packet)
+                .context("Failed to send IP packet to TUN device")?;
         }
 
         if any_pending {
@@ -509,7 +519,7 @@ mod tests {
         fn poll_test(
             &mut self,
         ) -> Poll<
-            io::Result<
+            Result<
                 Input<
                     impl Iterator<Item = IpPacket> + use<>,
                     impl Iterator<Item = DatagramIn<'static>> + use<>,

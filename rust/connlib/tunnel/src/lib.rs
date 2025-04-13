@@ -136,7 +136,7 @@ impl ClientTunnel {
         self.io.reset();
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<ClientEvent>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
@@ -259,7 +259,7 @@ impl GatewayTunnel {
         self.role_state.public_key()
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<GatewayEvent>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 

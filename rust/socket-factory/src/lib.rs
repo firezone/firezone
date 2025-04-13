@@ -1,3 +1,4 @@
+use anyhow::{Context as _, Result};
 use bytes::Buf as _;
 use firezone_logging::err_with_src;
 use ip_packet::Ecn;
@@ -215,7 +216,7 @@ impl UdpSocket {
         &self,
         buffer: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>> + fmt::Debug + use<'b>>> {
+    ) -> Poll<Result<impl Iterator<Item = DatagramIn<'b>> + fmt::Debug + use<'b>>> {
         const NUM_BUFFERS: usize = 10;
 
         let Self {
@@ -226,7 +227,7 @@ impl UdpSocket {
         let mut meta = std::array::from_fn::<_, NUM_BUFFERS, _>(|_| quinn_udp::RecvMeta::default());
 
         loop {
-            ready!(inner.poll_recv_ready(cx))?;
+            ready!(inner.poll_recv_ready(cx)).context("Failed to poll UDP socket for readiness")?;
 
             if let Ok(len) = inner.try_io(Interest::READABLE, || {
                 state.recv((&inner).into(), &mut bufs, &mut meta)
@@ -288,7 +289,7 @@ impl UdpSocket {
         self.inner.poll_send_ready(cx)
     }
 
-    pub fn send<B>(&mut self, datagram: DatagramOut<B>) -> io::Result<()>
+    pub fn send<B>(&mut self, datagram: DatagramOut<B>) -> Result<()>
     where
         B: Deref<Target: bytes::Buf>,
     {
@@ -302,6 +303,8 @@ impl UdpSocket {
         else {
             return Ok(());
         };
+
+        let dst = datagram.dst;
 
         match transmit.segment_size {
             Some(segment_size) => {
@@ -320,21 +323,29 @@ impl UdpSocket {
                 {
                     let num_packets = transmit.contents.len() / segment_size;
 
-                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, ecn = ?transmit.ecn, %num_packets, %segment_size);
+                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, %num_packets, %segment_size);
 
-                    self.inner.try_io(Interest::WRITABLE, || {
-                        self.state.try_send((&self.inner).into(), &transmit)
-                    })?;
+                    self.inner
+                        .try_io(Interest::WRITABLE, || {
+                            self.state.try_send((&self.inner).into(), &transmit)
+                        })
+                        .with_context(|| {
+                            format!(
+                                "Failed to send datagram-batch with segment_size {segment_size} to {dst}"
+                            )
+                        })?;
                 }
             }
             None => {
                 let num_bytes = transmit.contents.len();
 
-                tracing::trace!(target: "wire::net::send", src = ?datagram.src, dst = %datagram.dst, ecn = ?transmit.ecn, %num_bytes);
+                tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, %num_bytes);
 
-                self.inner.try_io(Interest::WRITABLE, || {
-                    self.state.try_send((&self.inner).into(), &transmit)
-                })?;
+                self.inner
+                    .try_io(Interest::WRITABLE, || {
+                        self.state.try_send((&self.inner).into(), &transmit)
+                    })
+                    .with_context(|| format!("Failed to send single-datagram to {dst}"))?;
             }
         }
 
