@@ -5354,7 +5354,7 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.5.11"
-source = "git+https://github.com/quinn-rs/quinn?branch=main#8f1a529837c7c99741d4097446a85e4482bf65b3"
+source = "git+https://github.com/thomaseizinger/quinn?branch=chore%2Fadd-dbg#5e6ac01873f7e53fc61bf04093d7d0b8c0243778"
 dependencies = [
  "cfg_aliases",
  "libc",
