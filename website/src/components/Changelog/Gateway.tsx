@@ -34,6 +34,9 @@ export default function Gateway() {
           Improves performance by defaulting to only 1 TUN thread on single-core
           systems.
         </ChangeItem>
+        <ChangeItem pull="7590">
+          Improves performance by moving UDP sockets to a dedicated thread.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.5" date={new Date("2025-03-10")}>
         <ChangeItem pull="8124">

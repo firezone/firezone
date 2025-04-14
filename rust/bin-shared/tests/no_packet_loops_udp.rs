@@ -1,6 +1,7 @@
 #![allow(clippy::unwrap_used)]
 
 use firezone_bin_shared::{TunDeviceManager, platform::udp_socket_factory};
+use gat_lending_iterator::LendingIterator as _;
 use ip_network::Ipv4Network;
 use ip_packet::Ecn;
 use socket_factory::DatagramOut;
@@ -32,7 +33,7 @@ async fn no_packet_loops_udp() {
         .unwrap();
 
     // Make a socket.
-    let mut socket =
+    let socket =
         udp_socket_factory(&SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))).unwrap();
 
     std::future::poll_fn(|cx| socket.poll_send_ready(cx))
@@ -48,16 +49,12 @@ async fn no_packet_loops_udp() {
             segment_size: None,
             ecn: Ecn::NonEct,
         })
+        .await
         .unwrap();
 
-    let task = std::future::poll_fn(|cx| {
-        let mut buf = [0u8; 1000];
-        let result = std::task::ready!(socket.poll_recv_from(&mut buf, cx));
-
-        let _response = result.unwrap().next().unwrap();
-
-        std::task::Poll::Ready(())
-    });
+    let task = async {
+        socket.recv_from().await.unwrap().next().unwrap();
+    };
 
     tokio::time::timeout(Duration::from_secs(10), task)
         .await

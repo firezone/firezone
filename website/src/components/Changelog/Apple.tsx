@@ -19,7 +19,11 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="7590">
+          Improves performance by moving UDP sockets to a dedicated thread.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-03-21")}>
         <ChangeItem pull="8477">
           Fixes an issue where the app would not auto-connect on launch.

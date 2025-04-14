@@ -27,6 +27,9 @@ export default function GUI({ os }: { os: OS }) {
             Applies the search domain configured in the admin portal, if any.
           </ChangeItem>
         )}
+        <ChangeItem pull="7590">
+          Improves performance by moving UDP sockets to a dedicated thread.
+        </ChangeItem>
       </Entry>
       <Entry version="1.4.8" date={new Date("2025-03-10")}>
         <ChangeItem pull="8286">
