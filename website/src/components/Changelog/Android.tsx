@@ -24,6 +24,9 @@ export default function Android() {
           Fixes a performance regression that could lead to packet drops under
           high load.
         </ChangeItem>
+        <ChangeItem pull="7590">
+          Improves performance by moving UDP sockets to a dedicated thread.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.5" date={new Date("2025-03-15")}>
         <ChangeItem pull="8445">
