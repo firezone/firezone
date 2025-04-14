@@ -95,7 +95,7 @@ jobs:
           path: |
             ./kotlin/android/${{ matrix.output-path }}
       - name: Upload package to release
-        if: ${{ matrix.package-type == 'apk' && github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.ref_name == 'main' && matrix.package-type == 'apk' && github.event_name == 'workflow_dispatch' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # mark:next-android-version
