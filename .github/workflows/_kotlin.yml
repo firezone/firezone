@@ -76,13 +76,13 @@ jobs:
           ${{ matrix.build-command }}
           rm "$KEYSTORE_PATH"
       - name: Setup sentry CLI
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
         with:
           token: ${{ secrets.SENTRY_AUTH_TOKEN }}
           organization: firezone-inc
       - name: Upload debug symbols to Sentry
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         run: |
           sentry-cli debug-files upload --log-level info --project android-client --include-sources ../../rust/target
       - name: Run Unit Test
@@ -95,7 +95,7 @@ jobs:
           path: |
             ./kotlin/android/${{ matrix.output-path }}
       - name: Upload package to release
-        if: ${{ matrix.package-type == 'apk' && github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.ref_name == 'main' && matrix.package-type == 'apk' && github.event_name == 'workflow_dispatch' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # mark:next-android-version

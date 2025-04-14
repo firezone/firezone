@@ -105,12 +105,12 @@ jobs:
           TEMP_DIR: "${{ runner.temp }}"
       - name: Upload package artifacts
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: "${{ matrix.job_name == 'build-macos-standalone' }}"
+        if: "${{ github.event_name == 'workflow_dispatch' && matrix.job_name == 'build-macos-standalone' }}"
         with:
           name: ${{ matrix.artifact-file }}
           path: "${{ runner.temp }}/${{ matrix.artifact-file }}"
       - run: ${{ matrix.upload-script }}
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         env:
           ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
@@ -120,13 +120,13 @@ jobs:
           RELEASE_NAME: "${{ matrix.release-name }}"
           PLATFORM: "${{ matrix.platform }}"
       - name: Setup sentry CLI
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
         with:
           token: ${{ secrets.SENTRY_AUTH_TOKEN }}
           organization: firezone-inc
       - name: Upload debug symbols to Sentry
-        if: "${{ github.event_name == 'workflow_dispatch' }}"
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         run: |
           # Remove the /Applications symlink in the DMG staging directory so Sentry doesn't
           # attempt to walk it.
