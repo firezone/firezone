@@ -230,6 +230,10 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
 
         {:error, :invalid_response}
 
+      # This is expected if the group has no members or we're on the last page
+      :error when key == "members" ->
+        default_if_missing
+
       :error ->
         Logger.warning("API request did not contain expected key, using default",
           response: inspect(response),
