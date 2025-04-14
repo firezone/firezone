@@ -292,7 +292,8 @@ impl UdpSocket {
                         src_ip: transmit.src_ip,
                     })
                 {
-                    let num_packets = transmit.contents.len() / segment_size;
+                    let num_bytes = transmit.contents.len();
+                    let num_packets = num_bytes / segment_size;
 
                     tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, %num_packets, %segment_size);
 
@@ -301,7 +302,7 @@ impl UdpSocket {
                             self.state.try_send((&self.inner).into(), &transmit)
                         })
                         .await
-                        .with_context(|| format!("Failed to send datagram-batch with segment_size {segment_size} to {dst}"))?;
+                        .with_context(|| format!("Failed to send datagram-batch with segment_size {segment_size} and total length {num_bytes} to {dst}"))?;
                 }
             }
             None => {
