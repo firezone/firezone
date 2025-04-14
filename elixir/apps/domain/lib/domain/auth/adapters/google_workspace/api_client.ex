@@ -94,7 +94,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
         })
       )
 
-    list_all(uri, api_token, "users", default_if_missing: {:error, :invalid_response})
+    list_all(uri, api_token, "users")
   end
 
   def list_groups(api_token) do
@@ -111,7 +111,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
         })
       )
 
-    list_all(uri, api_token, "groups", default_if_missing: {:error, :invalid_response})
+    list_all(uri, api_token, "groups")
   end
 
   # Note: this functions does not return root (`/`) org unit
@@ -129,7 +129,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
         })
       )
 
-    list_all(uri, api_token, "organizationUnits", default_if_missing: {:error, :invalid_response})
+    list_all(uri, api_token, "organizationUnits")
   end
 
   def list_group_members(api_token, group_id) do
@@ -146,8 +146,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
         })
       )
 
-    # The members endpoint may omit the key for empty data sets, pass `[]` as default
-    with {:ok, members} <- list_all(uri, api_token, "members", default_if_missing: {:ok, [], nil}) do
+    with {:ok, members} <- list_all(uri, api_token, "members") do
       members =
         Enum.filter(members, fn member ->
           member["type"] == "USER" and member["status"] == "ACTIVE"
@@ -157,15 +156,15 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
     end
   end
 
-  defp list_all(uri, api_token, key, opts, acc \\ []) do
-    case list(uri, api_token, key, opts) do
+  defp list_all(uri, api_token, key, acc \\ []) do
+    case list(uri, api_token, key) do
       {:ok, list, nil} ->
         {:ok, List.flatten(Enum.reverse([list | acc]))}
 
       {:ok, list, next_page_token} ->
         uri
         |> URI.append_query(URI.encode_query(%{"pageToken" => next_page_token}))
-        |> list_all(api_token, key, opts, [list | acc])
+        |> list_all(api_token, key, [list | acc])
 
       {:error, reason} ->
         {:error, reason}
@@ -177,9 +176,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
   # stop.
   #
   # For members, this happens quite often and we want to return an empty list.
-  defp list(uri, api_token, key, opts) do
-    default_if_missing = Keyword.fetch!(opts, :default_if_missing)
-
+  defp list(uri, api_token, key) do
     request = Finch.build(:get, uri, [{"Authorization", "Bearer #{api_token}"}])
     response = Finch.request(request, @pool_name)
 
@@ -232,15 +229,15 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
 
       # This is expected if the group has no members or we're on the last page
       :error when key == "members" ->
-        default_if_missing
+        {:ok, [], nil}
 
       :error ->
-        Logger.warning("API request did not contain expected key, using default",
-          response: inspect(response),
-          default_if_missing: inspect(default_if_missing)
+        Logger.warning("API request did not contain expected key!",
+          expected_key: key,
+          response: inspect(response)
         )
 
-        default_if_missing
+        {:error, :invalid_response}
 
       other ->
         Logger.error("Invalid response from API",
