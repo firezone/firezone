@@ -8,6 +8,7 @@ use anyhow::{Context as _, Result};
 use firezone_logging::{telemetry_event, telemetry_span};
 use futures::FutureExt as _;
 use futures_bounded::FuturesTupleSet;
+use gat_lending_iterator::LendingIterator;
 use gso_queue::GsoQueue;
 use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
@@ -71,18 +72,12 @@ struct DnsQueryMetaData {
 
 pub(crate) struct Buffers {
     ip: Vec<IpPacket>,
-    udp4: Vec<u8>,
-    udp6: Vec<u8>,
 }
 
 impl Default for Buffers {
     fn default() -> Self {
-        const ONE_MB: usize = 1024 * 1024;
-
         Self {
             ip: Vec::with_capacity(MAX_INBOUND_PACKET_BATCH),
-            udp4: vec![0; ONE_MB],
-            udp6: vec![0; ONE_MB],
         }
     }
 }
@@ -108,7 +103,7 @@ impl Io {
         nameservers: BTreeSet<IpAddr>,
     ) -> Self {
         let mut sockets = Sockets::default();
-        sockets.rebind(udp_socket_factory.as_ref()); // Bind sockets on startup. Must happen within a tokio runtime context.
+        sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         let mut nameservers = NameserverSet::new(
             nameservers,
@@ -118,7 +113,7 @@ impl Io {
         nameservers.evaluate();
 
         Self {
-            outbound_packet_buffer: VecDeque::with_capacity(10), // It is unlikely that we process more than 10 packets after 1 GRO call.
+            outbound_packet_buffer: VecDeque::default(),
             timeout: None,
             sockets,
             nameservers,
@@ -171,17 +166,14 @@ impl Io {
         Result<
             Input<
                 impl Iterator<Item = IpPacket> + use<'b>,
-                impl Iterator<Item = DatagramIn<'b>> + use<'b>,
+                impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
             >,
         >,
     > {
         ready!(self.flush(cx)?);
         ready!(self.nameservers.poll(cx));
 
-        if let Poll::Ready(network) =
-            self.sockets
-                .poll_recv_from(&mut buffers.udp4, &mut buffers.udp6, cx)
-        {
+        if let Poll::Ready(network) = self.sockets.poll_recv_from(cx) {
             return Poll::Ready(Ok(Input::Network(
                 network
                     .context("Failed to receive from UDP sockets")?
@@ -333,7 +325,7 @@ impl Io {
     }
 
     pub fn reset(&mut self) {
-        self.sockets.rebind(self.udp_socket_factory.as_ref());
+        self.sockets.rebind(self.udp_socket_factory.clone());
         self.gso_queue.clear();
         self.dns_queries = FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000);
         self.nameservers.evaluate();
@@ -480,11 +472,7 @@ mod tests {
         assert!(timeout.duration_since(now) < Duration::from_millis(100));
     }
 
-    static mut DUMMY_BUF: Buffers = Buffers {
-        ip: Vec::new(),
-        udp4: Vec::new(),
-        udp6: Vec::new(),
-    };
+    static mut DUMMY_BUF: Buffers = Buffers { ip: Vec::new() };
 
     /// Helper functions to make the test more concise.
     impl Io {
@@ -503,7 +491,7 @@ mod tests {
             &mut self,
         ) -> Input<
             impl Iterator<Item = IpPacket> + use<>,
-            impl Iterator<Item = DatagramIn<'static>> + use<>,
+            impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>>,
         > {
             poll_fn(|cx| {
                 self.poll(
@@ -522,7 +510,7 @@ mod tests {
             Result<
                 Input<
                     impl Iterator<Item = IpPacket> + use<>,
-                    impl Iterator<Item = DatagramIn<'static>> + use<>,
+                    impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
                 >,
             >,
         > {

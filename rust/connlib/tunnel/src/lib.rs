@@ -10,6 +10,7 @@ use bimap::BiMap;
 use chrono::Utc;
 use connlib_model::{ClientId, GatewayId, PublicKey, ResourceId, ResourceView};
 use dns_types::DomainName;
+use gat_lending_iterator::LendingIterator;
 use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::Ecn;
@@ -186,10 +187,10 @@ impl ClientTunnel {
 
                     continue;
                 }
-                Poll::Ready(io::Input::Network(packets)) => {
+                Poll::Ready(io::Input::Network(mut packets)) => {
                     let now = Instant::now();
 
-                    for received in packets {
+                    while let Some(received) = packets.next() {
                         self.packet_counter.add(
                             1,
                             &[
@@ -317,11 +318,11 @@ impl GatewayTunnel {
 
                     continue;
                 }
-                Poll::Ready(io::Input::Network(packets)) => {
+                Poll::Ready(io::Input::Network(mut packets)) => {
                     let now = Instant::now();
                     let utc_now = Utc::now();
 
-                    for received in packets {
+                    while let Some(received) = packets.next() {
                         self.packet_counter.add(
                             1,
                             &[

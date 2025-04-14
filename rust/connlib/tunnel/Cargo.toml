@@ -18,8 +18,10 @@ dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
+flume = { workspace = true, features = ["async"] }
 futures = { workspace = true }
 futures-bounded = { workspace = true }
+gat-lending-iterator = { workspace = true }
 glob = { workspace = true }
 hex = { workspace = true }
 ip-packet = { workspace = true }
