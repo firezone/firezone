@@ -136,7 +136,7 @@ impl ClientTunnel {
         self.io.reset();
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<ClientEvent>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
@@ -259,7 +259,7 @@ impl GatewayTunnel {
         self.role_state.public_key()
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<std::io::Result<GatewayEvent>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
@@ -306,11 +306,7 @@ impl GatewayTunnel {
                     for packet in packets {
                         let ecn = packet.ecn();
 
-                        let Some(packet) = self
-                            .role_state
-                            .handle_tun_input(packet, now)
-                            .map_err(std::io::Error::other)?
-                        else {
+                        let Some(packet) = self.role_state.handle_tun_input(packet, now)? else {
                             self.role_state.handle_timeout(now, Utc::now());
                             continue;
                         };
@@ -335,15 +331,12 @@ impl GatewayTunnel {
                             ],
                         );
 
-                        let Some(packet) = self
-                            .role_state
-                            .handle_network_input(
-                                received.local,
-                                received.from,
-                                received.packet,
-                                now,
-                            )
-                            .map_err(std::io::Error::other)?
+                        let Some(packet) = self.role_state.handle_network_input(
+                            received.local,
+                            received.from,
+                            received.packet,
+                            now,
+                        )?
                         else {
                             self.role_state.handle_timeout(now, utc_now);
                             continue;

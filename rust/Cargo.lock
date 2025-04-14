@@ -6428,6 +6428,7 @@ dependencies = [
 name = "socket-factory"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bytes",
  "firezone-logging",
  "ip-packet",

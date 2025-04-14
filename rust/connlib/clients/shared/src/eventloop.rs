@@ -87,15 +87,14 @@ where
                     self.handle_tunnel_event(event);
                     continue;
                 }
-                Poll::Ready(Err(e))
-                    if e.kind() == io::ErrorKind::NetworkUnreachable
-                        || e.kind() == io::ErrorKind::HostUnreachable =>
-                {
-                    // Network unreachable most likely means we don't have IPv4 or IPv6 connectivity.
-                    continue;
-                }
                 Poll::Ready(Err(e)) => {
-                    let e = anyhow::Error::new(e);
+                    if e.root_cause().downcast_ref::<io::Error>().is_some_and(|e| {
+                        e.kind() == io::ErrorKind::NetworkUnreachable
+                            || e.kind() == io::ErrorKind::HostUnreachable
+                    }) {
+                        // Network unreachable most likely means we don't have IPv4 or IPv6 connectivity.
+                        continue;
+                    }
 
                     tracing::warn!("Tunnel error: {e:#}");
                     continue;
