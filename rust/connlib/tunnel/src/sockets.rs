@@ -1,3 +1,4 @@
+use anyhow::Result;
 use socket_factory::{DatagramIn, DatagramOut, SocketFactory, UdpSocket};
 use std::{
     io,
@@ -58,7 +59,7 @@ impl Sockets {
         Poll::Ready(Ok(()))
     }
 
-    pub fn send<B>(&mut self, datagram: DatagramOut<B>) -> io::Result<()>
+    pub fn send<B>(&mut self, datagram: DatagramOut<B>) -> Result<()>
     where
         B: Deref<Target: bytes::Buf>,
     {
@@ -86,7 +87,7 @@ impl Sockets {
         ip4_buffer: &'b mut [u8],
         ip6_buffer: &'b mut [u8],
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<impl Iterator<Item = DatagramIn<'b>> + use<'b>>> {
+    ) -> Poll<Result<impl Iterator<Item = DatagramIn<'b>> + use<'b>>> {
         let mut iter = PacketIter::new();
 
         if let Some(Poll::Ready(packets)) = self
