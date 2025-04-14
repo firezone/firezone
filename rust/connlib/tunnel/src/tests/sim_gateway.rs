@@ -15,7 +15,7 @@ use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::BTreeMap,
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
@@ -36,8 +36,8 @@ pub(crate) struct SimGateway {
     pub(crate) received_tcp_requests: BTreeMap<u64, IpPacket>,
 
     site_specific_dns_records: DnsRecords,
-    udp_dns_server_resources: HashMap<SocketAddr, UdpDnsServerResource>,
-    tcp_dns_server_resources: HashMap<SocketAddr, TcpDnsServerResource>,
+    udp_dns_server_resources: BTreeMap<SocketAddr, UdpDnsServerResource>,
+    tcp_dns_server_resources: BTreeMap<SocketAddr, TcpDnsServerResource>,
 }
 
 impl SimGateway {

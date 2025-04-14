@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     net::SocketAddr,
     sync::Arc,
     time::{Duration, Instant},
@@ -19,7 +19,7 @@ const MAX_SEGMENT_SIZE: usize =
 /// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
 /// The buffer is then flushed using GSO in a single syscall.
 pub struct GsoQueue {
-    inner: HashMap<Key, DatagramBuffer>,
+    inner: BTreeMap<Key, DatagramBuffer>,
     buffer_pool: Arc<lockfree_object_pool::SpinLockObjectPool<BytesMut>>,
 }
 
@@ -117,9 +117,9 @@ impl GsoQueue {
 
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
 struct Key {
+    segment_size: usize, // `segment_size` comes first to ensure that the datagrams are flushed to the socket in ascending order.
     src: Option<SocketAddr>,
     dst: SocketAddr,
-    segment_size: usize,
 }
 
 struct DatagramBuffer {
@@ -139,7 +139,7 @@ mod tests {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST, b"foobar", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct, now);
         for _entry in send_queue.datagrams() {}
 
         send_queue.handle_timeout(now + Duration::from_secs(60));
@@ -152,7 +152,7 @@ mod tests {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST, b"foobar", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct, now);
 
         send_queue.handle_timeout(now + Duration::from_secs(60));
 
@@ -164,7 +164,7 @@ mod tests {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST, b"foobar", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct, now);
 
         let datagrams = send_queue.datagrams();
         drop(datagrams);
@@ -172,7 +172,7 @@ mod tests {
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
         assert_eq!(datagrams.len(), 1);
-        assert_eq!(datagrams[0].dst, DST);
+        assert_eq!(datagrams[0].dst, DST_1);
         assert_eq!(datagrams[0].packet.as_ref(), b"foobar");
     }
 
@@ -181,7 +181,7 @@ mod tests {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST, b"foobar", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct, now);
         send_queue.enqueue(None, DST_2, b"bar", Ecn::NonEct, now);
 
         // Taking it from the iterator is "sending" ...
@@ -192,6 +192,35 @@ mod tests {
         }
     }
 
-    const DST: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1234));
-    const DST_2: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 5678));
+    #[test]
+    fn prioritises_small_packets() {
+        let now = Instant::now();
+        let mut send_queue = GsoQueue::new();
+
+        send_queue.enqueue(
+            None,
+            DST_1,
+            b"foobarfoobarfoobarfoobarfoobarfoobarfoobarfoobar",
+            Ecn::NonEct,
+            now,
+        );
+        send_queue.enqueue(None, DST_2, b"barbaz", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_3, b"barbaz1234", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_4, b"b", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_5, b"barbazfoobafoobarfoobar", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_2, b"baz", Ecn::NonEct, now);
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        let is_sorted = datagrams.is_sorted_by_key(|datagram| datagram.segment_size);
+
+        assert!(is_sorted);
+        assert_eq!(datagrams[0].segment_size, Some(1));
+    }
+
+    const DST_1: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
+    const DST_2: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 2222));
+    const DST_3: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3333));
+    const DST_4: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 4444));
+    const DST_5: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 5555));
 }
