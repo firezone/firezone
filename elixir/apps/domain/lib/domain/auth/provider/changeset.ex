@@ -75,6 +75,7 @@ defmodule Domain.Auth.Provider.Changeset do
 
   defp changeset(changeset) do
     changeset
+    |> cast_assoc(:directory_provider)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_required(:adapter)
     |> unique_constraint(:base,

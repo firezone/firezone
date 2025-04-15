@@ -1,9 +1,9 @@
 defmodule Domain.Directories.Provider do
   use Domain, :schema
 
-  @types [
-    :okta
-  ]
+  @types ~w[
+    okta
+  ]a
 
   schema "directory_providers" do
     belongs_to :account, Domain.Accounts.Account
@@ -16,5 +16,9 @@ defmodule Domain.Directories.Provider do
     field :disabled_at, :utc_datetime_usec
 
     timestamps()
+  end
+
+  def types do
+    @types
   end
 end

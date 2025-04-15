@@ -18,5 +18,6 @@ defmodule Domain.Repo.Migrations.CreateDirectoryProviders do
     end
 
     create(index(:directory_providers, [:account_id, :auth_provider_id], unique: true))
+    create(index(:directory_providers, [:account_id, :type], unique: true))
   end
 end
