@@ -8,6 +8,18 @@ config :domain, Domain.Repo,
   pool_size: 10,
   show_sensitive_data_on_connection_error: false
 
+config :domain, Oban,
+  plugins: [
+    # Keep the last 90 days of completed, cancelled, and discarded jobs
+    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 90}
+
+    # Rescue jobs that may have failed due to transient errors like deploys
+    # or network issues. It's not guaranteed that the job won't be executed
+    # twice, so for now we disable it since all of our Oban jobs can be retried
+    # without loss.
+    # {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)}
+  ]
+
 ###############################
 ##### Web #####################
 ###############################

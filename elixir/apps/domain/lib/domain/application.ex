@@ -4,6 +4,9 @@ defmodule Domain.Application do
   def start(_type, _args) do
     configure_logger()
 
+    # Attach Oban Sentry reporter
+    Domain.Telemetry.Reporter.Oban.attach()
+
     _ = OpentelemetryLoggerMetadata.setup()
     _ = OpentelemetryEcto.setup([:domain, :repo])
 
@@ -23,6 +26,7 @@ defmodule Domain.Application do
       # Note: only one of platform adapters will be actually started.
       Domain.GoogleCloudPlatform,
       Domain.Cluster,
+      {Oban, Application.fetch_env!(:domain, Oban)},
 
       # Application
       Domain.Tokens,
@@ -42,6 +46,12 @@ defmodule Domain.Application do
   end
 
   defp configure_logger do
+    # Attach Oban to the logger
+    Oban.Telemetry.attach_default_logger(
+      encode: false,
+      level: System.get_env("LOG_LEVEL", "info")
+    )
+
     # Configure Logger severity at runtime
     :ok = LoggerJSON.configure_log_level_from_env!("LOG_LEVEL")
 
