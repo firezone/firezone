@@ -128,6 +128,12 @@ impl Eventloop {
                         return Poll::Ready(Err(e));
                     }
 
+                    if e.root_cause()
+                        .is::<firezone_tunnel::UdpSocketThreadStopped>()
+                    {
+                        return Poll::Ready(Err(e));
+                    }
+
                     tracing::warn!("Tunnel error: {e:#}");
                     continue;
                 }
