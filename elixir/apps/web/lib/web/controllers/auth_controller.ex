@@ -252,11 +252,11 @@ defmodule Web.AuthController do
           )
       end
     else
-      :error ->
+      {:error, :auth_state_missing} ->
         params = Web.Auth.take_sign_in_params(params)
 
         conn
-        |> put_flash(:error, "The sign in token is expired.")
+        |> put_flash(:error, "The sign in token is missing or expired. Please try again.")
         |> redirect(to: ~p"/#{account_id_or_slug}?#{params}")
     end
   end
@@ -393,7 +393,18 @@ defmodule Web.AuthController do
          :ok <- OpenIDConnect.ensure_states_equal(state, persisted_state) do
       {:ok, redirect_params, persisted_verifier, delete_auth_state(conn, provider_id)}
     else
-      _ -> {:error, :invalid_state, delete_auth_state(conn, provider_id)}
+      {:error, :auth_state_missing} ->
+        Logger.info("Auth state missing")
+        {:error, :invalid_state, delete_auth_state(conn, provider_id)}
+
+      {:error, :invalid_state} ->
+        Logger.info("Auth state is invalid")
+        {:error, :invalid_state, delete_auth_state(conn, provider_id)}
+
+      _ ->
+        # Not logging the actual error as it may contain sensitive info
+        Logger.warning("Unknown error while verifying state")
+        {:error, :invalid_state, delete_auth_state(conn, provider_id)}
     end
   end
 
@@ -414,6 +425,9 @@ defmodule Web.AuthController do
 
     with {:ok, encoded_state} <- Map.fetch(conn.cookies, key) do
       {:ok, Plug.Crypto.non_executable_binary_to_term(encoded_state, [:safe]), conn}
+    else
+      :error ->
+        {:error, :auth_state_missing}
     end
   end
 

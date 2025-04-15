@@ -547,7 +547,7 @@ defmodule Web.AuthControllerTest do
         })
 
       assert redirected_to(conn) == ~p"/#{account}"
-      assert flash(conn, :error) == "The sign in token is expired."
+      assert flash(conn, :error) == "The sign in token is missing or expired. Please try again."
     end
 
     test "uses redirect params from the request query when auth state does not exist", %{
