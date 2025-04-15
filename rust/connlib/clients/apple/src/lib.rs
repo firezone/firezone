@@ -166,6 +166,10 @@ impl Callbacks for CallbackHandler {
     }
 
     fn on_disconnect(&self, error: DisconnectError) {
+        if !error.is_authentication_error() {
+            tracing::error!("{error}")
+        }
+
         self.inner.on_disconnect(error.to_string());
     }
 }
