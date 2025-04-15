@@ -87,7 +87,7 @@ impl Eventloop {
 }
 
 impl Eventloop {
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible, Error>> {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
             match self.tunnel.poll_next_event(cx) {
                 Poll::Ready(Ok(event)) => {
@@ -125,7 +125,7 @@ impl Eventloop {
                     if e.root_cause()
                         .is::<firezone_tunnel::NoNameserverAvailable>()
                     {
-                        return Poll::Ready(Err(Error::NoNameserversAvailable(e)));
+                        return Poll::Ready(Err(e));
                     }
 
                     tracing::warn!("Tunnel error: {e:#}");
@@ -170,8 +170,7 @@ impl Eventloop {
                 Poll::Ready(result) => {
                     let interface = result
                         .unwrap_or_else(|e| Err(anyhow::Error::new(e)))
-                        .context("Failed to update TUN interface")
-                        .map_err(Error::UpdateTun)?;
+                        .context("Failed to update TUN interface")?;
 
                     let ipv4_socket = SocketAddrV4::new(interface.ipv4, 53535);
                     let ipv6_socket = SocketAddrV6::new(interface.ipv6, 53535, 0, 0);
@@ -188,14 +187,16 @@ impl Eventloop {
                         .with_context(|| format!("Failed to bind DNS server at {ipv6_socket}"))
                         .inspect_err(|e| tracing::debug!("{e:#}"));
 
-                    ipv4_result.or(ipv6_result).map_err(Error::BindDnsSockets)?;
+                    ipv4_result.or(ipv6_result)?;
                 }
                 Poll::Pending => {}
             }
 
-            match self.portal.poll(cx)? {
-                Poll::Ready(event) => {
+            match self.portal.poll(cx) {
+                Poll::Ready(result) => {
+                    let event = result.context("Failed to login to portal")?;
                     self.handle_portal_event(event);
+
                     continue;
                 }
                 Poll::Pending => {}
@@ -539,18 +540,6 @@ impl Eventloop {
 
         async move { cache.try_get_with(domain, do_resolve).await }
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub enum Error {
-    #[error("Failed to login to portal: {0}")]
-    PhoenixChannel(#[from] phoenix_channel::Error),
-    #[error("Failed to update TUN device: {0:#}")]
-    UpdateTun(#[source] anyhow::Error),
-    #[error("{0:#}")]
-    BindDnsSockets(#[source] anyhow::Error),
-    #[error("{0:#}")]
-    NoNameserversAvailable(#[source] anyhow::Error),
 }
 
 async fn resolve(domain: DomainName) -> Result<Vec<IpAddr>> {
