@@ -22,22 +22,24 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.6" date={new Date("2025-04-14")}>
         <ChangeItem pull="8383">
-          Deprecates the NAT64 functionality in favor of sending ICMP errors.
+          Deprecates the NAT64 functionality in favor of sending ICMP errors to
+          hint to the calling application about which IP version to use.
         </ChangeItem>
         <ChangeItem pull="8754">
           Fixes a performance regression that could lead to packet drops under
           high load.
         </ChangeItem>
         <ChangeItem pull="8765">
-          Improves performance on single-core systems by defaulting to only
-          1 TUN thread if we have less than 4 cores.
+          Improves performance on single-core systems by defaulting to only 1
+          TUN thread if we have less than 4 cores.
         </ChangeItem>
         <ChangeItem pull="7590">
           Improves performance by moving UDP sockets to a dedicated thread.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.5" date={new Date("2025-03-10")}>
         <ChangeItem pull="8124">
           Fixes a bug in the routing of DNS resources that would lead to "Source
