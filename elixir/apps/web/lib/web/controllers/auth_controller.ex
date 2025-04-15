@@ -394,16 +394,16 @@ defmodule Web.AuthController do
       {:ok, redirect_params, persisted_verifier, delete_auth_state(conn, provider_id)}
     else
       {:error, :auth_state_missing} ->
-        Logger.info("Auth state missing")
+        Logger.info("Auth state missing", provider_id: provider_id)
         {:error, :invalid_state, delete_auth_state(conn, provider_id)}
 
       {:error, :invalid_state} ->
-        Logger.info("Auth state is invalid")
+        Logger.info("Auth state is invalid", provider_id: provider_id)
         {:error, :invalid_state, delete_auth_state(conn, provider_id)}
 
       _ ->
         # Not logging the actual error as it may contain sensitive info
-        Logger.warning("Unknown error while verifying state")
+        Logger.warning("Unknown error while verifying state", provider_id: provider_id)
         {:error, :invalid_state, delete_auth_state(conn, provider_id)}
     end
   end
