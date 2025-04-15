@@ -242,9 +242,7 @@ impl ThreadedUdpSocket {
     }
 
     fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Result<DatagramSegmentIter>> {
-        let Some(iter) = ready!(self.inbound_rx.poll_next_unpin(cx)) else {
-            return Poll::Ready(Err(anyhow::Error::new(UdpSocketThreadStopped)));
-        };
+        let iter = ready!(self.inbound_rx.poll_next_unpin(cx)).ok_or(UdpSocketThreadStopped)?;
 
         Poll::Ready(Ok(iter))
     }
