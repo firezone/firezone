@@ -47,10 +47,7 @@ defmodule Domain.Application do
 
   defp configure_logger do
     # Attach Oban to the logger
-    Oban.Telemetry.attach_default_logger(
-      encode: false,
-      level: System.get_env("LOG_LEVEL", "info")
-    )
+    Oban.Telemetry.attach_default_logger(encode: false, level: log_level())
 
     # Configure Logger severity at runtime
     :ok = LoggerJSON.configure_log_level_from_env!("LOG_LEVEL")
@@ -68,5 +65,14 @@ defmodule Domain.Application do
         capture_log_messages: true
       }
     })
+  end
+
+  defp log_level do
+    case System.get_env("LOG_LEVEL") do
+      "error" -> :error
+      "warn" -> :warn
+      "debug" -> :debug
+      _ -> :info
+    end
   end
 end
