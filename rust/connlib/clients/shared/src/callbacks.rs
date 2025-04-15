@@ -37,17 +37,18 @@ pub trait Callbacks: Clone + Send + Sync {
 
 /// Unified error type to use across connlib.
 #[derive(thiserror::Error, Debug)]
-pub enum DisconnectError {
-    #[error("connlib crashed: {0}")]
-    Crash(#[from] tokio::task::JoinError),
+#[error("{0:#}")]
+pub struct DisconnectError(anyhow::Error);
 
-    #[error("connection to the portal failed: {0}")]
-    PortalConnectionFailed(#[from] phoenix_channel::Error),
+impl From<anyhow::Error> for DisconnectError {
+    fn from(e: anyhow::Error) -> Self {
+        Self(e)
+    }
 }
 
 impl DisconnectError {
     pub fn is_authentication_error(&self) -> bool {
-        let Self::PortalConnectionFailed(e) = self else {
+        let Some(e) = self.0.downcast_ref::<phoenix_channel::Error>() else {
             return false;
         };
 
@@ -117,5 +118,21 @@ where
         self.threadpool.spawn(move || {
             callbacks.on_disconnect(error);
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use phoenix_channel::StatusCode;
+
+    use super::*;
+
+    #[test]
+    fn printing_disconnect_error_contains_401() {
+        let disconnect_error = DisconnectError::from(anyhow::Error::new(
+            phoenix_channel::Error::Client(StatusCode::UNAUTHORIZED),
+        ));
+
+        assert!(disconnect_error.to_string().contains("401 Unauthorized")); // Apple client relies on this.
     }
 }

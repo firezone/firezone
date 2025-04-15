@@ -58,7 +58,7 @@ impl Sockets {
         Poll::Ready(())
     }
 
-    pub fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    pub fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         if let Some(socket) = self.socket_v4.as_mut() {
             ready!(socket.poll_send_ready(cx))?;
         }
@@ -227,26 +227,27 @@ impl ThreadedUdpSocket {
         })
     }
 
-    fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        self.outbound_tx
-            .poll_ready_unpin(cx)
-            .map_err(io::Error::other)
+    fn poll_send_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+        ready!(self.outbound_tx.poll_ready_unpin(cx)).map_err(|_| UdpSocketThreadStopped)?;
+
+        Poll::Ready(Ok(()))
     }
 
-    fn send(&mut self, datagram: DatagramOut) -> io::Result<()> {
+    fn send(&mut self, datagram: DatagramOut) -> Result<()> {
         self.outbound_tx
             .start_send_unpin(datagram)
-            .map_err(io::Error::other)
+            .map_err(|_| UdpSocketThreadStopped)?;
+
+        Ok(())
     }
 
-    fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<DatagramSegmentIter>> {
-        let Some(iter) = ready!(self.inbound_rx.poll_next_unpin(cx)) else {
-            return Poll::Ready(Err(io::Error::new(
-                io::ErrorKind::NotConnected,
-                "UDP recv thread stopped",
-            )));
-        };
+    fn poll_recv_from(&mut self, cx: &mut Context<'_>) -> Poll<Result<DatagramSegmentIter>> {
+        let iter = ready!(self.inbound_rx.poll_next_unpin(cx)).ok_or(UdpSocketThreadStopped)?;
 
         Poll::Ready(Ok(iter))
     }
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("UDP socket thread stopped")]
+pub struct UdpSocketThreadStopped;

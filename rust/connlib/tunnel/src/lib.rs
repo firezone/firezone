@@ -71,6 +71,7 @@ pub type ClientTunnel = Tunnel<ClientState>;
 pub use client::ClientState;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use io::NoNameserverAvailable;
+pub use sockets::UdpSocketThreadStopped;
 pub use utils::turn;
 
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
