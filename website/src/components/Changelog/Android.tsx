@@ -20,7 +20,7 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased></Unreleased>
-      <Entry version="1.4.6" date={new Date("2025-04-14")}>
+      <Entry version="1.4.6" date={new Date("2025-04-15")}>
         <ChangeItem pull="8754">
           Fixes a performance regression that could lead to packet drops under
           high load.
