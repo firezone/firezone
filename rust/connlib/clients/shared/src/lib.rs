@@ -6,6 +6,7 @@ pub use connlib_model::StaticSecret;
 pub use eventloop::Eventloop;
 pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription};
 
+use anyhow::{Context, Result};
 use connlib_model::ResourceId;
 use eventloop::Command;
 use firezone_tunnel::ClientTunnel;
@@ -121,30 +122,33 @@ async fn connect<CB>(
     callbacks: CB,
     portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     rx: UnboundedReceiver<Command>,
-) -> Result<(), phoenix_channel::Error>
+) -> Result<()>
 where
     CB: Callbacks + 'static,
 {
     let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory);
     let mut eventloop = Eventloop::new(tunnel, callbacks, portal, rx);
 
-    std::future::poll_fn(|cx| eventloop.poll(cx)).await?;
+    std::future::poll_fn(|cx| eventloop.poll(cx))
+        .await
+        .context("connection to the portal failed")?;
 
     Ok(())
 }
 
 /// A supervisor task that handles, when [`connect`] exits.
-async fn connect_supervisor<CB>(
-    connect_handle: JoinHandle<Result<(), phoenix_channel::Error>>,
-    callbacks: CB,
-) where
+async fn connect_supervisor<CB>(connect_handle: JoinHandle<Result<()>>, callbacks: CB)
+where
     CB: Callbacks,
 {
-    match connect_handle.await {
-        Ok(Ok(())) => {
-            tracing::info!("connlib exited gracefully");
-        }
-        Ok(Err(e)) => callbacks.on_disconnect(DisconnectError::PortalConnectionFailed(e)),
-        Err(e) => callbacks.on_disconnect(DisconnectError::Crash(e)),
+    let task = async {
+        connect_handle.await.context("connlib crashed")??;
+
+        Ok(())
+    };
+
+    match task.await {
+        Ok(()) => tracing::info!("connlib exited gracefully"),
+        Err(e) => callbacks.on_disconnect(e),
     }
 }
