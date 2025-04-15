@@ -1189,7 +1189,7 @@ checksum = "baf0a07a401f374238ab8e2f11a104d2851bf9ce711ec69804834de8af45c7af"
 
 [[package]]
 name = "connlib-client-android"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "android_log-sys",
  "anyhow",
@@ -2195,7 +2195,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2242,7 +2242,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.4.10"
+version = "1.4.11"
 dependencies = [
  "anyhow",
  "atomicwrites",
@@ -2287,7 +2287,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client-common"
-version = "1.4.10"
+version = "1.4.11"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2329,7 +2329,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.4.6"
+version = "1.4.7"
 dependencies = [
  "anyhow",
  "atomicwrites",
