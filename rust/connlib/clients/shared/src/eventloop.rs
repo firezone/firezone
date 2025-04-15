@@ -1,5 +1,5 @@
 use crate::{PHOENIX_TOPIC, callbacks::Callbacks};
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use connlib_model::{PublicKey, ResourceId};
 use firezone_tunnel::messages::RelaysPresence;
 use firezone_tunnel::messages::client::{
@@ -55,7 +55,7 @@ impl<C> Eventloop<C>
 where
     C: Callbacks + 'static,
 {
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), phoenix_channel::Error>> {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         loop {
             match self.rx.poll_recv(cx) {
                 Poll::Ready(None) => return Poll::Ready(Ok(())),
@@ -96,14 +96,21 @@ where
                         continue;
                     }
 
+                    if e.root_cause()
+                        .is::<firezone_tunnel::UdpSocketThreadStopped>()
+                    {
+                        return Poll::Ready(Err(e));
+                    }
+
                     tracing::warn!("Tunnel error: {e:#}");
                     continue;
                 }
                 Poll::Pending => {}
             }
 
-            match self.portal.poll(cx)? {
-                Poll::Ready(event) => {
+            match self.portal.poll(cx) {
+                Poll::Ready(result) => {
+                    let event = result.context("connection to the portal failed")?;
                     self.handle_portal_event(event);
                     continue;
                 }
