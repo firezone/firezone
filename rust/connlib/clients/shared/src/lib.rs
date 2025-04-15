@@ -129,9 +129,7 @@ where
     let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory);
     let mut eventloop = Eventloop::new(tunnel, callbacks, portal, rx);
 
-    std::future::poll_fn(|cx| eventloop.poll(cx))
-        .await
-        .context("connection to the portal failed")?;
+    std::future::poll_fn(|cx| eventloop.poll(cx)).await?;
 
     Ok(())
 }
