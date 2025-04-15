@@ -59,6 +59,9 @@ defmodule Domain.MixProject do
       {:argon2_elixir, "~> 4.0"},
       {:workos, "~> 1.1"},
 
+      # Job system
+      {:oban, "~> 2.19"},
+
       # Erlang Clustering
       {:libcluster, "~> 3.3"},
 
