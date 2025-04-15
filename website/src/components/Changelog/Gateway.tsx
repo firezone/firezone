@@ -32,7 +32,7 @@ export default function Gateway() {
         </ChangeItem>
         <ChangeItem pull="8765">
           Improves performance on single-core systems by defaulting to only
-          1 TUN thread if we have less then 4 cores.
+          1 TUN thread if we have less than 4 cores.
         </ChangeItem>
         <ChangeItem pull="7590">
           Improves performance by moving UDP sockets to a dedicated thread.
