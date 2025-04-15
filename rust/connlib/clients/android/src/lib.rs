@@ -258,6 +258,10 @@ impl Callbacks for CallbackHandler {
     }
 
     fn on_disconnect(&self, error: DisconnectError) {
+        if !error.is_authentication_error() {
+            tracing::error!("{error}")
+        }
+
         self.env(|mut env| {
             let error = env
                 .new_string(serde_json::to_string(&error.to_string())?)
