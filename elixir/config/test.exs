@@ -40,6 +40,9 @@ config :domain, Domain.Telemetry.Reporter.GoogleCloudMetrics, project_id: "fz-te
 
 config :domain, web_external_url: "http://localhost:13100"
 
+# Prevent Oban from running jobs and plugins in tests
+config :domain, Oban, testing: :manual
+
 ###############################
 ##### Web #####################
 ###############################
