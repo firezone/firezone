@@ -1,5 +1,6 @@
 defmodule Domain.Directories.Provider.Query do
   use Domain, :query
+  alias Domain.Accounts
 
   def all do
     from(provider in Domain.Directories.Provider, as: :providers)
@@ -15,5 +16,19 @@ defmodule Domain.Directories.Provider.Query do
 
   def by_type(queryable, type) do
     where(queryable, [providers: providers], providers.type == ^type)
+  end
+
+  def by_account(queryable, %Accounts.Account{} = account) do
+    where(queryable, [providers: providers], providers.account_id == ^account.id)
+  end
+
+  # Pagination
+
+  @impl Domain.Repo.Query
+  def cursor_fields do
+    [
+      {:providers, :asc, :inserted_at},
+      {:providers, :asc, :id}
+    ]
   end
 end

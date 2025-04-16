@@ -14,7 +14,6 @@ defmodule Domain.Auth.Provider do
 
     belongs_to :account, Domain.Accounts.Account
 
-    has_one :directory_provider, Domain.Directories.Provider, foreign_key: :auth_provider_id
     has_many :actor_groups, Domain.Actors.Group, where: [deleted_at: nil]
     has_many :identities, Domain.Auth.Identity, where: [deleted_at: nil]
 
