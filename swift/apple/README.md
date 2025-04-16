@@ -288,6 +288,11 @@ Application certificates are **precious** and we only have a limited number of
 them. They also cannot be revoked. So do not generate them. Instead, obtain it
 from 1Password.
 
+Also, the signing certificate for the package installer artifact specifically needs
+to be a `Developer ID Installer` certificate, not a `Developer ID Application` or
+`Apple Distribution` certificate. This is needed to sign the PKG files we distribute
+that are consumed by MDMs.
+
 Once you've done that, you can create the provisioning profiles and update the
 GitHub secrets using the same steps as above, only using the following secrets
 names:
@@ -295,6 +300,8 @@ names:
 ```
 APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64
 APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD
+APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_BASE64
+APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD
 APPLE_STANDALONE_MACOS_APP_PROVISIONING_PROFILE
 APPLE_STANDALONE_MACOS_NE_PROVISIONING_PROFILE
 ```

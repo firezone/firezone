@@ -45,6 +45,11 @@ function setup_runner() {
         "$STANDALONE_BUILD_CERT_PASS" \
         "$keychain_pass" \
         "$keychain_path"
+    install_cert \
+        "$STANDALONE_INSTALLER_CERT" \
+        "$STANDALONE_INSTALLER_CERT_PASS" \
+        "$keychain_pass" \
+        "$keychain_path"
 }
 
 function base64_decode() {
