@@ -13,6 +13,13 @@ module.exports = [
       "https://www.github.com/firezone/firezone/releases/download/macos-client-1.4.9/firezone-macos-client-1.4.9.dmg",
     permanent: false,
   },
+  {
+    source: "/dl/firezone-client-macos/pkg/latest",
+    destination:
+      // mark:current-apple-version
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.4.9/firezone-macos-client-1.4.9.pkg",
+    permanent: false,
+  },
   /*
    *
    * Android Client
