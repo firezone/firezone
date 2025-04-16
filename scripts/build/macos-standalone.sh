@@ -103,7 +103,7 @@ hdiutil detach "$mount_dir"
 hdiutil convert "$staging_dmg_path" -format UDZO -o "$dmg_path"
 
 # Sign disk image
-code_sign --force --sign "$code_sign_identity" "$dmg_path"
+codesign --force --sign "$code_sign_identity" "$dmg_path"
 
 echo "Disk image created at $dmg_path"
 
