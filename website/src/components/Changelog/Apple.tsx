@@ -12,7 +12,11 @@ export default function Apple() {
     },
     {
       href: "/dl/firezone-client-macos/:version",
-      title: "Download standalone package for macOS",
+      title: "Download standalone DMG file for macOS",
+    },
+    {
+      href: "/dl/firezone-client-macos/pkg/:version",
+      title: "Download standalone installer PKG file for macOS",
     },
   ];
 

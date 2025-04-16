@@ -9,6 +9,11 @@ const versionedRedirects = [
       "https://www.github.com/firezone/firezone/releases/download/macos-client-:version/firezone-macos-client-:version.dmg",
   },
   {
+    source: /^\/dl\/firezone-client-macos\/pkg\/(\d+\.\d+\.\d+)$/,
+    destination:
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-:version/firezone-macos-client-:version.pkg",
+  },
+  {
     source: /^\/dl\/firezone-client-android\/(\d+\.\d+\.\d+)$/,
     destination:
       "https://www.github.com/firezone/firezone/releases/download/android-client-:version/firezone-android-client-:version.apk",
@@ -68,6 +73,7 @@ const versionedRedirects = [
 export const config = {
   matcher: [
     "/dl/firezone-client-macos/(\\d+).(\\d+).(\\d+)",
+    "/dl/firezone-client-macos/pkg/(\\d+).(\\d+).(\\d+)",
     "/dl/firezone-client-android/(\\d+).(\\d+).(\\d+)",
     "/dl/firezone-client-gui-windows/(\\d+).(\\d+).(\\d+)/x86_64",
     "/dl/firezone-client-headless-windows/(\\d+).(\\d+).(\\d+)/x86_64",

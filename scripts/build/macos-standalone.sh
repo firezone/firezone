@@ -13,10 +13,12 @@ notarize=${NOTARIZE:-"false"}
 temp_dir="${TEMP_DIR:-$(mktemp -d)}"
 dmg_dir="$temp_dir/dmg"
 dmg_path="$temp_dir/Firezone.dmg"
-package_path="$temp_dir/package.dmg"
+staging_dmg_path="$temp_dir/staging.dmg"
+staging_pkg_path="$temp_dir/staging.pkg"
 git_sha=${GITHUB_SHA:-$(git rev-parse HEAD)}
 project_file=swift/apple/Firezone.xcodeproj
 codesign_identity="Developer ID Application: Firezone, Inc. (47R2M6779T)"
+installer_code_sign_identity="3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
 
 if [ "${CI:-}" = "true" ]; then
     # Configure the environment for building, signing, and packaging in CI
@@ -49,6 +51,13 @@ xcodebuild build \
     -sdk macosx \
     -destination 'platform=macOS'
 
+# We also publish a pkg file for MDMs that don't like our DMG (Intune error 0x87D30139)
+productbuild \
+    --sign "$installer_code_sign_identity" \
+    --component "$temp_dir/Firezone.app" \
+    /Applications \
+    "$staging_pkg_path"
+
 # Create disk image
 mkdir -p "$dmg_dir/.background"
 mv "$temp_dir/Firezone.app" "$dmg_dir/Firezone.app"
@@ -59,10 +68,10 @@ hdiutil create \
     -srcfolder "$dmg_dir" \
     -ov \
     -format UDRW \
-    "$package_path"
+    "$staging_dmg_path"
 
 # Mount disk image for customization
-mount_dir=$(hdiutil attach "$package_path" -readwrite -noverify -noautoopen | grep -o "/Volumes/.*")
+mount_dir=$(hdiutil attach "$staging_dmg_path" -readwrite -noverify -noautoopen | grep -o "/Volumes/.*")
 
 # Embed background image to instruct user to drag app to /Applications
 osascript <<EOF
@@ -91,28 +100,24 @@ EOF
 hdiutil detach "$mount_dir"
 
 # Convert to read-only
-hdiutil convert "$package_path" -format UDZO -o "$dmg_path"
+hdiutil convert "$staging_dmg_path" -format UDZO -o "$dmg_path"
 
 # Sign disk image
 codesign --force --sign "$codesign_identity" "$dmg_path"
 
 echo "Disk image created at $dmg_path"
 
-# Notarize disk image; notarizes embedded app bundle as well
+# Notarize disk image and package installer; notarizes embedded app bundle as well
 if [ "$notarize" = "true" ]; then
     private_key_path="$temp_dir/firezone-api-key.p8"
     base64_decode "$API_KEY" "$private_key_path"
 
-    # Submit app bundle to be notarized. Can take a few minutes.
-    # Notarizes embedded app bundle as well.
+    # Submit DMG to be notarized. Can take a few minutes. Notarizes embedded app bundle as well.
     xcrun notarytool submit "$dmg_path" \
         --key "$private_key_path" \
         --key-id "$API_KEY_ID" \
         --issuer "$ISSUER_ID" \
         --wait
-
-    # Clean up private key
-    rm "$private_key_path"
 
     # Staple notarization ticket to app bundle
     xcrun stapler staple "$dmg_path"
@@ -121,11 +126,34 @@ if [ "$notarize" = "true" ]; then
     xcrun stapler validate "$dmg_path"
 
     echo "Disk image notarized!"
+
+    # Submit PKG to be notarized. Can take a few minutes. Notarizes embedded app bundle as well.
+    xcrun notarytool submit "$staging_pkg_path" \
+        --key "$private_key_path" \
+        --key-id "$API_KEY_ID" \
+        --issuer "$ISSUER_ID" \
+        --wait
+
+    # Staple notarization ticket to app bundle
+    xcrun stapler staple "$staging_pkg_path"
+
+    # Verify notarization
+    xcrun stapler validate "$staging_pkg_path"
+
+    echo "Installer PKG notarized!"
+
+    # Clean up private key
+    rm "$private_key_path"
 fi
 
 # Move to final location the uploader expects
 if [[ -n "${ARTIFACT_PATH:-}" ]]; then
     mv "$dmg_path" "$ARTIFACT_PATH"
 
-    echo "Moved disk image to $ARTIFACT_PATH"
+    echo "Moved DMG to $ARTIFACT_PATH"
+fi
+if [[ -n "${PKG_ARTIFACT_PATH:-}" ]]; then
+    mv "$staging_pkg_path" "$PKG_ARTIFACT_PATH"
+
+    echo "Moved PKG to $PKG_ARTIFACT_PATH"
 fi
