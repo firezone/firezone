@@ -20,7 +20,7 @@ cd "$temp_dir"
 # Submit app to App Store Connect
 xcrun altool \
     --upload-app \
-    -f "$PRIMARY_ARTIFACT_PATH" \
+    -f "$ARTIFACT_PATH" \
     -t "$PLATFORM" \
     --apiKey "$API_KEY_ID" \
     --apiIssuer "$ISSUER_ID"
