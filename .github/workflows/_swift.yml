@@ -99,6 +99,8 @@ jobs:
           INSTALLER_CERT_PASS: "${{ secrets.APPLE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
           STANDALONE_BUILD_CERT: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_BASE64 }}"
           STANDALONE_BUILD_CERT_PASS: "${{ secrets.APPLE_STANDALONE_BUILD_CERTIFICATE_P12_PASSWORD }}"
+          STANDALONE_INSTALLER_CERT: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_BASE64 }}"
+          STANDALONE_INSTALLER_CERT_PASS: "${{ secrets.APPLE_STANDALONE_MAC_INSTALLER_CERTIFICATE_P12_PASSWORD }}"
           ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
           PKG_ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
           NOTARIZE: "${{ github.event_name == 'workflow_dispatch' }}"

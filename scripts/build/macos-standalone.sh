@@ -17,8 +17,8 @@ staging_dmg_path="$temp_dir/staging.dmg"
 staging_pkg_path="$temp_dir/staging.pkg"
 git_sha=${GITHUB_SHA:-$(git rev-parse HEAD)}
 project_file=swift/apple/Firezone.xcodeproj
-codesign_identity="Developer ID Application: Firezone, Inc. (47R2M6779T)"
-installer_code_sign_identity="3rd Party Mac Developer Installer: Firezone, Inc. (47R2M6779T)"
+code_sign_identity="Developer ID Application: Firezone, Inc. (47R2M6779T)"
+installer_code_sign_identity="Developer ID Installer: Firezone, Inc. (47R2M6779T)"
 
 if [ "${CI:-}" = "true" ]; then
     # Configure the environment for building, signing, and packaging in CI
@@ -35,7 +35,7 @@ seconds_since_epoch=$(date +%s)
 xcodebuild build \
     GIT_SHA="$git_sha" \
     CODE_SIGN_STYLE=Manual \
-    CODE_SIGN_IDENTITY="$codesign_identity" \
+    CODE_SIGN_IDENTITY="$code_sign_identity" \
     PACKET_TUNNEL_PROVIDER_SUFFIX=-systemextension \
     OTHER_CODE_SIGN_FLAGS="--timestamp" \
     CODE_SIGN_INJECT_BASE_ENTITLEMENTS=NO \
@@ -103,7 +103,7 @@ hdiutil detach "$mount_dir"
 hdiutil convert "$staging_dmg_path" -format UDZO -o "$dmg_path"
 
 # Sign disk image
-codesign --force --sign "$codesign_identity" "$dmg_path"
+code_sign --force --sign "$code_sign_identity" "$dmg_path"
 
 echo "Disk image created at $dmg_path"
 
