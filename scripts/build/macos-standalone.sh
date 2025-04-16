@@ -125,6 +125,8 @@ if [ "$notarize" = "true" ]; then
     # Verify notarization
     xcrun stapler validate "$dmg_path"
 
+    echo "Disk image notarized!"
+
     # Submit PKG to be notarized. Can take a few minutes. Notarizes embedded app bundle as well.
     xcrun notarytool submit "$staging_pkg_path" \
         --key "$private_key_path" \
