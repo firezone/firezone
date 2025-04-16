@@ -56,7 +56,7 @@ and restart the service to trigger the upgrade:
 sudo systemctl stop firezone-gateway
 
 # Move the old binary to a backup location
-sudo mv /usr/local/bin/firezone-gateway /usr/local/bin/firezone-gateway.bak
+sudo mv /opt/firezone/bin/firezone-gateway /opt/firezone/bin/firezone-gateway.bak
 
 # Start the Gateway service to trigger the upgrade
 sudo systemctl start firezone-gateway

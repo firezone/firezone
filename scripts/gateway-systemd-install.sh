@@ -152,7 +152,7 @@ if [ ! -e "\$BINARY_PATH" ]; then
   else
     echo "\$BINARY_PATH.download is not an executable!"
     echo "Ensure '${FIREZONE_ARTIFACT_URL}/${FIREZONE_VERSION}/\$arch' is accessible from this machine,"
-    echo "or download binary manually and install to /usr/local/bin/firezone-gateway."
+    echo "or download binary manually and install to \$BINARY_PATH"
     exit 1
   fi
 else
