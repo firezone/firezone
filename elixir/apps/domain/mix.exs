@@ -55,7 +55,7 @@ defmodule Domain.MixProject do
       {:plug_crypto, "~> 2.0"},
       {:jose, "~> 1.11"},
       {:openid_connect,
-       github: "firezone/openid_connect", ref: "e4d9dca8ae43c765c00a7d3dfa12d6f24f5b3418"},
+       github: "firezone/openid_connect", ref: "78d8650bc75a462a2ff193dd1bffb70e1cafe839"},
       {:argon2_elixir, "~> 4.0"},
       {:workos, "~> 1.1"},
 
