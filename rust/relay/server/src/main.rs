@@ -9,7 +9,7 @@ use firezone_logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, VERSION, ebpf, sockets,
+    Sleep, VERSION, control_endpoint, ebpf, sockets,
 };
 use firezone_telemetry::{RELAY_DSN, Telemetry};
 use futures::{FutureExt, future};
@@ -18,7 +18,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use secrecy::{ExposeSecret, Secret, SecretString};
 use std::borrow::Cow;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Poll, ready};
@@ -91,6 +91,10 @@ struct Args {
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
 
+    /// The address of the local interface where we should serve our control endpoint.
+    #[arg(long, env, hide = true, default_value = "0.0.0.0:9999")]
+    control_endpoint: SocketAddr,
+
     /// Enable sentry.io crash-reporting agent.
     #[arg(long, env = "FIREZONE_TELEMETRY", default_value_t = false)]
     telemetry: bool,
@@ -136,7 +140,7 @@ fn main() {
 }
 
 async fn try_main(args: Args) -> Result<()> {
-    setup_tracing(&args)?;
+    let filter_reload_handle = setup_tracing(&args)?;
 
     let mut ebpf = args
         .ebpf_offloading
@@ -175,6 +179,11 @@ async fn try_main(args: Args) -> Result<()> {
     tokio::spawn(http_health_check::serve(
         args.health_check.health_check_addr,
         make_is_healthy(last_heartbeat_sent.clone()),
+    ));
+
+    tokio::spawn(control_endpoint::serve(
+        args.control_endpoint,
+        filter_reload_handle,
     ));
 
     let login = LoginUrl::relay(
