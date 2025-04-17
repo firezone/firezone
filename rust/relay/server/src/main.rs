@@ -92,7 +92,7 @@ struct Args {
     health_check: http_health_check::HealthCheckArgs,
 
     /// The address of the local interface where we should serve our control endpoint.
-    #[arg(long, env, hide = true, default_value = "0.0.0.0:9999")]
+    #[arg(long, env, hide = true, default_value = "127.0.0.1:9999")]
     control_endpoint: SocketAddr,
 
     /// Enable sentry.io crash-reporting agent.
