@@ -5,11 +5,11 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use ebpf_shared::Config;
 use firezone_bin_shared::http_health_check;
-use firezone_logging::{err_with_src, sentry_layer};
+use firezone_logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
     AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, VERSION, ebpf, sockets,
+    Sleep, VERSION, control_endpoint, ebpf, sockets,
 };
 use firezone_telemetry::{RELAY_DSN, Telemetry};
 use futures::{FutureExt, future};
@@ -18,16 +18,16 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use secrecy::{ExposeSecret, Secret, SecretString};
 use std::borrow::Cow;
-use std::net::{Ipv4Addr, Ipv6Addr};
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 use std::task::{Poll, ready};
 use std::time::{Duration, Instant};
 use stun_codec::rfc5766::attributes::ChannelNumber;
-use tracing::{Subscriber, level_filters::LevelFilter};
+use tracing::Subscriber;
 use tracing_core::Dispatch;
 use tracing_stackdriver::CloudTraceConfiguration;
-use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use url::Url;
 
 const STATS_LOG_INTERVAL: Duration = Duration::from_secs(10);
@@ -91,6 +91,10 @@ struct Args {
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
 
+    /// The address of the local interface where we should serve our control endpoint.
+    #[arg(long, env, hide = true, default_value = "127.0.0.1:9999")]
+    control_endpoint: SocketAddr,
+
     /// Enable sentry.io crash-reporting agent.
     #[arg(long, env = "FIREZONE_TELEMETRY", default_value_t = false)]
     telemetry: bool,
@@ -136,7 +140,7 @@ fn main() {
 }
 
 async fn try_main(args: Args) -> Result<()> {
-    setup_tracing(&args)?;
+    let filter_reload_handle = setup_tracing(&args)?;
 
     let mut ebpf = args
         .ebpf_offloading
@@ -175,6 +179,11 @@ async fn try_main(args: Args) -> Result<()> {
     tokio::spawn(http_health_check::serve(
         args.health_check.health_check_addr,
         make_is_healthy(last_heartbeat_sent.clone()),
+    ));
+
+    tokio::spawn(control_endpoint::serve(
+        args.control_endpoint,
+        filter_reload_handle,
     ));
 
     let login = LoginUrl::relay(
@@ -222,7 +231,7 @@ async fn try_main(args: Args) -> Result<()> {
 /// ## Integration with OTLP
 ///
 /// If the user has specified [`TraceCollector::Otlp`], we will set up an OTLP-exporter that connects to an OTLP collector specified at `Args.otlp_grpc_endpoint`.
-fn setup_tracing(args: &Args) -> Result<()> {
+fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
     use opentelemetry::{global, trace::TracerProvider as _};
     use opentelemetry_otlp::WithExportConfig;
     use opentelemetry_sdk::{runtime::Tokio, trace::Config};
@@ -233,12 +242,20 @@ fn setup_tracing(args: &Args) -> Result<()> {
         &tracing_subscriber::registry().with(log_layer(args)).into(),
     );
 
-    let dispatch: Dispatch = match args.otlp_grpc_endpoint.clone() {
-        None => tracing_subscriber::registry()
-            .with(log_layer(args))
-            .with(env_filter())
-            .with(sentry_layer())
-            .into(),
+    let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+
+    let (dispatch, reload_handle) = match args.otlp_grpc_endpoint.clone() {
+        None => {
+            let (filter, reload_handle) = firezone_logging::try_filter(&directives)?;
+
+            let dispatch: Dispatch = tracing_subscriber::registry()
+                .with(log_layer(args))
+                .with(filter)
+                .with(sentry_layer())
+                .into();
+
+            (dispatch, reload_handle)
+        }
         Some(endpoint) => {
             let metadata = make_otel_metadata();
             let grpc_endpoint = format!("http://{endpoint}");
@@ -273,12 +290,16 @@ fn setup_tracing(args: &Args) -> Result<()> {
 
             tracing::trace!(target: "relay", "Successfully initialized metric provider on tokio runtime");
 
-            tracing_subscriber::registry()
+            let (filter, reload_handle) = firezone_logging::try_filter(&directives)?;
+
+            let dispatch: Dispatch = tracing_subscriber::registry()
                 .with(log_layer(args))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("relay")))
-                .with(env_filter())
+                .with(filter)
                 .with(sentry_layer())
-                .into()
+                .into();
+
+            (dispatch, reload_handle)
         }
     };
 
@@ -288,7 +309,7 @@ fn setup_tracing(args: &Args) -> Result<()> {
         .try_init()
         .context("Failed to initialize tracing")?;
 
-    Ok(())
+    Ok(reload_handle)
 }
 
 /// Constructs the base log layer.
@@ -314,12 +335,6 @@ where
             .with_cloud_trace(CloudTraceConfiguration { project_id })
             .boxed(),
     }
-}
-
-fn env_filter() -> EnvFilter {
-    EnvFilter::builder()
-        .with_default_directive(LevelFilter::INFO.into())
-        .from_env_lossy()
 }
 
 #[derive(Debug, serde::Deserialize)]
