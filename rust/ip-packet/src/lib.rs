@@ -561,7 +561,9 @@ impl IpPacket {
             return None;
         }
 
-        UdpSlice::from_slice(self.payload()).ok()
+        UdpSlice::from_slice(self.payload())
+            .inspect_err(|e| tracing::debug!("Invalid UDP packet: {e}"))
+            .ok()
     }
 
     pub fn as_udp_mut(&mut self) -> Option<UdpHeaderSliceMut> {
@@ -569,7 +571,9 @@ impl IpPacket {
             return None;
         }
 
-        UdpHeaderSliceMut::from_slice(self.payload_mut()).ok()
+        UdpHeaderSliceMut::from_slice(self.payload_mut())
+            .inspect_err(|e| tracing::debug!("Invalid UDP packet: {e}"))
+            .ok()
     }
 
     pub fn as_tcp(&self) -> Option<TcpSlice> {
@@ -577,7 +581,9 @@ impl IpPacket {
             return None;
         }
 
-        TcpSlice::from_slice(self.payload()).ok()
+        TcpSlice::from_slice(self.payload())
+            .inspect_err(|e| tracing::debug!("Invalid TCP packet: {e}"))
+            .ok()
     }
 
     pub fn as_tcp_mut(&mut self) -> Option<TcpHeaderSliceMut> {
@@ -585,7 +591,9 @@ impl IpPacket {
             return None;
         }
 
-        TcpHeaderSliceMut::from_slice(self.payload_mut()).ok()
+        TcpHeaderSliceMut::from_slice(self.payload_mut())
+            .inspect_err(|e| tracing::debug!("Invalid TCP packet: {e}"))
+            .ok()
     }
 
     fn set_icmpv6_checksum(&mut self) {
@@ -632,7 +640,9 @@ impl IpPacket {
             return None;
         }
 
-        Icmpv4Slice::from_slice(self.payload()).ok()
+        Icmpv4Slice::from_slice(self.payload())
+            .inspect_err(|e| tracing::debug!("Invalid ICMPv4 packet: {e}"))
+            .ok()
     }
 
     pub fn as_icmpv4_mut(&mut self) -> Option<Icmpv4HeaderSliceMut> {
@@ -640,7 +650,9 @@ impl IpPacket {
             return None;
         }
 
-        Icmpv4HeaderSliceMut::from_slice(self.payload_mut()).ok()
+        Icmpv4HeaderSliceMut::from_slice(self.payload_mut())
+            .inspect_err(|e| tracing::debug!("Invalid ICMPv4 packet: {e}"))
+            .ok()
     }
 
     /// In case the packet is an ICMP unreachable error, parses the unroutable packet from the ICMP payload.
@@ -736,7 +748,9 @@ impl IpPacket {
             return None;
         }
 
-        Icmpv6Slice::from_slice(self.payload()).ok()
+        Icmpv6Slice::from_slice(self.payload())
+            .inspect_err(|e| tracing::debug!("Invalid ICMPv6 packet: {e}"))
+            .ok()
     }
 
     pub fn as_icmpv6_mut(&mut self) -> Option<Icmpv6EchoHeaderSliceMut> {
@@ -744,7 +758,9 @@ impl IpPacket {
             return None;
         }
 
-        Icmpv6EchoHeaderSliceMut::from_slice(self.payload_mut()).ok()
+        Icmpv6EchoHeaderSliceMut::from_slice(self.payload_mut())
+            .inspect_err(|e| tracing::debug!("Invalid ICMPv6 packet: {e}"))
+            .ok()
     }
 
     pub fn as_fz_p2p_control(&self) -> Option<FzP2pControlSlice> {
