@@ -211,6 +211,7 @@ ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.26" } # Waiting for release.
 softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" } # Waiting for release.
+str0m = { git = "https://github.com/firezone/str0m", branch = "feat/prefer-same-ip-version-relay-candidates" }
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']

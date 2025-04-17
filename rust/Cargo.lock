@@ -6533,8 +6533,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b85058b6dca67818698a745d12e16884b17d5c31cc20377a4413bf492ca0142"
+source = "git+https://github.com/firezone/str0m?branch=feat%2Fprefer-same-ip-version-relay-candidates#e2a91ac95cd1245b502f93f76808e3f18a1fc006"
 dependencies = [
  "combine",
  "crc",
