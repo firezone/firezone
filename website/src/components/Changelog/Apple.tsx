@@ -24,6 +24,11 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased></Unreleased>
+      <Entry version="1.4.10" date={new Date("2025-04-17")}>
+        <ChangeItem pull="8795">
+          Publishes an installer package for macOS in addition to the DMG file.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.4.9" date={new Date("2025-04-15")}>
         <ChangeItem pull="7590">
           Improves performance by moving UDP sockets to a dedicated thread.
