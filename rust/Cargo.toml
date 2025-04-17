@@ -146,7 +146,7 @@ snownet = { path = "connlib/snownet" }
 socket-factory = { path = "socket-factory" }
 socket2 = { version = "0.5" }
 static_assertions = "1.1.0"
-str0m = { version = "0.7.0", default-features = false, features = ["sha1"] }
+str0m = { version = "0.8.0", default-features = false, features = ["sha1"] }
 strum = { version = "0.27.1", features = ["derive"] }
 stun_codec = "0.3.4"
 subprocess = "0.2.9"
