@@ -6533,7 +6533,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.7.0"
-source = "git+https://github.com/firezone/str0m?branch=feat%2Fprefer-same-ip-version-relay-candidates#e2a91ac95cd1245b502f93f76808e3f18a1fc006"
+source = "git+https://github.com/firezone/str0m?branch=feat%2Fprefer-same-ip-version-relay-candidates#7a5fe04be3d1a42023e9f060afcc6da18dfc248a"
 dependencies = [
  "combine",
  "crc",
