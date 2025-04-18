@@ -66,16 +66,6 @@ runs:
       run: rustup target add ${{ inputs.targets }}
       shell: bash
 
-    - name: Cache cargo registry
-      uses: actions/cache@v3
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-
-
     - name: Install nightly Rust
       id: nightly
       run: |
@@ -91,3 +81,13 @@ runs:
     - name: Start sccache
       run: $SCCACHE_PATH --start-server
       shell: bash
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
