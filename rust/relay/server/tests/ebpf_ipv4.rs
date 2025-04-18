@@ -24,10 +24,7 @@ async fn ping_pong() {
     // Linux does not set the correct UDP checksum when sending the packet, so our updated checksum in the eBPF code will be wrong and later dropped.
     // To make the test work, we therefore need to tell the eBPF program to disable UDP checksumming by just setting it to 0.
     program
-        .set_config(Config {
-            udp_checksum_enabled: false,
-            ..Config::default()
-        })
+        .set_config(Config::default().with_udp_checksum(false))
         .unwrap();
 
     let client = UdpSocket::bind("127.0.0.1:0").await.unwrap();
