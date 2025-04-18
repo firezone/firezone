@@ -2,11 +2,6 @@
 name: "Setup Rust"
 description: "Sets up the correct Rust version and caching via sccache and a GCP backend"
 inputs:
-  key:
-    description: "The key to use for the cache"
-    required: false
-    # e.g. Linux-x86_64
-    default: ${{ runner.os }}-${{ runner.arch }}
   targets:
     description: "Additional targets to install"
     required: false
