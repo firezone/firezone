@@ -8,13 +8,13 @@ use ebpf_shared::Config;
 static CONFIG: Array<Config> = Array::with_max_entries(1, 0);
 
 pub fn udp_checksum_enabled() -> bool {
-    config().udp_checksum_enabled
+    config().udp_checksum_enabled()
 }
 
 pub fn allocation_range() -> RangeInclusive<u16> {
     let config = config();
 
-    config.lowest_allocation_port..=(config.highest_allocation_port)
+    config.lowest_allocation_port()..=(config.highest_allocation_port())
 }
 
 fn config() -> Config {

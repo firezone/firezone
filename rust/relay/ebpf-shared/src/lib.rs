@@ -204,17 +204,52 @@ impl PortAndPeerV6 {
 #[derive(Clone, Copy, PartialEq, Eq)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct Config {
-    pub udp_checksum_enabled: bool,
-    pub lowest_allocation_port: u16,
-    pub highest_allocation_port: u16,
+    udp_checksum_enabled: bool,
+    lowest_allocation_port: [u8; 2],
+    highest_allocation_port: [u8; 2],
+}
+
+impl Config {
+    pub fn udp_checksum_enabled(&self) -> bool {
+        self.udp_checksum_enabled
+    }
+
+    pub fn with_udp_checksum(self, enabled: bool) -> Self {
+        Self {
+            udp_checksum_enabled: enabled,
+            ..self
+        }
+    }
+
+    pub fn lowest_allocation_port(&self) -> u16 {
+        u16::from_be_bytes(self.lowest_allocation_port)
+    }
+
+    pub fn with_lowest_allocation_port(self, port: u16) -> Self {
+        Self {
+            lowest_allocation_port: port.to_be_bytes(),
+            ..self
+        }
+    }
+
+    pub fn highest_allocation_port(&self) -> u16 {
+        u16::from_be_bytes(self.highest_allocation_port)
+    }
+
+    pub fn with_highest_allocation_port(self, port: u16) -> Self {
+        Self {
+            highest_allocation_port: port.to_be_bytes(),
+            ..self
+        }
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             udp_checksum_enabled: true,
-            lowest_allocation_port: 49152,
-            highest_allocation_port: 65535,
+            lowest_allocation_port: 49152_u16.to_be_bytes(),
+            highest_allocation_port: 65535_u16.to_be_bytes(),
         }
     }
 }
