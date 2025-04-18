@@ -99,6 +99,7 @@ public final class Store: ObservableObject {
 
     if autoStart {
       // Try to connect on start
+      try await vpnConfigurationManager?.enableConfiguration()
       try ipcClient().start()
     }
 
