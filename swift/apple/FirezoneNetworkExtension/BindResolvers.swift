@@ -1,23 +1,45 @@
 //
-//  Resolv.swift
-//  Firezone
-//
-//  Created by Jamil Bou Kheir on 12/22/23.
+//  BindResolvers.swift
+//  (c) 2024 Firezone, Inc.
+//  LICENSE: Apache-2.0
 //
 // Reads system resolvers from libresolv, similar to reading /etc/resolv.conf but this also works on iOS
 
+import FirezoneKit
+
 public class BindResolvers {
-  var state = __res_9_state()
+  enum Error: Swift.Error {
+    case failedToAllocateMemory
+  }
+
+  var state: UnsafeMutablePointer<__res_9_state>?
 
   public init() {
+    guard let state = __res_9_state()
+    else {
+      Log.error(Error.failedToAllocateMemory)
+
+      return
+    }
+
+    self.state = state
     res_9_ninit(state)
   }
 
   deinit {
-    res_9_ndestroy(state)
+    if let state {
+      res_9_ndestroy(state)
+    }
   }
 
   public final func getservers() -> [res_9_sockaddr_union] {
+    guard let state
+    else {
+      Log.warning("state is not initialized, allocation error?")
+
+      return []
+    }
+
     let maxServers = 10
     var servers = [res_9_sockaddr_union](repeating: res_9_sockaddr_union(), count: maxServers)
     let found = Int(res_9_getservers(state, &servers, Int32(maxServers)))
