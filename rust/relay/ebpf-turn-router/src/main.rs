@@ -133,7 +133,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
         udp_payload_len
     );
 
-    if config::allocation_range().contains(&udp.dst()) {
+    if is_port_in_allocation_range(udp.dst()) {
         try_handle_ipv4_udp_to_channel_data(ctx, eth, ipv4, udp)?;
         stats::emit_data_relayed(ctx, udp_payload_len);
 
@@ -268,7 +268,7 @@ fn try_handle_turn_ipv6(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
         udp_payload_len
     );
 
-    if config::allocation_range().contains(&udp.dst()) {
+    if is_port_in_allocation_range(udp.dst()) {
         try_handle_ipv6_udp_to_channel_data(ctx, eth, ipv6, udp)?;
         stats::emit_data_relayed(ctx, udp_payload_len);
 
@@ -375,6 +375,10 @@ fn try_handle_ipv6_channel_data_to_udp(
     remove_channel_data_header_ipv6(ctx)?;
 
     Ok(())
+}
+
+fn is_port_in_allocation_range(port: u16) -> bool {
+    port >= config::lowest_allocation_port() && port <= config::highest_allocation_port()
 }
 
 /// Defines our panic handler.
