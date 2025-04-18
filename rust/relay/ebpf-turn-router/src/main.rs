@@ -70,14 +70,14 @@ static UDP_TO_CHAN_64: HashMap<PortAndPeerV6, ClientAndChannelV4> =
 pub fn handle_turn(ctx: XdpContext) -> u32 {
     trace!(
         &ctx,
-        "udp-checksumming = {}, lowest-allocation-port = {}, highest-allocation-port = {}",
+        "udp-checksumming = {}, allocation-range = {}..={}",
         if config::udp_checksum_enabled() {
             "true"
         } else {
             "false"
         },
-        config::lowest_allocation_port(),
-        config::highest_allocation_port(),
+        *config::allocation_range().start(),
+        *config::allocation_range().end(),
     );
 
     try_handle_turn(&ctx).unwrap_or_else(|e| match e {
@@ -145,7 +145,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
         udp_payload_len
     );
 
-    if is_port_in_allocation_range(udp.dst()) {
+    if config::allocation_range().contains(&udp.dst()) {
         try_handle_ipv4_udp_to_channel_data(ctx, eth, ipv4, udp)?;
         stats::emit_data_relayed(ctx, udp_payload_len);
 
@@ -280,7 +280,7 @@ fn try_handle_turn_ipv6(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
         udp_payload_len
     );
 
-    if is_port_in_allocation_range(udp.dst()) {
+    if config::allocation_range().contains(&udp.dst()) {
         try_handle_ipv6_udp_to_channel_data(ctx, eth, ipv6, udp)?;
         stats::emit_data_relayed(ctx, udp_payload_len);
 
@@ -387,10 +387,6 @@ fn try_handle_ipv6_channel_data_to_udp(
     remove_channel_data_header_ipv6(ctx)?;
 
     Ok(())
-}
-
-fn is_port_in_allocation_range(port: u16) -> bool {
-    port >= config::lowest_allocation_port() && port <= config::highest_allocation_port()
 }
 
 /// Defines our panic handler.
