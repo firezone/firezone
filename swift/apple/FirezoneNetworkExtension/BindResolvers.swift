@@ -10,17 +10,17 @@ public class BindResolvers {
   var state = __res_9_state()
 
   public init() {
-    res_9_ninit(&state)
+    res_9_ninit(state)
   }
 
   deinit {
-    res_9_ndestroy(&state)
+    res_9_ndestroy(state)
   }
 
   public final func getservers() -> [res_9_sockaddr_union] {
     let maxServers = 10
     var servers = [res_9_sockaddr_union](repeating: res_9_sockaddr_union(), count: maxServers)
-    let found = Int(res_9_getservers(&state, &servers, Int32(maxServers)))
+    let found = Int(res_9_getservers(state, &servers, Int32(maxServers)))
 
     // filter is to remove the erroneous empty entry when there's no real servers
     return Array(servers[0..<found]).filter { $0.sin.sin_len > 0 }
