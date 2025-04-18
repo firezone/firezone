@@ -1,3 +1,5 @@
+use core::ops::RangeInclusive;
+
 use aya_ebpf::{macros::map, maps::Array};
 use ebpf_shared::Config;
 
@@ -9,12 +11,11 @@ pub fn udp_checksum_enabled() -> bool {
     config().udp_checksum_enabled()
 }
 
-pub fn lowest_allocation_port() -> u16 {
-    config().lowest_allocation_port()
-}
+pub fn allocation_range() -> RangeInclusive<u16> {
+    let low = config().lowest_allocation_port();
+    let high = config().highest_allocation_port();
 
-pub fn highest_allocation_port() -> u16 {
-    config().highest_allocation_port()
+    low..=high
 }
 
 fn config() -> Config {
