@@ -8,28 +8,15 @@
 import FirezoneKit
 
 public class BindResolvers {
-  enum Error: Swift.Error {
-    case failedToAllocateMemory
-  }
-
   var state: UnsafeMutablePointer<__res_9_state>?
 
   public init() {
-    guard let state = __res_9_state()
-    else {
-      Log.error(Error.failedToAllocateMemory)
-
-      return
-    }
-
-    self.state = state
+    self.state = __res_9_state()
     res_9_ninit(state)
   }
 
   deinit {
-    if let state {
-      res_9_ndestroy(state)
-    }
+    res_9_ndestroy(state)
   }
 
   public final func getservers() -> [res_9_sockaddr_union] {
