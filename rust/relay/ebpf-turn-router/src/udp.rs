@@ -1,7 +1,7 @@
 use crate::{Error, checksum::ChecksumUpdate, ref_mut_at::ref_mut_at};
 use aya_ebpf::programs::XdpContext;
 use aya_log_ebpf::debug;
-use network_types::eth::EthHdr;
+use network_types::{eth::EthHdr, udp::UdpHdr};
 
 /// Represents a UDP header within our packet.
 pub struct Udp<'a> {
@@ -92,19 +92,4 @@ impl<'a> Udp<'a> {
             new_len,
         );
     }
-}
-
-// Copied from `network-types` but uses byte-arrays instead of `u32` and `u16`
-// See <https://github.com/vadorovsky/network-types/issues/32>.
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct UdpHdr {
-    pub source: [u8; 2],
-    pub dest: [u8; 2],
-    pub len: [u8; 2],
-    pub check: [u8; 2],
-}
-
-impl UdpHdr {
-    pub const LEN: usize = core::mem::size_of::<Self>();
 }
