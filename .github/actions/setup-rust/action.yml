@@ -79,12 +79,12 @@ runs:
 
     # Windows is very slow in downloading crates individually so cache them in bulk
     - name: Cache cargo registry on Windows
-      # if: ${{ runner.os == 'Windows' }}
+      if: ${{ runner.os == 'Windows' }}
       uses: actions/cache@v3
       with:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-        key: ${{ runner.name }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-
