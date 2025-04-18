@@ -38,11 +38,6 @@ public enum Telemetry {
       options.environment = "entrypoint" // will be reconfigured in VPNConfigurationManager
       options.releaseName = releaseName()
       options.dist = distributionType()
-
-#if DEBUG
-      // https://docs.sentry.io/platforms/apple/guides/ios/configuration/options/#debug
-      options.debug = true
-#endif
     }
   }
 
