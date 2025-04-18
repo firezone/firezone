@@ -28,63 +28,51 @@ const MAX_ALLOCATION_LIFETIME: Duration = Duration::from_secs(3600);
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-allocations-2>.
 const DEFAULT_ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
 
-#[derive(Default, Debug)]
-pub struct Decoder {
-    stun_message_decoder: stun_codec::MessageDecoder<Attribute>,
-}
+pub fn decode(input: &[u8]) -> Result<Result<ClientMessage, Message<Attribute>>, Error> {
+    let mut decoder = stun_codec::MessageDecoder::default();
 
-impl Decoder {
-    pub fn decode<'a>(
-        &mut self,
-        input: &'a [u8],
-    ) -> Result<Result<ClientMessage<'a>, Message<Attribute>>, Error> {
-        // De-multiplex as per <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
-        match input.first() {
-            Some(0..=3) => {
-                let message = match self.stun_message_decoder.decode_from_bytes(input)? {
-                    Ok(message) => message,
-                    Err(broken_message) => {
-                        let method = broken_message.method();
-                        let transaction_id = broken_message.transaction_id();
-                        let error = broken_message.error().clone();
+    // De-multiplex as per <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
+    match input.first() {
+        Some(0..=3) => {
+            let message = match decoder.decode_from_bytes(input)? {
+                Ok(message) => message,
+                Err(broken_message) => {
+                    let method = broken_message.method();
+                    let transaction_id = broken_message.transaction_id();
+                    let error = broken_message.error().clone();
 
-                        tracing::debug!(transaction_id = ?transaction_id, %method, %error, "Failed to decode attributes of message");
+                    tracing::debug!(transaction_id = ?transaction_id, %method, %error, "Failed to decode attributes of message");
 
-                        let error_code = ErrorCode::from(error);
+                    let error_code = ErrorCode::from(error);
 
-                        return Ok(Err(error_response(method, transaction_id, error_code)));
-                    }
-                };
-
-                use MessageClass::*;
-                match (message.method(), message.class()) {
-                    (BINDING, Request) => Ok(Ok(ClientMessage::Binding(Binding::parse(&message)))),
-                    (ALLOCATE, Request) => {
-                        Ok(Allocate::parse(&message).map(ClientMessage::Allocate))
-                    }
-                    (REFRESH, Request) => Ok(Ok(ClientMessage::Refresh(Refresh::parse(&message)))),
-                    (CHANNEL_BIND, Request) => {
-                        Ok(ChannelBind::parse(&message).map(ClientMessage::ChannelBind))
-                    }
-                    (CREATE_PERMISSION, Request) => Ok(Ok(ClientMessage::CreatePermission(
-                        CreatePermission::parse(&message),
-                    ))),
-                    (_, Request) => Ok(Err(bad_request(&message))),
-                    (method, class) => {
-                        Err(Error::DecodeStun(bytecodec::Error::from(io::Error::new(
-                            io::ErrorKind::Unsupported,
-                            format!(
-                                "handling method {} and {class:?} is not implemented",
-                                method.as_u16()
-                            ),
-                        ))))
-                    }
+                    return Ok(Err(error_response(method, transaction_id, error_code)));
                 }
+            };
+
+            use MessageClass::*;
+            match (message.method(), message.class()) {
+                (BINDING, Request) => Ok(Ok(ClientMessage::Binding(Binding::parse(&message)))),
+                (ALLOCATE, Request) => Ok(Allocate::parse(&message).map(ClientMessage::Allocate)),
+                (REFRESH, Request) => Ok(Ok(ClientMessage::Refresh(Refresh::parse(&message)))),
+                (CHANNEL_BIND, Request) => {
+                    Ok(ChannelBind::parse(&message).map(ClientMessage::ChannelBind))
+                }
+                (CREATE_PERMISSION, Request) => Ok(Ok(ClientMessage::CreatePermission(
+                    CreatePermission::parse(&message),
+                ))),
+                (_, Request) => Ok(Err(bad_request(&message))),
+                (method, class) => Err(Error::DecodeStun(bytecodec::Error::from(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!(
+                        "handling method {} and {class:?} is not implemented",
+                        method.as_u16()
+                    ),
+                )))),
             }
-            Some(64..=79) => Ok(Ok(ClientMessage::ChannelData(ChannelData::parse(input)?))),
-            Some(other) => Err(Error::UnknownMessageType(*other)),
-            None => Err(Error::Eof),
         }
+        Some(64..=79) => Ok(Ok(ClientMessage::ChannelData(ChannelData::parse(input)?))),
+        Some(other) => Err(Error::UnknownMessageType(*other)),
+        None => Err(Error::Eof),
     }
 }
 

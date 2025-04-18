@@ -52,9 +52,6 @@ use uuid::Uuid;
 /// Additionally, we assume to have complete ownership over the port range `lowest_port` - `highest_port`.
 #[derive(Debug)]
 pub struct Server<R> {
-    decoder: client_message::Decoder,
-    encoder: auth::MessageEncoder,
-
     public_address: IpStack,
 
     /// All client allocations, indexed by client's socket address.
@@ -195,8 +192,6 @@ where
             .init();
 
         Self {
-            decoder: Default::default(),
-            encoder: Default::default(),
             public_address: public_address.into(),
             allocations: Default::default(),
             clients_by_allocation: Default::default(),
@@ -272,7 +267,7 @@ where
     ) -> Option<(AllocationPort, PeerSocket)> {
         tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
-        match self.decoder.decode(bytes) {
+        match client_message::decode(bytes) {
             Ok(Ok(message)) => {
                 return self.handle_client_message(message, sender, now);
             }
@@ -988,7 +983,7 @@ where
         let error_code = message.get_attribute::<ErrorCode>().map(|e| e.code());
         tracing::trace!(target: "relay",  method = %message.method(), class = %message.class(), "Sending message");
 
-        let Ok(bytes) = self.encoder.encode_into_bytes(message) else {
+        let Ok(bytes) = auth::MessageEncoder::default().encode_into_bytes(message) else {
             debug_assert!(false, "Encoding should never fail");
             return;
         };
