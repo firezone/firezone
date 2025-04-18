@@ -150,11 +150,12 @@ async fn try_main(args: Args) -> Result<()> {
         .context("Failed to load eBPF TURN router")?;
 
     if let Some(ebpf) = ebpf.as_mut() {
-        ebpf.set_config(Config {
-            udp_checksum_enabled: true,
-            lowest_allocation_port: args.lowest_port,
-            highest_allocation_port: args.highest_port,
-        })
+        ebpf.set_config(
+            Config::default()
+                .with_udp_checksum(true)
+                .with_lowest_allocation_port(args.lowest_port)
+                .with_highest_allocation_port(args.highest_port),
+        )
         .context("Failed to set config of eBPF program")?;
     }
 
