@@ -67,7 +67,6 @@ public class VPNConfigurationManager {
     // Since our bundle ID can change (by us), find the one that's current and ignore the others.
     let managers = try await NETunnelProviderManager.loadAllFromPreferences()
 
-    Log.log("\(#function): \(managers.count) tunnel managers found")
     for manager in managers where manager.localizedDescription == bundleDescription {
       return VPNConfigurationManager(from: manager)
     }
@@ -120,11 +119,7 @@ public class VPNConfigurationManager {
     protocolConfiguration.providerConfiguration = providerConfiguration
     manager.protocolConfiguration = protocolConfiguration
 
-    // Always set this to true when starting the tunnel in case our tunnel was disabled by the system.
-    manager.isEnabled = true
-
-    try await manager.saveToPreferences()
-    try await manager.loadFromPreferences()
+    try await enableConfiguration()
   }
 
   func save(settings: Settings) async throws {
@@ -143,13 +138,18 @@ public class VPNConfigurationManager {
     protocolConfiguration.serverAddress = settings.apiURL
     manager.protocolConfiguration = protocolConfiguration
 
-    manager.isEnabled = true
-
-    try await manager.saveToPreferences()
-    try await manager.loadFromPreferences()
+    try await enableConfiguration()
 
     // Reconfigure our Telemetry environment in case it changed
     Telemetry.setEnvironmentOrClose(settings.apiURL)
+  }
+
+  // If another VPN is activated on the system, ours becomes disabled. This is provided so that we may call it before
+  // each start attempt in order to reactivate our configuration.
+  func enableConfiguration() async throws {
+    manager.isEnabled = true
+    try await manager.saveToPreferences()
+    try await manager.loadFromPreferences()
   }
 
   func settings() throws -> Settings {
