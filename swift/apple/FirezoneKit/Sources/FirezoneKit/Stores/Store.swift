@@ -80,7 +80,9 @@ public final class Store: ObservableObject {
         if let manager = try await VPNConfigurationManager.load() {
           self.vpnConfigurationManager = manager
           self.settings = try manager.settings()
-          try await setupTunnelObservers(autoStart: true)
+          try await setupTunnelObservers()
+          try await manager.enableConfiguration()
+          try ipcClient().start()
         } else {
           status = .invalid
         }
@@ -90,19 +92,12 @@ public final class Store: ObservableObject {
     }
   }
 
-  func setupTunnelObservers(autoStart: Bool = false) async throws {
+  func setupTunnelObservers() async throws {
     let statusChangeHandler: (NEVPNStatus) async throws -> Void = { [weak self] status in
       try await self?.handleStatusChange(newStatus: status)
     }
 
     try ipcClient().subscribeToVPNStatusUpdates(handler: statusChangeHandler)
-
-    if autoStart {
-      // Try to connect on start
-      try await vpnConfigurationManager?.enableConfiguration()
-      try ipcClient().start()
-    }
-
     try await handleStatusChange(newStatus: ipcClient().sessionStatus())
   }
 
