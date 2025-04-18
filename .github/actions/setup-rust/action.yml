@@ -82,7 +82,9 @@ runs:
       run: $SCCACHE_PATH --start-server
       shell: bash
 
-    - name: Cache cargo registry
+    # Windows is very slow in downloading crates individually so cache them in bulk
+    - name: Cache cargo registry on Windows
+      if: ${{ runner.os == 'Windows' }}
       uses: actions/cache@v3
       with:
         path: |
