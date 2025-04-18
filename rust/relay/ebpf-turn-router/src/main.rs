@@ -13,7 +13,7 @@ use channel_data::{CdHdr, ChannelData};
 use ebpf_shared::{ClientAndChannelV4, ClientAndChannelV6, PortAndPeerV4, PortAndPeerV6};
 use error::{SupportedChannel, UnsupportedChannel};
 use eth::Eth;
-use ip4::{Ip4, Ipv4Hdr};
+use ip4::Ip4;
 use ip6::Ip6;
 use move_headers::{
     add_channel_data_header_ipv4, add_channel_data_header_ipv6, remove_channel_data_header_ipv4,
@@ -21,9 +21,10 @@ use move_headers::{
 };
 use network_types::{
     eth::EtherType,
-    ip::{IpProto, Ipv6Hdr},
+    ip::{IpProto, Ipv4Hdr, Ipv6Hdr},
+    udp::UdpHdr,
 };
-use udp::{Udp, UdpHdr};
+use udp::Udp;
 
 mod channel_data;
 mod checksum;

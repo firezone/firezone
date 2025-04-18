@@ -3,7 +3,10 @@ use core::net::Ipv6Addr;
 use crate::{Error, checksum::ChecksumUpdate, ref_mut_at::ref_mut_at};
 use aya_ebpf::programs::XdpContext;
 use aya_log_ebpf::debug;
-use network_types::{eth::EthHdr, ip::IpProto};
+use network_types::{
+    eth::EthHdr,
+    ip::{IpProto, Ipv6Hdr},
+};
 
 /// Represents an IPv6 header within our packet.
 pub struct Ip6<'a> {
@@ -62,17 +65,4 @@ impl<'a> Ip6<'a> {
 
         ip_pseudo_header
     }
-}
-
-// Copied from `network-types` but uses byte-arrays instead of `u32` and `u16`
-// See <https://github.com/vadorovsky/network-types/issues/32>.
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct Ipv6Hdr {
-    pub version_traffic_class_flow_label: [u8; 4],
-    pub payload_len: [u8; 2],
-    pub next_hdr: IpProto,
-    pub hop_limit: u8,
-    pub src_addr: [u8; 16],
-    pub dst_addr: [u8; 16],
 }

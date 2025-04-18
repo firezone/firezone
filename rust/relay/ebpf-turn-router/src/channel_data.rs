@@ -1,6 +1,6 @@
-use crate::{Error, ref_mut_at::ref_mut_at, udp::UdpHdr};
+use crate::{Error, ref_mut_at::ref_mut_at};
 use aya_ebpf::programs::XdpContext;
-use network_types::eth::EthHdr;
+use network_types::{eth::EthHdr, udp::UdpHdr};
 
 /// Represents a channel-data header within our packet.
 pub struct ChannelData<'a> {

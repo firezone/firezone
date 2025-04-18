@@ -4214,9 +4214,9 @@ dependencies = [
 
 [[package]]
 name = "network-types"
-version = "0.0.7"
+version = "0.0.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e82e9f64c09f56aa7c80c3fa087997bd99a913f91d9c74d36cf5fd75dd5773e6"
+checksum = "f2df15b1cb023b9d205ae287d5dbe74510ae4d62b5131ceec516f4913ed05230"
 
 [[package]]
 name = "new_debug_unreachable"

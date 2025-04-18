@@ -3,7 +3,10 @@ use core::net::Ipv4Addr;
 use crate::{Error, checksum::ChecksumUpdate, ref_mut_at::ref_mut_at};
 use aya_ebpf::programs::XdpContext;
 use aya_log_ebpf::debug;
-use network_types::{eth::EthHdr, ip::IpProto};
+use network_types::{
+    eth::EthHdr,
+    ip::{IpProto, Ipv4Hdr},
+};
 
 /// Represents an IPv4 header within our packet.
 pub struct Ip4<'a> {
@@ -79,53 +82,5 @@ impl<'a> Ip4<'a> {
         );
 
         ip_pseudo_header
-    }
-}
-
-// Copied from `network-types` but uses byte-arrays instead of `u32` and `u16`
-// See <https://github.com/vadorovsky/network-types/issues/32>.
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-pub struct Ipv4Hdr {
-    pub version_ihl: u8,
-    pub tos: u8,
-    pub tot_len: [u8; 2],
-    pub id: [u8; 2],
-    pub frag_off: [u8; 2],
-    pub ttl: u8,
-    pub proto: IpProto,
-    pub check: [u8; 2],
-    pub src_addr: [u8; 4],
-    pub dst_addr: [u8; 4],
-}
-
-impl Ipv4Hdr {
-    pub const LEN: usize = core::mem::size_of::<Self>();
-
-    pub fn ihl(&self) -> u8 {
-        self.version_ihl & 0b00001111
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ihl() {
-        let ipv4_hdr = Ipv4Hdr {
-            version_ihl: 0b0100_0101,
-            tos: Default::default(),
-            tot_len: Default::default(),
-            id: Default::default(),
-            frag_off: Default::default(),
-            ttl: Default::default(),
-            proto: IpProto::Udp,
-            check: Default::default(),
-            src_addr: Default::default(),
-            dst_addr: Default::default(),
-        };
-
-        assert_eq!(ipv4_hdr.ihl(), 0b0101); // The lower 4 bits of `version_ihl` are the IHL,
     }
 }
