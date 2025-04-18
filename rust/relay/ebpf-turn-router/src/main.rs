@@ -69,13 +69,12 @@ static UDP_TO_CHAN_64: HashMap<PortAndPeerV6, ClientAndChannelV4> =
 #[xdp]
 pub fn handle_turn(ctx: XdpContext) -> u32 {
     try_handle_turn(&ctx).unwrap_or_else(|e| match e {
-        Error::NotUdp
-        | Error::NotTurn
-        | Error::NotIp
-        | Error::NotAChannelDataMessage
-        | Error::Ipv4PacketWithOptions => xdp_action::XDP_PASS,
+        Error::NotIp | Error::NotUdp => xdp_action::XDP_PASS,
 
         Error::PacketTooShort
+        | Error::NotTurn
+        | Error::NotAChannelDataMessage
+        | Error::Ipv4PacketWithOptions
         | Error::NoMacAddress
         | Error::UnsupportedChannel(_)
         | Error::NoEntry(_) => {
