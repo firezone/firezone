@@ -68,6 +68,18 @@ static UDP_TO_CHAN_64: HashMap<PortAndPeerV6, ClientAndChannelV4> =
 
 #[xdp]
 pub fn handle_turn(ctx: XdpContext) -> u32 {
+    trace!(
+        &ctx,
+        "udp-checksumming = {}, lowest-allocation-port = {}, highest-allocation-port = {}",
+        if config::udp_checksum_enabled() {
+            "true"
+        } else {
+            "false"
+        },
+        config::lowest_allocation_port(),
+        config::highest_allocation_port(),
+    );
+
     try_handle_turn(&ctx).unwrap_or_else(|e| match e {
         Error::NotIp | Error::NotUdp => xdp_action::XDP_PASS,
 
