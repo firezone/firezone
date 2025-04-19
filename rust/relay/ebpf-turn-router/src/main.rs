@@ -415,7 +415,7 @@ mod tests {
     const HASH_MAP_OVERHEAD: f32 = 1.5;
 
     #[test]
-    fn hashmaps_are_less_than_100_mb() {
+    fn hashmaps_are_less_than_11_mb() {
         let ipv4_datatypes =
             core::mem::size_of::<PortAndPeerV4>() + core::mem::size_of::<ClientAndChannelV4>();
         let ipv6_datatypes =
@@ -427,6 +427,9 @@ mod tests {
         let total_map_size = (ipv4_map_size + ipv6_map_size) * 2_f32;
         let total_map_size_mb = total_map_size / 1024_f32 / 1024_f32;
 
-        assert!(total_map_size_mb < 100_f32);
+        assert!(
+            total_map_size_mb < 11_f32,
+            "Total map size = {total_map_size_mb} MB"
+        );
     }
 }
