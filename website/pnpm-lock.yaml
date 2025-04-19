@@ -27,8 +27,8 @@ importers:
         specifier: ^2.0.13
         version: 2.0.13
       '@types/mixpanel-browser':
-        specifier: ^2.51.0
-        version: 2.51.0
+        specifier: ^2.54.0
+        version: 2.54.0
       '@types/node':
         specifier: 22.14.0
         version: 22.14.0
@@ -66,8 +66,8 @@ importers:
         specifier: ^2.3.0
         version: 2.3.0
       mixpanel-browser:
-        specifier: ^2.59.0
-        version: 2.59.0
+        specifier: ^2.64.0
+        version: 2.64.0
       next:
         specifier: ^14.2.26
         version: 14.2.26(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -419,6 +419,9 @@ packages:
   '@rrweb/types@2.0.0-alpha.18':
     resolution: {integrity: sha512-iMH3amHthJZ9x3gGmBPmdfim7wLGygC2GciIkw2A6SO8giSn8PHYtRT8OKNH4V+k3SZ6RSnYHcTQxBA7pSWZ3Q==}
 
+  '@rrweb/utils@2.0.0-alpha.18':
+    resolution: {integrity: sha512-qV8azQYo9RuwW4NGRtOiQfTBdHNL1B0Q//uRLMbCSjbaKqJYd88Js17Bdskj65a0Vgp2dwTLPIZ0gK47dfjfaA==}
+
   '@swc/counter@0.1.3':
     resolution: {integrity: sha512-e2BR4lsJkkRlKZ/qCHPw9ZaSxc0MVUd7gtbtaB7aMvHeJVYe8sOB8DBZkP2DtISHGSku9sCK6T6cnY0CtXrOCQ==}
 
@@ -464,8 +467,8 @@ packages:
   '@types/mdx@2.0.13':
     resolution: {integrity: sha512-+OWZQfAYyio6YkJb3HLxDrvnx6SWWDbC0zVPfBRzUk0/nqoDyf6dNxQi3eArPe8rJ473nobTMQ/8Zk+LxJ+Yuw==}
 
-  '@types/mixpanel-browser@2.51.0':
-    resolution: {integrity: sha512-or4HZRDmqMJ1OP+O6h4hB+tVDKJffpVi2bFxi/Gem5TGnE94I7OtWKXtrwdDfSGhfOLL+WQIOUOxUZHAzHNi8A==}
+  '@types/mixpanel-browser@2.54.0':
+    resolution: {integrity: sha512-7DMzIH0M9TlpCTMZidaeXris+aMUyAgMMEZtV1xeD6fSQgpCGklUKqyRgidq5hKPKuNEOWBp73549Gusig/xBA==}
 
   '@types/ms@0.7.34':
     resolution: {integrity: sha512-nG96G3Wp6acyAgJqGasjODb+acrI7KltPiRxzHPXnP3NgI28bpQDRv53olbqGXbfcgF5aiiHmO3xpwEpS5Ld9g==}
@@ -911,9 +914,6 @@ packages:
 
   fault@1.0.4:
     resolution: {integrity: sha512-CJ0HCB5tL5fYTEA7ToAq5+kTwd++Borf1/bifxd9iT70QcXr4MRrO3Llf8Ifs70q+SJcGHFtnIE/Nw6giCtECA==}
-
-  fflate@0.4.8:
-    resolution: {integrity: sha512-FJqqoDBR00Mdj9ppamLa/Y7vxm+PRmNWA67N846RvsoYVMKB4q3y/de5PA7gUmRMYK/8CMz2GDZQmCRN1wBcWA==}
 
   fill-range@7.1.1:
     resolution: {integrity: sha512-YsGpe3WHLK8ZYi4tWDg2Jy3ebRz2rXowDxnld4bkQB00cc/1Zw9AWnC0i9ztDJitivtQvaI9KaLyKrc+hBW0yg==}
@@ -1388,8 +1388,8 @@ packages:
   mitt@3.0.1:
     resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
 
-  mixpanel-browser@2.59.0:
-    resolution: {integrity: sha512-YYCVLBII2eqC71QoZAZxLMVC0kVJpvOnZ9PBU8X4Ts0MDEZfjE/jzArfg2BTizuJAc+3G5ZzOX3U2Cwbr4jchw==}
+  mixpanel-browser@2.64.0:
+    resolution: {integrity: sha512-qX9F990INiO6QzdHlcPzt82PMgqjBBmkM8SdZOEbQ55aEtw7/2UOhG74VH8z7VokG1VpkpQQFtTPv+b5v1At/g==}
 
   motion-dom@11.14.3:
     resolution: {integrity: sha512-lW+D2wBy5vxLJi6aCP0xyxTxlTfiu+b+zcpVbGVFUxotwThqhdpPRSmX8xztAgtZMPMeU0WGVn/k1w4I+TbPqA==}
@@ -1686,8 +1686,8 @@ packages:
   rrweb-snapshot@2.0.0-alpha.18:
     resolution: {integrity: sha512-hBHZL/NfgQX6wO1D9mpwqFu1NJPpim+moIcKhFEjVTZVRUfCln+LOugRc4teVTCISYHN8Cw5e2iNTWCSm+SkoA==}
 
-  rrweb@2.0.0-alpha.13:
-    resolution: {integrity: sha512-a8GXOCnzWHNaVZPa7hsrLZtNZ3CGjiL+YrkpLo0TfmxGLhjNZbWY2r7pE06p+FcjFNlgUVTmFrSJbK3kO7yxvw==}
+  rrweb@2.0.0-alpha.18:
+    resolution: {integrity: sha512-1mjZcB+LVoGSx1+i9E2ZdAP90fS3MghYVix2wvGlZvrgRuLCbTCCOZMztFCkKpgp7/EeCdYM4nIHJkKX5J1Nmg==}
 
   run-parallel@1.2.0:
     resolution: {integrity: sha512-5l4VyZR86LZ/lDxZTR6jqL8AFE2S0IFLMP26AbjsLVADxHdhB/c0GUsH+y39UfCi3dzz8OlQuPmnaJOMoDHQBA==}
@@ -2289,6 +2289,8 @@ snapshots:
 
   '@rrweb/types@2.0.0-alpha.18': {}
 
+  '@rrweb/utils@2.0.0-alpha.18': {}
+
   '@swc/counter@0.1.3': {}
 
   '@swc/helpers@0.5.5':
@@ -2343,7 +2345,7 @@ snapshots:
 
   '@types/mdx@2.0.13': {}
 
-  '@types/mixpanel-browser@2.51.0': {}
+  '@types/mixpanel-browser@2.54.0': {}
 
   '@types/ms@0.7.34': {}
 
@@ -2825,8 +2827,6 @@ snapshots:
   fault@1.0.4:
     dependencies:
       format: 0.2.2
-
-  fflate@0.4.8: {}
 
   fill-range@7.1.1:
     dependencies:
@@ -3641,9 +3641,9 @@ snapshots:
 
   mitt@3.0.1: {}
 
-  mixpanel-browser@2.59.0:
+  mixpanel-browser@2.64.0:
     dependencies:
-      rrweb: 2.0.0-alpha.13
+      rrweb: 2.0.0-alpha.18
 
   motion-dom@11.14.3: {}
 
@@ -4013,13 +4013,13 @@ snapshots:
     dependencies:
       postcss: 8.5.3
 
-  rrweb@2.0.0-alpha.13:
+  rrweb@2.0.0-alpha.18:
     dependencies:
       '@rrweb/types': 2.0.0-alpha.18
+      '@rrweb/utils': 2.0.0-alpha.18
       '@types/css-font-loading-module': 0.0.7
       '@xstate/fsm': 1.6.5
       base64-arraybuffer: 1.0.2
-      fflate: 0.4.8
       mitt: 3.0.1
       rrdom: 2.0.0-alpha.18
       rrweb-snapshot: 2.0.0-alpha.18
