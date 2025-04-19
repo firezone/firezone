@@ -1464,24 +1464,29 @@ mod proptests {
         filters()
             .prop_filter("empty filters accepts every packet", |f| !f.is_empty())
             .prop_flat_map(|f| {
-                let filters = f.clone();
                 any::<ProtocolKind>()
-                    .prop_filter_map(
-                        "If ICMP is contained there is no way to generate gaps",
+                    .prop_filter_map("If ICMP is contained there is no way to generate gaps", {
+                        let f = f.clone();
+
                         move |p| {
-                            (p != ProtocolKind::Icmp || !filters.contains(&Filter::Icmp))
-                                .then_some(p)
-                        },
-                    )
+                            (p != ProtocolKind::Icmp || !f.contains(&Filter::Icmp)).then_some(p)
+                        }
+                    })
                     .prop_flat_map(move |p| {
                         if p == ProtocolKind::Icmp {
                             Just((f.clone(), Protocol::Icmp)).boxed()
                         } else {
-                            let f = f.clone();
                             select(gaps(f.clone(), p))
-                                .prop_flat_map(move |g| {
+                                .prop_flat_map({
                                     let f = f.clone();
-                                    g.prop_map(move |dport| (f.clone(), p.into_protocol(dport)))
+
+                                    move |g| {
+                                        g.prop_map({
+                                            let f = f.clone();
+
+                                            move |dport| (f.clone(), p.into_protocol(dport))
+                                        })
+                                    }
                                 })
                                 .boxed()
                         }
