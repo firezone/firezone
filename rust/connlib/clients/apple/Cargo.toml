@@ -1,7 +1,7 @@
 [package]
 name = "connlib-client-apple"
 # mark:next-apple-version
-version = "1.4.11"
+version = "1.4.12"
 edition = { workspace = true }
 license = { workspace = true }
 
