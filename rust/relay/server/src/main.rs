@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-#[global_allocator]
+#[cfg(unix)]
+#[cfg_attr(unix, global_allocator)]
 static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 use anyhow::{Context, Result, bail};
