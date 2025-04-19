@@ -46,6 +46,10 @@ updates:
           - windows-core
           - windows-implement
           - windows-sys
+      aya:
+        patterns:
+          - aya
+          - aya-*
   - package-ecosystem: gradle
     directory: kotlin/android/
     schedule:
