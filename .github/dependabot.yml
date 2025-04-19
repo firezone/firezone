@@ -126,6 +126,10 @@ updates:
       tauri:
         patterns:
           - "@tauri-apps/*"
+      tailwind:
+        patterns:
+          - tailwindcss
+          - "@tailwindcss/*"
   - package-ecosystem: npm
     directory: elixir/apps/web/assets/
     schedule:
