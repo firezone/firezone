@@ -34,8 +34,8 @@ importers:
         specifier: ^4.1.4
         version: 4.1.4
       typescript:
-        specifier: ^5.7.3
-        version: 5.7.3
+        specifier: ^5.8.3
+        version: 5.8.3
       vite:
         specifier: ^6.3.2
         version: 6.3.2(@types/node@22.13.9)(jiti@2.4.2)(lightningcss@1.29.2)(yaml@2.6.0)
@@ -957,8 +957,8 @@ packages:
     resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
     engines: {node: '>=8.0'}
 
-  typescript@5.7.3:
-    resolution: {integrity: sha512-84MVSjMEHP+FQRPy3pX9sTVV/INIex71s9TL2Gm5FG/WG1SqXeKyZ0k7/blY/4FdOzI12CBy1vGc4og/eus0fw==}
+  typescript@5.8.3:
+    resolution: {integrity: sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ==}
     engines: {node: '>=14.17'}
     hasBin: true
 
@@ -1758,7 +1758,7 @@ snapshots:
     dependencies:
       is-number: 7.0.0
 
-  typescript@5.7.3: {}
+  typescript@5.8.3: {}
 
   undici-types@6.20.0: {}
 
