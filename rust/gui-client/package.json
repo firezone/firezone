@@ -25,7 +25,7 @@
     "http-server": "^14.1.1",
     "run-script-os": "^1.1.6",
     "tailwindcss": "^4.1.4",
-    "typescript": "^5.7.3",
+    "typescript": "^5.8.3",
     "vite": "^6.3.2"
   }
 }
