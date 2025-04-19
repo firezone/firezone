@@ -23,7 +23,6 @@ firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 hex-display = { workspace = true }
-jemallocator = { workspace = true }
 mio = { workspace = true, features = ["net"] }
 once_cell = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
@@ -54,6 +53,7 @@ uuid = { workspace = true, features = ["v4"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 aya = { workspace = true, features = ["tokio"] }
 aya-log = { workspace = true }
+jemallocator = { workspace = true }
 
 [dev-dependencies]
 difference = { workspace = true }
