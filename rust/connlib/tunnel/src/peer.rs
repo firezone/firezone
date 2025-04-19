@@ -1472,6 +1472,11 @@ mod proptests {
                             (p != ProtocolKind::Icmp || !f.contains(&Filter::Icmp)).then_some(p)
                         }
                     })
+                    .prop_filter("no gaps in port ranges", {
+                        let f = f.clone();
+
+                        move |p| !gaps(f.clone(), *p).is_empty()
+                    })
                     .prop_flat_map(move |p| {
                         if p == ProtocolKind::Icmp {
                             Just((f.clone(), Protocol::Icmp)).boxed()
