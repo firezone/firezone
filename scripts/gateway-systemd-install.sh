@@ -180,9 +180,8 @@ sysctl -w net.ipv6.conf.all.disable_ipv6=0
 sysctl -w net.ipv6.conf.all.forwarding=1
 sysctl -w net.ipv6.conf.default.forwarding=1
 
-# Increase send and receive buffer sizes
+# Increase receive buffer size
 sysctl -w net.core.rmem_max=10000000
-sysctl -w net.core.wmem_max=10000000
 EOF
 
 # Make ExecStartPre script executable

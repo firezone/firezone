@@ -189,10 +189,8 @@ jobs:
           docker compose exec -d gateway tc qdisc add dev eth0 root netem delay 10ms
           docker compose exec -d relay-1 tc qdisc add dev eth0 root netem delay 10ms
           docker compose exec -d relay-2 tc qdisc add dev eth0 root netem delay 10ms
-      - name: Increase send & receive buffer sizes
-        run: |
-          sudo sysctl -w net.core.rmem_max=10000000
-          sudo sysctl -w net.core.wmem_max=10000000
+      - name: Increase receive buffer size
+        run: sudo sysctl -w net.core.rmem_max=10000000
       - name: "Performance test: ${{ matrix.test_name }}"
         timeout-minutes: 5
         env:
