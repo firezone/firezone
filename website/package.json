@@ -53,6 +53,6 @@
   "devDependencies": {
     "flowbite-typography": "^1.0.5",
     "hastscript": "^9.0.1",
-    "typescript": "5.8.2"
+    "typescript": "5.8.3"
   }
 }
