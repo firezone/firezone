@@ -1,5 +1,9 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+#[cfg(unix)]
+#[cfg_attr(unix, global_allocator)]
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
