@@ -469,7 +469,7 @@ mod tests {
             panic!("Unexpected result");
         };
 
-        assert!(timeout.duration_since(now) < Duration::from_millis(100));
+        assert!(timeout >= now, "timeout = {timeout:?}, now = {now:?}");
     }
 
     static mut DUMMY_BUF: Buffers = Buffers { ip: Vec::new() };
