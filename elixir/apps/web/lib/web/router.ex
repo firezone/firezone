@@ -291,6 +291,15 @@ defmodule Web.Router do
           end
         end
 
+        scope "/directory_providers", DirectoryProviders do
+          live "/", Index
+
+          scope "/okta", Okta do
+            live "/new", New
+            live "/edit", Edit
+          end
+        end
+
         live "/dns", DNS
       end
     end
