@@ -16,11 +16,11 @@ defmodule Web.Settings.IdentityProviders.Okta.Show do
 
       {:ok,
        assign(socket,
-         page_title: "Identity Provider #{provider.name}",
          provider: provider,
          identities_count_by_provider_id: identities_count_by_provider_id,
          groups_count_by_provider_id: groups_count_by_provider_id,
-         safe_to_delete_actors_count: safe_to_delete_actors_count
+         safe_to_delete_actors_count: safe_to_delete_actors_count,
+         page_title: "Identity Provider #{provider.name}"
        )}
     else
       _ -> raise Web.LiveErrors.NotFoundError
