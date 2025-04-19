@@ -38,8 +38,8 @@ zbus = { workspace = true } # Can't use `zbus`'s `tokio` feature here, or it wil
 known-folders = { workspace = true }
 ring = "0.17"
 uuid = { workspace = true, features = ["v4"] }
-windows-core = "0.58.0"
-windows-implement = "0.58.0"
+windows-core = "0.61.0"
+windows-implement = "0.60.0"
 wintun = "0.5.1"
 winreg = { workspace = true }
 tokio-util = { workspace = true }
