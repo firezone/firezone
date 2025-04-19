@@ -25,7 +25,6 @@ futures = { workspace = true }
 futures-bounded = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
-jemallocator = { workspace = true }
 libc = { workspace = true, features = ["std", "const-extern-fn", "extra_traits"] }
 moka = { workspace = true, features = ["future"] }
 nix = { workspace = true }
@@ -50,6 +49,7 @@ uuid = { workspace = true, features = ["v4"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 caps = { workspace = true }
+jemallocator = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true, features = ["std"] }
