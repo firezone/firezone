@@ -264,7 +264,7 @@ jobs:
           targets: ${{ matrix.arch.target }}
       - name: Install dependencies
         run: ${{ matrix.arch.install_dependencies }}
-      - uses: taiki-e/install-action@2db346588ecc179293df26b2f8dcc61d3b3ecc40 # v2.49.46
+      - uses: taiki-e/install-action@09dc018eee06ae1c9e0409786563f534210ceb83 # v2.49.50
         with:
           tool: bpf-linker
         env:
