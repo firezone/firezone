@@ -1,5 +1,5 @@
-#[cfg(unix)]
-#[cfg_attr(unix, global_allocator)]
+#[cfg(all(unix, not(target_arch = "arm")))]
+#[global_allocator]
 static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
