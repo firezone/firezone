@@ -23,6 +23,7 @@ firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
 hex-display = { workspace = true }
+jemallocator = { workspace = true }
 mio = { workspace = true, features = ["net"] }
 once_cell = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }

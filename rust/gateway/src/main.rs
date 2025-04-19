@@ -1,3 +1,6 @@
+#[global_allocator]
+static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
+
 use crate::eventloop::{Eventloop, PHOENIX_TOPIC};
 use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;

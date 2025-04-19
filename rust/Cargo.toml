@@ -81,6 +81,7 @@ firezone-tunnel = { path = "connlib/tunnel" }
 flume = { version = "0.11.1", features = ["async"] }
 futures = { version = "0.3.31" }
 futures-bounded = "0.2.1"
+gat-lending-iterator = "0.1.6"
 glob = "0.3.2"
 hex = "0.4.3"
 hex-display = "0.3.0"
@@ -90,6 +91,7 @@ ip-packet = { path = "ip-packet" }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
 itertools = "0.13"
+jemallocator = "0.5.4"
 jni = "0.21.1"
 keyring = "3.6.1"
 known-folders = "1.2.0"
@@ -120,7 +122,6 @@ proptest = "1.6.0"
 proptest-state-machine = "0.3.1"
 quinn-udp = { version = "0.5.8" }
 rand = "0.8.5"
-gat-lending-iterator = "0.1.6"
 rand_core = "0.6.4"
 rangemap = "1.5.1"
 rayon = "1.10.0"
@@ -183,9 +184,9 @@ trackable = "1.3.0"
 tun = { path = "tun" }
 url = "2.5.2"
 uuid = "1.16.0"
+which = "4.4.2"
 windows = "0.58.0"
 winreg = "0.52.0"
-which = "4.4.2"
 zbus = "5.5.0"
 zip = { version = "2", default-features = false }
 
