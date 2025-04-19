@@ -50,12 +50,12 @@ jobs:
         id: setup-rust
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 5
-      - uses: taiki-e/install-action@2db346588ecc179293df26b2f8dcc61d3b3ecc40 # v2.49.46
+      - uses: taiki-e/install-action@09dc018eee06ae1c9e0409786563f534210ceb83 # v2.49.50
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: cargo-udeps,cargo-deny
-      - uses: taiki-e/install-action@2db346588ecc179293df26b2f8dcc61d3b3ecc40 # v2.49.46
+      - uses: taiki-e/install-action@09dc018eee06ae1c9e0409786563f534210ceb83 # v2.49.50
         if: ${{ runner.os == 'Linux' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -96,12 +96,12 @@ jobs:
       - uses: ./.github/actions/setup-rust
         id: setup-rust
       - uses: ./.github/actions/setup-tauri-v2
-      - uses: taiki-e/install-action@2db346588ecc179293df26b2f8dcc61d3b3ecc40 # v2.49.46
+      - uses: taiki-e/install-action@09dc018eee06ae1c9e0409786563f534210ceb83 # v2.49.50
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: ripgrep
-      - uses: taiki-e/install-action@2db346588ecc179293df26b2f8dcc61d3b3ecc40 # v2.49.46
+      - uses: taiki-e/install-action@09dc018eee06ae1c9e0409786563f534210ceb83 # v2.49.50
         if: ${{ runner.os == 'Linux' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -172,7 +172,7 @@ jobs:
         run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
-      - uses: taiki-e/install-action@2db346588ecc179293df26b2f8dcc61d3b3ecc40 # v2.49.46
+      - uses: taiki-e/install-action@09dc018eee06ae1c9e0409786563f534210ceb83 # v2.49.50
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
