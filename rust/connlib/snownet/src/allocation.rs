@@ -546,10 +546,10 @@ impl Allocation {
 
                 let maybe_ip4_relay_candidate = message
                     .attributes()
-                    .find_map(relay_candidate(|s| s.is_ipv4()));
+                    .find_map(relay_candidate(local, |s| s.is_ipv4()));
                 let maybe_ip6_relay_candidate = message
                     .attributes()
-                    .find_map(relay_candidate(|s| s.is_ipv6()));
+                    .find_map(relay_candidate(local, |s| s.is_ipv6()));
 
                 if maybe_ip4_relay_candidate.is_none() && maybe_ip6_relay_candidate.is_none() {
                     tracing::warn!("Relay sent a successful allocate response without addresses");
@@ -1289,6 +1289,7 @@ fn srflx_candidate(local: SocketAddr, attr: &Attribute) -> Option<Candidate> {
 }
 
 fn relay_candidate(
+    local: SocketAddr,
     filter: impl Fn(SocketAddr) -> bool,
 ) -> impl Fn(&Attribute) -> Option<Candidate> {
     move |attr| {
@@ -1301,7 +1302,7 @@ fn relay_candidate(
             return None;
         };
 
-        let new_candidate = match Candidate::relayed(addr, Protocol::Udp) {
+        let new_candidate = match Candidate::relayed(addr, local, Protocol::Udp) {
             Ok(c) => c,
             Err(e) => {
                 tracing::debug!(
@@ -2111,7 +2112,7 @@ mod tests {
         assert_eq!(
             next_event,
             Some(Event::New(
-                Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()
+                Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()
             ))
         );
         let next_event = allocation.poll_event();
@@ -2158,13 +2159,13 @@ mod tests {
         assert_eq!(
             allocation.poll_event(),
             Some(Event::Invalid(
-                Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()
+                Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()
             ))
         );
         assert_eq!(
             allocation.poll_event(),
             Some(Event::Invalid(
-                Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()
+                Candidate::relayed(RELAY_ADDR_IP6, PEER1, Protocol::Udp).unwrap()
             ))
         );
         assert!(allocation.poll_event().is_none());
@@ -2475,8 +2476,8 @@ mod tests {
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, Protocol::Udp).unwrap()),
             ]
         )
     }
@@ -2495,8 +2496,8 @@ mod tests {
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, Protocol::Udp).unwrap()),
             ]
         )
     }
@@ -2527,8 +2528,8 @@ mod tests {
         assert_eq!(
             iter::from_fn(|| allocation.poll_event()).collect::<Vec<_>>(),
             vec![
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, Protocol::Udp).unwrap()),
-                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP4, PEER1, Protocol::Udp).unwrap()),
+                Event::Invalid(Candidate::relayed(RELAY_ADDR_IP6, PEER1, Protocol::Udp).unwrap()),
             ]
         );
         assert_eq!(

@@ -23,7 +23,11 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="8798">
+          Improves performance of relayed connections on IPv4-only systems.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.11" date={new Date("2025-04-18")}>
         <ChangeItem pull="8814">
           Fixes an issue where the app would hang on launch if another VPN app
