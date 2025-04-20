@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.5.0",
-    "@types/node": "^22.13.9",
+    "@types/node": "^22.14.1",
     "http-server": "^14.1.1",
     "run-script-os": "^1.1.6",
     "tailwindcss": "^4.1.4",
