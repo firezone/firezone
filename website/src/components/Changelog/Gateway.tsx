@@ -22,7 +22,11 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="8798">
+          Improves performance of relayed connections on IPv4-only systems.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.6" date={new Date("2025-04-15")}>
         <ChangeItem pull="8383">
           Deprecates the NAT64 functionality in favor of sending ICMP errors to
