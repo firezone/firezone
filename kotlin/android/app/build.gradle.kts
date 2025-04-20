@@ -177,7 +177,7 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.56.2")
     implementation("androidx.browser:browser:1.8.0")
     implementation("com.google.firebase:firebase-installations-ktx:18.0.0")
-    implementation("com.google.android.gms:play-services-tasks:18.2.1")
+    implementation("com.google.android.gms:play-services-tasks:18.3.0")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
     kapt("com.google.dagger:hilt-android-compiler:2.56.2")
     // Instrumented Tests
