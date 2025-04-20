@@ -588,7 +588,13 @@ mod async_dns {
             // Ask Windows to signal our event once when anything inside this key changes.
             // We can't ask for repeated signals.
             unsafe {
-                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, inner.event, true)
+                Registry::RegNotifyChangeKeyValue(
+                    key_handle,
+                    true,
+                    notify_flags,
+                    Some(inner.event),
+                    true,
+                )
             }
             .ok()
             .context("`RegNotifyChangeKeyValue` failed")?;
@@ -606,7 +612,7 @@ mod async_dns {
         /// - `drop` which does not consume `self` and does not bubble errors, but which runs even if we forget to call `close`
         fn close_dont_drop(&mut self) -> Result<()> {
             if let Some(inner) = self.inner.take() {
-                unsafe { UnregisterWaitEx(inner.wait_handle, INVALID_HANDLE_VALUE) }
+                unsafe { UnregisterWaitEx(inner.wait_handle, Some(INVALID_HANDLE_VALUE)) }
                     .context("Should be able to `UnregisterWaitEx` in the DNS change listener")?;
                 unsafe { CloseHandle(inner.event) }
                     .context("Should be able to `CloseHandle` in the DNS change listener")?;
@@ -653,7 +659,7 @@ mod async_dns {
                 | Registry::REG_NOTIFY_THREAD_AGNOSTIC;
             let key_handle = Registry::HKEY(key.raw_handle() as *mut c_void);
             unsafe {
-                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, event, true)
+                Registry::RegNotifyChangeKeyValue(key_handle, true, notify_flags, Some(event), true)
             }
             .ok()
             .expect("`RegNotifyChangeKeyValue` failed");
