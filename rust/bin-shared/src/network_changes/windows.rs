@@ -384,7 +384,7 @@ mod async_dns {
         task::LocalSet,
     };
     use windows::Win32::{
-        Foundation::{BOOLEAN, CloseHandle, HANDLE, INVALID_HANDLE_VALUE},
+        Foundation::{CloseHandle, HANDLE, INVALID_HANDLE_VALUE},
         System::Registry,
         System::Threading::{
             CreateEventA, INFINITE, RegisterWaitForSingleObject, UnregisterWaitEx,
@@ -627,7 +627,7 @@ mod async_dns {
     // This function runs on a worker thread in a Windows-managed thread pool where
     // many API calls are illegal, so try not to do anything in here. Right now
     // all we do is wake up our Tokio task.
-    unsafe extern "system" fn callback(ctx: *mut c_void, _: BOOLEAN) {
+    unsafe extern "system" fn callback(ctx: *mut c_void, _: bool) {
         let tx = unsafe { &*(ctx as *const mpsc::Sender<()>) };
         // It's not a problem if sending fails. It either means the `Listener`
         // is closing down, or it's already been notified.
