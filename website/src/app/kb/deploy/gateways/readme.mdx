@@ -127,12 +127,15 @@ to distribute Client connections across them.
 
 ### Performance tuning
 
-The default receive buffer size on Linux is quite small which can limit the maximum
-throughput. On startup, Gateways attempt to increase the size of the UDP receive
-buffers to 10 MB. However, the actual size of the receive buffer is limited by the
-`net.core.rmem_max` kernel parameter. For the increased buffer size to take effect,
-you may need to increase the `net.core.rmem_max` parameter in your system.
+The default receive buffer size on Linux is quite small which can limit the
+maximum throughput that users perceive in "upload scenarios" (i.e. where the
+Gateway needs to receive large volumes of traffic).
 
+On startup, the Gateway attempts to increase the size of the UDP receive buffers
+to 10 MB. However, the actual size of the receive buffer is limited by the
+`net.core.rmem_max` kernel parameter. For the increased buffer size to take
+effect, you may need to increase the `net.core.rmem_max` parameter on the
+Gateway's host system.
 ## Deploy a single Gateway
 
 Deploying a single Gateway can be accomplished in the admin portal.
