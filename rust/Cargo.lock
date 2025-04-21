@@ -2186,8 +2186,8 @@ dependencies = [
  "tun",
  "uuid",
  "windows 0.58.0",
- "windows-core 0.58.0",
- "windows-implement 0.58.0",
+ "windows-core 0.61.0",
+ "windows-implement 0.60.0",
  "winreg 0.52.0",
  "wintun",
  "zbus 5.5.0",
@@ -3860,7 +3860,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
