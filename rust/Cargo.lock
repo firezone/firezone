@@ -1189,7 +1189,7 @@ checksum = "baf0a07a401f374238ab8e2f11a104d2851bf9ce711ec69804834de8af45c7af"
 
 [[package]]
 name = "connlib-client-android"
-version = "1.4.7"
+version = "1.4.8"
 dependencies = [
  "android_log-sys",
  "anyhow",
