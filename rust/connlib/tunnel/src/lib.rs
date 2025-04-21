@@ -15,6 +15,7 @@ use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::Ecn;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use sockets::Sockets;
 use std::{
     collections::BTreeSet,
     fmt,
@@ -118,6 +119,7 @@ impl ClientTunnel {
             io: Io::new(
                 tcp_socket_factory,
                 udp_socket_factory.clone(),
+                Sockets::default(),
                 BTreeSet::default(),
             ),
             role_state: ClientState::new(rand::random(), Instant::now()),
@@ -247,7 +249,12 @@ impl GatewayTunnel {
         nameservers: BTreeSet<IpAddr>,
     ) -> Self {
         Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
+            io: Io::new(
+                tcp_socket_factory,
+                udp_socket_factory.clone(),
+                Sockets::default(),
+                nameservers,
+            ),
             role_state: GatewayState::new(rand::random(), Instant::now()),
             buffers: Buffers::default(),
             packet_counter: opentelemetry::global::meter("connlib")
