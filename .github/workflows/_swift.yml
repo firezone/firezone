@@ -108,14 +108,18 @@ jobs:
           API_KEY_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY_ID }}"
           API_KEY: "${{ secrets.APPLE_APP_STORE_CONNECT_API_KEY }}"
           TEMP_DIR: "${{ runner.temp }}"
-      - name: Upload package artifacts
+      - name: Upload .dmg artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: "${{ github.event_name == 'workflow_dispatch' && matrix.job_name == 'build-macos-standalone' }}"
         with:
-          name: macos-client-standalone
-          path: |
-            "${{ runner.temp }}/${{ matrix.artifact-file }}"
-            "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
+          name: macos-client-standalone-dmg
+          path: "${{ runner.temp }}/${{ matrix.artifact-file }}"
+      - name: Upload .pkg artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: "${{ github.event_name == 'workflow_dispatch' && matrix.job_name == 'build-macos-standalone' }}"
+        with:
+          name: macos-client-standalone-pkg
+          path: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
       - run: ${{ matrix.upload-script }}
         if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
         env:
