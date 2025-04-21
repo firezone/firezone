@@ -6487,6 +6487,7 @@ dependencies = [
  "gat-lending-iterator",
  "ip-packet",
  "lockfree-object-pool",
+ "opentelemetry",
  "parking_lot",
  "quinn-udp",
  "socket2",

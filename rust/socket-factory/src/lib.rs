@@ -3,6 +3,7 @@ use bytes::Buf as _;
 use firezone_logging::err_with_src;
 use gat_lending_iterator::LendingIterator;
 use ip_packet::Ecn;
+use opentelemetry::KeyValue;
 use parking_lot::Mutex;
 use quinn_udp::{EcnCodepoint, Transmit};
 use std::collections::HashMap;
@@ -153,6 +154,7 @@ pub struct UdpSocket {
     /// A buffer pool for batches of incoming UDP packets.
     buffer_pool: Arc<lockfree_object_pool::MutexObjectPool<Vec<u8>>>,
 
+    gro_batch_histogram: opentelemetry::metrics::Histogram<u64>,
     port: u16,
 }
 
@@ -170,6 +172,14 @@ impl UdpSocket {
                 || vec![0u8; u16::MAX as usize],
                 |_| {},
             )),
+            gro_batch_histogram: opentelemetry::global::meter("connlib")
+                .u64_histogram("system.network.packets.batch_count")
+                .with_description(
+                    "How many batches of packets we have processed in a single syscall.",
+                )
+                .with_unit("{batches}")
+                .with_boundaries((1..32_u64).map(|i| i as f64).collect())
+                .init(),
         })
     }
 
@@ -248,7 +258,15 @@ impl UdpSocket {
                 state.recv(socket, &mut bufs, &mut meta)
             };
 
-            if let Ok(_len) = inner.try_io(Interest::READABLE, recv) {
+            if let Ok(len) = inner.try_io(Interest::READABLE, recv) {
+                self.gro_batch_histogram.record(
+                    len as u64,
+                    &[
+                        KeyValue::new("network.transport", "udp"),
+                        KeyValue::new("network.io.direction", "receive"),
+                    ],
+                );
+
                 // Note: We don't need to use `len` here because the iterator will stop once it encounteres `meta.len == 0`.
 
                 return Poll::Ready(Ok(DatagramSegmentIter::new(bufs, meta, *port)));
