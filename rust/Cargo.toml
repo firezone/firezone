@@ -93,7 +93,7 @@ ip_network_table = { version = "0.2", default-features = false }
 itertools = "0.13"
 jemallocator = "0.5.4"
 jni = "0.21.1"
-keyring = "3.6.1"
+keyring = "3.6.2"
 known-folders = "1.2.0"
 l4-tcp-dns-server = { path = "connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "connlib/l4-udp-dns-server" }
