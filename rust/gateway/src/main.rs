@@ -22,10 +22,7 @@ use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
 use std::{collections::BTreeSet, path::Path};
 use std::{fmt, pin::pin};
-use std::{
-    num::{NonZero, NonZeroUsize},
-    sync::Arc,
-};
+use std::{num::NonZeroUsize, sync::Arc};
 use std::{process::ExitCode, str::FromStr};
 use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
