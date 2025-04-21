@@ -264,52 +264,59 @@ fn spawn_udp_worker(
             SocketAddr::V6(_) => format!("UDP IPv6 {index}/{num_threads}"),
         })
         .spawn(move || {
-            tokio::runtime::Builder::new_current_thread()
+            let runtime = match tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
-                .expect("Failed to spawn tokio runtime on UDP thread")
-                .block_on(async move {
-                    let socket = match sf(&addr) {
-                        Ok(s) => {
-                            let _ = error_tx.send(Ok(s.port()));
+            {
+                Ok(runtime) => runtime,
+                Err(e) => {
+                    let _ = error_tx.send(Err(e));
+                    return;
+                }
+            };
 
-                            s
-                        }
-                        Err(e) => {
-                            let _ = error_tx.send(Err(e));
-                            return;
-                        }
-                    };
+            runtime.block_on(async move {
+                let socket = match sf(&addr) {
+                    Ok(s) => {
+                        let _ = error_tx.send(Ok(s.port()));
 
-                    let send = pin!(async {
-                        while let Ok(datagram) = outbound_rx.recv_async().await {
-                            if let Err(e) = socket.send(datagram).await {
-                                tracing::debug!("Failed to send datagram: {e:#}")
-                            };
-                        }
+                        s
+                    }
+                    Err(e) => {
+                        let _ = error_tx.send(Err(e));
+                        return;
+                    }
+                };
 
-                        tracing::debug!("Channel for outbound datagrams closed; exiting UDP thread");
-                    });
-                    let receive = pin!(async {
-                        loop {
-                            match socket.recv_from().await {
-                                Ok(datagrams) => {
-                                    if inbound_tx.send_async(datagrams).await.is_err() {
-                                        tracing::debug!(
-                                            "Channel for inbound datagrams closed; exiting UDP thread"
-                                        );
-                                        break;
-                                    }
-                                }
-                                Err(e) => {
-                                    tracing::debug!("Failed to receive from socket: {e:#}")
+                let send = pin!(async {
+                    while let Ok(datagram) = outbound_rx.recv_async().await {
+                        if let Err(e) = socket.send(datagram).await {
+                            tracing::debug!("Failed to send datagram: {e:#}")
+                        };
+                    }
+
+                    tracing::debug!("Channel for outbound datagrams closed; exiting UDP thread");
+                });
+                let receive = pin!(async {
+                    loop {
+                        match socket.recv_from().await {
+                            Ok(datagrams) => {
+                                if inbound_tx.send_async(datagrams).await.is_err() {
+                                    tracing::debug!(
+                                        "Channel for inbound datagrams closed; exiting UDP thread"
+                                    );
+                                    break;
                                 }
                             }
+                            Err(e) => {
+                                tracing::debug!("Failed to receive from socket: {e:#}")
+                            }
                         }
-                    });
+                    }
+                });
 
-                    futures::future::select(send, receive).await;
-                })
+                futures::future::select(send, receive).await;
+            })
         })?;
 
     let port = error_rx.recv().map_err(io::Error::other)??;
