@@ -13,6 +13,20 @@ export default function Headless({ os }: { os: OS }) {
         <ChangeItem pull="8798">
           Improves performance of relayed connections on IPv4-only systems.
         </ChangeItem>
+        {os === OS.Linux && (
+          <ChangeItem pull="8731">
+            Improves throughput performance by requesting socket receive buffers
+            of 10MB. The actual size of the buffers is capped by the operating
+            system. You may need to adjust `net.core.rmem_max` for this to take
+            full effect.
+          </ChangeItem>
+          )}
+        {os === OS.Windows && (
+          <ChangeItem pull="8731">
+            Improves throughput performance by requesting socket receive buffers
+            of 10MB.
+          </ChangeItem>
+          )}
       </Unreleased>
       <Entry version="1.4.6" date={new Date("2025-04-15")}>
         {os == OS.Linux && (

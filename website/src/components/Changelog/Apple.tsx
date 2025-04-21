@@ -23,7 +23,14 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="8731">
+          Improves throughput performance by requesting socket receive buffers
+          of 10MB. The actual size of the buffers is capped by the operating
+          system. You may need to adjust `kern.ipc.maxsockbuf` for this to take
+          full effect.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.12" date={new Date("2025-04-21")}>
         <ChangeItem pull="8798">
           Improves performance of relayed connections on IPv4-only systems.
