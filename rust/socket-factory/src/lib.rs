@@ -23,6 +23,7 @@ use tokio::io::Interest;
 
 pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
 
+pub const SEND_BUFFER_SIZE: usize = 1 * 1024 * 1024;
 pub const RECV_BUFFER_SIZE: usize = 10 * 1024 * 1024;
 
 impl<F, S> SocketFactory<S> for F where F: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
@@ -53,6 +54,7 @@ pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
     socket.set_nonblocking(true)?;
     socket.bind(&addr)?;
 
+    socket.set_send_buffer_size(SEND_BUFFER_SIZE)?;
     socket.set_recv_buffer_size(RECV_BUFFER_SIZE)?;
 
     let send_buf_size = socket.send_buffer_size()?;
