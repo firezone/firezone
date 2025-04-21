@@ -185,6 +185,15 @@ impl ThreadedUdpSocket {
                             }
                         };
 
+                        let send_buf_size = socket.send_buffer_size();
+                        let recv_buf_size = socket.recv_buffer_size();
+                        let port = socket.port();
+                        let ip_version = match addr {
+                            SocketAddr::V4(_) => "IPv4",
+                            SocketAddr::V6(_) => "IPv6",
+                        };
+
+                        tracing::info!(%send_buf_size, %recv_buf_size, %port, "Bound new {ip_version} UDP p2p socket");
 
                         let send = pin!(async {
                             while let Ok(datagram) = outbound_rx.recv_async().await {

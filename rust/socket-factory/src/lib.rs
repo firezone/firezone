@@ -65,7 +65,7 @@ pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
 
     let socket = std::net::UdpSocket::from(socket);
     let socket = tokio::net::UdpSocket::try_from(socket)?;
-    let socket = UdpSocket::new(socket)?;
+    let socket = UdpSocket::new(socket, send_buf_size, recv_buf_size)?;
 
     Ok(socket)
 }
@@ -163,10 +163,16 @@ pub struct UdpSocket {
 
     gro_batch_histogram: opentelemetry::metrics::Histogram<u64>,
     port: u16,
+    send_buffer_size: usize,
+    recv_buffer_size: usize,
 }
 
 impl UdpSocket {
-    fn new(inner: tokio::net::UdpSocket) -> io::Result<Self> {
+    fn new(
+        inner: tokio::net::UdpSocket,
+        send_buffer_size: usize,
+        recv_buffer_size: usize,
+    ) -> io::Result<Self> {
         let port = inner.local_addr()?.port();
 
         Ok(UdpSocket {
@@ -187,7 +193,21 @@ impl UdpSocket {
                 .with_unit("{batches}")
                 .with_boundaries((1..32_u64).map(|i| i as f64).collect())
                 .init(),
+            send_buffer_size,
+            recv_buffer_size,
         })
+    }
+
+    pub fn send_buffer_size(&self) -> usize {
+        self.send_buffer_size
+    }
+
+    pub fn recv_buffer_size(&self) -> usize {
+        self.recv_buffer_size
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
     }
 
     /// Configures a new source IP resolver for this UDP socket.
