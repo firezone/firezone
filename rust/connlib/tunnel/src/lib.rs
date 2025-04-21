@@ -20,6 +20,7 @@ use std::{
     collections::BTreeSet,
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    num::NonZeroUsize,
     sync::Arc,
     task::{Context, Poll, ready},
     time::Instant,
@@ -247,12 +248,13 @@ impl GatewayTunnel {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
+        num_udp_threads: NonZeroUsize,
     ) -> Self {
         Self {
             io: Io::new(
                 tcp_socket_factory,
                 udp_socket_factory.clone(),
-                Sockets::default(),
+                Sockets::new(num_udp_threads),
                 nameservers,
             ),
             role_state: GatewayState::new(rand::random(), Instant::now()),

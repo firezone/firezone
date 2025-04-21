@@ -20,9 +20,12 @@ use phoenix_channel::get_user_agent;
 use futures::{TryFutureExt, future};
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
-use std::sync::Arc;
 use std::{collections::BTreeSet, path::Path};
 use std::{fmt, pin::pin};
+use std::{
+    num::{NonZero, NonZeroUsize},
+    sync::Arc,
+};
 use std::{process::ExitCode, str::FromStr};
 use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
@@ -139,6 +142,7 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
         Arc::new(tcp_socket_factory),
         Arc::new(udp_socket_factory),
         nameservers,
+        NonZeroUsize::new(cli.udp_threads.0).context("Need at least 1 UDP thread")?,
     );
     let portal = PhoenixChannel::disconnected(
         Secret::new(login),
@@ -246,8 +250,16 @@ struct Cli {
     pub firezone_id: Option<String>,
 
     /// How many threads to use for reading and writing to the TUN device.
+    ///
+    /// This setting is per "direction", i.e. N threads for sending and N threads for receiving.
     #[arg(long, env = "FIREZONE_NUM_TUN_THREADS", default_value_t)]
     tun_threads: NumThreads,
+
+    /// How many threads to use for reading and writing to the UDP socket.
+    ///
+    /// This setting is per IP version, i.e. N threads for IPv4 and N threads for IPv6.
+    #[arg(long, env = "FIREZONE_NUM_UDP_THREADS", default_value_t)]
+    udp_threads: NumThreads,
 
     /// Dump internal metrics to stdout every 60s.
     #[arg(long, env = "FIREZONE_METRICS", default_value_t = false)]
@@ -265,7 +277,17 @@ struct NumThreads(pub usize);
 
 impl Default for NumThreads {
     fn default() -> Self {
-        if num_cpus::get() < 4 {
+        /// By default, connlib will spawn the following threads in addition to the main processing thread:
+        /// - 1 TUN send thread
+        /// - 1 TUN recv thread
+        /// - 1 UDPv4 thread
+        /// - 1 UDPv6 thread
+        ///
+        /// Thus, in order for additional parallelism of TUN device and UDP threads to be useful,
+        /// we need at least 6 cores.
+        const MIN_CORES: usize = 6;
+
+        if num_cpus::get() < MIN_CORES {
             return Self(1);
         }
 
