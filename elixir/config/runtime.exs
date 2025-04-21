@@ -27,6 +27,19 @@ if config_env() == :prod do
              else: [{:hostname, compile_config!(:database_host)}]
            )
 
+  config :domain, Domain.Events.ReplicationConnection,
+    connection_opts: [
+      # Automatically reconnect if we lose connection.
+      auto_reconnect: true,
+      hostname: compile_config!(:database_host),
+      port: compile_config!(:database_port),
+      ssl: compile_config!(:database_ssl_enabled),
+      ssl_opts: compile_config!(:database_ssl_opts),
+      parameters: compile_config!(:database_parameters),
+      username: compile_config!(:database_user),
+      database: compile_config!(:database_name)
+    ]
+
   config :domain, Domain.Tokens,
     key_base: compile_config!(:tokens_key_base),
     salt: compile_config!(:tokens_salt)

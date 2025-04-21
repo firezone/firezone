@@ -28,11 +28,13 @@ defmodule Domain.Actors.Membership.Sync do
          {:ok, inserted} <- insert_memberships(provider, insert) do
       :ok =
         Enum.each(insert, fn {group_id, actor_id} ->
+          # TODO: WAL
           Actors.broadcast_membership_event(:create, actor_id, group_id)
         end)
 
       :ok =
         Enum.each(delete, fn {group_id, actor_id} ->
+          # TODO: WAL
           Actors.broadcast_membership_event(:delete, actor_id, group_id)
         end)
 

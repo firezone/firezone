@@ -232,6 +232,7 @@ defmodule Domain.Resources do
       changeset = Resource.Changeset.create(subject.account, attrs, subject)
 
       with {:ok, resource} <- Repo.insert(changeset) do
+        # TODO: WAL
         :ok = broadcast_resource_events(:create, resource)
         {:ok, resource}
       end
@@ -253,6 +254,7 @@ defmodule Domain.Resources do
     changeset = Resource.Changeset.create(account, attrs)
 
     with {:ok, resource} <- Repo.insert(changeset) do
+      # TODO: WAL
       :ok = broadcast_resource_events(:create, resource)
       {:ok, resource}
     end
@@ -280,6 +282,7 @@ defmodule Domain.Resources do
             {:ok, _flows} = Flows.expire_flows_for(resource, subject)
           end
 
+          # TODO: WAL
           broadcast_resource_events(:update, resource)
         end,
         after_breaking_update_commit: fn updated_resource, _changeset ->
@@ -287,6 +290,7 @@ defmodule Domain.Resources do
           # This is used to reset the resource on the client and gateway in case filters, conditions, etc are changed.
           {:ok, _flows} = Flows.expire_flows_for(resource, subject)
 
+          # TODO: WAL
           :ok = broadcast_resource_events(:delete, resource)
           :ok = broadcast_resource_events(:create, updated_resource)
         end
@@ -314,6 +318,7 @@ defmodule Domain.Resources do
       )
       |> case do
         {:ok, resource} ->
+          # TODO: WAL
           :ok = broadcast_resource_events(:delete, resource)
           {:ok, _policies} = Policies.delete_policies_for(resource, subject)
           {:ok, resource}
@@ -374,6 +379,7 @@ defmodule Domain.Resources do
     account_or_id |> account_topic() |> PubSub.subscribe()
   end
 
+  # TODO: WAL
   defp broadcast_resource_events(action, %Resource{} = resource) do
     payload = {:"#{action}_resource", resource.id}
     :ok = broadcast_to_resource(resource, payload)

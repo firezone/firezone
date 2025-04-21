@@ -17,6 +17,7 @@ jobs:
     services:
       postgres:
         image: postgres:15
+        command: ["postgres", "-c", "wal_level=logical"]
         ports:
           - 5432:5432
         env:
@@ -132,6 +133,7 @@ jobs:
     services:
       postgres:
         image: postgres:15
+        command: ["postgres", "-c", "wal_level=logical"]
         ports:
           - 5432:5432
         env:
@@ -186,6 +188,7 @@ jobs:
     services:
       postgres:
         image: postgres:15
+        command: ["postgres", "-c", "wal_level=logical"]
         ports:
           - 5432:5432
         env:
