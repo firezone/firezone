@@ -2,15 +2,6 @@
 name: "Setup Rust"
 description: "Sets up the correct Rust version and caching via sccache and a GCP backend"
 inputs:
-  key:
-    description: "The key to use for the cache"
-    required: false
-    # e.g. Linux-x86_64
-    default: ${{ runner.os }}-${{ runner.arch }}
-  cache_backend:
-    description: "Choose between sccache or github"
-    required: false
-    default: "sccache"
   targets:
     description: "Additional targets to install"
     required: false
@@ -36,42 +27,26 @@ outputs:
 runs:
   using: "composite"
   steps:
-    # Setup sccache, works well for most Rust components
-    - if: ${{ inputs.cache_backend == 'sccache' }}
-      id: auth
+    - id: auth
       uses: google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f # v2.1.7
       with:
         workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
         service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
         export_environment_variables: true
         create_credentials_file: true
-    - if: ${{ inputs.cache_backend == 'sccache' }}
-      run: |
+    - run: |
         echo "SCCACHE_GCS_BUCKET=firezone-staging-sccache" >> $GITHUB_ENV
         echo "SCCACHE_GCS_RW_MODE=READ_WRITE" >> $GITHUB_ENV
       shell: bash
-    - if: ${{ inputs.cache_backend == 'sccache' }}
-      uses: mozilla-actions/sccache-action@2e7f9ec7921547d4b46598398ca573513895d0bd # v0.0.4
-    - if: ${{ inputs.cache_backend == 'sccache' }}
-      run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
+    - uses: mozilla-actions/sccache-action@2e7f9ec7921547d4b46598398ca573513895d0bd # v0.0.4
+    - run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
       shell: bash
 
-    - if: ${{ inputs.cache_backend == 'github' }}
-      uses: Swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # v2.7.7
-      with:
-        save-if: ${{ github.ref_name == 'main' }}
-        key: ${{ inputs.key }}
-        workspaces: ./rust
-      # Download from GitHub actions can sometimes fail and it has a very long default timeout.
-      env:
-        SEGMENT_DOWNLOAD_TIMEOUT_MINS: 2
-
     - name: Disable Windows Defender
-      if: ${{ inputs.cache_backend == 'sccache' && runner.os == 'Windows' }}
+      if: ${{ runner.os == 'Windows' }}
       run: Set-MpPreference -DisableRealtimeMonitoring $true
       shell: powershell
 
-    # Common to either cache backend
     - name: Extract Rust version
       run: |
         RUST_TOOLCHAIN=$(grep 'channel' rust-toolchain.toml | awk -F '"' '{print $2}')
@@ -97,8 +72,6 @@ runs:
         echo "nightly=$NIGHTLY" >> $GITHUB_OUTPUT
       shell: bash
 
-    # Start sccache
-    - if: ${{ inputs.cache_backend == 'sccache' }}
-      name: Start sccache
+    - name: Start sccache
       run: $SCCACHE_PATH --start-server
       shell: bash
