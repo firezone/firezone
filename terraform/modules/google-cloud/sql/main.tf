@@ -133,7 +133,7 @@ resource "google_sql_database_instance" "master" {
     }
 
     database_flags {
-      name = "cloudsql.logical_decoding"
+      name  = "cloudsql.logical_decoding"
       value = "on"
     }
 
