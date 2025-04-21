@@ -47,6 +47,8 @@ pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
         socket.set_only_v6(true)?;
     }
 
+    #[cfg(unix)]
+    socket.set_reuse_port(true)?; // Allow spawning multiple threads for the same port.
     socket.set_nonblocking(true)?;
     socket.bind(&addr)?;
 
