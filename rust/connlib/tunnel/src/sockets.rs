@@ -6,6 +6,7 @@ use socket_factory::{DatagramIn, DatagramSegmentIter, SocketFactory, UdpSocket};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    num::NonZeroUsize,
     pin::pin,
     sync::Arc,
     task::{Context, Poll, Waker},
@@ -17,26 +18,50 @@ type DatagramOut =
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
 const UNSPECIFIED_V6_SOCKET: SocketAddrV6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0);
 
-#[derive(Default)]
 pub(crate) struct Sockets {
     waker: Option<Waker>,
+    num_threads: NonZeroUsize,
 
     socket_v4: Option<ThreadedUdpSocket>,
     socket_v6: Option<ThreadedUdpSocket>,
 }
 
+impl Default for Sockets {
+    fn default() -> Self {
+        Self {
+            waker: Default::default(),
+            num_threads: NonZeroUsize::new(1).unwrap(),
+            socket_v4: Default::default(),
+            socket_v6: Default::default(),
+        }
+    }
+}
+
 impl Sockets {
+    pub fn new(num_threads: NonZeroUsize) -> Self {
+        Self {
+            waker: Default::default(),
+            num_threads,
+            socket_v4: Default::default(),
+            socket_v6: Default::default(),
+        }
+    }
+
     pub fn rebind(&mut self, socket_factory: Arc<dyn SocketFactory<UdpSocket>>) {
         self.socket_v4 = ThreadedUdpSocket::new(
             socket_factory.clone(),
             SocketAddr::V4(UNSPECIFIED_V4_SOCKET),
+            self.num_threads,
         )
         .inspect_err(|e| tracing::info!("Failed to bind IPv4 socket: {e}"))
         .ok();
-        self.socket_v6 =
-            ThreadedUdpSocket::new(socket_factory, SocketAddr::V6(UNSPECIFIED_V6_SOCKET))
-                .inspect_err(|e| tracing::info!("Failed to bind IPv6 socket: {e}"))
-                .ok();
+        self.socket_v6 = ThreadedUdpSocket::new(
+            socket_factory,
+            SocketAddr::V6(UNSPECIFIED_V6_SOCKET),
+            self.num_threads,
+        )
+        .inspect_err(|e| tracing::info!("Failed to bind IPv6 socket: {e}"))
+        .ok();
 
         if let Some(waker) = self.waker.take() {
             waker.wake();
@@ -157,69 +182,39 @@ struct ThreadedUdpSocket {
 
 impl ThreadedUdpSocket {
     #[expect(clippy::unwrap_in_result, reason = "We unwrap in the new thread.")]
-    fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, addr: SocketAddr) -> io::Result<Self> {
+    fn new(
+        sf: Arc<dyn SocketFactory<UdpSocket>>,
+        mut addr: SocketAddr,
+        num_threads: NonZeroUsize,
+    ) -> io::Result<Self> {
         let (outbound_tx, outbound_rx) = flume::bounded(10);
         let (inbound_tx, inbound_rx) = flume::bounded(10);
-        let (error_tx, error_rx) = flume::bounded(0);
 
-        std::thread::Builder::new()
-            .name(match addr {
-                SocketAddr::V4(_) => "UDP IPv4".to_owned(),
-                SocketAddr::V6(_) => "UDP IPv6".to_owned(),
-            })
-            .spawn(move || {
-                tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .expect("Failed to spawn tokio runtime on UDP thread")
-                    .block_on(async move {
-                        let socket = match sf(&addr) {
-                            Ok(s) => {
-                                let _ = error_tx.send(Ok(()));
+        let num_threads = num_threads.get();
 
-                                s
-                            }
-                            Err(e) => {
-                                let _ = error_tx.send(Err(e));
-                                return;
-                            }
-                        };
+        let port = spawn_udp_worker(
+            sf.clone(),
+            addr,
+            outbound_rx.clone(),
+            inbound_tx.clone(),
+            1,
+            num_threads,
+        )?;
 
+        addr.set_port(port); // All subsequently spawned threads should bind to the same port.
 
-                        let send = pin!(async {
-                            while let Ok(datagram) = outbound_rx.recv_async().await {
-                                if let Err(e) = socket.send(datagram).await {
-                                    tracing::debug!("Failed to send datagram: {e:#}")
-                                };
-                            }
-
-                            tracing::debug!(
-                                "Channel for outbound datagrams closed; exiting UDP thread"
-                            );
-                        });
-                        let receive = pin!(async {
-                            loop {
-                                match socket.recv_from().await {
-                                    Ok(datagrams) => {
-                                        if inbound_tx.send_async(datagrams).await.is_err() {
-                                            tracing::debug!(
-                                            "Channel for inbound datagrams closed; exiting UDP thread"
-                                        );
-                                            break;
-                                        }
-                                    },
-                                    Err(e) => {
-                                        tracing::debug!("Failed to receive from socket: {e:#}")
-                                    },
-                                }
-                            }
-                        });
-
-                        futures::future::select(send, receive).await;
-                    })
-            })?;
-
-        error_rx.recv().map_err(io::Error::other)??;
+        // We start at index 1 because we only want to spawn _additional_ threads here.
+        // A loop from 1..1 is a no-op.
+        for idx in 1..num_threads {
+            spawn_udp_worker(
+                sf.clone(),
+                addr,
+                outbound_rx.clone(),
+                inbound_tx.clone(),
+                idx,
+                num_threads,
+            )?;
+        }
 
         Ok(Self {
             outbound_tx: outbound_tx.into_sink(),
@@ -246,6 +241,81 @@ impl ThreadedUdpSocket {
 
         Poll::Ready(Ok(iter))
     }
+}
+
+/// Spawns a new UDP worker thread.
+///
+/// # Returns
+///
+/// The port that the UDP socket is listening on.
+/// This is useful if you are passing a [`SocketAddr`] with port 0.
+fn spawn_udp_worker(
+    sf: Arc<dyn SocketFactory<UdpSocket>>,
+    addr: SocketAddr,
+    outbound_rx: flume::Receiver<DatagramOut>,
+    inbound_tx: flume::Sender<DatagramSegmentIter>,
+    index: usize,
+    num_threads: usize,
+) -> io::Result<u16> {
+    let (error_tx, error_rx) = flume::bounded(0);
+
+    std::thread::Builder::new()
+        .name(match addr {
+            SocketAddr::V4(_) => format!("UDP IPv4 {index}/{num_threads}"),
+            SocketAddr::V6(_) => format!("UDP IPv6 {index}/{num_threads}"),
+        })
+        .spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to spawn tokio runtime on UDP thread")
+                .block_on(async move {
+                    let socket = match sf(&addr) {
+                        Ok(s) => {
+                            let _ = error_tx.send(Ok(s.port()));
+
+                            s
+                        }
+                        Err(e) => {
+                            let _ = error_tx.send(Err(e));
+                            return;
+                        }
+                    };
+
+                    let send = pin!(async {
+                        while let Ok(datagram) = outbound_rx.recv_async().await {
+                            if let Err(e) = socket.send(datagram).await {
+                                tracing::debug!("Failed to send datagram: {e:#}")
+                            };
+                        }
+
+                        tracing::debug!("Channel for outbound datagrams closed; exiting UDP thread");
+                    });
+                    let receive = pin!(async {
+                        loop {
+                            match socket.recv_from().await {
+                                Ok(datagrams) => {
+                                    if inbound_tx.send_async(datagrams).await.is_err() {
+                                        tracing::debug!(
+                                            "Channel for inbound datagrams closed; exiting UDP thread"
+                                        );
+                                        break;
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::debug!("Failed to receive from socket: {e:#}")
+                                }
+                            }
+                        }
+                    });
+
+                    futures::future::select(send, receive).await;
+                })
+        })?;
+
+    let port = error_rx.recv().map_err(io::Error::other)??;
+
+    Ok(port)
 }
 
 #[derive(thiserror::Error, Debug)]
