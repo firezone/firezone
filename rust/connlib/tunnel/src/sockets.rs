@@ -30,7 +30,7 @@ impl Default for Sockets {
     fn default() -> Self {
         Self {
             waker: Default::default(),
-            num_threads: NonZeroUsize::new(1).unwrap(),
+            num_threads: NonZeroUsize::new(1).expect("1 > 0"),
             socket_v4: Default::default(),
             socket_v6: Default::default(),
         }
