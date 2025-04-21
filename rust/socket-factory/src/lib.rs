@@ -23,8 +23,9 @@ use tokio::io::Interest;
 
 pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
 
-pub const SEND_BUFFER_SIZE: usize = 1 * 1024 * 1024;
-pub const RECV_BUFFER_SIZE: usize = 10 * 1024 * 1024;
+pub const SEND_BUFFER_SIZE: usize = ONE_MB;
+pub const RECV_BUFFER_SIZE: usize = 10 * ONE_MB;
+const ONE_MB: usize = 1024 * 1024;
 
 impl<F, S> SocketFactory<S> for F where F: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
 
