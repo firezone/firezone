@@ -20,6 +20,8 @@ defmodule Domain.Actors.Actor do
     # ref https://github.com/firezone/firezone/issues/2162
     has_many :groups, through: [:memberships, :group]
 
+    has_many :emails, Domain.Actors.Email
+
     belongs_to :account, Domain.Accounts.Account
 
     field :last_seen_at, :utc_datetime_usec, virtual: true

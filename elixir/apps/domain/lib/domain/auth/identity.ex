@@ -1,7 +1,7 @@
 defmodule Domain.Auth.Identity do
   use Domain, :schema
 
-  schema "auth_identities" do
+  schema "identities" do
     belongs_to :actor, Domain.Actors.Actor, on_replace: :update
     belongs_to :provider, Domain.Auth.Provider
 

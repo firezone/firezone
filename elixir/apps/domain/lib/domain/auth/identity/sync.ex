@@ -83,6 +83,7 @@ defmodule Domain.Auth.Identity.Sync do
       |> Identity.Query.delete()
       |> Repo.update_all([])
 
+    # TODO: Do we need to soft-delete tokens or can they be permanently deleted?
     :ok =
       Enum.each(identities, fn identity ->
         {:ok, _tokens} = Domain.Tokens.delete_tokens_for(identity)
@@ -101,6 +102,7 @@ defmodule Domain.Auth.Identity.Sync do
 
       changeset = Identity.Changeset.create_identity_and_actor(provider, attrs)
 
+      # TODO: Perform bulk insertions instead of one by one
       case Repo.insert(changeset) do
         {:ok, identity} ->
           {:cont, {:ok, [identity | acc]}}
@@ -149,6 +151,7 @@ defmodule Domain.Auth.Identity.Sync do
 
       changeset = Identity.Changeset.update_identity_and_actor(identity, attrs)
 
+      # TODO: Perform bulk updates instead of one by one
       case Repo.update(changeset) do
         {:ok, identity} ->
           {:cont, {:ok, [identity | acc]}}

@@ -42,12 +42,6 @@ defmodule Domain.Directories do
     |> Repo.update()
   end
 
-  def update_provider_config(%Provider{} = provider, attrs) do
-    provider
-    |> Provider.Changeset.update_config(attrs)
-    |> Repo.update()
-  end
-
   def update_provider_sync_state(%Provider{} = provider, attrs) do
     provider
     |> Provider.Changeset.update_sync_state(attrs)

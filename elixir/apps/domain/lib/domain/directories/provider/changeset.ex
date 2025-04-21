@@ -7,19 +7,22 @@ defmodule Domain.Directories.Provider.Changeset do
   @create_fields ~w[
     type
     account_id
+    auth_provider_id
     sync_state
-    config
     disabled_at
   ]a
 
-  def create(%Accounts.Account{} = account, attrs) do
+  def create(%Accounts.Account{} = account, %Auth.Provider{} = auth_provider, attrs) do
     %Provider{}
     |> cast(attrs, @create_fields)
-    |> validate_required([:type, :config])
+    |> validate_required([:type])
     |> put_change(:account_id, account.id)
+    |> put_change(:auth_provider_id, auth_provider.id)
     |> validate_inclusion(:type, Provider.types())
-    |> foreign_key_constraint(:account, name: :directory_providers_account_id_fkey)
+    |> assoc_constraint(:account)
+    |> assoc_constraint(:auth_provider)
     |> unique_constraint(:type, name: :directory_providers_account_id_type_index)
+    |> unique_constraint(:auth_provider_id, name: :directory_providers_auth_provider_id_index)
     |> validate_idp_sync_feature_is_available(account)
     |> maybe_cast_polymorphic_embeds()
   end
@@ -34,20 +37,6 @@ defmodule Domain.Directories.Provider.Changeset do
     provider
     |> cast(%{}, [:disabled_at])
     |> put_change(:disabled_at, nil)
-  end
-
-  def update_config(%Provider{} = provider, attrs) do
-    {config_mod, config_changeset_mod} = config_modules(provider.type)
-
-    provider
-    |> cast(attrs, [:config])
-    |> cast_polymorphic_embed(:config,
-      required: true,
-      with: fn current_attrs, attrs ->
-        Ecto.embedded_load(config_mod, current_attrs, :json)
-        |> config_changeset_mod.changeset(attrs)
-      end
-    )
   end
 
   def update_sync_state(%Provider{} = provider, attrs) do
@@ -87,19 +76,10 @@ defmodule Domain.Directories.Provider.Changeset do
           |> sync_state_changeset_mod.changeset(new_attrs)
         end
       )
-      |> cast_polymorphic_embed(:config,
-        required: true,
-        with: fn current_attrs, new_attrs ->
-          Ecto.embedded_load(config_mod, current_attrs, :json)
-          |> config_changeset_mod.changeset(new_attrs)
-        end
-      )
     else
       changeset
     end
   end
 
   defp sync_state_modules(:okta), do: {Okta.SyncState, Okta.SyncState.Changeset}
-
-  defp config_modules(:okta), do: {Okta.Config, Okta.Config.Changeset}
 end

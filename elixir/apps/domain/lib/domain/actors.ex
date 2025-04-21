@@ -237,6 +237,9 @@ defmodule Domain.Actors do
   end
 
   def update_dynamic_group_memberships(account_id) do
+    # TODO:
+    # - Avoid locking
+    # - Use bulk update
     Repo.transaction(fn ->
       Group.Query.not_deleted()
       |> Group.Query.by_account_id(account_id)
@@ -252,6 +255,7 @@ defmodule Domain.Actors do
 
         {:ok, group} = Repo.update(changeset)
 
+        # TODO: Use logical decoding to process events
         :ok = broadcast_memberships_events(changeset)
 
         group
@@ -266,14 +270,17 @@ defmodule Domain.Actors do
 
     case delete_groups(queryable, subject) do
       {:ok, [group]} ->
+        # TODO: Use trigger to cascade set deleted_at
         {:ok, _policies} = Policies.delete_policies_for(group, subject)
 
         {_count, memberships} =
+          # TODO: Cacscade delete memberships...
           Membership.Query.all()
           |> Membership.Query.by_group_id(group.id)
           |> Membership.Query.returning_all()
           |> Repo.delete_all()
 
+        # TODO: Use logical decoding to process events
         :ok = broadcast_membership_removal_events(memberships)
 
         {:ok, group}
@@ -301,6 +308,7 @@ defmodule Domain.Actors do
       |> Membership.Query.returning_all()
       |> Repo.delete_all()
 
+    # TODO: Use logical decoding to process events
     :ok = broadcast_membership_removal_events(memberships)
 
     with {:ok, groups} <- delete_groups(queryable, subject) do
@@ -329,16 +337,19 @@ defmodule Domain.Actors do
       |> Group.Query.delete()
       |> Repo.update_all([])
 
+    # TODO: Use trigger to cascade set deleted_at
     :ok =
       Enum.each(groups, fn group ->
         {:ok, _policies} = Domain.Policies.delete_policies_for(group)
       end)
 
+    # TODO: Use cascading delete
     {_count, memberships} =
       Membership.Query.by_group_id({:in, Enum.map(groups, & &1.id)})
       |> Membership.Query.returning_all()
       |> Repo.delete_all()
 
+    # TODO: Use logical decoding to process events
     :ok = broadcast_membership_removal_events(memberships)
 
     {:ok, groups}
