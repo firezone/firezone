@@ -10,14 +10,14 @@ module.exports = [
     source: "/dl/firezone-client-macos/latest",
     destination:
       // mark:current-apple-version
-      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.4.11/firezone-macos-client-1.4.11.dmg",
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.4.12/firezone-macos-client-1.4.12.dmg",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-macos/pkg/latest",
     destination:
       // mark:current-apple-version
-      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.4.11/firezone-macos-client-1.4.11.pkg",
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.4.12/firezone-macos-client-1.4.12.pkg",
     permanent: false,
   },
   /*
@@ -41,7 +41,7 @@ module.exports = [
     source: "/dl/firezone-client-gui-windows/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.10/firezone-client-gui-windows_1.4.10_x86_64.msi",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.11/firezone-client-gui-windows_1.4.11_x86_64.msi",
     permanent: false,
   },
   /*
@@ -65,14 +65,14 @@ module.exports = [
     source: "/dl/firezone-client-gui-linux/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.10/firezone-client-gui-linux_1.4.10_x86_64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.11/firezone-client-gui-linux_1.4.11_x86_64.deb",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-gui-linux/latest/aarch64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.10/firezone-client-gui-linux_1.4.10_aarch64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.4.11/firezone-client-gui-linux_1.4.11_aarch64.deb",
     permanent: false,
   },
   {
