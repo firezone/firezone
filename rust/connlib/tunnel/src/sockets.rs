@@ -181,7 +181,6 @@ struct ThreadedUdpSocket {
 }
 
 impl ThreadedUdpSocket {
-    #[expect(clippy::unwrap_in_result, reason = "We unwrap in the new thread.")]
     fn new(
         sf: Arc<dyn SocketFactory<UdpSocket>>,
         mut addr: SocketAddr,
