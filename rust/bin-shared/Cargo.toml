@@ -38,8 +38,8 @@ zbus = { workspace = true } # Can't use `zbus`'s `tokio` feature here, or it wil
 known-folders = { workspace = true }
 ring = "0.17"
 uuid = { workspace = true, features = ["v4"] }
-windows-core = "0.58.0"
-windows-implement = "0.58.0"
+windows-core = { workspace = true }
+windows-implement = { workspace = true }
 wintun = "0.5.1"
 winreg = { workspace = true }
 tokio-util = { workspace = true }
@@ -48,7 +48,6 @@ tokio-util = { workspace = true }
 workspace = true
 features = [
   # For implementing COM interfaces
-  "implement",
   "Win32_Foundation",
   # For listening for network change events
   "Win32_Networking_NetworkListManager",
