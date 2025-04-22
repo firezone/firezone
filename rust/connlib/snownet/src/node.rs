@@ -927,14 +927,15 @@ where
             };
         }
 
-        match Tunn::parse_incoming_packet(packet) {
-            Ok(_) => tracing::trace!(
+        if crate::is_wireguard(packet) {
+            tracing::trace!(
                 "Packet was a WireGuard packet but no connection handled it. Already disconnected?"
-            ),
-            Err(_) => return ControlFlow::Break(Err(Error::UnknownPacketFormat)),
-        };
+            );
 
-        ControlFlow::Break(Ok(()))
+            return ControlFlow::Break(Ok(()));
+        }
+
+        ControlFlow::Break(Err(Error::UnknownPacketFormat))
     }
 
     fn allocations_drain_events(&mut self) {
