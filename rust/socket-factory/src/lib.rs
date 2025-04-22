@@ -23,6 +23,10 @@ use tokio::io::Interest;
 
 pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
 
+pub const SEND_BUFFER_SIZE: usize = ONE_MB;
+pub const RECV_BUFFER_SIZE: usize = 10 * ONE_MB;
+const ONE_MB: usize = 1024 * 1024;
+
 impl<F, S> SocketFactory<S> for F where F: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
 
 pub fn tcp(addr: &SocketAddr) -> io::Result<TcpSocket> {
@@ -181,6 +185,28 @@ impl UdpSocket {
                 .with_boundaries((1..32_u64).map(|i| i as f64).collect())
                 .init(),
         })
+    }
+
+    pub fn set_buffer_sizes(
+        &mut self,
+        requested_send_buffer_size: usize,
+        requested_recv_buffer_size: usize,
+    ) -> io::Result<()> {
+        let socket = socket2::SockRef::from(&self.inner);
+
+        socket.set_send_buffer_size(requested_send_buffer_size)?;
+        socket.set_recv_buffer_size(requested_recv_buffer_size)?;
+
+        let send_buffer_size = socket.send_buffer_size()?;
+        let recv_buffer_size = socket.recv_buffer_size()?;
+
+        tracing::info!(%requested_send_buffer_size, %send_buffer_size, %requested_recv_buffer_size, %recv_buffer_size, port = %self.port, "Set UDP socket buffer sizes");
+
+        Ok(())
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
     }
 
     /// Configures a new source IP resolver for this UDP socket.

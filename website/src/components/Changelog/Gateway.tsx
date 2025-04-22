@@ -26,6 +26,12 @@ export default function Gateway() {
         <ChangeItem pull="8798">
           Improves performance of relayed connections on IPv4-only systems.
         </ChangeItem>
+        <ChangeItem pull="8731">
+          Improves throughput performance by requesting socket receive buffers
+          of 10MB. The actual size of the buffers is capped by the operating
+          system. You may need to adjust <code>net.core.rmem_max</code> for this to take
+          full effect.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.6" date={new Date("2025-04-15")}>
         <ChangeItem pull="8383">
