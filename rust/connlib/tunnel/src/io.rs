@@ -356,7 +356,7 @@ impl Io {
         self.packet_counter.add(
             1,
             &[
-                crate::otel::network_peer_port(dst.port()),
+                crate::otel::network_protocol_name(payload),
                 crate::otel::network_transport_udp(),
                 crate::otel::network_io_direction_transmit(),
             ],
