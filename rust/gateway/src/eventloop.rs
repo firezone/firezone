@@ -72,8 +72,14 @@ impl Eventloop {
             tunnel,
             portal,
             tun_device_manager: Arc::new(Mutex::new(tun_device_manager)),
-            resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 1000),
-            set_interface_tasks: futures_bounded::FuturesSet::new(Duration::from_secs(5), 10),
+            resolve_tasks: futures_bounded::FuturesTupleSet::new(
+                || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
+                1000,
+            ),
+            set_interface_tasks: futures_bounded::FuturesSet::new(
+                || futures_bounded::Delay::tokio(Duration::from_secs(5)),
+                10,
+            ),
             logged_permission_denied: false,
             dns_cache: moka::future::Cache::builder()
                 .name("DNS queries")

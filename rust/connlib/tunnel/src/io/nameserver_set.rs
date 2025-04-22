@@ -42,7 +42,10 @@ impl NameserverSet {
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
     ) -> Self {
         Self {
-            queries: FuturesTupleSet::new(DNS_TIMEOUT, MAX_DNS_SERVERS),
+            queries: FuturesTupleSet::new(
+                || futures_bounded::Delay::tokio(DNS_TIMEOUT),
+                MAX_DNS_SERVERS,
+            ),
             inner,
             tcp_socket_factory,
             udp_socket_factory,

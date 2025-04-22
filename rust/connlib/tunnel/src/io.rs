@@ -119,7 +119,10 @@ impl Io {
             nameservers,
             tcp_socket_factory,
             udp_socket_factory,
-            dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
+            dns_queries: FuturesTupleSet::new(
+                || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
+                1000,
+            ),
             gso_queue: GsoQueue::new(),
             tun: Device::new(),
             udp_dns_server: Default::default(),
@@ -323,7 +326,8 @@ impl Io {
     pub fn reset(&mut self) {
         self.sockets.rebind(self.udp_socket_factory.clone());
         self.gso_queue.clear();
-        self.dns_queries = FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000);
+        self.dns_queries =
+            FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
         self.nameservers.evaluate();
     }
 
