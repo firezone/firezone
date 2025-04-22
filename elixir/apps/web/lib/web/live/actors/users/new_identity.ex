@@ -15,15 +15,14 @@ defmodule Web.Actors.Users.NewIdentity do
       providers =
         Auth.all_active_providers_for_account!(socket.assigns.account)
         |> Enum.filter(fn provider ->
-          Auth.fetch_provider_capabilities!(provider)
-          |> Keyword.fetch!(:provisioners)
-          |> Enum.member?(:manual)
-        end)
-        |> Enum.reject(fn provider ->
-          provider.adapter == :email and
-            Enum.any?(actor.identities, fn identity ->
-              identity.provider_id == provider.id
-            end)
+          # TODO: This will be refactored to enforce with a DB constraint, but for now
+          # we don't allow creating multiple identities per actor for the same provider.
+          Enum.all?(actor.identities, fn identity ->
+            identity.provider_id != provider.id
+          end) and
+            Auth.fetch_provider_capabilities!(provider)
+            |> Keyword.fetch!(:provisioners)
+            |> Enum.member?(:manual)
         end)
 
       provider = List.first(providers)
