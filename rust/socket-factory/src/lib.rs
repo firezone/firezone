@@ -468,7 +468,7 @@ impl UdpSocket {
 /// Thus, our main job within this iterator is to loop over the `buffers` and `meta` pair-wise, inspect the `meta` and segment the data within the buffer accordingly.
 #[derive(derive_more::Debug)]
 pub struct DatagramSegmentIter<
-    const N: usize = 10,
+    const N: usize = { quinn_udp::BATCH_SIZE },
     B = lockfree_object_pool::MutexOwnedReusable<Vec<u8>>,
 > {
     #[debug(skip)]
