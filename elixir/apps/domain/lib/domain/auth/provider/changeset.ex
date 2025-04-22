@@ -87,7 +87,7 @@ defmodule Domain.Auth.Provider.Changeset do
     )
     |> unique_constraint(:base,
       name: :unique_account_adapter_index,
-      message: "only of this adapter type may be enabled per account"
+      message: "only one of this adapter type may be enabled per account"
     )
     |> validate_provisioner()
     |> validate_required(@required_fields)
