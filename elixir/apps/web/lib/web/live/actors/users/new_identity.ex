@@ -6,7 +6,7 @@ defmodule Web.Actors.Users.NewIdentity do
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, actor} <-
            Actors.fetch_actor_by_id(id, socket.assigns.subject,
-             preload: [:memberships],
+             preload: [:memberships, :identities],
              filter: [
                deleted?: false,
                types: ["account_user", "account_admin_user"]
@@ -20,7 +20,10 @@ defmodule Web.Actors.Users.NewIdentity do
           |> Enum.member?(:manual)
         end)
         |> Enum.reject(fn provider ->
-          provider.adapter == :email
+          provider.adapter == :email and
+            Enum.any?(actor.identities, fn identity ->
+              identity.provider_id == provider.id
+            end)
         end)
 
       provider = List.first(providers)
