@@ -5,16 +5,22 @@ defmodule Web.Live.Actors.User.NewIdentityTest do
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
     account = Fixtures.Accounts.create_account()
-    provider = Fixtures.Auth.create_email_provider(account: account)
+    _provider = Fixtures.Auth.create_email_provider(account: account)
+
+    # TODO: Users won't be able to naturally arrive at some of the routes tested on this page without another
+    # manual provisioning provider like OIDC, so we add it here. Clean this up when identities are refactored.
+    {oidc_provider, _bypass} =
+      Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
     actor =
       Fixtures.Actors.create_actor(
         type: :account_admin_user,
         account: account,
-        provider: provider
+        provider: oidc_provider
       )
 
-    identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+    identity =
+      Fixtures.Auth.create_identity(account: account, provider: oidc_provider, actor: actor)
 
     %{
       account: account,

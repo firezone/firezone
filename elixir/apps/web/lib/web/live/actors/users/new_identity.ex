@@ -6,7 +6,7 @@ defmodule Web.Actors.Users.NewIdentity do
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, actor} <-
            Actors.fetch_actor_by_id(id, socket.assigns.subject,
-             preload: [:memberships],
+             preload: [:memberships, :identities],
              filter: [
                deleted?: false,
                types: ["account_user", "account_admin_user"]
@@ -15,9 +15,14 @@ defmodule Web.Actors.Users.NewIdentity do
       providers =
         Auth.all_active_providers_for_account!(socket.assigns.account)
         |> Enum.filter(fn provider ->
-          Auth.fetch_provider_capabilities!(provider)
-          |> Keyword.fetch!(:provisioners)
-          |> Enum.member?(:manual)
+          # TODO: This will be refactored to enforce with a DB constraint, but for now
+          # we don't allow creating multiple identities per actor for the same provider.
+          Enum.all?(actor.identities, fn identity ->
+            identity.provider_id != provider.id
+          end) and
+            Auth.fetch_provider_capabilities!(provider)
+            |> Keyword.fetch!(:provisioners)
+            |> Enum.member?(:manual)
         end)
 
       provider = List.first(providers)
