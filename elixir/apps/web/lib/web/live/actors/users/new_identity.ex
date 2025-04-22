@@ -19,9 +19,9 @@ defmodule Web.Actors.Users.NewIdentity do
           |> Keyword.fetch!(:provisioners)
           |> Enum.member?(:manual)
         end)
-          |> Enum.reject(fn provider ->
-            provider.adapter == :email
-          end)
+        |> Enum.reject(fn provider ->
+          provider.adapter == :email
+        end)
 
       provider = List.first(providers)
       changeset = Auth.new_identity(actor, provider)
