@@ -267,9 +267,7 @@ impl UdpSocket {
                     ],
                 );
 
-                // Note: We don't need to use `len` here because the iterator will stop once it encounteres `meta.len == 0`.
-
-                return Poll::Ready(Ok(DatagramSegmentIter::new(bufs, meta, *port)));
+                return Poll::Ready(Ok(DatagramSegmentIter::new(bufs, meta, *port, len)));
             }
         }
     }
@@ -476,6 +474,7 @@ pub struct DatagramSegmentIter<
     #[debug(skip)]
     buffers: [B; N],
     metas: [quinn_udp::RecvMeta; N],
+    len: usize,
 
     port: u16,
 
@@ -487,7 +486,7 @@ pub struct DatagramSegmentIter<
 }
 
 impl<B, const N: usize> DatagramSegmentIter<N, B> {
-    fn new(buffers: [B; N], metas: [quinn_udp::RecvMeta; N], port: u16) -> Self {
+    fn new(buffers: [B; N], metas: [quinn_udp::RecvMeta; N], port: u16, len: usize) -> Self {
         let total_bytes = metas.iter().map(|m| m.len).sum::<usize>();
         let num_packets = metas
             .iter()
@@ -503,6 +502,7 @@ impl<B, const N: usize> DatagramSegmentIter<N, B> {
         Self {
             buffers,
             metas,
+            len,
             port,
             buf_index: 0,
             segment_index: 0,
@@ -520,7 +520,7 @@ where
 
     fn next(&mut self) -> Option<Self::Item<'_>> {
         loop {
-            if self.buf_index >= N {
+            if self.buf_index >= N || self.buf_index >= self.len {
                 return None;
             }
 
@@ -621,6 +621,7 @@ mod tests {
                 quinn_udp::RecvMeta::default(),
             ],
             0,
+            3,
         );
 
         assert_eq!(iter.next().unwrap().packet, b"foobar1");
