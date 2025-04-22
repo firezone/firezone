@@ -122,9 +122,9 @@ impl ProcessToken {
             LookupAccountSidW(
                 None,
                 sid,
-                PWSTR::from_raw(name.as_mut_ptr()),
+                Some(PWSTR::from_raw(name.as_mut_ptr())),
                 &mut name_size,
-                PWSTR::from_raw(domain.as_mut_ptr()),
+                Some(PWSTR::from_raw(domain.as_mut_ptr())),
                 &mut domain_size,
                 &mut sid_type,
             )
