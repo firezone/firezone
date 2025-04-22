@@ -20,3 +20,7 @@ pub use node::{
     NoTurnServers, Node, Server, ServerNode, Transmit,
 };
 pub use stats::{ConnectionStats, NodeStats};
+
+pub fn is_wireguard(payload: &[u8]) -> bool {
+    boringtun::noise::Tunn::parse_incoming_packet(payload).is_ok()
+}
