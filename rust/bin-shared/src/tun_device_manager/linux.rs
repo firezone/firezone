@@ -315,6 +315,7 @@ impl Tun {
 
             std::thread::Builder::new()
                 .name(format!("TUN send {n}/{num_threads}"))
+                .stack_size(100 * 1024)
                 .spawn({
                     let fd = fd.clone();
 
@@ -328,6 +329,7 @@ impl Tun {
                 .map_err(io::Error::other)?;
             std::thread::Builder::new()
                 .name(format!("TUN recv {n}/{num_threads}"))
+                .stack_size(100 * 1024)
                 .spawn({
                     let fd = fd.clone();
 

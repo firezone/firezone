@@ -60,6 +60,7 @@ impl Tun {
 
         std::thread::Builder::new()
             .name("TUN send".to_owned())
+            .stack_size(100 * 1024)
             .spawn(move || {
                 firezone_logging::unwrap_or_warn!(
                     tun::unix::tun_send(fd, outbound_rx.into_stream(), write),
@@ -69,6 +70,7 @@ impl Tun {
             .map_err(io::Error::other)?;
         std::thread::Builder::new()
             .name("TUN recv".to_owned())
+            .stack_size(100 * 1024)
             .spawn(move || {
                 firezone_logging::unwrap_or_warn!(
                     tun::unix::tun_recv(fd, inbound_tx, read),
