@@ -85,6 +85,10 @@ defmodule Domain.Auth.Provider.Changeset do
       name: :auth_providers_account_id_oidc_adapter_index,
       message: "this provider is already connected"
     )
+    |> unique_constraint(:base,
+      name: :unique_account_adapter_index,
+      message: "only one of this adapter type may be enabled per account"
+    )
     |> validate_provisioner()
     |> validate_required(@required_fields)
   end
