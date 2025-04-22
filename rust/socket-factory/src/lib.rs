@@ -48,6 +48,8 @@ pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
         socket.set_only_v6(true)?;
     }
 
+    #[cfg(unix)]
+    socket.set_reuse_port(true)?; // Allow spawning multiple threads for the same port.
     socket.set_nonblocking(true)?;
     socket.bind(&addr)?;
 
@@ -181,6 +183,10 @@ impl UdpSocket {
                 .with_boundaries((1..32_u64).map(|i| i as f64).collect())
                 .init(),
         })
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
     }
 
     /// Configures a new source IP resolver for this UDP socket.

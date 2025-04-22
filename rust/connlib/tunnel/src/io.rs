@@ -100,9 +100,9 @@ impl Io {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        mut sockets: Sockets,
         nameservers: BTreeSet<IpAddr>,
     ) -> Self {
-        let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
         let mut nameservers = NameserverSet::new(
@@ -480,6 +480,7 @@ mod tests {
             let mut io = Io::new(
                 Arc::new(|_| Err(io::Error::other("not implemented"))),
                 Arc::new(|_| Err(io::Error::other("not implemented"))),
+                Sockets::default(),
                 BTreeSet::new(),
             );
             io.set_tun(Box::new(DummyTun));

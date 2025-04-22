@@ -15,10 +15,12 @@ use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
 use ip_packet::Ecn;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use sockets::Sockets;
 use std::{
     collections::BTreeSet,
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    num::NonZeroUsize,
     sync::Arc,
     task::{Context, Poll, ready},
     time::Instant,
@@ -77,7 +79,7 @@ pub use utils::turn;
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
-/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::device_channel::Device), [`Sockets`](crate::sockets::Sockets) or time and pass it to the respective state.
+/// The only job of [`Tunnel`] is to take input from the TUN [`Device`](crate::device_channel::Device), [`Sockets`] or time and pass it to the respective state.
 pub struct Tunnel<TRoleState> {
     /// (pure) state that differs per role, either [`ClientState`] or [`GatewayState`].
     role_state: TRoleState,
@@ -118,6 +120,7 @@ impl ClientTunnel {
             io: Io::new(
                 tcp_socket_factory,
                 udp_socket_factory.clone(),
+                Sockets::default(),
                 BTreeSet::default(),
             ),
             role_state: ClientState::new(rand::random(), Instant::now()),
@@ -245,9 +248,15 @@ impl GatewayTunnel {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         nameservers: BTreeSet<IpAddr>,
+        num_udp_threads: NonZeroUsize,
     ) -> Self {
         Self {
-            io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
+            io: Io::new(
+                tcp_socket_factory,
+                udp_socket_factory.clone(),
+                Sockets::new(num_udp_threads),
+                nameservers,
+            ),
             role_state: GatewayState::new(rand::random(), Instant::now()),
             buffers: Buffers::default(),
             packet_counter: opentelemetry::global::meter("connlib")
