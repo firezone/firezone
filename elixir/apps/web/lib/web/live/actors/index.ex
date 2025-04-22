@@ -96,7 +96,8 @@ defmodule Web.Actors.Index do
           </:col>
 
           <:col :let={actor} label="groups" class="w-1/12">
-            <.popover placement="right">
+            <span :if={actor.type == :api_client}>None</span>
+            <.popover :if={actor.type != :api_client} placement="right">
               <:target>
                 <.link
                   navigate={~p"/#{@account}/actors/#{actor}?#groups"}
