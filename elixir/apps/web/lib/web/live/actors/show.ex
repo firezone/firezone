@@ -8,13 +8,27 @@ defmodule Web.Actors.Show do
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, actor} <-
            Actors.fetch_actor_by_id(id, socket.assigns.subject,
-             preload: [:last_seen_at, groups: [:provider]]
+             preload: [:identities, :last_seen_at, groups: [:provider]]
            ) do
       :ok = Clients.subscribe_to_clients_presence_for_actor(actor)
+
+      available_providers =
+        Auth.all_active_providers_for_account!(socket.assigns.account)
+        |> Enum.filter(fn provider ->
+          # TODO: This will be refactored to enforce with a DB constraint, but for now
+          # we don't allow creating multiple identities per actor for the same provider.
+          Enum.all?(actor.identities, fn identity ->
+            identity.provider_id != provider.id
+          end) and
+            Auth.fetch_provider_capabilities!(provider)
+            |> Keyword.fetch!(:provisioners)
+            |> Enum.member?(:manual)
+        end)
 
       socket =
         socket
         |> assign(
+          available_providers: available_providers,
           page_title: "Actor #{actor.name}",
           flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account),
           actor: actor
@@ -232,7 +246,7 @@ defmodule Web.Actors.Show do
         Each authentication identity is associated with an identity provider and is used to identify the actor upon successful authentication.
       </:help>
 
-      <:action :if={is_nil(@actor.deleted_at)}>
+      <:action :if={is_nil(@actor.deleted_at) and Enum.any?(@available_providers)}>
         <.add_button
           :if={@actor.type != :service_account}
           navigate={~p"/#{@account}/actors/users/#{@actor}/new_identity"}
@@ -664,8 +678,27 @@ defmodule Web.Actors.Show do
     {:ok, identity} = Auth.fetch_identity_by_id(id, socket.assigns.subject)
     {:ok, _identity} = Auth.delete_identity(identity, socket.assigns.subject)
 
+    {:ok, actor} =
+      Actors.fetch_actor_by_id(socket.assigns.actor.id, socket.assigns.subject,
+        preload: [:identities]
+      )
+
+    available_providers =
+      Auth.all_active_providers_for_account!(socket.assigns.account)
+      |> Enum.filter(fn provider ->
+        # TODO: This will be refactored to enforce with a DB constraint, but for now
+        # we don't allow creating multiple identities per actor for the same provider.
+        Enum.all?(actor.identities, fn identity ->
+          identity.provider_id != provider.id
+        end) and
+          Auth.fetch_provider_capabilities!(provider)
+          |> Keyword.fetch!(:provisioners)
+          |> Enum.member?(:manual)
+      end)
+
     socket =
       socket
+      |> assign(actor: actor, available_providers: available_providers)
       |> reload_live_table!("identities")
       |> put_flash(:info, "Identity was deleted.")
 
