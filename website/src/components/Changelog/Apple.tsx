@@ -27,7 +27,7 @@ export default function Apple() {
         <ChangeItem pull="8731">
           Improves throughput performance by requesting socket receive buffers
           of 10MB. The actual size of the buffers is capped by the operating
-          system. You may need to adjust `kern.ipc.maxsockbuf` for this to take
+          system. You may need to adjust <code>kern.ipc.maxsockbuf</code> for this to take
           full effect.
         </ChangeItem>
       </Unreleased>

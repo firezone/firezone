@@ -13,7 +13,7 @@ export default function GUI({ os }: { os: OS }) {
           <ChangeItem pull="8731">
             Improves throughput performance by requesting socket receive buffers
             of 10MB. The actual size of the buffers is capped by the operating
-            system. You may need to adjust `net.core.rmem_max` for this to take
+            system. You may need to adjust <code>net.core.rmem_max</code> for this to take
             full effect.
           </ChangeItem>
           )}
