@@ -189,7 +189,7 @@ windows = "0.61.0"
 windows-core = "0.61.0"
 windows-implement = "0.60.0"
 winreg = "0.52.0"
-zbus = "5.5.0"
+zbus = { version = "5.5.0", default-features = false, features = ["tokio"] }
 zip = { version = "2", default-features = false }
 
 [workspace.lints.clippy]
