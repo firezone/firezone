@@ -14,11 +14,4 @@ use which::which;
 fn main() {
     let bpf_linker = which("bpf-linker").expect("bpf-linker not found in $PATH");
     println!("cargo:rerun-if-changed={}", bpf_linker.to_str().unwrap());
-
-    if std::env::var("CARGO_BUILD_TARGET")
-        .ok()
-        .is_some_and(|t| t == "bpfel-unknown-none" || t == "bpfeb-unknown-unknown")
-    {
-        println!("cargo:rustc-link-arg=--btf");
-    }
 }
