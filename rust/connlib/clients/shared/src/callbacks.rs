@@ -69,6 +69,7 @@ impl<C> BackgroundCallbacks<C> {
             threadpool: Arc::new(
                 rayon::ThreadPoolBuilder::new()
                     .num_threads(1)
+                    .stack_size(100 * 1024)
                     .thread_name(|_| "connlib callbacks".to_owned())
                     .build()
                     .expect("Unable to create thread-pool"),
