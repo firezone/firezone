@@ -173,7 +173,7 @@ impl ThreadedUdpSocket {
                     .build()
                     .expect("Failed to spawn tokio runtime on UDP thread")
                     .block_on(async move {
-                        let socket = match sf(&addr) {
+                        let mut socket = match sf(&addr) {
                             Ok(s) => {
                                 let _ = error_tx.send(Ok(()));
 
@@ -184,6 +184,14 @@ impl ThreadedUdpSocket {
                                 return;
                             }
                         };
+
+                        match socket.set_buffer_sizes(socket_factory::SEND_BUFFER_SIZE, socket_factory::RECV_BUFFER_SIZE) {
+                            Ok(()) => {},
+                            Err(e) => {
+                                let _ = error_tx.send(Err(e));
+                                return;
+                            },
+                        }
 
                         let send_buf_size = socket.send_buffer_size();
                         let recv_buf_size = socket.recv_buffer_size();

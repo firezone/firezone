@@ -55,9 +55,6 @@ pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
     socket.set_nonblocking(true)?;
     socket.bind(&addr)?;
 
-    socket.set_send_buffer_size(SEND_BUFFER_SIZE)?;
-    socket.set_recv_buffer_size(RECV_BUFFER_SIZE)?;
-
     let send_buf_size = socket.send_buffer_size()?;
     let recv_buf_size = socket.recv_buffer_size()?;
 
@@ -196,6 +193,22 @@ impl UdpSocket {
             send_buffer_size,
             recv_buffer_size,
         })
+    }
+
+    pub fn set_buffer_sizes(
+        &mut self,
+        send_buffer_size: usize,
+        recv_buffer_size: usize,
+    ) -> io::Result<()> {
+        let socket = socket2::SockRef::from(&self.inner);
+
+        socket.set_send_buffer_size(send_buffer_size)?;
+        socket.set_recv_buffer_size(recv_buffer_size)?;
+
+        self.send_buffer_size = send_buffer_size;
+        self.recv_buffer_size = recv_buffer_size;
+
+        Ok(())
     }
 
     pub fn send_buffer_size(&self) -> usize {
