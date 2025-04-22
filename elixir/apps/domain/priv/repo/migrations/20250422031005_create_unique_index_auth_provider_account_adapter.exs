@@ -7,7 +7,7 @@ defmodule Domain.Repo.Migrations.CreateUniqueIndexAuthProviderAccountAdapter do
         unique: true,
         name: :unique_account_adapter_index,
         where:
-          "deleted_at IS NULL AND adapter IN ('google_workspace', 'okta', 'jumpcloud', 'microsoft_entra')"
+          "deleted_at IS NULL AND adapter IN ('mock', 'google_workspace', 'okta', 'jumpcloud', 'microsoft_entra')"
       )
     )
   end
