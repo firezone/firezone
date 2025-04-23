@@ -120,7 +120,7 @@ phoenix-channel = { path = "phoenix-channel" }
 png = "0.17.16"
 proptest = "1.6.0"
 proptest-state-machine = "0.3.1"
-quinn-udp = { version = "0.5.8" }
+quinn-udp = { version = "0.5.8", features = ["fast-apple-datapath"] }
 rand = "0.8.5"
 rand_core = "0.6.4"
 rangemap = "1.5.1"
