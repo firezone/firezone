@@ -1,0 +1,17 @@
+# Builds a Postgres image with needed extensions and modules for local development
+
+# Install wal2json
+ARG POSTGRES_VERSION=15
+FROM postgres:${POSTGRES_VERSION}-alpine AS builder
+RUN apk add --no-cache \
+  build-base \
+  git \
+  llvm \
+  clang
+RUN git clone https://github.com/eulerto/wal2json.git
+WORKDIR /wal2json
+RUN USE_PGXS=1 make && make install
+
+# Prepare final image
+FROM postgres:${POSTGRES_VERSION}-alpine
+COPY --from=builder /wal2json/wal2json.so /usr/local/lib/postgresql/
