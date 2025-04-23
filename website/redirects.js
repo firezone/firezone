@@ -150,4 +150,9 @@ module.exports = [
     destination: "/kb/client-apps/linux-headless-client",
     permanent: true,
   },
+  {
+    source: "/docs/:path*",
+    destination: "/kb",
+    permanent: true,
+  },
 ];
