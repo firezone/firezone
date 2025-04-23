@@ -151,7 +151,7 @@ module.exports = [
     permanent: true,
   },
   {
-    source: "/docs/*",
+    source: "/docs/:path*",
     destination: "/kb",
     permanent: true,
   },
