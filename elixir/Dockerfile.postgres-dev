@@ -7,11 +7,13 @@ RUN apk add --no-cache \
   build-base \
   git \
   llvm \
-  clang
-RUN git clone https://github.com/eulerto/wal2json.git
-WORKDIR /wal2json
+  clang \
+  curl
+ARG WAL2JSON_VERSION=2_6
+RUN curl -fssL https://github.com/eulerto/wal2json/archive/refs/tags/wal2json_${WAL2JSON_VERSION}.tar.gz | tar -xzf - -C /tmp --strip-components=1
+WORKDIR /tmp
 RUN USE_PGXS=1 make && make install
 
 # Prepare final image
 FROM postgres:${POSTGRES_VERSION}-alpine
-COPY --from=builder /wal2json/wal2json.so /usr/local/lib/postgresql/
+COPY --from=builder /tmp/wal2json.so /usr/local/lib/postgresql/
