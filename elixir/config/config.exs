@@ -27,6 +27,7 @@ config :domain, Domain.Repo,
   queue_target: 500,
   queue_interval: 1000,
   migration_timestamps: [type: :timestamptz],
+  migration_lock: :pg_advisory_lock,
   start_apps_before_migration: [:ssl, :logger_json]
 
 config :domain, Domain.Tokens,
