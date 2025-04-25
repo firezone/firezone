@@ -76,9 +76,6 @@ jobs:
           ref: ${{ inputs.sha }}
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
-        with:
-          driver-opts: |
-            image=moby/buildkit:v0.20.0
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
@@ -326,9 +323,6 @@ jobs:
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
-        with:
-          driver-opts: |
-            image=moby/buildkit:v0.20.0
       - uses: ./.github/actions/gcp-docker-login
         id: login
         with:
@@ -438,9 +432,6 @@ jobs:
         run: ls -R /tmp/digests
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
-        with:
-          driver-opts: |
-            image=moby/buildkit:v0.20.0
       - name: Build Version Tags
         run: |
           set -xe
