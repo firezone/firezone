@@ -292,7 +292,7 @@ defmodule Web.ConnCase do
       Floki.attribute(button, "disabled") != "disabled"
     end)
     |> elements_to_text()
-    |> Enum.reject(&(&1 in ["", "Previous", "Next", "Clear filters"]))
+    |> Enum.reject(&(&1 in ["", "Previous", "Next", "Clear filters", "CopyCopied"]))
   end
 
   ## Wait helpers
