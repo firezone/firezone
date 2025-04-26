@@ -1,4 +1,4 @@
-import { initTabs, Popover } from "flowbite";
+import { initCopyClipboards, initTabs, Popover } from "flowbite";
 
 let Hooks = {};
 
@@ -126,6 +126,41 @@ Hooks.Popover = {
 
     new Popover($targetEl, $triggerEl, options);
   },
+};
+
+Hooks.CopyClipboard = {
+  mounted() {
+    initCopyClipboards();
+
+    const id = this.el.id;
+    const clipboard = FlowbiteInstances.getInstance('CopyClipboard', `${id}-code`);
+
+    const $defaultMessage = document.getElementById(`${id}-default-message`);
+    const $successMessage = document.getElementById(`${id}-success-message`);
+
+    clipboard.updateOnCopyCallback((clipboard) => {
+        showSuccess();
+
+        // reset to default state
+        setTimeout(() => {
+            resetToDefault();
+        }, 2000);
+    })
+
+    const showSuccess = () => {
+        $defaultMessage.classList.add('hidden');
+        $successMessage.classList.remove('hidden');
+    }
+
+    const resetToDefault = () => {
+        $defaultMessage.classList.remove('hidden');
+        $successMessage.classList.add('hidden');
+    }
+  },
+
+  updated() {
+    this.mounted();
+  }
 };
 
 export default Hooks;

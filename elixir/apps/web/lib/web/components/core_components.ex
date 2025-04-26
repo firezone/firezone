@@ -69,7 +69,7 @@ defmodule Web.CoreComponents do
 
   def code_block(assigns) do
     ~H"""
-    <div id={@id} class="relative">
+    <div id={@id} class="relative" phx-hook="CopyClipboard">
       <div id={"#{@id}-nested"} class={[~w[
         text-sm text-left text-neutral-50
         inline-flex items-center
@@ -84,25 +84,32 @@ defmodule Web.CoreComponents do
         ><%= render_slot(@inner_block) %></code>
       </div>
 
-      <button
-        type="button"
-        data-copy-to-clipboard-target={"#{@id}-code"}
-        data-copy-to-clipboard-content-type="innerHTML"
-        data-copy-to-clipboard-html-entities="true"
-        title="Click to copy"
-        class={[
-          "absolute top-1 right-1",
-          "items-center",
-          "cursor-pointer",
-          "rounded",
-          "p-1",
-          "bg-neutral-50/25",
-          "text-xs text-neutral-50",
-          "hover:bg-neutral-50 hover:text-neutral-900 hover:opacity-50"
-        ]}
-      >
-        <.icon name="hero-clipboard-document" data-icon class="h-4 w-4" />
-      </button>
+      <div class="absolute top-1 end-1">
+        <button
+          type="button"
+          data-copy-to-clipboard-target={"#{@id}-code"}
+          data-copy-to-clipboard-content-type="innerHTML"
+          data-copy-to-clipboard-html-entities="true"
+          class={~w[
+            absolute end-1 top-1 text-gray-900 hover:bg-gray-100
+            rounded py-2 px-2.5 inline-flex items-center justify-center
+            bg-white border-gray-200 border h-8
+          ]}
+        >
+          <span id={"#{@id}-default-message"} class="inline-flex items-center">
+            <span class="inline-flex items-center">
+              <.icon name="hero-clipboard" data-icon class="h-4 w-4 me-1.5" />
+              <span class="text-xs font-semibold">Copy</span>
+            </span>
+          </span>
+          <span id={"#{@id}-success-message"} class="inline-flex items-center hidden">
+            <span class="inline-flex items-center">
+              <.icon name="hero-check" data-icon class="text-green-700 h-4 w-4 me-1.5" />
+              <span class="text-xs font-semibold text-green-700">Copied</span>
+            </span>
+          </span>
+        </button>
+      </div>
     </div>
     """
   end
