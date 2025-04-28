@@ -40,10 +40,7 @@ impl GsoQueue {
 
     pub fn handle_timeout(&mut self, now: Instant) {
         self.inner.retain(|_, b| {
-            if !{
-                let this = &b;
-                this.inner.as_ref().is_none_or(|b| b.is_empty())
-            } {
+            if !b.inner.is_empty() {
                 return true;
             }
 
@@ -74,15 +71,12 @@ impl GsoQueue {
                 segment_size,
             })
             .or_insert_with(|| DatagramBuffer {
-                inner: None,
+                inner: self.buffer_pool.pull_owned(),
                 last_access: now,
                 ecn,
             });
 
-        buffer
-            .inner
-            .get_or_insert_with(|| self.buffer_pool.pull_owned())
-            .extend_from_slice(payload);
+        buffer.inner.extend_from_slice(payload);
         buffer.last_access = now;
         buffer.ecn = ecn;
     }
@@ -91,23 +85,7 @@ impl GsoQueue {
         &mut self,
     ) -> impl Iterator<Item = DatagramOut<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>> + '_
     {
-        self.inner.iter_mut().filter_map(|(key, buffer)| {
-            let ecn = buffer.ecn;
-            // It is really important that we `take` the buffer here, otherwise it is not returned to the pool after.
-            let buffer = buffer.inner.take()?;
-
-            if buffer.is_empty() {
-                return None;
-            }
-
-            Some(DatagramOut {
-                src: key.src,
-                dst: key.dst,
-                packet: buffer,
-                segment_size: Some(key.segment_size),
-                ecn,
-            })
-        })
+        DrainDatagramsIter { queue: self }
     }
 
     pub fn clear(&mut self) {
@@ -123,9 +101,30 @@ struct Key {
 }
 
 struct DatagramBuffer {
-    inner: Option<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>,
+    inner: lockfree_object_pool::SpinLockOwnedReusable<BytesMut>,
     last_access: Instant,
     ecn: Ecn,
+}
+
+/// An [`Iterator`] that drains datagrams from the [`GsoQueue`].
+struct DrainDatagramsIter<'a> {
+    queue: &'a mut GsoQueue,
+}
+
+impl Iterator for DrainDatagramsIter<'_> {
+    type Item = DatagramOut<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let (key, buffer) = self.queue.inner.pop_first()?;
+
+        Some(DatagramOut {
+            src: key.src,
+            dst: key.dst,
+            packet: buffer.inner,
+            segment_size: Some(key.segment_size),
+            ecn: buffer.ecn,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -174,22 +173,6 @@ mod tests {
         assert_eq!(datagrams.len(), 1);
         assert_eq!(datagrams[0].dst, DST_1);
         assert_eq!(datagrams[0].packet.as_ref(), b"foobar");
-    }
-
-    #[test]
-    fn sending_datagrams_returns_buffers_to_pool() {
-        let now = Instant::now();
-        let mut send_queue = GsoQueue::new();
-
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct, now);
-        send_queue.enqueue(None, DST_2, b"bar", Ecn::NonEct, now);
-
-        // Taking it from the iterator is "sending" ...
-        let _datagrams = send_queue.datagrams().collect::<Vec<_>>();
-
-        for buf in send_queue.inner.values() {
-            assert!(buf.inner.is_none())
-        }
     }
 
     #[test]
