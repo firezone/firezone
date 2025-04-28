@@ -244,10 +244,7 @@ fn main() -> Result<()> {
         let mut terminate = signals::Terminate::new()?;
         let mut hangup = signals::Hangup::new()?;
 
-        let mut tun_device = TunDeviceManager::new(
-            ip_packet::MAX_IP_SIZE,
-            firezone_headless_client::NUM_TUN_THREADS,
-        )?;
+        let mut tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, 1)?;
         let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
         let tokio_handle = tokio::runtime::Handle::current();
