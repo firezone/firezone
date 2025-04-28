@@ -27,6 +27,12 @@ export default function Headless({ os }: { os: OS }) {
             of 10MB.
           </ChangeItem>
           )}
+        {os === OS.Linux && (
+          <ChangeItem pull="8914">
+            Reduces the number of TUN threads to 1 to match other platforms and mitigate
+            packet reordering issues.
+          </ChangeItem>
+          )}
       </Unreleased>
       <Entry version="1.4.6" date={new Date("2025-04-15")}>
         {os == OS.Linux && (
