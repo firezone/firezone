@@ -125,32 +125,87 @@ mod tests {
     }
 
     #[test]
-    fn prioritises_large_packets() {
+    fn appends_items_of_same_batch() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(
-            None,
-            DST_1,
-            b"foobarfoobarfoobarfoobarfoobarfoobarfoobarfoobar",
-            Ecn::NonEct,
-        );
-        send_queue.enqueue(None, DST_2, b"barbaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_3, b"barbaz1234", Ecn::NonEct);
-        send_queue.enqueue(None, DST_4, b"b", Ecn::NonEct);
-        send_queue.enqueue(None, DST_5, b"barbazfoobafoobarfoobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_2, b"baz", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, b"foobaz", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, b"foo", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
-        let is_sorted = datagrams.is_sorted_by(|a, b| a.segment_size >= b.segment_size);
+        assert_eq!(datagrams.len(), 1);
+        assert_eq!(datagrams[0].packet.as_ref(), b"foobarbarbazfoobazfoo");
+        assert_eq!(datagrams[0].segment_size, Some(6));
+    }
 
-        assert!(is_sorted);
-        assert_eq!(datagrams[0].segment_size, Some(48));
+    #[test]
+    fn starts_new_batch_for_new_dst() {
+        let mut send_queue = GsoQueue::new();
+
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+
+        send_queue.enqueue(None, DST_2, b"barbarba", Ecn::NonEct);
+        send_queue.enqueue(None, DST_2, b"foofoo", Ecn::NonEct);
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 2);
+        assert_eq!(datagrams[0].packet.as_ref(), b"foobarbarbaz");
+        assert_eq!(datagrams[0].segment_size, Some(6));
+        assert_eq!(datagrams[0].dst, DST_1);
+        assert_eq!(datagrams[1].packet.as_ref(), b"barbarbafoofoo");
+        assert_eq!(datagrams[1].segment_size, Some(8));
+        assert_eq!(datagrams[1].dst, DST_2);
+    }
+
+    #[test]
+    fn continues_batch_for_old_dst() {
+        let mut send_queue = GsoQueue::new();
+
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+
+        send_queue.enqueue(None, DST_2, b"barbarba", Ecn::NonEct);
+        send_queue.enqueue(None, DST_2, b"foofoo", Ecn::NonEct);
+
+        send_queue.enqueue(None, DST_1, b"foobaz", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, b"bazfoo", Ecn::NonEct);
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 2);
+        assert_eq!(datagrams[0].packet.as_ref(), b"foobarbarbazfoobazbazfoo");
+        assert_eq!(datagrams[0].segment_size, Some(6));
+        assert_eq!(datagrams[0].dst, DST_1);
+        assert_eq!(datagrams[1].packet.as_ref(), b"barbarbafoofoo");
+        assert_eq!(datagrams[1].segment_size, Some(8));
+        assert_eq!(datagrams[1].dst, DST_2);
+    }
+
+    #[test]
+    fn starts_new_batch_after_single_item_less_than_segment_length() {
+        let mut send_queue = GsoQueue::new();
+
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue(None, DST_1, b"bar", Ecn::NonEct);
+
+        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+
+        let datagrams = send_queue.datagrams().collect::<Vec<_>>();
+
+        assert_eq!(datagrams.len(), 2);
+        assert_eq!(datagrams[0].packet.as_ref(), b"foobarbarbazbar");
+        assert_eq!(datagrams[0].segment_size, Some(6));
+        assert_eq!(datagrams[0].dst, DST_1);
+        assert_eq!(datagrams[1].packet.as_ref(), b"barbaz");
+        assert_eq!(datagrams[1].segment_size, Some(6));
+        assert_eq!(datagrams[1].dst, DST_1);
     }
 
     const DST_1: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
     const DST_2: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 2222));
-    const DST_3: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3333));
-    const DST_4: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 4444));
-    const DST_5: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 5555));
 }
