@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, net::SocketAddr, sync::Arc};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    net::SocketAddr,
+    sync::Arc,
+};
 
 use bytes::BytesMut;
 use ip_packet::Ecn;
@@ -9,12 +13,14 @@ use super::MAX_INBOUND_PACKET_BATCH;
 const MAX_SEGMENT_SIZE: usize =
     ip_packet::MAX_IP_SIZE + ip_packet::WG_OVERHEAD + ip_packet::DATA_CHANNEL_OVERHEAD;
 
+type Buffer = lockfree_object_pool::SpinLockOwnedReusable<BytesMut>;
+
 /// Holds UDP datagrams that we need to send, indexed by src, dst and segment size.
 ///
 /// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
 /// The buffer is then flushed using GSO in a single syscall.
 pub struct GsoQueue {
-    inner: BTreeMap<Key, DatagramBuffer>,
+    inner: BTreeMap<Connection, VecDeque<(usize, Buffer)>>,
     buffer_pool: Arc<lockfree_object_pool::SpinLockObjectPool<BytesMut>>,
 }
 
@@ -34,27 +40,37 @@ impl GsoQueue {
     }
 
     pub fn enqueue(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) {
-        let segment_size = payload.len();
+        let payload_len = payload.len();
 
         debug_assert!(
-            segment_size <= MAX_SEGMENT_SIZE,
+            payload_len <= MAX_SEGMENT_SIZE,
             "MAX_SEGMENT_SIZE is miscalculated"
         );
 
-        let buffer = self
-            .inner
-            .entry(Key {
-                src,
-                dst,
-                segment_size,
-            })
-            .or_insert_with(|| DatagramBuffer {
-                inner: self.buffer_pool.pull_owned(),
-                ecn,
-            });
+        let batches = self.inner.entry(Connection { src, dst, ecn }).or_default();
 
-        buffer.inner.extend_from_slice(payload);
-        buffer.ecn = ecn;
+        let Some((batch_size, buffer)) = batches.back_mut() else {
+            let mut buffer = self.buffer_pool.pull_owned();
+            buffer.extend_from_slice(payload);
+
+            batches.push_back((payload_len, buffer));
+
+            return;
+        };
+        let batch_size = *batch_size;
+
+        // A batch is considered "ongoing" if so far we have only pushed packets of the same length.
+        let batch_is_ongoing = buffer.len() % batch_size == 0;
+
+        if batch_is_ongoing && payload_len <= batch_size {
+            buffer.extend_from_slice(payload);
+            return;
+        }
+
+        let mut buffer = self.buffer_pool.pull_owned();
+        buffer.extend_from_slice(payload);
+
+        batches.push_back((payload_len, buffer));
     }
 
     pub fn datagrams(
@@ -70,14 +86,9 @@ impl GsoQueue {
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
-struct Key {
-    segment_size: usize, // `segment_size` comes first to ensure that the datagrams are flushed to the socket in descending order.
+struct Connection {
     src: Option<SocketAddr>,
     dst: SocketAddr,
-}
-
-struct DatagramBuffer {
-    inner: lockfree_object_pool::SpinLockOwnedReusable<BytesMut>,
     ecn: Ecn,
 }
 
@@ -90,15 +101,24 @@ impl Iterator for DrainDatagramsIter<'_> {
     type Item = DatagramOut<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (key, buffer) = self.queue.inner.pop_last()?;
+        loop {
+            let mut entry = self.queue.inner.first_entry()?;
 
-        Some(DatagramOut {
-            src: key.src,
-            dst: key.dst,
-            packet: buffer.inner,
-            segment_size: Some(key.segment_size),
-            ecn: buffer.ecn,
-        })
+            let connection = *entry.key();
+
+            let Some((segment_size, buffer)) = entry.get_mut().pop_front() else {
+                entry.remove();
+                continue;
+            };
+
+            return Some(DatagramOut {
+                src: connection.src,
+                dst: connection.dst,
+                packet: buffer,
+                segment_size: Some(segment_size),
+                ecn: connection.ecn,
+            });
+        }
     }
 }
 
