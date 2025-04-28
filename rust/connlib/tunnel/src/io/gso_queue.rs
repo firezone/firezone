@@ -95,7 +95,7 @@ impl GsoQueue {
 
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
 struct Key {
-    segment_size: usize, // `segment_size` comes first to ensure that the datagrams are flushed to the socket in ascending order.
+    segment_size: usize, // `segment_size` comes first to ensure that the datagrams are flushed to the socket in descending order.
     src: Option<SocketAddr>,
     dst: SocketAddr,
 }
@@ -115,7 +115,7 @@ impl Iterator for DrainDatagramsIter<'_> {
     type Item = DatagramOut<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let (key, buffer) = self.queue.inner.pop_first()?;
+        let (key, buffer) = self.queue.inner.pop_last()?;
 
         Some(DatagramOut {
             src: key.src,
@@ -176,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn prioritises_small_packets() {
+    fn prioritises_large_packets() {
         let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
@@ -195,10 +195,10 @@ mod tests {
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
-        let is_sorted = datagrams.is_sorted_by_key(|datagram| datagram.segment_size);
+        let is_sorted = datagrams.is_sorted_by(|a, b| a.segment_size >= b.segment_size);
 
         assert!(is_sorted);
-        assert_eq!(datagrams[0].segment_size, Some(1));
+        assert_eq!(datagrams[0].segment_size, Some(48));
     }
 
     const DST_1: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 1111));
