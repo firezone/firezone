@@ -1,9 +1,4 @@
-use std::{
-    collections::BTreeMap,
-    net::SocketAddr,
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeMap, net::SocketAddr, sync::Arc};
 
 use bytes::BytesMut;
 use ip_packet::Ecn;
@@ -38,24 +33,7 @@ impl GsoQueue {
         }
     }
 
-    pub fn handle_timeout(&mut self, now: Instant) {
-        self.inner.retain(|_, b| {
-            if !b.inner.is_empty() {
-                return true;
-            }
-
-            now.duration_since(b.last_access) < Duration::from_secs(60)
-        })
-    }
-
-    pub fn enqueue(
-        &mut self,
-        src: Option<SocketAddr>,
-        dst: SocketAddr,
-        payload: &[u8],
-        ecn: Ecn,
-        now: Instant,
-    ) {
+    pub fn enqueue(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) {
         let segment_size = payload.len();
 
         debug_assert!(
@@ -72,12 +50,10 @@ impl GsoQueue {
             })
             .or_insert_with(|| DatagramBuffer {
                 inner: self.buffer_pool.pull_owned(),
-                last_access: now,
                 ecn,
             });
 
         buffer.inner.extend_from_slice(payload);
-        buffer.last_access = now;
         buffer.ecn = ecn;
     }
 
@@ -102,7 +78,6 @@ struct Key {
 
 struct DatagramBuffer {
     inner: lockfree_object_pool::SpinLockOwnedReusable<BytesMut>,
-    last_access: Instant,
     ecn: Ecn,
 }
 
@@ -134,36 +109,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn send_queue_gcs_after_1_minute() {
-        let now = Instant::now();
-        let mut send_queue = GsoQueue::new();
-
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct, now);
-        for _entry in send_queue.datagrams() {}
-
-        send_queue.handle_timeout(now + Duration::from_secs(60));
-
-        assert_eq!(send_queue.inner.len(), 0);
-    }
-
-    #[test]
-    fn does_not_gc_unsent_items() {
-        let now = Instant::now();
-        let mut send_queue = GsoQueue::new();
-
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct, now);
-
-        send_queue.handle_timeout(now + Duration::from_secs(60));
-
-        assert_eq!(send_queue.inner.len(), 1);
-    }
-
-    #[test]
     fn dropping_datagram_iterator_does_not_drop_items() {
-        let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams();
         drop(datagrams);
@@ -177,7 +126,6 @@ mod tests {
 
     #[test]
     fn prioritises_large_packets() {
-        let now = Instant::now();
         let mut send_queue = GsoQueue::new();
 
         send_queue.enqueue(
@@ -185,13 +133,12 @@ mod tests {
             DST_1,
             b"foobarfoobarfoobarfoobarfoobarfoobarfoobarfoobar",
             Ecn::NonEct,
-            now,
         );
-        send_queue.enqueue(None, DST_2, b"barbaz", Ecn::NonEct, now);
-        send_queue.enqueue(None, DST_3, b"barbaz1234", Ecn::NonEct, now);
-        send_queue.enqueue(None, DST_4, b"b", Ecn::NonEct, now);
-        send_queue.enqueue(None, DST_5, b"barbazfoobafoobarfoobar", Ecn::NonEct, now);
-        send_queue.enqueue(None, DST_2, b"baz", Ecn::NonEct, now);
+        send_queue.enqueue(None, DST_2, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue(None, DST_3, b"barbaz1234", Ecn::NonEct);
+        send_queue.enqueue(None, DST_4, b"b", Ecn::NonEct);
+        send_queue.enqueue(None, DST_5, b"barbazfoobafoobarfoobar", Ecn::NonEct);
+        send_queue.enqueue(None, DST_2, b"baz", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
