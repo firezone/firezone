@@ -159,7 +159,8 @@ impl std::fmt::Debug for IpPacket {
         if let Some(tcp) = self.as_tcp() {
             dbg.field("src_port", &tcp.source_port())
                 .field("dst_port", &tcp.destination_port())
-                .field("seq", &tcp.sequence_number());
+                .field("seq", &tcp.sequence_number())
+                .field("len", &tcp.payload().len());
 
             if tcp.syn() {
                 dbg.field("syn", &true);
@@ -176,7 +177,8 @@ impl std::fmt::Debug for IpPacket {
 
         if let Some(udp) = self.as_udp() {
             dbg.field("src_port", &udp.source_port())
-                .field("dst_port", &udp.destination_port());
+                .field("dst_port", &udp.destination_port())
+                .field("len", &udp.payload().len());
         }
 
         match self.ecn() {
