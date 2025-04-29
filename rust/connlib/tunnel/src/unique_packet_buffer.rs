@@ -74,7 +74,9 @@ fn is_tcp_syn_retransmit(buffered: &IpPacket, new: &IpPacket) -> bool {
     };
 
     buffered.syn()
+        && !buffered.ack()
         && new.syn()
+        && !new.ack()
         && buffered.source_port() == new.source_port()
         && buffered.destination_port() == new.destination_port()
         && buffered.sequence_number() == new.sequence_number()
