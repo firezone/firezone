@@ -3512,9 +3512,9 @@ name = "ip-packet"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bufferpool",
  "etherparse",
  "etherparse-ext",
- "lockfree-object-pool",
  "proptest",
  "test-strategy",
  "thiserror 1.0.69",
