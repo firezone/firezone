@@ -229,7 +229,7 @@ mod tests {
             .set_default();
 
         tracing::info!("This is a test");
-        std::thread::sleep(Duration::from_millis(100)); // Wait a bit until background thread has flushed the log.
+        std::thread::sleep(Duration::from_millis(1000)); // Wait a bit until background thread has flushed the log.
 
         for dir in std::fs::read_dir(dir.path()).unwrap() {
             let dir = dir.unwrap();
@@ -238,7 +238,7 @@ mod tests {
         }
 
         tracing::info!("Write after delete");
-        std::thread::sleep(Duration::from_millis(100)); // Wait a bit until background thread has flushed the log.
+        std::thread::sleep(Duration::from_millis(1000)); // Wait a bit until background thread has flushed the log.
 
         let content = std::fs::read_to_string(dir.path().join("latest")).unwrap();
 
