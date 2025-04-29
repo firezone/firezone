@@ -255,10 +255,6 @@ impl Io {
 
                 self.timeout = None; // Clear the timeout.
 
-                // Piggy back onto the timeout we already have.
-                // It is not important when we call this, just needs to be called occasionally.
-                self.gso_queue.handle_timeout(now);
-
                 return Poll::Ready(Ok(Input::Timeout(now)));
             }
         }
@@ -350,8 +346,7 @@ impl Io {
         payload: &[u8],
         ecn: Ecn,
     ) {
-        self.gso_queue
-            .enqueue(src, dst, payload, ecn, Instant::now());
+        self.gso_queue.enqueue(src, dst, payload, ecn);
 
         self.packet_counter.add(
             1,

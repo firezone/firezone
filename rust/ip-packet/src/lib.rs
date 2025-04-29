@@ -1046,7 +1046,7 @@ fn extract_l4_proto(payload: &[u8], protocol: IpNumber) -> Result<Layer4Protocol
 /// Models the possible ECN states.
 ///
 /// See <https://www.rfc-editor.org/rfc/rfc3168#section-23.1> for details.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Ecn {
     NonEct = 0b00,
     Ect1 = 0b01,
