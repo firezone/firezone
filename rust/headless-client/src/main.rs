@@ -118,7 +118,7 @@ fn main() -> Result<()> {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
-    let cli = Cli::try_parse()?;
+    let cli = Cli::parse();
 
     // Modifying the environment of a running process is unsafe. If any other
     // thread is reading or writing the environment, something bad can happen.
