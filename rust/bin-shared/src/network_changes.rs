@@ -10,5 +10,8 @@ mod imp;
 #[path = "network_changes/windows.rs"]
 mod imp;
 
-#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[cfg(target_os = "macos")]
+#[path = "network_changes/macos.rs"]
+mod imp;
+
 pub use imp::{new_dns_notifier, new_network_notifier};
