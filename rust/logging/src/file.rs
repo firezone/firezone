@@ -119,6 +119,17 @@ impl Appender {
 
                 ret
             }
+            Some((_, filename))
+                if !std::fs::exists(self.directory.join(&filename)).unwrap_or_default() =>
+            {
+                let (mut file, name) = self.create_new_writer()?;
+
+                let ret = cb(&mut file);
+
+                self.current = Some((file, name));
+
+                ret
+            }
             Some((file, _)) => cb(file),
         }
     }
