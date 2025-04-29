@@ -62,7 +62,7 @@ opentelemetry_sdk = { workspace = true, features = ["testing"] }
 test-strategy = { workspace = true }
 tokio = { workspace = true, features = ["process", "macros", "net"] }
 
-[build-dependencies]
+[target.'cfg(target_os = "linux")'.build-dependencies]
 anyhow = "1"
 aya-build = { workspace = true }
 
