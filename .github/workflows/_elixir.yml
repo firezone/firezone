@@ -17,8 +17,6 @@ jobs:
     services:
       postgres:
         image: postgres:15
-        volumes:
-          - ./.github/scripts/set-wal-level.sh:/docker-entrypoint-initdb.d/set-wal-level.sh
         ports:
           - 5432:5432
         env:
@@ -28,6 +26,11 @@ jobs:
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s
           --health-retries 5
     steps:
+      - name: Set WAL level
+        run: |
+          # Set wal_level=logical here since we can't override command line args for GitHub actions service containers
+          docker exec $(docker ps -q -f name=postgres) bash -c 'echo "wal_level = logical" >> /var/lib/postgresql/data/postgresql.conf'
+          docker exec $(docker ps -q -f name=postgres) bash -c 'pg_ctl -D /var/lib/postgresql/data restart'
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-elixir
         with:
@@ -134,8 +137,6 @@ jobs:
     services:
       postgres:
         image: postgres:15
-        volumes:
-          - ./.github/scripts/set-wal-level.sh:/docker-entrypoint-initdb.d/set-wal-level.sh
         ports:
           - 5432:5432
         env:
@@ -145,6 +146,11 @@ jobs:
           --health-cmd pg_isready --health-interval 10s --health-timeout 5s
           --health-retries 5
     steps:
+      - name: Set WAL level
+        run: |
+          # Set wal_level=logical here since we can't override command line args for GitHub actions service containers
+          docker exec $(docker ps -q -f name=postgres) bash -c 'echo "wal_level = logical" >> /var/lib/postgresql/data/postgresql.conf'
+          docker exec $(docker ps -q -f name=postgres) bash -c 'pg_ctl -D /var/lib/postgresql/data restart'
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-elixir
         with:
@@ -190,8 +196,6 @@ jobs:
     services:
       postgres:
         image: postgres:15
-        volumes:
-          - ./.github/scripts/set-wal-level.sh:/docker-entrypoint-initdb.d/set-wal-level.sh
         ports:
           - 5432:5432
         env:
@@ -209,6 +213,11 @@ jobs:
           - 8200:8200/tcp
         options: --cap-add=IPC_LOCK
     steps:
+      - name: Set WAL level
+        run: |
+          # Set wal_level=logical here since we can't override command line args for GitHub actions service containers
+          docker exec $(docker ps -q -f name=postgres) bash -c 'echo "wal_level = logical" >> /var/lib/postgresql/data/postgresql.conf'
+          docker exec $(docker ps -q -f name=postgres) bash -c 'pg_ctl -D /var/lib/postgresql/data restart'
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: nanasess/setup-chromedriver@e93e57b843c0c92788f22483f1a31af8ee48db25 # v2.3.0
       - run: |
