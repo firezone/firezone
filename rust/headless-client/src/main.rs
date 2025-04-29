@@ -36,6 +36,10 @@ mod platform;
 #[path = "windows.rs"]
 mod platform;
 
+#[cfg(target_os = "macos")]
+#[path = "macos.rs"]
+mod platform;
+
 use platform::default_token_path;
 
 /// Command-line args for the headless Client
@@ -260,7 +264,7 @@ fn main() -> Result<()> {
 
             tun_device.make_tun()?
         };
-        session.set_tun(Box::new(tun));
+        session.set_tun(tun);
         session.set_dns(dns_controller.system_resolvers());
 
         drop(connect_span);

@@ -1,26 +1,28 @@
-//! Placeholder
+use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Result, bail};
 use secrecy::Secret;
 
-pub(crate) struct Server {}
+pub struct Server {}
 
 impl Server {
-    pub(crate) fn new() -> Result<Self> {
-        tracing::warn!("This is not the actual Mac client");
-        tracing::trace!(scheme = super::FZ_SCHEME, "prevents dead code warning");
-        Ok(Self {})
+    #[expect(
+        clippy::unused_async,
+        reason = "Signture must match other operating systems"
+    )]
+    pub async fn new() -> Result<Self> {
+        bail!("not implemented")
     }
 
-    pub(crate) async fn accept(self) -> Result<Option<Secret<Vec<u8>>>> {
+    pub async fn accept(self) -> Result<Option<Secret<Vec<u8>>>> {
         futures::future::pending().await
     }
 }
 
-pub(crate) async fn open(_url: &url::Url) -> Result<()> {
-    Ok(())
+pub async fn open(_url: &url::Url) -> Result<()> {
+    bail!("not implemented")
 }
 
-pub(crate) fn register() -> Result<()> {
-    Ok(())
+pub fn register(_path: PathBuf) -> Result<()> {
+    bail!("not implemented")
 }

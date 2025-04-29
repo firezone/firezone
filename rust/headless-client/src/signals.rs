@@ -6,4 +6,8 @@ mod platform;
 #[path = "signals/windows.rs"]
 mod platform;
 
+#[cfg(target_os = "macos")]
+#[path = "signals/macos.rs"]
+mod platform;
+
 pub use platform::{Hangup, Terminate};
