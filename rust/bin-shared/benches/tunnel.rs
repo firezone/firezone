@@ -37,7 +37,6 @@ mod platform {
         net::UdpSocket,
         time::{Instant, timeout},
     };
-    use tun::Tun as _;
 
     pub(crate) async fn perf() -> Result<()> {
         const MTU: usize = 1_280;

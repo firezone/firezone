@@ -45,6 +45,13 @@ pub fn get() -> Option<Duration> {
     Some(Duration::from_millis(ret))
 }
 
+#[cfg(target_os = "macos")]
+pub fn get() -> Option<Duration> {
+    debug_assert!(false, "Not implemented on macOS");
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

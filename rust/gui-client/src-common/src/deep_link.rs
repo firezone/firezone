@@ -8,6 +8,7 @@ use anyhow::{Context as _, Result, bail};
 use secrecy::{ExposeSecret, SecretString};
 use url::Url;
 
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub(crate) const FZ_SCHEME: &str = "firezone-fd0020211111";
 
 #[cfg(target_os = "linux")]

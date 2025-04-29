@@ -75,8 +75,8 @@ impl TunDeviceManager {
         })
     }
 
-    pub fn make_tun(&mut self) -> Result<Tun> {
-        Ok(Tun::new(self.num_threads)?)
+    pub fn make_tun(&mut self) -> Result<Box<dyn tun::Tun>> {
+        Ok(Box::new(Tun::new(self.num_threads)?))
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

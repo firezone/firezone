@@ -30,7 +30,7 @@ use std::{
     time::Duration,
 };
 use tokio::{sync::mpsc, time::Instant};
-use tracing_subscriber::{EnvFilter, Layer, Registry, layer::SubscriberExt};
+use tracing_subscriber::{Layer, Registry, layer::SubscriberExt};
 use url::Url;
 
 pub mod ipc;
@@ -48,13 +48,9 @@ pub mod platform;
 #[path = "ipc_service/windows.rs"]
 pub mod platform;
 
-/// Default log filter for the IPC service
-#[cfg(debug_assertions)]
-const SERVICE_RUST_LOG: &str = "debug";
-
-/// Default log filter for the IPC service
-#[cfg(not(debug_assertions))]
-const SERVICE_RUST_LOG: &str = "info";
+#[cfg(target_os = "macos")]
+#[path = "ipc_service/macos.rs"]
+pub mod platform;
 
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
@@ -616,7 +612,7 @@ impl<'a> Handler<'a> {
                 .make_tun()
                 .context("Failed to create TUN device")?
         };
-        connlib.set_tun(Box::new(tun));
+        connlib.set_tun(tun);
 
         let session = Session { cb_rx, connlib };
         self.session = Some(session);
@@ -652,7 +648,7 @@ fn setup_logging(
     std::fs::create_dir_all(&log_dir)
         .context("We should have permissions to create our log dir")?;
 
-    let directives = get_log_filter().context("Couldn't read log filter")?;
+    let directives = crate::get_log_filter().context("Couldn't read log filter")?;
 
     let (file_filter, file_reloader) = firezone_logging::try_filter(&directives)?;
     let (stdout_filter, stdout_reloader) = firezone_logging::try_filter(&directives)?;
@@ -677,31 +673,6 @@ fn setup_logging(
     );
 
     Ok((file_handle, file_reloader.merge(stdout_reloader)))
-}
-
-/// Reads the log filter for the IPC service or for debug commands
-///
-/// e.g. `info`
-///
-/// Reads from:
-/// 1. `RUST_LOG` env var
-/// 2. `known_dirs::ipc_log_filter()` file
-/// 3. Hard-coded default `SERVICE_RUST_LOG`
-///
-/// Errors if something is badly wrong, e.g. the directory for the config file
-/// can't be computed
-pub(crate) fn get_log_filter() -> Result<String> {
-    if let Ok(filter) = std::env::var(EnvFilter::DEFAULT_ENV) {
-        return Ok(filter);
-    }
-
-    if let Ok(filter) =
-        std::fs::read_to_string(known_dirs::ipc_log_filter()?).map(|s| s.trim().to_string())
-    {
-        return Ok(filter);
-    }
-
-    Ok(SERVICE_RUST_LOG.to_string())
 }
 
 #[cfg(test)]

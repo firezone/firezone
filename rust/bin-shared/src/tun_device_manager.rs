@@ -10,5 +10,9 @@ pub mod windows;
 #[cfg(target_os = "windows")]
 pub use windows as platform;
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(target_os = "macos")]
+pub mod macos;
+#[cfg(target_os = "macos")]
+pub use macos as platform;
+
 pub use platform::TunDeviceManager;

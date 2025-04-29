@@ -17,6 +17,12 @@ pub mod windows;
 #[cfg(target_os = "windows")]
 pub use windows as platform;
 
+#[cfg(target_os = "macos")]
+pub mod macos;
+
+#[cfg(target_os = "macos")]
+pub use macos as platform;
+
 pub const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 
 // wintun automatically append " Tunnel" to this
@@ -40,8 +46,5 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 /// Mark for Firezone sockets to prevent routing loops on Linux.
 pub const FIREZONE_MARK: u32 = 0xfd002021;
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use network_changes::{new_dns_notifier, new_network_notifier};
-
-#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub use tun_device_manager::TunDeviceManager;
