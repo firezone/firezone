@@ -323,7 +323,7 @@ impl UdpSocket {
             Some(segment_size) => {
                 let chunk_size = self.calculate_chunk_size(segment_size);
 
-                for transmit in transmit
+                for mut transmit in transmit
                     .contents
                     .chunks(chunk_size)
                     .map(|contents| Transmit {
@@ -338,6 +338,10 @@ impl UdpSocket {
                     let num_packets = num_bytes / segment_size;
 
                     tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, %num_packets, %segment_size);
+
+                    if transmit.segment_size.is_some_and(|s| s >= num_bytes) {
+                        transmit.segment_size = None;
+                    }
 
                     self.inner
                         .async_io(Interest::WRITABLE, || {
