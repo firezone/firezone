@@ -1,23 +1,20 @@
 //! This file is a stub only to do Tauri UI dev natively on a Mac.
-use super::{ControllerRequest, CtlrTx};
-use anyhow::Result;
-use secrecy::SecretString;
+use super::CtlrTx;
+use anyhow::{Result, bail};
 
-pub(crate) fn open_url(_app: &tauri::AppHandle, _url: &SecretString) -> Result<()> {
-    unimplemented!()
+pub(crate) async fn set_autostart(_enabled: bool) -> Result<()> {
+    bail!("Not implemented")
 }
 
-/// Show a notification in the bottom right of the screen
-pub(crate) fn show_notification(_title: &str, _body: &str) -> Result<()> {
-    unimplemented!()
+pub(crate) fn show_notification(_app: &tauri::AppHandle, _title: &str, _body: &str) -> Result<()> {
+    bail!("Not implemented")
 }
 
-/// Show a notification that signals `Controller` when clicked
-pub(crate) fn show_clickable_notification(
-    _title: &str,
+pub(crate) fn show_update_notification(
+    _app: &tauri::AppHandle,
+    _ctlr_tx: CtlrTx,
     _body: &str,
-    _tx: CtlrTx,
-    _req: ControllerRequest,
+    _url: url::Url,
 ) -> Result<()> {
-    unimplemented!()
+    bail!("Not implemented")
 }

@@ -69,6 +69,19 @@ mod platform {
     pub(crate) enum Error {}
 }
 
+#[cfg(target_os = "macos")]
+mod platform {
+    use anyhow::Result;
+
+    #[expect(clippy::unnecessary_wraps)]
+    pub(crate) fn gui_check() -> Result<bool, Error> {
+        Ok(true)
+    }
+
+    #[derive(Debug, Clone, Copy, thiserror::Error)]
+    pub(crate) enum Error {}
+}
+
 #[cfg(test)]
 mod tests {
     // Make sure it doesn't panic
