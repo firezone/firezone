@@ -145,7 +145,7 @@ pub struct ClientState {
 
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
-    buffered_transmits: VecDeque<Transmit<'static>>,
+    buffered_transmits: VecDeque<Transmit>,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
 }
 
@@ -481,7 +481,7 @@ impl ClientState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> Option<snownet::EncryptedPacket> {
+    ) -> Option<snownet::Transmit> {
         let non_dns_packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
@@ -597,7 +597,7 @@ impl ClientState {
         }
     }
 
-    fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Option<snownet::EncryptedPacket> {
+    fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
         let dst = packet.destination();
 
         if is_definitely_not_a_resource(dst) {
@@ -1135,11 +1135,10 @@ impl ClientState {
             // Check if the client wants to emit any packets.
             if let Some(packet) = self.tcp_dns_client.poll_outbound() {
                 // All packets from the TCP DNS client _should_ go through the tunnel.
-                let Some(encryped_packet) = self.encapsulate(packet, now) else {
+                let Some(transmit) = self.encapsulate(packet, now) else {
                     continue;
                 };
 
-                let transmit = encryped_packet.to_transmit().into_owned();
                 self.buffered_transmits.push_back(transmit);
                 continue;
             }
@@ -1603,7 +1602,7 @@ impl ClientState {
         self.tcp_dns_client.reset();
     }
 
-    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
+    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
             .pop_front()
             .or_else(|| self.node.poll_transmit())
@@ -1865,9 +1864,9 @@ fn encapsulate_and_buffer(
     gid: GatewayId,
     now: Instant,
     node: &mut ClientNode<GatewayId, RelayId>,
-    buffered_transmits: &mut VecDeque<Transmit<'static>>,
+    buffered_transmits: &mut VecDeque<Transmit>,
 ) {
-    let Some(enc_packet) = node
+    let Some(transmit) = node
         .encapsulate(gid, packet, now)
         .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
         .ok()
@@ -1876,7 +1875,7 @@ fn encapsulate_and_buffer(
         return;
     };
 
-    buffered_transmits.push_back(enc_packet.to_transmit().into_owned());
+    buffered_transmits.push_back(transmit);
 }
 
 fn handle_p2p_control_packet(
@@ -1884,7 +1883,7 @@ fn handle_p2p_control_packet(
     fz_p2p_control: ip_packet::FzP2pControlSlice,
     dns_resource_nat_by_gateway: &mut BTreeMap<(GatewayId, DomainName), DnsResourceNatState>,
     node: &mut ClientNode<GatewayId, RelayId>,
-    buffered_transmits: &mut VecDeque<Transmit<'static>>,
+    buffered_transmits: &mut VecDeque<Transmit>,
     now: Instant,
 ) {
     use p2p_control::dns_resource_nat;

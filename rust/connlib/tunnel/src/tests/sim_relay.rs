@@ -2,6 +2,7 @@ use super::{
     sim_net::{Host, dual_ip_stack, host},
     strategies::latency,
 };
+use bufferpool::Buffer;
 use connlib_model::RelayId;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
 use proptest::prelude::*;
@@ -9,7 +10,6 @@ use rand::{SeedableRng as _, rngs::StdRng};
 use secrecy::SecretString;
 use snownet::{RelaySocket, Transmit};
 use std::{
-    borrow::Cow,
     collections::HashSet,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     time::{Duration, Instant, SystemTime},
@@ -18,7 +18,6 @@ use std::{
 pub(crate) struct SimRelay {
     pub(crate) sut: firezone_relay::Server<StdRng>,
     pub(crate) allocations: HashSet<(AddressFamily, AllocationPort)>,
-    buffer: Vec<u8>,
 
     created_at: SystemTime,
 }
@@ -52,7 +51,6 @@ impl SimRelay {
         Self {
             sut,
             allocations: Default::default(),
-            buffer: vec![0u8; (1 << 16) - 1],
             created_at: SystemTime::now(),
         }
     }
@@ -90,13 +88,9 @@ impl SimRelay {
         }
     }
 
-    pub(crate) fn receive(
-        &mut self,
-        transmit: Transmit,
-        now: Instant,
-    ) -> Option<Transmit<'static>> {
+    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) -> Option<Transmit> {
         let dst = transmit.dst;
-        let payload = &transmit.payload;
+        let payload = transmit.payload;
         let sender = transmit.src.unwrap();
 
         if self
@@ -115,13 +109,13 @@ impl SimRelay {
 
     fn handle_client_input(
         &mut self,
-        payload: &[u8],
+        mut payload: Buffer<Vec<u8>>,
         client: ClientSocket,
         now: Instant,
-    ) -> Option<Transmit<'static>> {
-        let (port, peer) = self.sut.handle_client_input(payload, client, now)?;
+    ) -> Option<Transmit> {
+        let (port, peer) = self.sut.handle_client_input(&payload, client, now)?;
 
-        let payload = &payload[4..];
+        payload.truncate_front(4);
 
         // The `dst` of the relayed packet is what TURN calls a "peer".
         let dst = peer.into_socket();
@@ -156,24 +150,22 @@ impl SimRelay {
         Some(Transmit {
             src: Some(src),
             dst,
-            payload: Cow::Owned(payload.to_vec()),
+            payload,
         })
     }
 
     fn handle_peer_traffic(
         &mut self,
-        payload: &[u8],
+        mut payload: Buffer<Vec<u8>>,
         peer: PeerSocket,
         port: AllocationPort,
-    ) -> Option<Transmit<'static>> {
-        let (client, channel) = self.sut.handle_peer_traffic(payload, peer, port)?;
+    ) -> Option<Transmit> {
+        let (client, channel) = self.sut.handle_peer_traffic(&payload, peer, port)?;
 
-        let full_length = firezone_relay::ChannelData::encode_header_to_slice(
-            channel,
-            payload.len() as u16,
-            &mut self.buffer[..4],
-        );
-        self.buffer[4..full_length].copy_from_slice(payload);
+        let data_len = payload.len() as u16;
+        let header = payload.move_back(4);
+
+        firezone_relay::ChannelData::encode_header_to_slice(channel, data_len, header);
 
         let receiving_socket = client.into_socket();
         let sending_socket = self
@@ -183,7 +175,7 @@ impl SimRelay {
         Some(Transmit {
             src: Some(sending_socket),
             dst: receiving_socket,
-            payload: Cow::Owned(self.buffer[..full_length].to_vec()),
+            payload,
         })
     }
 

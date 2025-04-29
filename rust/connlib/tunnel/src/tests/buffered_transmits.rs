@@ -10,7 +10,7 @@ use std::{
 #[derive(Debug, Clone, Default)]
 pub(crate) struct BufferedTransmits {
     // Transmits are stored in reverse ordering to emit the earliest first.
-    inner: BinaryHeap<Reverse<ByTime<Transmit<'static>>>>,
+    inner: BinaryHeap<Reverse<ByTime<Transmit>>>,
 }
 
 #[derive(Clone, Debug, PartialEq, PartialOrd, Eq, Ord)]
@@ -23,7 +23,7 @@ impl BufferedTransmits {
     /// Pushes a new [`Transmit`] from a given [`Host`].
     pub(crate) fn push_from<T>(
         &mut self,
-        transmit: impl Into<Option<Transmit<'static>>>,
+        transmit: impl Into<Option<Transmit>>,
         sending_host: &Host<T>,
         now: Instant,
     ) {
@@ -58,7 +58,7 @@ impl BufferedTransmits {
 
     pub(crate) fn push(
         &mut self,
-        transmit: impl Into<Option<Transmit<'static>>>,
+        transmit: impl Into<Option<Transmit>>,
         latency: Duration,
         now: Instant,
     ) {
@@ -74,7 +74,7 @@ impl BufferedTransmits {
         }));
     }
 
-    pub(crate) fn pop(&mut self, now: Instant) -> Option<Transmit<'static>> {
+    pub(crate) fn pop(&mut self, now: Instant) -> Option<Transmit> {
         let next = self.inner.peek()?.0.at;
 
         if next > now {
@@ -86,7 +86,7 @@ impl BufferedTransmits {
         Some(next.value)
     }
 
-    pub(crate) fn drain(&mut self) -> impl Iterator<Item = (Transmit<'static>, Instant)> + '_ {
+    pub(crate) fn drain(&mut self) -> impl Iterator<Item = (Transmit, Instant)> + '_ {
         self.inner
             .drain()
             .map(|Reverse(ByTime { at, value })| (value, at))

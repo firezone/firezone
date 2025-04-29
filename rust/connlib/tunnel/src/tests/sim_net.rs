@@ -123,11 +123,11 @@ impl<T> Host<T> {
         self.latency
     }
 
-    pub(crate) fn receive(&mut self, transmit: Transmit<'static>, now: Instant) {
+    pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
         self.inbox.push(transmit, self.latency, now);
     }
 
-    pub(crate) fn poll_transmit(&mut self, now: Instant) -> Option<Transmit<'static>> {
+    pub(crate) fn poll_transmit(&mut self, now: Instant) -> Option<Transmit> {
         self.inbox.pop(now)
     }
 }
