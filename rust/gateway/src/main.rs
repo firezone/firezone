@@ -1,4 +1,4 @@
-#[cfg(all(unix, not(target_arch = "arm")))]
+#[cfg(all(target_os = "linux", not(target_arch = "arm")))]
 #[global_allocator]
 static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
