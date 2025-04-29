@@ -16,6 +16,10 @@ mod platform;
 #[path = "ipc/windows.rs"]
 pub mod platform;
 
+#[cfg(target_os = "macos")]
+#[path = "ipc/macos.rs"]
+pub mod platform;
+
 pub(crate) use platform::Server;
 use platform::{ClientStream, ServerStream};
 

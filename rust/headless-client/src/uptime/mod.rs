@@ -45,6 +45,14 @@ pub fn get() -> Option<Duration> {
     Some(Duration::from_millis(ret))
 }
 
+#[cfg(target_os = "macos")]
+#[expect(clippy::unnecessary_wraps)]
+pub fn get() -> Option<Duration> {
+    debug_assert!(false, "Not implemented on macOS");
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     #[test]

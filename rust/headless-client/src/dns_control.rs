@@ -19,6 +19,11 @@ mod windows;
 #[cfg(target_os = "windows")]
 use windows as platform;
 
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+use macos as platform;
+
 use platform::system_resolvers;
 
 /// Controls system-wide DNS.

@@ -57,6 +57,10 @@ pub struct CliCommon {
     #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "nrpt")]
     pub dns_control: DnsControlMethod,
 
+    #[cfg(target_os = "macos")]
+    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "none")]
+    pub dns_control: DnsControlMethod,
+
     /// File logging directory. Should be a path that's writeable by the current user.
     #[arg(short, long, env = "LOG_DIR")]
     pub log_dir: Option<PathBuf>,

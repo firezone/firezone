@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Debug)]
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
 pub enum DnsControlMethod {
     None,
 }

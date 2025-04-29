@@ -36,6 +36,10 @@ mod platform;
 #[path = "windows.rs"]
 mod platform;
 
+#[cfg(target_os = "macos")]
+#[path = "macos.rs"]
+mod platform;
+
 use platform::default_token_path;
 
 /// Command-line args for the headless Client

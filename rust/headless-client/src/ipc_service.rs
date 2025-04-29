@@ -48,6 +48,9 @@ pub mod platform;
 #[path = "ipc_service/windows.rs"]
 pub mod platform;
 
+#[cfg(target_os = "macos")]
+#[path = "ipc_service/macos.rs"]
+pub mod platform;
 
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
