@@ -197,3 +197,40 @@ impl io::Write for Appender {
         self.with_current_file(|f| f.flush())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+    use super::*;
+
+    #[test]
+    fn deleting_log_file_creates_new_one() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let (layer, _handle) = layer(dir.path(), "connlib");
+
+        let _guard = tracing_subscriber::registry()
+            .with(layer)
+            .with(tracing_subscriber::EnvFilter::from("info"))
+            .set_default();
+
+        tracing::info!("This is a test");
+        std::thread::sleep(Duration::from_millis(100)); // Wait a bit until background thread has flushed the log.
+
+        for dir in std::fs::read_dir(dir.path()).unwrap() {
+            let dir = dir.unwrap();
+
+            std::fs::remove_file(dir.path()).unwrap();
+        }
+
+        tracing::info!("Write after delete");
+        std::thread::sleep(Duration::from_millis(100)); // Wait a bit until background thread has flushed the log.
+
+        let content = std::fs::read_to_string(dir.path().join("latest")).unwrap();
+
+        assert!(content.contains("Write after delete"))
+    }
+}

@@ -2391,6 +2391,7 @@ dependencies = [
  "rand 0.8.5",
  "sentry-tracing",
  "supports-color",
+ "tempfile",
  "thiserror 1.0.69",
  "time",
  "tracing",
