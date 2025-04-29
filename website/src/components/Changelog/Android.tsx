@@ -24,6 +24,9 @@ export default function Android() {
           Improves connection reliability by maintaining the order of IP packets
           across GSO batches.
         </ChangeItem>
+        <ChangeItem pull="8926">
+          Rolls over to a new log-file as soon as logs are cleared.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.7" date={new Date("2025-04-21")}>
         <ChangeItem pull="8798">

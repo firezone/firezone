@@ -34,6 +34,9 @@ export default function GUI({ os }: { os: OS }) {
             Improves connection reliability by maintaining the order of IP packets.
           </ChangeItem>
         )}
+        <ChangeItem pull="8926">
+          Rolls over to a new log-file as soon as logs are cleared.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.11" date={new Date("2025-04-21")}>
         <ChangeItem pull="8798">
