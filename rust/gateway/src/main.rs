@@ -159,7 +159,7 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
     let tun = tun_device_manager
         .make_tun()
         .context("Failed to create TUN device")?;
-    tunnel.set_tun(Box::new(tun));
+    tunnel.set_tun(tun);
 
     let task = tokio::spawn(future::poll_fn({
         let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager);

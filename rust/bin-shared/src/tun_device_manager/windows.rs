@@ -68,12 +68,12 @@ impl TunDeviceManager {
         })
     }
 
-    pub fn make_tun(&mut self) -> Result<Tun> {
+    pub fn make_tun(&mut self) -> Result<Box<dyn tun::Tun>> {
         let tun = Tun::new(self.mtu)?;
         self.iface_idx = Some(tun.iface_idx());
         self.luid = Some(tun.luid);
 
-        Ok(tun)
+        Ok(Box::new(tun))
     }
 
     #[tracing::instrument(level = "trace", skip(self))]

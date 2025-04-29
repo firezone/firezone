@@ -616,7 +616,7 @@ impl<'a> Handler<'a> {
                 .make_tun()
                 .context("Failed to create TUN device")?
         };
-        connlib.set_tun(Box::new(tun));
+        connlib.set_tun(tun);
 
         let session = Session { cb_rx, connlib };
         self.session = Some(session);

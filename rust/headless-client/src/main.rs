@@ -260,7 +260,7 @@ fn main() -> Result<()> {
 
             tun_device.make_tun()?
         };
-        session.set_tun(Box::new(tun));
+        session.set_tun(tun);
         session.set_dns(dns_controller.system_resolvers());
 
         drop(connect_span);
