@@ -1,9 +1,9 @@
 use std::{
     collections::{BTreeMap, VecDeque},
     net::SocketAddr,
-    sync::Arc,
 };
 
+use bufferpool::{Buffer, BufferPool};
 use bytes::BytesMut;
 use ip_packet::Ecn;
 use socket_factory::DatagramOut;
@@ -13,29 +13,20 @@ use super::MAX_INBOUND_PACKET_BATCH;
 const MAX_SEGMENT_SIZE: usize =
     ip_packet::MAX_IP_SIZE + ip_packet::WG_OVERHEAD + ip_packet::DATA_CHANNEL_OVERHEAD;
 
-type Buffer = lockfree_object_pool::SpinLockOwnedReusable<BytesMut>;
-
 /// Holds UDP datagrams that we need to send, indexed by src, dst and segment size.
 ///
 /// Calling [`Io::send_network`](super::Io::send_network) will copy the provided payload into this buffer.
 /// The buffer is then flushed using GSO in a single syscall.
 pub struct GsoQueue {
-    inner: BTreeMap<Connection, VecDeque<(usize, Buffer)>>,
-    buffer_pool: Arc<lockfree_object_pool::SpinLockObjectPool<BytesMut>>,
+    inner: BTreeMap<Connection, VecDeque<(usize, Buffer<BytesMut>)>>,
+    buffer_pool: BufferPool<BytesMut>,
 }
 
 impl GsoQueue {
     pub fn new() -> Self {
         Self {
             inner: Default::default(),
-            buffer_pool: Arc::new(lockfree_object_pool::SpinLockObjectPool::new(
-                || {
-                    tracing::debug!("Initialising new buffer for GSO queue");
-
-                    BytesMut::with_capacity(MAX_SEGMENT_SIZE * MAX_INBOUND_PACKET_BATCH)
-                },
-                |b| b.clear(),
-            )),
+            buffer_pool: BufferPool::new(MAX_SEGMENT_SIZE * MAX_INBOUND_PACKET_BATCH, "gso-queue"),
         }
     }
 
@@ -50,10 +41,7 @@ impl GsoQueue {
         let batches = self.inner.entry(Connection { src, dst, ecn }).or_default();
 
         let Some((batch_size, buffer)) = batches.back_mut() else {
-            let mut buffer = self.buffer_pool.pull_owned();
-            buffer.extend_from_slice(payload);
-
-            batches.push_back((payload_len, buffer));
+            batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
 
             return;
         };
@@ -67,16 +55,10 @@ impl GsoQueue {
             return;
         }
 
-        let mut buffer = self.buffer_pool.pull_owned();
-        buffer.extend_from_slice(payload);
-
-        batches.push_back((payload_len, buffer));
+        batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
     }
 
-    pub fn datagrams(
-        &mut self,
-    ) -> impl Iterator<Item = DatagramOut<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>> + '_
-    {
+    pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut> + '_ {
         DrainDatagramsIter { queue: self }
     }
 
@@ -98,7 +80,7 @@ struct DrainDatagramsIter<'a> {
 }
 
 impl Iterator for DrainDatagramsIter<'_> {
-    type Item = DatagramOut<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>;
+    type Item = DatagramOut;
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {

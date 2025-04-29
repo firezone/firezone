@@ -2175,6 +2175,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "bufferpool",
+ "bytes",
  "clap",
  "firezone-logging",
  "flume",
@@ -2488,6 +2490,7 @@ dependencies = [
  "base64 0.22.1",
  "bimap",
  "boringtun",
+ "bufferpool",
  "bytes",
  "chrono",
  "connlib-model",
@@ -2510,7 +2513,6 @@ dependencies = [
  "itertools 0.13.0",
  "l4-tcp-dns-server",
  "l4-udp-dns-server",
- "lockfree-object-pool",
  "lru",
  "opentelemetry",
  "proptest",
@@ -6493,12 +6495,12 @@ name = "socket-factory"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bufferpool",
  "bytes",
  "derive_more 1.0.0",
  "firezone-logging",
  "gat-lending-iterator",
  "ip-packet",
- "lockfree-object-pool",
  "opentelemetry",
  "parking_lot",
  "quinn-udp",
