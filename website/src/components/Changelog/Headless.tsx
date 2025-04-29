@@ -17,22 +17,33 @@ export default function Headless({ os }: { os: OS }) {
           <ChangeItem pull="8731">
             Improves throughput performance by requesting socket receive buffers
             of 10MB. The actual size of the buffers is capped by the operating
-            system. You may need to adjust <code>net.core.rmem_max</code> for this to take
-            full effect.
+            system. You may need to adjust <code>net.core.rmem_max</code> for
+            this to take full effect.
           </ChangeItem>
-          )}
+        )}
         {os === OS.Windows && (
           <ChangeItem pull="8731">
             Improves throughput performance by requesting socket receive buffers
             of 10MB.
           </ChangeItem>
-          )}
+        )}
         {os === OS.Linux && (
           <ChangeItem pull="8914">
-            Reduces the number of TUN threads to 1 to match other platforms and mitigate
-            packet reordering issues.
+            Reduces the number of TUN threads to 1 to match other platforms and
+            mitigate packet reordering issues.
           </ChangeItem>
-          )}
+        )}
+        {os === OS.Linux && (
+          <ChangeItem pull="8920">
+            Improves connection reliability by maintaining the order of IP packets
+            across GSO batches.
+          </ChangeItem>
+        )}
+        {os === OS.Windows && (
+          <ChangeItem pull="8920">
+            Improves connection reliability by maintaining the order of IP packets.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.4.6" date={new Date("2025-04-15")}>
         {os == OS.Linux && (
