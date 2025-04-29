@@ -12,11 +12,11 @@ use crate::{AllocationPort, ClientSocket, PeerSocket};
 pub struct Program {}
 
 impl Program {
-    pub fn try_load(_: &'static str) -> Result<Self> {
+    pub fn try_load(_: &str) -> Result<Self> {
         Err(anyhow::anyhow!("Platform not supported"))
     }
 
-    pub fn add_channel_binding_ipv4(
+    pub fn add_channel_binding(
         &mut self,
         _: ClientSocket,
         _: ChannelNumber,
@@ -26,7 +26,7 @@ impl Program {
         Ok(())
     }
 
-    pub fn remove_channel_binding_ipv4(
+    pub fn remove_channel_binding(
         &mut self,
         _: ClientSocket,
         _: ChannelNumber,
