@@ -14,6 +14,10 @@ impl Terminate {
         Poll::Pending
     }
 
+    #[expect(
+        clippy::unused_async,
+        reason = "Signture must match other operating systems"
+    )]
     pub async fn recv(&mut self) {}
 }
 
@@ -22,5 +26,9 @@ impl Hangup {
         bail!("Not implemented")
     }
 
+    #[expect(
+        clippy::unused_async,
+        reason = "Signture must match other operating systems"
+    )]
     pub async fn recv(&mut self) {}
 }

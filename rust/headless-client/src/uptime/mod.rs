@@ -46,7 +46,6 @@ pub fn get() -> Option<Duration> {
 }
 
 #[cfg(target_os = "macos")]
-#[expect(clippy::unnecessary_wraps)]
 pub fn get() -> Option<Duration> {
     debug_assert!(false, "Not implemented on macOS");
 

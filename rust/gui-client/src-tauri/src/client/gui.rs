@@ -30,10 +30,8 @@ pub(crate) mod system_tray;
 #[path = "gui/os_linux.rs"]
 mod os;
 
-// Stub only
 #[cfg(target_os = "macos")]
 #[path = "gui/os_macos.rs"]
-#[expect(clippy::unnecessary_wraps)]
 mod os;
 
 #[cfg(target_os = "windows")]

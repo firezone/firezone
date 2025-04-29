@@ -1,12 +1,7 @@
-#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default)]
 pub enum DnsControlMethod {
+    #[default]
     None,
-}
-
-impl Default for DnsControlMethod {
-    fn default() -> Self {
-        DnsControlMethod::None
-    }
 }
 
 pub use socket_factory::tcp as tcp_socket_factory;

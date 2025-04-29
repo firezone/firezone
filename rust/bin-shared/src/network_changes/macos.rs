@@ -18,6 +18,10 @@ pub async fn new_network_notifier(
 pub struct Worker;
 
 impl Worker {
+    #[expect(
+        clippy::unused_async,
+        reason = "Signture must match other operating systems"
+    )]
     pub async fn notified(&mut self) -> Result<()> {
         bail!("Not implemented")
     }

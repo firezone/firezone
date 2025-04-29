@@ -10,6 +10,10 @@ impl DnsController {
         bail!("Not implemented")
     }
 
+    #[expect(
+        clippy::unused_async,
+        reason = "Signture must match other operating systems"
+    )]
     pub async fn set_dns(
         &mut self,
         _dns_config: Vec<IpAddr>,

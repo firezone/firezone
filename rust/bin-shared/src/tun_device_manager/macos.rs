@@ -15,10 +15,18 @@ impl TunDeviceManager {
         bail!("Not implemented")
     }
 
+    #[expect(
+        clippy::unused_async,
+        reason = "Signture must match other operating systems"
+    )]
     pub async fn set_ips(&mut self, _ipv4: Ipv4Addr, _ipv6: Ipv6Addr) -> Result<()> {
         bail!("Not implemented")
     }
 
+    #[expect(
+        clippy::unused_async,
+        reason = "Signture must match other operating systems"
+    )]
     pub async fn set_routes(
         &mut self,
         _ipv4: Vec<Ipv4Network>,

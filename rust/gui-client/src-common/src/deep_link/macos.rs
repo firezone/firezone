@@ -6,6 +6,10 @@ use secrecy::Secret;
 pub struct Server {}
 
 impl Server {
+    #[expect(
+        clippy::unused_async,
+        reason = "Signture must match other operating systems"
+    )]
     pub async fn new() -> Result<Self> {
         bail!("not implemented")
     }
@@ -16,9 +20,9 @@ impl Server {
 }
 
 pub async fn open(_url: &url::Url) -> Result<()> {
-    Ok(())
+    bail!("not implemented")
 }
 
 pub fn register(_path: PathBuf) -> Result<()> {
-    Ok(())
+    bail!("not implemented")
 }

@@ -8,7 +8,6 @@ pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
     bail!("not implemented")
 }
 
-#[expect(clippy::unnecessary_wraps)]
 pub(crate) fn elevation_check() -> Result<bool> {
     bail!("not implemented")
 }
