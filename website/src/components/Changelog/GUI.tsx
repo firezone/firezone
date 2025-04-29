@@ -23,10 +23,17 @@ export default function GUI({ os }: { os: OS }) {
             of 10MB.
           </ChangeItem>
         )}
-        <ChangeItem pull="8920">
-          Improves connection reliability by maintaining the order of IP packets
-          across GSO batches.
-        </ChangeItem>
+        {os === OS.Linux && (
+          <ChangeItem pull="8920">
+            Improves connection reliability by maintaining the order of IP packets
+            across GSO batches.
+          </ChangeItem>
+        )}
+        {os === OS.Windows && (
+          <ChangeItem pull="8920">
+            Improves connection reliability by maintaining the order of IP packets.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.4.11" date={new Date("2025-04-21")}>
         <ChangeItem pull="8798">

@@ -35,8 +35,13 @@ export default function Headless({ os }: { os: OS }) {
         )}
         {os === OS.Linux && (
           <ChangeItem pull="8920">
-            Improves connection reliability by maintaining the order of IP
-            packets across GSO batches.
+            Improves connection reliability by maintaining the order of IP packets
+            across GSO batches.
+          </ChangeItem>
+        )}
+        {os === OS.Windows && (
+          <ChangeItem pull="8920">
+            Improves connection reliability by maintaining the order of IP packets.
           </ChangeItem>
         )}
       </Unreleased>
