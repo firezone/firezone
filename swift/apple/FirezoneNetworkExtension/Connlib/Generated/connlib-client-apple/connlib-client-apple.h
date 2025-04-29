@@ -15,5 +15,6 @@ struct __private__ResultPtrAndPtr __swift_bridge__$WrappedSession$connect(void* 
 void __swift_bridge__$WrappedSession$reset(void* self);
 void* __swift_bridge__$WrappedSession$set_dns(void* self, void* dns_servers);
 void* __swift_bridge__$WrappedSession$set_disabled_resources(void* self, void* disabled_resources);
+void* __swift_bridge__$WrappedSession$set_log_directives(void* self, void* directives);
 
 

@@ -77,6 +77,9 @@ mod ffi {
 
         #[swift_bridge(swift_name = "setDisabledResources", return_with = err_to_string)]
         fn set_disabled_resources(&mut self, disabled_resources: String) -> Result<(), String>;
+
+        #[swift_bridge(swift_name = "setLogDirectives", return_with = err_to_string)]
+        fn set_log_directives(&mut self, directives: String) -> Result<(), String>;
     }
 
     extern "Swift" {
@@ -174,6 +177,11 @@ impl Callbacks for CallbackHandler {
     }
 }
 
+static LOGGER_STATE: OnceLock<(
+    firezone_logging::file::Handle,
+    firezone_logging::FilterReloadHandle,
+)> = OnceLock::new();
+
 /// Initialises a global logger with the specified log filter.
 ///
 /// A global logger can only be set once, hence this function uses `static` state to check whether a logger has already been set.
@@ -181,11 +189,6 @@ impl Callbacks for CallbackHandler {
 ///
 /// From within the FFI module, we have no control over our memory lifecycle and we may get initialised multiple times within the same process.
 fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<()> {
-    static LOGGER_STATE: OnceLock<(
-        firezone_logging::file::Handle,
-        firezone_logging::FilterReloadHandle,
-    )> = OnceLock::new();
-
     if let Some((_, reload_handle)) = LOGGER_STATE.get() {
         reload_handle
             .reload(&log_filter)
@@ -320,6 +323,14 @@ impl WrappedSession {
             .context("Failed to deserialize disabled resources from JSON")?;
 
         self.inner.set_disabled_resources(disabled_resources);
+
+        Ok(())
+    }
+
+    fn set_log_directives(&mut self, directives: String) -> Result<()> {
+        let (_, handle) = LOGGER_STATE.get().context("Logger is not initialised")?;
+
+        handle.reload(&directives)?;
 
         Ok(())
     }
