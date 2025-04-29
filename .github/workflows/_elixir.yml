@@ -17,7 +17,8 @@ jobs:
     services:
       postgres:
         image: postgres:15
-        command: ["postgres", "-c", "wal_level=logical"]
+        volumes:
+          - ./.github/scripts/set-wal-level.sh:/docker-entrypoint-initdb.d/set-wal-level.sh
         ports:
           - 5432:5432
         env:
@@ -133,7 +134,8 @@ jobs:
     services:
       postgres:
         image: postgres:15
-        command: ["postgres", "-c", "wal_level=logical"]
+        volumes:
+          - ./.github/scripts/set-wal-level.sh:/docker-entrypoint-initdb.d/set-wal-level.sh
         ports:
           - 5432:5432
         env:
@@ -188,7 +190,8 @@ jobs:
     services:
       postgres:
         image: postgres:15
-        command: ["postgres", "-c", "wal_level=logical"]
+        volumes:
+          - ./.github/scripts/set-wal-level.sh:/docker-entrypoint-initdb.d/set-wal-level.sh
         ports:
           - 5432:5432
         env:
