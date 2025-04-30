@@ -72,7 +72,7 @@ export RUST_ANDROID_GRADLE_RUSTC_COMMAND=$HOME/.cargo/bin/rustc
 export RUST_ANDROID_GRADLE_CARGO_COMMAND=$HOME/.cargo/bin/cargo
 ```
 
-# Release Setup
+## Release Setup
 
 We release from GitHub CI, so this shouldn't be necessary. But if you're looking
 to test the `release` variant locally:
@@ -88,3 +88,13 @@ export FIREBASE_CREDENTIALS_PATH="$(pwd)/app/.signing/firebase.json"
 HISTCONTROL=ignorespace # prevents saving the next line in shell history
  KEYSTORE_PASSWORD='keystore_password' KEYSTORE_KEY_PASSWORD='keystore_key_password' ./gradlew assembleRelease
 ```
+
+## Logs
+
+To see all connlib related logs via ADB use:
+
+```
+adb logcat --format color "connlib *:S"
+```
+
+This will show logs of all levels from the `connlib` tag and silence logs from other tags (`*:S`).
