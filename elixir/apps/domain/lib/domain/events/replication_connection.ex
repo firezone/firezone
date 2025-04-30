@@ -28,7 +28,6 @@ defmodule Domain.Events.ReplicationConnection do
 
   @type t :: %__MODULE__{
           schema: String.t(),
-          connection_opts: Keyword.t(),
           step:
             :disconnected
             | :check_publication
@@ -45,7 +44,6 @@ defmodule Domain.Events.ReplicationConnection do
           relations: map()
         }
   defstruct schema: "public",
-            connection_opts: [],
             step: :disconnected,
             publication_name: "events",
             replication_slot_name: "events_slot",
@@ -54,9 +52,9 @@ defmodule Domain.Events.ReplicationConnection do
             table_subscriptions: [],
             relations: %{}
 
-  def start_link(%__MODULE__{} = instance) do
+  def start_link(%{instance: %__MODULE__{} = instance, connection_opts: connection_opts}) do
     # Start only one ReplicationConnection in the cluster.
-    opts = instance.connection_opts ++ [name: {:global, __MODULE__}]
+    opts = connection_opts ++ [name: {:global, __MODULE__}]
 
     case(Postgrex.ReplicationConnection.start_link(__MODULE__, instance, opts)) do
       {:ok, pid} ->

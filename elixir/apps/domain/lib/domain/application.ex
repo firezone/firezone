@@ -23,11 +23,7 @@ defmodule Domain.Application do
       Domain.PubSub,
 
       # WAL replication
-      %{
-        id: Domain.Events.ReplicationConnection,
-        start: {Domain.Events.ReplicationConnection, :start_link, [replication_instance()]},
-        restart: :transient
-      },
+      replication_child_spec(),
 
       # Infrastructure services
       # Note: only one of platform adapters will be actually started.
@@ -52,9 +48,21 @@ defmodule Domain.Application do
     ]
   end
 
-  defp replication_instance do
-    config = Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
-    struct(Domain.Events.ReplicationConnection, config)
+  defp replication_child_spec do
+    {connection_opts, config} =
+      Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
+      |> Keyword.pop(:connection_opts)
+
+    init_state = %{
+      connection_opts: connection_opts,
+      instance: struct(Domain.Events.ReplicationConnection, config)
+    }
+
+    %{
+      id: Domain.Events.ReplicationConnection,
+      start: {Domain.Events.ReplicationConnection, :start_link, [init_state]},
+      restart: :transient
+    }
   end
 
   defp configure_logger do

@@ -49,7 +49,8 @@ secret_keys = [
   "private_key",
   "preshared_key",
   "session",
-  "sessions"
+  "sessions",
+  "connection_opts"
 ]
 
 config :phoenix, :filter_parameters, secret_keys
