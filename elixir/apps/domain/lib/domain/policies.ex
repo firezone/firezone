@@ -68,6 +68,7 @@ defmodule Domain.Policies do
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       Policy.Changeset.create(attrs, subject)
       |> Repo.insert()
+      # TODO: WAL
       |> case do
         {:ok, policy} ->
           :ok = broadcast_policy_events(:create, policy)
@@ -92,6 +93,7 @@ defmodule Domain.Policies do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update_breakable(Policy.Query,
         with: &Policy.Changeset.update(&1, attrs),
+        # TODO: WAL
         after_update_commit: &broadcast_policy_events(:update, &1),
         after_breaking_update_commit: fn updated_policy, _changeset ->
           {:ok, _flows} = Flows.expire_flows_for(policy, subject)
@@ -109,6 +111,7 @@ defmodule Domain.Policies do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Policy.Query,
         with: &Policy.Changeset.disable(&1, subject),
+        # TODO: WAL
         after_commit: &broadcast_policy_events(:disable, &1)
       )
       |> case do
@@ -129,6 +132,7 @@ defmodule Domain.Policies do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Policy.Query,
         with: &Policy.Changeset.enable/1,
+        # TODO: WAL
         after_commit: &broadcast_policy_events(:enable, &1)
       )
     end
@@ -187,6 +191,7 @@ defmodule Domain.Policies do
       |> Policy.Query.delete()
       |> Repo.update_all([])
 
+    # TODO: WAL
     :ok =
       Enum.each(policies, fn policy ->
         :ok = broadcast_policy_events(:delete, policy)
@@ -281,6 +286,7 @@ defmodule Domain.Policies do
     actor_group_or_id |> actor_group_topic() |> PubSub.unsubscribe()
   end
 
+  # TODO: WAL
   defp broadcast_policy_events(action, %Policy{} = policy) do
     payload = {:"#{action}_policy", policy.id}
     :ok = broadcast_to_policy(policy, payload)

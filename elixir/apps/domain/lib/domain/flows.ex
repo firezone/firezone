@@ -242,6 +242,7 @@ defmodule Domain.Flows do
       |> Flow.Query.expire()
       |> Repo.update_all([])
 
+    # TODO: WAL
     :ok =
       Enum.each(flows, fn flow ->
         :ok = broadcast_flow_expiration_event(flow)
@@ -263,6 +264,7 @@ defmodule Domain.Flows do
     flow_or_id |> flow_topic() |> PubSub.subscribe()
   end
 
+  # TODO: WAL
   defp broadcast_flow_expiration_event(flow) do
     flow
     |> flow_topic()

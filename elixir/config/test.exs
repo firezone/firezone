@@ -18,6 +18,14 @@ config :domain, Domain.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   queue_target: 1000
 
+config :domain, Domain.Events.ReplicationConnection,
+  publication_name: "events_test",
+  replication_slot_name: "events_slot_test",
+  connection_opts: [
+    auto_reconnect: false,
+    database: "firezone_test#{partition_suffix}"
+  ]
+
 config :domain, Domain.Telemetry, enabled: false
 
 config :domain, Domain.ConnectivityChecks, enabled: false
