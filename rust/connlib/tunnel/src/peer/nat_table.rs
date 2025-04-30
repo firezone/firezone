@@ -58,7 +58,12 @@ impl NatTable {
                 return Ok(*outside);
             }
 
-            tracing::trace!(?inside, ?outside, "Outgoing packet for expired translation");
+            tracing::warn!(
+                ?inside,
+                ?outside,
+                new_outside_ip = %outside_dst,
+                "Outgoing packet for expired translation; outside entry will be evicted"
+            );
         }
 
         // Find the first available public port, starting from the port of the to-be-mapped packet.
