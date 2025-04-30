@@ -17,25 +17,6 @@ env:
   RUSTDOCFLAGS: "-D warnings"
 
 jobs:
-  bench:
-    name: bench-${{ matrix.runs-on }}
-    strategy:
-      fail-fast: false
-      matrix:
-        runs-on: [
-            windows-2019, # Only platform with a benchmark right now
-          ]
-    runs-on: ${{ matrix.runs-on }}
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: ./.github/actions/setup-rust
-        id: setup-rust
-      - run: cargo bench ${{ steps.setup-rust.outputs.bench-packages }}
-        env:
-          RUST_LOG: "debug"
-        name: "cargo bench"
-        shell: bash
-
   static-analysis:
     name: static-analysis-${{ matrix.runs-on }}
     strategy:
