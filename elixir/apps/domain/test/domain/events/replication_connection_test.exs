@@ -2,7 +2,6 @@ defmodule Domain.Events.ReplicationConnectionTest do
   # Only one ReplicationConnection should be started in the cluster
   use ExUnit.Case, async: false
 
-  alias Domain.Events.Decoder.Messages
   alias Domain.Events.ReplicationConnection
 
   # Used to test callbacks, not used for live connection

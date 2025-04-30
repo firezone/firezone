@@ -233,42 +233,42 @@ defmodule Domain.Events.ReplicationConnection do
       columns: columns
     }
 
-    {:noreply, %{state | relations: Map.put(state.relations, id, relation)}}
+    {:noreply, [], %{state | relations: Map.put(state.relations, id, relation)}}
   end
 
   defp handle_message(%Decoder.Messages.Insert{} = msg, state) do
     :ok = Event.ingest(msg, state.relations)
-    {:noreply, state}
+    {:noreply, [], state}
   end
 
   defp handle_message(%Decoder.Messages.Update{} = msg, state) do
     :ok = Event.ingest(msg, state.relations)
-    {:noreply, state}
+    {:noreply, [], state}
   end
 
   defp handle_message(%Decoder.Messages.Delete{} = msg, state) do
     :ok = Event.ingest(msg, state.relations)
-    {:noreply, state}
+    {:noreply, [], state}
   end
 
   defp handle_message(%Decoder.Messages.Begin{}, state) do
-    {:noreply, state}
+    {:noreply, [], state}
   end
 
   defp handle_message(%Decoder.Messages.Commit{}, state) do
-    {:noreply, state}
+    {:noreply, [], state}
   end
 
   defp handle_message(%Decoder.Messages.Origin{}, state) do
-    {:noreply, state}
+    {:noreply, [], state}
   end
 
   defp handle_message(%Decoder.Messages.Truncate{}, state) do
-    {:noreply, state}
+    {:noreply, [], state}
   end
 
   defp handle_message(%Decoder.Messages.Type{}, state) do
-    {:noreply, state}
+    {:noreply, [], state}
   end
 
   defp handle_message(%Decoder.Messages.Unsupported{data: data}, state) do
@@ -277,7 +277,7 @@ defmodule Domain.Events.ReplicationConnection do
       state: inspect(state)
     )
 
-    {:noreply, state}
+    {:noreply, [], state}
   end
 
   @impl true
