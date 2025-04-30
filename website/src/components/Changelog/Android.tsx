@@ -19,7 +19,8 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.8" date={new Date("2025-04-30")}>
         <ChangeItem pull="8920">
           Improves connection reliability by maintaining the order of IP packets
           across GSO batches.
@@ -28,10 +29,10 @@ export default function Android() {
           Rolls over to a new log-file as soon as logs are cleared.
         </ChangeItem>
         <ChangeItem pull="8935">
-          Improves reliability for upload-intensive connections with many concurrent
-          DNS queries.
+          Improves reliability for upload-intensive connections with many
+          concurrent DNS queries.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.7" date={new Date("2025-04-21")}>
         <ChangeItem pull="8798">
           Improves performance of relayed connections on IPv4-only systems.
