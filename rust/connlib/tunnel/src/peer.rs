@@ -147,6 +147,11 @@ impl ClientOnGateway {
         for (proxy_ip, real_ip) in ip_maps {
             tracing::debug!(%name, %proxy_ip, %real_ip);
 
+            if self.nat_table.has_entry_for_inside(*proxy_ip) {
+                tracing::debug!(%name, %proxy_ip, %real_ip, "Skipping DNS resource NAT entry because we have open NAT sessions for it");
+                continue;
+            }
+
             self.permanent_translations
                 .insert(*proxy_ip, TranslationState::new(resource_id, real_ip));
         }
@@ -852,12 +857,12 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             resource_id(),
-            BTreeSet::from([foo_real_ip().into()]),
-            BTreeSet::from([foo_proxy_ip().into()]),
+            BTreeSet::from([foo_real_ip1().into()]),
+            BTreeSet::from([foo_proxy_ip1().into()]),
         )
         .unwrap();
 
-        assert_eq!(bar_contained_ip(), foo_real_ip());
+        assert_eq!(bar_contained_ip(), foo_real_ip1());
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
@@ -886,7 +891,7 @@ mod tests {
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            foo_proxy_ip(),
+            foo_proxy_ip1(),
             1,
             bar_allowed_port(),
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -900,7 +905,7 @@ mod tests {
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            foo_proxy_ip(),
+            foo_proxy_ip1(),
             1,
             foo_allowed_port(),
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -918,14 +923,14 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             resource_id(),
-            BTreeSet::from([foo_real_ip().into()]),
-            BTreeSet::from([foo_proxy_ip().into()]),
+            BTreeSet::from([foo_real_ip1().into()]),
+            BTreeSet::from([foo_proxy_ip1().into()]),
         )
         .unwrap();
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            foo_proxy_ip(),
+            foo_proxy_ip1(),
             1,
             foo_allowed_port(),
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -936,7 +941,7 @@ mod tests {
 
         let pkt = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            foo_proxy_ip(),
+            foo_proxy_ip1(),
             1,
             600,
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -969,14 +974,14 @@ mod tests {
         peer.setup_nat(
             foo_name().parse().unwrap(),
             resource_id(),
-            BTreeSet::from([foo_real_ip().into()]),
-            BTreeSet::from([foo_proxy_ip().into()]),
+            BTreeSet::from([foo_real_ip1().into()]),
+            BTreeSet::from([foo_proxy_ip1().into()]),
         )
         .unwrap();
 
         let request = ip_packet::make::udp_packet(
             client_tun_ipv4(),
-            foo_proxy_ip(),
+            foo_proxy_ip1(),
             1,
             foo_allowed_port(),
             vec![0, 0, 0, 0, 0, 0, 0, 0],
@@ -991,7 +996,7 @@ mod tests {
         ));
 
         let response = ip_packet::make::udp_packet(
-            foo_real_ip(),
+            foo_real_ip1(),
             client_tun_ipv4(),
             foo_allowed_port(),
             1,
@@ -1008,7 +1013,7 @@ mod tests {
         );
 
         let response = ip_packet::make::udp_packet(
-            foo_real_ip(),
+            foo_real_ip1(),
             client_tun_ipv4(),
             foo_allowed_port(),
             1,
@@ -1023,6 +1028,61 @@ mod tests {
             matches!(peer.translate_inbound(response, now), Ok(None)),
             "After 1 minute of inactivity, NAT session should be freed"
         );
+    }
+
+    #[test]
+    fn setting_up_dns_resource_nat_does_not_clear_existing_nat_session() {
+        let _guard = firezone_logging::test("trace");
+
+        let now = Instant::now();
+
+        let mut peer = ClientOnGateway::new(client_id(), client_tun(), gateway_tun());
+        peer.add_resource(foo_dns_resource(), None);
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            resource_id(),
+            BTreeSet::from([foo_real_ip1().into()]),
+            BTreeSet::from([foo_proxy_ip1().into(), foo_proxy_ip2().into()]),
+        )
+        .unwrap();
+
+        let request = ip_packet::make::udp_packet(
+            client_tun_ipv4(),
+            foo_proxy_ip1(),
+            1,
+            foo_allowed_port(),
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        let result = peer.translate_outbound(request.clone(), now).unwrap();
+
+        assert!(matches!(result, TranslateOutboundResult::Send(_)));
+
+        peer.setup_nat(
+            foo_name().parse().unwrap(),
+            resource_id(),
+            BTreeSet::from([foo_real_ip2().into()]), // Setting up with a new IP!
+            BTreeSet::from([foo_proxy_ip1().into(), foo_proxy_ip2().into()]),
+        )
+        .unwrap();
+
+        let result = peer.translate_outbound(request, now).unwrap();
+
+        assert!(matches!(result, TranslateOutboundResult::Send(_)));
+
+        let response = ip_packet::make::udp_packet(
+            foo_real_ip1(),
+            client_tun_ipv4(),
+            foo_allowed_port(),
+            1,
+            vec![0, 0, 0, 0, 0, 0, 0, 0],
+        )
+        .unwrap();
+
+        let response = peer.translate_inbound(response, now).unwrap();
+
+        assert!(response.is_some());
     }
 
     fn foo_dns_resource() -> crate::messages::gateway::ResourceDescription {
@@ -1069,16 +1129,24 @@ mod tests {
         443
     }
 
-    fn foo_real_ip() -> Ipv4Addr {
+    fn foo_real_ip1() -> Ipv4Addr {
         "10.0.0.1".parse().unwrap()
+    }
+
+    fn foo_real_ip2() -> Ipv4Addr {
+        "10.0.0.2".parse().unwrap()
     }
 
     fn bar_contained_ip() -> Ipv4Addr {
         "10.0.0.1".parse().unwrap()
     }
 
-    fn foo_proxy_ip() -> Ipv4Addr {
+    fn foo_proxy_ip1() -> Ipv4Addr {
         "100.96.0.1".parse().unwrap()
+    }
+
+    fn foo_proxy_ip2() -> Ipv4Addr {
+        "100.96.0.2".parse().unwrap()
     }
 
     fn foo_name() -> String {

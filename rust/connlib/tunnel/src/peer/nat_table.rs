@@ -39,6 +39,11 @@ impl NatTable {
         }
     }
 
+    /// Returns true if the NAT table has any entries with the given "inside" IP address.
+    pub(crate) fn has_entry_for_inside(&self, ip: IpAddr) -> bool {
+        self.table.left_values().any(|(_, c)| c == &ip)
+    }
+
     pub(crate) fn translate_outgoing(
         &mut self,
         packet: &IpPacket,
