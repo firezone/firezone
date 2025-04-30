@@ -22,7 +22,8 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.7" date={new Date("2025-04-30")}>
         <ChangeItem pull="8798">
           Improves performance of relayed connections on IPv4-only systems.
         </ChangeItem>
@@ -40,7 +41,7 @@ export default function Gateway() {
           Fixes an issue where connections to DNS resources which utilise round-robin
           DNS may be interrupted whenever the Client re-queried the DNS name.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.6" date={new Date("2025-04-15")}>
         <ChangeItem pull="8383">
           Deprecates the NAT64 functionality in favor of sending ICMP errors to
