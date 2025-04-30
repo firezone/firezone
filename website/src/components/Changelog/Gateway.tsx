@@ -36,6 +36,10 @@ export default function Gateway() {
           Improves connection reliability by maintaining the order of IP packets
           across GSO batches.
         </ChangeItem>
+        <ChangeItem pull="8937">
+          Fixes an issue where connections to DNS resources which utilise round-robin
+          DNS may be interrupted whenever the Client re-queried the DNS name.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.6" date={new Date("2025-04-15")}>
         <ChangeItem pull="8383">
