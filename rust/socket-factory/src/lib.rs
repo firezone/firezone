@@ -339,7 +339,7 @@ impl UdpSocket {
 
                     tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, %num_packets, %segment_size);
 
-                    if transmit.segment_size.is_some_and(|s| s >= num_bytes) {
+                    if transmit.segment_size.is_some_and(|s| s > num_bytes) {
                         transmit.segment_size = None;
                     }
 
