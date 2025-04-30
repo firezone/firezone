@@ -16,7 +16,7 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses ./.github/actions/setup-postgres
+      - uses: ./.github/actions/setup-postgres
         with:
           version: 15
       - uses: ./.github/actions/setup-elixir
@@ -134,7 +134,7 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses ./.github/actions/setup-postgres
+      - uses: ./.github/actions/setup-postgres
         with:
           version: 15
       - uses: ./.github/actions/setup-elixir
@@ -199,7 +199,7 @@ jobs:
         options: --cap-add=IPC_LOCK
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses ./.github/actions/setup-postgres
+      - uses: ./.github/actions/setup-postgres
         with:
           version: 15
       - uses: nanasess/setup-chromedriver@e93e57b843c0c92788f22483f1a31af8ee48db25 # v2.3.0
