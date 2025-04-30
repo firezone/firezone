@@ -9,7 +9,8 @@ export default function Headless({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.7" date={new Date("2025-04-30")}>
         <ChangeItem pull="8798">
           Improves performance of relayed connections on IPv4-only systems.
         </ChangeItem>
@@ -35,20 +36,21 @@ export default function Headless({ os }: { os: OS }) {
         )}
         {os === OS.Linux && (
           <ChangeItem pull="8920">
-            Improves connection reliability by maintaining the order of IP packets
-            across GSO batches.
+            Improves connection reliability by maintaining the order of IP
+            packets across GSO batches.
           </ChangeItem>
         )}
         {os === OS.Windows && (
           <ChangeItem pull="8920">
-            Improves connection reliability by maintaining the order of IP packets.
+            Improves connection reliability by maintaining the order of IP
+            packets.
           </ChangeItem>
         )}
         <ChangeItem pull="8935">
-          Improves reliability for upload-intensive connections with many concurrent
-          DNS queries.
+          Improves reliability for upload-intensive connections with many
+          concurrent DNS queries.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.6" date={new Date("2025-04-15")}>
         {os == OS.Linux && (
           <ChangeItem pull="8754">
