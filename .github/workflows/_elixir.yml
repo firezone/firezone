@@ -167,6 +167,7 @@ jobs:
       fail-fast: false
       matrix:
         MIX_TEST_PARTITION: [1]
+    services:
       vault:
         image: vault:1.12.2
         env:
