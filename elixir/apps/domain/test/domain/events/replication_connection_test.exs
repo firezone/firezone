@@ -7,7 +7,6 @@ defmodule Domain.Events.ReplicationConnectionTest do
   # Used to test callbacks, not used for live connection
   @mock_state %ReplicationConnection{
     schema: "test_schema",
-    connection_opts: [],
     step: :disconnected,
     publication_name: "test_pub",
     replication_slot_name: "test_slot",
