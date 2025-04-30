@@ -832,6 +832,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "bufferpool"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "lockfree-object-pool",
+ "opentelemetry",
+ "opentelemetry_sdk",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2163,6 +2175,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "axum",
+ "bufferpool",
+ "bytes",
  "clap",
  "firezone-logging",
  "flume",
@@ -2477,6 +2491,7 @@ dependencies = [
  "base64 0.22.1",
  "bimap",
  "boringtun",
+ "bufferpool",
  "bytes",
  "chrono",
  "connlib-model",
@@ -2499,7 +2514,6 @@ dependencies = [
  "itertools 0.13.0",
  "l4-tcp-dns-server",
  "l4-udp-dns-server",
- "lockfree-object-pool",
  "lru",
  "opentelemetry",
  "proptest",
@@ -3501,9 +3515,9 @@ name = "ip-packet"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bufferpool",
  "etherparse",
  "etherparse-ext",
- "lockfree-object-pool",
  "proptest",
  "test-strategy",
  "thiserror 1.0.69",
@@ -6457,6 +6471,7 @@ name = "snownet"
 version = "0.1.0"
 dependencies = [
  "boringtun",
+ "bufferpool",
  "bytecodec",
  "bytes",
  "derive_more 1.0.0",
@@ -6465,7 +6480,6 @@ dependencies = [
  "hex-display",
  "ip-packet",
  "itertools 0.13.0",
- "lockfree-object-pool",
  "once_cell",
  "rand 0.8.5",
  "ringbuffer",
@@ -6482,12 +6496,12 @@ name = "socket-factory"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bufferpool",
  "bytes",
  "derive_more 1.0.0",
  "firezone-logging",
  "gat-lending-iterator",
  "ip-packet",
- "lockfree-object-pool",
  "opentelemetry",
  "parking_lot",
  "quinn-udp",

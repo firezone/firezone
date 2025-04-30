@@ -1,7 +1,7 @@
 use anyhow::Result;
-use bytes::BytesMut;
 use futures::{SinkExt, StreamExt, ready};
 use gat_lending_iterator::LendingIterator;
+use socket_factory::DatagramOut;
 use socket_factory::{DatagramIn, DatagramSegmentIter, SocketFactory, UdpSocket};
 use std::{
     io,
@@ -10,9 +10,6 @@ use std::{
     sync::Arc,
     task::{Context, Poll, Waker},
 };
-
-type DatagramOut =
-    socket_factory::DatagramOut<lockfree_object_pool::SpinLockOwnedReusable<BytesMut>>;
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
 const UNSPECIFIED_V6_SOCKET: SocketAddrV6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0);
