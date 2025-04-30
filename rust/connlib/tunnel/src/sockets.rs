@@ -1,3 +1,4 @@
+use crate::otel;
 use anyhow::Result;
 use futures::{SinkExt, StreamExt, ready};
 use gat_lending_iterator::LendingIterator;
@@ -201,10 +202,10 @@ impl ThreadedUdpSocket {
                                 if let Err(e) = socket.send(datagram).await {
                                     if let Some(io) = e.downcast_ref::<io::Error>() {
                                         io_error_counter.add(1, &[
-                                            crate::otel::network_io_direction_transmit(),
-                                            crate::otel::network_type_for_addr(addr),
-                                            crate::otel::io_error_type(io),
-                                            crate::otel::io_error_code(io)
+                                            otel::attr::network_io_direction_transmit(),
+                                            otel::attr::network_type_for_addr(addr),
+                                            otel::attr::io_error_type(io),
+                                            otel::attr::io_error_code(io)
                                         ]);
                                     }
 
@@ -226,10 +227,10 @@ impl ThreadedUdpSocket {
 
                                 if let Some(io) = result.as_ref().err().and_then(|e| e.downcast_ref::<io::Error>()) {
                                     io_error_counter.add(1, &[
-                                        crate::otel::network_io_direction_receive(),
-                                        crate::otel::network_type_for_addr(addr),
-                                        crate::otel::io_error_type(io),
-                                        crate::otel::io_error_code(io)
+                                        otel::attr::network_io_direction_receive(),
+                                        otel::attr::network_type_for_addr(addr),
+                                        otel::attr::io_error_type(io),
+                                        otel::attr::io_error_code(io)
                                     ]);
                                 }
 

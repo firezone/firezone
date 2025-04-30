@@ -2,6 +2,8 @@ use ip_packet::IpPacket;
 use opentelemetry::KeyValue;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
+use crate::otel;
+
 pub struct UniquePacketBuffer {
     buffer: AllocRingBuffer<IpPacket>,
     tag: &'static str,
@@ -41,10 +43,10 @@ impl UniquePacketBuffer {
             self.num_dropped_packets.add(
                 1,
                 &[
-                    crate::otel::network_type_for_packet(&new),
-                    crate::otel::network_io_direction_transmit(),
+                    otel::attr::network_type_for_packet(&new),
+                    otel::attr::network_io_direction_transmit(),
                     KeyValue::new("system.buffer.pool.name", self.tag),
-                    crate::otel::error_type("BufferFull"),
+                    otel::attr::error_type("BufferFull"),
                 ],
             );
         }
