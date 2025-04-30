@@ -176,7 +176,7 @@ impl Io {
         if let Poll::Ready(network) = self.sockets.poll_recv_from(cx) {
             return Poll::Ready(Ok(Input::Network(
                 network
-                    .context("Failed to receive from UDP sockets")?
+                    .context("UDP socket failed")?
                     .filter(is_max_wg_packet_size),
             )));
         }
