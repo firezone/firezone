@@ -188,6 +188,7 @@ defmodule Domain.Clients do
         with: &Client.Changeset.update(&1, attrs),
         preload: [:online?]
       )
+      # TODO: WAL
       |> case do
         {:ok, client} ->
           :ok = broadcast_to_client(client, :updated)
@@ -212,6 +213,7 @@ defmodule Domain.Clients do
       |> case do
         {:ok, client} ->
           client = Repo.preload(client, [:verified_by_actor, :verified_by_identity])
+          # TODO: WAL
           :ok = broadcast_to_client(client, :updated)
           {:ok, client}
 
@@ -234,6 +236,7 @@ defmodule Domain.Clients do
       |> case do
         {:ok, client} ->
           {:ok, _flows} = Flows.expire_flows_for(client)
+          # TODO: WAL
           :ok = broadcast_to_client(client, :updated)
           {:ok, client}
 
@@ -251,6 +254,7 @@ defmodule Domain.Clients do
     with :ok <- authorize_actor_client_management(client.actor_id, subject) do
       case delete_clients(queryable, subject) do
         {:ok, [client]} ->
+          # TODO: WAL
           :ok = disconnect_client(client)
           {:ok, client}
 
@@ -268,6 +272,7 @@ defmodule Domain.Clients do
 
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission()),
          {:ok, _clients} <- delete_clients(queryable, subject) do
+      # TODO: WAL
       :ok = disconnect_actor_clients(actor)
       :ok
     end
@@ -280,6 +285,7 @@ defmodule Domain.Clients do
       |> Client.Query.delete()
       |> Repo.update_all([])
 
+    # TODO: WAL
     :ok = Enum.each(clients, &disconnect_client/1)
 
     {:ok, clients}
@@ -305,6 +311,7 @@ defmodule Domain.Clients do
          {:ok, _} <-
            Presence.track(self(), actor_clients_presence_topic(client.actor_id), client.id, %{}) do
       :ok = PubSub.subscribe(client_topic(client))
+      # TODO: WAL
       # :ok = PubSub.subscribe(actor_clients_topic(client.actor_id))
       # :ok = PubSub.subscribe(identity_topic(client.actor_id))
       :ok = PubSub.subscribe(account_clients_topic(client.account_id))
@@ -347,6 +354,7 @@ defmodule Domain.Clients do
     PubSub.unsubscribe(actor_clients_presence_topic(actor_or_id))
   end
 
+  # TODO: WAL
   def broadcast_to_account_clients(account_or_id, payload) do
     account_or_id
     |> account_clients_topic()

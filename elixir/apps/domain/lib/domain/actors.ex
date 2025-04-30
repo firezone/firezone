@@ -175,6 +175,7 @@ defmodule Domain.Actors do
 
     case Repo.insert(changeset) do
       {:ok, group} ->
+        # TODO: WAL
         :ok = broadcast_group_memberships_events(group, changeset)
         {:ok, group}
 
@@ -189,6 +190,7 @@ defmodule Domain.Actors do
 
       case Repo.insert(changeset) do
         {:ok, group} ->
+          # TODO: WAL
           :ok = broadcast_group_memberships_events(group, changeset)
           {:ok, group}
 
@@ -227,6 +229,7 @@ defmodule Domain.Actors do
           |> Repo.preload(:memberships)
           |> Group.Changeset.update(attrs)
         end,
+        # TODO: WAL
         after_commit: fn _actor, changeset -> broadcast_memberships_events(changeset) end
       )
     end
@@ -252,6 +255,7 @@ defmodule Domain.Actors do
 
         {:ok, group} = Repo.update(changeset)
 
+        # TODO: WAL
         :ok = broadcast_memberships_events(changeset)
 
         group
@@ -274,6 +278,7 @@ defmodule Domain.Actors do
           |> Membership.Query.returning_all()
           |> Repo.delete_all()
 
+        # TODO: WAL
         :ok = broadcast_membership_removal_events(memberships)
 
         {:ok, group}
@@ -301,6 +306,7 @@ defmodule Domain.Actors do
       |> Membership.Query.returning_all()
       |> Repo.delete_all()
 
+    # TODO: WAL
     :ok = broadcast_membership_removal_events(memberships)
 
     with {:ok, groups} <- delete_groups(queryable, subject) do
@@ -339,6 +345,7 @@ defmodule Domain.Actors do
       |> Membership.Query.returning_all()
       |> Repo.delete_all()
 
+    # TODO: WAL
     :ok = broadcast_membership_removal_events(memberships)
 
     {:ok, groups}
@@ -522,6 +529,7 @@ defmodule Domain.Actors do
             true -> :cant_remove_admin_type
           end
         end,
+        # TODO: WAL
         after_commit: fn _actor, changeset -> broadcast_memberships_events(changeset) end
       )
     end
@@ -606,6 +614,7 @@ defmodule Domain.Actors do
               |> Repo.delete_all()
 
             {:ok, _groups} = update_dynamic_group_memberships(actor.account_id)
+            # TODO: WAL
             :ok = broadcast_membership_removal_events(memberships)
             {:ok, _tokens} = Tokens.delete_tokens_for(actor, subject)
 
@@ -676,6 +685,7 @@ defmodule Domain.Actors do
     actor_or_id |> actor_memberships_topic() |> PubSub.unsubscribe()
   end
 
+  # TODO: WAL
   defp broadcast_memberships_events(changeset) do
     if changeset.valid? and Ecto.Changeset.changed?(changeset, :memberships) do
       case Ecto.Changeset.apply_action(changeset, :update) do

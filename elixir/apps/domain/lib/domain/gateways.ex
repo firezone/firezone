@@ -120,6 +120,7 @@ defmodule Domain.Gateways do
       )
       |> case do
         {:ok, group} ->
+          # TODO: WAL
           :ok = broadcast_to_group(group, :updated)
           {:ok, group}
 
@@ -512,6 +513,7 @@ defmodule Domain.Gateways do
     |> PubSub.unsubscribe()
   end
 
+  # TODO: WAL
   def broadcast_to_group(group_or_id, payload) do
     group_or_id
     |> group_topic()

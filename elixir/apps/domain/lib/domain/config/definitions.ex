@@ -291,6 +291,16 @@ defmodule Domain.Config.Definitions do
   defconfig(:database_password, :string, default: nil, sensitive: true)
 
   @doc """
+  Replication user that will be used to connect to replication slots.
+  """
+  defconfig(:database_replication_user, :string, default: nil, sensitive: true)
+
+  @doc """
+  Replication password for the replication user.
+  """
+  defconfig(:database_replication_password, :string, default: nil, sensitive: true)
+
+  @doc """
   Size of the connection pool to the PostgreSQL database.
   """
   defconfig(:database_pool_size, :integer,

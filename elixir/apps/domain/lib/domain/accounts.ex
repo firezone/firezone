@@ -98,6 +98,7 @@ defmodule Domain.Accounts do
         {:ok, account}
 
       {:ok, account} ->
+        # TODO: WAL
         :ok = Domain.Clients.disconnect_account_clients(account)
         {:ok, account}
 
@@ -109,6 +110,7 @@ defmodule Domain.Accounts do
   defp on_account_update(account, changeset) do
     :ok = Billing.on_account_update(account, changeset)
 
+    # TODO: WAL
     if Ecto.Changeset.changed?(changeset, :config) do
       broadcast_config_update_to_account(account)
     else
@@ -173,6 +175,7 @@ defmodule Domain.Accounts do
     account_or_id |> account_topic() |> PubSub.unsubscribe()
   end
 
+  # TODO: WAL
   defp broadcast_config_update_to_account(%Account{} = account) do
     broadcast_to_account(account.id, :config_changed)
   end

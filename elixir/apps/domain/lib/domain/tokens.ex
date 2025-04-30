@@ -290,11 +290,13 @@ defmodule Domain.Tokens do
       |> Token.Query.delete()
       |> Repo.update_all([])
 
+    # TODO: WAL
     :ok = Enum.each(tokens, &broadcast_disconnect_message/1)
 
     {:ok, tokens}
   end
 
+  # TODO: WAL
   defp broadcast_disconnect_message(%{type: :email}) do
     :ok
   end

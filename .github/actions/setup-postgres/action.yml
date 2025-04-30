@@ -1,0 +1,40 @@
+name: "Setup Postgres"
+description: "Starts a Postgres container"
+inputs:
+  version:
+    default: "latest"
+    description: "Postgres version"
+    required: false
+  port:
+    default: "5432"
+    description: "Port to expose"
+    required: false
+  username:
+    default: "postgres"
+    description: "Username"
+    required: false
+  password:
+    default: "postgres"
+    description: "Password"
+    required: false
+  options:
+    default: ""
+    description: "Additional options to pass to the container"
+    required: false
+runs:
+  using: "composite"
+  steps:
+    - name: Start Postgres
+      id: start-postgres
+      shell: bash
+      run: |
+        docker run \
+          --name postgres \
+          --env POSTGRES_USER=${{ inputs.username }} \
+          --env POSTGRES_PASSWORD=${{ inputs.password }} \
+          --publish ${{ inputs.port }}:5432 \
+          --health-cmd pg_isready \
+          --health-interval 10s \
+          --health-timeout 5s \
+          --health-retries 5 \
+          --detach postgres:${{ inputs.version }} postgres -c "wal_level=logical"

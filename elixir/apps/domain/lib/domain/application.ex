@@ -22,6 +22,13 @@ defmodule Domain.Application do
       Domain.Repo,
       Domain.PubSub,
 
+      # WAL replication
+      %{
+        id: Domain.Events.ReplicationConnection,
+        start: {Domain.Events.ReplicationConnection, :start_link, [replication_instance()]},
+        restart: :transient
+      },
+
       # Infrastructure services
       # Note: only one of platform adapters will be actually started.
       Domain.GoogleCloudPlatform,
@@ -43,6 +50,11 @@ defmodule Domain.Application do
       # Observability
       Domain.Telemetry
     ]
+  end
+
+  defp replication_instance do
+    config = Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
+    struct(Domain.Events.ReplicationConnection, config)
   end
 
   defp configure_logger do
