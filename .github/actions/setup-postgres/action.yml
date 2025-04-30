@@ -38,4 +38,3 @@ runs:
           --health-timeout 5s \
           --health-retries 5 \
           --detach postgres:${{ inputs.version }} postgres -c "wal_level=logical"
-
