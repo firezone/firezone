@@ -23,6 +23,8 @@ tracing = { workspace = true }
 tun = { workspace = true }
 
 [dev-dependencies]
+bufferpool = { workspace = true }
+bytes = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]

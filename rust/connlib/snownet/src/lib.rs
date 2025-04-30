@@ -16,8 +16,8 @@ pub use allocation::RelaySocket;
 #[allow(deprecated)] // Rust bug: `expect` doesn't seem to work on imports?
 pub use node::{Answer, Offer};
 pub use node::{
-    Client, ClientNode, Credentials, EncryptedPacket, Error, Event, HANDSHAKE_TIMEOUT,
-    NoTurnServers, Node, Server, ServerNode, Transmit,
+    Client, ClientNode, Credentials, Error, Event, HANDSHAKE_TIMEOUT, NoTurnServers, Node, Server,
+    ServerNode, Transmit,
 };
 pub use stats::{ConnectionStats, NodeStats};
 

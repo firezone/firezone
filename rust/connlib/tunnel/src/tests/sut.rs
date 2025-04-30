@@ -16,6 +16,7 @@ use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
 use crate::utils::earliest;
 use crate::{ClientEvent, GatewayEvent, dns, messages::Interface};
+use bufferpool::BufferPool;
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
@@ -40,6 +41,8 @@ pub(crate) struct TunnelTest {
     client: Host<SimClient>,
     gateways: BTreeMap<GatewayId, Host<SimGateway>>,
     relays: BTreeMap<RelayId, Host<SimRelay>>,
+
+    buffer_pool: BufferPool<Vec<u8>>,
 
     drop_direct_client_traffic: bool,
     network: RoutingTable,
@@ -91,6 +94,7 @@ impl TunnelTest {
             client,
             gateways,
             relays,
+            buffer_pool: BufferPool::new(1024, "test"),
         };
 
         let mut buffered_transmits = BufferedTransmits::default();
@@ -155,9 +159,7 @@ impl TunnelTest {
                 )
                 .unwrap();
 
-                let transmit = state
-                    .client
-                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
+                let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
@@ -179,9 +181,7 @@ impl TunnelTest {
                 )
                 .unwrap();
 
-                let transmit = state
-                    .client
-                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
+                let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
@@ -203,9 +203,7 @@ impl TunnelTest {
                 )
                 .unwrap();
 
-                let transmit = state
-                    .client
-                    .exec_mut(|sim| Some(sim.encapsulate(packet, now)?.into_owned()));
+                let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
 
                 buffered_transmits.push_from(transmit, &state.client, now);
             }
@@ -459,7 +457,7 @@ impl TunnelTest {
                             Transmit {
                                 src: Some(src),
                                 dst,
-                                payload: payload.into(),
+                                payload: self.buffer_pool.pull_initialised(&payload),
                             },
                             relay,
                             now,
@@ -633,7 +631,7 @@ impl TunnelTest {
     /// It takes a [`Transmit`] and checks, which host accepts it, i.e. has configured the correct IP address.
     ///
     /// Currently, the network topology of our tests are a single subnet without NAT.
-    fn dispatch_transmit(&mut self, transmit: Transmit<'static>, at: Instant) {
+    fn dispatch_transmit(&mut self, transmit: Transmit, at: Instant) {
         let src = transmit
             .src
             .expect("`src` should always be set in these tests");

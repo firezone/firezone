@@ -2,7 +2,6 @@
 
 pub mod make;
 
-mod buffer_pool;
 mod fz_p2p_control;
 mod fz_p2p_control_slice;
 mod icmp_dest_unreachable;
@@ -13,7 +12,7 @@ mod nat64;
 #[allow(clippy::unwrap_used)]
 pub mod proptest;
 
-use buffer_pool::Buffer;
+use bufferpool::{Buffer, BufferPool};
 pub use etherparse::*;
 pub use fz_p2p_control::EventType as FzP2pEventType;
 pub use fz_p2p_control_slice::FzP2pControlSlice;
@@ -24,6 +23,7 @@ mod proptests;
 
 use anyhow::{Context as _, Result, bail};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::sync::LazyLock;
 
 use etherparse_ext::Icmpv4HeaderSliceMut;
 use etherparse_ext::Icmpv6EchoHeaderSliceMut;
@@ -31,6 +31,9 @@ use etherparse_ext::Ipv4HeaderSliceMut;
 use etherparse_ext::Ipv6HeaderSliceMut;
 use etherparse_ext::TcpHeaderSliceMut;
 use etherparse_ext::UdpHeaderSliceMut;
+
+static BUFFER_POOL: LazyLock<BufferPool<Vec<u8>>> =
+    LazyLock::new(|| BufferPool::new(MAX_FZ_PAYLOAD, "ip-packet"));
 
 /// The maximum size of an IP packet we can handle.
 pub const MAX_IP_SIZE: usize = 1280;
@@ -116,9 +119,16 @@ pub enum Layer4Protocol {
 }
 
 /// A buffer for reading a new [`IpPacket`] from the network.
-#[derive(Default)]
 pub struct IpPacketBuf {
-    inner: Buffer,
+    inner: Buffer<Vec<u8>>,
+}
+
+impl Default for IpPacketBuf {
+    fn default() -> Self {
+        Self {
+            inner: BUFFER_POOL.pull(),
+        }
+    }
 }
 
 impl IpPacketBuf {
@@ -200,7 +210,7 @@ impl std::fmt::Debug for IpPacket {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv4Packet {
-    buf: Buffer,
+    buf: Buffer<Vec<u8>>,
     start: usize,
     len: usize,
 }
@@ -280,7 +290,7 @@ impl ConvertibleIpv4Packet {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv6Packet {
-    buf: Buffer,
+    buf: Buffer<Vec<u8>>,
     start: usize,
     len: usize,
 }

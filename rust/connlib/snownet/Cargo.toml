@@ -6,6 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 boringtun = { workspace = true }
+bufferpool = { workspace = true }
 bytecodec = { workspace = true }
 bytes = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
@@ -14,7 +15,6 @@ hex = { workspace = true }
 hex-display = { workspace = true }
 ip-packet = { workspace = true }
 itertools = { workspace = true }
-lockfree-object-pool = { workspace = true }
 once_cell = { workspace = true }
 rand = { workspace = true }
 ringbuffer = { workspace = true }

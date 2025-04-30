@@ -1,0 +1,21 @@
+[package]
+name = "bufferpool"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+bytes = { workspace = true }
+lockfree-object-pool = { workspace = true }
+opentelemetry = { workspace = true, features = ["metrics"] }
+tracing = { workspace = true }
+
+[dev-dependencies]
+opentelemetry_sdk = { workspace = true, features = ["testing"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

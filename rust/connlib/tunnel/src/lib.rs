@@ -177,13 +177,13 @@ impl ClientTunnel {
                     for packet in packets {
                         let ecn = packet.ecn();
 
-                        let Some(packet) = self.role_state.handle_tun_input(packet, now) else {
+                        let Some(transmit) = self.role_state.handle_tun_input(packet, now) else {
                             self.role_state.handle_timeout(now);
                             continue;
                         };
 
                         self.io
-                            .send_network(packet.src(), packet.dst(), packet.payload(), ecn);
+                            .send_network(transmit.src, transmit.dst, &transmit.payload, ecn);
                     }
 
                     continue;
@@ -308,13 +308,13 @@ impl GatewayTunnel {
                     for packet in packets {
                         let ecn = packet.ecn();
 
-                        let Some(packet) = self.role_state.handle_tun_input(packet, now)? else {
+                        let Some(transmit) = self.role_state.handle_tun_input(packet, now)? else {
                             self.role_state.handle_timeout(now, Utc::now());
                             continue;
                         };
 
                         self.io
-                            .send_network(packet.src(), packet.dst(), packet.payload(), ecn);
+                            .send_network(transmit.src, transmit.dst, &transmit.payload, ecn);
                     }
 
                     continue;

@@ -1,5 +1,7 @@
 #![allow(clippy::unwrap_used)]
 
+use bufferpool::BufferPool;
+use bytes::BytesMut;
 use firezone_bin_shared::{TunDeviceManager, platform::udp_socket_factory};
 use gat_lending_iterator::LendingIterator as _;
 use ip_network::Ipv4Network;
@@ -18,6 +20,8 @@ async fn no_packet_loops_udp() {
 
     let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
     let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
+
+    let bufferpool = BufferPool::<BytesMut>::new(0, "test");
 
     let mut device_manager = TunDeviceManager::new(1280, 1).unwrap();
     let _tun = device_manager.make_tun().unwrap();
@@ -45,7 +49,9 @@ async fn no_packet_loops_udp() {
         .send(DatagramOut {
             src: None,
             dst: SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(141, 101, 90, 0), 3478)), // stun.cloudflare.com,
-            packet: &hex_literal::hex!("000100002112A4420123456789abcdef01234567").as_ref(),
+            packet: bufferpool.pull_initialised(
+                hex_literal::hex!("000100002112A4420123456789abcdef01234567").as_ref(),
+            ),
             segment_size: None,
             ecn: Ecn::NonEct,
         })

@@ -7,6 +7,7 @@ use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
+use bufferpool::{Buffer, BufferPool};
 use core::fmt;
 use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt;
@@ -17,7 +18,6 @@ use rand::{Rng, RngCore, SeedableRng, random};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
-use std::borrow::Cow;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
@@ -118,7 +118,7 @@ pub struct Node<T, TId, RId> {
     rate_limiter: Arc<RateLimiter>,
     /// Host and server-reflexive candidates that are shared between all connections.
     shared_candidates: CandidateSet,
-    buffered_transmits: VecDeque<Transmit<'static>>,
+    buffered_transmits: VecDeque<Transmit>,
 
     next_rate_limiter_reset: Option<Instant>,
 
@@ -128,9 +128,7 @@ pub struct Node<T, TId, RId> {
     pending_events: VecDeque<Event<TId>>,
 
     stats: NodeStats,
-    // All access to [`Node`] happens in the same thread, so we should never get contention which makes a spinlock ideal.
-    // This is wrapped in an `Arc` so we can use `pull_owned`.
-    buffer_pool: Arc<lockfree_object_pool::SpinLockObjectPool<Vec<u8>>>,
+    buffer_pool: BufferPool<Vec<u8>>,
 
     mode: T,
     rng: StdRng,
@@ -184,10 +182,7 @@ where
             allocations: Default::default(),
             connections: Default::default(),
             stats: Default::default(),
-            buffer_pool: Arc::new(lockfree_object_pool::SpinLockObjectPool::new(
-                || vec![0; ip_packet::MAX_FZ_PAYLOAD],
-                |v| v.fill(0),
-            )),
+            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
         }
     }
 
@@ -447,7 +442,7 @@ where
         connection: TId,
         packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<EncryptedPacket>, Error> {
+    ) -> Result<Option<Transmit>, Error> {
         let conn = self
             .connections
             .get_established_mut(&connection)
@@ -462,7 +457,8 @@ where
             return Ok(None);
         }
 
-        let mut buffer = self.buffer_pool.pull_owned();
+        let mut buffer = self.buffer_pool.pull();
+        buffer.resize(ip_packet::MAX_FZ_PAYLOAD, 0);
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
@@ -500,13 +496,16 @@ where
             | PeerSocket::PeerToRelay {
                 source,
                 dest: remote,
-            } => Ok(Some(EncryptedPacket {
-                src: Some(source),
-                dst: remote,
-                packet_start,
-                packet_len,
-                buffer,
-            })),
+            } => {
+                buffer.copy_within(packet_start..packet_end, 0);
+                buffer.truncate(packet_len);
+
+                Ok(Some(Transmit {
+                    src: Some(source),
+                    dst: remote,
+                    payload: buffer,
+                }))
+            }
             PeerSocket::RelayToPeer { relay, dest: peer }
             | PeerSocket::RelayToRelay { relay, dest: peer } => {
                 let Some(allocation) = self.allocations.get_mut(&relay) else {
@@ -519,12 +518,12 @@ where
                     return Ok(None);
                 };
 
-                Ok(Some(EncryptedPacket {
+                buffer.truncate(packet_end);
+
+                Ok(Some(Transmit {
                     src: None,
                     dst: encode_ok.socket,
-                    packet_start: 0,
-                    packet_len: packet_end,
-                    buffer,
+                    payload: buffer,
                 }))
             }
         }
@@ -616,7 +615,7 @@ where
 
     /// Returns buffered data that needs to be sent on the socket.
     #[must_use]
-    pub fn poll_transmit(&mut self) -> Option<Transmit<'static>> {
+    pub fn poll_transmit(&mut self) -> Option<Transmit> {
         let allocation_transmits = &mut self
             .allocations
             .values_mut()
@@ -679,6 +678,7 @@ where
                         realm,
                         now,
                         self.session_id.clone(),
+                        self.buffer_pool.clone(),
                     ));
 
                     tracing::info!(%rid, address = ?server, "Added new TURN server");
@@ -706,6 +706,7 @@ where
                         realm,
                         now,
                         self.session_id.clone(),
+                        self.buffer_pool.clone(),
                     ));
 
                     tracing::info!(%rid, address = ?server, "Replaced TURN server");
@@ -770,6 +771,7 @@ where
             },
             possible_sockets: BTreeSet::default(),
             span: info_span!(parent: tracing::Span::none(), "connection", %cid),
+            buffer_pool: self.buffer_pool.clone(),
         }
     }
 
@@ -1494,38 +1496,8 @@ pub enum Event<TId> {
     ConnectionClosed(TId),
 }
 
-pub struct EncryptedPacket {
-    pub(crate) src: Option<SocketAddr>,
-    pub(crate) dst: SocketAddr,
-    pub(crate) packet_start: usize,
-    pub(crate) packet_len: usize,
-    pub(crate) buffer: lockfree_object_pool::SpinLockOwnedReusable<Vec<u8>>,
-}
-
-impl EncryptedPacket {
-    pub fn to_transmit(&self) -> Transmit<'_> {
-        Transmit {
-            src: self.src,
-            dst: self.dst,
-            payload: Cow::Borrowed(self.payload()),
-        }
-    }
-
-    pub fn src(&self) -> Option<SocketAddr> {
-        self.src
-    }
-
-    pub fn dst(&self) -> SocketAddr {
-        self.dst
-    }
-
-    pub fn payload(&self) -> &[u8] {
-        &self.buffer[self.packet_start..(self.packet_start + self.packet_len)]
-    }
-}
-
 #[derive(Clone, PartialEq, PartialOrd, Eq, Ord)]
-pub struct Transmit<'a> {
+pub struct Transmit {
     /// The local interface from which this packet should be sent.
     ///
     /// If `None`, it can be sent from any interface.
@@ -1536,26 +1508,16 @@ pub struct Transmit<'a> {
     /// The remote the packet should be sent to.
     pub dst: SocketAddr,
     /// The data that should be sent.
-    pub payload: Cow<'a, [u8]>,
+    pub payload: Buffer<Vec<u8>>,
 }
 
-impl fmt::Debug for Transmit<'_> {
+impl fmt::Debug for Transmit {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Transmit")
             .field("src", &self.src)
             .field("dst", &self.dst)
             .field("len", &self.payload.len())
             .finish()
-    }
-}
-
-impl Transmit<'_> {
-    pub fn into_owned(self) -> Transmit<'static> {
-        Transmit {
-            src: self.src,
-            dst: self.dst,
-            payload: Cow::Owned(self.payload.into_owned()),
-        }
     }
 }
 
@@ -1624,6 +1586,7 @@ struct Connection<RId> {
     buffer: Vec<u8>,
 
     span: tracing::Span,
+    buffer_pool: BufferPool<Vec<u8>>,
 }
 
 enum ConnectionState<RId> {
@@ -1833,7 +1796,7 @@ where
         cid: TId,
         now: Instant,
         allocations: &mut BTreeMap<RId, Allocation>,
-        transmits: &mut VecDeque<Transmit<'static>>,
+        transmits: &mut VecDeque<Transmit>,
     ) where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + fmt::Display,
@@ -1913,7 +1876,13 @@ where
                             tracing::debug!(%num_buffered, "Flushing packets buffered during ICE");
 
                             transmits.extend(buffered.into_iter().flat_map(|packet| {
-                                make_owned_transmit(remote_socket, &packet, allocations, now)
+                                make_owned_transmit(
+                                    remote_socket,
+                                    &packet,
+                                    &self.buffer_pool,
+                                    allocations,
+                                    now,
+                                )
                             }));
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
@@ -1984,7 +1953,7 @@ where
                 transmits.push_back(Transmit {
                     src: Some(source),
                     dst,
-                    payload: Cow::Owned(stun_packet.into()),
+                    payload: self.buffer_pool.pull_initialised(&Vec::from(stun_packet)),
                 });
                 continue;
             };
@@ -2005,7 +1974,7 @@ where
             transmits.push_back(Transmit {
                 src: None,
                 dst: encode_ok.socket,
-                payload: Cow::Owned(data_channel_packet),
+                payload: self.buffer_pool.pull_initialised(&data_channel_packet),
             });
         }
     }
@@ -2014,7 +1983,7 @@ where
         &mut self,
         now: Instant,
         allocations: &mut BTreeMap<RId, Allocation>,
-        transmits: &mut VecDeque<Transmit<'static>>,
+        transmits: &mut VecDeque<Transmit>,
     ) {
         // Don't update wireguard timers until we are connected.
         let Some(peer_socket) = self.socket() else {
@@ -2038,7 +2007,13 @@ where
                 tracing::warn!(?e);
             }
             TunnResult::WriteToNetwork(b) => {
-                transmits.extend(make_owned_transmit(peer_socket, b, allocations, now));
+                transmits.extend(make_owned_transmit(
+                    peer_socket,
+                    b,
+                    &self.buffer_pool,
+                    allocations,
+                    now,
+                ));
             }
             TunnResult::WriteToTunnelV4(..) | TunnResult::WriteToTunnelV6(..) => {
                 panic!("Unexpected result from update_timers")
@@ -2072,7 +2047,7 @@ where
         &mut self,
         packet: &[u8],
         allocations: &mut BTreeMap<RId, Allocation>,
-        transmits: &mut VecDeque<Transmit<'static>>,
+        transmits: &mut VecDeque<Transmit>,
         now: Instant,
     ) -> ControlFlow<Result<(), Error>, IpPacket> {
         let _guard = self.span.enter();
@@ -2132,6 +2107,7 @@ where
                         transmits.extend(make_owned_transmit(
                             *peer_socket,
                             bytes,
+                            &self.buffer_pool,
                             allocations,
                             now,
                         ));
@@ -2143,6 +2119,7 @@ where
                             transmits.extend(make_owned_transmit(
                                 *peer_socket,
                                 packet,
+                                &self.buffer_pool,
                                 allocations,
                                 now,
                             ));
@@ -2165,7 +2142,7 @@ where
     fn force_handshake(
         &mut self,
         allocations: &mut BTreeMap<RId, Allocation>,
-        transmits: &mut VecDeque<Transmit<'static>>,
+        transmits: &mut VecDeque<Transmit>,
         now: Instant,
     ) where
         RId: Copy,
@@ -2188,7 +2165,13 @@ where
             .socket()
             .expect("cannot force handshake while not connected");
 
-        transmits.extend(make_owned_transmit(socket, bytes, allocations, now));
+        transmits.extend(make_owned_transmit(
+            socket,
+            bytes,
+            &self.buffer_pool,
+            allocations,
+            now,
+        ));
     }
 
     fn socket(&self) -> Option<PeerSocket<RId>> {
@@ -2212,9 +2195,10 @@ where
 fn make_owned_transmit<RId>(
     socket: PeerSocket<RId>,
     message: &[u8],
+    buffer_pool: &BufferPool<Vec<u8>>,
     allocations: &mut BTreeMap<RId, Allocation>,
     now: Instant,
-) -> Option<Transmit<'static>>
+) -> Option<Transmit>
 where
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug,
 {
@@ -2229,19 +2213,19 @@ where
         } => Transmit {
             src: Some(source),
             dst: remote,
-            payload: Cow::Owned(message.into()),
+            payload: buffer_pool.pull_initialised(message),
         },
         PeerSocket::RelayToPeer { relay, dest: peer }
         | PeerSocket::RelayToRelay { relay, dest: peer } => {
             let allocation = allocations.get_mut(&relay)?;
 
-            let mut buffer = channel_data_packet_buffer(message);
-            let encode_ok = allocation.encode_channel_data_header(peer, &mut buffer, now)?;
+            let mut channel_data = channel_data_packet_buffer(message);
+            let encode_ok = allocation.encode_channel_data_header(peer, &mut channel_data, now)?;
 
             Transmit {
                 src: None,
                 dst: encode_ok.socket,
-                payload: Cow::Owned(buffer),
+                payload: buffer_pool.pull_initialised(&channel_data),
             }
         }
     };

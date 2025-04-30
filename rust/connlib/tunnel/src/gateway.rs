@@ -38,7 +38,7 @@ pub struct GatewayState {
     tun_ip_config: Option<IpConfig>,
 
     buffered_events: VecDeque<GatewayEvent>,
-    buffered_transmits: VecDeque<Transmit<'static>>,
+    buffered_transmits: VecDeque<Transmit>,
 }
 
 #[derive(Debug)]
@@ -84,7 +84,7 @@ impl GatewayState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<snownet::EncryptedPacket>> {
+    ) -> Result<Option<snownet::Transmit>> {
         let dst = packet.destination();
 
         if !crate::is_peer(dst) {
@@ -411,7 +411,7 @@ impl GatewayState {
         }
     }
 
-    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit<'static>> {
+    pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
         self.buffered_transmits
             .pop_front()
             .or_else(|| self.node.poll_transmit())
@@ -497,15 +497,12 @@ fn encrypt_packet(
     cid: ClientId,
     node: &mut ServerNode<ClientId, RelayId>,
     now: Instant,
-) -> Result<Option<Transmit<'static>>> {
-    let Some(encrypted_packet) = node
+) -> Result<Option<Transmit>> {
+    let transmit = node
         .encapsulate(cid, packet, now)
-        .context("Failed to encapsulate packet")?
-    else {
-        return Ok(None);
-    };
+        .context("Failed to encapsulate packet")?;
 
-    Ok(Some(encrypted_packet.to_transmit().into_owned()))
+    Ok(transmit)
 }
 
 /// Opaque request struct for when a domain name needs to be resolved.

@@ -1,5 +1,6 @@
 use anyhow::{Context as _, Result};
-use bytes::Buf as _;
+use bufferpool::{Buffer, BufferPool};
+use bytes::{Buf as _, BytesMut};
 use firezone_logging::err_with_src;
 use gat_lending_iterator::LendingIterator;
 use ip_packet::Ecn;
@@ -10,7 +11,6 @@ use std::collections::HashMap;
 use std::io;
 use std::io::IoSliceMut;
 use std::ops::Deref;
-use std::sync::Arc;
 use std::{
     net::{IpAddr, SocketAddr},
     task::{Context, Poll, ready},
@@ -156,7 +156,7 @@ pub struct UdpSocket {
     src_by_dst_cache: Mutex<HashMap<IpAddr, IpAddr>>,
 
     /// A buffer pool for batches of incoming UDP packets.
-    buffer_pool: Arc<lockfree_object_pool::MutexObjectPool<Vec<u8>>>,
+    buffer_pool: BufferPool<Vec<u8>>,
 
     gro_batch_histogram: opentelemetry::metrics::Histogram<u64>,
     port: u16,
@@ -164,7 +164,8 @@ pub struct UdpSocket {
 
 impl UdpSocket {
     fn new(inner: tokio::net::UdpSocket) -> io::Result<Self> {
-        let port = inner.local_addr()?.port();
+        let socket_addr = inner.local_addr()?;
+        let port = socket_addr.port();
 
         Ok(UdpSocket {
             state: quinn_udp::UdpSocketState::new(quinn_udp::UdpSockRef::from(&inner))?,
@@ -172,10 +173,13 @@ impl UdpSocket {
             inner,
             source_ip_resolver: Box::new(|_| Ok(None)),
             src_by_dst_cache: Default::default(),
-            buffer_pool: Arc::new(lockfree_object_pool::MutexObjectPool::new(
-                || vec![0u8; u16::MAX as usize],
-                |_| {},
-            )),
+            buffer_pool: BufferPool::new(
+                u16::MAX as usize,
+                match socket_addr.ip() {
+                    IpAddr::V4(_) => "udp-socket-v4",
+                    IpAddr::V6(_) => "udp-socket-v6",
+                },
+            ),
             gro_batch_histogram: opentelemetry::global::meter("connlib")
                 .u64_histogram("system.network.packets.batch_count")
                 .with_description(
@@ -249,10 +253,10 @@ pub struct DatagramIn<'a> {
 }
 
 /// An outbound UDP datagram.
-pub struct DatagramOut<B> {
+pub struct DatagramOut {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
-    pub packet: B,
+    pub packet: Buffer<BytesMut>,
     pub segment_size: Option<usize>,
     pub ecn: Ecn,
 }
@@ -268,7 +272,7 @@ impl UdpSocket {
         } = self;
 
         // Stack-allocate arrays for buffers and meta. The size is implied from the const-generic default on `DatagramSegmentIter`.
-        let mut bufs = std::array::from_fn(|_| self.buffer_pool.pull_owned());
+        let mut bufs = std::array::from_fn(|_| self.buffer_pool.pull());
         let mut meta = std::array::from_fn(|_| quinn_udp::RecvMeta::default());
 
         loop {
@@ -302,14 +306,11 @@ impl UdpSocket {
         self.inner.poll_send_ready(cx)
     }
 
-    pub async fn send<B>(&self, datagram: DatagramOut<B>) -> Result<()>
-    where
-        B: Deref<Target: bytes::Buf>,
-    {
+    pub async fn send(&self, datagram: DatagramOut) -> Result<()> {
         let Some(transmit) = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
-            datagram.packet.deref().chunk(),
+            datagram.packet.chunk(),
             datagram.segment_size,
             datagram.ecn,
         )?
@@ -497,10 +498,7 @@ impl UdpSocket {
 /// When [`quinn_udp`] returns us the buffers, it will have populated the [`quinn_udp::RecvMeta`]s accordingly.
 /// Thus, our main job within this iterator is to loop over the `buffers` and `meta` pair-wise, inspect the `meta` and segment the data within the buffer accordingly.
 #[derive(derive_more::Debug)]
-pub struct DatagramSegmentIter<
-    const N: usize = { quinn_udp::BATCH_SIZE },
-    B = lockfree_object_pool::MutexOwnedReusable<Vec<u8>>,
-> {
+pub struct DatagramSegmentIter<const N: usize = { quinn_udp::BATCH_SIZE }, B = Buffer<Vec<u8>>> {
     #[debug(skip)]
     buffers: [B; N],
     metas: [quinn_udp::RecvMeta; N],
