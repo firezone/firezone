@@ -340,10 +340,6 @@ impl UdpSocket {
 
                     tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, %num_packets, %segment_size);
 
-                    if transmit.segment_size.is_some_and(|s| s > num_bytes) {
-                        transmit.segment_size = None;
-                    }
-
                     self.inner
                         .async_io(Interest::WRITABLE, || {
                             self.state.try_send((&self.inner).into(), &transmit)
