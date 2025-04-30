@@ -44,6 +44,10 @@ export default function Headless({ os }: { os: OS }) {
             Improves connection reliability by maintaining the order of IP packets.
           </ChangeItem>
         )}
+        <ChangeItem pull="8935">
+          Improves reliability for upload-intensive connections with many concurrent
+          DNS queries.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.6" date={new Date("2025-04-15")}>
         {os == OS.Linux && (

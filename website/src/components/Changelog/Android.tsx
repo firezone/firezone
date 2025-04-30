@@ -27,6 +27,10 @@ export default function Android() {
         <ChangeItem pull="8926">
           Rolls over to a new log-file as soon as logs are cleared.
         </ChangeItem>
+        <ChangeItem pull="8935">
+          Improves reliability for upload-intensive connections with many concurrent
+          DNS queries.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.7" date={new Date("2025-04-21")}>
         <ChangeItem pull="8798">
