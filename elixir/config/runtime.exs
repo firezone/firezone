@@ -36,7 +36,8 @@ if config_env() == :prod do
       ssl: compile_config!(:database_ssl_enabled),
       ssl_opts: compile_config!(:database_ssl_opts),
       parameters: compile_config!(:database_parameters),
-      username: compile_config!(:database_user),
+      username: compile_config!(:database_replication_user),
+      password: compile_config!(:database_replication_password),
       database: compile_config!(:database_name)
     ]
 
