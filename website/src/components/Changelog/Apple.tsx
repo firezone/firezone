@@ -38,6 +38,10 @@ export default function Apple() {
         <ChangeItem pull="8926">
           Rolls over to a new log-file as soon as logs are cleared.
         </ChangeItem>
+        <ChangeItem pull="8935">
+          Improves reliability for upload-intensive connections with many concurrent
+          DNS queries.
+        </ChangeItem>
       </Entry>
       <Entry version="1.4.12" date={new Date("2025-04-21")}>
         <ChangeItem pull="8798">
