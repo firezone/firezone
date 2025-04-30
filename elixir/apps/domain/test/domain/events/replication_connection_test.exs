@@ -7,7 +7,6 @@ defmodule Domain.Events.ReplicationConnectionTest do
   # Used to test callbacks, not used for live connection
   @mock_state %ReplicationConnection{
     schema: "test_schema",
-    connection_opts: [],
     step: :disconnected,
     publication_name: "test_pub",
     replication_slot_name: "test_slot",
@@ -19,14 +18,20 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
   # Used to test live connection
   setup_all do
-    config =
+    {config, connection_opts} =
       Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
+      |> Keyword.pop(:connection_opts)
 
     instance = struct(Domain.Events.ReplicationConnection, config)
 
+    init_state = %{
+      connection_opts: connection_opts,
+      instance: instance
+    }
+
     child_spec = %{
       id: Domain.Events.ReplicationConnection,
-      start: {Domain.Events.ReplicationConnection, :start_link, [instance]},
+      start: {Domain.Events.ReplicationConnection, :start_link, [init_state]},
       restart: :transient
     }
 
