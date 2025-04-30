@@ -15,7 +15,7 @@ impl UniquePacketBuffer {
             buffer: AllocRingBuffer::with_capacity_power_of_2(capacity),
             tag,
             num_dropped_packets: opentelemetry::global::meter("connlib")
-                .u64_counter("system.network.packet.dropped")
+                .u64_counter("network.packet.dropped")
                 .with_description(
                     "The number of packets which have been dropped due to buffer overflows.",
                 )
