@@ -295,6 +295,7 @@ defmodule Domain.Policies do
     Policy.Query.not_deleted()
     |> Policy.Query.by_actor_group_id(group_id)
     |> Repo.all()
+    # TODO: Use WAL here to avoid fetching all
     |> Enum.each(fn policy ->
       :ok = broadcast_to_actor(actor_id, access_event(action, policy))
     end)

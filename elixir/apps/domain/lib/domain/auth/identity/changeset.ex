@@ -64,10 +64,10 @@ defmodule Domain.Auth.Identity.Changeset do
   def changeset(changeset) do
     changeset
     |> unique_constraint(:provider_identifier,
-      name: :auth_identities_account_id_provider_id_provider_identifier_idx
+      name: :identities_account_id_provider_id_provider_identifier_idx
     )
     |> unique_constraint(:email,
-      name: :auth_identities_acct_id_provider_id_email_prov_ident_unique_idx
+      name: :identities_acct_id_provider_id_email_prov_ident_unique_idx
     )
   end
 

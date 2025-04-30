@@ -26,11 +26,13 @@ defmodule Domain.Actors.Membership.Sync do
          {:ok, {insert, delete}} <- plan_memberships_update(tuples, memberships),
          deleted_stats = delete_memberships(delete),
          {:ok, inserted} <- insert_memberships(provider, insert) do
+      # TODO: Use logical decoding to process events
       :ok =
         Enum.each(insert, fn {group_id, actor_id} ->
           Actors.broadcast_membership_event(:create, actor_id, group_id)
         end)
 
+      # TODO: Use logical decoding to process events
       :ok =
         Enum.each(delete, fn {group_id, actor_id} ->
           Actors.broadcast_membership_event(:delete, actor_id, group_id)

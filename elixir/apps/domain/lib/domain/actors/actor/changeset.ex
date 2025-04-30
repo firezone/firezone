@@ -4,7 +4,7 @@ defmodule Domain.Actors.Actor.Changeset do
   alias Domain.Actors
   alias Domain.Actors.Actor
 
-  def allowed_updates, do: %{fields: ~w[type name]a}
+  def allowed_updates, do: %{fields: ~w[type name emails]a}
   def allowed_updates(%Actor{last_synced_at: nil}), do: allowed_updates()
   def allowed_updates(%Actor{}), do: %{fields: ~w[type]a}
 
@@ -18,6 +18,9 @@ defmodule Domain.Actors.Actor.Changeset do
     |> put_change(:account_id, account_id)
     |> cast_assoc(:memberships,
       with: &Actors.Membership.Changeset.for_actor(account_id, &1, &2)
+    )
+    |> cast_assoc(:emails,
+      with: &Actors.Email.Changeset.changeset(account_id, &1, &2)
     )
   end
 
