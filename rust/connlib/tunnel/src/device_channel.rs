@@ -41,6 +41,8 @@ impl Device {
         let n = std::task::ready!(tun.poll_recv_many(cx, buf, max));
 
         for packet in &buf[..n] {
+            tracing::trace!(target: "wire::dev::recv", ?packet);
+
             if tracing::event_enabled!(target: "wire::dns::qry", Level::TRACE) {
                 if let Some(query) = parse_dns_query(packet) {
                     tracing::trace!(target: "wire::dns::qry", ?query);
@@ -50,8 +52,6 @@ impl Device {
             if packet.is_fz_p2p_control() {
                 tracing::warn!("Packet matches heuristics of FZ-internal p2p control protocol");
             }
-
-            tracing::trace!(target: "wire::dev::recv", ?packet);
         }
 
         Poll::Ready(n)
