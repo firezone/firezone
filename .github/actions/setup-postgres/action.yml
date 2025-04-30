@@ -32,7 +32,7 @@ runs:
           --name postgres \
           --env POSTGRES_USER=${{ inputs.username }} \
           --env POSTGRES_PASSWORD=${{ inputs.password }} \
-          --ports ${{ inputs.port }}:5432 \
+          --port ${{ inputs.port }}:5432 \
           --health-cmd pg_isready \
           --health-interval 10s \
           --health-timeout 5s \
