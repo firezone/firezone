@@ -1,4 +1,7 @@
+use std::time::Duration;
+
 use opentelemetry::KeyValue;
+use opentelemetry_sdk::{Resource, resource::TelemetryResourceDetector};
 
 pub mod attr {
     use ip_packet::IpPacket;
@@ -6,6 +9,27 @@ pub mod attr {
     use std::{io, net::SocketAddr};
 
     use super::*;
+
+    #[macro_export]
+    macro_rules! service_name {
+        () => {
+            ::opentelemetry::KeyValue::new("service.name", env!("CARGO_PKG_NAME"))
+        };
+    }
+
+    #[macro_export]
+    macro_rules! service_version {
+        () => {
+            ::opentelemetry::KeyValue::new("service.version", env!("CARGO_PKG_VERSION"))
+        };
+    }
+
+    pub use service_name;
+    pub use service_version;
+
+    pub fn service_instance_id(firezone_id: String) -> KeyValue {
+        KeyValue::new("service.instance.id", firezone_id)
+    }
 
     pub fn network_transport_udp() -> KeyValue {
         KeyValue::new("network.transport", "udp")
@@ -79,4 +103,12 @@ pub mod metrics {
             .with_unit("{packet}")
             .init()
     }
+}
+
+pub fn default_resource_with<const N: usize>(attributes: [KeyValue; N]) -> Resource {
+    Resource::from_detectors(
+        Duration::from_secs(0),
+        vec![Box::new(TelemetryResourceDetector)],
+    )
+    .merge(&Resource::new(attributes))
 }

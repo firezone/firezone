@@ -2475,6 +2475,7 @@ dependencies = [
  "anyhow",
  "ip-packet",
  "opentelemetry",
+ "opentelemetry_sdk",
  "parking_lot",
  "reqwest",
  "sentry",

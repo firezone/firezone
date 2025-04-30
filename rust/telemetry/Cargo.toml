@@ -8,6 +8,7 @@ license = { workspace = true }
 anyhow = { workspace = true }
 ip-packet = { workspace = true }
 opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
 parking_lot = { workspace = true }
 reqwest = { workspace = true }
 sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls", "tracing"] }
