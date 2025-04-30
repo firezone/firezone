@@ -14,13 +14,7 @@ impl UniquePacketBuffer {
         Self {
             buffer: AllocRingBuffer::with_capacity_power_of_2(capacity),
             tag,
-            num_dropped_packets: opentelemetry::global::meter("connlib")
-                .u64_counter("system.network.packet.dropped")
-                .with_description(
-                    "The number of packets which have been dropped due to buffer overflows.",
-                )
-                .with_unit("{packet}")
-                .init(),
+            num_dropped_packets: crate::otel::metrics::network_packet_dropped(),
         }
     }
 
@@ -50,6 +44,7 @@ impl UniquePacketBuffer {
                     crate::otel::network_type_for_packet(&new),
                     crate::otel::network_io_direction_transmit(),
                     KeyValue::new("system.buffer.pool.name", self.tag),
+                    crate::otel::error_type("BufferFull"),
                 ],
             );
         }

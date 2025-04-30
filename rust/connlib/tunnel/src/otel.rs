@@ -1,7 +1,7 @@
 use std::{io, net::SocketAddr};
 
 use ip_packet::IpPacket;
-use opentelemetry::KeyValue;
+use opentelemetry::{KeyValue, Value};
 
 pub fn network_transport_udp() -> KeyValue {
     KeyValue::new("network.transport", "udp")
@@ -58,7 +58,23 @@ pub fn io_error_code(e: &io::Error) -> KeyValue {
 }
 
 pub fn io_error_type(e: &io::Error) -> KeyValue {
-    KeyValue::new("error.type", format!("io::ErrorKind::{:?}", e.kind()))
+    error_type(format!("io::ErrorKind::{:?}", e.kind()))
+}
+
+pub fn error_type(ty: impl Into<Value>) -> KeyValue {
+    KeyValue::new("error.type", ty)
+}
+
+pub mod metrics {
+    use opentelemetry::metrics::Counter;
+
+    pub fn network_packet_dropped() -> Counter<u64> {
+        opentelemetry::global::meter("connlib")
+            .u64_counter("network.packet.dropped")
+            .with_description("Count of packets that are dropped or discarded")
+            .with_unit("{packet}")
+            .init()
+    }
 }
 
 #[cfg(test)]
