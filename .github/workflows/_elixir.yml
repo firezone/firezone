@@ -121,17 +121,6 @@ jobs:
       MIX_ENV: dev
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    services:
-      postgres:
-        image: postgres:15
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready --health-interval 10s --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-postgres
@@ -178,17 +167,6 @@ jobs:
       fail-fast: false
       matrix:
         MIX_TEST_PARTITION: [1]
-    services:
-      postgres:
-        image: postgres:15
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready --health-interval 10s --health-timeout 5s
-          --health-retries 5
       vault:
         image: vault:1.12.2
         env:

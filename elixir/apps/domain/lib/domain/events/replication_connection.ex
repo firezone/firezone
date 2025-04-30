@@ -134,8 +134,7 @@ defmodule Domain.Events.ReplicationConnection do
       ) do
     tables =
       state.table_subscriptions
-      |> Enum.map(fn table -> "#{state.schema}.#{table}" end)
-      |> Enum.join(",")
+      |> Enum.map_join(",", fn table -> "#{state.schema}.#{table}" end)
 
     query = "CREATE PUBLICATION #{state.publication_name} FOR TABLE #{tables}"
     {:query, query, %{state | step: :check_replication_slot}}
