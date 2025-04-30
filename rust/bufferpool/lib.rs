@@ -70,16 +70,15 @@ pub struct Buffer<B> {
 }
 
 impl Buffer<Vec<u8>> {
-    /// Truncates N bytes from the front of the buffer.
-    pub fn truncate_front(&mut self, num: usize) {
-        let current_len = self.len();
+    /// Shifts the start of the buffer to the right by N bytes, returning the bytes removed from the front of the buffer.
+    pub fn shift_start_right(&mut self, num: usize) -> Vec<u8> {
+        let num_to_end = self.split_off(num);
 
-        self.copy_within(num.., 0);
-        self.truncate(current_len - num);
+        std::mem::replace(&mut self.inner.inner, num_to_end)
     }
 
-    /// Moves the buffer back by N bytes, returning the new space at the front of the buffer.
-    pub fn move_back(&mut self, num: usize) -> &mut [u8] {
+    /// Shifts the start of the buffer to the left by N bytes, returning a slice to the added bytes at the front of the buffer.
+    pub fn shift_start_left(&mut self, num: usize) -> &mut [u8] {
         let current_len = self.len();
 
         self.resize(current_len + num, 0);
@@ -273,6 +272,30 @@ mod tests {
         let buffer = pool.pull_initialised(b"hello world");
 
         assert_eq!(buffer.len(), 11);
+    }
+
+    #[test]
+    fn shift_start_right() {
+        let pool = BufferPool::<Vec<u8>>::new(1024, "test");
+
+        let mut buffer = pool.pull_initialised(b"hello world");
+
+        let front = buffer.shift_start_right(5);
+
+        assert_eq!(front, b"hello");
+        assert_eq!(&*buffer, b" world");
+    }
+
+    #[test]
+    fn shift_start_left() {
+        let pool = BufferPool::<Vec<u8>>::new(1024, "test");
+
+        let mut buffer = pool.pull_initialised(b"hello world");
+
+        let front = buffer.shift_start_left(5);
+        front.copy_from_slice(b"12345");
+
+        assert_eq!(&*buffer, b"12345hello world");
     }
 
     #[tokio::test]

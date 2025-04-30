@@ -115,7 +115,7 @@ impl SimRelay {
     ) -> Option<Transmit> {
         let (port, peer) = self.sut.handle_client_input(&payload, client, now)?;
 
-        payload.truncate_front(4);
+        payload.shift_start_right(4);
 
         // The `dst` of the relayed packet is what TURN calls a "peer".
         let dst = peer.into_socket();
@@ -163,7 +163,7 @@ impl SimRelay {
         let (client, channel) = self.sut.handle_peer_traffic(&payload, peer, port)?;
 
         let data_len = payload.len() as u16;
-        let header = payload.move_back(4);
+        let header = payload.shift_start_left(4);
 
         firezone_relay::ChannelData::encode_header_to_slice(channel, data_len, header);
 
