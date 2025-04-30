@@ -32,11 +32,10 @@ runs:
           --name postgres \
           --env POSTGRES_USER=${{ inputs.username }} \
           --env POSTGRES_PASSWORD=${{ inputs.password }} \
-          --port ${{ inputs.port }}:5432 \
+          --publish ${{ inputs.port }}:5432 \
           --health-cmd pg_isready \
           --health-interval 10s \
           --health-timeout 5s \
           --health-retries 5 \
-          -d postgres:${{ inputs.version }} \
-          -c "wal_level=logical"
+          --detach postgres:${{ inputs.version }} postgres -c "wal_level=logical"
 
