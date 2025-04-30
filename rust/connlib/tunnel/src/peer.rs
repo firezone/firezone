@@ -147,6 +147,11 @@ impl ClientOnGateway {
         for (proxy_ip, real_ip) in ip_maps {
             tracing::debug!(%name, %proxy_ip, %real_ip);
 
+            if self.nat_table.has_entry_for_inside(*proxy_ip) {
+                tracing::debug!(%name, %proxy_ip, %real_ip, "Skipping DNS resource NAT entry because we have open NAT sessions for it");
+                continue;
+            }
+
             self.permanent_translations
                 .insert(*proxy_ip, TranslationState::new(resource_id, real_ip));
         }
