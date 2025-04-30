@@ -14,24 +14,11 @@ jobs:
       MIX_ENV: test
       POSTGRES_HOST: localhost
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    services:
-      postgres:
-        image: postgres:15
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-        options: >-
-          --health-cmd pg_isready --health-interval 10s --health-timeout 5s
-          --health-retries 5
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Set WAL level
-        run: |
-          # Set wal_level=logical here since we can't override command line args for GitHub actions service containers
-          docker exec $(docker ps -q -f name=postgres) /bin/sh -c 'echo "wal_level = logical" >> /var/lib/postgresql/data/postgresql.conf'
-          docker exec $(docker ps -q -f name=postgres) /bin/sh -c 'pg_ctl -D /var/lib/postgresql/data restart'
+      - uses ./.github/actions/setup-postgres
+        with:
+          version: 15
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
@@ -147,11 +134,9 @@ jobs:
           --health-retries 5
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Set WAL level
-        run: |
-          # Set wal_level=logical here since we can't override command line args for GitHub actions service containers
-          docker exec $(docker ps -q -f name=postgres) /bin/sh -c 'echo "wal_level = logical" >> /var/lib/postgresql/data/postgresql.conf'
-          docker exec $(docker ps -q -f name=postgres) /bin/sh -c 'pg_ctl -D /var/lib/postgresql/data restart'
+      - uses ./.github/actions/setup-postgres
+        with:
+          version: 15
       - uses: ./.github/actions/setup-elixir
         with:
           mix_env: ${{ env.MIX_ENV }}
@@ -214,11 +199,9 @@ jobs:
         options: --cap-add=IPC_LOCK
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - name: Set WAL level
-        run: |
-          # Set wal_level=logical here since we can't override command line args for GitHub actions service containers
-          docker exec $(docker ps -q -f name=postgres) /bin/sh -c 'echo "wal_level = logical" >> /var/lib/postgresql/data/postgresql.conf'
-          docker exec $(docker ps -q -f name=postgres) /bin/sh -c 'pg_ctl -D /var/lib/postgresql/data restart'
+      - uses ./.github/actions/setup-postgres
+        with:
+          version: 15
       - uses: nanasess/setup-chromedriver@e93e57b843c0c92788f22483f1a31af8ee48db25 # v2.3.0
       - run: |
           export DISPLAY=:99
