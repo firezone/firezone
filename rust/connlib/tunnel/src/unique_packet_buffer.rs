@@ -48,6 +48,7 @@ impl UniquePacketBuffer {
                     crate::otel::network_type_for_packet(&new),
                     crate::otel::network_io_direction_transmit(),
                     KeyValue::new("system.buffer.pool.name", self.tag),
+                    KeyValue::new("error.type", "buffer-full"),
                 ],
             );
         }
