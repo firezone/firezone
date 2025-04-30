@@ -153,7 +153,10 @@ enum DnsResourceNatState {
     Pending {
         sent_at: Instant,
         buffered_packets: UniquePacketBuffer,
+
+        is_recreating: bool,
     },
+    Recreating,
     Confirmed,
 }
 
@@ -164,6 +167,7 @@ impl DnsResourceNatState {
                 buffered_packets, ..
             } => buffered_packets.len(),
             DnsResourceNatState::Confirmed => 0,
+            DnsResourceNatState::Recreating => 0,
         }
     }
 
@@ -172,6 +176,7 @@ impl DnsResourceNatState {
             DnsResourceNatState::Pending {
                 buffered_packets, ..
             } => Some(buffered_packets.into_iter()),
+            DnsResourceNatState::Recreating => None,
             DnsResourceNatState::Confirmed => None,
         };
 
@@ -390,24 +395,42 @@ impl ClientState {
                     v.insert(DnsResourceNatState::Pending {
                         sent_at: now,
                         buffered_packets,
+
+                        is_recreating: false,
                     });
                 }
-                Entry::Occupied(mut o) => match o.get_mut() {
-                    DnsResourceNatState::Confirmed => continue,
-                    DnsResourceNatState::Pending {
-                        sent_at,
-                        buffered_packets,
-                    } => {
-                        let time_since_last_attempt = now.duration_since(*sent_at);
-                        buffered_packets.extend(packets_for_domain);
+                Entry::Occupied(mut o) => {
+                    let state = o.get_mut();
 
-                        if time_since_last_attempt < Duration::from_secs(2) {
-                            continue;
+                    match state {
+                        DnsResourceNatState::Confirmed => continue,
+                        DnsResourceNatState::Recreating => {
+                            let mut buffered_packets =
+                                UniquePacketBuffer::with_capacity_power_of_2(5); // 2^5 = 32
+                            buffered_packets.extend(packets_for_domain);
+
+                            *state = DnsResourceNatState::Pending {
+                                sent_at: now,
+                                buffered_packets,
+                                is_recreating: true,
+                            };
                         }
+                        DnsResourceNatState::Pending {
+                            sent_at,
+                            buffered_packets,
+                            ..
+                        } => {
+                            let time_since_last_attempt = now.duration_since(*sent_at);
+                            buffered_packets.extend(packets_for_domain);
 
-                        *sent_at = now;
+                            if time_since_last_attempt < Duration::from_secs(2) {
+                                continue;
+                            }
+
+                            *sent_at = now;
+                        }
                     }
-                },
+                }
             }
 
             let packet = match p2p_control::dns_resource_nat::assigned_ips(
@@ -434,33 +457,32 @@ impl ClientState {
         }
     }
 
-    /// Clears the DNS resource NAT state for a given domain.
+    /// Recreate the DNS resource NAT state for a given domain.
     ///
-    /// Once cleared, this will trigger the client to submit another `AssignedIp`s event to the Gateway.
+    /// This will trigger the client to submit another `AssignedIp`s event to the Gateway.
     /// On the Gateway, such an event causes a new DNS resolution.
     ///
     /// We call this function every time a client issues a DNS query for a certain domain.
     /// Coupling this behaviour together allows a client to refresh the DNS resolution of a DNS resource on the Gateway
     /// through local DNS resolutions.
-    fn clear_dns_resource_nat_for_domain(&mut self, message: &dns_types::Response) {
-        let mut any_deleted = false;
-
-        self.dns_resource_nat_by_gateway
-            .retain(|(_, candidate), state| {
-                let DnsResourceNatState::Confirmed = state else {
-                    return true;
-                };
-
-                if candidate == &message.domain() {
-                    any_deleted = true;
-                    return false;
+    ///
+    /// We model the [`DnsResourceNatState::Recreating`] state differently from just removing the entry to allow packets
+    /// to continue flowing to the Gateway while the DNS resource NAT is being recreated.
+    /// In most cases, the DNS records will not change and as such, performing this will not interrupt the flow of packets.
+    fn recreate_dns_resource_nat_for_domain(&mut self, message: &dns_types::Response) {
+        for state in self
+            .dns_resource_nat_by_gateway
+            .iter_mut()
+            .filter_map(|((_, candidate), b)| (candidate == &message.domain()).then_some(b))
+        {
+            match state {
+                DnsResourceNatState::Pending { .. } => continue,
+                DnsResourceNatState::Recreating => continue,
+                DnsResourceNatState::Confirmed => {
+                    tracing::debug!(domain = %message.domain(), "Re-creating DNS resource NAT");
+                    *state = DnsResourceNatState::Recreating;
                 }
-
-                true
-            });
-
-        if any_deleted {
-            tracing::debug!(domain = %message.domain(), "Cleared DNS resource NAT");
+            }
         }
     }
 
@@ -632,7 +654,9 @@ impl ClientState {
 
         if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst) {
             if let Some(DnsResourceNatState::Pending {
-                buffered_packets, ..
+                buffered_packets,
+                is_recreating: false, // Important: Only buffer if this is the first time we are setting up the DNS resource NAT (i.e. if we are not recreating it).
+                ..
             }) = self
                 .dns_resource_nat_by_gateway
                 .get_mut(&(peer.id(), domain.clone()))
@@ -1203,7 +1227,7 @@ impl ClientState {
 
         match self.stub_resolver.handle(&message) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.clear_dns_resource_nat_for_domain(&response);
+                self.recreate_dns_resource_nat_for_domain(&response);
                 self.update_dns_resource_nat(now, iter::empty());
 
                 unwrap_or_debug!(
@@ -1280,7 +1304,7 @@ impl ClientState {
                     return;
                 }
 
-                self.clear_dns_resource_nat_for_domain(&response);
+                self.recreate_dns_resource_nat_for_domain(&response);
                 self.update_dns_resource_nat(now, iter::empty());
 
                 let maybe_packet = ip_packet::make::udp_packet(
@@ -1354,7 +1378,7 @@ impl ClientState {
 
         match self.stub_resolver.handle(&query.message) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.clear_dns_resource_nat_for_domain(&response);
+                self.recreate_dns_resource_nat_for_domain(&response);
                 self.update_dns_resource_nat(now, iter::empty());
 
                 unwrap_or_debug!(
