@@ -1,14 +1,26 @@
 use ip_packet::IpPacket;
+use opentelemetry::KeyValue;
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 pub struct UniquePacketBuffer {
     buffer: AllocRingBuffer<IpPacket>,
+    tag: &'static str,
+
+    num_dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
 
 impl UniquePacketBuffer {
-    pub fn with_capacity_power_of_2(capacity: usize) -> Self {
+    pub fn with_capacity_power_of_2(capacity: usize, tag: &'static str) -> Self {
         Self {
             buffer: AllocRingBuffer::with_capacity_power_of_2(capacity),
+            tag,
+            num_dropped_packets: opentelemetry::global::meter("connlib")
+                .u64_counter("system.network.packet.dropped")
+                .with_description(
+                    "The number of packets which have been dropped due to buffer overflows.",
+                )
+                .with_unit("{packet}")
+                .init(),
         }
     }
 
@@ -29,9 +41,18 @@ impl UniquePacketBuffer {
             return;
         }
 
-        let num_buffered = self.len() + 1;
+        tracing::debug!(tag = %self.tag, is_full = %self.buffer.is_full(), packet = ?new, "Buffering packet");
 
-        tracing::debug!(%num_buffered, packet = ?new, "Buffering packet");
+        if self.buffer.is_full() {
+            self.num_dropped_packets.add(
+                1,
+                &[
+                    crate::otel::network_type_for_packet(&new),
+                    crate::otel::network_io_direction_transmit(),
+                    KeyValue::new("system.buffer.pool.name", self.tag),
+                ],
+            );
+        }
 
         self.buffer.push(new);
     }

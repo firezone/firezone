@@ -201,7 +201,10 @@ impl PendingFlow {
     fn new(now: Instant, trigger: ConnectionTrigger) -> Self {
         let mut this = Self {
             last_intent_sent_at: now,
-            resource_packets: UniquePacketBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
+            resource_packets: UniquePacketBuffer::with_capacity_power_of_2(
+                Self::CAPACITY_POW_2,
+                "pending-flow-resources",
+            ),
             udp_dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
             tcp_dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
         };
@@ -389,7 +392,8 @@ impl ClientState {
                 Entry::Vacant(v) => {
                     self.peers
                         .add_ips_with_resource(gid, proxy_ips.iter().copied(), rid);
-                    let mut buffered_packets = UniquePacketBuffer::with_capacity_power_of_2(5); // 2^5 = 32
+                    let mut buffered_packets =
+                        UniquePacketBuffer::with_capacity_power_of_2(5, "dns-resource-nat-initial"); // 2^5 = 32
                     buffered_packets.extend(packets_for_domain);
 
                     v.insert(DnsResourceNatState::Pending {
@@ -405,8 +409,10 @@ impl ClientState {
                     match state {
                         DnsResourceNatState::Confirmed => continue,
                         DnsResourceNatState::Recreating => {
-                            let mut buffered_packets =
-                                UniquePacketBuffer::with_capacity_power_of_2(5); // 2^5 = 32
+                            let mut buffered_packets = UniquePacketBuffer::with_capacity_power_of_2(
+                                5, // 2^5 = 32
+                                "dns-resource-nat-recreating",
+                            );
                             buffered_packets.extend(packets_for_domain);
 
                             *state = DnsResourceNatState::Pending {
