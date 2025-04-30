@@ -75,6 +75,8 @@ pub struct ClientOnGateway {
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
+
+    num_dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
 
 impl ClientOnGateway {
@@ -93,6 +95,7 @@ impl ClientOnGateway {
             nat_table: Default::default(),
             buffered_events: Default::default(),
             internet_resource_enabled: false,
+            num_dropped_packets: crate::otel::metrics::network_packet_dropped(),
         }
     }
 
@@ -353,6 +356,15 @@ impl ClientOnGateway {
                 "Inbound packet is not allowed, perhaps from an old client session? error = {e:#}"
             );
 
+            self.num_dropped_packets.add(
+                1,
+                &[
+                    crate::otel::network_type_for_packet(&packet),
+                    crate::otel::network_io_direction_receive(),
+                    crate::otel::error_type(e.root_cause().to_string()),
+                ],
+            );
+
             return Ok(None);
         }
 
@@ -379,6 +391,15 @@ impl ClientOnGateway {
                 tracing::debug!(
                     ?packet,
                     "Expired NAT session for inbound packet of DNS resource; dropping"
+                );
+
+                self.num_dropped_packets.add(
+                    1,
+                    &[
+                        crate::otel::network_type_for_packet(&packet),
+                        crate::otel::network_io_direction_receive(),
+                        crate::otel::error_type("ExpiredNatSession"),
+                    ],
                 );
 
                 return Ok(None);
