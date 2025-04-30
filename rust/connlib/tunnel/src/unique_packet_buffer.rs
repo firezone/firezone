@@ -16,9 +16,7 @@ impl UniquePacketBuffer {
             tag,
             num_dropped_packets: opentelemetry::global::meter("connlib")
                 .u64_counter("network.packet.dropped")
-                .with_description(
-                    "The number of packets which have been dropped due to buffer overflows.",
-                )
+                .with_description("Count of packets that are dropped or discarded")
                 .with_unit("{packet}")
                 .init(),
         }
