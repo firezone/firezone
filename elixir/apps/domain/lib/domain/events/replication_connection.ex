@@ -120,6 +120,8 @@ defmodule Domain.Events.ReplicationConnection do
   end
 
   def handle_result([%Postgrex.Result{}], %__MODULE__{step: :start_replication_slot} = state) do
+    Logger.info("Starting replication slot", state: inspect(state))
+
     query =
       "START_REPLICATION SLOT \"#{state.replication_slot_name}\" LOGICAL 0/0  (proto_version '#{state.proto_version}', publication_names '#{state.publication_name}')"
 

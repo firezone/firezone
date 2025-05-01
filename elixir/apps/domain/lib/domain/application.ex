@@ -26,7 +26,6 @@ defmodule Domain.Application do
       # Note: only one of platform adapters will be actually started.
       Domain.GoogleCloudPlatform,
       Domain.Cluster,
-      {Oban, Application.fetch_env!(:domain, Oban)},
 
       # Application
       Domain.Tokens,
@@ -41,11 +40,22 @@ defmodule Domain.Application do
       Domain.ComponentVersions,
 
       # Observability
-      Domain.Telemetry,
+      Domain.Telemetry
+    ] ++ background_children()
+  end
 
-      # WAL replication
-      replication_child_spec()
-    ]
+  defp background_children do
+    if domain_node?() do
+      [
+        # Job system
+        {Oban, Application.fetch_env!(:domain, Oban)},
+
+        # WAL replication
+        replication_child_spec()
+      ]
+    else
+      []
+    end
   end
 
   defp replication_child_spec do
@@ -97,5 +107,14 @@ defmodule Domain.Application do
       "debug" -> :debug
       _ -> :info
     end
+  end
+
+  defp domain_node? do
+    # The web and api applications also start Domain's supervision tree so that they may
+    # use the same database connection pool and other shared resources. We want to restrict
+    # some children to only run in the domain node.
+    # For now, we use BACKGROUND_JOBS_ENABLED to determine if we are running in the domain node.
+    # We could also use the node's name, but this doesn't work as well in dev/test environments.
+    Application.get_env(:domain, :background_jobs_enabled, false)
   end
 end
