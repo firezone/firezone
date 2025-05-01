@@ -18,15 +18,13 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
   # Used to test live connection
   setup_all do
-    {config, connection_opts} =
+    {connection_opts, config} =
       Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
       |> Keyword.pop(:connection_opts)
 
-    instance = struct(Domain.Events.ReplicationConnection, config)
-
     init_state = %{
       connection_opts: connection_opts,
-      instance: instance
+      instance: struct(Domain.Events.ReplicationConnection, config)
     }
 
     child_spec = %{
