@@ -323,8 +323,9 @@ impl UdpSocket {
         match transmit.segment_size {
             Some(segment_size) => {
                 let chunk_size = self.calculate_chunk_size(segment_size);
+                let num_batches = transmit.contents.len() / chunk_size;
 
-                for mut transmit in transmit
+                for (idx, chunk) in transmit
                     .contents
                     .chunks(chunk_size)
                     .map(|contents| Transmit {
@@ -334,22 +335,20 @@ impl UdpSocket {
                         segment_size: Some(segment_size),
                         src_ip: transmit.src_ip,
                     })
+                    .enumerate()
                 {
-                    let num_bytes = transmit.contents.len();
+                    let num_bytes = chunk.contents.len();
                     let num_packets = num_bytes / segment_size;
+                    let batch_num = idx + 1;
 
-                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, %num_packets, %segment_size);
-
-                    if transmit.segment_size.is_some_and(|s| s > num_bytes) {
-                        transmit.segment_size = None;
-                    }
+                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?chunk.ecn, %num_packets, %segment_size);
 
                     self.inner
                         .async_io(Interest::WRITABLE, || {
-                            self.state.try_send((&self.inner).into(), &transmit)
+                            self.state.try_send((&self.inner).into(), &chunk)
                         })
                         .await
-                        .with_context(|| format!("Failed to send datagram-batch with segment_size {segment_size} and total length {num_bytes} to {dst}"))?;
+                        .with_context(|| format!("Failed to send datagram-batch {batch_num}/{num_batches} with segment_size {segment_size} and total length {num_bytes} to {dst}"))?;
                 }
             }
             None => {

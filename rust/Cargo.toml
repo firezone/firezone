@@ -122,7 +122,7 @@ phoenix-channel = { path = "phoenix-channel" }
 png = "0.17.16"
 proptest = "1.6.0"
 proptest-state-machine = "0.3.1"
-quinn-udp = { version = "0.5.8", features = ["fast-apple-datapath"] }
+quinn-udp = { version = "0.5.12", features = ["fast-apple-datapath"] }
 rand = "0.8.5"
 rand_core = "0.6.4"
 rangemap = "1.5.1"
@@ -215,7 +215,6 @@ ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "mas
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.26" } # Waiting for release.
 softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
-quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
