@@ -79,7 +79,7 @@ defmodule Domain.Application do
 
   # TODO: Configure Oban workers to only run on domain nodes
   defp oban do
-    {Oban, Application.fetch_env!(:domain, Oban)}
+    [{Oban, Application.fetch_env!(:domain, Oban)}]
   end
 
   defp replication do
