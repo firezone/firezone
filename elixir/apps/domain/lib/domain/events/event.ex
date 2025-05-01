@@ -70,6 +70,22 @@ defmodule Domain.Events.Event do
     Hooks.ActorGroups.on_delete(old_data)
   end
 
+  ###################
+  # actor_resources #
+  ###################
+
+  defp process(:insert, "actor_resources", _old_data, data) do
+    Hooks.ActorResources.on_insert(data)
+  end
+
+  defp process(:update, "actor_resources", old_data, data) do
+    Hooks.ActorResources.on_update(old_data, data)
+  end
+
+  defp process(:delete, "actor_resources", old_data, _data) do
+    Hooks.ActorResources.on_delete(old_data)
+  end
+
   ##########
   # actors #
   ##########

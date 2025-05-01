@@ -28,6 +28,7 @@ defmodule Domain.Accounts.Account do
     has_many :actors, Domain.Actors.Actor, where: [deleted_at: nil]
     has_many :actor_group_memberships, Domain.Actors.Membership, where: [deleted_at: nil]
     has_many :actor_groups, Domain.Actors.Group, where: [deleted_at: nil]
+    has_many :actor_resources, Domain.Actors.Resource
 
     has_many :auth_providers, Domain.Auth.Provider, where: [deleted_at: nil]
     has_many :auth_identities, Domain.Auth.Identity, where: [deleted_at: nil]

@@ -23,6 +23,7 @@ defmodule Domain.Resources.Resource do
 
     has_many :policies, Domain.Policies.Policy, where: [deleted_at: nil]
     has_many :actor_groups, through: [:policies, :actor_group]
+    has_many :actor_resources, Domain.Actors.Resource, on_replace: :delete
 
     # Warning: do not do Repo.preload/2 for this field, it will not work intentionally,
     # because the actual preload query should also use joins and process policy conditions
