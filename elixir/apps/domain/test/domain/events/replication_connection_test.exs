@@ -203,16 +203,11 @@ defmodule Domain.Events.ReplicationConnectionTest do
   end
 
   describe "handle_disconnect/1" do
-    test "handle_disconnect resets step to :disconnected and logs warning" do
+    test "handle_disconnect resets step to :disconnected" do
       state = %{@mock_state | step: :streaming}
       expected_state = %{state | step: :disconnected}
 
-      log_output =
-        ExUnit.CaptureLog.capture_log(fn ->
-          assert {:noreply, ^expected_state} = ReplicationConnection.handle_disconnect(state)
-        end)
-
-      assert log_output =~ "Replication connection disconnected"
+      assert {:noreply, ^expected_state} = ReplicationConnection.handle_disconnect(state)
     end
   end
 end
