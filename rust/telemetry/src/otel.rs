@@ -1,7 +1,10 @@
 use std::time::Duration;
 
 use opentelemetry::KeyValue;
-use opentelemetry_sdk::{Resource, resource::TelemetryResourceDetector};
+use opentelemetry_sdk::{
+    Resource,
+    resource::{ResourceDetector, TelemetryResourceDetector},
+};
 
 pub mod attr {
     use ip_packet::IpPacket;
@@ -108,7 +111,18 @@ pub mod metrics {
 pub fn default_resource_with<const N: usize>(attributes: [KeyValue; N]) -> Resource {
     Resource::from_detectors(
         Duration::from_secs(0),
-        vec![Box::new(TelemetryResourceDetector)],
+        vec![
+            Box::new(TelemetryResourceDetector),
+            Box::new(OsResourceDetector),
+        ],
     )
     .merge(&Resource::new(attributes))
+}
+
+pub struct OsResourceDetector;
+
+impl ResourceDetector for OsResourceDetector {
+    fn detect(&self, _: Duration) -> Resource {
+        Resource::new([KeyValue::new("os.type", std::env::consts::OS)])
+    }
 }
