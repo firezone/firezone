@@ -229,7 +229,6 @@ COPY config config
 
 # Fetch and compile the dependencies
 ARG MIX_ENV="prod"
-ARG GIT_SHA
 RUN mix deps.get --only ${MIX_ENV}
 RUN mix deps.compile --skip-umbrella-children
 
@@ -253,6 +252,7 @@ RUN cd apps/web \
 # Copy the rest of the application files and compile them
 # mix doesn't know when GIT_SHA changes, so --force is needed to avoid
 # pulling in a cached version.
+ARG GIT_SHA
 RUN mix compile --force
 
 FROM elixir AS builder
