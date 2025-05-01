@@ -11,7 +11,7 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory},
 };
 
-use firezone_telemetry::Telemetry;
+use firezone_telemetry::{Telemetry, otel};
 use firezone_tunnel::GatewayTunnel;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use phoenix_channel::LoginUrl;
@@ -105,17 +105,24 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
     firezone_logging::setup_global_subscriber(layer::Identity::default())
         .context("Failed to set up logging")?;
 
-    if cli.metrics {
-        let exporter = opentelemetry_stdout::MetricsExporter::default();
-        let reader = PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio).build();
-        let provider = SdkMeterProvider::builder().with_reader(reader).build();
-
-        opentelemetry::global::set_meter_provider(provider);
-    }
-
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
     Telemetry::set_firezone_id(firezone_id.clone());
+
+    if cli.metrics {
+        let exporter = opentelemetry_stdout::MetricsExporter::default();
+        let reader = PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio).build();
+        let provider = SdkMeterProvider::builder()
+            .with_reader(reader)
+            .with_resource(otel::default_resource_with([
+                otel::attr::service_name!(),
+                otel::attr::service_version!(),
+                otel::attr::service_instance_id(firezone_id.clone()),
+            ]))
+            .build();
+
+        opentelemetry::global::set_meter_provider(provider);
+    }
 
     let login = LoginUrl::gateway(
         cli.api_url,

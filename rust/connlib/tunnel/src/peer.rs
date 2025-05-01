@@ -15,7 +15,7 @@ use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, PacketBuilder, Protocol, UnsupportedProtocol, icmpv4, icmpv6};
 
 use crate::utils::network_contains_network;
-use crate::{GatewayEvent, IpConfig};
+use crate::{GatewayEvent, IpConfig, otel};
 
 use anyhow::{Context, Result, bail};
 use nat_table::{NatTable, TranslateIncomingResult};
@@ -95,7 +95,7 @@ impl ClientOnGateway {
             nat_table: Default::default(),
             buffered_events: Default::default(),
             internet_resource_enabled: false,
-            num_dropped_packets: crate::otel::metrics::network_packet_dropped(),
+            num_dropped_packets: otel::metrics::network_packet_dropped(),
         }
     }
 
@@ -364,9 +364,9 @@ impl ClientOnGateway {
             self.num_dropped_packets.add(
                 1,
                 &[
-                    crate::otel::network_type_for_packet(&packet),
-                    crate::otel::network_io_direction_receive(),
-                    crate::otel::error_type(e.root_cause().to_string()),
+                    otel::attr::network_type_for_packet(&packet),
+                    otel::attr::network_io_direction_receive(),
+                    otel::attr::error_type(e.root_cause().to_string()),
                 ],
             );
 
@@ -401,9 +401,9 @@ impl ClientOnGateway {
                 self.num_dropped_packets.add(
                     1,
                     &[
-                        crate::otel::network_type_for_packet(&packet),
-                        crate::otel::network_io_direction_receive(),
-                        crate::otel::error_type("ExpiredNatSession"),
+                        otel::attr::network_type_for_packet(&packet),
+                        otel::attr::network_io_direction_receive(),
+                        otel::attr::error_type("ExpiredNatSession"),
                     ],
                 );
 
