@@ -10,11 +10,11 @@ updates:
     schedule:
       interval: monthly
   - package-ecosystem: pip
-    directory: /
+    directory: /.github
     schedule:
       interval: monthly
   - package-ecosystem: github-actions
-    directory: /
+    directory: /.github
     schedule:
       interval: monthly
   - package-ecosystem: cargo
