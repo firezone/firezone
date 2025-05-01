@@ -19,7 +19,7 @@ outputs:
     value: ${{
       (runner.os == 'Linux' && '--workspace') ||
       (runner.os == 'macOS' && '--workspace --exclude ebpf-turn-router --exclude gui-smoke-test') ||
-      (runner.os == 'Windows' && '--workspace --exclude ebpf-turn-router --exclude connlib-client-apple') }}
+      (runner.os == 'Windows' && '--workspace --exclude ebpf-turn-router --exclude connlib-client-apple --exclude connlib-client-android') }}
   test-packages:
     description: Testable packages for the current OS
     value: ${{
