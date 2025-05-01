@@ -43,13 +43,11 @@ defmodule Domain.PoliciesTest do
       assert fetched_policy.id == policy.id
     end
 
-    test "returns deleted policies", %{account: account, subject: subject} do
-      {:ok, policy} =
-        Fixtures.Policies.create_policy(account: account)
-        |> delete_policy(subject)
+    test "does not return deleted policies", %{account: account, subject: subject} do
+      policy = Fixtures.Policies.create_policy(account: account)
+      delete_policy(policy, subject)
 
-      assert {:ok, fetched_policy} = fetch_policy_by_id(policy.id, subject)
-      assert fetched_policy.id == policy.id
+      assert {:error, :not_found} = fetch_policy_by_id(policy.id, subject)
     end
 
     test "does not return policies in other accounts", %{subject: subject} do
@@ -105,18 +103,11 @@ defmodule Domain.PoliciesTest do
       assert fetched_policy.id == policy.id
     end
 
-    test "returns deleted policies", %{account: account, subject: subject} do
-      {:ok, policy} =
-        Fixtures.Policies.create_policy(account: account)
-        |> delete_policy(subject)
+    test "does not return deleted policies", %{account: account, subject: subject} do
+      policy = Fixtures.Policies.create_policy(account: account)
+      delete_policy(policy, subject)
 
-      assert {:ok, fetched_policy} = fetch_policy_by_id_or_persistent_id(policy.id, subject)
-      assert fetched_policy.id == policy.id
-
-      assert {:ok, fetched_policy} =
-               fetch_policy_by_id_or_persistent_id(policy.persistent_id, subject)
-
-      assert fetched_policy.id == policy.id
+      assert {:error, :not_found} = fetch_policy_by_id_or_persistent_id(policy.id, subject)
     end
 
     test "does not return policies in other accounts", %{subject: subject} do
@@ -682,8 +673,8 @@ defmodule Domain.PoliciesTest do
     end
 
     test "deletes policy", %{policy: policy, subject: subject} do
-      assert {:ok, deleted_policy} = delete_policy(policy, subject)
-      assert deleted_policy.deleted_at != nil
+      assert {:ok, _deleted_policy} = delete_policy(policy, subject)
+      refute Repo.get(Policies.Policy, policy.id)
     end
 
     test "returns error when subject has no permission to delete policies", %{
@@ -695,21 +686,28 @@ defmodule Domain.PoliciesTest do
       assert delete_policy(policy, subject) ==
                {:error,
                 {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Policies.Authorizer.manage_policies_permission()]}}
+                 [
+                   reason: :missing_permissions,
+                   missing_permissions: [
+                     %Domain.Auth.Permission{resource: Domain.Policies.Policy, action: :manage}
+                   ]
+                 ]}}
     end
 
-    test "returns error on state conflict", %{policy: policy, subject: subject} do
-      assert {:ok, deleted_policy} = delete_policy(policy, subject)
-      assert delete_policy(deleted_policy, subject) == {:error, :not_found}
-      assert delete_policy(policy, subject) == {:error, :not_found}
+    test "returns error when no policy exists", %{policy: policy, subject: subject} do
+      assert {:ok, _deleted_policy} = delete_policy(policy, subject)
+
+      assert {:error,
+              %Ecto.Changeset{action: :delete, errors: [false: {"is stale", [stale: true]}]}} =
+               delete_policy(policy, subject)
     end
 
     test "returns error when subject attempts to delete policy outside of account", %{
       policy: policy
     } do
       other_subject = Fixtures.Auth.create_subject()
-      assert delete_policy(policy, other_subject) == {:error, :not_found}
+
+      assert delete_policy(policy, other_subject) == {:error, :unauthorized}
     end
   end
 
@@ -734,11 +732,8 @@ defmodule Domain.PoliciesTest do
       actor_group: actor_group,
       policy: policy
     } do
-      assert {:ok, [deleted_policy]} = delete_policies_for(actor_group)
-      refute is_nil(deleted_policy.deleted_at)
-      assert deleted_policy.id == policy.id
-
-      refute is_nil(Repo.get(Policies.Policy, policy.id).deleted_at)
+      assert {:ok, _count} = delete_policies_for(actor_group)
+      refute Repo.get(Policies.Policy, policy.id)
     end
   end
 
@@ -770,11 +765,9 @@ defmodule Domain.PoliciesTest do
     } do
       other_policy = Fixtures.Policies.create_policy(account: account, subject: subject)
 
-      assert {:ok, [deleted_policy]} = delete_policies_for(actor_group, subject)
-      refute is_nil(deleted_policy.deleted_at)
-      assert deleted_policy.id == policy.id
+      assert {:ok, 1} = delete_policies_for(actor_group, subject)
+      refute Repo.get(Policies.Policy, policy.id)
 
-      refute is_nil(Repo.get(Policies.Policy, policy.id).deleted_at)
       assert is_nil(Repo.get(Policies.Policy, other_policy.id).deleted_at)
     end
 
@@ -796,11 +789,9 @@ defmodule Domain.PoliciesTest do
           subject: subject
         )
 
-      assert {:ok, [deleted_policy]} = delete_policies_for(provider, subject)
-      refute is_nil(deleted_policy.deleted_at)
-      assert deleted_policy.id == policy.id
+      assert {:ok, 1} = delete_policies_for(provider, subject)
+      refute Repo.get(Policies.Policy, policy.id)
 
-      refute is_nil(Repo.get(Policies.Policy, policy.id).deleted_at)
       assert is_nil(Repo.get(Policies.Policy, other_policy.id).deleted_at)
     end
 
@@ -812,9 +803,8 @@ defmodule Domain.PoliciesTest do
     } do
       other_policy = Fixtures.Policies.create_policy(account: account, subject: subject)
 
-      assert {:ok, [deleted_policy]} = delete_policies_for(resource, subject)
-      refute is_nil(deleted_policy.deleted_at)
-      assert deleted_policy.id == policy.id
+      assert {:ok, _deleted_policy} = delete_policies_for(resource, subject)
+      refute Repo.get(Policies.Policy, policy.id)
 
       assert is_nil(Repo.get(Policies.Policy, other_policy.id).deleted_at)
     end
@@ -828,8 +818,12 @@ defmodule Domain.PoliciesTest do
       assert delete_policies_for(resource, subject) ==
                {:error,
                 {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Policies.Authorizer.manage_policies_permission()]}}
+                 [
+                   reason: :missing_permissions,
+                   missing_permissions: [
+                     %Domain.Auth.Permission{resource: Domain.Policies.Policy, action: :manage}
+                   ]
+                 ]}}
     end
 
     test "does not do anything on state conflict", %{
@@ -837,16 +831,16 @@ defmodule Domain.PoliciesTest do
       actor_group: actor_group,
       subject: subject
     } do
-      assert {:ok, [_deleted_policy]} = delete_policies_for(resource, subject)
-      assert delete_policies_for(actor_group, subject) == {:ok, []}
-      assert delete_policies_for(resource, subject) == {:ok, []}
+      assert {:ok, _count} = delete_policies_for(resource, subject)
+      assert delete_policies_for(actor_group, subject) == {:ok, 0}
+      assert delete_policies_for(resource, subject) == {:ok, 0}
     end
 
     test "does not delete policies outside of account", %{
       resource: resource
     } do
       subject = Fixtures.Auth.create_subject()
-      assert delete_policies_for(resource, subject) == {:ok, []}
+      assert delete_policies_for(resource, subject) == {:ok, 0}
     end
   end
 

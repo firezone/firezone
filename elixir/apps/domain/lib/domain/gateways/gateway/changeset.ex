@@ -28,6 +28,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
   # WireGuard base64-encoded string length
   @key_length 44
 
+  # TODO: Update or remove after `deleted_at` is removed from DB
   def upsert_conflict_target,
     do: {:unsafe_fragment, ~s/(account_id, group_id, external_id) WHERE deleted_at IS NULL/}
 
@@ -73,7 +74,8 @@ defmodule Domain.Gateways.Gateway.Changeset do
     |> validate_required(@required_fields)
   end
 
-  def delete(%Gateways.Gateway{} = gateway) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
+  def soft_delete(%Gateways.Gateway{} = gateway) do
     gateway
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())

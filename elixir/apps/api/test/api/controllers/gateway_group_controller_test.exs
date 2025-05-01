@@ -219,8 +219,7 @@ defmodule API.GatewayGroupControllerTest do
                }
              }
 
-      assert gateway_group = Repo.get(Group, gateway_group.id)
-      assert gateway_group.deleted_at
+      refute Repo.get(Group, gateway_group.id)
     end
   end
 
@@ -267,8 +266,7 @@ defmodule API.GatewayGroupControllerTest do
 
       assert %{"data" => %{"id" => _id}} = json_response(conn, 200)
 
-      assert token = Repo.get(Token, token.id)
-      assert token.deleted_at
+      refute Repo.get(Token, token.id)
     end
   end
 
@@ -296,12 +294,10 @@ defmodule API.GatewayGroupControllerTest do
         |> put_req_header("content-type", "application/json")
         |> delete("/gateway_groups/#{gateway_group.id}/tokens")
 
-      assert %{"data" => [%{"id" => _id1}, %{"id" => _id2}, %{"id" => _id3}]} =
-               json_response(conn, 200)
+      assert %{"data" => %{"deleted_count" => 3}} = json_response(conn, 200)
 
       Enum.map(tokens, fn token ->
-        assert token = Repo.get(Token, token.id)
-        assert token.deleted_at
+        refute Repo.get(Token, token.id)
       end)
     end
   end

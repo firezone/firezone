@@ -29,7 +29,7 @@ defmodule Domain.RelaysTest do
       assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
     end
 
-    test "returns deleted groups", %{
+    test "does not return deleted groups", %{
       account: account,
       subject: subject
     } do
@@ -37,8 +37,7 @@ defmodule Domain.RelaysTest do
         Fixtures.Relays.create_group(account: account)
         |> Fixtures.Relays.delete_group()
 
-      assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
-      assert fetched_group.id == group.id
+      assert {:error, :not_found} = fetch_group_by_id(group.id, subject)
     end
 
     test "returns group by id", %{account: account, subject: subject} do
@@ -339,15 +338,19 @@ defmodule Domain.RelaysTest do
       group = Fixtures.Relays.create_group(account: account)
 
       assert {:ok, deleted} = delete_group(group, subject)
-      assert delete_group(deleted, subject) == {:error, :not_found}
-      assert delete_group(group, subject) == {:error, :not_found}
+
+      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
+               delete_group(deleted, subject)
+
+      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
+               delete_group(group, subject)
     end
 
     test "deletes groups", %{account: account, subject: subject} do
       group = Fixtures.Relays.create_group(account: account)
 
-      assert {:ok, deleted} = delete_group(group, subject)
-      assert deleted.deleted_at
+      assert {:ok, _group} = delete_group(group, subject)
+      refute Repo.get(Relays.Group, group.id)
     end
 
     test "does not allow deleting global group", %{subject: subject} do
@@ -355,23 +358,24 @@ defmodule Domain.RelaysTest do
       assert delete_group(group, subject) == {:error, :unauthorized}
     end
 
+    # TODO: HARD-DELETE - This test should be moved to Tokens since it holds the FK
     test "deletes all tokens when group is deleted", %{account: account, subject: subject} do
       group = Fixtures.Relays.create_group(account: account)
       Fixtures.Relays.create_token(account: account, group: group)
       Fixtures.Relays.create_token(account: account, group: [account: account])
 
-      assert {:ok, deleted} = delete_group(group, subject)
-      assert deleted.deleted_at
+      assert {:ok, _group} = delete_group(group, subject)
+      refute Repo.get(Relays.Group, group.id)
 
       tokens =
         Domain.Tokens.Token.Query.all()
         |> Domain.Tokens.Token.Query.by_relay_group_id(group.id)
         |> Repo.all()
 
-      assert length(tokens) > 0
-      assert Enum.all?(tokens, & &1.deleted_at)
+      assert length(tokens) == 0
     end
 
+    # TODO: HARD-DELETE - This test should be moved to Tokens since it holds the FK
     test "deletes all relays when group is deleted", %{account: account, subject: subject} do
       group = Fixtures.Relays.create_group(account: account)
       Fixtures.Relays.create_relay(account: account, group: group)
@@ -383,10 +387,10 @@ defmodule Domain.RelaysTest do
         |> Domain.Relays.Relay.Query.by_group_id(group.id)
         |> Repo.all()
 
-      assert length(relays) > 0
-      assert Enum.all?(relays, & &1.deleted_at)
+      assert length(relays) == 0
     end
 
+    # TODO: HARD-DELETE - This test should be moved to Tokens since it holds the FK
     test "deletes associated tokens", %{
       account: account,
       subject: subject
@@ -401,11 +405,8 @@ defmodule Domain.RelaysTest do
 
       assert {:ok, _group} = delete_group(group, subject)
 
-      token1 = Repo.reload(token1)
-      token2 = Repo.reload(token2)
-
-      assert token1.deleted_at
-      assert token2.deleted_at
+      refute Repo.reload(token1)
+      refute Repo.reload(token2)
     end
 
     test "returns error when subject has no permission to delete groups", %{
@@ -415,11 +416,7 @@ defmodule Domain.RelaysTest do
 
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert delete_group(group, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Relays.Authorizer.manage_relays_permission()]}}
+      assert delete_group(group, subject) == {:error, :unauthorized}
     end
   end
 
@@ -633,7 +630,7 @@ defmodule Domain.RelaysTest do
       assert fetch_relay_by_id(relay.id, subject) == {:error, :not_found}
     end
 
-    test "returns deleted relays", %{
+    test "does not return deleted relays", %{
       account: account,
       subject: subject
     } do
@@ -641,7 +638,7 @@ defmodule Domain.RelaysTest do
         Fixtures.Relays.create_relay(account: account)
         |> Fixtures.Relays.delete_relay()
 
-      assert {:ok, _relay} = fetch_relay_by_id(relay.id, subject)
+      assert {:error, :not_found} = fetch_relay_by_id(relay.id, subject)
     end
 
     test "returns relay by id", %{account: account, subject: subject} do
@@ -1043,15 +1040,19 @@ defmodule Domain.RelaysTest do
       relay = Fixtures.Relays.create_relay(account: account)
 
       assert {:ok, deleted} = delete_relay(relay, subject)
-      assert delete_relay(deleted, subject) == {:error, :not_found}
-      assert delete_relay(relay, subject) == {:error, :not_found}
+
+      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
+               delete_relay(deleted, subject)
+
+      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
+               delete_relay(relay, subject)
     end
 
     test "deletes relays", %{account: account, subject: subject} do
       relay = Fixtures.Relays.create_relay(account: account)
 
-      assert {:ok, deleted} = delete_relay(relay, subject)
-      assert deleted.deleted_at
+      assert {:ok, _relay} = delete_relay(relay, subject)
+      refute Repo.get(Relays.Relay, relay.id)
     end
 
     test "returns error when subject has no permission to delete relays", %{
@@ -1061,11 +1062,7 @@ defmodule Domain.RelaysTest do
 
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert delete_relay(relay, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Relays.Authorizer.manage_relays_permission()]}}
+      assert delete_relay(relay, subject) == {:error, :unauthorized}
     end
   end
 

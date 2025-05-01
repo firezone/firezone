@@ -76,7 +76,7 @@ defmodule Web.Groups.Index do
           <:col :let={group} field={{:groups, :name}} label="name" class="w-3/12">
             <.group account={@account} group={group} />
 
-            <span :if={Actors.group_deleted?(group)} class="text-xs text-neutral-100">
+            <span :if={Actors.group_soft_deleted?(group)} class="text-xs text-neutral-100">
               (deleted)
             </span>
           </:col>

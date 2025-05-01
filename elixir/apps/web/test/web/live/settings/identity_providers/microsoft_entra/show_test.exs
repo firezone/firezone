@@ -263,8 +263,7 @@ defmodule Web.Live.Settings.IdentityProviders.MicrosoftEntra.ShowTest do
     |> render_click()
 
     assert_redirected(lv, ~p"/#{account}/settings/identity_providers")
-
-    assert Repo.get(Domain.Auth.Provider, provider.id).deleted_at
+    refute Repo.get(Domain.Auth.Provider, provider.id)
   end
 
   test "allows reconnecting identity providers", %{

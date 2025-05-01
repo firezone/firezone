@@ -1,7 +1,6 @@
 defmodule Domain.Actors.Group.Sync do
   alias Domain.Repo
   alias Domain.Auth
-  alias Domain.Actors
   alias Domain.Actors.Group
   require Logger
 
@@ -16,7 +15,7 @@ defmodule Domain.Actors.Group.Sync do
     with {:ok, groups} <- all_provider_groups(provider),
          {:ok, {upsert, delete}} <- plan_groups_update(groups, provider_identifiers),
          :ok <- deletion_circuit_breaker(groups, delete, provider),
-         {:ok, deleted} <- delete_groups(provider, delete),
+         {:ok, _num_deleted} <- delete_groups(provider, delete),
          {:ok, upserted} <- upsert_groups(provider, attrs_by_provider_identifier, upsert) do
       group_ids_by_provider_identifier =
         for group <- groups ++ upserted,
@@ -29,7 +28,7 @@ defmodule Domain.Actors.Group.Sync do
        %{
          groups: groups,
          plan: {upsert, delete},
-         deleted: deleted,
+         deleted: delete,
          upserted: upserted,
          group_ids_by_provider_identifier: group_ids_by_provider_identifier
        }}
@@ -46,6 +45,7 @@ defmodule Domain.Actors.Group.Sync do
     {:ok, groups}
   end
 
+  # TODO: Update after `deleted_at` is removed from DB
   defp plan_groups_update(groups, provider_identifiers) do
     identifiers_set = MapSet.new(provider_identifiers)
 
@@ -108,11 +108,24 @@ defmodule Domain.Actors.Group.Sync do
   end
 
   defp delete_groups(provider, provider_identifiers_to_delete) do
-    Group.Query.not_deleted()
+    Group.Query.all()
     |> Group.Query.by_account_id(provider.account_id)
     |> Group.Query.by_provider_id(provider.id)
     |> Group.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
-    |> Actors.delete_groups()
+    |> Repo.delete_all()
+    |> case do
+      {n, nil} when is_integer(n) ->
+        {:ok, n}
+
+      error ->
+        Logger.error("Unknown error deleting synced groups",
+          account_id: provider.account_id,
+          provider_id: provider.id,
+          reason: inspect(error)
+        )
+
+        {:error, "unknown error"}
+    end
   end
 
   defp upsert_groups(provider, attrs_by_provider_identifier, provider_identifiers_to_upsert) do

@@ -110,6 +110,7 @@ defmodule Domain.Accounts do
     Map.fetch!(account.features || %Features{}, feature) || false
   end
 
+  # TODO: Update after `deleted_at` is removed from DB
   def account_active?(%{deleted_at: nil, disabled_at: nil}), do: true
   def account_active?(_account), do: false
 

@@ -1,38 +1,33 @@
-defmodule Domain.Actors.Authorizer do
+defmodule Domain.Actors.Group.Authorizer do
   use Domain.Auth.Authorizer
   alias Domain.Actors.{Actor, Group}
 
-  def manage_actors_permission, do: build(Actor, :manage)
-  def edit_own_profile_permission, do: build(Actor, :edit_own_profile)
+  def manage_actor_groups_permission, do: build(Group, :manage)
 
   @impl Domain.Auth.Authorizer
   def list_permissions_for_role(:account_admin_user) do
     [
-      manage_actors_permission(),
-      edit_own_profile_permission()
+      manage_actor_groups_permission()
     ]
   end
 
   def list_permissions_for_role(:api_client) do
     [
-      manage_actors_permission(),
-      edit_own_profile_permission()
+      manage_actor_groups_permission()
     ]
   end
 
   def list_permissions_for_role(:account_user) do
-    [
-      edit_own_profile_permission()
-    ]
+    []
   end
 
   def list_permissions_for_role(_role) do
     []
   end
 
-  def ensure_has_access_to(%Actor{} = actor, %Subject{} = subject) do
-    if actor.account_id == subject.account.id do
-      Domain.Auth.ensure_has_permissions(subject, manage_actors_permission())
+  def ensure_has_access_to(%Group{} = group, %Subject{} = subject) do
+    if group.account_id == subject.account.id do
+      Domain.Auth.ensure_has_permissions(subject, manage_actor_groups_permission())
     else
       {:error, :unauthorized}
     end
@@ -41,7 +36,7 @@ defmodule Domain.Actors.Authorizer do
   @impl Domain.Auth.Authorizer
   def for_subject(queryable, %Subject{} = subject) do
     cond do
-      has_permission?(subject, manage_actors_permission()) ->
+      has_permission?(subject, manage_actor_groups_permission()) ->
         by_account_id(queryable, subject.account.id)
     end
   end
