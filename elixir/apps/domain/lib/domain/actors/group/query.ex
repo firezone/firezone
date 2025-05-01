@@ -5,6 +5,7 @@ defmodule Domain.Actors.Group.Query do
     from(groups in Domain.Actors.Group, as: :groups)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
   def not_deleted do
     all()
     |> where([groups: groups], is_nil(groups.deleted_at))
@@ -63,6 +64,7 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.provider_identifier == ^provider_identifier)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
   def delete(queryable) do
     queryable
     |> Ecto.Query.select([groups: groups], groups)
@@ -141,6 +143,7 @@ defmodule Domain.Actors.Group.Query do
     )
   end
 
+  # TODO: Update after `deleted_at` is removed from DB
   # TODO: IDP Sync
   # See: https://github.com/firezone/firezone/issues/8750
   # We use CTE here which should be very performant even for very large inserts and deletions
@@ -253,10 +256,12 @@ defmodule Domain.Actors.Group.Query do
     {queryable, dynamic([groups: groups], groups.provider_id == ^provider_id)}
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
   def filter_deleted(queryable) do
     {queryable, dynamic([groups: groups], not is_nil(groups.deleted_at))}
   end
 
+  # TODO: Update after `deleted_at` is removed from DB
   def filter_editable(queryable) do
     {queryable,
      dynamic(

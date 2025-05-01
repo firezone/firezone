@@ -440,8 +440,7 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
       refute Repo.get_by(Domain.Actors.Membership, group_id: deleted_group.id)
 
       # Signs out users which identity has been deleted
-      deleted_identity_token = Repo.reload(deleted_identity_token)
-      assert deleted_identity_token.deleted_at
+      refute Repo.reload(deleted_identity_token)
     end
 
     test "resurrects deleted identities that reappear on the next sync", %{

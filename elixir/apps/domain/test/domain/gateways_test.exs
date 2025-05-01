@@ -51,16 +51,15 @@ defmodule Domain.GatewaysTest do
       assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
     end
 
-    test "returns deleted groups", %{
+    test "does not return deleted groups", %{
       account: account,
       subject: subject
     } do
-      group =
+      {:ok, deleted_group} =
         Fixtures.Gateways.create_group(account: account)
         |> Fixtures.Gateways.delete_group()
 
-      assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
-      assert fetched_group.id == group.id
+      assert {:error, :not_found} = fetch_group_by_id(deleted_group.id, subject)
     end
 
     test "returns group by id", %{account: account, subject: subject} do
@@ -348,15 +347,19 @@ defmodule Domain.GatewaysTest do
       group = Fixtures.Gateways.create_group(account: account)
 
       assert {:ok, deleted} = delete_group(group, subject)
-      assert delete_group(deleted, subject) == {:error, :not_found}
-      assert delete_group(group, subject) == {:error, :not_found}
+
+      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
+               delete_group(deleted, subject)
+
+      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
+               delete_group(group, subject)
     end
 
-    test "deletes groups", %{account: account, subject: subject} do
+    test "deletes group", %{account: account, subject: subject} do
       group = Fixtures.Gateways.create_group(account: account)
 
-      assert {:ok, deleted} = delete_group(group, subject)
-      assert deleted.deleted_at
+      assert {:ok, _deleted_group} = delete_group(group, subject)
+      refute Repo.get(Gateways.Group, group.id)
     end
 
     test "deletes all tokens when group is deleted", %{account: account, subject: subject} do
@@ -365,16 +368,14 @@ defmodule Domain.GatewaysTest do
       Fixtures.Gateways.create_token(account: account, group: [account: account])
 
       assert {:ok, deleted} = delete_group(group, subject)
-      assert deleted.deleted_at
+      refute Repo.reload(deleted)
 
       tokens =
         Domain.Tokens.Token.Query.all()
         |> Domain.Tokens.Token.Query.by_gateway_group_id(group.id)
         |> Repo.all()
-        |> Enum.filter(fn token -> token.gateway_group_id == group.id end)
 
-      assert length(tokens) > 0
-      assert Enum.all?(tokens, & &1.deleted_at)
+      assert length(tokens) == 0
     end
 
     test "deletes all gateways when group is deleted", %{account: account, subject: subject} do
@@ -388,8 +389,7 @@ defmodule Domain.GatewaysTest do
         |> Domain.Gateways.Gateway.Query.by_group_id(group.id)
         |> Repo.all()
 
-      assert length(gateways) > 0
-      assert Enum.all?(gateways, & &1.deleted_at)
+      assert length(gateways) == 0
     end
 
     test "deletes all connections when group is deleted", %{account: account, subject: subject} do
@@ -421,11 +421,8 @@ defmodule Domain.GatewaysTest do
 
       assert {:ok, _group} = delete_group(group, subject)
 
-      token1 = Repo.reload(token1)
-      token2 = Repo.reload(token2)
-
-      assert token1.deleted_at
-      assert token2.deleted_at
+      refute Repo.reload(token1)
+      refute Repo.reload(token2)
     end
 
     test "returns error when subject has no permission to delete groups", %{
@@ -435,11 +432,7 @@ defmodule Domain.GatewaysTest do
 
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert delete_group(group, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
+      assert delete_group(group, subject) == {:error, :unauthorized}
     end
   end
 
@@ -573,15 +566,16 @@ defmodule Domain.GatewaysTest do
       assert fetch_gateway_by_id(gateway.id, subject) == {:error, :not_found}
     end
 
-    test "returns deleted gateways", %{
+    test "does not return deleted gateways", %{
       account: account,
       subject: subject
     } do
-      gateway =
+      deleted_gateway =
         Fixtures.Gateways.create_gateway(account: account)
         |> Fixtures.Gateways.delete_gateway()
 
-      assert fetch_gateway_by_id(gateway.id, subject, preload: :online?) == {:ok, gateway}
+      assert fetch_gateway_by_id(deleted_gateway.id, subject, preload: :online?) ==
+               {:error, :not_found}
     end
 
     test "returns gateway by id", %{account: account, subject: subject} do
@@ -1059,15 +1053,19 @@ defmodule Domain.GatewaysTest do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
       assert {:ok, deleted} = delete_gateway(gateway, subject)
-      assert delete_gateway(deleted, subject) == {:error, :not_found}
-      assert delete_gateway(gateway, subject) == {:error, :not_found}
+
+      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
+               delete_gateway(deleted, subject)
+
+      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
+               delete_gateway(gateway, subject)
     end
 
     test "deletes gateways", %{account: account, subject: subject} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
       assert {:ok, deleted} = delete_gateway(gateway, subject)
-      assert deleted.deleted_at
+      refute Repo.reload(deleted)
     end
 
     test "returns error when subject has no permission to delete gateways", %{
@@ -1077,11 +1075,7 @@ defmodule Domain.GatewaysTest do
 
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert delete_gateway(gateway, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
+      assert delete_gateway(gateway, subject) == {:error, :unauthorized}
     end
   end
 

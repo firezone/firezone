@@ -5,16 +5,19 @@ defmodule Domain.Auth.Identity.Query do
     from(identities in Domain.Auth.Identity, as: :identities)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
   def not_deleted do
     all()
     |> where([identities: identities], is_nil(identities.deleted_at))
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
   def deleted do
     all()
     |> where([identities: identities], not is_nil(identities.deleted_at))
   end
 
+  # TODO: Update after `deleted_at` is removed from DB
   def not_disabled(queryable \\ not_deleted()) do
     queryable
     |> with_assoc(:inner, :actor)
@@ -144,6 +147,7 @@ defmodule Domain.Auth.Identity.Query do
     })
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
   def delete(queryable) do
     queryable
     |> Ecto.Query.select([identities: identities], identities)

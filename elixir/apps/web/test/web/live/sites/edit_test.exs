@@ -38,7 +38,7 @@ defmodule Web.Live.Sites.EditTest do
     group: group,
     conn: conn
   } do
-    group = Fixtures.Gateways.delete_group(group)
+    {:ok, group} = Fixtures.Gateways.delete_group(group)
 
     assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn

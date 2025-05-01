@@ -754,12 +754,13 @@ defmodule Web.Actors.Show do
   end
 
   def handle_event("revoke_all_tokens", _params, socket) do
-    {:ok, deleted_tokens} = Tokens.delete_tokens_for(socket.assigns.actor, socket.assigns.subject)
+    {:ok, deleted_tokens_count} =
+      Tokens.delete_tokens_for(socket.assigns.actor, socket.assigns.subject)
 
     socket =
       socket
       |> reload_live_table!("tokens")
-      |> put_flash(:info, "#{length(deleted_tokens)} token(s) were revoked.")
+      |> put_flash(:info, "#{deleted_tokens_count} token(s) were revoked.")
 
     {:noreply, socket}
   end

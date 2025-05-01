@@ -35,7 +35,7 @@ defmodule Web.Live.Gateways.ShowTest do
                }}}
   end
 
-  test "renders deleted gateway without action buttons", %{
+  test "raises NotFoundError for deleted gateway", %{
     account: account,
     gateway: gateway,
     identity: identity,
@@ -43,13 +43,11 @@ defmodule Web.Live.Gateways.ShowTest do
   } do
     gateway = Fixtures.Gateways.delete_gateway(gateway)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/gateways/#{gateway}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+    end
   end
 
   test "renders breadcrumbs item", %{
@@ -135,7 +133,7 @@ defmodule Web.Live.Gateways.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/sites/#{gateway.group}")
 
-    assert Repo.get(Domain.Gateways.Gateway, gateway.id).deleted_at
+    refute Repo.get(Domain.Gateways.Gateway, gateway.id)
   end
 
   test "updates gateway status on presence event", %{

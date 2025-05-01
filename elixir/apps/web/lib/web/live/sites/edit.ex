@@ -4,11 +4,7 @@ defmodule Web.Sites.Edit do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
-           Gateways.fetch_group_by_id(id, socket.assigns.subject,
-             filter: [
-               deleted?: false
-             ]
-           ) do
+           Gateways.fetch_group_by_id(id, socket.assigns.subject, filter: [deleted?: false]) do
       changeset = Gateways.change_group(group)
 
       socket =

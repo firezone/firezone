@@ -306,8 +306,7 @@ defmodule API.IdentityControllerTest do
                }
              }
 
-      assert identity = Repo.get(Identity, identity.id)
-      assert identity.deleted_at
+      refute Repo.get(Identity, identity.id)
     end
   end
 end

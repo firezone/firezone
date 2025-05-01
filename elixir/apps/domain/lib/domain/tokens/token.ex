@@ -51,6 +51,8 @@ defmodule Domain.Tokens.Token do
     has_many :clients, Domain.Clients.Client, foreign_key: :last_used_token_id
 
     field :expires_at, :utc_datetime_usec
+
+    # TODO: HARD-DELETE - Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end

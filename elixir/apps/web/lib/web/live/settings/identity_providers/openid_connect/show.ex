@@ -206,8 +206,11 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, provider} = Auth.delete_provider(socket.assigns.provider, socket.assigns.subject)
-    {:noreply, push_navigate(socket, to: view_provider(socket.assigns.account, provider))}
+    provider = socket.assigns.provider
+    {:ok, _deleted_provider} = Auth.delete_provider(provider, socket.assigns.subject)
+
+    {:noreply,
+     push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/identity_providers")}
   end
 
   def handle_event("delete_stale_actors", _params, socket) do

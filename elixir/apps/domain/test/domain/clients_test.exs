@@ -95,7 +95,7 @@ defmodule Domain.ClientsTest do
       assert fetch_client_by_id("foo", subject) == {:error, :not_found}
     end
 
-    test "returns deleted clients", %{
+    test "does not return deleted clients", %{
       unprivileged_actor: actor,
       unprivileged_subject: subject
     } do
@@ -103,7 +103,7 @@ defmodule Domain.ClientsTest do
         Fixtures.Clients.create_client(actor: actor)
         |> Fixtures.Clients.delete_client()
 
-      assert {:ok, _client} = fetch_client_by_id(client.id, subject)
+      assert {:error, :not_found} = fetch_client_by_id(client.id, subject)
     end
 
     test "returns client by id", %{unprivileged_actor: actor, unprivileged_subject: subject} do
@@ -957,7 +957,8 @@ defmodule Domain.ClientsTest do
       client = Fixtures.Clients.create_client()
       attrs = %{name: "new name"}
 
-      assert update_client(client, attrs, subject) == {:error, :not_found}
+      assert update_client(client, attrs, subject) ==
+               {:error, {:unauthorized, [reason: :incorrect_account]}}
     end
 
     test "does not allow to reset required fields to empty values", %{
@@ -1006,22 +1007,22 @@ defmodule Domain.ClientsTest do
       admin_subject: subject
     } do
       client = Fixtures.Clients.create_client(actor: actor)
-
       subject = Fixtures.Auth.remove_permissions(subject)
 
       assert update_client(client, %{}, subject) ==
                {:error,
                 {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Clients.Authorizer.manage_own_clients_permission()]}}
+                 [
+                   reason: :missing_permissions,
+                   missing_permissions: [
+                     %Domain.Auth.Permission{resource: Domain.Clients.Client, action: :manage_own}
+                   ]
+                 ]}}
 
       client = Fixtures.Clients.create_client()
 
       assert update_client(client, %{}, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
+               {:error, {:unauthorized, [reason: :incorrect_account]}}
     end
   end
 
@@ -1098,19 +1099,11 @@ defmodule Domain.ClientsTest do
   end
 
   describe "delete_client/2" do
-    test "returns error on state conflict", %{admin_actor: actor, admin_subject: subject} do
-      client = Fixtures.Clients.create_client(actor: actor)
-
-      assert {:ok, deleted} = delete_client(client, subject)
-      assert delete_client(deleted, subject) == {:error, :not_found}
-      assert delete_client(client, subject) == {:error, :not_found}
-    end
-
     test "admin can delete own clients", %{admin_actor: actor, admin_subject: subject} do
       client = Fixtures.Clients.create_client(actor: actor)
 
-      assert {:ok, deleted} = delete_client(client, subject)
-      assert deleted.deleted_at
+      assert {:ok, _client} = delete_client(client, subject)
+      refute Repo.get(Clients.Client, client.id)
     end
 
     test "admin can delete other people clients", %{
@@ -1119,8 +1112,8 @@ defmodule Domain.ClientsTest do
     } do
       client = Fixtures.Clients.create_client(actor: actor)
 
-      assert {:ok, deleted} = delete_client(client, subject)
-      assert deleted.deleted_at
+      assert {:ok, _client} = delete_client(client, subject)
+      refute Repo.get(Clients.Client, client.id)
     end
 
     test "admin cannot delete clients in other accounts", %{
@@ -1128,39 +1121,43 @@ defmodule Domain.ClientsTest do
     } do
       client = Fixtures.Clients.create_client()
 
-      assert delete_client(client, subject) == {:error, :not_found}
+      assert delete_client(client, subject) ==
+               {:error, {:unauthorized, [reason: :incorrect_account]}}
+
+      assert c = Repo.get(Clients.Client, client.id)
+      assert c.id == client.id
     end
 
-    test "unprivileged can delete own clients", %{
+    test "unprivileged actor can delete own clients", %{
       account: account,
       unprivileged_actor: actor,
       unprivileged_subject: subject
     } do
       client = Fixtures.Clients.create_client(account: account, actor: actor)
 
-      assert {:ok, deleted} = delete_client(client, subject)
-      assert deleted.deleted_at
+      assert {:ok, _client} = delete_client(client, subject)
+      refute Repo.get(Clients.Client, client.id)
     end
 
-    test "unprivileged cannot delete other people clients", %{
+    test "unprivileged actor cannot delete other actor clients", %{
       account: account,
       unprivileged_subject: subject
     } do
       client = Fixtures.Clients.create_client()
 
       assert delete_client(client, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
+               {:error, {:unauthorized, [reason: :incorrect_account]}}
 
       client = Fixtures.Clients.create_client(account: account)
 
       assert delete_client(client, subject) ==
                {:error,
                 {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
+                 [
+                   {:reason, :missing_permissions},
+                   {:missing_permissions,
+                    [%Domain.Auth.Permission{resource: Domain.Clients.Client, action: :manage}]}
+                 ]}}
 
       assert Repo.aggregate(Clients.Client, :count) == 2
     end
@@ -1176,16 +1173,17 @@ defmodule Domain.ClientsTest do
       assert delete_client(client, subject) ==
                {:error,
                 {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Clients.Authorizer.manage_own_clients_permission()]}}
+                 [
+                   reason: :missing_permissions,
+                   missing_permissions: [
+                     %Domain.Auth.Permission{resource: Domain.Clients.Client, action: :manage_own}
+                   ]
+                 ]}}
 
       client = Fixtures.Clients.create_client()
 
       assert delete_client(client, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
+               {:error, {:unauthorized, [reason: :incorrect_account]}}
     end
   end
 

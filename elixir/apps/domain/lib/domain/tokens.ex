@@ -4,6 +4,7 @@ defmodule Domain.Tokens do
   alias Domain.{Auth, Actors, Relays, Gateways}
   alias Domain.Tokens.{Token, Authorizer, Jobs}
   require Ecto.Query
+  require Logger
 
   def start_link(_init_arg) do
     Supervisor.start_link(__MODULE__, nil, name: __MODULE__)
@@ -182,6 +183,207 @@ defmodule Domain.Tokens do
   end
 
   def delete_token(%Token{} = token, %Auth.Subject{} = subject) do
+    with :ok <- Authorizer.ensure_has_access_to(token, subject) do
+      Repo.delete(token, stale_error_field: false)
+    end
+  end
+
+  def delete_token_for(%Auth.Subject{} = subject) do
+    Token.Query.all()
+    |> Token.Query.by_id(subject.token_id)
+    |> Authorizer.for_subject(subject)
+    |> Repo.delete_all()
+    |> case do
+      {n, nil} when is_integer(n) ->
+        {:ok, n}
+
+      error ->
+        Logger.error("Unknown error deleting token",
+          account_id: subject.account.id,
+          actor_id: subject.actor.id,
+          token_id: subject.token_id,
+          reason: inspect(error)
+        )
+
+        {:error, "unknown error while deleting"}
+    end
+  end
+
+  def delete_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      Token.Query.all()
+      |> Token.Query.by_actor_id(actor.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {n, nil} when is_integer(n) ->
+          {:ok, n}
+
+        error ->
+          Logger.error("Unknown error deleting tokens for actor",
+            account_id: actor.account_id,
+            subject_actor_id: subject.actor.id,
+            actor_id: actor.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error deleting tokens for actor"}
+      end
+    end
+  end
+
+  def delete_tokens_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
+    with :ok <- Auth.Authorizer.ensure_has_access_to(identity, subject),
+         :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      Token.Query.all()
+      |> Token.Query.by_identity_id(identity.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {n, nil} when is_integer(n) ->
+          {:ok, n}
+
+        error ->
+          Logger.error("Unknown error deleting tokens for identity",
+            account_id: identity.account_id,
+            subject_actor_id: subject.actor.id,
+            identity_id: identity.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error deleting tokens for identity"}
+      end
+    end
+  end
+
+  def delete_tokens_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      Token.Query.all()
+      |> Token.Query.by_provider_id(provider.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {n, nil} when is_integer(n) ->
+          {:ok, n}
+
+        error ->
+          Logger.error("Unknown error deleting tokens for actor",
+            account_id: provider.account_id,
+            subject_actor_id: subject.actor.id,
+            provider_id: provider.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error deleting tokens for actor"}
+      end
+    end
+  end
+
+  def delete_tokens_for(%Relays.Group{} = group, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      Token.Query.all()
+      |> Token.Query.by_relay_group_id(group.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {n, nil} when is_integer(n) ->
+          {:ok, n}
+
+        error ->
+          Logger.error("Unknown error deleting tokens for Relay Group",
+            account_id: group.account_id,
+            subject_actor_id: subject.actor.id,
+            relay_group_id: group.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error deleting tokens for relay group"}
+      end
+    end
+  end
+
+  def delete_tokens_for(%Gateways.Group{} = group, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
+      Token.Query.all()
+      |> Token.Query.by_gateway_group_id(group.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {n, nil} when is_integer(n) ->
+          {:ok, n}
+
+        error ->
+          Logger.error("Unknown error deleting tokens for Gateway Group",
+            account_id: group.account_id,
+            subject_actor_id: subject.actor.id,
+            gateway_group_id: group.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error deleting tokens for gateway group"}
+      end
+    end
+  end
+
+  def delete_tokens_for(%Auth.Identity{} = identity) do
+    Token.Query.all()
+    |> Token.Query.by_identity_id(identity.id)
+    |> Repo.delete_all()
+    |> case do
+      {n, nil} when is_integer(n) ->
+        {:ok, n}
+
+      error ->
+        Logger.error("Unknown error deleting tokens for identity",
+          account_id: identity.account_id,
+          identity_id: identity.id,
+          reason: inspect(error)
+        )
+
+        {:error, "unknown error deleting tokens for identity"}
+    end
+  end
+
+  def delete_all_tokens_by_type_and_assoc(:email, %Auth.Identity{} = identity) do
+    Token.Query.not_deleted()
+    |> Token.Query.by_type(:email)
+    |> Token.Query.by_account_id(identity.account_id)
+    |> Token.Query.by_identity_id(identity.id)
+    |> Repo.delete_all()
+    |> case do
+      {n, nil} when is_integer(n) ->
+        {:ok, n}
+
+      error ->
+        Logger.error("Unknown error while deleting tokens for identity",
+          account_id: identity.account_id,
+          identity_id: identity.id,
+          reason: inspect(error)
+        )
+
+        {:error, "unknown error while deleting tokens"}
+    end
+  end
+
+  def delete_expired_tokens do
+    Token.Query.all()
+    |> Token.Query.expired()
+    |> Repo.delete_all()
+    |> case do
+      {n, nil} when is_integer(n) ->
+        {:ok, n}
+
+      error ->
+        Logger.error("Unknown error deleting expired tokens",
+          reason: inspect(error)
+        )
+
+        {:error, "unknown error deleting expired tokens"}
+    end
+  end
+
+  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
+  def soft_delete_token(%Token{} = token, %Auth.Subject{} = subject) do
     required_permissions =
       {:one_of,
        [
@@ -193,7 +395,7 @@ defmodule Domain.Tokens do
       Token.Query.not_deleted()
       |> Token.Query.by_id(token.id)
       |> Authorizer.for_subject(subject)
-      |> delete_tokens()
+      |> soft_delete_tokens()
       |> case do
         {:ok, [token]} -> {:ok, token}
         {:ok, []} -> {:error, :not_found}
@@ -201,79 +403,89 @@ defmodule Domain.Tokens do
     end
   end
 
-  def delete_token_for(%Auth.Subject{} = subject) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
+  def soft_delete_token_for(%Auth.Subject{} = subject) do
     Token.Query.not_deleted()
     |> Token.Query.by_id(subject.token_id)
     |> Authorizer.for_subject(subject)
-    |> delete_tokens()
+    |> soft_delete_tokens()
   end
 
-  def delete_tokens_for(%Auth.Identity{} = identity) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
+  def soft_delete_tokens_for(%Auth.Identity{} = identity) do
     Token.Query.not_deleted()
     |> Token.Query.by_identity_id(identity.id)
-    |> delete_tokens()
+    |> soft_delete_tokens()
   end
 
-  def delete_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
+  def soft_delete_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
       Token.Query.not_deleted()
       |> Token.Query.by_actor_id(actor.id)
       |> Authorizer.for_subject(subject)
-      |> delete_tokens()
+      |> soft_delete_tokens()
     end
   end
 
-  def delete_tokens_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
+  def soft_delete_tokens_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
       Token.Query.not_deleted()
       |> Token.Query.by_identity_id(identity.id)
       |> Authorizer.for_subject(subject)
-      |> delete_tokens()
+      |> soft_delete_tokens()
     end
   end
 
-  def delete_tokens_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
+  def soft_delete_tokens_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
       Token.Query.not_deleted()
       |> Token.Query.by_provider_id(provider.id)
       |> Authorizer.for_subject(subject)
-      |> delete_tokens()
+      |> soft_delete_tokens()
     end
   end
 
-  def delete_tokens_for(%Relays.Group{} = group, %Auth.Subject{} = subject) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
+  def soft_delete_tokens_for(%Relays.Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
       Token.Query.not_deleted()
       |> Token.Query.by_relay_group_id(group.id)
       |> Authorizer.for_subject(subject)
-      |> delete_tokens()
+      |> soft_delete_tokens()
     end
   end
 
-  def delete_tokens_for(%Gateways.Group{} = group, %Auth.Subject{} = subject) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
+  def soft_delete_tokens_for(%Gateways.Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
       Token.Query.not_deleted()
       |> Token.Query.by_gateway_group_id(group.id)
       |> Authorizer.for_subject(subject)
-      |> delete_tokens()
+      |> soft_delete_tokens()
     end
   end
 
-  def delete_all_tokens_by_type_and_assoc(:email, %Auth.Identity{} = identity) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
+  def soft_delete_all_tokens_by_type_and_assoc(:email, %Auth.Identity{} = identity) do
     Token.Query.not_deleted()
     |> Token.Query.by_type(:email)
     |> Token.Query.by_account_id(identity.account_id)
     |> Token.Query.by_identity_id(identity.id)
-    |> delete_tokens()
+    |> soft_delete_tokens()
   end
 
-  def delete_expired_tokens do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
+  def soft_delete_expired_tokens do
     Token.Query.not_deleted()
     |> Token.Query.expired()
-    |> delete_tokens()
+    |> soft_delete_tokens()
   end
 
-  defp delete_tokens(queryable) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
+  defp soft_delete_tokens(queryable) do
     {_count, tokens} =
       queryable
       |> Token.Query.delete()

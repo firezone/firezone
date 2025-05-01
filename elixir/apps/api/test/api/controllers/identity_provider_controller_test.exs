@@ -139,8 +139,7 @@ defmodule API.IdentityProviderControllerTest do
                }
              }
 
-      assert identity_provider = Repo.get(Provider, identity_provider.id)
-      assert identity_provider.deleted_at
+      refute Repo.get(Provider, identity_provider.id)
     end
   end
 end

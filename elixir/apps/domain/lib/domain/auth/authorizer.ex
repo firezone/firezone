@@ -67,6 +67,30 @@ defmodule Domain.Auth.Authorizer do
     []
   end
 
+  def ensure_has_access_to(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
+    cond do
+      # If identity belongs to same actor, check own permission
+      subject.account.id == identity.account_id and owns_identity?(identity, subject) ->
+        Auth.ensure_has_permissions(subject, manage_own_identities_permission())
+
+      # Otherwise, check global manage permission
+      subject.account.id == identity.account_id ->
+        Auth.ensure_has_permissions(subject, manage_identities_permission())
+
+      # Different account
+      true ->
+        {:error, :unauthorized}
+    end
+  end
+
+  def ensure_has_access_to(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    if subject.account.id == provider.account_id do
+      Auth.ensure_has_permissions(subject, manage_providers_permission())
+    else
+      {:error, :unauthorized}
+    end
+  end
+
   def for_subject(queryable, Auth.Identity, %Auth.Subject{} = subject) do
     cond do
       Auth.has_permission?(subject, manage_identities_permission()) ->
@@ -83,6 +107,14 @@ defmodule Domain.Auth.Authorizer do
     cond do
       Auth.has_permission?(subject, manage_providers_permission()) ->
         Auth.Provider.Query.by_account_id(queryable, subject.account.id)
+    end
+  end
+
+  defp owns_identity?(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
+    cond do
+      is_nil(subject.identity) -> false
+      identity.id == subject.identity.id -> true
+      true -> false
     end
   end
 end

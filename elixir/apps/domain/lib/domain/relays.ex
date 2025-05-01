@@ -88,6 +88,13 @@ defmodule Domain.Relays do
   end
 
   def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
+    with :ok <- Authorizer.ensure_has_access_to(group, subject) do
+      Repo.delete(group, stale_error_field: false)
+    end
+  end
+
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
+  def soft_delete_group(%Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       Group.Query.not_deleted()
       |> Group.Query.by_id(group.id)
@@ -95,7 +102,7 @@ defmodule Domain.Relays do
       |> Group.Query.by_account_id(subject.account.id)
       |> Repo.fetch_and_update(Group.Query,
         with: fn group ->
-          {:ok, _tokens} = Tokens.delete_tokens_for(group, subject)
+          {:ok, _tokens} = Tokens.soft_delete_tokens_for(group, subject)
 
           {_count, _} =
             Relay.Query.not_deleted()
@@ -303,6 +310,13 @@ defmodule Domain.Relays do
   end
 
   def delete_relay(%Relay{} = relay, %Auth.Subject{} = subject) do
+    with :ok <- Authorizer.ensure_has_access_to(relay, subject) do
+      Repo.delete(relay, stale_error_field: false)
+    end
+  end
+
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
+  def soft_delete_relay(%Relay{} = relay, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       Relay.Query.not_deleted()
       |> Relay.Query.by_id(relay.id)

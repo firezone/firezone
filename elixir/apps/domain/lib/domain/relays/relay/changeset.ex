@@ -22,11 +22,13 @@ defmodule Domain.Relays.Relay.Changeset do
                               last_used_token_id
                               updated_at]a
 
+  # TODO: Update or remove after `deleted_at` is removed from DB
   def upsert_conflict_target(%{account_id: nil}) do
     {:unsafe_fragment,
      ~s/(COALESCE(ipv4, ipv6), port) WHERE deleted_at IS NULL AND account_id IS NULL/}
   end
 
+  # TODO: Update or remove after `deleted_at` is removed from DB
   def upsert_conflict_target(%{account_id: _account_id}) do
     {:unsafe_fragment,
      ~s/(account_id, COALESCE(ipv4, ipv6), port) WHERE deleted_at IS NULL AND account_id IS NOT NULL/}
@@ -59,6 +61,7 @@ defmodule Domain.Relays.Relay.Changeset do
     |> put_change(:last_used_token_id, token.id)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
   def delete(%Relays.Relay{} = relay) do
     relay
     |> change()

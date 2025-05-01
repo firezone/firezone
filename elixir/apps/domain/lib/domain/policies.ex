@@ -2,6 +2,7 @@ defmodule Domain.Policies do
   alias Domain.Repo
   alias Domain.{Auth, Actors, Cache.Cacheable, Clients, Resources}
   alias Domain.Policies.{Authorizer, Policy, Condition}
+  require Logger
 
   def fetch_policy_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
@@ -138,10 +139,11 @@ defmodule Domain.Policies do
     end
   end
 
-  def delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
+  def soft_delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
     Policy.Query.not_deleted()
     |> Policy.Query.by_id(policy.id)
-    |> delete_policies(subject)
+    |> soft_delete_policies(subject)
     |> case do
       {:ok, [policy]} -> {:ok, policy}
       {:ok, []} -> {:error, :not_found}
@@ -149,39 +151,143 @@ defmodule Domain.Policies do
     end
   end
 
-  def delete_policies_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject) do
-    Policy.Query.not_deleted()
-    |> Policy.Query.by_resource_id(resource.id)
-    |> delete_policies(subject)
-  end
-
-  def delete_policies_for(%Actors.Group{} = actor_group, %Auth.Subject{} = subject) do
-    Policy.Query.not_deleted()
-    |> Policy.Query.by_actor_group_id(actor_group.id)
-    |> delete_policies(subject)
-  end
-
-  def delete_policies_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
-    Policy.Query.not_deleted()
-    |> Policy.Query.by_actor_group_provider_id(provider.id)
-    |> delete_policies(subject)
-  end
-
-  def delete_policies_for(%Actors.Group{} = actor_group) do
-    Policy.Query.not_deleted()
-    |> Policy.Query.by_actor_group_id(actor_group.id)
-    |> delete_policies()
-  end
-
-  defp delete_policies(queryable, subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
-      queryable
-      |> Authorizer.for_subject(subject)
-      |> delete_policies()
+  def delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+    with :ok <- Authorizer.ensure_has_access_to(policy, subject) do
+      Repo.delete(policy, stale_error_field: false)
     end
   end
 
-  defp delete_policies(queryable) do
+  # TODO: HARD-DELETE - Should not be needed after hard delete is implemented
+  def delete_policies_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
+      Policy.Query.all()
+      |> Policy.Query.by_resource_id(resource.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {count, nil} ->
+          {:ok, count}
+
+        error ->
+          Logger.error("Unknown error while deleting policies for resource",
+            account_id: resource.account_id,
+            actor_id: subject.actor.id,
+            resource_id: resource.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error deleting policies for resource"}
+      end
+    end
+  end
+
+  # TODO: HARD-DELETE - Should not be needed after hard delete is implemented
+  def delete_policies_for(%Actors.Group{} = actor_group, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
+      Policy.Query.all()
+      |> Policy.Query.by_actor_group_id(actor_group.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {count, nil} ->
+          {:ok, count}
+
+        error ->
+          Logger.error("Unknown error while deleting policies for group",
+            account_id: actor_group.account_id,
+            actor_id: subject.actor.id,
+            group_id: actor_group.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error deleting policies for resource"}
+      end
+    end
+  end
+
+  # TODO: HARD-DELETE - Should not be needed after hard delete is implemented
+  def delete_policies_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
+      Policy.Query.all()
+      |> Policy.Query.by_actor_group_provider_id(provider.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {count, nil} ->
+          {:ok, count}
+
+        error ->
+          Logger.error("Unknown error while deleting policies for provider",
+            account_id: provider.account_id,
+            actor_id: subject.actor.id,
+            provider_id: provider.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error deleting policies for resource"}
+      end
+    end
+  end
+
+  # TODO: HARD-DELETE - Should not be needed after hard delete is implemented
+  def delete_policies_for(%Actors.Group{} = actor_group) do
+    Policy.Query.all()
+    |> Policy.Query.by_actor_group_id(actor_group.id)
+    |> Repo.delete_all()
+    |> case do
+      {count, nil} ->
+        {:ok, count}
+
+      error ->
+        Logger.error("Unknown error while deleting policies for group",
+          account_id: actor_group.account_id,
+          group_id: actor_group.id,
+          reason: inspect(error)
+        )
+
+        {:error, "unknown error deleting policies for resource"}
+    end
+  end
+
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
+  def soft_delete_policies_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject) do
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_resource_id(resource.id)
+    |> soft_delete_policies(subject)
+  end
+
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
+  def soft_delete_policies_for(%Actors.Group{} = actor_group, %Auth.Subject{} = subject) do
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_actor_group_id(actor_group.id)
+    |> soft_delete_policies(subject)
+  end
+
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
+  def soft_delete_policies_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_actor_group_provider_id(provider.id)
+    |> soft_delete_policies(subject)
+  end
+
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
+  def soft_delete_policies_for(%Actors.Group{} = actor_group) do
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_actor_group_id(actor_group.id)
+    |> soft_delete_policies()
+  end
+
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
+  defp soft_delete_policies(queryable, subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
+      queryable
+      |> Authorizer.for_subject(subject)
+      |> soft_delete_policies()
+    end
+  end
+
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
+  defp soft_delete_policies(queryable) do
     {_count, policies} =
       queryable
       |> Policy.Query.delete()

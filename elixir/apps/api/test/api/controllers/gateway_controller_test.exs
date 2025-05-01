@@ -170,8 +170,7 @@ defmodule API.GatewayControllerTest do
                }
              }
 
-      assert gateway = Repo.get(Gateway, gateway.id)
-      assert gateway.deleted_at
+      refute Repo.get(Gateway, gateway.id)
     end
   end
 end

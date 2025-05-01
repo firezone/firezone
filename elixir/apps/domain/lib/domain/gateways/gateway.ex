@@ -52,6 +52,7 @@ defmodule Domain.Gateways.Gateway do
     belongs_to :account, Domain.Accounts.Account
     belongs_to :group, Domain.Gateways.Group
 
+    # TODO: HARD-DELETE - Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end

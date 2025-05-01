@@ -231,8 +231,7 @@ defmodule API.PolicyControllerTest do
                }
              }
 
-      assert policy = Repo.get(Policy, policy.id)
-      assert policy.deleted_at
+      refute Repo.get(Policy, policy.id)
     end
   end
 end

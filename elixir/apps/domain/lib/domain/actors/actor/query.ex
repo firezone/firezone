@@ -5,6 +5,7 @@ defmodule Domain.Actors.Actor.Query do
     from(actors in Domain.Actors.Actor, as: :actors)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def not_deleted do
     all()
     |> where([actors: actors], is_nil(actors.deleted_at))
@@ -30,6 +31,7 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.account_id == ^account_id)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed in DB
   def by_deleted_identity_provider_id(queryable, provider_id) do
     queryable
     |> join(:inner, [actors: actors], identities in ^Domain.Auth.Identity.Query.deleted(),
@@ -42,6 +44,7 @@ defmodule Domain.Actors.Actor.Query do
     )
   end
 
+  # TODO: HARD-DELETE - Update after `deleted_at` column is removed in DB
   def by_stale_for_provider(queryable, provider_id) do
     subquery =
       Domain.Auth.Identity.Query.all()
@@ -329,6 +332,7 @@ defmodule Domain.Actors.Actor.Query do
     {queryable, dynamic(exists(subquery))}
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed in DB
   def filter_deleted(queryable) do
     {queryable, dynamic([actors: actors], not is_nil(actors.deleted_at))}
   end
