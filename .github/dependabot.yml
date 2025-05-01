@@ -111,7 +111,7 @@ updates:
           - com.google.firebase:firebase-analytics-ktx
 
   - package-ecosystem: swift
-    directory: swift/apple/Firezone.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+    directory: swift/apple/FirezoneKit
     schedule:
       interval: monthly
   - package-ecosystem: npm
