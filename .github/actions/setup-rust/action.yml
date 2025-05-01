@@ -19,7 +19,7 @@ outputs:
     value: ${{
       (runner.os == 'Linux' && '--workspace') ||
       (runner.os == 'macOS' && '--workspace --exclude ebpf-turn-router --exclude gui-smoke-test') ||
-      (runner.os == 'Windows' && '-p connlib-client-shared -p connlib-model -p firezone-bin-shared -p firezone-gui-client -p firezone-gui-client-common -p firezone-headless-client -p firezone-logging -p firezone-telemetry -p firezone-tunnel -p gui-smoke-test -p http-test-server -p ip-packet -p phoenix-channel -p snownet -p socket-factory -p tun') }}
+      (runner.os == 'Windows' && '--workspace --exclude ebpf-turn-router') }}
   test-packages:
     description: Testable packages for the current OS
     value: ${{
