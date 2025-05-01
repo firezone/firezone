@@ -29,8 +29,6 @@ if config_env() == :prod do
 
   config :domain, Domain.Events.ReplicationConnection,
     connection_opts: [
-      # Automatically reconnect if we lose connection.
-      auto_reconnect: true,
       hostname: compile_config!(:database_host),
       port: compile_config!(:database_port),
       ssl: compile_config!(:database_ssl_enabled),
