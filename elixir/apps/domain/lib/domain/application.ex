@@ -94,7 +94,7 @@ defmodule Domain.Application do
     end
   end
 
-  defp replication_child_spec(config) do
+  defp replication_child_spec do
     {connection_opts, config} =
       Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
       |> Keyword.pop(:connection_opts)
