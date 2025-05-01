@@ -1,4 +1,4 @@
-defmodule Domain.Events.Hooks.Relays do
+defmodule Domain.Events.Hooks.ActorResources do
   def on_insert(_data) do
     :ok
   end
