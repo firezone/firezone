@@ -1,3 +1,4 @@
+mod conntrack;
 mod resource;
 
 use dns_types::{DomainName, ResponseCode};
@@ -143,6 +144,8 @@ pub struct ClientState {
     /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
     recently_connected_gateways: LruCache<GatewayId, ()>,
 
+    conntrack_tcp: conntrack::Tcp,
+
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
@@ -252,6 +255,7 @@ impl ClientState {
             tcp_dns_streams_by_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             dns_resource_nat_by_gateway: BTreeMap::new(),
+            conntrack_tcp: conntrack::Tcp::default(),
         }
     }
 
@@ -510,6 +514,8 @@ impl ClientState {
         packet: IpPacket,
         now: Instant,
     ) -> Option<snownet::Transmit> {
+        self.conntrack_tcp.on_outgoing(&packet);
+
         let non_dns_packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
