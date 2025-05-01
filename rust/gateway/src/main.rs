@@ -113,6 +113,20 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
         opentelemetry::global::set_meter_provider(provider);
     }
 
+    if cli.is_inc_recv_buf_allowed() {
+        tokio::fs::write(
+            "/proc/sys/net/core/rmem_max",
+            socket_factory::RECV_BUFFER_SIZE.to_string(),
+        )
+        .await
+        .context("Failed to set `core.rmem_max` parameter")?;
+
+        tracing::info!(
+            "Set `core.rmem_max` to {}",
+            socket_factory::RECV_BUFFER_SIZE
+        );
+    }
+
     let firezone_id = get_firezone_id(cli.firezone_id).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
     Telemetry::set_firezone_id(firezone_id.clone());
@@ -252,11 +266,20 @@ struct Cli {
     /// Dump internal metrics to stdout every 60s.
     #[arg(long, env = "FIREZONE_METRICS", default_value_t = false)]
     metrics: bool,
+
+    /// Do not increase the `core.rmem_max` kernel parameter.
+    // FIXME: Move this to the systemd unit file once we package the gateway.
+    #[arg(long, env = "FIREZONE_NO_INC_RECV_BUF", default_value_t = false)]
+    no_inc_recv_buf: bool,
 }
 
 impl Cli {
     fn is_telemetry_allowed(&self) -> bool {
         !self.no_telemetry
+    }
+
+    fn is_inc_recv_buf_allowed(&self) -> bool {
+        !self.no_inc_recv_buf
     }
 }
 
