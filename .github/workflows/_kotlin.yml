@@ -48,6 +48,7 @@ jobs:
       id-token: write
     name: build-release-${{ matrix.package-type }}
     needs: update-release-draft
+    if: "${{ github.event_name == 'workflow_dispatch' }}"
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-22.04
     strategy:
