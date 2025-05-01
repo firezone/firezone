@@ -112,6 +112,7 @@ jobs:
 
   data-plane-windows:
     name: client-windows-${{ matrix.target }}
+    if: ${{ inputs.image_prefix != 'perf' }} # Perf testing happens only on Linux
     runs-on: windows-2019
     defaults:
       run:
