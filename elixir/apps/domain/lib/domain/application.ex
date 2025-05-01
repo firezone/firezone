@@ -45,7 +45,7 @@ defmodule Domain.Application do
   end
 
   defp background_children do
-    if domain_node?() do
+    if background_jobs_enabled?() do
       [
         # Job system
         {Oban, Application.fetch_env!(:domain, Oban)},
@@ -109,7 +109,7 @@ defmodule Domain.Application do
     end
   end
 
-  defp domain_node? do
+  defp background_jobs_enabled? do
     # The web and api applications also start Domain's supervision tree so that they may
     # use the same database connection pool and other shared resources. We want to restrict
     # some children to only run in the domain node.
