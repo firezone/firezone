@@ -14,7 +14,12 @@ updates:
     schedule:
       interval: monthly
   - package-ecosystem: github-actions
-    directory: /.github
+    directory: /
+    schedule:
+      interval: monthly
+  # Dependabot won't look in here by default
+  - package-ecosystem: github-actions
+    directory: /.github/actions
     schedule:
       interval: monthly
   - package-ecosystem: cargo
