@@ -106,6 +106,14 @@ pub mod metrics {
             .with_unit("{packet}")
             .init()
     }
+
+    pub fn network_packet_retransmitted() -> Counter<u64> {
+        opentelemetry::global::meter("connlib")
+            .u64_counter("network.packet.retransmitted")
+            .with_description("Count of packets that are retransmitted")
+            .with_unit("{packet}")
+            .init()
+    }
 }
 
 pub fn default_resource_with<const N: usize>(attributes: [KeyValue; N]) -> Resource {
