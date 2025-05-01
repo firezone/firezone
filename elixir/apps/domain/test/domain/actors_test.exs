@@ -3279,7 +3279,7 @@ defmodule Domain.ActorsTest do
       assert Repo.aggregate(Actors.Membership, :count) == 0
     end
 
-    test "expires actor flows", %{
+    test "deletes actor flows", %{
       account: account,
       actor: actor,
       identity: identity,

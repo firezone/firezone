@@ -4,6 +4,7 @@ defmodule Domain.Gateways do
   alias Domain.{Repo, Auth, Geo}
   alias Domain.{Accounts, Resources, Tokens, Billing}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Presence}
+  require Logger
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -126,20 +127,23 @@ defmodule Domain.Gateways do
       Group.Query.not_deleted()
       |> Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Group.Query,
-        with: fn group ->
-          # Token deletion will disconnect gateways
-          {:ok, _tokens} = Tokens.delete_tokens_for(group, subject)
-          {:ok, _count} = Resources.delete_connections_for(group, subject)
+      |> Repo.delete_all()
+      |> case do
+        {0, nil} ->
+          {:error, "unable to delete"}
 
-          {_count, _} =
-            Gateway.Query.not_deleted()
-            |> Gateway.Query.by_group_id(group.id)
-            |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
+        {1, nil} ->
+          :ok
 
-          Group.Changeset.delete(group)
-        end
-      )
+        error ->
+          Logger.error("Unknown error while deleting gateway group",
+            account_id: group.account_id,
+            group_id: group.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error"}
+      end
     end
   end
 
@@ -340,15 +344,41 @@ defmodule Domain.Gateways do
     end
   end
 
-  def delete_gateway(%Gateway{} = gateway, %Auth.Subject{} = subject) do
+  # TODO: Remove this once deleted_at field is gone
+  def soft_delete_gateway(%Gateway{} = gateway, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
       Gateway.Query.not_deleted()
       |> Gateway.Query.by_id(gateway.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Gateway.Query,
-        with: &Gateway.Changeset.delete/1,
+        with: &Gateway.Changeset.soft_delete/1,
         preload: [:online?]
       )
+    end
+  end
+
+  def delete_gateway(%Gateway{} = gateway, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
+      Gateway.Query.all()
+      |> Gateway.Query.by_id(gateway.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {0, nil} ->
+          {:error, "unable to delete"}
+
+        {1, nil} ->
+          :ok
+
+        error ->
+          Logger.error("Unknown error deleting Gateway",
+            account_id: gateway.account_id,
+            gateway_id: gateway.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error"}
+      end
     end
   end
 

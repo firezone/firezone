@@ -124,7 +124,7 @@ defmodule API.ActorGroupController do
     subject = conn.assigns.subject
 
     with {:ok, actor_group} <- Actors.fetch_group_by_id(id, subject),
-         {:ok, actor_group} <- Actors.delete_group(actor_group, subject) do
+         :ok <- Actors.delete_group(actor_group, subject) do
       render(conn, :show, actor_group: actor_group)
     end
   end

@@ -38,6 +38,7 @@ defmodule Domain.Clients.Client do
     field :verified_by, Ecto.Enum, values: [:system, :actor, :identity]
     field :verified_by_subject, :map
 
+    # TODO: Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end

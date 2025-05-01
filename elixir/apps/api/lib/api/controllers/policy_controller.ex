@@ -125,7 +125,7 @@ defmodule API.PolicyController do
     subject = conn.assigns.subject
 
     with {:ok, policy} <- Policies.fetch_policy_by_id_or_persistent_id(id, subject),
-         {:ok, policy} <- Policies.delete_policy(policy, subject) do
+         :ok <- Policies.delete_policy(policy, subject) do
       render(conn, :show, policy: policy)
     end
   end

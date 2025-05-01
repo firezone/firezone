@@ -2,6 +2,7 @@ defmodule Domain.Policies do
   alias Domain.Repo
   alias Domain.{Auth, Actors, Clients, Resources}
   alias Domain.Policies.{Authorizer, Policy, Condition}
+  require Logger
 
   def fetch_policy_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
@@ -109,10 +110,10 @@ defmodule Domain.Policies do
     end
   end
 
-  def delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
+  def soft_delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
     Policy.Query.not_deleted()
     |> Policy.Query.by_id(policy.id)
-    |> delete_policies(subject)
+    |> soft_delete_policies(subject)
     |> case do
       {:ok, [policy]} -> {:ok, policy}
       {:ok, []} -> {:error, :not_found}
@@ -120,39 +121,164 @@ defmodule Domain.Policies do
     end
   end
 
-  def delete_policies_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject) do
-    Policy.Query.not_deleted()
-    |> Policy.Query.by_resource_id(resource.id)
-    |> delete_policies(subject)
-  end
-
-  def delete_policies_for(%Actors.Group{} = actor_group, %Auth.Subject{} = subject) do
-    Policy.Query.not_deleted()
-    |> Policy.Query.by_actor_group_id(actor_group.id)
-    |> delete_policies(subject)
-  end
-
-  def delete_policies_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
-    Policy.Query.not_deleted()
-    |> Policy.Query.by_actor_group_provider_id(provider.id)
-    |> delete_policies(subject)
-  end
-
-  def delete_policies_for(%Actors.Group{} = actor_group) do
-    Policy.Query.not_deleted()
-    |> Policy.Query.by_actor_group_id(actor_group.id)
-    |> delete_policies()
-  end
-
-  defp delete_policies(queryable, subject) do
+  def delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
-      queryable
+      Policy.Query.not_deleted()
+      |> Policy.Query.by_id(policy.id)
       |> Authorizer.for_subject(subject)
-      |> delete_policies()
+      |> Repo.delete_all()
+      |> case do
+        {0, nil} ->
+          {:error, "unable to delete"}
+
+        {1, nil} ->
+          :ok
+
+        error ->
+          Logger.error("Unknown error while deleting policy",
+            account_id: policy.account_id,
+            policy_id: policy.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error"}
+      end
     end
   end
 
-  defp delete_policies(queryable) do
+  def delete_policies_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
+      Policy.Query.all()
+      |> Policy.Query.by_resource_id(resource.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {0, nil} ->
+          {:error, "unable to delete policies for resource"}
+
+        {_n, nil} ->
+          :ok
+
+        error ->
+          Logger.error("Unknown error while deleting policies for resource",
+            account_id: resource.account_id,
+            actor_id: subject.actor.id,
+            resource_id: resource.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error deleting policies for resource"}
+      end
+    end
+  end
+
+  def delete_policies_for(%Actors.Group{} = actor_group, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
+      Policy.Query.all()
+      |> Policy.Query.by_actor_group_id(actor_group.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {0, nil} ->
+          {:error, "unable to delete policies for group"}
+
+        {_n, nil} ->
+          :ok
+
+        error ->
+          Logger.error("Unknown error while deleting policies for group",
+            account_id: actor_group.account_id,
+            actor_id: subject.actor.id,
+            group_id: actor_group.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error deleting policies for resource"}
+      end
+    end
+  end
+
+  def delete_policies_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
+      Policy.Query.all()
+      |> Policy.Query.by_actor_group_provider_id(provider.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {0, nil} ->
+          {:error, "unable to delete policies for provider"}
+
+        {_n, nil} ->
+          :ok
+
+        error ->
+          Logger.error("Unknown error while deleting policies for provider",
+            account_id: provider.account_id,
+            actor_id: subject.actor.id,
+            provider_id: provider.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error deleting policies for resource"}
+      end
+    end
+  end
+
+  def delete_policies_for(%Actors.Group{} = actor_group) do
+    Policy.Query.all()
+    |> Policy.Query.by_actor_group_id(actor_group.id)
+    |> Repo.delete_all()
+    |> case do
+      {0, nil} ->
+        {:error, "unable to delete policies for group"}
+
+      {_n, nil} ->
+        :ok
+
+      error ->
+        Logger.error("Unknown error while deleting policies for group",
+          account_id: actor_group.account_id,
+          group_id: actor_group.id,
+          reason: inspect(error)
+        )
+
+        {:error, "unknown error deleting policies for resource"}
+    end
+  end
+
+  def soft_delete_policies_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject) do
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_resource_id(resource.id)
+    |> soft_delete_policies(subject)
+  end
+
+  def soft_delete_policies_for(%Actors.Group{} = actor_group, %Auth.Subject{} = subject) do
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_actor_group_id(actor_group.id)
+    |> soft_delete_policies(subject)
+  end
+
+  def soft_delete_policies_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_actor_group_provider_id(provider.id)
+    |> soft_delete_policies(subject)
+  end
+
+  def soft_delete_policies_for(%Actors.Group{} = actor_group) do
+    Policy.Query.not_deleted()
+    |> Policy.Query.by_actor_group_id(actor_group.id)
+    |> soft_delete_policies()
+  end
+
+  defp soft_delete_policies(queryable, subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
+      queryable
+      |> Authorizer.for_subject(subject)
+      |> soft_delete_policies()
+    end
+  end
+
+  defp soft_delete_policies(queryable) do
     {_count, policies} =
       queryable
       |> Policy.Query.delete()

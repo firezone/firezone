@@ -76,6 +76,7 @@ defmodule Domain.Events.Hooks.Policies do
   end
 
   # Soft-delete
+  # TODO: Update or remove after `deleted_at` is removed from DB
   def on_update(
         %{
           "deleted_at" => nil
@@ -87,6 +88,7 @@ defmodule Domain.Events.Hooks.Policies do
   end
 
   # Breaking update - delete then create
+  # TODO: Update or remove after `deleted_at` is removed from DB
   def on_update(
         %{
           "id" => old_policy_id,

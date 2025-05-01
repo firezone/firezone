@@ -356,7 +356,7 @@ defmodule Web.Policies.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _} = Policies.delete_policy(socket.assigns.policy, socket.assigns.subject)
+    :ok = Policies.delete_policy(socket.assigns.policy, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies")}
   end
 end

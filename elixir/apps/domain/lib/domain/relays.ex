@@ -89,13 +89,41 @@ defmodule Domain.Relays do
 
   def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
+      Group.Query.all()
+      |> Group.Query.by_id(group.id)
+      |> Authorizer.for_subject(subject)
+      |> Group.Query.by_account_id(subject.account.id)
+      |> Repo.delete_all()
+      |> case do
+        {0, nil} ->
+          {:error, "unable to delete"}
+
+        {1, nil} ->
+          :ok
+
+        error ->
+          Logger.error("Unknown error while deleting relay group",
+            account_id: subject.account_id,
+            actor_id: subject.actor.id,
+            group_id: group.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error while deleting"}
+      end
+    end
+  end
+
+  # TODO: Remove after `deleted_at` column is removed from DB
+  def soft_delete_group(%Group{} = group, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
       Group.Query.not_deleted()
       |> Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
       |> Group.Query.by_account_id(subject.account.id)
       |> Repo.fetch_and_update(Group.Query,
         with: fn group ->
-          {:ok, _tokens} = Tokens.delete_tokens_for(group, subject)
+          {:ok, _tokens} = Tokens.soft_delete_tokens_for(group, subject)
 
           {_count, _} =
             Relay.Query.not_deleted()

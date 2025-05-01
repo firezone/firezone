@@ -6,6 +6,7 @@ defmodule Domain.Events.Hooks.Gateways do
   def on_insert(_data), do: :ok
 
   # Soft-delete
+  # TODO: Update or remove after `deleted_at` is removed from DB
   @impl true
   def on_update(%{"deleted_at" => nil} = old_data, %{"deleted_at" => deleted_at} = _data)
       when not is_nil(deleted_at) do

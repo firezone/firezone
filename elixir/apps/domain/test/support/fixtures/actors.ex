@@ -72,7 +72,7 @@ defmodule Domain.Fixtures.Actors do
         actor: [type: :account_admin_user]
       )
 
-    {:ok, group} = Actors.delete_group(group, subject)
+    :ok = Actors.delete_group(group, subject)
     group
   end
 

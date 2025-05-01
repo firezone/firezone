@@ -19,6 +19,8 @@ defmodule Domain.Policies.Policy do
     has_one :replaces_policy, Domain.Policies.Policy, foreign_key: :replaced_by_policy_id
 
     field :disabled_at, :utc_datetime_usec
+
+    # TODO: Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end
