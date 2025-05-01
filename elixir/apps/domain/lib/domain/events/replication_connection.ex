@@ -120,6 +120,8 @@ defmodule Domain.Events.ReplicationConnection do
   end
 
   def handle_result([%Postgrex.Result{}], %__MODULE__{step: :start_replication_slot} = state) do
+    Logger.info("Starting replication slot", state: inspect(state))
+
     query =
       "START_REPLICATION SLOT \"#{state.replication_slot_name}\" LOGICAL 0/0  (proto_version '#{state.proto_version}', publication_names '#{state.publication_name}')"
 
@@ -288,20 +290,20 @@ defmodule Domain.Events.ReplicationConnection do
   @doc """
     Called when the connection is disconnected unexpectedly.
 
-    We log the error and set the state to :disconnected, which will cause the
-    ReplicationConnection to attempt to reconnect when auto_reconnect is enabled.
-
     This will happen if:
       1. Postgres is restarted such as during a maintenance window
       2. The connection is closed by the server due to our failure to acknowledge
          Keepalive messages in a timely manner
       3. The connection is cut due to a network error
       4. The ReplicationConnection process crashes or is killed abruptly for any reason
+      5. Potentially during a deploy if the connection is not closed gracefully.
+
+    Our Supervisor will restart this process automatically so this is not an error.
   """
 
   @impl true
   def handle_disconnect(state) do
-    Logger.warning("Replication connection disconnected",
+    Logger.info("Replication connection disconnected",
       state: inspect(state)
     )
 
