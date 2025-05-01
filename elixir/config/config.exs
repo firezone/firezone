@@ -31,6 +31,7 @@ config :domain, Domain.Repo,
   start_apps_before_migration: [:ssl, :logger_json]
 
 config :domain, Domain.Events.ReplicationConnection,
+  enabled: true,
   connection_opts: [
     hostname: "localhost",
     port: 5432,
