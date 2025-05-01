@@ -44,7 +44,7 @@ defmodule Domain.Application do
       Domain.Telemetry,
 
       # WAL replication
-      replication_child_spec(),
+      replication_child_spec()
     ]
   end
 
