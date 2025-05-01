@@ -51,6 +51,9 @@ jemallocator = { workspace = true }
 nix = { workspace = true }
 dns-lookup = { workspace = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+dns-lookup = { workspace = true }
+
 [dev-dependencies]
 serde_json = { workspace = true, features = ["std"] }
 
