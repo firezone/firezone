@@ -3,7 +3,7 @@ mod nameserver_set;
 mod tcp_dns;
 mod udp_dns;
 
-use crate::{device_channel::Device, dns, sockets::Sockets};
+use crate::{device_channel::Device, dns, otel, sockets::Sockets};
 use anyhow::{Context as _, Result};
 use firezone_logging::{telemetry_event, telemetry_span};
 use futures::FutureExt as _;
@@ -194,15 +194,15 @@ impl Io {
             self.packet_counter.add(
                 num_ipv4 as u64,
                 &[
-                    crate::otel::network_type_ipv4(),
-                    crate::otel::network_io_direction_receive(),
+                    otel::attr::network_type_ipv4(),
+                    otel::attr::network_io_direction_receive(),
                 ],
             );
             self.packet_counter.add(
                 num_ipv6 as u64,
                 &[
-                    crate::otel::network_type_ipv6(),
-                    crate::otel::network_io_direction_receive(),
+                    otel::attr::network_type_ipv6(),
+                    otel::attr::network_io_direction_receive(),
                 ],
             );
 
@@ -312,8 +312,8 @@ impl Io {
         self.packet_counter.add(
             1,
             &[
-                crate::otel::network_type_for_packet(&packet),
-                crate::otel::network_io_direction_transmit(),
+                otel::attr::network_type_for_packet(&packet),
+                otel::attr::network_io_direction_transmit(),
             ],
         );
 
@@ -351,9 +351,9 @@ impl Io {
         self.packet_counter.add(
             1,
             &[
-                crate::otel::network_protocol_name(payload),
-                crate::otel::network_transport_udp(),
-                crate::otel::network_io_direction_transmit(),
+                otel::attr::network_protocol_name(payload),
+                otel::attr::network_transport_udp(),
+                otel::attr::network_io_direction_transmit(),
             ],
         );
     }

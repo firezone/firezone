@@ -195,9 +195,9 @@ impl ClientTunnel {
                         self.packet_counter.add(
                             1,
                             &[
-                                crate::otel::network_protocol_name(received.packet),
-                                crate::otel::network_transport_udp(),
-                                crate::otel::network_io_direction_receive(),
+                                otel::attr::network_protocol_name(received.packet),
+                                otel::attr::network_transport_udp(),
+                                otel::attr::network_io_direction_receive(),
                             ],
                         );
 
@@ -327,9 +327,9 @@ impl GatewayTunnel {
                         self.packet_counter.add(
                             1,
                             &[
-                                crate::otel::network_protocol_name(received.packet),
-                                crate::otel::network_transport_udp(),
-                                crate::otel::network_io_direction_receive(),
+                                otel::attr::network_protocol_name(received.packet),
+                                otel::attr::network_transport_udp(),
+                                otel::attr::network_io_direction_receive(),
                             ],
                         );
 

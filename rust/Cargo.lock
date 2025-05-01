@@ -2473,6 +2473,9 @@ name = "firezone-telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ip-packet",
+ "opentelemetry",
+ "opentelemetry_sdk",
  "parking_lot",
  "reqwest",
  "sentry",

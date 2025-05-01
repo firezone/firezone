@@ -6,6 +6,7 @@ use env::ON_PREM;
 use sentry::protocol::SessionStatus;
 
 pub mod feature_flags;
+pub mod otel;
 
 pub struct Dsn(&'static str);
 

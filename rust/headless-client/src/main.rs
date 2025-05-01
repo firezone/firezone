@@ -15,6 +15,7 @@ use firezone_headless_client::{
 };
 use firezone_logging::telemetry_span;
 use firezone_telemetry::Telemetry;
+use firezone_telemetry::otel;
 use futures::StreamExt as _;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use phoenix_channel::LoginUrl;
@@ -192,7 +193,7 @@ fn main() -> Result<()> {
     let url = LoginUrl::client(
         cli.api_url,
         &token,
-        firezone_id,
+        firezone_id.clone(),
         cli.firezone_name,
         device_id::device_info(),
     )?;
@@ -213,7 +214,14 @@ fn main() -> Result<()> {
             let exporter = opentelemetry_stdout::MetricsExporter::default();
             let reader =
                 PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio).build();
-            let provider = SdkMeterProvider::builder().with_reader(reader).build();
+            let provider = SdkMeterProvider::builder()
+                .with_reader(reader)
+                .with_resource(otel::default_resource_with([
+                    otel::attr::service_name!(),
+                    otel::attr::service_version!(),
+                    otel::attr::service_instance_id(firezone_id),
+                ]))
+                .build();
 
             opentelemetry::global::set_meter_provider(provider);
         }
