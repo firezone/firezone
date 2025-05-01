@@ -41,41 +41,9 @@ defmodule Domain.Application do
 
       # Observability
       Domain.Telemetry
-    ] ++ background_children()
-  end
-
-  defp background_children do
-    if background_jobs_enabled?() do
-      [
-        # Job system
-        {Oban, Application.fetch_env!(:domain, Oban)},
-
-        # WAL replication
-        replication_child_spec()
-      ]
-    else
-      []
-    end
-  end
-
-  defp replication_child_spec do
-    {connection_opts, config} =
-      Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
-      |> Keyword.pop(:connection_opts)
-
-    init_state = %{
-      connection_opts: connection_opts,
-      instance: struct(Domain.Events.ReplicationConnection, config)
-    }
-
-    %{
-      id: Domain.Events.ReplicationConnection,
-      start: {Domain.Events.ReplicationConnection, :start_link, [init_state]},
-      restart: :transient,
-      # Allow up to 240 restarts in 20 minutes - covers duration of a deploy
-      max_restarts: 240,
-      max_seconds: 1200
-    }
+    ] ++
+      oban() ++
+      replication()
   end
 
   defp configure_logger do
@@ -109,12 +77,40 @@ defmodule Domain.Application do
     end
   end
 
-  defp background_jobs_enabled? do
-    # The web and api applications also start Domain's supervision tree so that they may
-    # use the same database connection pool and other shared resources. We want to restrict
-    # some children to only run in the domain node.
-    # For now, we use BACKGROUND_JOBS_ENABLED to determine if we are running in the domain node.
-    # We could also use the node's name, but this doesn't work as well in dev/test environments.
-    Application.get_env(:domain, :background_jobs_enabled, false)
+  # TODO: Configure Oban workers to only run on domain nodes
+  defp oban do
+    {Oban, Application.fetch_env!(:domain, Oban)}
+  end
+
+  defp replication do
+    {enabled, config} =
+      Application.get_env(:domain, Domain.Events.ReplicationConnection)
+      |> Keyword.pop(:enabled)
+
+    if enabled do
+      [
+        replication_child_spec(config)
+      ]
+    else
+      []
+    end
+  end
+
+  defp replication_child_spec(config) do
+    {connection_opts, config} = Keyword.pop(config, :connection_opts)
+
+    init_state = %{
+      connection_opts: connection_opts,
+      instance: struct(Domain.Events.ReplicationConnection, config)
+    }
+
+    %{
+      id: Domain.Events.ReplicationConnection,
+      start: {Domain.Events.ReplicationConnection, :start_link, [init_state]},
+      restart: :transient,
+      # Allow up to 240 restarts in 20 minutes - covers duration of a deploy
+      max_restarts: 240,
+      max_seconds: 1200
+    }
   end
 end
