@@ -50,8 +50,7 @@ defmodule Domain.Fixtures.Gateways do
         actor: [type: :account_admin_user]
       )
 
-    {:ok, group} = Gateways.delete_group(group, subject)
-    group
+    Gateways.delete_group(group, subject)
   end
 
   def create_token(attrs \\ %{}) do

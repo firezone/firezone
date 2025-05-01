@@ -542,8 +542,7 @@ defmodule Web.AuthTest do
       |> put_session(:live_socket_id, live_socket_id)
       |> sign_out(%{})
 
-      token = Repo.get!(Domain.Tokens.Token, subject.token_id)
-      assert token.deleted_at
+      refute(Repo.get(Domain.Tokens.Token, subject.token_id))
     end
   end
 

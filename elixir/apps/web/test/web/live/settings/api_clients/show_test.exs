@@ -30,7 +30,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
                }}}
   end
 
-  test "renders deleted actor without action buttons", %{conn: conn} do
+  test "raises NotFoundError for deleted actor", %{conn: conn} do
     account = Fixtures.Accounts.create_account()
 
     api_client =
@@ -40,13 +40,11 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
     auth_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     auth_identity = Fixtures.Auth.create_identity(account: account, actor: auth_actor)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(auth_identity)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+    end
   end
 
   test "renders breadcrumbs item", %{conn: conn} do
@@ -143,8 +141,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
     |> render_click()
 
     assert_redirect(lv, ~p"/#{account}/settings/api_clients")
-
-    assert Repo.get(Domain.Actors.Actor, api_client.id).deleted_at
+    refute Repo.get(Domain.Actors.Actor, api_client.id)
   end
 
   test "allows disabling api clients", %{
@@ -240,7 +237,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
            |> render()
            |> table_to_map() == []
 
-    assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
+    refute Repo.get_by(Domain.Tokens.Token, id: token.id)
   end
 
   test "allows revoking all tokens", %{
@@ -270,6 +267,6 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
            |> render()
            |> table_to_map() == []
 
-    assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
+    refute Repo.get_by(Domain.Tokens.Token, id: token.id)
   end
 end
