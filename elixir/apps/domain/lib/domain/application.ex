@@ -22,9 +22,6 @@ defmodule Domain.Application do
       Domain.Repo,
       Domain.PubSub,
 
-      # WAL replication
-      replication_child_spec(),
-
       # Infrastructure services
       # Note: only one of platform adapters will be actually started.
       Domain.GoogleCloudPlatform,
@@ -44,7 +41,10 @@ defmodule Domain.Application do
       Domain.ComponentVersions,
 
       # Observability
-      Domain.Telemetry
+      Domain.Telemetry,
+
+      # WAL replication
+      replication_child_spec(),
     ]
   end
 
