@@ -32,8 +32,6 @@ config :domain, Domain.Repo,
 
 config :domain, Domain.Events.ReplicationConnection,
   connection_opts: [
-    # Automatically reconnect if we lose connection.
-    auto_reconnect: true,
     hostname: "localhost",
     port: 5432,
     ssl: false,

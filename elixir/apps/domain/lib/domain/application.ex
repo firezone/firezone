@@ -22,9 +22,6 @@ defmodule Domain.Application do
       Domain.Repo,
       Domain.PubSub,
 
-      # WAL replication
-      replication_child_spec(),
-
       # Infrastructure services
       # Note: only one of platform adapters will be actually started.
       Domain.GoogleCloudPlatform,
@@ -44,7 +41,10 @@ defmodule Domain.Application do
       Domain.ComponentVersions,
 
       # Observability
-      Domain.Telemetry
+      Domain.Telemetry,
+
+      # WAL replication
+      replication_child_spec()
     ]
   end
 
@@ -61,7 +61,10 @@ defmodule Domain.Application do
     %{
       id: Domain.Events.ReplicationConnection,
       start: {Domain.Events.ReplicationConnection, :start_link, [init_state]},
-      restart: :transient
+      restart: :transient,
+      # Allow up to 240 restarts in 20 minutes - covers duration of a deploy
+      max_restarts: 240,
+      max_seconds: 1200
     }
   end
 
