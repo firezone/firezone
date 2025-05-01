@@ -83,13 +83,11 @@ defmodule Domain.Application do
   end
 
   defp replication do
-    {enabled, config} =
-      Application.get_env(:domain, Domain.Events.ReplicationConnection)
-      |> Keyword.pop(:enabled)
+    config = Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
 
-    if enabled do
+    if config[:enabled] do
       [
-        replication_child_spec(config)
+        replication_child_spec()
       ]
     else
       []
@@ -97,7 +95,9 @@ defmodule Domain.Application do
   end
 
   defp replication_child_spec(config) do
-    {connection_opts, config} = Keyword.pop(config, :connection_opts)
+    {connection_opts, config} =
+      Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
+      |> Keyword.pop(:connection_opts)
 
     init_state = %{
       connection_opts: connection_opts,
