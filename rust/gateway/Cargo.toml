@@ -14,7 +14,6 @@ boringtun = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true }
 connlib-model = { workspace = true }
-dns-lookup = { workspace = true }
 dns-types = { workspace = true }
 either = { workspace = true }
 firezone-bin-shared = { workspace = true }
@@ -50,6 +49,10 @@ uuid = { workspace = true, features = ["v4"] }
 caps = { workspace = true }
 jemallocator = { workspace = true }
 nix = { workspace = true }
+dns-lookup = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+dns-lookup = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true, features = ["std"] }
