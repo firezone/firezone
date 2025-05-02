@@ -227,20 +227,20 @@ impl ConvertibleIpv4Packet {
         Ok(this)
     }
 
-    fn ip_header(&self) -> Ipv4HeaderSlice {
+    pub fn header(&self) -> Ipv4HeaderSlice {
         Ipv4HeaderSlice::from_slice(self.packet()).expect("we checked this during `new`")
     }
 
-    fn ip_header_mut(&mut self) -> Ipv4HeaderSliceMut {
+    fn header_mut(&mut self) -> Ipv4HeaderSliceMut {
         Ipv4HeaderSliceMut::from_slice(self.packet_mut()).expect("we checked this during `new`")
     }
 
     pub fn get_source(&self) -> Ipv4Addr {
-        self.ip_header().source_addr()
+        self.header().source_addr()
     }
 
     fn get_destination(&self) -> Ipv4Addr {
-        self.ip_header().destination_addr()
+        self.header().destination_addr()
     }
 
     fn consume_to_ipv6(mut self, src: Ipv6Addr, dst: Ipv6Addr) -> Result<ConvertibleIpv6Packet> {
@@ -276,7 +276,7 @@ impl ConvertibleIpv4Packet {
     }
 
     fn header_length(&self) -> usize {
-        (self.ip_header().ihl() * 4) as usize
+        (self.header().ihl() * 4) as usize
     }
 
     pub fn packet(&self) -> &[u8] {
@@ -308,7 +308,7 @@ impl ConvertibleIpv6Packet {
         Ok(this)
     }
 
-    fn header(&self) -> Ipv6HeaderSlice {
+    pub fn header(&self) -> Ipv6HeaderSlice {
         Ipv6HeaderSlice::from_slice(self.packet()).expect("We checked this in `new` / `owned`")
     }
 
@@ -524,8 +524,8 @@ impl IpPacket {
             return;
         };
 
-        let checksum = p.ip_header().to_header().calc_header_checksum();
-        p.ip_header_mut().set_checksum(checksum);
+        let checksum = p.header().to_header().calc_header_checksum();
+        p.header_mut().set_checksum(checksum);
     }
 
     fn set_udp_checksum(&mut self) {
@@ -536,7 +536,7 @@ impl IpPacket {
         let checksum = match &self {
             IpPacket::Ipv4(v4) => udp
                 .to_header()
-                .calc_checksum_ipv4(&v4.ip_header().to_header(), udp.payload()),
+                .calc_checksum_ipv4(&v4.header().to_header(), udp.payload()),
             IpPacket::Ipv6(v6) => udp
                 .to_header()
                 .calc_checksum_ipv6(&v6.header().to_header(), udp.payload()),
@@ -556,7 +556,7 @@ impl IpPacket {
         let checksum = match &self {
             IpPacket::Ipv4(v4) => tcp
                 .to_header()
-                .calc_checksum_ipv4(&v4.ip_header().to_header(), tcp.payload()),
+                .calc_checksum_ipv4(&v4.header().to_header(), tcp.payload()),
             IpPacket::Ipv6(v6) => tcp
                 .to_header()
                 .calc_checksum_ipv6(&v6.header().to_header(), tcp.payload()),
@@ -853,7 +853,7 @@ impl IpPacket {
     pub fn set_dst(&mut self, dst: IpAddr) {
         match (self, dst) {
             (Self::Ipv4(p), IpAddr::V4(d)) => {
-                p.ip_header_mut().set_destination(d.octets());
+                p.header_mut().set_destination(d.octets());
             }
             (Self::Ipv6(p), IpAddr::V6(d)) => {
                 p.header_mut().set_destination(d.octets());
@@ -871,7 +871,7 @@ impl IpPacket {
     pub fn set_src(&mut self, src: IpAddr) {
         match (self, src) {
             (Self::Ipv4(p), IpAddr::V4(s)) => {
-                p.ip_header_mut().set_source(s.octets());
+                p.header_mut().set_source(s.octets());
             }
             (Self::Ipv6(p), IpAddr::V6(s)) => {
                 p.header_mut().set_source(s.octets());
@@ -887,7 +887,7 @@ impl IpPacket {
 
     pub fn with_ecn(mut self, ecn: Ecn) -> Self {
         match &mut self {
-            IpPacket::Ipv4(ip) => ip.ip_header_mut().set_ecn(ecn as u8),
+            IpPacket::Ipv4(ip) => ip.header_mut().set_ecn(ecn as u8),
             IpPacket::Ipv6(ip) => ip.header_mut().set_ecn(ecn as u8),
         }
 
@@ -896,7 +896,7 @@ impl IpPacket {
 
     pub fn ecn(&self) -> Ecn {
         let byte = match self {
-            IpPacket::Ipv4(ip) => ip.ip_header().ecn().value(),
+            IpPacket::Ipv4(ip) => ip.header().ecn().value(),
             IpPacket::Ipv6(ip) => ip.header().traffic_class(),
         };
 
@@ -911,7 +911,7 @@ impl IpPacket {
 
     pub fn ipv4_header(&self) -> Option<Ipv4Header> {
         match self {
-            Self::Ipv4(p) => Some(p.ip_header().to_header()),
+            Self::Ipv4(p) => Some(p.header().to_header()),
             Self::Ipv6(_) => None,
         }
     }
@@ -925,7 +925,7 @@ impl IpPacket {
 
     pub fn next_header(&self) -> IpNumber {
         match self {
-            Self::Ipv4(p) => p.ip_header().protocol(),
+            Self::Ipv4(p) => p.header().protocol(),
             Self::Ipv6(p) => p.header().next_header(),
         }
     }
@@ -962,7 +962,7 @@ impl IpPacket {
 
     fn payload_length(&self) -> u16 {
         match self {
-            IpPacket::Ipv4(v4) => v4.ip_header().total_len() - v4.header_length() as u16,
+            IpPacket::Ipv4(v4) => v4.header().total_len() - v4.header_length() as u16,
             IpPacket::Ipv6(v6) => v6.header().payload_length(),
         }
     }
