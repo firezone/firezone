@@ -885,7 +885,45 @@ impl IpPacket {
         }
     }
 
-    pub fn with_ecn(mut self, ecn: Ecn) -> Self {
+    /// Updates the ECN flags of this packet with the ECN value from the transport layer.
+    ///
+    /// After tunneling an IP packet, we need to merge the ECN flags from the transport layer with the ones already set on the IP packet.
+    /// Essentially, the only time we need to update the ECN flags is:
+    /// - if the IP packet signalled an ECN-capable transport (i.e. the originating network stack is ECN-capable)
+    /// - and we have experienced congestion along the way (i.e. the provided ECN value is [`Ecn::Ce`]).
+    pub fn with_ecn_from_transport(self, ecn: Ecn) -> Self {
+        use Ecn::*;
+
+        let ecn = match (self.ecn(), ecn) {
+            (NonEct, NonEct) | (Ect1, Ect1) | (Ect0, Ect0) | (Ce, Ce) => {
+                // No change needed
+                return self;
+            }
+            (NonEct, Ect0 | Ect1 | Ce) => {
+                // Packet sender is not ECN-capable, ignore any update.
+                return self;
+            }
+            (Ect1 | Ect0 | Ce, NonEct) | (Ce, Ect0 | Ect1) => {
+                // We already have ECN information, refuse to clear it.
+                return self;
+            }
+            (Ect1, Ect0) | (Ect0, Ect1) => {
+                // Don't switch between ECT0 and ECT1, they are equivalent.
+                return self;
+            }
+            (Ect1, Ce) | (Ect0, Ce) => {
+                // ECN-capable transport has been signalled and our update is CE, update it!
+                Ce
+            }
+        };
+
+        self.with_ecn(ecn)
+    }
+
+    /// Applies the raw ECN value.
+    ///
+    /// This is most likely not what you want unless you know what you're doing or you are writing a test.
+    fn with_ecn(mut self, ecn: Ecn) -> Self {
         match &mut self {
             IpPacket::Ipv4(ip) => ip.header_mut().set_ecn(ecn as u8),
             IpPacket::Ipv6(ip) => ip.header_mut().set_ecn(ecn as u8),
@@ -1146,5 +1184,27 @@ mod tests {
             ip4_header.header_checksum,
             ip4_header.calc_header_checksum()
         );
+    }
+
+    #[test]
+    fn ecn_from_transport_happy_path() {
+        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+            .unwrap()
+            .with_ecn(Ecn::Ect0);
+
+        let p_with_ce = p.with_ecn_from_transport(Ecn::Ce);
+
+        assert_eq!(p_with_ce.ecn(), Ecn::Ce);
+    }
+
+    #[test]
+    fn ecn_from_transport_no_clear_ect() {
+        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+            .unwrap()
+            .with_ecn(Ecn::Ect0);
+
+        let p_with_ce = p.with_ecn_from_transport(Ecn::NonEct);
+
+        assert_eq!(p_with_ce.ecn(), Ecn::Ect0);
     }
 }

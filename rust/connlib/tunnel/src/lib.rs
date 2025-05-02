@@ -211,7 +211,8 @@ impl ClientTunnel {
                             continue;
                         };
 
-                        self.io.send_tun(packet.with_ecn(received.ecn));
+                        self.io
+                            .send_tun(packet.with_ecn_from_transport(received.ecn));
                     }
 
                     continue;
@@ -344,7 +345,8 @@ impl GatewayTunnel {
                             continue;
                         };
 
-                        self.io.send_tun(packet.with_ecn(received.ecn));
+                        self.io
+                            .send_tun(packet.with_ecn_from_transport(received.ecn));
                     }
 
                     continue;
