@@ -64,9 +64,8 @@ defmodule Domain.Events.ReplicationConnection do
         {:ok, pid}
 
       error ->
-        Logger.error("Failed to start replication connection!",
-          error: inspect(error)
-        )
+        # This is expected in clustered environments.
+        Logger.info("Failed to start replication connection", error: inspect(error))
 
         error
     end
