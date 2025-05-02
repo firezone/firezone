@@ -23,12 +23,13 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.14" date={new Date("2025-05-02")}>
         <ChangeItem pull="9005">
           Fixes an issue where the IP checksum was not updated when ECN bits were set.
           This caused packet loss on recent MacOS versions which default to using ECN.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.13" date={new Date("2025-04-30")}>
         <ChangeItem pull="8731">
           Improves throughput performance by requesting socket receive buffers
