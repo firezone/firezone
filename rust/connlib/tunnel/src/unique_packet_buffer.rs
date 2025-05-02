@@ -27,14 +27,13 @@ impl UniquePacketBuffer {
             return;
         }
 
-        if self
-            .buffer
-            .iter()
-            .any(|buffered| is_tcp_syn_retransmit(buffered, &new))
-        {
-            tracing::trace!(packet = ?new, "Not buffering TCP SYN retransmission");
+        for buffered in self.buffer.iter_mut() {
+            if is_tcp_syn_retransmit(buffered, &new) {
+                tracing::trace!(packet = ?new, "Detected TCP SYN retransmission; replacing old one");
+                *buffered = new;
 
-            return;
+                return;
+            }
         }
 
         tracing::debug!(tag = %self.tag, is_full = %self.buffer.is_full(), packet = ?new, "Buffering packet");
@@ -98,4 +97,44 @@ fn is_tcp_syn_retransmit(buffered: &IpPacket, new: &IpPacket) -> bool {
         && buffered.source_port() == new.source_port()
         && buffered.destination_port() == new.destination_port()
         && buffered.sequence_number() == new.sequence_number()
+}
+
+#[cfg(test)]
+mod tests {
+    use anyhow::Result;
+    use ip_packet::TcpOptionElement;
+
+    use super::*;
+
+    #[test]
+    fn replaces_existing_tcp_syn_retransmission() {
+        let mut buffer = UniquePacketBuffer::with_capacity_power_of_2(2, "test");
+
+        buffer.push(tcp_syn_packet(0, 1024, 0).unwrap());
+        buffer.push(tcp_syn_packet(0, 1025, 0).unwrap());
+
+        let packets = buffer.into_iter().collect::<Vec<_>>();
+
+        assert_eq!(packets.len(), 1);
+        assert_eq!(
+            packets[0]
+                .as_tcp()
+                .unwrap()
+                .options_iterator()
+                .next()
+                .unwrap()
+                .unwrap(),
+            TcpOptionElement::Timestamp(1025, 0)
+        );
+    }
+
+    fn tcp_syn_packet(seq: u32, ts_val: u32, ts_echo: u32) -> Result<IpPacket> {
+        let packet = ip_packet::PacketBuilder::ipv4([0u8; 4], [0u8; 4], 1)
+            .tcp(0, 0, seq, 256)
+            .syn()
+            .options(&[TcpOptionElement::Timestamp(ts_val, ts_echo)])?;
+        let payload = vec![];
+
+        ip_packet::build!(packet, payload)
+    }
 }
