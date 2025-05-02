@@ -890,6 +890,7 @@ impl IpPacket {
             IpPacket::Ipv4(ip) => ip.ip_header_mut().set_ecn(ecn as u8),
             IpPacket::Ipv6(ip) => ip.header_mut().set_ecn(ecn as u8),
         }
+        self.update_checksum();
 
         self
     }
