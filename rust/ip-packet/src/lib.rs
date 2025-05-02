@@ -890,6 +890,7 @@ impl IpPacket {
             IpPacket::Ipv4(ip) => ip.ip_header_mut().set_ecn(ecn as u8),
             IpPacket::Ipv6(ip) => ip.header_mut().set_ecn(ecn as u8),
         }
+        self.update_checksum();
 
         self
     }
@@ -1131,5 +1132,19 @@ mod tests {
         assert_eq!(p.clone().with_ecn(Ecn::Ect1).ecn(), Ecn::Ect1);
         assert_eq!(p.clone().with_ecn(Ecn::Ect0).ecn(), Ecn::Ect0);
         assert_eq!(p.with_ecn(Ecn::Ce).ecn(), Ecn::Ce);
+    }
+
+    #[test]
+    fn ip4_checksum_after_ecn_is_correct() {
+        let p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+            .unwrap();
+
+        let p_with_ecn = p.with_ecn(Ecn::Ect0);
+        let ip4_header = p_with_ecn.ipv4_header().unwrap();
+
+        assert_eq!(
+            ip4_header.header_checksum,
+            ip4_header.calc_header_checksum()
+        );
     }
 }
