@@ -892,29 +892,28 @@ impl IpPacket {
     /// - if the IP packet signalled an ECN-capable transport (i.e. the originating network stack is ECN-capable)
     /// - and we have experienced congestion along the way (i.e. the provided ECN value is [`Ecn::Ce`]).
     pub fn with_ecn_from_transport(self, ecn: Ecn) -> Self {
+        use Ecn::*;
+
         let ecn = match (self.ecn(), ecn) {
-            (Ecn::NonEct, Ecn::NonEct)
-            | (Ecn::Ect1, Ecn::Ect1)
-            | (Ecn::Ect0, Ecn::Ect0)
-            | (Ecn::Ce, Ecn::Ce) => {
+            (NonEct, NonEct) | (Ect1, Ect1) | (Ect0, Ect0) | (Ce, Ce) => {
                 // No change needed
                 return self;
             }
-            (Ecn::NonEct, Ecn::Ect0 | Ecn::Ect1 | Ecn::Ce) => {
+            (NonEct, Ect0 | Ect1 | Ce) => {
                 // Packet sender is not ECN-capable, ignore any update.
                 return self;
             }
-            (Ecn::Ect1 | Ecn::Ect0 | Ecn::Ce, Ecn::NonEct) | (Ecn::Ce, Ecn::Ect0 | Ecn::Ect1) => {
+            (Ect1 | Ect0 | Ce, NonEct) | (Ce, Ect0 | Ect1) => {
                 // We already have ECN information, refuse to clear it.
                 return self;
             }
-            (Ecn::Ect1, Ecn::Ect0) | (Ecn::Ect0, Ecn::Ect1) => {
+            (Ect1, Ect0) | (Ect0, Ect1) => {
                 // Don't switch between ECT0 and ECT1, they are equivalent.
                 return self;
             }
-            (Ecn::Ect1, Ecn::Ce) | (Ecn::Ect0, Ecn::Ce) => {
+            (Ect1, Ce) | (Ect0, Ce) => {
                 // ECN-capable transport has been signalled and our update is CE, update it!
-                Ecn::Ce
+                Ce
             }
         };
 
