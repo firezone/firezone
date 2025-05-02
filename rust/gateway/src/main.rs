@@ -13,6 +13,7 @@ use firezone_bin_shared::{
 
 use firezone_telemetry::{Telemetry, otel};
 use firezone_tunnel::GatewayTunnel;
+use ip_packet::IpPacket;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
@@ -27,6 +28,7 @@ use std::{process::ExitCode, str::FromStr};
 use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
 use tracing_subscriber::layer;
+use tun::Tun;
 use url::Url;
 use uuid::Uuid;
 
@@ -166,7 +168,12 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
     let tun = tun_device_manager
         .make_tun()
         .context("Failed to create TUN device")?;
-    tunnel.set_tun(tun);
+
+    if cli.validate_checksums {
+        tunnel.set_tun(ValidateChecksumAdapter::wrap(tun));
+    } else {
+        tunnel.set_tun(tun);
+    }
 
     let task = tokio::spawn(future::poll_fn({
         let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager);
@@ -257,8 +264,17 @@ struct Cli {
     tun_threads: NumThreads,
 
     /// Dump internal metrics to stdout every 60s.
-    #[arg(long, env = "FIREZONE_METRICS", default_value_t = false)]
+    #[arg(long, hide = true, env = "FIREZONE_METRICS", default_value_t = false)]
     metrics: bool,
+
+    /// Validates the checksums of all packets leaving the TUN device.
+    #[arg(
+        long,
+        hide = true,
+        env = "FIREZONE_VALIDATE_CHECKSUMS",
+        default_value_t = false
+    )]
+    validate_checksums: bool,
 }
 
 impl Cli {
@@ -291,5 +307,87 @@ impl FromStr for NumThreads {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         Ok(Self(s.parse()?))
+    }
+}
+
+/// An adapter struct around [`Tun`] that validates IPv4, UDP and TCP checksums.
+struct ValidateChecksumAdapter {
+    inner: Box<dyn Tun>,
+}
+
+impl Tun for ValidateChecksumAdapter {
+    fn poll_send_ready(
+        &mut self,
+        cx: &mut std::task::Context,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        self.inner.poll_send_ready(cx)
+    }
+
+    fn send(&mut self, packet: IpPacket) -> std::io::Result<()> {
+        if let Some(ipv4) = packet.ipv4_header() {
+            let expected = ipv4.calc_header_checksum();
+            let actual = ipv4.header_checksum;
+
+            if expected != actual {
+                tracing::warn!(?packet, %expected, %actual, "IPv4 checksum invalid");
+            }
+        }
+
+        if let Some(udp) = packet.as_udp() {
+            let actual = udp.checksum();
+
+            let expected = match &packet {
+                IpPacket::Ipv4(ipv4) => udp
+                    .to_header()
+                    .calc_checksum_ipv4(&ipv4.header().to_header(), udp.payload()),
+                IpPacket::Ipv6(ipv6) => udp
+                    .to_header()
+                    .calc_checksum_ipv6(&ipv6.header().to_header(), udp.payload()),
+            }
+            .map_err(std::io::Error::other)?;
+
+            if expected != actual {
+                tracing::warn!(?packet, %expected, %actual, "UDP checksum invalid");
+            }
+        }
+
+        if let Some(tcp) = packet.as_tcp() {
+            let actual = tcp.checksum();
+
+            let expected = match &packet {
+                IpPacket::Ipv4(ipv4) => tcp
+                    .to_header()
+                    .calc_checksum_ipv4(&ipv4.header().to_header(), tcp.payload()),
+                IpPacket::Ipv6(ipv6) => tcp
+                    .to_header()
+                    .calc_checksum_ipv6(&ipv6.header().to_header(), tcp.payload()),
+            }
+            .map_err(std::io::Error::other)?;
+
+            if expected != actual {
+                tracing::warn!(?packet, %expected, %actual, "TCP checksum invalid");
+            }
+        }
+
+        self.inner.send(packet)
+    }
+
+    fn poll_recv_many(
+        &mut self,
+        cx: &mut std::task::Context,
+        buf: &mut Vec<IpPacket>,
+        max: usize,
+    ) -> std::task::Poll<usize> {
+        self.inner.poll_recv_many(cx, buf, max)
+    }
+
+    fn name(&self) -> &str {
+        self.inner.name()
+    }
+}
+
+impl ValidateChecksumAdapter {
+    fn wrap(inner: Box<dyn Tun>) -> Box<dyn Tun> {
+        Box::new(Self { inner })
     }
 }
