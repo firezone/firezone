@@ -22,13 +22,14 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.8" date={new Date("2025-05-02")}>
         <ChangeItem pull="9009">
           Fixes an issue where ECN bits got erroneously cleared without updating
           the packet checksum. This caused packet loss on recent MacOS versions
           which attempt to use ECN.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.7" date={new Date("2025-04-30")}>
         <ChangeItem pull="8798">
           Improves performance of relayed connections on IPv4-only systems.
