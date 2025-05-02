@@ -24,7 +24,7 @@ export default function Gateway() {
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
         <ChangeItem pull="9009">
-          Fixes an issue where ECN bits got erronously cleared without updating
+          Fixes an issue where ECN bits got erroneously cleared without updating
           the packet checksum. This caused packet loss on recent MacOS versions
           which attempt to use ECN.
         </ChangeItem>
