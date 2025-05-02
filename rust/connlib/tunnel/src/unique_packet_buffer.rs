@@ -27,14 +27,13 @@ impl UniquePacketBuffer {
             return;
         }
 
-        if self
-            .buffer
-            .iter()
-            .any(|buffered| is_tcp_syn_retransmit(buffered, &new))
-        {
-            tracing::trace!(packet = ?new, "Not buffering TCP SYN retransmission");
+        for buffered in self.buffer.iter_mut() {
+            if is_tcp_syn_retransmit(buffered, &new) {
+                tracing::trace!(packet = ?new, "Detected TCP SYN retransmission; replacing old one");
+                *buffered = new;
 
-            return;
+                return;
+            }
         }
 
         tracing::debug!(tag = %self.tag, is_full = %self.buffer.is_full(), packet = ?new, "Buffering packet");
