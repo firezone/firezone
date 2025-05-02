@@ -10,14 +10,14 @@ module.exports = [
     source: "/dl/firezone-client-macos/latest",
     destination:
       // mark:current-apple-version
-      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.4.13/firezone-macos-client-1.4.13.dmg",
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.4.14/firezone-macos-client-1.4.14.dmg",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-macos/pkg/latest",
     destination:
       // mark:current-apple-version
-      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.4.13/firezone-macos-client-1.4.13.pkg",
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.4.14/firezone-macos-client-1.4.14.pkg",
     permanent: false,
   },
   /*
@@ -105,21 +105,21 @@ module.exports = [
     source: "/dl/firezone-gateway/latest/x86_64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.7/firezone-gateway_1.4.7_x86_64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.8/firezone-gateway_1.4.8_x86_64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/aarch64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.7/firezone-gateway_1.4.7_aarch64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.8/firezone-gateway_1.4.8_aarch64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/armv7",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.7/firezone-gateway_1.4.7_armv7",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.8/firezone-gateway_1.4.8_armv7",
     permanent: false,
   },
   /*

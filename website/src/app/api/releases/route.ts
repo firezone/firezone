@@ -5,7 +5,7 @@ export async function GET(_req: NextRequest) {
   const versions = {
     portal: await get("deployed_sha"),
     // mark:current-apple-version
-    apple: "1.4.13",
+    apple: "1.4.14",
     // mark:current-android-version
     android: "1.4.8",
     // mark:current-gui-version
@@ -13,7 +13,7 @@ export async function GET(_req: NextRequest) {
     // mark:current-headless-version
     headless: "1.4.7",
     // mark:current-gateway-version
-    gateway: "1.4.7",
+    gateway: "1.4.8",
   };
 
   return NextResponse.json(versions, {
