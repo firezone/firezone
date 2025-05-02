@@ -99,6 +99,7 @@ jobs:
         test:
           - name: direct-curl-api-down
           - name: direct-curl-api-restart
+          - name: direct-curl-ecn
           - name: direct-dns-api-down
           - name: direct-dns-two-resources
           - name: direct-dns
