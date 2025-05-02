@@ -344,6 +344,7 @@ services:
       args:
         PACKAGE: firezone-headless-client
     image: ${CLIENT_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client}:${CLIENT_TAG:-main}
+    privileged: true # Needed to tune `sysctl` inside container.
     cap_add:
       - NET_ADMIN
     sysctls:
