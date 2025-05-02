@@ -156,7 +156,8 @@ impl std::fmt::Debug for IpPacket {
             .field(
                 "protocol",
                 &self.next_header().keyword_str().unwrap_or("unknown"),
-            );
+            )
+            .field("ecn", &self.ecn());
 
         if let Some(icmp) = self.as_icmpv4() {
             dbg.field("icmp_type", &icmp.icmp_type());
