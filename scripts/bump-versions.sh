@@ -67,8 +67,7 @@ function update_changelog() {
 # 4. Publish the macOS standalone drafted release on GitHub.
 # 5. Come back here and bump the current and next versions.
 # 6. Run `scripts/bump-versions.sh apple` to update the versions in the codebase.
-# 7. Commit the changes and open a PR. Ensure the Changelog is correctly
-#    updated with the changes.
+# 7. Commit the changes and open a PR.
 function apple() {
     current_apple_version="1.4.14"
     next_apple_version="1.4.15"
@@ -104,8 +103,7 @@ function apple() {
 #    release on GitHub.
 # 5. Come back here and bump the current and next versions.
 # 6. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
-# 7. Commit the changes and open a PR. Ensure the Changelog is correctly
-#    updated with the changes.
+# 7. Commit the changes and open a PR.
 function android() {
     current_android_version="1.4.8"
     next_android_version="1.4.9"
@@ -130,8 +128,7 @@ function android() {
 #    release.
 # 3. Come back here and bump the current and next versions.
 # 4. Run `scripts/bump-versions.sh gui` to update the versions in the codebase.
-# 5. Commit the changes and open a PR. Ensure the Changelog is correctly
-#    updated with the changes.
+# 5. Commit the changes and open a PR.
 function gui() {
     current_gui_version="1.4.12"
     next_gui_version="1.4.13"
@@ -155,8 +152,7 @@ function gui() {
 #    drafted release.
 # 2. Come back here and bump the current and next versions.
 # 3. Run `scripts/bump-versions.sh headless` to update the versions in the codebase.
-# 4. Commit the changes and open a PR. Ensure the Changelog is correctly
-#    updated with the changes.
+# 4. Commit the changes and open a PR.
 function headless() {
     current_headless_version="1.4.7"
     next_headless_version="1.4.8"
@@ -179,8 +175,7 @@ function headless() {
 #    drafted release.
 # 2. Come back here and bump the current and next versions.
 # 3. Run `scripts/bump-versions.sh gateway` to update the versions in the codebase.
-# 4. Commit the changes and open a PR. Ensure the Changelog is correctly
-#    updated with the changes.
+# 4. Commit the changes and open a PR.
 function gateway() {
     current_gateway_version="1.4.8"
     next_gateway_version="1.4.9"
