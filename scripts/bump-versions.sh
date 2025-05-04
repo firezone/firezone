@@ -22,7 +22,8 @@ function cargo_update_workspace() {
 function update_changelog() {
     local changelog_file="$1"
     local current_version="$2"
-    local current_date=$(date +%Y-%m-%d)
+    local current_date
+    current_date=$(date +%Y-%m-%d)
 
     # Be idempotent: Do nothing if we already have a changelog entry for this version.
     if grep -q "<Entry version=\"${current_version}\"" "$changelog_file"; then
