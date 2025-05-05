@@ -356,11 +356,13 @@ fn get_network_id_of_firezone_adapter() -> Result<GUID> {
         .context("Failed to open registry key")?;
 
     for key in profiles.enum_keys() {
-        let guid = key?;
+        let guid = key.context("Failed to enumerate key")?;
 
         let profile_name = profiles
-            .open_subkey(&guid)?
-            .get_value::<String, _>("ProfileName")?;
+            .open_subkey(&guid)
+            .with_context(|| format!("Failed to open key `{guid}`"))?
+            .get_value::<String, _>("ProfileName")
+            .context("Failed to get profile name")?;
 
         if profile_name == "Firezone" {
             let uuid = guid.trim_start_matches("{").trim_end_matches("}");
