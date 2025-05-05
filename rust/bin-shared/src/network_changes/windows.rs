@@ -253,6 +253,7 @@ struct Listener<'a> {
 #[windows_implement::implement(INetworkEvents)]
 struct Callback {
     tx: NotifySender,
+    firezone_network_profile_id: Option<GUID>,
     network_states: Mutex<HashMap<GUID, NLM_CONNECTIVITY>>,
 }
 
@@ -299,6 +300,9 @@ impl<'a> Listener<'a> {
 
         let cb = Callback {
             tx: tx.clone(),
+            firezone_network_profile_id: get_network_id_of_firezone_adapter()
+                .inspect_err(|e| tracing::warn!("{e:#}"))
+                .ok(),
             network_states: Default::default(),
         };
 
@@ -346,6 +350,39 @@ impl<'a> Listener<'a> {
     }
 }
 
+fn get_network_id_of_firezone_adapter() -> Result<GUID> {
+    let profiles = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE)
+        .open_subkey(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles")
+        .context("Failed to open registry key")?;
+
+    for key in profiles.enum_keys() {
+        let guid = match key {
+            Ok(guid) => guid,
+            Err(e) => {
+                tracing::debug!("Failed to open key: {e}");
+                continue;
+            }
+        };
+
+        let profile_name = profiles
+            .open_subkey(&guid)?
+            .get_value::<String, _>("ProfileName")?;
+
+        if profile_name == "Firezone" {
+            let uuid = guid.trim_start_matches("{").trim_end_matches("}");
+            let uuid = uuid
+                .parse::<uuid::Uuid>()
+                .context("Failed to parse key as UUID")?;
+
+            tracing::debug!(%uuid, "Found `Firezone` network profile id");
+
+            return Ok(GUID::from_u128(uuid.as_u128()));
+        }
+    }
+
+    anyhow::bail!("Unable to find `Firezone` profile network GUID")
+}
+
 // <https://github.com/microsoft/windows-rs/pull/3065>
 impl INetworkEvents_Impl for Callback_Impl {
     fn NetworkAdded(&self, _networkid: &GUID) -> WinResult<()> {
@@ -361,7 +398,13 @@ impl INetworkEvents_Impl for Callback_Impl {
         networkid: &GUID,
         newconnectivity: NLM_CONNECTIVITY,
     ) -> WinResult<()> {
-        tracing::debug!(?networkid, ?newconnectivity, "Network connectivity changed");
+        if self
+            .firezone_network_profile_id
+            .is_some_and(|firezone| networkid == &firezone)
+        {
+            tracing::debug!("Ignoring network change for `Firezone` adapter");
+            return Ok(());
+        }
 
         let mut network_states = self
             .network_states
@@ -377,6 +420,8 @@ impl INetworkEvents_Impl for Callback_Impl {
         }
 
         network_states.insert(*networkid, newconnectivity);
+
+        tracing::debug!(?networkid, ?newconnectivity, "Network connectivity changed");
 
         // No reasonable way to translate this error into a Windows error
         self.tx.notify().ok();
