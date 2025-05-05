@@ -14,22 +14,29 @@ tauri-build = { workspace = true, features = [] }
 
 [dependencies]
 anyhow = { workspace = true }
+arboard = { workspace = true }
 atomicwrites = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
+derive_more = { workspace = true }
 firezone-bin-shared = { workspace = true }
-firezone-gui-client-common = { workspace = true }
 firezone-headless-client = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 futures = { workspace = true }
+hex = { workspace = true }
+keyring = { workspace = true }
 native-dialog = { workspace = true }
+output_vt100 = { workspace = true }
+png = { workspace = true }
 rand = { workspace = true }
+reqwest = { workspace = true, features = ["rustls-tls", "stream"] }
 rustls = { workspace = true }
 sadness-generator = { workspace = true }
 secrecy = { workspace = true }
+semver = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 subtle = { workspace = true }
@@ -42,11 +49,15 @@ tauri-runtime = { workspace = true }
 tauri-utils = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
+tokio-stream = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 tracing = { workspace = true }
+tracing-journald = { workspace = true }
+tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true, features = ["serde"] }
 uuid = { workspace = true, features = ["v4"] }
+zip = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = { workspace = true }

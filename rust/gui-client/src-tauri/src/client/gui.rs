@@ -4,18 +4,13 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::client::{
-    self, about, logging,
-    settings::{self},
-};
-use anyhow::{Context, Result, bail};
-use common::system_tray::Event as TrayMenuEvent;
-use firezone_gui_client_common::{
-    self as common,
+    self, about,
     controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
-    deep_link,
-    settings::AdvancedSettings,
+    deep_link, logging,
+    settings::{self, AdvancedSettings},
     updates,
 };
+use anyhow::{Context, Result, bail};
 use firezone_logging::err_with_src;
 use firezone_telemetry as telemetry;
 use secrecy::{ExposeSecret as _, SecretString};
@@ -24,7 +19,7 @@ use tauri::Manager;
 use tokio::sync::mpsc;
 use tracing::instrument;
 
-pub(crate) mod system_tray;
+pub mod system_tray;
 
 #[cfg(target_os = "linux")]
 #[path = "gui/os_linux.rs"]
@@ -83,11 +78,11 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
-    fn set_tray_icon(&mut self, icon: common::system_tray::Icon) {
+    fn set_tray_icon(&mut self, icon: system_tray::Icon) {
         self.tray.set_icon(icon);
     }
 
-    fn set_tray_menu(&mut self, app_state: common::system_tray::AppState) {
+    fn set_tray_menu(&mut self, app_state: system_tray::AppState) {
         self.tray.update(app_state)
     }
 
@@ -99,10 +94,10 @@ impl GuiIntegration for TauriIntegration {
         os::show_update_notification(&self.app, ctlr_tx, title, url)
     }
 
-    fn show_window(&self, window: common::system_tray::Window) -> Result<()> {
+    fn show_window(&self, window: system_tray::Window) -> Result<()> {
         let id = match window {
-            common::system_tray::Window::About => "about",
-            common::system_tray::Window::Settings => "settings",
+            system_tray::Window::About => "about",
+            system_tray::Window::Settings => "settings",
         };
 
         let win = self
@@ -225,7 +220,7 @@ pub(crate) fn run(
                     tracing::warn!("Will quit gracefully in {delay} seconds.");
                     tokio::time::sleep(Duration::from_secs(delay)).await;
                     tracing::warn!("Quitting gracefully due to `--quit-after`");
-                    ctlr_tx.send(ControllerRequest::SystemTrayMenu(firezone_gui_client_common::system_tray::Event::Quit)).await?;
+                    ctlr_tx.send(ControllerRequest::SystemTrayMenu(system_tray::Event::Quit)).await?;
                     Ok::<_, anyhow::Error>(())
                 });
             }
@@ -341,7 +336,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     tokio::time::sleep_until(quit_time).await;
 
     // Write the settings so we can check the path for those
-    common::settings::save(&AdvancedSettings::default()).await?;
+    settings::save(&AdvancedSettings::default()).await?;
 
     // Check results of tests
     let zip_len = tokio::fs::metadata(&path)
@@ -357,11 +352,11 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     tracing::info!(?path, ?zip_len, "Exported log zip looks okay");
 
     // Check that settings file and at least one log file were written
-    anyhow::ensure!(tokio::fs::try_exists(common::settings::advanced_settings_path()?).await?);
+    anyhow::ensure!(tokio::fs::try_exists(settings::advanced_settings_path()?).await?);
 
     tracing::info!("Quitting on purpose because of `smoke-test` subcommand");
     ctlr_tx
-        .send(ControllerRequest::SystemTrayMenu(TrayMenuEvent::Quit))
+        .send(ControllerRequest::SystemTrayMenu(system_tray::Event::Quit))
         .await
         .context("Failed to send Quit request")?;
 
@@ -398,7 +393,7 @@ async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Re
     }
 }
 
-fn handle_system_tray_event(app: &tauri::AppHandle, event: TrayMenuEvent) -> Result<()> {
+fn handle_system_tray_event(app: &tauri::AppHandle, event: system_tray::Event) -> Result<()> {
     app.try_state::<Managed>()
         .context("can't get Managed struct from Tauri")?
         .ctlr_tx

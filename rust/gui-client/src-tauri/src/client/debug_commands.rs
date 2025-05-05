@@ -27,7 +27,7 @@ pub(crate) struct StoreTokenArgs {
 
 pub fn run(cmd: Cmd) -> Result<()> {
     match cmd {
-        Cmd::Replicate6791 => firezone_gui_client_common::auth::replicate_6791(),
+        Cmd::Replicate6791 => crate::client::auth::replicate_6791(),
         Cmd::SetAutostart(SetAutostartArgs { enabled }) => set_autostart(enabled),
     }
 }

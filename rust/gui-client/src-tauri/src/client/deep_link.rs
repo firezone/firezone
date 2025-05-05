@@ -3,7 +3,7 @@
 // The IPC parts use the same primitives as the IPC service, UDS on Linux
 // and named pipes on Windows, so TODO de-dupe the IPC code
 
-use crate::auth;
+use crate::client::auth;
 use anyhow::{Context as _, Result, bail};
 use secrecy::{ExposeSecret, SecretString};
 use url::Url;
@@ -153,9 +153,7 @@ mod tests {
     /// Will fail with permission error if Firezone already ran as sudo
     #[tokio::test]
     async fn socket_smoke_test() -> Result<()> {
-        let server = super::Server::new()
-            .await
-            .context("Couldn't start Server")?;
+        let server = Server::new().await.context("Couldn't start Server")?;
         let server_task = tokio::spawn(async move {
             let bytes = server.accept().await?;
             Ok::<_, anyhow::Error>(bytes)

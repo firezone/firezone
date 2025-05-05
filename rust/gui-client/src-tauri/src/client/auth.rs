@@ -83,12 +83,6 @@ pub struct Session {
     pub(crate) actor_name: String,
 }
 
-impl Session {
-    pub fn account_slug(&self) -> &str {
-        &self.account_slug
-    }
-}
-
 struct SessionAndToken {
     session: Session,
     token: SecretString,

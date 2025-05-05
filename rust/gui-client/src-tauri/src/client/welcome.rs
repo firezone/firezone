@@ -2,7 +2,8 @@
 
 use crate::client::gui::Managed;
 use anyhow::Context;
-use firezone_gui_client_common::controller::ControllerRequest;
+
+use super::controller::ControllerRequest;
 
 #[tauri::command]
 pub(crate) async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<(), String> {
