@@ -24,6 +24,7 @@ pub mod macos;
 pub use macos as platform;
 
 pub mod known_dirs;
+pub mod uptime;
 
 pub const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 

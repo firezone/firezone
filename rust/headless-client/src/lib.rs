@@ -31,7 +31,6 @@ pub mod dns_control;
 mod ipc_service;
 // TODO: Move to `bin-shared`?
 pub mod signals;
-pub mod uptime;
 
 pub use clear_logs::clear_logs;
 pub use dns_control::DnsController;

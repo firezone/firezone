@@ -166,7 +166,7 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     tracing::info!(
         arch = std::env::consts::ARCH,
         // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
-        system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
+        system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs()),
     );
     if !platform::elevation_check()? {
         bail!("IPC service failed its elevation check, try running as admin / root");
@@ -668,7 +668,7 @@ fn setup_logging(
     tracing::info!(
         arch = std::env::consts::ARCH,
         // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
-        system_uptime_seconds = crate::uptime::get().map(|dur| dur.as_secs()),
+        system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs()),
         %directives
     );
 

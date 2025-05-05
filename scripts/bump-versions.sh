@@ -19,6 +19,30 @@ function cargo_update_workspace() {
     popd >/dev/null
 }
 
+function update_changelog() {
+    local changelog_file="$1"
+    local current_version="$2"
+    local current_date
+    current_date=$(date +%Y-%m-%d)
+
+    # Be idempotent: Do nothing if we already have a changelog entry for this version.
+    if grep -q "<Entry version=\"${current_version}\"" "$changelog_file"; then
+        return
+    fi
+
+    # Replace the <Unreleased> section with an <Entry> for the current version
+    sed "${SEDARG[@]}" -e "
+        s|<Unreleased>|<Entry version=\"${current_version}\" date={new Date(\"${current_date}\")}>|g;
+        s|</Unreleased>|</Entry>|g;
+    " "$changelog_file"
+
+    # Add a new empty <Unreleased> section above the newly added <Entry>
+    sed "${SEDARG[@]}" -e "
+      /<Entry version=\"${current_version}\"/i\\
+      <Unreleased></Unreleased>
+    " "$changelog_file"
+}
+
 # macOS / iOS
 #
 # There are 3 distributables we ship for Apple platforms:
@@ -43,12 +67,12 @@ function cargo_update_workspace() {
 # 4. Publish the macOS standalone drafted release on GitHub.
 # 5. Come back here and bump the current and next versions.
 # 6. Run `scripts/bump-versions.sh apple` to update the versions in the codebase.
-# 7. Commit the changes and open a PR. Ensure the Changelog is correctly
-#    updated with the changes.
+# 7. Commit the changes and open a PR.
 function apple() {
     current_apple_version="1.4.14"
     next_apple_version="1.4.15"
 
+    update_changelog "website/src/components/Changelog/Apple.tsx" "$current_apple_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_version}"'/g;}' {} \;
     find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_apple_version}"'/g;}' {} \;
@@ -79,12 +103,12 @@ function apple() {
 #    release on GitHub.
 # 5. Come back here and bump the current and next versions.
 # 6. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
-# 7. Commit the changes and open a PR. Ensure the Changelog is correctly
-#    updated with the changes.
+# 7. Commit the changes and open a PR.
 function android() {
     current_android_version="1.4.8"
     next_android_version="1.4.9"
 
+    update_changelog "website/src/components/Changelog/Android.tsx" "$current_android_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_android_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_android_version}"'/g;}' {} \;
     find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_android_version}"'/g;}' {} \;
@@ -104,12 +128,12 @@ function android() {
 #    release.
 # 3. Come back here and bump the current and next versions.
 # 4. Run `scripts/bump-versions.sh gui` to update the versions in the codebase.
-# 5. Commit the changes and open a PR. Ensure the Changelog is correctly
-#    updated with the changes.
+# 5. Commit the changes and open a PR.
 function gui() {
     current_gui_version="1.4.12"
     next_gui_version="1.4.13"
 
+    update_changelog "website/src/components/Changelog/GUI.tsx" "$current_gui_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_version}"'/g;}' {} \;
     find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gui_version}"'/g;}' {} \;
@@ -128,12 +152,12 @@ function gui() {
 #    drafted release.
 # 2. Come back here and bump the current and next versions.
 # 3. Run `scripts/bump-versions.sh headless` to update the versions in the codebase.
-# 4. Commit the changes and open a PR. Ensure the Changelog is correctly
-#    updated with the changes.
+# 4. Commit the changes and open a PR.
 function headless() {
     current_headless_version="1.4.7"
     next_headless_version="1.4.8"
 
+    update_changelog "website/src/components/Changelog/Headless.tsx" "$current_headless_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_version}"'/g;}' {} \;
     find .github -name "*.yml" -exec sed "${SEDARG[@]}" -e '/mark:next-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_headless_version}"'/g;}' {} \;
@@ -151,12 +175,12 @@ function headless() {
 #    drafted release.
 # 2. Come back here and bump the current and next versions.
 # 3. Run `scripts/bump-versions.sh gateway` to update the versions in the codebase.
-# 4. Commit the changes and open a PR. Ensure the Changelog is correctly
-#    updated with the changes.
+# 4. Commit the changes and open a PR.
 function gateway() {
     current_gateway_version="1.4.8"
     next_gateway_version="1.4.9"
 
+    update_changelog "website/src/components/Changelog/Gateway.tsx" "$current_gateway_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gateway_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gateway_version}"'/g;}' {} \;
     find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gateway_version}"'/g;}' {} \;
