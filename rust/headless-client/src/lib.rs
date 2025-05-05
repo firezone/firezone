@@ -29,7 +29,6 @@ pub mod device_id;
 // Pub because the GUI reads the system resolvers
 pub mod dns_control;
 mod ipc_service;
-pub mod known_dirs;
 // TODO: Move to `bin-shared`?
 pub mod signals;
 
@@ -170,8 +169,8 @@ pub(crate) fn get_log_filter() -> Result<String> {
         return Ok(filter);
     }
 
-    if let Ok(filter) =
-        std::fs::read_to_string(known_dirs::ipc_log_filter()?).map(|s| s.trim().to_string())
+    if let Ok(filter) = std::fs::read_to_string(firezone_bin_shared::known_dirs::ipc_log_filter()?)
+        .map(|s| s.trim().to_string())
     {
         return Ok(filter);
     }
