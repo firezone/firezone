@@ -228,7 +228,6 @@ deny = [
 
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
-  "async-channel",
   "base64",
   "bitflags",
   "core-foundation",
@@ -237,7 +236,6 @@ skip = [
   "derive_more",
   "dirs",
   "dirs-sys",
-  "event-listener",
   "getrandom",
   "hashbrown",
   "heck",
@@ -292,6 +290,7 @@ skip = [
   "windows_x86_64_msvc",
   "winnow",
   "winreg",
+  "zerocopy",
   #"ansi_term@0.11.0",
   #{ crate = "ansi_term@0.11.0", reason = "you can specify a reason why it can't be updated/removed" },
 ]
