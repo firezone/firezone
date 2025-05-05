@@ -177,7 +177,7 @@ fn show_error_dialog(msg: &str) -> Result<()> {
 /// Don't drop the log handle or logging will stop.
 fn start_logging(directives: &str) -> Result<common::logging::Handles> {
     let logging_handles = common::logging::setup(directives)?;
-    let system_uptime_seconds = firezone_headless_client::uptime::get().map(|dur| dur.as_secs());
+    let system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs());
     tracing::info!(
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
