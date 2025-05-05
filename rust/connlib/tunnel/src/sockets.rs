@@ -187,7 +187,7 @@ impl ThreadedUdpSocket {
                             .u64_counter("system.network.errors")
                             .with_description("Number of IO errors encountered")
                             .with_unit("{error}")
-                            .init();
+                            .build();
 
                         match socket.set_buffer_sizes(socket_factory::SEND_BUFFER_SIZE, socket_factory::RECV_BUFFER_SIZE) {
                             Ok(()) => {},

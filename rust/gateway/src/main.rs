@@ -112,8 +112,8 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
     Telemetry::set_firezone_id(firezone_id.clone());
 
     if cli.metrics {
-        let exporter = opentelemetry_stdout::MetricsExporter::default();
-        let reader = PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio).build();
+        let exporter = opentelemetry_stdout::MetricExporter::default();
+        let reader = PeriodicReader::builder(exporter).build();
         let provider = SdkMeterProvider::builder()
             .with_reader(reader)
             .with_resource(otel::default_resource_with([
