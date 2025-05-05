@@ -64,6 +64,8 @@
 
 use crate::platform::DnsControlMethod;
 use anyhow::{Context as _, Result, anyhow};
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::thread;
 use tokio::sync::{
     mpsc::{self, error::TrySendError},
@@ -251,6 +253,7 @@ struct Listener<'a> {
 #[windows_implement::implement(INetworkEvents)]
 struct Callback {
     tx: NotifySender,
+    network_states: Mutex<HashMap<GUID, NLM_CONNECTIVITY>>,
 }
 
 impl Drop for Listener<'_> {
@@ -294,7 +297,10 @@ impl<'a> Listener<'a> {
             _com: com,
         };
 
-        let cb = Callback { tx: tx.clone() };
+        let cb = Callback {
+            tx: tx.clone(),
+            network_states: Default::default(),
+        };
 
         let callbacks: INetworkEvents = cb.into();
 
@@ -356,6 +362,21 @@ impl INetworkEvents_Impl for Callback_Impl {
         newconnectivity: NLM_CONNECTIVITY,
     ) -> WinResult<()> {
         tracing::debug!(?networkid, ?newconnectivity, "Network connectivity changed");
+
+        let mut network_states = self
+            .network_states
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        if network_states
+            .get(&networkid)
+            .is_some_and(|state| *state == newconnectivity)
+        {
+            tracing::debug!(?networkid, "Ignoring duplicate network change");
+            return Ok(());
+        }
+
+        network_states.insert(*networkid, newconnectivity);
 
         // No reasonable way to translate this error into a Windows error
         self.tx.notify().ok();
