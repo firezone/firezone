@@ -13,17 +13,33 @@
 //!
 //! <https://superuser.com/a/1752670>
 
-use super::DnsController;
+use crate::DnsController;
+use crate::windows::{CREATE_NO_WINDOW, TUNNEL_UUID, error::EPT_S_NOT_REGISTERED};
 use anyhow::{Context as _, Result};
 use dns_types::DomainName;
-use firezone_bin_shared::platform::{CREATE_NO_WINDOW, DnsControlMethod, TUNNEL_UUID};
-use firezone_bin_shared::windows::error::EPT_S_NOT_REGISTERED;
 use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 use windows::Win32::System::GroupPolicy::{RP_FORCE, RefreshPolicyEx};
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
 // Copied from the deep link schema
 const FZ_MAGIC: &str = "firezone-fd0020211111";
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+pub enum DnsControlMethod {
+    /// Explicitly disable DNS control.
+    ///
+    /// We don't use an `Option<Method>` because leaving out the CLI arg should
+    /// use NRPT, not disable DNS control.
+    Disabled,
+    /// NRPT, the only DNS control method we use on Windows.
+    Nrpt,
+}
+
+impl Default for DnsControlMethod {
+    fn default() -> Self {
+        Self::Nrpt
+    }
+}
 
 impl DnsController {
     /// Deactivate any control Firezone has over the computer's DNS
@@ -296,7 +312,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let mut tun_dev_manager = firezone_bin_shared::TunDeviceManager::new(1280, 1).unwrap(); // Note: num_threads (`1`) is unused on windows.
+        let mut tun_dev_manager = crate::TunDeviceManager::new(1280, 1).unwrap(); // Note: num_threads (`1`) is unused on windows.
         let _tun = tun_dev_manager.make_tun().unwrap();
 
         rt.block_on(async {

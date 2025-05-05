@@ -62,7 +62,7 @@
 //!
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
-use crate::platform::DnsControlMethod;
+use crate::DnsControlMethod;
 use anyhow::{Context as _, Result, anyhow};
 use std::thread;
 use tokio::sync::{
