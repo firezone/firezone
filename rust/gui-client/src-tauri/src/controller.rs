@@ -617,11 +617,12 @@ impl<I: GuiIntegration> Controller<I> {
                     )?;
                 } else {
                     tracing::error!("Connlib disconnected: {error_msg}");
-                    native_dialog::MessageDialog::new()
+                    native_dialog::DialogBuilder::message()
                         .set_title("Firezone Error")
                         .set_text(&error_msg)
-                        .set_type(native_dialog::MessageType::Error)
-                        .show_alert()
+                        .set_level(native_dialog::MessageLevel::Error)
+                        .alert()
+                        .show()
                         .context("Couldn't show Disconnected alert")?;
                 }
             }

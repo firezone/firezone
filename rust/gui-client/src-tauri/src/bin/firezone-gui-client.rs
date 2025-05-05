@@ -212,10 +212,10 @@ fn fix_log_filter(settings: &mut AdvancedSettingsLegacy) -> Result<()> {
     }
     settings.log_filter = AdvancedSettingsLegacy::default().log_filter;
 
-    native_dialog::MessageDialog::new()
+    native_dialog::DialogBuilder::message()
         .set_title("Log filter error")
         .set_text("The custom log filter is not parsable. Using the default log filter.")
-        .set_type(native_dialog::MessageType::Error)
+        .set_type(native_dialog::MessageLevel::Error)
         .show_alert()
         .context("Can't show log filter error dialog")?;
 
@@ -229,10 +229,10 @@ fn fix_log_filter(settings: &mut AdvancedSettingsLegacy) -> Result<()> {
 fn show_error_dialog(msg: &str) -> Result<()> {
     // I tried the Tauri dialogs and for some reason they don't show our
     // app icon.
-    native_dialog::MessageDialog::new()
+    native_dialog::DialogBuilder::message()
         .set_title("Firezone Error")
         .set_text(msg)
-        .set_type(native_dialog::MessageType::Error)
+        .set_type(native_dialog::MessageLevel::Error)
         .show_alert()?;
     Ok(())
 }
