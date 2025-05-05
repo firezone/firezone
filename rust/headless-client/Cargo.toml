@@ -60,6 +60,7 @@ sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnera
 [target.'cfg(target_os = "windows")'.dependencies]
 ipconfig = "0.3.2"
 itertools = { workspace = true }
+known-folders = { workspace = true }
 windows-service = "0.8.0"
 winreg = { workspace = true }
 

@@ -1,14 +1,12 @@
 use crate::TUNNEL_NAME;
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use firezone_logging::err_with_src;
-use known_folders::{KnownFolder, get_known_folder_path};
 use socket_factory::{TcpSocket, UdpSocket};
 use std::{
     cmp::Ordering,
     io,
     mem::MaybeUninit,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    path::PathBuf,
     ptr::null,
 };
 use uuid::Uuid;

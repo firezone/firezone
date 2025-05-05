@@ -1,4 +1,5 @@
 use crate::BUNDLE_ID;
+use anyhow::{Context as _, Result};
 use known_folders::{KnownFolder, get_known_folder_path};
 use std::path::PathBuf;
 
