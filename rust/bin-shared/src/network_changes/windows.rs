@@ -408,7 +408,7 @@ impl INetworkEvents_Impl for Callback_Impl {
             .unwrap_or_else(|e| e.into_inner());
 
         if network_states
-            .get(&networkid)
+            .get(networkid)
             .is_some_and(|state| *state == newconnectivity)
         {
             tracing::debug!(?networkid, "Ignoring duplicate network change");
