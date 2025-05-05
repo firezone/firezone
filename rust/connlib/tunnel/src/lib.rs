@@ -125,7 +125,7 @@ impl ClientTunnel {
             packet_counter: opentelemetry::global::meter("connlib")
                 .u64_counter("system.network.packets")
                 .with_description("The number of packets processed.")
-                .init(),
+                .build(),
         }
     }
 
@@ -254,7 +254,7 @@ impl GatewayTunnel {
             packet_counter: opentelemetry::global::meter("connlib")
                 .u64_counter("system.network.packets")
                 .with_description("The number of packets processed.")
-                .init(),
+                .build(),
         }
     }
 

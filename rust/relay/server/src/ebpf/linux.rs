@@ -54,7 +54,7 @@ impl Program {
             .u64_counter("data_relayed_ebpf_bytes")
             .with_description("The number of bytes relayed by the eBPF kernel")
             .with_unit("b")
-            .init();
+            .build();
 
         for cpu_id in aya::util::online_cpus()
             .map_err(|(_, error)| error)

@@ -211,9 +211,8 @@ fn main() -> Result<()> {
 
     rt.block_on(async {
         if cli.metrics {
-            let exporter = opentelemetry_stdout::MetricsExporter::default();
-            let reader =
-                PeriodicReader::builder(exporter, opentelemetry_sdk::runtime::Tokio).build();
+            let exporter = opentelemetry_stdout::MetricExporter::default();
+            let reader = PeriodicReader::builder(exporter).build();
             let provider = SdkMeterProvider::builder()
                 .with_reader(reader)
                 .with_resource(otel::default_resource_with([

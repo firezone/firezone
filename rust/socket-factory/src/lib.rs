@@ -187,7 +187,7 @@ impl UdpSocket {
                 )
                 .with_unit("{batches}")
                 .with_boundaries((1..32_u64).map(|i| i as f64).collect())
-                .init(),
+                .build(),
         })
     }
 

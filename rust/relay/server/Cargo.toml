@@ -26,8 +26,8 @@ hex-display = { workspace = true }
 mio = { workspace = true, features = ["net"] }
 once_cell = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
-opentelemetry-otlp = { workspace = true, features = ["metrics"] }
-opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
+opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
+opentelemetry_sdk = { workspace = true }
 phoenix-channel = { workspace = true }
 proptest = { workspace = true, optional = true }
 rand = { workspace = true }
@@ -58,7 +58,7 @@ jemallocator = { workspace = true }
 [dev-dependencies]
 difference = { workspace = true }
 env_logger = { workspace = true }
-opentelemetry_sdk = { workspace = true, features = ["testing"] }
+opentelemetry_sdk = { workspace = true, features = ["testing", "metrics"] }
 test-strategy = { workspace = true }
 tokio = { workspace = true, features = ["process", "macros", "net"] }
 

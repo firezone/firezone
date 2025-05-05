@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::{
     Resource,
@@ -104,25 +102,24 @@ pub mod metrics {
             .u64_counter("network.packet.dropped")
             .with_description("Count of packets that are dropped or discarded")
             .with_unit("{packet}")
-            .init()
+            .build()
     }
 }
 
 pub fn default_resource_with<const N: usize>(attributes: [KeyValue; N]) -> Resource {
-    Resource::from_detectors(
-        Duration::from_secs(0),
-        vec![
-            Box::new(TelemetryResourceDetector),
-            Box::new(OsResourceDetector),
-        ],
-    )
-    .merge(&Resource::new(attributes))
+    Resource::builder_empty()
+        .with_detector(Box::new(TelemetryResourceDetector))
+        .with_detector(Box::new(OsResourceDetector))
+        .with_attributes(attributes)
+        .build()
 }
 
 pub struct OsResourceDetector;
 
 impl ResourceDetector for OsResourceDetector {
-    fn detect(&self, _: Duration) -> Resource {
-        Resource::new([KeyValue::new("os.type", std::env::consts::OS)])
+    fn detect(&self) -> Resource {
+        Resource::builder_empty()
+            .with_attribute(KeyValue::new("os.type", std::env::consts::OS))
+            .build()
     }
 }

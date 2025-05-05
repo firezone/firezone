@@ -111,10 +111,10 @@ nix = "0.29.0"
 nu-ansi-term = "0.50"
 num_cpus = "1.16.0"
 once_cell = "1.17.1"
-opentelemetry = "0.26.0"
-opentelemetry-otlp = "0.26.0"
-opentelemetry-stdout = "0.26.0"
-opentelemetry_sdk = "0.26.0"
+opentelemetry = "0.29.0"
+opentelemetry-otlp = "0.29.0"
+opentelemetry-stdout = "0.29.0"
+opentelemetry_sdk = "0.29.0"
 os_info = { version = "3", default-features = false }
 output_vt100 = "0.1"
 parking_lot = "0.12.3"
@@ -179,7 +179,7 @@ tracing-core = "0.1.31"
 tracing-journald = "0.3.1"
 tracing-log = "0.2.0"
 tracing-macros = { git = "https://github.com/tokio-rs/tracing", branch = "v0.1.x" } # Contains `dbg!` but for `tracing`.
-tracing-opentelemetry = "0.27.0"
+tracing-opentelemetry = "0.30.0"
 tracing-stackdriver = "0.11.0"
 tracing-subscriber = { version = "0.3.19", features = ["parking_lot"] }
 trackable = "1.3.0"
@@ -213,7 +213,7 @@ private-intra-doc-links = "allow" # We don't publish any of our docs but want to
 boringtun = { git = "https://github.com/firezone/boringtun", branch = "master" }
 ip_network = { git = "https://github.com/JakubOnderka/ip_network", branch = "master" } # Waiting for release.
 ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch = "some-useful-traits" } # For `Debug` and `Clone`
-tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.26" } # Waiting for release.
+tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.29" } # Waiting for release.
 softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 

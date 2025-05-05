@@ -22,7 +22,7 @@ where
             .i64_up_down_counter("system.buffer.count")
             .with_description("The number of buffers allocated in the pool.")
             .with_unit("{buffers}")
-            .init();
+            .build();
 
         Self {
             inner: Arc::new(lockfree_object_pool::MutexObjectPool::new(
@@ -234,9 +234,8 @@ mod tests {
     use std::time::Duration;
 
     use opentelemetry::global;
-    use opentelemetry_sdk::{
-        metrics::{PeriodicReader, SdkMeterProvider, data::Sum},
-        testing::metrics::InMemoryMetricsExporter,
+    use opentelemetry_sdk::metrics::{
+        InMemoryMetricExporter, PeriodicReader, SdkMeterProvider, data::Sum,
     };
 
     use super::*;
@@ -322,7 +321,7 @@ mod tests {
         assert_eq!(get_num_buffers(&exporter), 0);
     }
 
-    fn get_num_buffers(exporter: &InMemoryMetricsExporter) -> i64 {
+    fn get_num_buffers(exporter: &InMemoryMetricExporter) -> i64 {
         let metrics = exporter.get_finished_metrics().unwrap();
 
         let metric = &metrics.iter().last().unwrap().scope_metrics[0].metrics[0];
@@ -331,12 +330,12 @@ mod tests {
         sum.data_points[0].value
     }
 
-    fn init_meter_provider() -> (SdkMeterProvider, InMemoryMetricsExporter) {
-        let exporter = InMemoryMetricsExporter::default();
+    fn init_meter_provider() -> (SdkMeterProvider, InMemoryMetricExporter) {
+        let exporter = InMemoryMetricExporter::default();
 
         let provider = SdkMeterProvider::builder()
             .with_reader(
-                PeriodicReader::builder(exporter.clone(), opentelemetry_sdk::runtime::Tokio)
+                PeriodicReader::builder(exporter.clone())
                     .with_interval(Duration::from_millis(1))
                     .build(),
             )

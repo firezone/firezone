@@ -239,7 +239,6 @@ async fn try_main(args: Args) -> Result<()> {
 fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
     use opentelemetry::{global, trace::TracerProvider as _};
     use opentelemetry_otlp::WithExportConfig;
-    use opentelemetry_sdk::{runtime::Tokio, trace::Config};
 
     // Use `tracing_core` directly for the temp logger because that one does not initialize a `log` logger.
     // A `log` Logger cannot be unset once set, so we can't use that for our temp logger during the setup.
@@ -267,30 +266,32 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
 
             tracing::trace!(target: "relay", %grpc_endpoint, "Setting up OTLP exporter for collector");
 
-            let exporter = opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(grpc_endpoint.clone());
+            let exporter = opentelemetry_otlp::SpanExporter::builder()
+                .with_tonic()
+                .with_endpoint(grpc_endpoint.clone())
+                .build()
+                .context("Failed to build OTLP span exporter")?;
 
-            let tracer_provider = opentelemetry_otlp::new_pipeline()
-                .tracing()
-                .with_exporter(exporter)
-                .with_trace_config(Config::default().with_resource(metadata.clone()))
-                .install_batch(Tokio)
-                .context("Failed to create OTLP trace pipeline")?;
+            let tracer_provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+                .with_resource(metadata.clone())
+                .with_batch_exporter(exporter)
+                .build();
+
             global::set_tracer_provider(tracer_provider.clone());
 
             tracing::trace!(target: "relay", "Successfully initialized trace provider on tokio runtime");
 
-            let exporter = opentelemetry_otlp::new_exporter()
-                .tonic()
-                .with_endpoint(grpc_endpoint);
-
-            let meter_provider = opentelemetry_otlp::new_pipeline()
-                .metrics(Tokio)
-                .with_resource(metadata)
-                .with_exporter(exporter)
+            let exporter = opentelemetry_otlp::MetricExporter::builder()
+                .with_tonic()
+                .with_endpoint(grpc_endpoint)
                 .build()
-                .context("Failed to create OTLP metrics pipeline")?;
+                .context("Failed to build OTLP metric exporter")?;
+
+            let meter_provider = opentelemetry_sdk::metrics::SdkMeterProvider::builder()
+                .with_resource(metadata)
+                .with_periodic_exporter(exporter)
+                .build();
+
             global::set_meter_provider(meter_provider);
 
             tracing::trace!(target: "relay", "Successfully initialized metric provider on tokio runtime");
@@ -775,22 +776,14 @@ fn make_otel_metadata() -> opentelemetry_sdk::Resource {
     use opentelemetry_sdk::Resource;
     use opentelemetry_sdk::resource::{EnvResourceDetector, TelemetryResourceDetector};
 
-    const SERVICE_NAME: Key = Key::from_static_str("service.name");
     const SERVICE_NAMESPACE: Key = Key::from_static_str("service.namespace");
 
-    let default_metadata = Resource::new([
-        KeyValue::new(SERVICE_NAMESPACE, "firezone"),
-        KeyValue::new(SERVICE_NAME, "relay"),
-    ]);
-    let detected_metadata = Resource::from_detectors(
-        Duration::ZERO,
-        vec![
-            Box::new(TelemetryResourceDetector),
-            Box::new(EnvResourceDetector::new()), // Allow overriding metadata using `OTEL_RESOURCE_ATTRIBUTES` env var.
-        ],
-    );
-
-    default_metadata.merge(&detected_metadata)
+    Resource::builder_empty()
+        .with_service_name("relay")
+        .with_attribute(KeyValue::new(SERVICE_NAMESPACE, "firezone"))
+        .with_detector(Box::new(TelemetryResourceDetector))
+        .with_detector(Box::new(EnvResourceDetector::new())) // Allow overriding metadata using `OTEL_RESOURCE_ATTRIBUTES` env var.
+        .build()
 }
 
 #[cfg(test)]

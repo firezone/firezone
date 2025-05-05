@@ -2,9 +2,8 @@
 
 use firezone_relay::{AllocationPort, ClientSocket, PeerSocket};
 use opentelemetry::global;
-use opentelemetry_sdk::{
-    metrics::{PeriodicReader, SdkMeterProvider, data::Sum},
-    testing::metrics::InMemoryMetricsExporter,
+use opentelemetry_sdk::metrics::{
+    InMemoryMetricExporter, PeriodicReader, SdkMeterProvider, data::Sum,
 };
 use std::time::Duration;
 use tokio::net::UdpSocket;
@@ -106,12 +105,12 @@ async fn ping_pong() {
     assert_eq!(sum.data_points[0].value, 4 + 4); // "ping" and "pong" are both 4 bytes.
 }
 
-fn init_meter_provider() -> (SdkMeterProvider, InMemoryMetricsExporter) {
-    let exporter = InMemoryMetricsExporter::default();
+fn init_meter_provider() -> (SdkMeterProvider, InMemoryMetricExporter) {
+    let exporter = InMemoryMetricExporter::default();
 
     let provider = SdkMeterProvider::builder()
         .with_reader(
-            PeriodicReader::builder(exporter.clone(), opentelemetry_sdk::runtime::Tokio)
+            PeriodicReader::builder(exporter.clone())
                 .with_interval(Duration::from_millis(1))
                 .build(),
         )
