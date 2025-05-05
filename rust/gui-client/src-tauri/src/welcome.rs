@@ -1,6 +1,6 @@
 //! Everything related to the Welcome window
 
-use crate::client::gui::Managed;
+use crate::gui::Managed;
 use anyhow::Context;
 
 use super::controller::ControllerRequest;

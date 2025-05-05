@@ -1,7 +1,7 @@
 //! Everything related to the Settings window, including
 //! advanced settings and code for manipulating diagnostic logs.
 
-use crate::client::gui::Managed;
+use crate::gui::Managed;
 use anyhow::{Context as _, Result};
 use connlib_model::ResourceId;
 use firezone_bin_shared::known_dirs;

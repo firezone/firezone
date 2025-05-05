@@ -25,11 +25,11 @@ type TauriSubmenu = tauri::menu::Submenu<tauri::Wry>;
 
 // Figma is the source of truth for the tray icon layers
 // <https://www.figma.com/design/THvQQ1QxKlsk47H9DZ2bhN/Core-Library?node-id=1250-772&t=nHBOzOnSY5Ol4asV-0>
-const LOGO_BASE: &[u8] = include_bytes!("../../../icons/tray/Logo.png");
-const LOGO_GREY_BASE: &[u8] = include_bytes!("../../../icons/tray/Logo grey.png");
-const BUSY_LAYER: &[u8] = include_bytes!("../../../icons/tray/Busy layer.png");
-const SIGNED_OUT_LAYER: &[u8] = include_bytes!("../../../icons/tray/Signed out layer.png");
-const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../../icons/tray/Update ready layer.png");
+const LOGO_BASE: &[u8] = include_bytes!("../../icons/tray/Logo.png");
+const LOGO_GREY_BASE: &[u8] = include_bytes!("../../icons/tray/Logo grey.png");
+const BUSY_LAYER: &[u8] = include_bytes!("../../icons/tray/Busy layer.png");
+const SIGNED_OUT_LAYER: &[u8] = include_bytes!("../../icons/tray/Signed out layer.png");
+const UPDATE_READY_LAYER: &[u8] = include_bytes!("../../icons/tray/Update ready layer.png");
 
 const QUIT_TEXT_SIGNED_OUT: &str = "Quit Firezone";
 

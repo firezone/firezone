@@ -1,12 +1,9 @@
 use crate::{
-    client::{
-        auth, deep_link,
-        gui::system_tray,
-        ipc, logging,
-        settings::{self, AdvancedSettings},
-        updates,
-    },
-    uptime,
+    auth, deep_link,
+    gui::system_tray,
+    ipc, logging,
+    settings::{self, AdvancedSettings},
+    updates, uptime,
 };
 use anyhow::{Context, Result, anyhow};
 use connlib_model::ResourceView;

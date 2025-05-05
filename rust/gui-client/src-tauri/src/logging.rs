@@ -1,6 +1,6 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
-use crate::client::gui::Managed;
+use crate::gui::Managed;
 use anyhow::{Context as _, Result, bail};
 use firezone_bin_shared::known_dirs;
 use firezone_logging::err_with_src;

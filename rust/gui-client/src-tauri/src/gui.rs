@@ -3,8 +3,8 @@
 //! Most of this Client is stubbed out with panics on macOS.
 //! The real macOS Client is in `swift/apple`
 
-use crate::client::{
-    self, about,
+use crate::{
+    Cli, Cmd, about,
     controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
     deep_link, logging,
     settings::{self, AdvancedSettings},
@@ -117,7 +117,7 @@ impl GuiIntegration for TauriIntegration {
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 #[instrument(skip_all)]
 pub(crate) fn run(
-    cli: client::Cli,
+    cli: Cli,
     advanced_settings: AdvancedSettings,
     reloader: firezone_logging::FilterReloadHandle,
     mut telemetry: telemetry::Telemetry,
@@ -166,7 +166,7 @@ pub(crate) fn run(
             settings::apply_advanced_settings,
             settings::reset_advanced_settings,
             settings::get_advanced_settings,
-            crate::client::welcome::sign_in,
+            crate::welcome::sign_in,
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -181,7 +181,7 @@ pub(crate) fn run(
                 }
             });
 
-            if let Some(client::Cmd::SmokeTest) = &cli.command {
+            if let Some(Cmd::SmokeTest) = &cli.command {
                 let ctlr_tx = ctlr_tx.clone();
                 tokio::spawn(async move {
                     if let Err(error) = smoke_test(ctlr_tx).await {
