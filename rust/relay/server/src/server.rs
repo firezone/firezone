@@ -180,16 +180,16 @@ where
         let allocations_up_down_counter = meter
             .i64_up_down_counter("allocations_total")
             .with_description("The number of active allocations")
-            .init();
+            .build();
         let responses_counter = meter
             .u64_counter("responses_total")
             .with_description("The number of responses")
-            .init();
+            .build();
         let data_relayed_counter = meter
             .u64_counter("data_relayed_userspace_bytes")
             .with_description("The number of bytes relayed")
             .with_unit("b")
-            .init();
+            .build();
 
         Self {
             public_address: public_address.into(),
