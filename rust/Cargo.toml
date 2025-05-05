@@ -55,7 +55,7 @@ bytecodec = "0.4.15"
 bytes = { version = "1.9.0", default-features = false }
 caps = "0.5.5"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
-clap = "4.5.34"
+clap = "4.5.37"
 connlib-client-android = { path = "connlib/clients/android" }
 connlib-client-apple = { path = "connlib/clients/apple" }
 connlib-client-shared = { path = "connlib/clients/shared" }
