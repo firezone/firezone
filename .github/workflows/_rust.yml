@@ -42,16 +42,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: bpf-linker
-      - run: |
-          cargo +${{ steps.setup-rust.outputs.nightly_version }} udeps --all-targets --all-features ${{ steps.setup-rust.outputs.compile-packages }}
-        name: Check for unused dependencies
-      - run: cargo fmt -- --check
-      - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.compile-packages }}
-        name: "cargo doc"
-        shell: bash
+
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.compile-packages }}
-        name: "cargo clippy"
+        name: cargo clippy
         shell: bash
+      - run: cargo doc --all-features --no-deps --document-private-items ${{ steps.setup-rust.outputs.compile-packages }}
+        name: cargo doc
+        shell: bash
+      - run: cargo fmt -- --check
+      - run: cargo +${{ steps.setup-rust.outputs.nightly_version }} udeps --all-targets --all-features ${{ steps.setup-rust.outputs.compile-packages }}
+        name: cargo udeps
       - run: cargo deny check --hide-inclusion-graph --deny unnecessary-skip
         shell: bash
 
