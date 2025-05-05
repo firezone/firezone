@@ -51,7 +51,6 @@ tempfile = { workspace = true }
 mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing
 
 [target.'cfg(target_os = "linux")'.dependencies]
-dirs = { workspace = true }
 libc = { workspace = true }
 nix = { workspace = true, features = ["fs", "user", "socket"] }
 resolv-conf = { workspace = true }
@@ -61,7 +60,6 @@ sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnera
 [target.'cfg(target_os = "windows")'.dependencies]
 ipconfig = "0.3.2"
 itertools = { workspace = true }
-known-folders = { workspace = true }
 windows-service = "0.8.0"
 winreg = { workspace = true }
 

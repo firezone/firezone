@@ -15,7 +15,7 @@ pub struct DeviceId {
 /// e.g. `C:\ProgramData\dev.firezone.client/firezone-id.json` or
 /// `/var/lib/dev.firezone.client/config/firezone-id.json`.
 pub(crate) fn path() -> Result<PathBuf> {
-    let path = crate::known_dirs::ipc_service_config()
+    let path = firezone_bin_shared::known_dirs::ipc_service_config()
         .context("Failed to compute path for firezone-id file")?
         .join("firezone-id.json");
     Ok(path)

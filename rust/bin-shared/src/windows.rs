@@ -106,18 +106,6 @@ impl Default for DnsControlMethod {
     }
 }
 
-/// Returns e.g. `C:/Users/User/AppData/Local/dev.firezone.client
-///
-/// This is where we can save config, logs, crash dumps, etc.
-/// It's per-user and doesn't roam across different PCs in the same domain.
-/// It's read-write for non-elevated processes.
-pub fn app_local_data_dir() -> Result<PathBuf> {
-    let path = get_known_folder_path(KnownFolder::LocalAppData)
-        .context("Can't find %LOCALAPPDATA% dir")?
-        .join(crate::BUNDLE_ID);
-    Ok(path)
-}
-
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     delete_all_routing_entries_matching(addr.ip())?;
 
