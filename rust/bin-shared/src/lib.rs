@@ -23,6 +23,8 @@ pub mod macos;
 #[cfg(target_os = "macos")]
 pub use macos as platform;
 
+pub mod uptime;
+
 pub const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";
 
 // wintun automatically append " Tunnel" to this
