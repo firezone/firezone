@@ -5,6 +5,8 @@ pub mod http_health_check;
 mod network_changes;
 mod tun_device_manager;
 
+pub mod signals;
+
 #[cfg(target_os = "linux")]
 pub mod linux;
 

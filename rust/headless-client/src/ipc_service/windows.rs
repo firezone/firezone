@@ -336,7 +336,7 @@ async fn service_run_async(
 ) -> Result<()> {
     // Useless - Windows will never send us Ctrl+C when running as a service
     // This just keeps the signatures simpler
-    let mut signals = crate::signals::Terminate::from_channel(shutdown_rx);
+    let mut signals = firezone_bin_shared::signals::Terminate::from_channel(shutdown_rx);
     super::ipc_listen(
         DnsControlMethod::Nrpt,
         log_filter_reloader,

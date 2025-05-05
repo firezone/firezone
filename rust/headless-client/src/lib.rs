@@ -29,8 +29,6 @@ pub mod device_id;
 // Pub because the GUI reads the system resolvers
 pub mod dns_control;
 mod ipc_service;
-// TODO: Move to `bin-shared`?
-pub mod signals;
 
 pub use clear_logs::clear_logs;
 pub use dns_control::DnsController;
