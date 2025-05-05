@@ -1,14 +1,12 @@
 use crate::TUNNEL_NAME;
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use firezone_logging::err_with_src;
-use known_folders::{KnownFolder, get_known_folder_path};
 use socket_factory::{TcpSocket, UdpSocket};
 use std::{
     cmp::Ordering,
     io,
     mem::MaybeUninit,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    path::PathBuf,
     ptr::null,
 };
 use uuid::Uuid;
@@ -104,18 +102,6 @@ impl Default for DnsControlMethod {
     fn default() -> Self {
         Self::Nrpt
     }
-}
-
-/// Returns e.g. `C:/Users/User/AppData/Local/dev.firezone.client
-///
-/// This is where we can save config, logs, crash dumps, etc.
-/// It's per-user and doesn't roam across different PCs in the same domain.
-/// It's read-write for non-elevated processes.
-pub fn app_local_data_dir() -> Result<PathBuf> {
-    let path = get_known_folder_path(KnownFolder::LocalAppData)
-        .context("Can't find %LOCALAPPDATA% dir")?
-        .join(crate::BUNDLE_ID);
-    Ok(path)
 }
 
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {

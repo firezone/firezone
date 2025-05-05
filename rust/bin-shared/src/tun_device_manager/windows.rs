@@ -630,7 +630,7 @@ fn file_length(f: &std::fs::File) -> Result<usize> {
 ///
 /// e.g. `C:\Users\User\AppData\Local\dev.firezone.client\data\wintun.dll`
 fn wintun_dll_path() -> Result<PathBuf> {
-    let path = crate::windows::app_local_data_dir()?
+    let path = crate::known_dirs::platform::app_local_data_dir()?
         .join("data")
         .join("wintun.dll");
     Ok(path)

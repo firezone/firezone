@@ -1,4 +1,4 @@
-use firezone_bin_shared::BUNDLE_ID;
+use crate::BUNDLE_ID;
 use std::path::PathBuf;
 
 /// Path for IPC service config that the IPC service can write

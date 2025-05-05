@@ -1,13 +1,12 @@
 use crate::{
-    CallbackHandler, CliCommon, ConnlibMsg, device_id, dns_control::DnsController, known_dirs,
-    signals,
+    CallbackHandler, CliCommon, ConnlibMsg, device_id, dns_control::DnsController, signals,
 };
 use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use clap::Parser;
 use connlib_model::ResourceView;
 use firezone_bin_shared::{
-    TOKEN_ENV_KEY, TunDeviceManager,
+    TOKEN_ENV_KEY, TunDeviceManager, known_dirs,
     platform::{DnsControlMethod, tcp_socket_factory, udp_socket_factory},
 };
 use firezone_logging::{FilterReloadHandle, err_with_src, sentry_layer, telemetry_span};
@@ -472,7 +471,8 @@ impl<'a> Handler<'a> {
         match msg {
             ClientMsg::ClearLogs => {
                 let result = crate::clear_logs(
-                    &crate::known_dirs::ipc_service_logs().context("Can't compute logs dir")?,
+                    &firezone_bin_shared::known_dirs::ipc_service_logs()
+                        .context("Can't compute logs dir")?,
                 )
                 .await;
                 self.send_ipc(ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))

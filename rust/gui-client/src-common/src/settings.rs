@@ -3,7 +3,7 @@
 
 use anyhow::{Context as _, Result};
 use connlib_model::ResourceId;
-use firezone_headless_client::known_dirs;
+use firezone_bin_shared::known_dirs;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashSet, path::PathBuf};
 use url::Url;

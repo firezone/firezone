@@ -1,7 +1,7 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
 use anyhow::{Context as _, Result, bail};
-use firezone_headless_client::known_dirs;
+use firezone_bin_shared::known_dirs;
 use serde::Serialize;
 use std::{
     fs,

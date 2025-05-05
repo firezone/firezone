@@ -1,6 +1,19 @@
-use firezone_bin_shared::{BUNDLE_ID, platform::app_local_data_dir};
+use crate::BUNDLE_ID;
+use anyhow::{Context as _, Result};
 use known_folders::{KnownFolder, get_known_folder_path};
 use std::path::PathBuf;
+
+/// Returns e.g. `C:/Users/User/AppData/Local/dev.firezone.client
+///
+/// This is where we can save config, logs, crash dumps, etc.
+/// It's per-user and doesn't roam across different PCs in the same domain.
+/// It's read-write for non-elevated processes.
+pub fn app_local_data_dir() -> Result<PathBuf> {
+    let path = get_known_folder_path(KnownFolder::LocalAppData)
+        .context("Can't find %LOCALAPPDATA% dir")?
+        .join(crate::BUNDLE_ID);
+    Ok(path)
+}
 
 /// Path for IPC service config that the IPC service can write
 ///

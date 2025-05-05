@@ -87,7 +87,7 @@ impl Server {
 fn ipc_path(id: ServiceId) -> PathBuf {
     match id {
         ServiceId::Prod => PathBuf::from("/run").join(BUNDLE_ID).join("ipc.sock"),
-        ServiceId::Test(id) => crate::known_dirs::runtime()
+        ServiceId::Test(id) => firezone_bin_shared::known_dirs::runtime()
             .expect("`known_dirs::runtime()` should always work")
             .join(format!("ipc_test_{id}.sock")),
     }
