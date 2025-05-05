@@ -1,6 +1,6 @@
 use super::CliCommon;
-use crate::signals;
 use anyhow::{Result, bail};
+use firezone_bin_shared::signals;
 
 use firezone_telemetry::Telemetry;
 
