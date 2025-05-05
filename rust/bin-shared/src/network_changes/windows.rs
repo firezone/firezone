@@ -352,9 +352,11 @@ impl INetworkEvents_Impl for Callback_Impl {
 
     fn NetworkConnectivityChanged(
         &self,
-        _networkid: &GUID,
-        _newconnectivity: NLM_CONNECTIVITY,
+        networkid: &GUID,
+        newconnectivity: NLM_CONNECTIVITY,
     ) -> WinResult<()> {
+        tracing::debug!(?networkid, ?newconnectivity, "Network connectivity changed");
+
         // No reasonable way to translate this error into a Windows error
         self.tx.notify().ok();
         Ok(())
