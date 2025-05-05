@@ -1387,14 +1387,14 @@ fn add_local_candidate<TId>(
         return;
     }
 
-    let is_new = agent.add_local_candidate(candidate.clone());
+    let Some(candidate) = agent.add_local_candidate(candidate) else {
+        return;
+    };
 
-    if is_new {
-        pending_events.push_back(Event::NewIceCandidate {
-            connection: id,
-            candidate: candidate.to_sdp_string(),
-        })
-    }
+    pending_events.push_back(Event::NewIceCandidate {
+        connection: id,
+        candidate: candidate.to_sdp_string(),
+    })
 }
 
 fn invalidate_allocation_candidates<TId, RId>(
