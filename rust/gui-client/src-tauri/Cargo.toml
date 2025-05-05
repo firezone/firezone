@@ -52,7 +52,6 @@ tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-mu
 tokio-stream = { workspace = true }
 tokio-util = { workspace = true, features = ["codec"] }
 tracing = { workspace = true }
-tracing-journald = { workspace = true }
 tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 url = { workspace = true, features = ["serde"] }
@@ -63,6 +62,7 @@ zip = { workspace = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = { workspace = true }
 nix = { workspace = true, features = ["user"] }
+tracing-journald = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 
