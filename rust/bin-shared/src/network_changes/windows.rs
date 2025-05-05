@@ -356,13 +356,7 @@ fn get_network_id_of_firezone_adapter() -> Result<GUID> {
         .context("Failed to open registry key")?;
 
     for key in profiles.enum_keys() {
-        let guid = match key {
-            Ok(guid) => guid,
-            Err(e) => {
-                tracing::debug!("Failed to open key: {e}");
-                continue;
-            }
-        };
+        let guid = key?;
 
         let profile_name = profiles
             .open_subkey(&guid)?
