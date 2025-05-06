@@ -1,10 +1,11 @@
-use crate::{CallbackHandler, CliCommon, ConnlibMsg, device_id};
+use crate::{CallbackHandler, CliCommon, ConnlibMsg};
 use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use clap::Parser;
 use connlib_model::ResourceView;
 use firezone_bin_shared::{
-    DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_info, known_dirs,
+    DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
+    known_dirs,
     platform::{tcp_socket_factory, udp_socket_factory},
     signals,
 };

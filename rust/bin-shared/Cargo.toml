@@ -19,6 +19,9 @@ ip-packet = { workspace = true }
 ip_network = { workspace = true, features = ["serde"] }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+uuid = { workspace = true }
 smbios-lib = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "net", "rt", "sync", "process"] }
 tracing = { workspace = true }

@@ -2118,6 +2118,8 @@ dependencies = [
  "resolv-conf",
  "ring",
  "rtnetlink",
+ "serde",
+ "serde_json",
  "smbios-lib",
  "socket-factory",
  "tempfile",

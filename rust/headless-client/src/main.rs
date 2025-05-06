@@ -7,12 +7,12 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_client_shared::Session;
 use firezone_bin_shared::{
-    DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_info, new_dns_notifier,
+    DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info, new_dns_notifier,
     new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},
     signals,
 };
-use firezone_headless_client::{CallbackHandler, CliCommon, ConnlibMsg, device_id};
+use firezone_headless_client::{CallbackHandler, CliCommon, ConnlibMsg};
 use firezone_logging::telemetry_span;
 use firezone_telemetry::Telemetry;
 use firezone_telemetry::otel;
