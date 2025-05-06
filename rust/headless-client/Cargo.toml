@@ -47,9 +47,6 @@ uuid = { workspace = true, features = ["std", "v4", "serde"] }
 [dev-dependencies]
 tempfile = { workspace = true }
 
-[target.'cfg(target_os = "linux")'.dev-dependencies]
-mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing
-
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = { workspace = true }
 nix = { workspace = true, features = ["fs", "user", "socket"] }

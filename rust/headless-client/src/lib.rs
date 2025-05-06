@@ -14,7 +14,7 @@ use anyhow::{Context as _, Result};
 use connlib_client_shared::Callbacks;
 use connlib_model::ResourceView;
 use dns_types::DomainName;
-use firezone_bin_shared::platform::DnsControlMethod;
+use firezone_bin_shared::DnsControlMethod;
 use firezone_logging::FilterReloadHandle;
 use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
@@ -26,14 +26,9 @@ use tracing_subscriber::{EnvFilter, Layer as _, Registry, fmt, layer::Subscriber
 mod clear_logs;
 /// Generate a persistent device ID, stores it to disk, and reads it back.
 pub mod device_id;
-// Pub because the GUI reads the system resolvers
-pub mod dns_control;
 mod ipc_service;
-// TODO: Move to `bin-shared`?
-pub mod signals;
 
 pub use clear_logs::clear_logs;
-pub use dns_control::DnsController;
 pub use ipc_service::{
     ClientMsg as IpcClientMsg, Error as IpcServiceError, ServerMsg as IpcServerMsg, ipc,
     run_only_ipc_service,

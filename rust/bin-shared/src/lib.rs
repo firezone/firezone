@@ -2,8 +2,11 @@
 
 pub mod http_health_check;
 
+mod dns_control;
 mod network_changes;
 mod tun_device_manager;
+
+pub mod signals;
 
 #[cfg(target_os = "linux")]
 pub mod linux;
@@ -49,5 +52,6 @@ pub const BUNDLE_ID: &str = "dev.firezone.client";
 /// Mark for Firezone sockets to prevent routing loops on Linux.
 pub const FIREZONE_MARK: u32 = 0xfd002021;
 
+pub use dns_control::{DnsControlMethod, DnsController, system_resolvers_for_gui};
 pub use network_changes::{new_dns_notifier, new_network_notifier};
 pub use tun_device_manager::TunDeviceManager;

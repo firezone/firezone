@@ -62,8 +62,10 @@
 //!
 //! Raymond Chen also explains it on his blog: <https://devblogs.microsoft.com/oldnewthing/20191125-00/?p=103135>
 
-use crate::platform::DnsControlMethod;
+use crate::DnsControlMethod;
 use anyhow::{Context as _, Result, anyhow};
+use std::collections::HashMap;
+use std::sync::Mutex;
 use std::thread;
 use tokio::sync::{
     mpsc::{self, error::TrySendError},
@@ -251,6 +253,8 @@ struct Listener<'a> {
 #[windows_implement::implement(INetworkEvents)]
 struct Callback {
     tx: NotifySender,
+    firezone_network_profile_id: Option<GUID>,
+    network_states: Mutex<HashMap<GUID, NLM_CONNECTIVITY>>,
 }
 
 impl Drop for Listener<'_> {
@@ -294,7 +298,13 @@ impl<'a> Listener<'a> {
             _com: com,
         };
 
-        let cb = Callback { tx: tx.clone() };
+        let cb = Callback {
+            tx: tx.clone(),
+            firezone_network_profile_id: get_network_id_of_firezone_adapter()
+                .inspect_err(|e| tracing::warn!("{e:#}"))
+                .ok(),
+            network_states: Default::default(),
+        };
 
         let callbacks: INetworkEvents = cb.into();
 
@@ -340,6 +350,35 @@ impl<'a> Listener<'a> {
     }
 }
 
+fn get_network_id_of_firezone_adapter() -> Result<GUID> {
+    let profiles = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE)
+        .open_subkey(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles")
+        .context("Failed to open registry key")?;
+
+    for key in profiles.enum_keys() {
+        let guid = key.context("Failed to enumerate key")?;
+
+        let profile_name = profiles
+            .open_subkey(&guid)
+            .with_context(|| format!("Failed to open key `{guid}`"))?
+            .get_value::<String, _>("ProfileName")
+            .context("Failed to get profile name")?;
+
+        if profile_name == "Firezone" {
+            let uuid = guid.trim_start_matches("{").trim_end_matches("}");
+            let uuid = uuid
+                .parse::<uuid::Uuid>()
+                .context("Failed to parse key as UUID")?;
+
+            tracing::debug!(%uuid, "Found `Firezone` network profile id");
+
+            return Ok(GUID::from_u128(uuid.as_u128()));
+        }
+    }
+
+    anyhow::bail!("Unable to find `Firezone` profile network GUID")
+}
+
 // <https://github.com/microsoft/windows-rs/pull/3065>
 impl INetworkEvents_Impl for Callback_Impl {
     fn NetworkAdded(&self, _networkid: &GUID) -> WinResult<()> {
@@ -352,9 +391,34 @@ impl INetworkEvents_Impl for Callback_Impl {
 
     fn NetworkConnectivityChanged(
         &self,
-        _networkid: &GUID,
-        _newconnectivity: NLM_CONNECTIVITY,
+        networkid: &GUID,
+        newconnectivity: NLM_CONNECTIVITY,
     ) -> WinResult<()> {
+        if self
+            .firezone_network_profile_id
+            .is_some_and(|firezone| networkid == &firezone)
+        {
+            tracing::debug!("Ignoring network change for `Firezone` adapter");
+            return Ok(());
+        }
+
+        let mut network_states = self
+            .network_states
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+
+        if network_states
+            .get(networkid)
+            .is_some_and(|state| *state == newconnectivity)
+        {
+            tracing::debug!(?networkid, "Ignoring duplicate network change");
+            return Ok(());
+        }
+
+        network_states.insert(*networkid, newconnectivity);
+
+        tracing::debug!(?networkid, ?newconnectivity, "Network connectivity changed");
+
         // No reasonable way to translate this error into a Windows error
         self.tx.notify().ok();
         Ok(())

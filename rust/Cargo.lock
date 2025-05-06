@@ -2035,11 +2035,13 @@ name = "firezone-bin-shared"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "atomicwrites",
  "axum",
  "bufferpool",
  "bytes",
  "clap",
  "dirs 5.0.1",
+ "dns-types",
  "firezone-logging",
  "flume",
  "futures",
@@ -2047,14 +2049,19 @@ dependencies = [
  "hex-literal",
  "ip-packet",
  "ip_network",
+ "ipconfig",
+ "itertools 0.13.0",
  "known-folders",
  "libc",
+ "mutants",
  "netlink-packet-core",
  "netlink-packet-route",
  "nix 0.29.0",
+ "resolv-conf",
  "ring",
  "rtnetlink",
  "socket-factory",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tokio-util",
@@ -2197,7 +2204,6 @@ dependencies = [
  "itertools 0.13.0",
  "known-folders",
  "libc",
- "mutants",
  "nix 0.29.0",
  "opentelemetry",
  "opentelemetry-stdout",
@@ -2234,6 +2240,7 @@ dependencies = [
  "anyhow",
  "nu-ansi-term 0.50.1",
  "output_vt100",
+ "parking_lot",
  "rand 0.8.5",
  "sentry-tracing",
  "supports-color",
@@ -3645,9 +3652,9 @@ dependencies = [
 
 [[package]]
 name = "libc"
-version = "0.2.171"
+version = "0.2.172"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c19937216e9d3aa9956d9bb8dfc0b0c8beb6058fc4f7a4dc4d850edf86a237d6"
+checksum = "d750af042f7ef4f724306de029d18836c26c1765a54a6a3f094cbd23a7267ffa"
 
 [[package]]
 name = "libloading"

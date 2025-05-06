@@ -13,17 +13,33 @@
 //!
 //! <https://superuser.com/a/1752670>
 
-use super::DnsController;
+use crate::DnsController;
+use crate::windows::{CREATE_NO_WINDOW, TUNNEL_UUID, error::EPT_S_NOT_REGISTERED};
 use anyhow::{Context as _, Result};
 use dns_types::DomainName;
-use firezone_bin_shared::platform::{CREATE_NO_WINDOW, DnsControlMethod, TUNNEL_UUID};
-use firezone_bin_shared::windows::error::EPT_S_NOT_REGISTERED;
 use std::{io, net::IpAddr, os::windows::process::CommandExt, path::Path, process::Command};
 use windows::Win32::System::GroupPolicy::{RP_FORCE, RefreshPolicyEx};
 
 // Unique magic number that we can use to delete our well-known NRPT rule.
 // Copied from the deep link schema
 const FZ_MAGIC: &str = "firezone-fd0020211111";
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+pub enum DnsControlMethod {
+    /// Explicitly disable DNS control.
+    ///
+    /// We don't use an `Option<Method>` because leaving out the CLI arg should
+    /// use NRPT, not disable DNS control.
+    Disabled,
+    /// NRPT, the only DNS control method we use on Windows.
+    Nrpt,
+}
+
+impl Default for DnsControlMethod {
+    fn default() -> Self {
+        Self::Nrpt
+    }
+}
 
 impl DnsController {
     /// Deactivate any control Firezone has over the computer's DNS
@@ -279,67 +295,4 @@ fn set_nrpt_rule(key: &winreg::RegKey, dns_config_string: &str) -> Result<()> {
     key.set_value("Name", &vec!["."])?;
     key.set_value("Version", &0x2u32)?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::collections::BTreeSet;
-
-    // Passes in CI but not locally. Maybe ReactorScram's dev system has IPv6 misconfigured. There it fails to pick up the IPv6 DNS servers.
-    #[ignore = "Needs admin, changes system state"]
-    #[test]
-    fn dns_control() {
-        let _guard = firezone_logging::test("debug");
-
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .unwrap();
-
-        let mut tun_dev_manager = firezone_bin_shared::TunDeviceManager::new(1280, 1).unwrap(); // Note: num_threads (`1`) is unused on windows.
-        let _tun = tun_dev_manager.make_tun().unwrap();
-
-        rt.block_on(async {
-            tun_dev_manager
-                .set_ips(
-                    [100, 92, 193, 137].into(),
-                    [0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0xa, 0x9db5].into(),
-                )
-                .await
-        })
-        .unwrap();
-
-        let mut dns_controller = DnsController {
-            dns_control_method: DnsControlMethod::Nrpt,
-        };
-
-        let fz_dns_servers = vec![
-            IpAddr::from([100, 100, 111, 1]),
-            IpAddr::from([100, 100, 111, 2]),
-            IpAddr::from([
-                0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0x0003,
-            ]),
-            IpAddr::from([
-                0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0x0004,
-            ]),
-        ];
-        rt.block_on(async {
-            dns_controller
-                .set_dns(fz_dns_servers.clone(), None)
-                .await
-                .unwrap();
-        });
-
-        let adapter = ipconfig::get_adapters()
-            .unwrap()
-            .into_iter()
-            .find(|a| a.friendly_name() == "Firezone")
-            .unwrap();
-        assert_eq!(
-            BTreeSet::from_iter(adapter.dns_servers().iter().cloned()),
-            BTreeSet::from_iter(fz_dns_servers.into_iter())
-        );
-
-        dns_controller.deactivate().unwrap();
-    }
 }
