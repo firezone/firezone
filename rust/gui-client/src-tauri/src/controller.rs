@@ -1,8 +1,9 @@
 use crate::{
-    auth, deep_link, ipc, logging,
+    auth, deep_link,
+    gui::system_tray,
+    ipc, logging,
     settings::{self, AdvancedSettings},
-    system_tray::{self, Event as TrayMenuEvent},
-    updates,
+    updates, uptime,
 };
 use anyhow::{Context, Result, anyhow};
 use connlib_model::ResourceView;
@@ -46,7 +47,7 @@ pub struct Controller<I: GuiIntegration> {
     rx: ReceiverStream<ControllerRequest>,
     status: Status,
     updates_rx: ReceiverStream<Option<updates::Notification>>,
-    uptime: crate::uptime::Tracker,
+    uptime: uptime::Tracker,
 
     dns_notifier: BoxStream<'static, Result<()>>,
     network_notifier: BoxStream<'static, Result<()>>,
@@ -67,7 +68,6 @@ pub trait GuiIntegration {
     fn show_window(&self, window: system_tray::Window) -> Result<()>;
 }
 
-// Allow dead code because `UpdateNotificationClicked` doesn't work on Linux yet
 pub enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(Box<AdvancedSettings>),
@@ -82,7 +82,11 @@ pub enum ControllerRequest {
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SchemeRequest(SecretString),
     SignIn,
-    SystemTrayMenu(TrayMenuEvent),
+    SystemTrayMenu(system_tray::Event),
+    #[cfg_attr(
+        any(target_os = "linux", target_os = "macos"),
+        expect(dead_code, reason = "Doesn't work in Linux yet and is unused on MacOS")
+    )]
     UpdateNotificationClicked(Url),
 }
 
@@ -448,7 +452,7 @@ impl<I: GuiIntegration> Controller<I> {
                     tracing::error!("`handle_deep_link` failed: {error:#}");
                 }
             },
-            Req::SignIn | Req::SystemTrayMenu(TrayMenuEvent::SignIn) => {
+            Req::SignIn | Req::SystemTrayMenu(system_tray::Event::SignIn) => {
                 let req = self
                     .auth
                     .start_sign_in()
@@ -461,21 +465,21 @@ impl<I: GuiIntegration> Controller<I> {
                     .context("Couldn't open auth page")?;
                 self.integration.set_welcome_window_visible(false)?;
             }
-            Req::SystemTrayMenu(TrayMenuEvent::AddFavorite(resource_id)) => {
+            Req::SystemTrayMenu(system_tray::Event::AddFavorite(resource_id)) => {
                 self.advanced_settings
                     .favorite_resources
                     .insert(resource_id);
                 self.refresh_favorite_resources().await?;
             }
-            Req::SystemTrayMenu(TrayMenuEvent::AdminPortal) => self
+            Req::SystemTrayMenu(system_tray::Event::AdminPortal) => self
                 .integration
                 .open_url(&self.advanced_settings.auth_base_url)
                 .context("Couldn't open auth page")?,
-            Req::SystemTrayMenu(TrayMenuEvent::Copy(s)) => arboard::Clipboard::new()
+            Req::SystemTrayMenu(system_tray::Event::Copy(s)) => arboard::Clipboard::new()
                 .context("Couldn't access clipboard")?
                 .set_text(s)
                 .context("Couldn't copy resource URL or other text to clipboard")?,
-            Req::SystemTrayMenu(TrayMenuEvent::CancelSignIn) => match &self.status {
+            Req::SystemTrayMenu(system_tray::Event::CancelSignIn) => match &self.status {
                 Status::Disconnected
                 | Status::RetryingConnection { .. }
                 | Status::WaitingForPortal { .. } => {
@@ -493,24 +497,24 @@ impl<I: GuiIntegration> Controller<I> {
                     self.sign_out().await?;
                 }
             },
-            Req::SystemTrayMenu(TrayMenuEvent::RemoveFavorite(resource_id)) => {
+            Req::SystemTrayMenu(system_tray::Event::RemoveFavorite(resource_id)) => {
                 self.advanced_settings
                     .favorite_resources
                     .remove(&resource_id);
                 self.refresh_favorite_resources().await?;
             }
-            Req::SystemTrayMenu(TrayMenuEvent::RetryPortalConnection) => {
+            Req::SystemTrayMenu(system_tray::Event::RetryPortalConnection) => {
                 self.try_retry_connection().await?
             }
-            Req::SystemTrayMenu(TrayMenuEvent::EnableInternetResource) => {
+            Req::SystemTrayMenu(system_tray::Event::EnableInternetResource) => {
                 self.advanced_settings.internet_resource_enabled = Some(true);
                 self.update_disabled_resources().await?;
             }
-            Req::SystemTrayMenu(TrayMenuEvent::DisableInternetResource) => {
+            Req::SystemTrayMenu(system_tray::Event::DisableInternetResource) => {
                 self.advanced_settings.internet_resource_enabled = Some(false);
                 self.update_disabled_resources().await?;
             }
-            Req::SystemTrayMenu(TrayMenuEvent::ShowWindow(window)) => {
+            Req::SystemTrayMenu(system_tray::Event::ShowWindow(window)) => {
                 self.integration.show_window(window)?;
                 // When the About or Settings windows are hidden / shown, log the
                 // run ID and uptime. This makes it easy to check client stability on
@@ -522,15 +526,15 @@ impl<I: GuiIntegration> Controller<I> {
                     "Uptime info"
                 );
             }
-            Req::SystemTrayMenu(TrayMenuEvent::SignOut) => {
+            Req::SystemTrayMenu(system_tray::Event::SignOut) => {
                 tracing::info!("User asked to sign out");
                 self.sign_out().await?;
             }
-            Req::SystemTrayMenu(TrayMenuEvent::Url(url)) => self
+            Req::SystemTrayMenu(system_tray::Event::Url(url)) => self
                 .integration
                 .open_url(&url)
                 .context("Couldn't open URL from system tray")?,
-            Req::SystemTrayMenu(TrayMenuEvent::Quit) => {
+            Req::SystemTrayMenu(system_tray::Event::Quit) => {
                 tracing::info!("User clicked Quit in the menu");
                 self.status = Status::Quitting;
                 self.ipc_client.send_msg(&IpcClientMsg::Disconnect).await?;

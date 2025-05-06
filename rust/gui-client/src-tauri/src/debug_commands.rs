@@ -27,7 +27,7 @@ pub(crate) struct StoreTokenArgs {
 
 pub fn run(cmd: Cmd) -> Result<()> {
     match cmd {
-        Cmd::Replicate6791 => firezone_gui_client_common::auth::replicate_6791(),
+        Cmd::Replicate6791 => crate::auth::replicate_6791(),
         Cmd::SetAutostart(SetAutostartArgs { enabled }) => set_autostart(enabled),
     }
 }
@@ -35,6 +35,6 @@ pub fn run(cmd: Cmd) -> Result<()> {
 fn set_autostart(enabled: bool) -> Result<()> {
     firezone_headless_client::setup_stdout_logging()?;
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(crate::client::gui::set_autostart(enabled))?;
+    rt.block_on(crate::gui::set_autostart(enabled))?;
     Ok(())
 }
