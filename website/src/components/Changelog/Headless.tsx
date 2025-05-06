@@ -9,7 +9,13 @@ export default function Headless({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        {os === OS.Windows && (
+          <ChangeItem pull="9021">
+            Optimizes network change detection.
+          </ChangeItem>
+        )}
+      </Unreleased>
       <Entry version="1.4.7" date={new Date("2025-04-30")}>
         <ChangeItem pull="8798">
           Improves performance of relayed connections on IPv4-only systems.
