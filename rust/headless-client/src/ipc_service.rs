@@ -4,7 +4,7 @@ use atomicwrites::{AtomicFile, OverwriteBehavior};
 use clap::Parser;
 use connlib_model::ResourceView;
 use firezone_bin_shared::{
-    DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, known_dirs,
+    DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_info, known_dirs,
     platform::{tcp_socket_factory, udp_socket_factory},
     signals,
 };
@@ -15,7 +15,7 @@ use futures::{
     future::poll_fn,
     task::{Context, Poll},
 };
-use phoenix_channel::LoginUrl;
+use phoenix_channel::{DeviceInfo, LoginUrl};
 use secrecy::SecretString;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -566,7 +566,11 @@ impl<'a> Handler<'a> {
             &token,
             device_id.id,
             None,
-            device_id::device_info(),
+            DeviceInfo {
+                device_serial: device_info::serial(),
+                device_uuid: device_info::uuid(),
+                ..Default::default()
+            },
         )
         .context("Failed to create `LoginUrl`")?;
 

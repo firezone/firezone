@@ -21,37 +21,6 @@ pub(crate) fn path() -> Result<PathBuf> {
     Ok(path)
 }
 
-fn device_serial() -> Option<String> {
-    const DEFAULT_SERIAL: &str = "123456789";
-    let data = smbioslib::table_load_from_device().ok()?;
-
-    let serial = data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| {
-        sys_info.serial_number().to_utf8_lossy()
-    })?;
-
-    if serial == DEFAULT_SERIAL {
-        return None;
-    }
-
-    Some(serial)
-}
-
-fn device_uuid() -> Option<String> {
-    let data = smbioslib::table_load_from_device().ok()?;
-
-    let uuid = data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| sys_info.uuid());
-
-    uuid?.to_string().into()
-}
-
-pub fn device_info() -> phoenix_channel::DeviceInfo {
-    phoenix_channel::DeviceInfo {
-        device_serial: device_serial(),
-        device_uuid: device_uuid(),
-        ..Default::default()
-    }
-}
-
 /// Returns the device ID without generating it
 pub fn get() -> Result<DeviceId> {
     let path = path()?;

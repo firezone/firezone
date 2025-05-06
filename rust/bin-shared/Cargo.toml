@@ -19,6 +19,7 @@ ip-packet = { workspace = true }
 ip_network = { workspace = true, features = ["serde"] }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
+smbios-lib = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "net", "rt", "sync", "process"] }
 tracing = { workspace = true }
 tun = { workspace = true }
