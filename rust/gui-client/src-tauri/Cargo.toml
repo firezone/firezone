@@ -27,7 +27,7 @@ firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
-keyring = { workspace = true }
+keyring = { workspace = true, features = ["crypto-rust", "sync-secret-service", "windows-native"] }
 native-dialog = { workspace = true }
 output_vt100 = { workspace = true }
 png = { workspace = true }
