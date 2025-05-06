@@ -50,7 +50,7 @@ backoff = { version = "0.4", features = ["tokio"] }
 base64 = { version = "0.22.1", default-features = false }
 bimap = "0.6"
 boringtun = { version = "0.6", default-features = false }
-bytecodec = "0.4.15"
+bytecodec = "0.5.0"
 bytes = { version = "1.9.0", default-features = false }
 caps = "0.5.5"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
@@ -148,7 +148,7 @@ socket2 = { version = "0.5" }
 static_assertions = "1.1.0"
 str0m = { version = "0.8.0", default-features = false, features = ["sha1"] }
 strum = { version = "0.27.1", features = ["derive"] }
-stun_codec = "0.3.4"
+stun_codec = "0.4.0"
 subprocess = "0.2.9"
 subtle = "2.5.0"
 supports-color = "3.0.2"
