@@ -1,19 +1,22 @@
 use anyhow::{Context as _, Result, bail};
 use clap::{Args, Parser};
-use firezone_gui_client_common::{
-    self as common, controller::Failure, deep_link, settings::AdvancedSettings,
-};
-use firezone_headless_client::ipc;
+use controller::Failure;
 use firezone_telemetry::Telemetry;
+use settings::AdvancedSettings;
 use tracing::instrument;
 use tracing_subscriber::EnvFilter;
 
 mod about;
+mod auth;
+mod controller;
 mod debug_commands;
+mod deep_link;
 mod elevation;
 mod gui;
+mod ipc;
 mod logging;
 mod settings;
+mod updates;
 mod welcome;
 
 /// The program's entry point, equivalent to `main`
@@ -54,15 +57,15 @@ pub(crate) fn run() -> Result<()> {
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            let settings = common::settings::load_advanced_settings().unwrap_or_default();
+            let settings = settings::load_advanced_settings().unwrap_or_default();
             let mut telemetry = Telemetry::default();
             telemetry.start(
                 settings.api_url.as_ref(),
-                firezone_gui_client_common::RELEASE,
+                crate::RELEASE,
                 firezone_telemetry::GUI_DSN,
             );
             // Don't fix the log filter for smoke tests
-            let common::logging::Handles {
+            let logging::Handles {
                 logger: _logger,
                 reloader,
             } = start_logging(&settings.log_filter)?;
@@ -85,12 +88,12 @@ pub(crate) fn run() -> Result<()> {
 /// Automatically logs or shows error dialogs for important user-actionable errors
 // Can't `instrument` this because logging isn't running when we enter it.
 fn run_gui(cli: Cli) -> Result<()> {
-    let mut settings = common::settings::load_advanced_settings().unwrap_or_default();
+    let mut settings = settings::load_advanced_settings().unwrap_or_default();
     let mut telemetry = Telemetry::default();
     // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
     telemetry.start(
         settings.api_url.as_ref(),
-        firezone_gui_client_common::RELEASE,
+        crate::RELEASE,
         firezone_telemetry::GUI_DSN,
     );
     // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
@@ -99,7 +102,7 @@ fn run_gui(cli: Cli) -> Result<()> {
         Telemetry::set_firezone_id(id.id);
     }
     fix_log_filter(&mut settings)?;
-    let common::logging::Handles {
+    let logging::Handles {
         logger: _logger,
         reloader,
     } = start_logging(&settings.log_filter)?;
@@ -125,7 +128,10 @@ fn run_gui(cli: Cli) -> Result<()> {
                 return Err(anyhow);
             }
 
-            if anyhow.root_cause().is::<ipc::NotFound>() {
+            if anyhow
+                .root_cause()
+                .is::<firezone_headless_client::ipc::NotFound>()
+            {
                 show_error_dialog("Couldn't find Firezone IPC service. Is the service running?")?;
                 return Err(anyhow);
             }
@@ -175,8 +181,8 @@ fn show_error_dialog(msg: &str) -> Result<()> {
 /// Starts logging
 ///
 /// Don't drop the log handle or logging will stop.
-fn start_logging(directives: &str) -> Result<common::logging::Handles> {
-    let logging_handles = common::logging::setup(directives)?;
+fn start_logging(directives: &str) -> Result<logging::Handles> {
+    let logging_handles = logging::setup(directives)?;
     let system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs());
     tracing::info!(
         arch = std::env::consts::ARCH,
