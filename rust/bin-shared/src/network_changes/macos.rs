@@ -1,4 +1,4 @@
-use crate::platform::DnsControlMethod;
+use crate::DnsControlMethod;
 use anyhow::{Result, bail};
 
 pub async fn new_dns_notifier(

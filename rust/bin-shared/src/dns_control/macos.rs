@@ -3,7 +3,12 @@ use std::net::IpAddr;
 use super::DnsController;
 use anyhow::{Result, bail};
 use dns_types::DomainName;
-use firezone_bin_shared::macos::DnsControlMethod;
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default)]
+pub enum DnsControlMethod {
+    #[default]
+    None,
+}
 
 impl DnsController {
     pub fn deactivate(&mut self) -> Result<()> {

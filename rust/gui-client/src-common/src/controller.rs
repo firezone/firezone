@@ -6,7 +6,7 @@ use crate::{
 };
 use anyhow::{Context, Result, anyhow};
 use connlib_model::ResourceView;
-use firezone_bin_shared::platform::DnsControlMethod;
+use firezone_bin_shared::DnsControlMethod;
 use firezone_headless_client::{
     IpcClientMsg::{self, SetDisabledResources},
     IpcServerMsg, IpcServiceError,
@@ -246,8 +246,7 @@ impl<I: GuiIntegration> Controller<I> {
                 }
                 EventloopTick::DnsChanged(Ok(())) => {
                     if self.status.needs_network_changes() {
-                        let resolvers =
-                            firezone_headless_client::dns_control::system_resolvers_for_gui()?;
+                        let resolvers = firezone_bin_shared::system_resolvers_for_gui()?;
                         tracing::debug!(
                             ?resolvers,
                             "New DNS resolvers, calling `Session::set_dns`"
