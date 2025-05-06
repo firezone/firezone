@@ -33,6 +33,6 @@ impl<'a> MakeWriter<'a> for CapturingWriter {
     type Writer = Self;
 
     fn make_writer(&'a self) -> Self::Writer {
-        CapturingWriter::default()
+        self.clone()
     }
 }
