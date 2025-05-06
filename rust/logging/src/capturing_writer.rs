@@ -1,19 +1,17 @@
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::Arc;
 
+use parking_lot::{Mutex, MutexGuard};
 use tracing_subscriber::fmt::MakeWriter;
 
 #[derive(Debug, Default, Clone)]
 pub struct CapturingWriter {
-    lines: Arc<Mutex<Vec<String>>>,
+    content: Arc<Mutex<String>>,
 }
 
 impl std::io::Write for CapturingWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        let line = String::from_utf8_lossy(buf).to_string();
-        self.lines
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(line);
+        let line = std::str::from_utf8(buf).map_err(std::io::Error::other)?;
+        self.content.lock().push_str(line);
 
         Ok(buf.len())
     }
@@ -24,8 +22,8 @@ impl std::io::Write for CapturingWriter {
 }
 
 impl CapturingWriter {
-    pub fn lines(&self) -> MutexGuard<'_, Vec<String>> {
-        self.lines.lock().unwrap_or_else(|e| e.into_inner())
+    pub fn lines(&self) -> MutexGuard<'_, String> {
+        self.content.lock()
     }
 }
 

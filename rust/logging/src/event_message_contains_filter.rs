@@ -101,4 +101,27 @@ mod tests {
 
         assert!(capture.lines().is_empty());
     }
+
+    #[test]
+    fn passes_through_non_matching_events() {
+        let capture = CapturingWriter::default();
+
+        let _guard = tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(capture.clone())
+                    .with_level(false)
+                    .without_time()
+                    .with_target(false)
+                    .with_filter(EventMessageContains::all(Level::DEBUG, &["foo"])),
+            )
+            .set_default();
+
+        tracing::debug!("This is a message");
+
+        assert_eq!(
+            *capture.lines().lines().collect::<Vec<_>>(),
+            vec!["This is a message".to_owned()]
+        );
+    }
 }
