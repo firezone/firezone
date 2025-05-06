@@ -165,7 +165,7 @@ impl ThreadedUdpSocket {
                 SocketAddr::V4(_) => "UDP IPv4".to_owned(),
                 SocketAddr::V6(_) => "UDP IPv6".to_owned(),
             })
-            .stack_size(400 * 1024)
+            .stack_size(500 * 1024)
             .spawn(move || {
                 tokio::runtime::Builder::new_current_thread()
                     .enable_all()
