@@ -84,8 +84,8 @@ pub enum ControllerRequest {
     SignIn,
     SystemTrayMenu(system_tray::Event),
     #[cfg_attr(
-        target_os = "linux",
-        expect(dead_code, reason = "Doesn't work in Linux yet")
+        any(target_os = "linux", target_os = "macos"),
+        expect(dead_code, reason = "Doesn't work in Linux yet and is unused on MacOS")
     )]
     UpdateNotificationClicked(Url),
 }
