@@ -20,7 +20,7 @@ chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
-derive_more = { workspace = true }
+derive_more = { workspace = true, features = ["debug"] }
 firezone-bin-shared = { workspace = true }
 firezone-headless-client = { workspace = true }
 firezone-logging = { workspace = true }
@@ -30,9 +30,9 @@ hex = { workspace = true }
 keyring = { workspace = true, features = ["crypto-rust", "sync-secret-service", "windows-native"] }
 native-dialog = { workspace = true }
 output_vt100 = { workspace = true }
-png = { workspace = true }
+png = { workspace = true } # `png` is mostly free since we already need it for Tauri
 rand = { workspace = true }
-reqwest = { workspace = true, features = ["rustls-tls", "stream"] }
+reqwest = { workspace = true, features = ["stream", "rustls-tls"] }
 rustls = { workspace = true }
 sadness-generator = { workspace = true }
 secrecy = { workspace = true }
@@ -54,7 +54,7 @@ tokio-util = { workspace = true, features = ["codec"] }
 tracing = { workspace = true }
 tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-url = { workspace = true, features = ["serde"] }
+url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zip = { workspace = true, features = ["deflate", "time"] }
 
