@@ -1,6 +1,6 @@
 //! Not implemented for Linux yet
 
-use crate::platform::DnsControlMethod;
+use crate::DnsControlMethod;
 use anyhow::Result;
 use futures::StreamExt as _;
 use std::time::Duration;

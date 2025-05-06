@@ -6,8 +6,6 @@ use tokio_util::{
     codec::{FramedRead, FramedWrite, LengthDelimitedCodec},
 };
 
-// There is no special way to prevent `cargo-mutants` from throwing false
-// positives on code for other platforms.
 #[cfg(target_os = "linux")]
 #[path = "ipc/linux.rs"]
 mod platform;

@@ -6,7 +6,6 @@
 //! On Windows, we use NRPT by default. We can also explicitly not control DNS.
 
 use anyhow::Result;
-use firezone_bin_shared::platform::DnsControlMethod;
 use std::net::IpAddr;
 
 #[cfg(target_os = "linux")]
@@ -25,6 +24,8 @@ mod macos;
 use macos as platform;
 
 use platform::system_resolvers;
+
+pub use platform::DnsControlMethod;
 
 /// Controls system-wide DNS.
 ///

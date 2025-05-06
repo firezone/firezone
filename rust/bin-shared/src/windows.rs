@@ -87,23 +87,6 @@ pub mod error {
     pub const EPT_S_NOT_REGISTERED: HRESULT = HRESULT::from_win32(0x06D9);
 }
 
-#[derive(clap::ValueEnum, Clone, Copy, Debug)]
-pub enum DnsControlMethod {
-    /// Explicitly disable DNS control.
-    ///
-    /// We don't use an `Option<Method>` because leaving out the CLI arg should
-    /// use NRPT, not disable DNS control.
-    Disabled,
-    /// NRPT, the only DNS control method we use on Windows.
-    Nrpt,
-}
-
-impl Default for DnsControlMethod {
-    fn default() -> Self {
-        Self::Nrpt
-    }
-}
-
 pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     delete_all_routing_entries_matching(addr.ip())?;
 

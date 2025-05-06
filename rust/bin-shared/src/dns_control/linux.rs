@@ -1,10 +1,35 @@
+use crate::TunDeviceManager;
+
 use super::DnsController;
 use anyhow::{Context as _, Result, bail};
 use dns_types::DomainName;
-use firezone_bin_shared::{TunDeviceManager, platform::DnsControlMethod};
 use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
+
+#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+pub enum DnsControlMethod {
+    /// Explicitly disable DNS control.
+    ///
+    /// We don't use an `Option<Method>` because leaving out the CLI arg should
+    /// use Systemd, not disable DNS control.
+    Disabled,
+    /// Back up `/etc/resolv.conf` and replace it with our own
+    ///
+    /// Only suitable for the Alpine CI containers and maybe something like an
+    /// embedded system
+    EtcResolvConf,
+    /// Cooperate with `systemd-resolved`
+    ///
+    /// Suitable for most Ubuntu systems, probably
+    SystemdResolved,
+}
+
+impl Default for DnsControlMethod {
+    fn default() -> Self {
+        Self::SystemdResolved
+    }
+}
 
 impl DnsController {
     pub fn deactivate(&mut self) -> Result<()> {

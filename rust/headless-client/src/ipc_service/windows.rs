@@ -1,6 +1,6 @@
 use crate::CliCommon;
 use anyhow::{Context as _, Result, bail};
-use firezone_bin_shared::platform::DnsControlMethod;
+use firezone_bin_shared::DnsControlMethod;
 use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
 use futures::channel::mpsc;
