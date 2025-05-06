@@ -1,4 +1,5 @@
 #![cfg(target_os = "windows")]
+#![allow(clippy::unwrap_used)]
 
 use firezone_bin_shared::{DnsControlMethod, DnsController};
 use std::{collections::BTreeSet, net::IpAddr};
