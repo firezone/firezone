@@ -5,6 +5,7 @@ mod format;
 #[macro_use]
 mod unwrap_or;
 mod ansi;
+mod capturing_writer;
 mod err_with_sources;
 
 use std::sync::Arc;
@@ -19,6 +20,7 @@ use tracing_subscriber::{
 };
 
 pub use ansi::stdout_supports_ansi;
+pub use capturing_writer::CapturingWriter;
 pub use err_with_sources::{ErrorWithSources, err_with_src};
 pub use format::Format;
 
