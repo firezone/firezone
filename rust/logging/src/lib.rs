@@ -7,10 +7,12 @@ mod unwrap_or;
 mod ansi;
 mod capturing_writer;
 mod err_with_sources;
+mod event_message_contains_filter;
 
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use event_message_contains_filter::EventMessageContains;
 use sentry_tracing::EventFilter;
 use tracing::{Subscriber, subscriber::DefaultGuard};
 use tracing_log::LogTracer;
@@ -214,6 +216,11 @@ where
         })
         .enable_span_attributes()
         .with_filter(parse_filter("trace").expect("static filter always parses"))
+        .with_filter(EventMessageContains::all(&[
+            "WinTun: Failed to create process: rundll32",
+            r#"RemoveInstance "SWD\WINTUN\{E9245BC1-B8C1-44CA-AB1D-C6AAD4F13B9C}""#,
+            "(Code 0x00000003)",
+        ]))
     // Filter out noisy crates but pass all events otherwise.
 }
 
