@@ -80,8 +80,6 @@ services:
       DATABASE_NAME: firezone_dev
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
-      DATABASE_REPLICATION_USER: postgres
-      DATABASE_REPLICATION_PASSWORD: postgres
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       # Secrets
@@ -154,8 +152,6 @@ services:
       DATABASE_NAME: firezone_dev
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
-      DATABASE_REPLICATION_USER: postgres
-      DATABASE_REPLICATION_PASSWORD: postgres
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       # Secrets
@@ -220,8 +216,6 @@ services:
       DATABASE_NAME: firezone_dev
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
-      DATABASE_REPLICATION_USER: postgres
-      DATABASE_REPLICATION_PASSWORD: postgres
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       # Secrets
@@ -290,8 +284,6 @@ services:
       DATABASE_NAME: firezone_dev
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
-      DATABASE_REPLICATION_USER: postgres
-      DATABASE_REPLICATION_PASSWORD: postgres
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       # Secrets
