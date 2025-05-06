@@ -92,10 +92,9 @@ impl Tun {
 ///
 /// The file descriptor must be open.
 unsafe fn interface_name(fd: RawFd) -> io::Result<String> {
-    const TUNGETIFF: libc::c_ulong = 0x800454d2;
     let mut request = tun::ioctl::Request::<tun::ioctl::GetInterfaceNamePayload>::new();
 
-    unsafe { ioctl::exec(fd, TUNGETIFF, &mut request)? };
+    unsafe { ioctl::exec(fd, libc::TUNGETIFF as libc::c_ulong, &mut request)? };
 
     Ok(request.name().to_string())
 }

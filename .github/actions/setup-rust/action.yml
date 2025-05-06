@@ -18,7 +18,7 @@ outputs:
     description: Compilable packages for the current OS
     value: ${{
       (runner.os == 'Linux' && '--workspace') ||
-      (runner.os == 'macOS' && '--workspace --exclude ebpf-turn-router --exclude gui-smoke-test') ||
+      (runner.os == 'macOS' && '--workspace --exclude ebpf-turn-router --exclude gui-smoke-test --exclude connlib-client-android') ||
       (runner.os == 'Windows' && '--workspace --exclude ebpf-turn-router --exclude connlib-client-apple --exclude connlib-client-android') }}
   test-packages:
     description: Testable packages for the current OS

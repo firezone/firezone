@@ -99,7 +99,7 @@ known-folders = "1.2.0"
 l4-tcp-dns-server = { path = "connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "connlib/l4-udp-dns-server" }
 bufferpool = { path = "bufferpool" }
-libc = "0.2.171"
+libc = "0.2.172"
 lockfree-object-pool = "0.1.6"
 log = "0.4"
 lru = "0.12.5"
