@@ -6,8 +6,6 @@ mod dns_control;
 mod network_changes;
 mod tun_device_manager;
 
-pub mod signals;
-
 #[cfg(target_os = "linux")]
 pub mod linux;
 
@@ -26,7 +24,10 @@ pub mod macos;
 #[cfg(target_os = "macos")]
 pub use macos as platform;
 
+pub mod device_id;
+pub mod device_info;
 pub mod known_dirs;
+pub mod signals;
 pub mod uptime;
 
 pub const TOKEN_ENV_KEY: &str = "FIREZONE_TOKEN";

@@ -24,8 +24,6 @@ use tokio::sync::mpsc;
 use tracing_subscriber::{EnvFilter, Layer as _, Registry, fmt, layer::SubscriberExt as _};
 
 mod clear_logs;
-/// Generate a persistent device ID, stores it to disk, and reads it back.
-pub mod device_id;
 mod ipc_service;
 
 pub use clear_logs::clear_logs;

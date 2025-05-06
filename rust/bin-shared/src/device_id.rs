@@ -1,3 +1,5 @@
+//! Generate a persistent device ID, stores it to disk, and reads it back.
+
 use anyhow::{Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use std::{
@@ -15,41 +17,10 @@ pub struct DeviceId {
 /// e.g. `C:\ProgramData\dev.firezone.client/firezone-id.json` or
 /// `/var/lib/dev.firezone.client/config/firezone-id.json`.
 pub(crate) fn path() -> Result<PathBuf> {
-    let path = firezone_bin_shared::known_dirs::ipc_service_config()
+    let path = crate::known_dirs::ipc_service_config()
         .context("Failed to compute path for firezone-id file")?
         .join("firezone-id.json");
     Ok(path)
-}
-
-fn device_serial() -> Option<String> {
-    const DEFAULT_SERIAL: &str = "123456789";
-    let data = smbioslib::table_load_from_device().ok()?;
-
-    let serial = data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| {
-        sys_info.serial_number().to_utf8_lossy()
-    })?;
-
-    if serial == DEFAULT_SERIAL {
-        return None;
-    }
-
-    Some(serial)
-}
-
-fn device_uuid() -> Option<String> {
-    let data = smbioslib::table_load_from_device().ok()?;
-
-    let uuid = data.find_map(|sys_info: smbioslib::SMBiosSystemInformation| sys_info.uuid());
-
-    uuid?.to_string().into()
-}
-
-pub fn device_info() -> phoenix_channel::DeviceInfo {
-    phoenix_channel::DeviceInfo {
-        device_serial: device_serial(),
-        device_uuid: device_uuid(),
-        ..Default::default()
-    }
 }
 
 /// Returns the device ID without generating it
