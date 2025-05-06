@@ -8,6 +8,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+atomicwrites = { workspace = true }
 axum = { workspace = true, features = ["http1", "tokio"] }
 clap = { workspace = true, features = ["derive", "env"] }
 dns-types = { workspace = true }
@@ -17,11 +18,15 @@ gat-lending-iterator = { workspace = true }
 hex-literal = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true, features = ["serde"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+smbios-lib = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["io-util", "net", "rt", "sync", "process"] }
 tracing = { workspace = true }
 tun = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 bufferpool = { workspace = true }

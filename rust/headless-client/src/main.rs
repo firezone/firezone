@@ -7,19 +7,20 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_client_shared::Session;
 use firezone_bin_shared::{
-    DnsController, TOKEN_ENV_KEY, TunDeviceManager, new_dns_notifier, new_network_notifier,
+    DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info, new_dns_notifier,
+    new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},
     signals,
 };
-use firezone_headless_client::{CallbackHandler, CliCommon, ConnlibMsg, device_id};
+use firezone_headless_client::{CallbackHandler, CliCommon, ConnlibMsg};
 use firezone_logging::telemetry_span;
 use firezone_telemetry::Telemetry;
 use firezone_telemetry::otel;
 use futures::StreamExt as _;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
-use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
 use phoenix_channel::get_user_agent;
+use phoenix_channel::{DeviceInfo, LoginUrl};
 use secrecy::{Secret, SecretString};
 use std::{
     path::{Path, PathBuf},
@@ -194,7 +195,11 @@ fn main() -> Result<()> {
         &token,
         firezone_id.clone(),
         cli.firezone_name,
-        device_id::device_info(),
+        DeviceInfo {
+            device_serial: device_info::serial(),
+            device_uuid: device_info::uuid(),
+            ..Default::default()
+        },
     )?;
 
     if cli.check {

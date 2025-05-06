@@ -9,7 +9,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-atomicwrites = { workspace = true } # Needed to safely backup `/etc/resolv.conf` and write the device ID on behalf of `gui-client`
+atomicwrites = { workspace = true } # Needed to safely backup `/etc/resolv.conf`
 backoff = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "string"] }
 connlib-client-shared = { workspace = true }
@@ -31,7 +31,6 @@ secrecy = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_variant = { workspace = true }
-smbios-lib = { workspace = true }
 strum = { workspace = true }
 thiserror = { workspace = true }
 # This actually relies on many other features in Tokio, so this will probably
