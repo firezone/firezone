@@ -1,13 +1,16 @@
+use tracing::Level;
 use tracing_subscriber::layer::Filter;
 
 /// Filters out all events whose message contains all of the given snippets.
 pub struct EventMessageContains {
+    level: Level,
     snippets: Vec<&'static str>,
 }
 
 impl EventMessageContains {
-    pub fn all(snippets: &[&'static str]) -> Self {
+    pub fn all(level: Level, snippets: &[&'static str]) -> Self {
         Self {
+            level,
             snippets: snippets.to_vec(),
         }
     }
@@ -19,9 +22,13 @@ where
 {
     fn enabled(
         &self,
-        _: &tracing::Metadata<'_>,
+        metadata: &tracing::Metadata<'_>,
         _: &tracing_subscriber::layer::Context<'_, S>,
     ) -> bool {
+        if metadata.level() != &self.level {
+            return false;
+        }
+
         true
     }
 
@@ -81,7 +88,10 @@ mod tests {
             .with(
                 tracing_subscriber::fmt::layer()
                     .with_writer(capture.clone())
-                    .with_filter(EventMessageContains::all(&["foo", r#"bar ("xyz")"#, "baz"])),
+                    .with_filter(EventMessageContains::all(
+                        Level::DEBUG,
+                        &["foo", r#"bar ("xyz")"#, "baz"],
+                    )),
             )
             .set_default();
 
