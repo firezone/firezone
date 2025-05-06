@@ -2322,6 +2322,7 @@ dependencies = [
  "anyhow",
  "nu-ansi-term 0.50.1",
  "output_vt100",
+ "parking_lot",
  "rand 0.8.5",
  "sentry-tracing",
  "supports-color",
