@@ -9,7 +9,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-atomicwrites = { workspace = true } # Needed to safely backup `/etc/resolv.conf` and write the device ID on behalf of `gui-client`
+atomicwrites = { workspace = true } # Needed to safely backup `/etc/resolv.conf`
 backoff = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "string"] }
 connlib-client-shared = { workspace = true }
