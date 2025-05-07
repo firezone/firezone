@@ -156,7 +156,7 @@ pub fn setup(directives: &str) -> Result<Handles> {
         arch = std::env::consts::ARCH,
         os = std::env::consts::OS,
         version = env!("CARGO_PKG_VERSION"),
-        ?directives,
+        %directives,
         system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
         log_path = %log_path.display(),
         syslog_identifier = syslog_identifier.map(tracing::field::display),
