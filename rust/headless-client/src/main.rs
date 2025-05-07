@@ -40,8 +40,6 @@ mod platform;
 #[path = "macos.rs"]
 mod platform;
 
-use platform::default_token_path;
-
 /// Command-line args for the headless Client
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -117,7 +115,7 @@ struct Cli {
     // until anyone asks for it, env vars are okay and files on disk are slightly better.
     // (Since we run as root and the env var on a headless system is probably stored
     // on disk somewhere anyway.)
-    #[arg(default_value = default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
+    #[arg(default_value = platform::default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
     token_path: PathBuf,
 }
 
