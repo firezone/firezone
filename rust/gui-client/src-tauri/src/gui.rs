@@ -33,7 +33,7 @@ mod os;
 #[path = "gui/os_windows.rs"]
 mod os;
 
-pub(crate) use os::set_autostart;
+pub use os::set_autostart;
 
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///

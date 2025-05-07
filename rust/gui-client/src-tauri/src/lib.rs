@@ -1,15 +1,14 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod about;
-mod auth;
 mod ipc;
 mod updates;
 mod uptime;
 mod welcome;
 
 // TODO: See how many of these we can make private.
+pub mod auth;
 pub mod controller;
-pub mod debug_commands;
 pub mod deep_link;
 pub mod elevation;
 pub mod gui;

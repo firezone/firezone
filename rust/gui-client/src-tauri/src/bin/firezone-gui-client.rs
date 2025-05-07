@@ -7,9 +7,7 @@
 use anyhow::{Context as _, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
-use firezone_gui_client::{
-    controller, debug_commands, deep_link, elevation, gui, logging, settings,
-};
+use firezone_gui_client::{controller, deep_link, elevation, gui, logging, settings};
 use firezone_telemetry::Telemetry;
 use gui::RunConfig;
 use settings::AdvancedSettings;
@@ -57,7 +55,18 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Some(Cmd::Debug { command }) => debug_commands::run(command),
+        Some(Cmd::Debug {
+            command: DebugCommand::Replicate6791,
+        }) => firezone_gui_client::auth::replicate_6791(),
+        Some(Cmd::Debug {
+            command: DebugCommand::SetAutostart(SetAutostartArgs { enabled }),
+        }) => {
+            firezone_headless_client::setup_stdout_logging()?;
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(firezone_gui_client::gui::set_autostart(enabled))?;
+
+            Ok(())
+        }
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => run_gui(config),
         Some(Cmd::OpenDeepLink(deep_link)) => {
@@ -246,12 +255,34 @@ impl Cli {
 enum Cmd {
     Debug {
         #[command(subcommand)]
-        command: debug_commands::Cmd,
+        command: DebugCommand,
     },
     Elevated,
     OpenDeepLink(DeepLink),
     /// SmokeTest gets its own subcommand for historical reasons.
     SmokeTest,
+}
+
+#[derive(clap::Subcommand)]
+enum DebugCommand {
+    Replicate6791,
+    SetAutostart(SetAutostartArgs),
+}
+
+#[derive(clap::Parser)]
+struct SetAutostartArgs {
+    #[clap(action=clap::ArgAction::Set)]
+    enabled: bool,
+}
+
+#[derive(clap::Parser)]
+struct CheckTokenArgs {
+    token: String,
+}
+
+#[derive(clap::Parser)]
+struct StoreTokenArgs {
+    token: String,
 }
 
 #[derive(Args)]
