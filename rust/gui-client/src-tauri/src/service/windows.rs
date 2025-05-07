@@ -148,7 +148,7 @@ impl Drop for ProcessToken {
     }
 }
 
-pub fn install_ipc_service() -> Result<()> {
+pub fn install() -> Result<()> {
     let manager_access = ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE;
     let service_manager = ServiceManager::local_computer(None::<&str>, manager_access)?;
 
@@ -190,7 +190,7 @@ fn uninstall_ipc_service(service_manager: &ServiceManager, name: impl AsRef<OsSt
 /// Cross-platform entry point for systemd / Windows services
 ///
 /// Linux uses the CLI args from here, Windows does not
-pub fn run_ipc_service(_log_dir: Option<PathBuf>, _dns_control: DnsControlMethod) -> Result<()> {
+pub fn run(_log_dir: Option<PathBuf>, _dns_control: DnsControlMethod) -> Result<()> {
     windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?")
 }
 

@@ -23,9 +23,9 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::try_parse()?;
 
     match cli.command {
-        Cmd::Install => service::install_ipc_service(),
-        Cmd::Run => service::run_ipc_service(cli.log_dir, cli.dns_control),
-        Cmd::RunDebug => service::run_debug_ipc_service(cli.dns_control),
+        Cmd::Install => service::install(),
+        Cmd::Run => service::run(cli.log_dir, cli.dns_control),
+        Cmd::RunDebug => service::run_debug(cli.dns_control),
         Cmd::RunSmokeTest => service::run_smoke_test(),
     }
 }

@@ -8,7 +8,7 @@ use firezone_telemetry::Telemetry;
 /// Cross-platform entry point for systemd / Windows services
 ///
 /// Linux uses the CLI args from here, Windows does not
-pub fn run_ipc_service(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()> {
+pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()> {
     let (_handle, log_filter_reloader) = crate::logging::setup_ipc(log_dir)?;
     if !elevation_check()? {
         bail!("IPC service failed its elevation check, try running as admin / root");
@@ -41,6 +41,6 @@ pub fn elevation_check() -> Result<bool> {
     Ok(nix::unistd::getuid().is_root())
 }
 
-pub fn install_ipc_service() -> Result<()> {
+pub fn install() -> Result<()> {
     bail!("`install_ipc_service` not implemented and not needed on Linux")
 }

@@ -2,7 +2,7 @@ use anyhow::{Result, bail};
 use firezone_bin_shared::DnsControlMethod;
 use std::path::PathBuf;
 
-pub fn run_ipc_service(log_dir: Option<PathBuf>, _dns_control: DnsControlMethod) -> Result<()> {
+pub fn run(log_dir: Option<PathBuf>, _dns_control: DnsControlMethod) -> Result<()> {
     // We call this here to avoid a dead-code warning.
     let (_handle, _log_filter_reloader) = crate::logging::setup_ipc(log_dir)?;
 
@@ -13,6 +13,6 @@ pub fn elevation_check() -> Result<bool> {
     bail!("not implemented")
 }
 
-pub fn install_ipc_service() -> Result<()> {
+pub fn install() -> Result<()> {
     bail!("not implemented")
 }

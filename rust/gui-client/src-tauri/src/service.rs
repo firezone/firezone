@@ -32,7 +32,7 @@ mod platform;
 #[path = "service/macos.rs"]
 mod platform;
 
-pub use platform::{elevation_check, install_ipc_service, run_ipc_service};
+pub use platform::{elevation_check, install, run};
 
 use crate::ipc::{self, ServiceId};
 
@@ -440,7 +440,7 @@ impl<'a> Handler<'a> {
     }
 }
 
-pub fn run_debug_ipc_service(dns_control: DnsControlMethod) -> Result<()> {
+pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
     let log_filter_reloader = crate::logging::setup_stdout()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
