@@ -61,7 +61,7 @@ fn main() -> anyhow::Result<()> {
         Some(Cmd::Debug {
             command: DebugCommand::SetAutostart(SetAutostartArgs { enabled }),
         }) => {
-            firezone_headless_client::setup_stdout_logging()?;
+            firezone_gui_client::logging::setup_stdout()?;
             let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(firezone_gui_client::gui::set_autostart(enabled))?;
 
@@ -89,7 +89,7 @@ fn main() -> anyhow::Result<()> {
             let logging::Handles {
                 logger: _logger,
                 reloader,
-            } = crate::logging::setup(&settings.log_filter)?;
+            } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
             let result = gui::run(config, settings, reloader, telemetry);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
@@ -126,7 +126,7 @@ fn run_gui(config: RunConfig) -> Result<()> {
     let logging::Handles {
         logger: _logger,
         reloader,
-    } = crate::logging::setup(&settings.log_filter)?;
+    } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
 
     match gui::run(config, settings, reloader, telemetry) {
         Ok(()) => Ok(()),
@@ -151,7 +151,7 @@ fn run_gui(config: RunConfig) -> Result<()> {
 
             if anyhow
                 .root_cause()
-                .is::<firezone_headless_client::ipc::NotFound>()
+                .is::<firezone_gui_client::ipc::NotFound>()
             {
                 show_error_dialog("Couldn't find Firezone IPC service. Is the service running?")?;
                 return Err(anyhow);

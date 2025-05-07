@@ -1,9 +1,9 @@
-use crate::Cli;
 use anyhow::{Context as _, Result, bail};
 use firezone_bin_shared::DnsControlMethod;
 use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
 use futures::channel::mpsc;
+use std::path::PathBuf;
 use std::{
     ffi::{OsStr, OsString, c_void},
     mem::size_of,
@@ -33,7 +33,7 @@ const SERVICE_NAME: &str = "firezone_client_ipc";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
 /// Returns true if the IPC service can run properly
-pub(crate) fn elevation_check() -> Result<bool> {
+pub fn elevation_check() -> Result<bool> {
     let token = ProcessToken::our_process().context("Failed to get process token")?;
     let elevated = token
         .is_elevated()
@@ -148,7 +148,7 @@ impl Drop for ProcessToken {
     }
 }
 
-pub(crate) fn install_ipc_service() -> Result<()> {
+pub fn install_ipc_service() -> Result<()> {
     let manager_access = ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE;
     let service_manager = ServiceManager::local_computer(None::<&str>, manager_access)?;
 
@@ -190,7 +190,7 @@ fn uninstall_ipc_service(service_manager: &ServiceManager, name: impl AsRef<OsSt
 /// Cross-platform entry point for systemd / Windows services
 ///
 /// Linux uses the CLI args from here, Windows does not
-pub(crate) fn run_ipc_service(_cli: Cli) -> Result<()> {
+pub fn run_ipc_service(_log_dir: Option<PathBuf>, _dns_control: DnsControlMethod) -> Result<()> {
     windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?")
 }
 
@@ -201,7 +201,7 @@ fn service_run(arguments: Vec<OsString>) {
     // `arguments` doesn't seem to work right when running as a Windows service
     // (even though it's meant for that) so just use the default log dir.
     let (handle, log_filter_reloader) =
-        super::setup_logging(None).expect("Should be able to set up logging");
+        crate::logging::setup_ipc(None).expect("Should be able to set up logging");
     if let Err(error) = fallible_service_run(arguments, handle, log_filter_reloader) {
         tracing::error!("`fallible_windows_service_run` returned an error: {error:#}");
     }

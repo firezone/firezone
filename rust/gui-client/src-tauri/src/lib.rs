@@ -1,7 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 mod about;
-mod ipc;
+mod clear_logs;
 mod updates;
 mod uptime;
 mod welcome;
@@ -12,8 +12,12 @@ pub mod controller;
 pub mod deep_link;
 pub mod elevation;
 pub mod gui;
+pub mod ipc;
 pub mod logging;
+pub mod service;
 pub mod settings;
+
+pub use clear_logs::clear_logs;
 
 /// The Sentry "release" we are part of.
 ///

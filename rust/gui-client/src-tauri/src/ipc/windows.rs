@@ -159,6 +159,7 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
 fn ipc_path(id: ServiceId) -> String {
     let name = match id {
         ServiceId::Prod => format!("{BUNDLE_ID}.ipc_service"),
+        #[cfg(test)]
         ServiceId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc_service"),
     };
     named_pipe_path(&name)

@@ -16,20 +16,23 @@ tauri-build = { workspace = true, features = [] }
 anyhow = { workspace = true }
 arboard = { workspace = true }
 atomicwrites = { workspace = true }
+backoff = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 connlib-client-shared = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 firezone-bin-shared = { workspace = true }
-firezone-headless-client = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 hex = { workspace = true }
+humantime = { workspace = true }
+ip-packet = { workspace = true }
 keyring = { workspace = true, features = ["crypto-rust", "sync-secret-service", "windows-native"] }
 native-dialog = { workspace = true }
 output_vt100 = { workspace = true }
+phoenix-channel = { workspace = true }
 png = { workspace = true } # `png` is mostly free since we already need it for Tauri
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["stream", "rustls-tls"] }
@@ -39,6 +42,8 @@ secrecy = { workspace = true }
 semver = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+serde_variant = { workspace = true }
+strum = { workspace = true }
 subtle = { workspace = true }
 tauri = { workspace = true, features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = { workspace = true }
@@ -62,12 +67,14 @@ zip = { workspace = true, features = ["deflate", "time"] }
 dirs = { workspace = true }
 nix = { workspace = true, features = ["user"] }
 tracing-journald = { workspace = true }
+sd-notify = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 
 [target.'cfg(target_os = "windows")'.dependencies]
 tauri-winrt-notification = "0.7.2"
 winreg = { workspace = true }
+windows-service = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 workspace = true
@@ -75,6 +82,9 @@ features = [
   "Win32_Foundation",
   "Win32_System_Threading",
 ]
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
