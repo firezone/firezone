@@ -46,10 +46,8 @@ pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
 
 impl Server {
     /// Platform-specific setup
-    ///
-    /// This is async on Linux
-    #[expect(clippy::unused_async)]
-    pub(crate) async fn new(id: ServiceId) -> Result<Self> {
+    #[expect(clippy::unnecessary_wraps, reason = "Linux impl is fallible")]
+    pub(crate) fn new(id: ServiceId) -> Result<Self> {
         let pipe_path = ipc_path(id);
         Ok(Self { pipe_path })
     }
@@ -200,7 +198,7 @@ mod tests {
     async fn single_instance() -> anyhow::Result<()> {
         let _guard = firezone_logging::test("trace");
         const ID: ServiceId = ServiceId::Test("2GOCMPBG");
-        let mut server_1 = Server::new(ID).await?;
+        let mut server_1 = Server::new(ID)?;
         let pipe_path = server_1.pipe_path.clone();
 
         tokio::spawn(async move {

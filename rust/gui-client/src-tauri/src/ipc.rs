@@ -309,9 +309,7 @@ mod tests {
         let loops = 10;
         const ID: ServiceId = ServiceId::Test("OB5SZCGN");
 
-        let mut server = Server::new(ID)
-            .await
-            .expect("Error while starting IPC server");
+        let mut server = Server::new(ID).expect("Error while starting IPC server");
 
         let server_task: tokio::task::JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
@@ -390,7 +388,7 @@ mod tests {
     async fn loop_to_next_client() -> Result<()> {
         let _guard = firezone_logging::test("trace");
 
-        let mut server = Server::new(ServiceId::Test("H6L73DG5")).await?;
+        let mut server = Server::new(ServiceId::Test("H6L73DG5"))?;
         for i in 0..5 {
             if let Ok(Err(err)) = timeout(Duration::from_secs(1), server.next_client()).await {
                 Err(err).with_context(|| {

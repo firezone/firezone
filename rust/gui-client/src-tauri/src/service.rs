@@ -54,7 +54,7 @@ async fn ipc_listen(
 
     Telemetry::set_firezone_id(firezone_id);
 
-    let mut server = ipc::Server::new(ServiceId::Prod).await?;
+    let mut server = ipc::Server::new(ServiceId::Prod)?;
     let mut dns_controller = DnsController { dns_control_method };
     loop {
         let mut handler_fut = pin!(Handler::new(
@@ -500,7 +500,7 @@ pub fn run_smoke_test() -> Result<()> {
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
         device_id::get_or_create().context("Failed to read / create device ID")?;
-        let mut server = ipc::Server::new(ServiceId::Prod).await?;
+        let mut server = ipc::Server::new(ServiceId::Prod)?;
         let _ = Handler::new(
             &mut server,
             &mut dns_controller,
