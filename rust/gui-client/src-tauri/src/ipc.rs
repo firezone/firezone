@@ -1,7 +1,6 @@
 use anyhow::{Context as _, Result};
-use connlib_model::{ResourceId, ResourceView};
 use platform::{ClientStream, ServerStream};
-use std::{collections::BTreeSet, io, net::IpAddr};
+use serde::{Serialize, de::DeserializeOwned};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_util::{
     bytes::BytesMut,
@@ -10,10 +9,10 @@ use tokio_util::{
 
 pub(crate) use platform::Server;
 
-pub type ClientRead = FramedRead<ReadHalf<ClientStream>, Decoder<ServerMsg>>;
-pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, Encoder<ClientMsg>>;
-pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, Decoder<ClientMsg>>;
-pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, Encoder<ServerMsg>>;
+pub type ClientRead<M> = FramedRead<ReadHalf<ClientStream>, Decoder<M>>;
+pub type ClientWrite<M> = FramedWrite<WriteHalf<ClientStream>, Encoder<M>>;
+pub(crate) type ServerRead<M> = FramedRead<ReadHalf<ServerStream>, Decoder<M>>;
+pub(crate) type ServerWrite<M> = FramedWrite<WriteHalf<ServerStream>, Encoder<M>>;
 
 #[cfg(target_os = "linux")]
 #[path = "ipc/linux.rs"]
@@ -124,7 +123,11 @@ impl<E: serde::Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
 }
 
 /// Connect to an IPC socket
-pub async fn connect(id: SocketId) -> Result<(ClientRead, ClientWrite)> {
+pub async fn connect<R, W>(id: SocketId) -> Result<(ClientRead<R>, ClientWrite<W>)>
+where
+    R: DeserializeOwned,
+    W: Serialize,
+{
     tracing::debug!(
         client_pid = std::process::id(),
         "Connecting to IPC socket..."
@@ -156,75 +159,17 @@ pub async fn connect(id: SocketId) -> Result<(ClientRead, ClientWrite)> {
 }
 
 impl platform::Server {
-    pub(crate) async fn next_client_split(&mut self) -> Result<(ServerRead, ServerWrite)> {
+    pub(crate) async fn next_client_split<R, W>(
+        &mut self,
+    ) -> Result<(ServerRead<R>, ServerWrite<W>)>
+    where
+        R: DeserializeOwned,
+        W: Serialize,
+    {
         let (rx, tx) = tokio::io::split(self.next_client().await?);
         let rx = FramedRead::new(rx, Decoder::default());
         let tx = FramedWrite::new(tx, Encoder::default());
         Ok((rx, tx))
-    }
-}
-
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-pub enum ClientMsg {
-    ClearLogs,
-    Connect {
-        api_url: String,
-        token: String,
-    },
-    Disconnect,
-    ApplyLogFilter {
-        directives: String,
-    },
-    Reset,
-    SetDns(Vec<IpAddr>),
-    SetDisabledResources(BTreeSet<ResourceId>),
-    StartTelemetry {
-        environment: String,
-        release: String,
-        account_slug: Option<String>,
-    },
-}
-
-/// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
-#[derive(Debug, serde::Deserialize, serde::Serialize, strum::Display)]
-pub enum ServerMsg {
-    /// The IPC service finished clearing its log dir.
-    ClearedLogs(Result<(), String>),
-    ConnectResult(Result<(), ConnectError>),
-    DisconnectedGracefully,
-    OnDisconnect {
-        error_msg: String,
-        is_authentication_error: bool,
-    },
-    OnUpdateResources(Vec<ResourceView>),
-    /// The IPC service is terminating, maybe due to a software update
-    ///
-    /// This is a hint that the Client should exit with a message like,
-    /// "Firezone is updating, please restart the GUI" instead of an error like,
-    /// "IPC connection closed".
-    TerminatingGracefully,
-    /// The interface and tunnel are ready for traffic.
-    TunnelReady,
-}
-
-// All variants are `String` because almost no error type implements `Serialize`
-#[derive(Debug, serde::Deserialize, serde::Serialize, thiserror::Error)]
-pub enum ConnectError {
-    #[error("IO error: {0}")]
-    Io(String),
-    #[error("{0}")]
-    Other(String),
-}
-
-impl From<io::Error> for ConnectError {
-    fn from(v: io::Error) -> Self {
-        Self::Io(v.to_string())
-    }
-}
-
-impl From<anyhow::Error> for ConnectError {
-    fn from(v: anyhow::Error) -> Self {
-        Self::Other(format!("{v:#}"))
     }
 }
 
@@ -241,10 +186,20 @@ mod tests {
         let _guard = firezone_logging::test("trace");
         const ID: SocketId = SocketId::Test("H56FRXVH");
 
-        if super::connect(ID).await.is_ok() {
+        if super::connect::<(), ()>(ID).await.is_ok() {
             bail!("`connect_to_service` should have failed for a non-existent service");
         }
         Ok(())
+    }
+
+    #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+    enum ClientMsg {
+        Foo,
+    }
+
+    #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+    enum ServerMsg {
+        Bar,
     }
 
     /// Make sure the IPC client and server can exchange messages
@@ -259,13 +214,13 @@ mod tests {
         let server_task: tokio::task::JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
                 let (mut rx, mut tx) = server
-                    .next_client_split()
+                    .next_client_split::<ClientMsg, ServerMsg>()
                     .await
                     .expect("Error while waiting for next IPC client");
                 while let Some(req) = rx.next().await {
                     let req = req.expect("Error while reading from IPC client");
-                    ensure!(req == ClientMsg::Reset);
-                    tx.send(&ServerMsg::OnUpdateResources(vec![]))
+                    ensure!(req == ClientMsg::Foo);
+                    tx.send(&ServerMsg::Bar)
                         .await
                         .expect("Error while writing to IPC client");
                 }
@@ -280,7 +235,7 @@ mod tests {
                     .await
                     .context("Error while connecting to IPC server")?;
 
-                let req = ClientMsg::Reset;
+                let req = ClientMsg::Foo;
                 for _ in 0..10 {
                     tx.send(&req)
                         .await
@@ -290,7 +245,7 @@ mod tests {
                         .await
                         .expect("Should have gotten a reply from the IPC server")
                         .expect("Error while reading from IPC server");
-                    ensure!(matches!(resp, ServerMsg::OnUpdateResources(_)));
+                    ensure!(matches!(resp, ServerMsg::Bar));
                 }
             }
             Ok(())
