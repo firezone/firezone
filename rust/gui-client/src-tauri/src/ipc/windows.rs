@@ -153,6 +153,7 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
 fn ipc_path(id: SocketId) -> String {
     let name = match id {
         SocketId::Tunnel => format!("{BUNDLE_ID}_tunnel.ipc"),
+        SocketId::Gui => format!("{BUNDLE_ID}_gui.ipc"),
         #[cfg(test)]
         SocketId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc"),
     };
