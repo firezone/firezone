@@ -56,7 +56,7 @@ pub enum SocketId {
     ///
     /// This must go in `/run/dev.firezone.client` on Linux, which requires
     /// root permission
-    Prod,
+    Tunnel,
     /// An IPC socket used for unit tests.
     ///
     /// This must go in `/run/user/$UID/dev.firezone.client` on Linux so
