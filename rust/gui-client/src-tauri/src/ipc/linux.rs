@@ -49,11 +49,15 @@ impl Server {
         let dir = sock_path
             .parent()
             .context("`sock_path` should always have a parent")?;
-        tokio::fs::create_dir_all(dir).await?;
+        tokio::fs::create_dir_all(dir)
+            .await
+            .context("Failed to create socket parent directory")?;
         let listener = UnixListener::bind(&sock_path)
             .with_context(|| format!("Couldn't bind UDS `{}`", sock_path.display()))?;
         let perms = std::fs::Permissions::from_mode(0o660);
-        tokio::fs::set_permissions(&sock_path, perms).await?;
+        tokio::fs::set_permissions(&sock_path, perms)
+            .await
+            .context("Failed to set permissions on UDS")?;
 
         // TODO: Change this to `notify_service_controller` and put it in
         // the same place in the IPC service's main loop as in the Headless Client.
