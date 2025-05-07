@@ -68,11 +68,12 @@ features = [
   "Win32_NetworkManagement_Ndis",
   "Win32_Networking_WinSock",
   "Win32_Security",
-  # COM is needed to listen for network change events
   "Win32_System_Com",
   # Needed to listen for system DNS changes
   "Win32_System_Registry",
   "Win32_System_Threading",
+  "Win32_System_SystemInformation", # For uptime
+  "Win32_System_GroupPolicy", # For NRPT when GPO is used
 ]
 
 [target.'cfg(windows)'.dev-dependencies]

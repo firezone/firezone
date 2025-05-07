@@ -81,6 +81,7 @@ workspace = true
 features = [
   "Win32_Foundation",
   "Win32_System_Threading",
+  "Win32_System_Pipes", # For IPC system
 ]
 
 [dev-dependencies]
