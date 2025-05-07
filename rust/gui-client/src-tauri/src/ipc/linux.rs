@@ -65,7 +65,6 @@ impl Server {
     }
 
     pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
-        tracing::info!("Listening for GUI to connect over IPC...");
         let (stream, _) = self.listener.accept().await?;
         let cred = stream.peer_cred()?;
         tracing::info!(

@@ -64,10 +64,6 @@ impl Server {
             .bind_to_pipe()
             .await
             .context("Couldn't bind to named pipe")?;
-        tracing::debug!(
-            server_pid = std::process::id(),
-            "Listening for GUI to connect over IPC..."
-        );
         // Note that Tokio has no `poll_connect`
         server
             .connect()
