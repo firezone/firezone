@@ -1,3 +1,4 @@
+use crate::ipc::{self, ServiceId};
 use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
@@ -33,8 +34,6 @@ mod platform;
 mod platform;
 
 pub use platform::{elevation_check, install, run};
-
-use crate::ipc::{self, ServiceId};
 
 /// Run the IPC service and terminate gracefully if we catch a terminate signal
 ///
