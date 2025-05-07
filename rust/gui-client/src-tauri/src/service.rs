@@ -200,6 +200,12 @@ impl<'a> Handler<'a> {
         telemetry: &'a mut Telemetry,
     ) -> Result<Self> {
         dns_controller.deactivate()?;
+
+        tracing::info!(
+            server_pid = std::process::id(),
+            "Listening for GUI to connect over IPC..."
+        );
+
         let (ipc_rx, ipc_tx) = server
             .next_client_split()
             .await
