@@ -1,7 +1,8 @@
 use crate::{
     auth, deep_link,
     gui::system_tray,
-    ipc, logging,
+    ipc::{self, ServiceId},
+    logging,
     settings::{self, AdvancedSettings},
     updates, uptime,
 };
@@ -11,7 +12,7 @@ use firezone_bin_shared::DnsControlMethod;
 use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
 use futures::{
-    Stream, StreamExt,
+    SinkExt, Stream, StreamExt,
     stream::{self, BoxStream},
 };
 use secrecy::{ExposeSecret as _, SecretString};
@@ -33,7 +34,7 @@ pub struct Controller<I: GuiIntegration> {
     auth: auth::Auth,
     clear_logs_callback: Option<oneshot::Sender<Result<(), String>>>,
     ctlr_tx: CtlrTx,
-    ipc_client: ipc::Client,
+    ipc_client: ipc::ClientWrite,
     ipc_rx: ipc::ClientRead,
     integration: I,
     log_filter_reloader: FilterReloadHandle,
@@ -183,7 +184,7 @@ impl<I: GuiIntegration> Controller<I> {
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
-        let (ipc_client, ipc_rx) = ipc::Client::new().await?;
+        let (ipc_rx, ipc_client) = ipc::connect_to_service(ServiceId::Prod).await?;
 
         let dns_notifier = new_dns_notifier().await?.boxed();
         let network_notifier = new_network_notifier().await?.boxed();
@@ -234,7 +235,7 @@ impl<I: GuiIntegration> Controller<I> {
                 EventloopTick::NetworkChanged(Ok(())) => {
                     if self.status.needs_network_changes() {
                         tracing::debug!("Internet up/down changed, calling `Session::reset`");
-                        self.ipc_client.reset().await?
+                        self.send_ipc(&ipc::ClientMsg::Reset).await?
                     }
 
                     self.try_retry_connection().await?
@@ -246,7 +247,7 @@ impl<I: GuiIntegration> Controller<I> {
                             ?resolvers,
                             "New DNS resolvers, calling `Session::set_dns`"
                         );
-                        self.ipc_client.set_dns(resolvers).await?;
+                        self.send_ipc(&ipc::ClientMsg::SetDns(resolvers)).await?;
                     }
 
                     self.try_retry_connection().await?
@@ -282,7 +283,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         tracing::debug!("Closing...");
 
-        if let Err(error) = self.ipc_client.disconnect_from_ipc().await {
+        if let Err(error) = self.ipc_client.close().await {
             tracing::error!("ipc_client: {error:#}");
         }
 
@@ -335,9 +336,12 @@ impl<I: GuiIntegration> Controller<I> {
 
         // Count the start instant from before we connect
         let start_instant = Instant::now();
-        self.ipc_client
-            .connect_to_firezone(api_url.as_str(), token.expose_secret().clone().into())
-            .await?;
+        self.send_ipc(&ipc::ClientMsg::Connect {
+            api_url: api_url.to_string(),
+            token: token.expose_secret().clone(),
+        })
+        .await?;
+
         // Change the status after we begin connecting
         self.status = Status::WaitingForPortal {
             start_instant,
@@ -355,13 +359,12 @@ impl<I: GuiIntegration> Controller<I> {
             Telemetry::set_account_slug(account_slug);
         }
 
-        self.ipc_client
-            .send_msg(&ipc::ClientMsg::StartTelemetry {
-                environment,
-                release: crate::RELEASE.to_string(),
-                account_slug,
-            })
-            .await?;
+        self.send_ipc(&ipc::ClientMsg::StartTelemetry {
+            environment,
+            release: crate::RELEASE.to_string(),
+            account_slug,
+        })
+        .await?;
 
         Ok(())
     }
@@ -393,11 +396,10 @@ impl<I: GuiIntegration> Controller<I> {
 
                 self.advanced_settings = *settings;
 
-                self.ipc_client
-                    .send_msg(&ipc::ClientMsg::ApplyLogFilter {
-                        directives: self.advanced_settings.log_filter.clone(),
-                    })
-                    .await?;
+                self.send_ipc(&ipc::ClientMsg::ApplyLogFilter {
+                    directives: self.advanced_settings.log_filter.clone(),
+                })
+                .await?;
 
                 tracing::debug!("Applied new settings. Log level will take effect immediately.");
 
@@ -413,7 +415,7 @@ impl<I: GuiIntegration> Controller<I> {
                 if let Err(error) = logging::clear_gui_logs().await {
                     tracing::error!("Failed to clear GUI logs: {error:#}");
                 }
-                self.ipc_client.send_msg(&ipc::ClientMsg::ClearLogs).await?;
+                self.send_ipc(&ipc::ClientMsg::ClearLogs).await?;
                 self.clear_logs_callback = Some(completion_tx);
             }
             Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
@@ -528,9 +530,7 @@ impl<I: GuiIntegration> Controller<I> {
             Req::SystemTrayMenu(system_tray::Event::Quit) => {
                 tracing::info!("User clicked Quit in the menu");
                 self.status = Status::Quitting;
-                self.ipc_client
-                    .send_msg(&ipc::ClientMsg::Disconnect)
-                    .await?;
+                self.send_ipc(&ipc::ClientMsg::Disconnect).await?;
                 self.refresh_system_tray_menu();
             }
             Req::UpdateNotificationClicked(download_url) => {
@@ -709,8 +709,7 @@ impl<I: GuiIntegration> Controller<I> {
             disabled_resources.insert(internet_resource.id());
         }
 
-        self.ipc_client
-            .send_msg(&ipc::ClientMsg::SetDisabledResources(disabled_resources))
+        self.send_ipc(&ipc::ClientMsg::SetDisabledResources(disabled_resources))
             .await?;
         self.refresh_system_tray_menu();
 
@@ -791,11 +790,16 @@ impl<I: GuiIntegration> Controller<I> {
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
         // connlib already disconnected itself.
-        self.ipc_client
-            .send_msg(&ipc::ClientMsg::Disconnect)
-            .await?;
+        self.send_ipc(&ipc::ClientMsg::Disconnect).await?;
         self.refresh_system_tray_menu();
         Ok(())
+    }
+
+    async fn send_ipc(&mut self, msg: &ipc::ClientMsg) -> Result<()> {
+        self.ipc_client
+            .send(msg)
+            .await
+            .context("Failed to send IPC message")
     }
 }
 

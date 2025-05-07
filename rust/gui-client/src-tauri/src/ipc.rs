@@ -1,8 +1,6 @@
 use anyhow::{Context as _, Result};
 use connlib_model::{ResourceId, ResourceView};
-use futures::SinkExt;
 use platform::{ClientStream, ServerStream};
-use secrecy::{ExposeSecret, SecretString};
 use std::{collections::BTreeSet, io, net::IpAddr};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_util::{
@@ -28,58 +26,6 @@ pub(crate) mod platform;
 #[cfg(target_os = "macos")]
 #[path = "ipc/macos.rs"]
 pub(crate) mod platform;
-
-pub struct Client {
-    // Needed temporarily to avoid a big refactor. We can remove this in the future.
-    tx: ClientWrite,
-}
-
-impl Client {
-    pub async fn new() -> Result<(Self, ClientRead)> {
-        let (rx, tx) = connect_to_service(ServiceId::Prod).await?;
-
-        Ok((Self { tx }, rx))
-    }
-
-    pub async fn disconnect_from_ipc(mut self) -> Result<()> {
-        self.tx.close().await?;
-        Ok(())
-    }
-
-    pub async fn send_msg(&mut self, msg: &ClientMsg) -> Result<()> {
-        self.tx
-            .send(msg)
-            .await
-            .context("Couldn't send IPC message")?;
-        Ok(())
-    }
-
-    pub async fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<()> {
-        let token = token.expose_secret().clone();
-        self.send_msg(&ClientMsg::Connect {
-            api_url: api_url.to_string(),
-            token,
-        })
-        .await
-        .context("Couldn't send Connect message")?;
-        Ok(())
-    }
-
-    pub async fn reset(&mut self) -> Result<()> {
-        self.send_msg(&ClientMsg::Reset)
-            .await
-            .context("Couldn't send Reset")?;
-        Ok(())
-    }
-
-    /// Tell connlib about the system's default resolvers
-    pub async fn set_dns(&mut self, dns: Vec<IpAddr>) -> Result<()> {
-        self.send_msg(&ClientMsg::SetDns(dns))
-            .await
-            .context("Couldn't send SetDns")?;
-        Ok(())
-    }
-}
 
 #[derive(Debug, thiserror::Error)]
 #[error("Couldn't find IPC service `{0}`")]
