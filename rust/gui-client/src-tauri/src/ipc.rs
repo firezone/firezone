@@ -190,7 +190,7 @@ pub enum ClientMsg {
 pub enum ServerMsg {
     /// The IPC service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
-    ConnectResult(Result<(), Error>),
+    ConnectResult(Result<(), ConnectError>),
     DisconnectedGracefully,
     OnDisconnect {
         error_msg: String,
@@ -209,20 +209,20 @@ pub enum ServerMsg {
 
 // All variants are `String` because almost no error type implements `Serialize`
 #[derive(Debug, serde::Deserialize, serde::Serialize, thiserror::Error)]
-pub enum Error {
+pub enum ConnectError {
     #[error("IO error: {0}")]
     Io(String),
     #[error("{0}")]
     Other(String),
 }
 
-impl From<io::Error> for Error {
+impl From<io::Error> for ConnectError {
     fn from(v: io::Error) -> Self {
         Self::Io(v.to_string())
     }
 }
 
-impl From<anyhow::Error> for Error {
+impl From<anyhow::Error> for ConnectError {
     fn from(v: anyhow::Error) -> Self {
         Self::Other(format!("{v:#}"))
     }

@@ -622,7 +622,7 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(ControlFlow::Continue(()))
     }
 
-    async fn handle_connect_result(&mut self, result: Result<(), ipc::Error>) -> Result<()> {
+    async fn handle_connect_result(&mut self, result: Result<(), ipc::ConnectError>) -> Result<()> {
         let Status::WaitingForPortal {
             start_instant,
             token,
@@ -642,7 +642,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.refresh_system_tray_menu();
                 Ok(())
             }
-            Err(ipc::Error::Io(error)) => {
+            Err(ipc::ConnectError::Io(error)) => {
                 // This is typically something like, we don't have Internet access so we can't
                 // open the PhoenixChannel's WebSocket.
                 tracing::info!(
@@ -655,7 +655,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.refresh_system_tray_menu();
                 Ok(())
             }
-            Err(ipc::Error::Other(error)) => {
+            Err(ipc::ConnectError::Other(error)) => {
                 // We log this here directly instead of forwarding it because errors hard-abort the event-loop and we still want to be able to export logs and stuff.
                 // See <https://github.com/firezone/firezone/issues/6547>.
                 tracing::error!("Failed to connect to Firezone: {error}");

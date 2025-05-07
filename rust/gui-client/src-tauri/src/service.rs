@@ -361,7 +361,7 @@ impl<'a> Handler<'a> {
         &mut self,
         api_url: &str,
         token: SecretString,
-    ) -> Result<(), ipc::Error> {
+    ) -> Result<(), ipc::ConnectError> {
         let _connect_span = telemetry_span!("connect_to_firezone").entered();
 
         assert!(self.session.is_none());
