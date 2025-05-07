@@ -1,4 +1,4 @@
-use crate::ipc::{self, ServiceId};
+use crate::ipc::{self, SocketId};
 use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
@@ -53,7 +53,7 @@ async fn ipc_listen(
 
     Telemetry::set_firezone_id(firezone_id);
 
-    let mut server = ipc::Server::new(ServiceId::Prod)?;
+    let mut server = ipc::Server::new(SocketId::Prod)?;
     let mut dns_controller = DnsController { dns_control_method };
     loop {
         let mut handler_fut = pin!(Handler::new(
@@ -475,7 +475,7 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
 /// This makes the timing neater in case the GUI starts up slowly.
 #[cfg(debug_assertions)]
 pub fn run_smoke_test() -> Result<()> {
-    use crate::ipc::{self, ServiceId};
+    use crate::ipc::{self, SocketId};
     use anyhow::{Context as _, bail};
     use firezone_bin_shared::{DnsController, device_id};
 
@@ -499,7 +499,7 @@ pub fn run_smoke_test() -> Result<()> {
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
         device_id::get_or_create().context("Failed to read / create device ID")?;
-        let mut server = ipc::Server::new(ServiceId::Prod)?;
+        let mut server = ipc::Server::new(SocketId::Prod)?;
         let _ = Handler::new(
             &mut server,
             &mut dns_controller,

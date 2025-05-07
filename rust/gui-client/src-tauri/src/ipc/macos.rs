@@ -1,4 +1,4 @@
-use super::ServiceId;
+use super::SocketId;
 use anyhow::{Result, bail};
 use tokio::net::UnixStream;
 
@@ -11,12 +11,12 @@ pub(crate) type ServerStream = UnixStream;
     clippy::unused_async,
     reason = "Signture must match other operating systems"
 )]
-pub async fn connect_to_service(_id: ServiceId) -> Result<ClientStream> {
+pub async fn connect_to_socket(_id: SocketId) -> Result<ClientStream> {
     bail!("not implemented")
 }
 
 impl Server {
-    pub(crate) fn new(_id: ServiceId) -> Result<Self> {
+    pub(crate) fn new(_id: SocketId) -> Result<Self> {
         bail!("not implemented")
     }
 
