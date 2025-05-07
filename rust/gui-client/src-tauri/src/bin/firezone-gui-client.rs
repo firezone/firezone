@@ -80,7 +80,7 @@ fn main() -> anyhow::Result<()> {
             let logging::Handles {
                 logger: _logger,
                 reloader,
-            } = start_logging(&settings.log_filter)?;
+            } = crate::logging::setup(&settings.log_filter)?;
             let result = gui::run(config, settings, reloader, telemetry);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
@@ -117,7 +117,7 @@ fn run_gui(config: RunConfig) -> Result<()> {
     let logging::Handles {
         logger: _logger,
         reloader,
-    } = start_logging(&settings.log_filter)?;
+    } = crate::logging::setup(&settings.log_filter)?;
 
     match gui::run(config, settings, reloader, telemetry) {
         Ok(()) => Ok(()),
@@ -188,24 +188,6 @@ fn show_error_dialog(msg: &str) -> Result<()> {
         .set_type(native_dialog::MessageType::Error)
         .show_alert()?;
     Ok(())
-}
-
-/// Starts logging
-///
-/// Don't drop the log handle or logging will stop.
-fn start_logging(directives: &str) -> Result<logging::Handles> {
-    let logging_handles = logging::setup(directives)?;
-    let system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs());
-    tracing::info!(
-        arch = std::env::consts::ARCH,
-        os = std::env::consts::OS,
-        version = env!("CARGO_PKG_VERSION"),
-        ?directives,
-        ?system_uptime_seconds,
-        "`gui-client` started logging"
-    );
-
-    Ok(logging_handles)
 }
 
 /// The debug / test flags like `crash_on_purpose` and `test_update_notification`

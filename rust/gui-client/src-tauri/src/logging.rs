@@ -152,7 +152,16 @@ pub fn setup(directives: &str) -> Result<Handles> {
         .with(firezone_logging::sentry_layer());
     firezone_logging::init(subscriber)?;
 
-    tracing::debug!(log_path = %log_path.display(), syslog_identifier = syslog_identifier.map(tracing::field::display));
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        os = std::env::consts::OS,
+        version = env!("CARGO_PKG_VERSION"),
+        ?directives,
+        system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
+        log_path = %log_path.display(),
+        syslog_identifier = syslog_identifier.map(tracing::field::display),
+        "`gui-client` started logging"
+    );
 
     Ok(Handles {
         logger,
