@@ -89,7 +89,7 @@ impl Server {
 /// Test sockets live in e.g. `/run/user/1000/dev.firezone.client/data/`
 fn ipc_path(id: SocketId) -> PathBuf {
     match id {
-        SocketId::Prod => PathBuf::from("/run").join(BUNDLE_ID).join("ipc.sock"),
+        SocketId::Tunnel => PathBuf::from("/run").join(BUNDLE_ID).join("tunnel.sock"),
         #[cfg(test)]
         SocketId::Test(id) => firezone_bin_shared::known_dirs::runtime()
             .expect("`known_dirs::runtime()` should always work")

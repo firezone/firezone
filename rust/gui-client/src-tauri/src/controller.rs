@@ -184,7 +184,7 @@ impl<I: GuiIntegration> Controller<I> {
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
-        let (ipc_rx, ipc_client) = ipc::connect(SocketId::Prod).await?;
+        let (ipc_rx, ipc_client) = ipc::connect(SocketId::Tunnel).await?;
 
         let dns_notifier = new_dns_notifier().await?.boxed();
         let network_notifier = new_network_notifier().await?.boxed();

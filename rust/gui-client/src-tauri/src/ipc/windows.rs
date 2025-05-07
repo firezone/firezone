@@ -153,12 +153,12 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
     }
 }
 
-/// Named pipe for IPC between GUI client and IPC service
+/// Named pipe for an IPC connection
 fn ipc_path(id: SocketId) -> String {
     let name = match id {
-        SocketId::Prod => format!("{BUNDLE_ID}.ipc_service"),
+        SocketId::Tunnel => format!("{BUNDLE_ID}_tunnel.ipc"),
         #[cfg(test)]
-        SocketId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc_service"),
+        SocketId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc"),
     };
     named_pipe_path(&name)
 }
@@ -191,7 +191,7 @@ mod tests {
 
     #[test]
     fn ipc_path() {
-        assert!(super::ipc_path(SocketId::Prod).starts_with(r"\\.\pipe\"));
+        assert!(super::ipc_path(SocketId::Tunnel).starts_with(r"\\.\pipe\"));
     }
 
     #[tokio::test]
