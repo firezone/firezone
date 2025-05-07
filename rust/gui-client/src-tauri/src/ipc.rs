@@ -50,15 +50,15 @@ pub struct NotFound(String);
 /// on all platforms.
 ///
 /// Because the paths are so different (and Windows actually uses a `String`),
-/// we have this `ServiceId` abstraction instead of just a `PathBuf`.
+/// we have this [`SocketId`] abstraction instead of just a `PathBuf`.
 #[derive(Clone, Copy)]
-pub enum ServiceId {
-    /// The IPC service used by Firezone GUI Client in production
+pub enum SocketId {
+    /// The IPC socket used by Firezone GUI Client in production to connect to the tunnel service.
     ///
     /// This must go in `/run/dev.firezone.client` on Linux, which requires
     /// root permission
     Prod,
-    /// An IPC service used for unit tests.
+    /// An IPC socket used for unit tests.
     ///
     /// This must go in `/run/user/$UID/dev.firezone.client` on Linux so
     /// the unit tests won't need root.
@@ -123,13 +123,11 @@ impl<E: serde::Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
     }
 }
 
-/// Connect to the IPC service
-///
-/// Public because the GUI Client will need it
-pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrite)> {
+/// Connect to an IPC socket
+pub async fn connect(id: SocketId) -> Result<(ClientRead, ClientWrite)> {
     tracing::debug!(
         client_pid = std::process::id(),
-        "Connecting to IPC service..."
+        "Connecting to IPC socket..."
     );
 
     // This is how ChatGPT recommended, and I couldn't think of any more clever
@@ -137,7 +135,7 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
     let mut last_err = None;
 
     for _ in 0..10 {
-        match platform::connect_to_service(id).await {
+        match platform::connect_to_socket(id).await {
             Ok(stream) => {
                 let (rx, tx) = tokio::io::split(stream);
                 let rx = FramedRead::new(rx, Decoder::default());
@@ -145,7 +143,7 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
                 return Ok((rx, tx));
             }
             Err(error) => {
-                tracing::debug!("Couldn't connect to IPC service: {error}");
+                tracing::debug!("Couldn't connect to IPC socket: {error}");
                 last_err = Some(error);
 
                 // This won't come up much for humans but it helps the automated
@@ -241,9 +239,9 @@ mod tests {
     #[tokio::test]
     async fn no_such_service() -> Result<()> {
         let _guard = firezone_logging::test("trace");
-        const ID: ServiceId = ServiceId::Test("H56FRXVH");
+        const ID: SocketId = SocketId::Test("H56FRXVH");
 
-        if super::connect_to_service(ID).await.is_ok() {
+        if super::connect(ID).await.is_ok() {
             bail!("`connect_to_service` should have failed for a non-existent service");
         }
         Ok(())
@@ -254,7 +252,7 @@ mod tests {
     async fn smoke() -> Result<()> {
         let _guard = firezone_logging::test("trace");
         let loops = 10;
-        const ID: ServiceId = ServiceId::Test("OB5SZCGN");
+        const ID: SocketId = SocketId::Test("OB5SZCGN");
 
         let mut server = Server::new(ID).expect("Error while starting IPC server");
 
@@ -278,7 +276,7 @@ mod tests {
 
         let client_task: JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
-                let (mut rx, mut tx) = super::connect_to_service(ID)
+                let (mut rx, mut tx) = super::connect(ID)
                     .await
                     .context("Error while connecting to IPC server")?;
 
@@ -335,7 +333,7 @@ mod tests {
     async fn loop_to_next_client() -> Result<()> {
         let _guard = firezone_logging::test("trace");
 
-        let mut server = Server::new(ServiceId::Test("H6L73DG5"))?;
+        let mut server = Server::new(SocketId::Test("H6L73DG5"))?;
         for i in 0..5 {
             if let Ok(Err(err)) = timeout(Duration::from_secs(1), server.next_client()).await {
                 Err(err).with_context(|| {

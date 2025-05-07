@@ -1,7 +1,7 @@
 use crate::{
     auth, deep_link,
     gui::system_tray,
-    ipc::{self, ServiceId},
+    ipc::{self, SocketId},
     logging,
     settings::{self, AdvancedSettings},
     updates, uptime,
@@ -184,7 +184,7 @@ impl<I: GuiIntegration> Controller<I> {
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
-        let (ipc_rx, ipc_client) = ipc::connect_to_service(ServiceId::Prod).await?;
+        let (ipc_rx, ipc_client) = ipc::connect(SocketId::Prod).await?;
 
         let dns_notifier = new_dns_notifier().await?.boxed();
         let network_notifier = new_network_notifier().await?.boxed();
