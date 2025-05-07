@@ -3,9 +3,15 @@
 // The IPC parts use the same primitives as the IPC service, UDS on Linux
 // and named pipes on Windows, so TODO de-dupe the IPC code
 
-use crate::auth;
+use crate::{
+    auth,
+    gui::{self, ServerMsg},
+    ipc::SocketId,
+};
 use anyhow::{Context as _, Result, bail};
-use secrecy::{ExposeSecret, SecretString};
+use futures::SinkExt as _;
+use secrecy::SecretString;
+use tokio_stream::StreamExt as _;
 use url::Url;
 
 #[cfg(any(target_os = "linux", target_os = "windows"))]
@@ -24,17 +30,32 @@ mod imp;
 #[path = "deep_link/windows.rs"]
 mod imp;
 
-#[derive(thiserror::Error, Debug)]
-#[error("named pipe server couldn't start listening, we are probably the second instance")]
-pub struct CantListen;
+pub use imp::register;
 
-pub use imp::{Server, open, register};
+pub async fn open(url: url::Url) -> Result<()> {
+    let (mut read, mut write) =
+        crate::ipc::connect::<gui::ServerMsg, gui::ClientMsg>(SocketId::Gui).await?;
+
+    write
+        .send(&gui::ClientMsg::Deeplink(url))
+        .await
+        .context("Failed to send deep-link")?;
+
+    let response = read
+        .next()
+        .await
+        .context("No response received")?
+        .context("Failed to receive response")?;
+
+    anyhow::ensure!(response == ServerMsg::Ack);
+
+    Ok(())
+}
 
 /// Parses a deep-link URL into a struct.
 ///
 /// e.g. `firezone-fd0020211111://handle_client_sign_in_callback/?state=secret&fragment=secret&account_name=Firezone&account_slug=firezone&actor_name=Jane+Doe&identity_provider_identifier=secret`
-pub(crate) fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Response> {
-    let url = Url::parse(url_secret.expose_secret())?;
+pub(crate) fn parse_auth_callback(url: &Url) -> Result<auth::Response> {
     if Some(url::Host::Domain("handle_client_sign_in_callback")) != url.host() {
         bail!("URL host should be `handle_client_sign_in_callback`");
     }
@@ -92,8 +113,8 @@ pub(crate) fn parse_auth_callback(url_secret: &SecretString) -> Result<auth::Res
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyhow::{Context, Result};
-    use secrecy::{ExposeSecret, SecretString};
+    use anyhow::Result;
+    use secrecy::ExposeSecret;
 
     #[test]
     fn parse_auth_callback() -> Result<()> {
@@ -144,28 +165,6 @@ mod tests {
     }
 
     fn parse_callback_wrapper(s: &str) -> Result<auth::Response> {
-        super::parse_auth_callback(&SecretString::new(s.to_owned()))
-    }
-
-    /// Tests the named pipe or Unix domain socket, doesn't test the URI scheme itself
-    ///
-    /// Will fail if any other Firezone Client instance is running
-    /// Will fail with permission error if Firezone already ran as sudo
-    #[tokio::test]
-    async fn socket_smoke_test() -> Result<()> {
-        let server = Server::new().await.context("Couldn't start Server")?;
-        let server_task = tokio::spawn(async move {
-            let bytes = server.accept().await?;
-            Ok::<_, anyhow::Error>(bytes)
-        });
-        let id = uuid::Uuid::new_v4().to_string();
-        let expected_url = url::Url::parse(&format!("bogus-test-schema://{id}"))?;
-        super::open(&expected_url).await?;
-
-        let bytes = server_task.await??.unwrap();
-        let s = std::str::from_utf8(bytes.expose_secret())?;
-        let url = url::Url::parse(s)?;
-        assert_eq!(url, expected_url);
-        Ok(())
+        super::parse_auth_callback(&s.parse()?)
     }
 }

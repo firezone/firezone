@@ -1,3 +1,5 @@
+//! Defines a reusable, bi-directional, cross-platform IPC framework that uses JSON for message serialisation.
+
 use anyhow::{Context as _, Result};
 use platform::{ClientStream, ServerStream};
 use serde::{Serialize, de::DeserializeOwned};
@@ -57,6 +59,10 @@ pub enum SocketId {
     /// This must go in `/run/dev.firezone.client` on Linux, which requires
     /// root permission
     Tunnel,
+    /// The IPC socket used by the Firezone GUI Client in production to connect to an already running instance.
+    ///
+    /// This is used for deeplinks and duplicate launch handling.
+    Gui,
     /// An IPC socket used for unit tests.
     ///
     /// This must go in `/run/user/$UID/dev.firezone.client` on Linux so

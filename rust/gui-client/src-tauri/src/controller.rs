@@ -1,6 +1,6 @@
 use crate::{
     auth, deep_link,
-    gui::system_tray,
+    gui::{self, system_tray},
     ipc::{self, SocketId},
     logging, service,
     settings::{self, AdvancedSettings},
@@ -45,6 +45,14 @@ pub struct Controller<I: GuiIntegration> {
     updates_rx: ReceiverStream<Option<updates::Notification>>,
     uptime: uptime::Tracker,
 
+    gui_ipc_clients: BoxStream<
+        'static,
+        Result<(
+            ipc::ServerRead<gui::ClientMsg>,
+            ipc::ServerWrite<gui::ServerMsg>,
+        )>,
+    >,
+
     dns_notifier: BoxStream<'static, Result<()>>,
     network_notifier: BoxStream<'static, Result<()>>,
 }
@@ -76,7 +84,6 @@ pub enum ControllerRequest {
     },
     Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
-    SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(system_tray::Event),
     UpdateNotificationClicked(Url),
@@ -171,16 +178,25 @@ enum EventloopTick {
     IpcMsg(Option<Result<service::ServerMsg>>),
     ControllerRequest(Option<ControllerRequest>),
     UpdateNotification(Option<Option<updates::Notification>>),
+    NewInstanceLaunched(
+        Option<
+            Result<(
+                ipc::ServerRead<gui::ClientMsg>,
+                ipc::ServerWrite<gui::ServerMsg>,
+            )>,
+        >,
+    ),
 }
 
 impl<I: GuiIntegration> Controller<I> {
-    pub async fn start(
+    pub(crate) async fn start(
         ctlr_tx: CtlrTx,
         integration: I,
         rx: mpsc::Receiver<ControllerRequest>,
         advanced_settings: AdvancedSettings,
         log_filter_reloader: FilterReloadHandle,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
+        gui_ipc: ipc::Server,
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
@@ -205,6 +221,12 @@ impl<I: GuiIntegration> Controller<I> {
             uptime: Default::default(),
             dns_notifier,
             network_notifier,
+            gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
+                let result = gui_ipc.next_client_split().await;
+
+                Some((result, gui_ipc))
+            })
+            .boxed(),
         };
 
         controller.main_loop().await?;
@@ -279,6 +301,23 @@ impl<I: GuiIntegration> Controller<I> {
                 EventloopTick::UpdateNotification(None) => {
                     return Err(anyhow!("Update checker task stopped"));
                 }
+                EventloopTick::NewInstanceLaunched(None) => {
+                    return Err(anyhow!("GUI IPC socket closed"));
+                }
+                EventloopTick::NewInstanceLaunched(Some(Err(e))) => {
+                    tracing::warn!("Failed to accept IPC connection from new GUI instance: {e:#}");
+                }
+                EventloopTick::NewInstanceLaunched(Some(Ok((mut read, mut write)))) => {
+                    let client_msg = read.next().await;
+
+                    if let Err(e) = self.handle_gui_ipc_msg(client_msg).await {
+                        tracing::debug!("Failed to handle IPC message from new GUI instance: {e:#}")
+                    }
+
+                    if let Err(e) = write.send(&gui::ServerMsg::Ack).await {
+                        tracing::debug!("Failed to ack IPC message from new GUI instance: {e:#}")
+                    }
+                }
             }
         }
 
@@ -313,6 +352,10 @@ impl<I: GuiIntegration> Controller<I> {
 
             if let Poll::Ready(notification) = self.updates_rx.poll_next_unpin(cx) {
                 return Poll::Ready(Some(EventloopTick::UpdateNotification(notification)));
+            }
+
+            if let Poll::Ready(new_instance) = self.gui_ipc_clients.poll_next_unpin(cx) {
+                return Poll::Ready(Some(EventloopTick::NewInstanceLaunched(new_instance)));
             }
 
             Poll::Pending
@@ -370,7 +413,7 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn handle_deep_link(&mut self, url: &SecretString) -> Result<()> {
+    async fn handle_deep_link(&mut self, url: &Url) -> Result<()> {
         let auth_response =
             deep_link::parse_auth_callback(url).context("Couldn't parse scheme request")?;
 
@@ -432,20 +475,6 @@ impl<I: GuiIntegration> Controller<I> {
             Req::GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
-            Req::SchemeRequest(url) => match self.handle_deep_link(&url).await {
-                Ok(()) => {}
-                Err(error)
-                    if error
-                        .root_cause()
-                        .downcast_ref::<auth::Error>()
-                        .is_some_and(|e| matches!(e, auth::Error::NoInflightRequest)) =>
-                {
-                    tracing::debug!("Ignoring deep-link; no local state");
-                }
-                Err(error) => {
-                    tracing::error!("`handle_deep_link` failed: {error:#}");
-                }
-            },
             Req::SignIn | Req::SystemTrayMenu(system_tray::Event::SignIn) => {
                 let req = self
                     .auth
@@ -621,6 +650,37 @@ impl<I: GuiIntegration> Controller<I> {
             }
         }
         Ok(ControlFlow::Continue(()))
+    }
+
+    async fn handle_gui_ipc_msg(
+        &mut self,
+        maybe_msg: Option<Result<gui::ClientMsg>>,
+    ) -> Result<()> {
+        let client_msg = maybe_msg
+            .context("No message received")?
+            .context("Failed to read message")?;
+
+        match client_msg {
+            gui::ClientMsg::Deeplink(url) => match self.handle_deep_link(&url).await {
+                Ok(()) => {}
+                Err(error)
+                    if error
+                        .root_cause()
+                        .downcast_ref::<auth::Error>()
+                        .is_some_and(|e| matches!(e, auth::Error::NoInflightRequest)) =>
+                {
+                    tracing::debug!("Ignoring deep-link; no local state");
+                }
+                Err(error) => {
+                    tracing::error!("`handle_deep_link` failed: {error:#}");
+                }
+            },
+            gui::ClientMsg::NewInstance => {
+                tracing::debug!("A new instance of Firezone has been launched")
+            }
+        }
+
+        Ok(())
     }
 
     async fn handle_connect_result(
