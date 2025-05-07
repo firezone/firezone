@@ -1,4 +1,4 @@
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
 use connlib_client_shared::ConnlibMsg;
@@ -40,7 +40,7 @@ use crate::ipc::{self, ServiceId};
 ///
 /// If an IPC client is connected when we catch a terminate signal, we send the
 /// client a hint about that before we exit.
-pub async fn ipc_listen(
+async fn ipc_listen(
     dns_control_method: DnsControlMethod,
     log_filter_reloader: &FilterReloadHandle,
     signals: &mut signals::Terminate,
@@ -438,6 +438,37 @@ impl<'a> Handler<'a> {
 
         Ok(())
     }
+}
+
+pub fn run_debug_ipc_service(dns_control: DnsControlMethod) -> Result<()> {
+    let log_filter_reloader = crate::logging::setup_stdout()?;
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
+        system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs()),
+    );
+    if !elevation_check()? {
+        bail!("IPC service failed its elevation check, try running as admin / root");
+    }
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let _guard = rt.enter();
+    let mut signals = signals::Terminate::new()?;
+    let mut telemetry = Telemetry::default();
+
+    rt.block_on(ipc_listen(
+        dns_control,
+        &log_filter_reloader,
+        &mut signals,
+        &mut telemetry,
+    ))
+    .inspect(|_| rt.block_on(telemetry.stop()))
+    .inspect_err(|e| {
+        tracing::error!("IPC service failed: {e:#}");
+
+        rt.block_on(telemetry.stop_on_crash())
+    })
 }
 
 /// Listen for exactly one connection from a GUI, then exit

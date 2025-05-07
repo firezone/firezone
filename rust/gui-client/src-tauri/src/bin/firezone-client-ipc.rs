@@ -1,10 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use anyhow::{Result, bail};
 use clap::Parser as _;
-use firezone_bin_shared::{DnsControlMethod, TOKEN_ENV_KEY, signals};
+use firezone_bin_shared::{DnsControlMethod, TOKEN_ENV_KEY};
 use firezone_gui_client::service;
-use firezone_telemetry::Telemetry;
 use std::path::PathBuf;
 
 fn main() -> anyhow::Result<()> {
@@ -27,40 +25,9 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Cmd::Install => service::install_ipc_service(),
         Cmd::Run => service::run_ipc_service(cli.log_dir, cli.dns_control),
-        Cmd::RunDebug => run_debug_ipc_service(cli),
+        Cmd::RunDebug => service::run_debug_ipc_service(cli.dns_control),
         Cmd::RunSmokeTest => service::run_smoke_test(),
     }
-}
-
-fn run_debug_ipc_service(cli: Cli) -> Result<()> {
-    let log_filter_reloader = firezone_gui_client::logging::setup_stdout()?;
-    tracing::info!(
-        arch = std::env::consts::ARCH,
-        // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
-        system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs()),
-    );
-    if !service::elevation_check()? {
-        bail!("IPC service failed its elevation check, try running as admin / root");
-    }
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let _guard = rt.enter();
-    let mut signals = signals::Terminate::new()?;
-    let mut telemetry = Telemetry::default();
-
-    rt.block_on(service::ipc_listen(
-        cli.dns_control,
-        &log_filter_reloader,
-        &mut signals,
-        &mut telemetry,
-    ))
-    .inspect(|_| rt.block_on(telemetry.stop()))
-    .inspect_err(|e| {
-        tracing::error!("IPC service failed: {e:#}");
-
-        rt.block_on(telemetry.stop_on_crash())
-    })
 }
 
 #[derive(clap::Parser)]
