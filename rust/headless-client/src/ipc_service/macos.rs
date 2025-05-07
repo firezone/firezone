@@ -1,7 +1,7 @@
-use super::CliCommon;
+use super::Cli;
 use anyhow::{Result, bail};
 
-pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
+pub(crate) fn run_ipc_service(cli: Cli) -> Result<()> {
     // We call this here to avoid a dead-code warning.
     let (_handle, _log_filter_reloader) = super::setup_logging(cli.log_dir)?;
 

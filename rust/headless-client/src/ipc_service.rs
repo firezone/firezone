@@ -1,4 +1,4 @@
-use crate::{CallbackHandler, CliCommon, ConnlibMsg};
+use crate::{CallbackHandler, ConnlibMsg};
 use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use clap::Parser;
@@ -53,12 +53,30 @@ pub mod platform;
 
 #[derive(clap::Parser)]
 #[command(author, version, about, long_about = None)]
-struct Cli {
+pub struct Cli {
     #[command(subcommand)]
     command: Cmd,
 
-    #[command(flatten)]
-    common: CliCommon,
+    #[cfg(target_os = "linux")]
+    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "systemd-resolved")]
+    dns_control: DnsControlMethod,
+
+    #[cfg(target_os = "windows")]
+    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "nrpt")]
+    dns_control: DnsControlMethod,
+
+    #[cfg(target_os = "macos")]
+    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "none")]
+    dns_control: DnsControlMethod,
+
+    /// File logging directory. Should be a path that's writeable by the current user.
+    #[arg(short, long, env = "LOG_DIR")]
+    log_dir: Option<PathBuf>,
+
+    /// Maximum length of time to retry connecting to the portal if we're having internet issues or
+    /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
+    #[arg(short, long, env = "MAX_PARTITION_TIME")]
+    max_partition_time: Option<humantime::Duration>,
 }
 
 #[derive(clap::Subcommand)]
@@ -155,7 +173,7 @@ pub fn run_only_ipc_service() -> Result<()> {
     let cli = Cli::try_parse()?;
     match cli.command {
         Cmd::Install => platform::install_ipc_service(),
-        Cmd::Run => platform::run_ipc_service(cli.common),
+        Cmd::Run => platform::run_ipc_service(cli),
         Cmd::RunDebug => run_debug_ipc_service(cli),
         Cmd::RunSmokeTest => run_smoke_test(),
     }
@@ -179,7 +197,7 @@ fn run_debug_ipc_service(cli: Cli) -> Result<()> {
     let mut telemetry = Telemetry::default();
 
     rt.block_on(ipc_listen(
-        cli.common.dns_control,
+        cli.dns_control,
         &log_filter_reloader,
         &mut signals,
         &mut telemetry,
@@ -694,7 +712,7 @@ mod tests {
         let actual =
             Cli::try_parse_from([EXE_NAME, "--log-dir", "bogus_log_dir", "run-debug"]).unwrap();
         assert!(matches!(actual.command, Cmd::RunDebug));
-        assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
+        assert_eq!(actual.log_dir, Some(PathBuf::from("bogus_log_dir")));
 
         let actual = Cli::try_parse_from([EXE_NAME, "run"]).unwrap();
         assert!(matches!(actual.command, Cmd::Run));

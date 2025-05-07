@@ -7,12 +7,12 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use connlib_client_shared::Session;
 use firezone_bin_shared::{
-    DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info, new_dns_notifier,
-    new_network_notifier,
+    DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
+    new_dns_notifier, new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},
     signals,
 };
-use firezone_headless_client::{CallbackHandler, CliCommon, ConnlibMsg};
+use firezone_headless_client::{CallbackHandler, ConnlibMsg};
 use firezone_logging::telemetry_span;
 use firezone_telemetry::Telemetry;
 use firezone_telemetry::otel;
@@ -52,8 +52,26 @@ struct Cli {
     #[command(subcommand)]
     _command: Option<Cmd>,
 
-    #[command(flatten)]
-    common: CliCommon,
+    #[cfg(target_os = "linux")]
+    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "systemd-resolved")]
+    dns_control: DnsControlMethod,
+
+    #[cfg(target_os = "windows")]
+    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "nrpt")]
+    dns_control: DnsControlMethod,
+
+    #[cfg(target_os = "macos")]
+    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "none")]
+    dns_control: DnsControlMethod,
+
+    /// File logging directory. Should be a path that's writeable by the current user.
+    #[arg(short, long, env = "LOG_DIR")]
+    log_dir: Option<PathBuf>,
+
+    /// Maximum length of time to retry connecting to the portal if we're having internet issues or
+    /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
+    #[arg(short, long, env = "MAX_PARTITION_TIME")]
+    max_partition_time: Option<humantime::Duration>,
 
     #[arg(
         short = 'u',
@@ -144,7 +162,6 @@ fn main() -> Result<()> {
     // TODO: This might have the same issue with fatal errors not getting logged
     // as addressed for the IPC service in PR #5216
     let (layer, _handle) = cli
-        .common
         .log_dir
         .as_deref()
         .map(|dir| firezone_logging::file::layer(dir, "firezone-headless-client"))
@@ -153,7 +170,7 @@ fn main() -> Result<()> {
 
     // Deactivate DNS control before starting telemetry or connecting to the portal,
     // in case a previous run of Firezone left DNS control on and messed anything up.
-    let dns_control_method = cli.common.dns_control;
+    let dns_control_method = cli.dns_control;
     let mut dns_controller = DnsController { dns_control_method };
     // Deactivate Firezone DNS control in case the system or IPC service crashed
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
@@ -181,7 +198,7 @@ fn main() -> Result<()> {
         )
     })?;
     // TODO: Should this default to 30 days?
-    let max_partition_time = cli.common.max_partition_time.map(|d| d.into());
+    let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id {
@@ -416,6 +433,6 @@ mod tests {
         let actual =
             Cli::try_parse_from([exe_name, "--check", "--log-dir", "bogus_log_dir"]).unwrap();
         assert!(actual.check);
-        assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
+        assert_eq!(actual.log_dir, Some(PathBuf::from("bogus_log_dir")));
     }
 }

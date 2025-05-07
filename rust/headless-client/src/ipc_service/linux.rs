@@ -1,4 +1,4 @@
-use super::CliCommon;
+use super::Cli;
 use anyhow::{Result, bail};
 use firezone_bin_shared::signals;
 
@@ -7,7 +7,7 @@ use firezone_telemetry::Telemetry;
 /// Cross-platform entry point for systemd / Windows services
 ///
 /// Linux uses the CLI args from here, Windows does not
-pub(crate) fn run_ipc_service(cli: CliCommon) -> Result<()> {
+pub(crate) fn run_ipc_service(cli: Cli) -> Result<()> {
     let (_handle, log_filter_reloader) = super::setup_logging(cli.log_dir)?;
     if !elevation_check()? {
         bail!("IPC service failed its elevation check, try running as admin / root");

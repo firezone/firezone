@@ -1,4 +1,4 @@
-use crate::CliCommon;
+use crate::Cli;
 use anyhow::{Context as _, Result, bail};
 use firezone_bin_shared::DnsControlMethod;
 use firezone_logging::FilterReloadHandle;
@@ -190,7 +190,7 @@ fn uninstall_ipc_service(service_manager: &ServiceManager, name: impl AsRef<OsSt
 /// Cross-platform entry point for systemd / Windows services
 ///
 /// Linux uses the CLI args from here, Windows does not
-pub(crate) fn run_ipc_service(_cli: CliCommon) -> Result<()> {
+pub(crate) fn run_ipc_service(_cli: Cli) -> Result<()> {
     windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?")
 }
 

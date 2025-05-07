@@ -14,12 +14,8 @@ use anyhow::{Context as _, Result};
 use connlib_client_shared::Callbacks;
 use connlib_model::ResourceView;
 use dns_types::DomainName;
-use firezone_bin_shared::DnsControlMethod;
 use firezone_logging::FilterReloadHandle;
-use std::{
-    net::{IpAddr, Ipv4Addr, Ipv6Addr},
-    path::PathBuf,
-};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use tokio::sync::mpsc;
 use tracing_subscriber::{EnvFilter, Layer as _, Registry, fmt, layer::SubscriberExt as _};
 
@@ -36,31 +32,6 @@ use ip_network::{Ipv4Network, Ipv6Network};
 
 /// Only used on Linux
 pub const FIREZONE_GROUP: &str = "firezone-client";
-
-/// CLI args common to both the IPC service and the headless Client
-#[derive(clap::Parser)]
-pub struct CliCommon {
-    #[cfg(target_os = "linux")]
-    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "systemd-resolved")]
-    pub dns_control: DnsControlMethod,
-
-    #[cfg(target_os = "windows")]
-    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "nrpt")]
-    pub dns_control: DnsControlMethod,
-
-    #[cfg(target_os = "macos")]
-    #[arg(long, env = "FIREZONE_DNS_CONTROL", default_value = "none")]
-    pub dns_control: DnsControlMethod,
-
-    /// File logging directory. Should be a path that's writeable by the current user.
-    #[arg(short, long, env = "LOG_DIR")]
-    pub log_dir: Option<PathBuf>,
-
-    /// Maximum length of time to retry connecting to the portal if we're having internet issues or
-    /// it's down. Accepts human times. e.g. "5m" or "1h" or "30d".
-    #[arg(short, long, env = "MAX_PARTITION_TIME")]
-    pub max_partition_time: Option<humantime::Duration>,
-}
 
 /// Messages that connlib can produce and send to the headless Client, IPC service, or GUI process.
 ///
