@@ -43,6 +43,9 @@ impl Server {
     /// Platform-specific setup
     pub(crate) async fn new(id: ServiceId) -> Result<Self> {
         let sock_path = ipc_path(id);
+
+        tracing::debug!(socket = %sock_path.display(), "Creating new IPC server");
+
         // Remove the socket if a previous run left it there
         tokio::fs::remove_file(&sock_path).await.ok();
         // Create the dir if possible, needed for test paths under `/run/user`
