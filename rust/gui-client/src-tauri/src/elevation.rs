@@ -3,7 +3,8 @@ pub(crate) use platform::gui_check;
 #[cfg(target_os = "linux")]
 mod platform {
     use anyhow::{Context as _, Result};
-    use firezone_headless_client::FIREZONE_GROUP;
+
+    const FIREZONE_GROUP: &str = "firezone-client";
 
     /// Returns true if all permissions are correct for the GUI to run
     ///

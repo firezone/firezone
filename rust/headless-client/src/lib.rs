@@ -30,9 +30,6 @@ pub use ipc_service::{
 
 use ip_network::{Ipv4Network, Ipv6Network};
 
-/// Only used on Linux
-pub const FIREZONE_GROUP: &str = "firezone-client";
-
 /// Messages that connlib can produce and send to the headless Client, IPC service, or GUI process.
 ///
 /// i.e. callbacks
