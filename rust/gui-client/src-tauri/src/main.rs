@@ -8,6 +8,7 @@ use anyhow::{Context as _, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
 use firezone_telemetry::Telemetry;
+use gui::RunConfig;
 use settings::AdvancedSettings;
 use tracing_subscriber::EnvFilter;
 
@@ -45,14 +46,26 @@ fn main() -> anyhow::Result<()> {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
+    let config = gui::RunConfig {
+        inject_faults: cli.inject_faults,
+        debug_update_check: cli.debug_update_check,
+        smoke_test: cli
+            .command
+            .as_ref()
+            .is_some_and(|c| matches!(c, Cmd::SmokeTest)),
+        no_deep_links: cli.no_deep_links,
+        quit_after: cli.quit_after,
+        fail_with: cli.fail_on_purpose(),
+    };
+
     match cli.command {
         None => {
             if cli.no_deep_links {
-                return run_gui(cli);
+                return run_gui(config);
             }
             match elevation::gui_check() {
                 // Our elevation is correct (not elevated), just run the GUI
-                Ok(true) => run_gui(cli),
+                Ok(true) => run_gui(config),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 #[cfg(target_os = "linux")] // Windows/MacOS elevation check never fails.
                 Err(error) => {
@@ -63,7 +76,7 @@ fn main() -> anyhow::Result<()> {
         }
         Some(Cmd::Debug { command }) => debug_commands::run(command),
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => run_gui(cli),
+        Some(Cmd::Elevated) => run_gui(config),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
@@ -85,7 +98,7 @@ fn main() -> anyhow::Result<()> {
                 logger: _logger,
                 reloader,
             } = start_logging(&settings.log_filter)?;
-            let result = gui::run(cli, settings, reloader, telemetry);
+            let result = gui::run(config, settings, reloader, telemetry);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
@@ -103,7 +116,7 @@ fn main() -> anyhow::Result<()> {
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
 // Can't `instrument` this because logging isn't running when we enter it.
-fn run_gui(cli: Cli) -> Result<()> {
+fn run_gui(config: RunConfig) -> Result<()> {
     let mut settings = settings::load_advanced_settings().unwrap_or_default();
     let mut telemetry = Telemetry::default();
     // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
@@ -123,7 +136,7 @@ fn run_gui(cli: Cli) -> Result<()> {
         reloader,
     } = start_logging(&settings.log_filter)?;
 
-    match gui::run(cli, settings, reloader, telemetry) {
+    match gui::run(config, settings, reloader, telemetry) {
         Ok(()) => Ok(()),
         Err(anyhow) => {
             if anyhow
