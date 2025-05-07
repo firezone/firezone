@@ -125,7 +125,7 @@ pub struct RunConfig {
 
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 #[instrument(skip_all)]
-pub(crate) fn run(
+pub fn run(
     config: RunConfig,
     advanced_settings: AdvancedSettings,
     reloader: firezone_logging::FilterReloadHandle,

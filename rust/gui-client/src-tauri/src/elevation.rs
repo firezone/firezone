@@ -1,4 +1,4 @@
-pub(crate) use platform::gui_check;
+pub use platform::gui_check;
 
 #[cfg(target_os = "linux")]
 mod platform {
@@ -11,7 +11,7 @@ mod platform {
     /// Everything that needs root / admin powers happens in the IPC services,
     /// so for security and practicality reasons the GUIs must be non-root.
     /// (In Linux by default a root GUI app barely works at all)
-    pub(crate) fn gui_check() -> Result<bool, Error> {
+    pub fn gui_check() -> Result<bool, Error> {
         let user = std::env::var("USER").context("Unable to determine current user")?;
         if user == "root" {
             return Ok(false);
@@ -34,7 +34,7 @@ mod platform {
     }
 
     #[derive(Debug, thiserror::Error)]
-    pub(crate) enum Error {
+    pub enum Error {
         #[error("User is not part of {FIREZONE_GROUP} group")]
         UserNotInFirezoneGroup,
         #[error(transparent)]
@@ -42,7 +42,7 @@ mod platform {
     }
 
     impl Error {
-        pub(crate) fn user_friendly_msg(&self) -> String {
+        pub fn user_friendly_msg(&self) -> String {
             match self {
                 Error::UserNotInFirezoneGroup => format!(
                     "You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"
@@ -62,12 +62,12 @@ mod platform {
     /// On Windows, some users will run as admin, and the GUI does work correctly,
     /// unlike on Linux where most distros don't like to mix root GUI apps with X11 / Wayland.
     #[expect(clippy::unnecessary_wraps)]
-    pub(crate) fn gui_check() -> Result<bool, Error> {
+    pub fn gui_check() -> Result<bool, Error> {
         Ok(true)
     }
 
     #[derive(Debug, Clone, Copy, thiserror::Error)]
-    pub(crate) enum Error {}
+    pub enum Error {}
 }
 
 #[cfg(target_os = "macos")]
@@ -75,12 +75,12 @@ mod platform {
     use anyhow::Result;
 
     #[expect(clippy::unnecessary_wraps)]
-    pub(crate) fn gui_check() -> Result<bool, Error> {
+    pub fn gui_check() -> Result<bool, Error> {
         Ok(true)
     }
 
     #[derive(Debug, Clone, Copy, thiserror::Error)]
-    pub(crate) enum Error {}
+    pub enum Error {}
 }
 
 #[cfg(test)]

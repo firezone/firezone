@@ -83,10 +83,6 @@ pub enum ControllerRequest {
     SchemeRequest(SecretString),
     SignIn,
     SystemTrayMenu(system_tray::Event),
-    #[cfg_attr(
-        any(target_os = "linux", target_os = "macos"),
-        expect(dead_code, reason = "Doesn't work in Linux yet and is unused on MacOS")
-    )]
     UpdateNotificationClicked(Url),
 }
 

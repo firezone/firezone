@@ -4,24 +4,24 @@
 use anyhow::Result;
 
 #[derive(clap::Subcommand)]
-pub(crate) enum Cmd {
+pub enum Cmd {
     Replicate6791,
     SetAutostart(SetAutostartArgs),
 }
 
 #[derive(clap::Parser)]
-pub(crate) struct SetAutostartArgs {
+pub struct SetAutostartArgs {
     #[clap(action=clap::ArgAction::Set)]
     enabled: bool,
 }
 
 #[derive(clap::Parser)]
-pub(crate) struct CheckTokenArgs {
+pub struct CheckTokenArgs {
     token: String,
 }
 
 #[derive(clap::Parser)]
-pub(crate) struct StoreTokenArgs {
+pub struct StoreTokenArgs {
     token: String,
 }
 
