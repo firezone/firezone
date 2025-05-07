@@ -5,14 +5,13 @@
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_client_shared::Session;
+use connlib_client_shared::{ChannelCallbackHandler, ConnlibMsg, Session};
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
     new_dns_notifier, new_network_notifier,
     platform::{tcp_socket_factory, udp_socket_factory},
     signals,
 };
-use firezone_headless_client::{CallbackHandler, ConnlibMsg};
 use firezone_logging::telemetry_span;
 use firezone_telemetry::Telemetry;
 use firezone_telemetry::otel;
@@ -26,7 +25,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-use tokio::{sync::mpsc, time::Instant};
+use tokio::time::Instant;
 use tokio_stream::wrappers::ReceiverStream;
 
 #[cfg(target_os = "linux")]
@@ -224,8 +223,7 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let (cb_tx, cb_rx) = mpsc::channel(1_000);
-    let callbacks = CallbackHandler { cb_tx };
+    let (callbacks, cb_rx) = ChannelCallbackHandler::new();
 
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());

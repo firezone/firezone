@@ -11,12 +11,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use anyhow::{Context as _, Result};
-use connlib_client_shared::Callbacks;
-use connlib_model::ResourceView;
-use dns_types::DomainName;
 use firezone_logging::FilterReloadHandle;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
-use tokio::sync::mpsc;
 use tracing_subscriber::{EnvFilter, Layer as _, Registry, fmt, layer::SubscriberExt as _};
 
 mod clear_logs;
@@ -27,74 +22,6 @@ pub use ipc_service::{
     ClientMsg as IpcClientMsg, Error as IpcServiceError, ServerMsg as IpcServerMsg, ipc,
     run_only_ipc_service,
 };
-
-use ip_network::{Ipv4Network, Ipv6Network};
-
-/// Messages that connlib can produce and send to the headless Client, IPC service, or GUI process.
-///
-/// i.e. callbacks
-// The names are CamelCase versions of the connlib callbacks.
-#[expect(clippy::enum_variant_names)]
-pub enum ConnlibMsg {
-    OnDisconnect {
-        error_msg: String,
-        is_authentication_error: bool,
-    },
-    /// Use this as `TunnelReady`, per `callbacks.rs`
-    OnSetInterfaceConfig {
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        dns: Vec<IpAddr>,
-        search_domain: Option<DomainName>,
-        ipv4_routes: Vec<Ipv4Network>,
-        ipv6_routes: Vec<Ipv6Network>,
-    },
-    OnUpdateResources(Vec<ResourceView>),
-}
-
-#[derive(Clone)]
-pub struct CallbackHandler {
-    pub cb_tx: mpsc::Sender<ConnlibMsg>,
-}
-
-impl Callbacks for CallbackHandler {
-    fn on_disconnect(&self, error: connlib_client_shared::DisconnectError) {
-        self.cb_tx
-            .try_send(ConnlibMsg::OnDisconnect {
-                error_msg: error.to_string(),
-                is_authentication_error: error.is_authentication_error(),
-            })
-            .expect("should be able to send OnDisconnect");
-    }
-
-    fn on_set_interface_config(
-        &self,
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        dns: Vec<IpAddr>,
-        search_domain: Option<DomainName>,
-        ipv4_routes: Vec<Ipv4Network>,
-        ipv6_routes: Vec<Ipv6Network>,
-    ) {
-        self.cb_tx
-            .try_send(ConnlibMsg::OnSetInterfaceConfig {
-                ipv4,
-                ipv6,
-                dns,
-                search_domain,
-                ipv4_routes,
-                ipv6_routes,
-            })
-            .expect("Should be able to send OnSetInterfaceConfig");
-    }
-
-    fn on_update_resources(&self, resources: Vec<ResourceView>) {
-        tracing::debug!(len = resources.len(), "New resource list");
-        self.cb_tx
-            .try_send(ConnlibMsg::OnUpdateResources(resources))
-            .expect("Should be able to send OnUpdateResources");
-    }
-}
 
 /// Sets up logging for stdout only, with INFO level by default
 pub fn setup_stdout_logging() -> Result<FilterReloadHandle> {
@@ -137,14 +64,4 @@ pub(crate) fn get_log_filter() -> Result<String> {
     }
 
     Ok(DEFAULT_LOG_FILTER.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    // Make sure it's okay to store a bunch of these to mitigate #5880
-    #[test]
-    fn callback_msg_size() {
-        assert_eq!(std::mem::size_of::<ConnlibMsg>(), 120)
-    }
 }
