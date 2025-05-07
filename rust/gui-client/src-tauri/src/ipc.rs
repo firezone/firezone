@@ -36,10 +36,6 @@ pub struct Client {
 
 impl Client {
     pub async fn new() -> Result<(Self, ClientRead)> {
-        tracing::debug!(
-            client_pid = std::process::id(),
-            "Connecting to IPC service..."
-        );
         let (rx, tx) = connect_to_service(ServiceId::Prod).await?;
 
         Ok((Self { tx }, rx))
@@ -185,6 +181,11 @@ impl<E: serde::Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
 ///
 /// Public because the GUI Client will need it
 pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrite)> {
+    tracing::debug!(
+        client_pid = std::process::id(),
+        "Connecting to IPC service..."
+    );
+
     // This is how ChatGPT recommended, and I couldn't think of any more clever
     // way before I asked it.
     let mut last_err = None;
