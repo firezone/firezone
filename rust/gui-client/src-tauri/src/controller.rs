@@ -262,7 +262,7 @@ impl<I: GuiIntegration> Controller<I> {
                         .context("IPC closed")?
                         .context("Failed to read from IPC")?;
 
-                    match self.handle_ipc_msg(msg).await? {
+                    match self.handle_service_ipc_msg(msg).await? {
                         ControlFlow::Break(()) => break,
                         ControlFlow::Continue(()) => continue,
                     };
@@ -544,7 +544,7 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn handle_ipc_msg(&mut self, msg: service::ServerMsg) -> Result<ControlFlow<()>> {
+    async fn handle_service_ipc_msg(&mut self, msg: service::ServerMsg) -> Result<ControlFlow<()>> {
         match msg {
             service::ServerMsg::ClearedLogs(result) => {
                 let Some(tx) = self.clear_logs_callback.take() else {
