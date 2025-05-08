@@ -54,7 +54,9 @@ public class VPNConfigurationManager {
     let managers = try await NETunnelProviderManager.loadAllFromPreferences()
 
     for manager in managers where manager.localizedDescription == bundleDescription {
-      return VPNConfigurationManager(from: manager)
+      let ours = VPNConfigurationManager(from: manager)
+      try await ours.migrateConfigurationIfNeeded()
+      return ours
     }
 
     return nil
@@ -70,5 +72,58 @@ public class VPNConfigurationManager {
 
   func session() -> NETunnelProviderSession? {
     return manager.connection as? NETunnelProviderSession
+  }
+
+  // Firezone 1.4.14 and below stored some app configuration in the VPN provider configuration fields. This has since
+  // been moved to a dedicated UserDefaults-backed persistent store.
+  func migrateConfigurationIfNeeded() async throws {
+    guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
+          let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
+    else { return }
+
+    guard let appConfiguration = UserDefaults(suiteName: BundleHelper.appGroupId)
+    else {
+      fatalError("Could not initialize app configuration")
+    }
+
+    var migrated = false
+
+    if let apiURL = providerConfiguration["apiURL"] {
+      appConfiguration.set(apiURL, forKey: Store.Keys.apiURL)
+      migrated = true
+    }
+
+    if let authURL = providerConfiguration["authBaseURL"] {
+      appConfiguration.set(authURL, forKey: Store.Keys.authURL)
+      migrated = true
+    }
+
+    if let actorName = providerConfiguration["actorName"] {
+      appConfiguration.set(actorName, forKey: Store.Keys.actorName)
+      migrated = true
+    }
+
+    if let accountSlug = providerConfiguration["accountSlug"] {
+      appConfiguration.set(accountSlug, forKey: Store.Keys.accountSlug)
+      migrated = true
+    }
+
+    if let logFilter = providerConfiguration["logFilter"] {
+      appConfiguration.set(logFilter, forKey: Store.Keys.logFilter)
+      migrated = true
+    }
+
+    if let internetResourceEnabled = providerConfiguration["internetResourceEnabled"] {
+      appConfiguration.set(internetResourceEnabled == "true", forKey: Store.Keys.internetResourceEnabled)
+      migrated = true
+    }
+
+    if !migrated { return }
+
+    // Remove fields to prevent confusion if the user sees these in System Settings and wonders why they're stale.
+    protocolConfiguration.providerConfiguration = nil
+    manager.protocolConfiguration = protocolConfiguration
+    try await manager.saveToPreferences()
+    try await manager.loadFromPreferences()
   }
 }
