@@ -18,11 +18,11 @@ public final class Store: ObservableObject {
   public enum Keys {
     static let favoriteResourceIDs = "dev.firezone.config.favoriteResourceIDs"
     static let actorName = "dev.firezone.config.actorName"
-    static let accountSlug = "dev.firezone.config.accountSlug"
     static let authURL = "dev.firezone.config.authURL"
-    static let apiURL = "dev.firezone.config.apiURL"
-    static let logFilter = "dev.firezone.config.logFilter"
-    static let internetResourceEnabled = "dev.firezone.config.internetResourceEnabled"
+    public static let apiURL = "dev.firezone.config.apiURL"
+    public static let logFilter = "dev.firezone.config.logFilter"
+    public static let accountSlug = "dev.firezone.config.accountSlug"
+    public static let internetResourceEnabled = "dev.firezone.config.internetResourceEnabled"
   }
 
 #if DEBUG
@@ -235,9 +235,10 @@ public final class Store: ObservableObject {
 
   func signIn(authResponse: AuthResponse) async throws {
     // Save actorName
-    self.actorName = authResponse.actorName
+    setActorName(authResponse.actorName)
+    setAccountSlug(authResponse.accountSlug)
 
-    try await manager().save(authResponse: authResponse)
+    try await manager().enableConfiguration()
 
     // Bring the tunnel up and send it a token to start
     try ipcClient().start(token: authResponse.token)
@@ -270,7 +271,9 @@ public final class Store: ObservableObject {
 
   func setAccountSlug(_ accountSlug: String) {
     appConfiguration.set(accountSlug, forKey: Keys.accountSlug)
-    // TODO: Show accountSlug in UI
+
+    // Configure our Telemetry environment, closing if we're definitely not running against Firezone infrastructure.
+    Telemetry.accountSlug = accountSlug
   }
 
   func setAuthURL(_ authURL: URL) {
@@ -281,6 +284,9 @@ public final class Store: ObservableObject {
   func setApiURL(_ apiURL: URL) {
     appConfiguration.set(apiURL, forKey: Keys.apiURL)
     self.apiURL = apiURL
+
+    // Reconfigure our Telemetry environment in case it changed
+    Telemetry.setEnvironmentOrClose(apiURL)
   }
 
   func setLogFilter(_ logFilter: String) {
