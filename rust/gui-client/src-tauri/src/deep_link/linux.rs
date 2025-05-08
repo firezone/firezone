@@ -85,7 +85,7 @@ impl Server {
 }
 
 pub async fn open(url: &url::Url) -> Result<()> {
-    firezone_headless_client::setup_stdout_logging()?;
+    crate::logging::setup_stdout()?;
 
     let path = sock_path()?;
     let mut stream = UnixStream::connect(&path).await?;

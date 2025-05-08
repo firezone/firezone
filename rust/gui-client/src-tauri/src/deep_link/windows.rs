@@ -104,7 +104,7 @@ pub async fn open(url: &url::Url) -> Result<()> {
 }
 
 fn pipe_path() -> String {
-    firezone_headless_client::ipc::platform::named_pipe_path(&format!("{BUNDLE_ID}.deep_link"))
+    crate::ipc::platform::named_pipe_path(&format!("{BUNDLE_ID}.deep_link"))
 }
 
 /// Registers the current exe as the handler for our deep link scheme.

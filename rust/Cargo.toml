@@ -50,6 +50,7 @@ backoff = { version = "0.4", features = ["tokio"] }
 base64 = { version = "0.22.1", default-features = false }
 bimap = "0.6"
 boringtun = { version = "0.6", default-features = false }
+bufferpool = { path = "bufferpool" }
 bytecodec = "0.5.0"
 bytes = { version = "1.9.0", default-features = false }
 caps = "0.5.5"
@@ -96,7 +97,6 @@ keyring = "3.6.2"
 known-folders = "1.2.0"
 l4-tcp-dns-server = { path = "connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "connlib/l4-udp-dns-server" }
-bufferpool = { path = "bufferpool" }
 libc = "0.2.172"
 lockfree-object-pool = "0.1.6"
 log = "0.4"
@@ -131,6 +131,7 @@ ringbuffer = "0.15.0"
 rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.21", default-features = false, features = ["ring"] }
 sadness-generator = "0.6.0"
+sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.8"
 semver = "1.0.26"
 sentry = { version = "0.36.0", default-features = false }
@@ -188,6 +189,7 @@ which = "4.4.2"
 windows = "0.61.0"
 windows-core = "0.61.0"
 windows-implement = "0.60.0"
+windows-service = "0.8.0"
 winreg = "0.52.0"
 zbus = "5.5.0"
 zip = { version = "2", default-features = false }

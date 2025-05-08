@@ -5,6 +5,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
     sync::Arc,
 };
+use tokio::sync::mpsc;
 
 /// Traits that will be used by connlib to callback the client upper layers.
 pub trait Callbacks: Clone + Send + Sync {
@@ -121,6 +122,80 @@ where
     }
 }
 
+/// Messages that connlib can produce and send to the headless Client, IPC service, or GUI process.
+///
+/// i.e. callbacks
+// The names are CamelCase versions of the connlib callbacks.
+#[expect(clippy::enum_variant_names)]
+pub enum ConnlibMsg {
+    OnDisconnect {
+        error_msg: String,
+        is_authentication_error: bool,
+    },
+    /// Use this as `TunnelReady`, per `callbacks.rs`
+    OnSetInterfaceConfig {
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+        dns: Vec<IpAddr>,
+        search_domain: Option<DomainName>,
+        ipv4_routes: Vec<Ipv4Network>,
+        ipv6_routes: Vec<Ipv6Network>,
+    },
+    OnUpdateResources(Vec<ResourceView>),
+}
+
+#[derive(Clone)]
+pub struct ChannelCallbackHandler {
+    cb_tx: mpsc::Sender<ConnlibMsg>,
+}
+
+impl ChannelCallbackHandler {
+    pub fn new() -> (Self, mpsc::Receiver<ConnlibMsg>) {
+        let (cb_tx, cb_rx) = mpsc::channel(1_000);
+
+        (Self { cb_tx }, cb_rx)
+    }
+}
+
+impl Callbacks for ChannelCallbackHandler {
+    fn on_disconnect(&self, error: DisconnectError) {
+        self.cb_tx
+            .try_send(ConnlibMsg::OnDisconnect {
+                error_msg: error.to_string(),
+                is_authentication_error: error.is_authentication_error(),
+            })
+            .expect("should be able to send OnDisconnect");
+    }
+
+    fn on_set_interface_config(
+        &self,
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+        dns: Vec<IpAddr>,
+        search_domain: Option<DomainName>,
+        ipv4_routes: Vec<Ipv4Network>,
+        ipv6_routes: Vec<Ipv6Network>,
+    ) {
+        self.cb_tx
+            .try_send(ConnlibMsg::OnSetInterfaceConfig {
+                ipv4,
+                ipv6,
+                dns,
+                search_domain,
+                ipv4_routes,
+                ipv6_routes,
+            })
+            .expect("Should be able to send OnSetInterfaceConfig");
+    }
+
+    fn on_update_resources(&self, resources: Vec<ResourceView>) {
+        tracing::debug!(len = resources.len(), "New resource list");
+        self.cb_tx
+            .try_send(ConnlibMsg::OnUpdateResources(resources))
+            .expect("Should be able to send OnUpdateResources");
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use phoenix_channel::StatusCode;
@@ -134,5 +209,11 @@ mod tests {
         ));
 
         assert!(disconnect_error.to_string().contains("401 Unauthorized")); // Apple client relies on this.
+    }
+
+    // Make sure it's okay to store a bunch of these to mitigate #5880
+    #[test]
+    fn callback_msg_size() {
+        assert_eq!(std::mem::size_of::<ConnlibMsg>(), 120)
     }
 }

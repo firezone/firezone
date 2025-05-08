@@ -2,7 +2,7 @@
 use super::CtlrTx;
 use anyhow::{Result, bail};
 
-pub(crate) async fn set_autostart(_enabled: bool) -> Result<()> {
+pub async fn set_autostart(_enabled: bool) -> Result<()> {
     bail!("Not implemented")
 }
 
