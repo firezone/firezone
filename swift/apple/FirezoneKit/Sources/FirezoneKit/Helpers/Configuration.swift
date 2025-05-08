@@ -81,12 +81,39 @@ public class Configuration {
 
   private var userDefaults: UserDefaults
 
-  public init(_ userDefaults: UserDefaults? = nil) {
-    guard let defaults = userDefaults ?? UserDefaults(suiteName: BundleHelper.appGroupId)
+  public init() {
+    guard let defaults = UserDefaults(suiteName: BundleHelper.appGroupId)
     else {
       fatalError("Could not initialize configuration")
     }
 
     self.userDefaults = defaults
+
+    // These can be removed after the majority of users upgrade > 1.4.14
+    migrateUpdateChecker()
+    migrateFavorites()
+  }
+
+  private func migrateUpdateChecker() {
+    let decoder = PropertyListDecoder()
+
+    if let data = UserDefaults.standard.object(forKey: "lastDismissedVersion") as? Data,
+       let version = try? decoder.decode(SemanticVersion.self, from: data) {
+      self.userDefaults.set(version.description, forKey: Keys.lastDismissedVersion)
+      UserDefaults.standard.removeObject(forKey: "lastDismissedVersion")
+    }
+
+    if let data = UserDefaults.standard.object(forKey: "lastNotifiedVersion") as? Data,
+       let version = try? decoder.decode(SemanticVersion.self, from: data) {
+      self.userDefaults.set(version.description, forKey: Keys.lastNotifiedVersion)
+      UserDefaults.standard.removeObject(forKey: "lastNotifiedVersion")
+    }
+  }
+
+  private func migrateFavorites() {
+    if let ids = UserDefaults.standard.stringArray(forKey: "favoriteResourceIDs") {
+      self.userDefaults.set(ids, forKey: Keys.favoriteResourceIDs)
+      UserDefaults.standard.removeObject(forKey: "favoriteResourceIDs")
+    }
   }
 }
