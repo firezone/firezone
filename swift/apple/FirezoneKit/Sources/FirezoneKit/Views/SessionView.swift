@@ -23,7 +23,7 @@ struct SessionView: View {
           Text("No Resources. Contact your admin to be granted access.")
         } else {
           List {
-            if !store.favorites.isEmpty() {
+            if !store.favoriteResourceIDs.isEmpty {
               Section("Favorites") {
                 ResourceSection(resources: favoriteResources())
               }
@@ -60,7 +60,7 @@ struct SessionView: View {
   func favoriteResources() -> [Resource] {
     switch store.resourceList {
     case .loaded(let resources):
-      return resources.filter { store.favorites.contains($0.id) }
+      return resources.filter { store.favoriteResourceIDs.contains($0.id) }
     default:
       return []
     }
@@ -69,7 +69,7 @@ struct SessionView: View {
   func nonFavoriteResources() -> [Resource] {
     switch store.resourceList {
     case .loaded(let resources):
-      return resources.filter { !store.favorites.contains($0.id) }
+      return resources.filter { !store.favoriteResourceIDs.contains($0.id) }
     default:
       return []
     }

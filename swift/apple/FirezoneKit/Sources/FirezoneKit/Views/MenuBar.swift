@@ -189,7 +189,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
   func setupObservers() {
     // Favorites explicitly sends objectWillChange for lifecycle events. The instance in Store never changes.
-    store.favorites.objectWillChange
+    store.$favoriteResourceIDs
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
@@ -251,14 +251,14 @@ public final class MenuBar: NSObject, ObservableObject {
 
   func populateResourceMenus(_ newResources: [Resource]) {
     // If we have no favorites, then everything is a favorite
-    let hasAnyFavorites = newResources.contains { store.favorites.contains($0.id) }
+    let hasAnyFavorites = newResources.contains { store.favoriteResourceIDs.contains($0.id) }
     let newFavorites = if hasAnyFavorites {
-      newResources.filter { store.favorites.contains($0.id) || $0.isInternetResource() }
+      newResources.filter { store.favoriteResourceIDs.contains($0.id) || $0.isInternetResource() }
     } else {
       newResources
     }
     let newOthers: [Resource] = if hasAnyFavorites {
-      newResources.filter { !store.favorites.contains($0.id) && !$0.isInternetResource() }
+      newResources.filter { !store.favoriteResourceIDs.contains($0.id) && !$0.isInternetResource() }
     } else {
       []
     }
@@ -416,7 +416,7 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.addItem(resourcesUnavailableReasonMenuItem)
     menu.addItem(resourcesSeparatorMenuItem)
 
-    if !store.favorites.isEmpty() {
+    if !store.favoriteResourceIDs.isEmpty {
       menu.addItem(otherResourcesMenuItem)
       menu.addItem(otherResourcesSeparatorMenuItem)
     }
@@ -589,7 +589,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
     let toggleFavoriteItem = NSMenuItem()
 
-    if store.favorites.contains(resource.id) {
+    if store.favoriteResourceIDs.contains(resource.id) {
       toggleFavoriteItem.action = #selector(removeFavoriteTapped(_:))
       toggleFavoriteItem.title = "Remove from favorites"
       toggleFavoriteItem.toolTip = "Click to remove this Resource from Favorites"
@@ -723,10 +723,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc func adminPortalButtonTapped() {
-    guard let url = URL(string: store.settings.authBaseURL)
-    else { return }
-
-    Task { await NSWorkspace.shared.openAsync(url) }
+    Task { await NSWorkspace.shared.openAsync(store.authURL) }
   }
 
   @objc func updateAvailableButtonTapped() {
@@ -852,11 +849,15 @@ public final class MenuBar: NSObject, ObservableObject {
   // MARK: Other utility functions
 
   func setFavorited(id: String, favorited: Bool) {
+    var favoriteResourceIDs = store.favoriteResourceIDs
+
     if favorited {
-      store.favorites.add(id)
+      favoriteResourceIDs.append(id)
     } else {
-      store.favorites.remove(id)
+      favoriteResourceIDs.removeAll { $0 == id }
     }
+
+    store.setFavoriteResourceIDs(favoriteResourceIDs)
   }
 
   func copyToClipboard(_ string: String) {

@@ -40,7 +40,7 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
         )
     }
     .sheet(isPresented: $isSettingsPresented) {
-      SettingsView()
+      SettingsView(store: store)
     }
     .navigationViewStyle(StackNavigationViewStyle())
   }

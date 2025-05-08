@@ -57,8 +57,7 @@ struct FirezoneApp: App {
       "Settings",
       id: AppView.WindowDefinition.settings.identifier
     ) {
-      SettingsView()
-        .environmentObject(store)
+      SettingsView(store: store)
     }
     .handlesExternalEvents(
       matching: [AppView.WindowDefinition.settings.externalEventMatchString]
