@@ -2,8 +2,8 @@
 
 use crate::{IpPacket, IpPacketBuf};
 use anyhow::{Context as _, Result, bail};
-use etherparse::PacketBuilder;
-use std::net::IpAddr;
+use etherparse::{PacketBuilder, icmpv4, icmpv6};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 /// Helper macro to turn a [`PacketBuilder`] into an [`IpPacket`].
 #[macro_export]
@@ -154,6 +154,51 @@ where
         }
         _ => bail!(IpVersionMismatch),
     }
+}
+
+pub fn icmp_dst_unreachable(
+    ipv4_src: Ipv4Addr,
+    ipv6_src: Ipv6Addr,
+    original_packet: &IpPacket,
+) -> Result<IpPacket> {
+    let src = original_packet.source();
+
+    let icmp_error = match src {
+        IpAddr::V4(src) => icmpv4_network_unreachable(ipv4_src, src, original_packet)?,
+        IpAddr::V6(src) => icmpv6_address_unreachable(ipv6_src, src, original_packet)?,
+    };
+
+    Ok(icmp_error)
+}
+
+fn icmpv4_network_unreachable(
+    src: Ipv4Addr,
+    dst: Ipv4Addr,
+    original_packet: &IpPacket,
+) -> Result<IpPacket, anyhow::Error> {
+    let builder = PacketBuilder::ipv4(src.octets(), dst.octets(), 20).icmpv4(
+        crate::Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Network),
+    );
+    let payload = original_packet.packet();
+
+    let ip_packet = crate::build!(builder, payload)?;
+
+    Ok(ip_packet)
+}
+
+fn icmpv6_address_unreachable(
+    src: Ipv6Addr,
+    dst: Ipv6Addr,
+    original_packet: &IpPacket,
+) -> Result<IpPacket, anyhow::Error> {
+    let builder = PacketBuilder::ipv6(src.octets(), dst.octets(), 20).icmpv6(
+        crate::Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Address),
+    );
+    let payload = original_packet.packet();
+
+    let ip_packet = crate::build!(builder, payload)?;
+
+    Ok(ip_packet)
 }
 
 #[derive(thiserror::Error, Debug)]
