@@ -16,6 +16,15 @@ public enum BundleHelper {
     return false
   }
 
+  static var version: String {
+    guard let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+    else {
+      fatalError("CFBundleShortVersionString missing in app's Info.plist")
+    }
+
+    return version
+  }
+
   static var gitSha: String {
     guard let gitSha = Bundle.main.object(forInfoDictionaryKey: "GitSha") as? String,
           !gitSha.isEmpty
