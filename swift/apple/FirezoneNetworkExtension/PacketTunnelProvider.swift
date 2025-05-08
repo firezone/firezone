@@ -18,7 +18,6 @@ enum PacketTunnelProviderError: Error {
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
-  private var appConfiguration: UserDefaults
 
   enum LogExportState {
     case inProgress(TunnelLogArchive)
@@ -30,13 +29,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   override init() {
     // Initialize Telemetry as early as possible
     Telemetry.start()
-
-    guard let userDefaults = UserDefaults(suiteName: BundleHelper.appGroupId)
-    else {
-      fatalError("Could not initialize app configuration")
-    }
-
-    self.appConfiguration = userDefaults
 
     super.init()
   }
@@ -63,21 +55,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let id = loadAndSaveFirezoneId(from: options)
 
       // Now we should have a token, so continue connecting
-      guard let apiURL = appConfiguration.url(forKey: Store.Keys.apiURL)
-      else {
-        throw PacketTunnelProviderError.apiURLIsInvalid
-      }
+      let apiURL = Configuration.shared.apiURL ?? Configuration.defaultApiURL
 
       // Reconfigure our Telemetry environment now that we know the API URL
       Telemetry.setEnvironmentOrClose(apiURL)
 
-      guard let logFilter = appConfiguration.string(forKey: Store.Keys.logFilter)
-      else {
-        throw PacketTunnelProviderError.logFilterIsInvalid
-      }
+      let logFilter = Configuration.shared.logFilter ?? Configuration.defaultLogFilter
 
       // Hydrate telemetry account slug
-      guard let accountSlug = appConfiguration.string(forKey: Store.Keys.accountSlug)
+      guard let accountSlug = Configuration.shared.accountSlug
       else {
         throw PacketTunnelProviderError.accountSlugIsInvalid
       }
@@ -85,7 +71,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       Telemetry.accountSlug = accountSlug
 
       // Load current internetResourceEnabledState
-      let internetResourceEnabled = appConfiguration.bool(forKey: Store.Keys.accountSlug)
+      let internetResourceEnabled = Configuration.shared.internetResourceEnabled ?? false
 
       let adapter = Adapter(
         apiURL: apiURL,

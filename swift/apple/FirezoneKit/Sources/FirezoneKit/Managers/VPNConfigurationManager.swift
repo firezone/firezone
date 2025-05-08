@@ -81,40 +81,43 @@ public class VPNConfigurationManager {
           let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else { return }
 
-    guard let appConfiguration = UserDefaults(suiteName: BundleHelper.appGroupId)
-    else {
-      fatalError("Could not initialize app configuration")
-    }
-
     var migrated = false
 
-    if let apiURL = providerConfiguration["apiURL"] {
-      appConfiguration.set(apiURL, forKey: Store.Keys.apiURL)
+    if let apiURLString = providerConfiguration["apiURL"],
+       let apiURL = URL(string: apiURLString),
+       apiURL.host != nil,
+       ["wss", "ws"].contains(apiURL.scheme) {
+      Configuration.shared.apiURL = apiURL
       migrated = true
     }
 
-    if let authURL = providerConfiguration["authBaseURL"] {
-      appConfiguration.set(authURL, forKey: Store.Keys.authURL)
+    if let authURLString = providerConfiguration["authBaseURL"],
+       let authURL = URL(string: authURLString),
+       authURL.host != nil,
+       ["https", "http"].contains(authURL.scheme) {
+      Configuration.shared.authURL = authURL
       migrated = true
     }
 
     if let actorName = providerConfiguration["actorName"] {
-      appConfiguration.set(actorName, forKey: Store.Keys.actorName)
+      Configuration.shared.actorName = actorName
       migrated = true
     }
 
     if let accountSlug = providerConfiguration["accountSlug"] {
-      appConfiguration.set(accountSlug, forKey: Store.Keys.accountSlug)
+      Configuration.shared.accountSlug = accountSlug
       migrated = true
     }
 
-    if let logFilter = providerConfiguration["logFilter"] {
-      appConfiguration.set(logFilter, forKey: Store.Keys.logFilter)
+    if let logFilter = providerConfiguration["logFilter"],
+       !logFilter.isEmpty {
+      Configuration.shared.logFilter = logFilter
       migrated = true
     }
 
-    if let internetResourceEnabled = providerConfiguration["internetResourceEnabled"] {
-      appConfiguration.set(internetResourceEnabled == "true", forKey: Store.Keys.internetResourceEnabled)
+    if let internetResourceEnabled = providerConfiguration["internetResourceEnabled"],
+       ["false", "true"].contains(internetResourceEnabled) {
+      Configuration.shared.internetResourceEnabled = internetResourceEnabled == "true"
       migrated = true
     }
 
