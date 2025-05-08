@@ -15,26 +15,6 @@ import AppKit
 
 @MainActor
 public final class Store: ObservableObject {
-  public enum Keys {
-    static let favoriteResourceIDs = "dev.firezone.config.favoriteResourceIDs"
-    static let actorName = "dev.firezone.config.actorName"
-    static let authURL = "dev.firezone.config.authURL"
-    public static let apiURL = "dev.firezone.config.apiURL"
-    public static let logFilter = "dev.firezone.config.logFilter"
-    public static let accountSlug = "dev.firezone.config.accountSlug"
-    public static let internetResourceEnabled = "dev.firezone.config.internetResourceEnabled"
-  }
-
-#if DEBUG
-  public static let defaultAuthURL = URL(string: "https://app.firez.one")!
-  public static let defaultApiURL = URL(string: "wss://api.firez.one")!
-  public static let defaultLogFilter = "debug"
-#else
-  public static let defaultAuthURL = URL(string: "https://app.firezone.dev")!
-  public static let defaultApiURL = URL(string: "wss://api.firezone.dev")!
-  public static let defaultLogFilter = "info"
-#endif
-
   @Published private(set) var resourceList: ResourceList = .loading
 
   // UserDefaults-backed app configuration that will publish updates to SwiftUI components
@@ -43,16 +23,13 @@ public final class Store: ObservableObject {
   @Published private(set) var authURL: URL
   @Published private(set) var apiURL: URL
   @Published private(set) var logFilter: String
-  @Published private(set) var internetResourceEnabled: Bool?
+  @Published private(set) var internetResourceEnabled: Bool
 
   // Enacapsulate Tunnel status here to make it easier for other components to observe
   @Published private(set) var status: NEVPNStatus?
 
   // User notifications
   @Published private(set) var decision: UNAuthorizationStatus?
-
-  // App configuration
-  private var appConfiguration: UserDefaults
 
 #if os(macOS)
   // Track whether our system extension has been installed (macOS)
@@ -67,19 +44,12 @@ public final class Store: ObservableObject {
   private var vpnConfigurationManager: VPNConfigurationManager?
 
   public init() {
-    guard let userDefaults = UserDefaults(suiteName: BundleHelper.appGroupId)
-    else {
-      fatalError("Could not initialize app configuration")
-    }
-
-    self.favoriteResourceIDs = userDefaults.stringArray(forKey: Keys.favoriteResourceIDs) ?? []
-    self.actorName = userDefaults.string(forKey: Keys.actorName)
-    self.authURL = userDefaults.url(forKey: Keys.authURL) ?? Self.defaultAuthURL
-    self.apiURL = userDefaults.url(forKey: Keys.apiURL) ?? Self.defaultApiURL
-    self.logFilter = userDefaults.string(forKey: Keys.logFilter) ?? Self.defaultLogFilter
-    self.internetResourceEnabled = userDefaults.bool(forKey: Keys.internetResourceEnabled)
-
-    self.appConfiguration = userDefaults
+    self.favoriteResourceIDs = Configuration.shared.favoriteResourceIDs ?? []
+    self.actorName = Configuration.shared.actorName
+    self.authURL = Configuration.shared.authURL ?? Configuration.defaultAuthURL
+    self.apiURL = Configuration.shared.apiURL ?? Configuration.defaultApiURL
+    self.logFilter = Configuration.shared.logFilter ?? Configuration.defaultLogFilter
+    self.internetResourceEnabled = Configuration.shared.internetResourceEnabled ?? false
 
     // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
     Task {
@@ -253,49 +223,46 @@ public final class Store: ObservableObject {
   }
 
   func toggleInternetResource() async throws {
-    let enabled = !(internetResourceEnabled ?? false)
-    setInternetResourceEnabled(enabled)
+    setInternetResourceEnabled(!internetResourceEnabled)
   }
 
   // MARK: App configuration setters
 
   func setFavoriteResourceIDs(_ favoriteResourceIDs: [String]) {
-    appConfiguration.set(favoriteResourceIDs, forKey: Keys.favoriteResourceIDs)
+    Configuration.shared.favoriteResourceIDs = favoriteResourceIDs
     self.favoriteResourceIDs = favoriteResourceIDs
   }
 
   func setActorName(_ actorName: String) {
-    appConfiguration.set(actorName, forKey: Keys.actorName)
+    Configuration.shared.actorName = actorName
     self.actorName = actorName
   }
 
   func setAccountSlug(_ accountSlug: String) {
-    appConfiguration.set(accountSlug, forKey: Keys.accountSlug)
+    Configuration.shared.accountSlug = accountSlug
 
     // Configure our Telemetry environment, closing if we're definitely not running against Firezone infrastructure.
     Telemetry.accountSlug = accountSlug
   }
 
   func setAuthURL(_ authURL: URL) {
-    appConfiguration.set(authURL, forKey: Keys.authURL)
+    Configuration.shared.authURL = authURL
     self.authURL = authURL
   }
 
   func setApiURL(_ apiURL: URL) {
-    appConfiguration.set(apiURL, forKey: Keys.apiURL)
-    self.apiURL = apiURL
+    Configuration.shared.apiURL = apiURL
 
     // Reconfigure our Telemetry environment in case it changed
     Telemetry.setEnvironmentOrClose(apiURL)
   }
 
   func setLogFilter(_ logFilter: String) {
-    appConfiguration.set(logFilter, forKey: Keys.logFilter)
-    self.logFilter = logFilter
+    Configuration.shared.logFilter = logFilter
   }
 
   func setInternetResourceEnabled(_ enabled: Bool) {
-    appConfiguration.set(enabled, forKey: Keys.internetResourceEnabled)
+    Configuration.shared.internetResourceEnabled = enabled
     self.internetResourceEnabled = enabled
   }
 

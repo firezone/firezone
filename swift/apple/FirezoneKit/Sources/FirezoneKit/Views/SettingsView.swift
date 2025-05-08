@@ -105,9 +105,9 @@ class SettingsViewModel: ObservableObject {
                              ["wss", "ws"].contains(apiURL.scheme) &&
                              apiURL.host != nil &&
                              authURL.host != nil)
-    self.areSettingsDefault = (authURL == Store.defaultAuthURL &&
-                               apiURL == Store.defaultApiURL &&
-                               logFilter == Store.defaultLogFilter)
+    self.areSettingsDefault = (authURL == Configuration.defaultAuthURL &&
+                               apiURL == Configuration.defaultApiURL &&
+                               logFilter == Configuration.defaultLogFilter)
   }
 
   func applySettingsToStore() {
@@ -125,9 +125,9 @@ class SettingsViewModel: ObservableObject {
   }
 
   func revertToDefaultSettings() {
-    self.authURLString = Store.defaultAuthURL.absoluteString
-    self.apiURLString = Store.defaultApiURL.absoluteString
-    self.logFilterString = Store.defaultLogFilter
+    self.authURLString = Configuration.defaultAuthURL.absoluteString
+    self.apiURLString = Configuration.defaultApiURL.absoluteString
+    self.logFilterString = Configuration.defaultLogFilter
   }
 
   func reloadSettingsFromStore() {
