@@ -13,6 +13,7 @@ enum PacketTunnelProviderError: Error {
   case apiURLIsInvalid
   case logFilterIsInvalid
   case accountSlugIsInvalid
+  case firezoneIdIsInvalid
   case tokenNotFoundInKeychain
 }
 
@@ -50,9 +51,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       // Try to save the token back to the Keychain but continue if we can't
       do { try token.save() } catch { Log.error(error) }
 
-      // Use and persist the provided ID or try loading it from disk,
-      // generating a new one if both of those are nil.
-      let id = loadAndSaveFirezoneId(from: options)
+      // The firezone id should be initialized by now
+      guard let id = Configuration.shared.firezoneId
+      else {
+        throw PacketTunnelProviderError.firezoneIdIsInvalid
+      }
 
       // Now we should have a token, so continue connecting
       let apiURL = Configuration.shared.apiURL ?? Configuration.defaultApiURL
@@ -185,20 +188,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }()
 
     return Token(passedToken) ?? keychainToken
-  }
-
-  func loadAndSaveFirezoneId(from options: [String: NSObject]?) -> String {
-    let passedId = options?["id"] as? String
-    let persistedId = FirezoneId.load(.post140)
-
-    let id = passedId ?? persistedId ?? UUID().uuidString
-
-    FirezoneId.save(id)
-
-    // Hydrate the telemetry userId with our firezone id
-    Telemetry.firezoneId = id
-
-    return id
   }
 
   func clearLogs(_ completionHandler: ((Data?) -> Void)? = nil) {

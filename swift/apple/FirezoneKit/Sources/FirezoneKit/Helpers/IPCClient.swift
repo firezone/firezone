@@ -61,12 +61,6 @@ class IPCClient {
       options.merge(["token": token as NSObject]) { _, new in new }
     }
 
-    // Pass pre-1.4.0 Firezone ID if it exists. Pre 1.4.0 clients will have this
-    // persisted to the app side container URL.
-    if let id = FirezoneId.load(.pre140) {
-      options.merge(["id": id as NSObject]) { _, new in new }
-    }
-
     try session().startTunnel(options: options)
   }
 

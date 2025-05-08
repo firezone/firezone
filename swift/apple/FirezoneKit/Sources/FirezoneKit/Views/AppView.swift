@@ -38,7 +38,7 @@ public struct AppView: View {
         }
 
         // Close window upon launch for day-to-day use
-        if status != .invalid && systemExtensionStatus == .installed && FirezoneId.load(.pre140) != nil {
+        if status != .invalid && systemExtensionStatus == .installed && Configuration.shared.firezoneId != nil {
           WindowDefinition.main.window()?.close()
         }
       })

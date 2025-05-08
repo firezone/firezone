@@ -19,6 +19,7 @@ public class Configuration {
     static let internetResourceEnabled = "dev.firezone.config.internetResourceEnabled"
     static let lastDismissedVersion = "dev.firezone.config.lastDismissedVersion"
     static let lastNotifiedVersion = "dev.firezone.config.lastNotifiedVersion"
+    static let firezoneId = "dev.firezone.config.firezoneId"
   }
 
   // We expose all configuration getters to return Optionals so that any consumers of this class may distinguish
@@ -68,6 +69,11 @@ public class Configuration {
     set { userDefaults.set(newValue, forKey: Keys.lastNotifiedVersion) }
   }
 
+  public var firezoneId: String? {
+    get { userDefaults.string(forKey: Keys.firezoneId) }
+    set { userDefaults.set(newValue, forKey: Keys.firezoneId) }
+  }
+
   // Use these to provide default values at the call site if needed
 #if DEBUG
   public static let defaultAuthURL = URL(string: "https://app.firez.one")!
@@ -92,6 +98,7 @@ public class Configuration {
     // These can be removed after the majority of users upgrade > 1.4.14
     migrateUpdateChecker()
     migrateFavorites()
+    migrateFirezoneIdOrGenerateNewOne()
   }
 
   private func migrateUpdateChecker() {
@@ -115,5 +122,21 @@ public class Configuration {
       self.userDefaults.set(ids, forKey: Keys.favoriteResourceIDs)
       UserDefaults.standard.removeObject(forKey: "favoriteResourceIDs")
     }
+  }
+
+  private func migrateFirezoneIdOrGenerateNewOne() {
+    guard let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: BundleHelper.appGroupId),
+          let id = try? String(contentsOf: containerURL.appendingPathComponent("firezone-id"))
+    else {
+      if self.userDefaults.string(forKey: Keys.firezoneId) == nil {
+        self.userDefaults.set(UUID().uuidString, forKey: Keys.firezoneId)
+      }
+
+      return
+    }
+
+    self.userDefaults.set(id, forKey: Keys.firezoneId)
+    try? FileManager.default.removeItem(at: containerURL)
   }
 }
