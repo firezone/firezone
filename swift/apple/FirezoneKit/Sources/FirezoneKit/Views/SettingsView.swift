@@ -64,12 +64,86 @@ extension FileManager {
   }
 }
 
-// TODO: Refactor body length
+@MainActor
+class SettingsViewModel: ObservableObject {
+  private let store: Store
+  private var cancellables = Set<AnyCancellable>()
+
+  @Published var authURLString: String
+  @Published var apiURLString: String
+  @Published var logFilterString: String
+  @Published var areSettingsDefault = true
+  @Published var areSettingsValid = true
+  @Published var areSettingsSaved = true
+
+  init(store: Store) {
+    self.store = store
+
+    self.authURLString = store.authURL.absoluteString
+    self.apiURLString = store.apiURL.absoluteString
+    self.logFilterString = store.logFilter
+    updateDerivedState(authURL: store.authURL, apiURL: store.apiURL, logFilter: store.logFilter)
+
+    Publishers.CombineLatest3(store.$authURL, store.$apiURL, store.$logFilter)
+      .receive(on: RunLoop.main)
+      .sink { [weak self] (authURL, apiURL, logFilter) in
+        guard let self = self else { return }
+        self.authURLString = authURL.absoluteString
+        self.apiURLString = apiURL.absoluteString
+        self.logFilterString = logFilter
+        self.updateDerivedState(authURL: authURL, apiURL: apiURL, logFilter: logFilter)
+      }
+      .store(in: &cancellables)
+  }
+
+  private func updateDerivedState(authURL: URL, apiURL: URL, logFilter: String) {
+    self.areSettingsSaved = (self.authURLString == authURL.absoluteString &&
+                             self.apiURLString == apiURL.absoluteString &&
+                             self.logFilterString == logFilter)
+    self.areSettingsValid = (!logFilter.isEmpty &&
+                             ["https", "http"].contains(authURL.scheme) &&
+                             ["wss", "ws"].contains(apiURL.scheme) &&
+                             apiURL.host != nil &&
+                             authURL.host != nil)
+    self.areSettingsDefault = (authURL == Store.defaultAuthURL &&
+                               apiURL == Store.defaultApiURL &&
+                               logFilter == Store.defaultLogFilter)
+  }
+
+  func applySettingsToStore() {
+    guard let authURL = URL(string: self.authURLString),
+          let apiURL = URL(string: self.apiURLString)
+    else {
+      Log.warning("Unexpectedly could not parse URL strings while saving settings")
+
+      return
+    }
+
+    store.setAuthURL(authURL)
+    store.setApiURL(apiURL)
+    store.setLogFilter(logFilterString)
+  }
+
+  func revertToDefaultSettings() {
+    self.authURLString = Store.defaultAuthURL.absoluteString
+    self.apiURLString = Store.defaultApiURL.absoluteString
+    self.logFilterString = Store.defaultLogFilter
+  }
+
+  func reloadSettingsFromStore() {
+    self.authURLString = store.authURL.absoluteString
+    self.apiURLString = store.apiURL.absoluteString
+    self.logFilterString = store.logFilter
+  }
+}
+
+// TODO: Move business logic to ViewModel to remove dependency on Store and fix body length
 // swiftlint:disable:next type_body_length
 public struct SettingsView: View {
-  @EnvironmentObject var store: Store
+  @StateObject private var viewModel: SettingsViewModel
   @Environment(\.dismiss) var dismiss
-  @State var settings = Settings.defaultValue
+
+  private let store: Store
 
   enum ConfirmationAlertContinueAction: Int {
     case none
@@ -117,7 +191,10 @@ public struct SettingsView: View {
     )
   }
 
-  public init() {}
+  public init(store: Store) {
+    self.store = store
+    _viewModel = StateObject(wrappedValue: SettingsViewModel(store: store))
+  }
 
   public var body: some View {
     #if os(iOS)
@@ -128,7 +205,7 @@ public struct SettingsView: View {
               Image(systemName: "slider.horizontal.3")
               Text("Advanced")
             }
-            .badge(settings.isValid ? nil : "!")
+            .badge(viewModel.areSettingsValid ? nil : "!")
           logsTab
             .tabItem {
               Image(systemName: "doc.text")
@@ -147,7 +224,7 @@ public struct SettingsView: View {
               }
             }
             .disabled(
-              (settings == store.settings || !settings.isValid)
+              (viewModel.areSettingsSaved || !viewModel.areSettingsValid)
             )
           }
           ToolbarItem(placement: .navigationBarLeading) {
@@ -175,9 +252,6 @@ public struct SettingsView: View {
           Text("Changing settings will sign you out and disconnect you from resources")
         }
       )
-      .onAppear {
-        settings = store.settings
-      }
 
     #elseif os(macOS)
       VStack {
@@ -209,9 +283,6 @@ public struct SettingsView: View {
           Text("Changing settings will sign you out and disconnect you from resources")
         }
       )
-      .onAppear {
-        settings = store.settings
-      }
       .onDisappear(perform: { self.reloadSettings() })
     #else
       #error("Unsupported platform")
@@ -227,28 +298,19 @@ public struct SettingsView: View {
           Form {
             TextField(
               "Auth Base URL:",
-              text: Binding(
-                get: { settings.authBaseURL },
-                set: { settings.authBaseURL = $0 }
-              ),
+              text: $viewModel.authURLString,
               prompt: Text(PlaceholderText.authBaseURL)
             )
 
             TextField(
               "API URL:",
-              text: Binding(
-                get: { settings.apiURL },
-                set: { settings.apiURL = $0 }
-              ),
+              text: $viewModel.apiURLString,
               prompt: Text(PlaceholderText.apiURL)
             )
 
             TextField(
               "Log Filter:",
-              text: Binding(
-                get: { settings.logFilter },
-                set: { settings.logFilter = $0 }
-              ),
+              text: $viewModel.logFilterString,
               prompt: Text(PlaceholderText.logFilter)
             )
 
@@ -268,16 +330,15 @@ public struct SettingsView: View {
                   }
                 }
               )
-              .disabled(settings == store.settings || !store.settings.isValid)
+              .disabled(viewModel.areSettingsSaved || !viewModel.areSettingsValid)
 
               Button(
                 "Reset to Defaults",
                 action: {
-                  settings = Settings.defaultValue
-                  store.favorites.reset()
+                  viewModel.revertToDefaultSettings()
                 }
               )
-              .disabled(store.favorites.isEmpty() && settings == Settings.defaultValue)
+              .disabled(viewModel.areSettingsDefault)
             }
             .padding(.top, 5)
           }
@@ -303,10 +364,7 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.authBaseURL,
-                  text: Binding(
-                    get: { settings.authBaseURL },
-                    set: { settings.authBaseURL = $0 }
-                  )
+                  text: $viewModel.authURLString
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -318,10 +376,7 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.apiURL,
-                  text: Binding(
-                    get: { settings.apiURL },
-                    set: { settings.apiURL = $0 }
-                  )
+                  text: $viewModel.apiURLString
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -333,10 +388,7 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.logFilter,
-                  text: Binding(
-                    get: { settings.logFilter },
-                    set: { settings.logFilter = $0 }
-                  )
+                  text: $viewModel.logFilterString
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -347,11 +399,10 @@ public struct SettingsView: View {
                 Button(
                   "Reset to Defaults",
                   action: {
-                    settings = Settings.defaultValue
-                    store.favorites.reset()
+                    viewModel.revertToDefaultSettings()
                   }
                 )
-                .disabled(store.favorites.isEmpty() && settings == Settings.defaultValue)
+                .disabled(viewModel.areSettingsDefault)
                 Spacer()
               }
             },
@@ -483,7 +534,7 @@ public struct SettingsView: View {
   }
 
   func reloadSettings() {
-    settings = store.settings
+    viewModel.reloadSettingsFromStore()
     dismiss()
   }
 
@@ -578,17 +629,15 @@ public struct SettingsView: View {
   }
 
   func saveSettings() {
-    Task {
-      do {
-        if [.connected, .connecting, .reasserting].contains(store.status) {
-          try self.store.signOut()
-        }
-
-        try await store.saveSettings(settings)
-      } catch {
-        Log.error(error)
+    do {
+      if [.connected, .connecting, .reasserting].contains(store.status) {
+        try self.store.signOut()
       }
+    } catch {
+      Log.error(error)
     }
+
+    viewModel.applySettingsToStore()
   }
 
   // Calculates the total size of our logs by summing the size of the
