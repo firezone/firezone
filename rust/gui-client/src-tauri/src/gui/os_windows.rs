@@ -4,7 +4,7 @@ use firezone_bin_shared::BUNDLE_ID;
 use firezone_logging::err_with_src;
 use tauri::AppHandle;
 
-pub(crate) async fn set_autostart(_enabled: bool) -> Result<()> {
+pub async fn set_autostart(_enabled: bool) -> Result<()> {
     todo!()
 }
 

@@ -7,29 +7,11 @@
 use anyhow::{Context as _, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
+use firezone_gui_client::{controller, deep_link, elevation, gui, logging, settings};
 use firezone_telemetry::Telemetry;
+use gui::RunConfig;
 use settings::AdvancedSettings;
 use tracing_subscriber::EnvFilter;
-
-mod about;
-mod auth;
-mod controller;
-mod debug_commands;
-mod deep_link;
-mod elevation;
-mod gui;
-mod ipc;
-mod logging;
-mod settings;
-mod updates;
-mod uptime;
-mod welcome;
-
-/// The Sentry "release" we are part of.
-///
-/// IPC service and GUI client are always bundled into a single release.
-/// Hence, we have a single constant for IPC service and GUI client.
-const RELEASE: &str = concat!("gui-client@", env!("CARGO_PKG_VERSION"));
 
 fn main() -> anyhow::Result<()> {
     // Mitigates a bug in Ubuntu 22.04 - Under Wayland, some features of the window decorations like minimizing, closing the windows, etc., doesn't work unless you double-click the titlebar first.
@@ -45,14 +27,26 @@ fn main() -> anyhow::Result<()> {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
+    let config = gui::RunConfig {
+        inject_faults: cli.inject_faults,
+        debug_update_check: cli.debug_update_check,
+        smoke_test: cli
+            .command
+            .as_ref()
+            .is_some_and(|c| matches!(c, Cmd::SmokeTest)),
+        no_deep_links: cli.no_deep_links,
+        quit_after: cli.quit_after,
+        fail_with: cli.fail_on_purpose(),
+    };
+
     match cli.command {
         None => {
             if cli.no_deep_links {
-                return run_gui(cli);
+                return run_gui(config);
             }
             match elevation::gui_check() {
                 // Our elevation is correct (not elevated), just run the GUI
-                Ok(true) => run_gui(cli),
+                Ok(true) => run_gui(config),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 #[cfg(target_os = "linux")] // Windows/MacOS elevation check never fails.
                 Err(error) => {
@@ -61,9 +55,20 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Some(Cmd::Debug { command }) => debug_commands::run(command),
+        Some(Cmd::Debug {
+            command: DebugCommand::Replicate6791,
+        }) => firezone_gui_client::auth::replicate_6791(),
+        Some(Cmd::Debug {
+            command: DebugCommand::SetAutostart(SetAutostartArgs { enabled }),
+        }) => {
+            firezone_gui_client::logging::setup_stdout()?;
+            let rt = tokio::runtime::Runtime::new()?;
+            rt.block_on(firezone_gui_client::gui::set_autostart(enabled))?;
+
+            Ok(())
+        }
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => run_gui(cli),
+        Some(Cmd::Elevated) => run_gui(config),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             let rt = tokio::runtime::Runtime::new()?;
             if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
@@ -77,15 +82,15 @@ fn main() -> anyhow::Result<()> {
             let mut telemetry = Telemetry::default();
             telemetry.start(
                 settings.api_url.as_ref(),
-                crate::RELEASE,
+                firezone_gui_client::RELEASE,
                 firezone_telemetry::GUI_DSN,
             );
             // Don't fix the log filter for smoke tests
             let logging::Handles {
                 logger: _logger,
                 reloader,
-            } = start_logging(&settings.log_filter)?;
-            let result = gui::run(cli, settings, reloader, telemetry);
+            } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
+            let result = gui::run(config, settings, reloader, telemetry);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
@@ -103,13 +108,13 @@ fn main() -> anyhow::Result<()> {
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
 // Can't `instrument` this because logging isn't running when we enter it.
-fn run_gui(cli: Cli) -> Result<()> {
+fn run_gui(config: RunConfig) -> Result<()> {
     let mut settings = settings::load_advanced_settings().unwrap_or_default();
     let mut telemetry = Telemetry::default();
     // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
     telemetry.start(
         settings.api_url.as_ref(),
-        crate::RELEASE,
+        firezone_gui_client::RELEASE,
         firezone_telemetry::GUI_DSN,
     );
     // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
@@ -121,9 +126,9 @@ fn run_gui(cli: Cli) -> Result<()> {
     let logging::Handles {
         logger: _logger,
         reloader,
-    } = start_logging(&settings.log_filter)?;
+    } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
 
-    match gui::run(cli, settings, reloader, telemetry) {
+    match gui::run(config, settings, reloader, telemetry) {
         Ok(()) => Ok(()),
         Err(anyhow) => {
             if anyhow
@@ -146,7 +151,7 @@ fn run_gui(cli: Cli) -> Result<()> {
 
             if anyhow
                 .root_cause()
-                .is::<firezone_headless_client::ipc::NotFound>()
+                .is::<firezone_gui_client::ipc::NotFound>()
             {
                 show_error_dialog("Couldn't find Firezone IPC service. Is the service running?")?;
                 return Err(anyhow);
@@ -192,24 +197,6 @@ fn show_error_dialog(msg: &str) -> Result<()> {
         .set_type(native_dialog::MessageType::Error)
         .show_alert()?;
     Ok(())
-}
-
-/// Starts logging
-///
-/// Don't drop the log handle or logging will stop.
-fn start_logging(directives: &str) -> Result<logging::Handles> {
-    let logging_handles = logging::setup(directives)?;
-    let system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs());
-    tracing::info!(
-        arch = std::env::consts::ARCH,
-        os = std::env::consts::OS,
-        version = env!("CARGO_PKG_VERSION"),
-        ?directives,
-        ?system_uptime_seconds,
-        "`gui-client` started logging"
-    );
-
-    Ok(logging_handles)
 }
 
 /// The debug / test flags like `crash_on_purpose` and `test_update_notification`
@@ -268,12 +255,34 @@ impl Cli {
 enum Cmd {
     Debug {
         #[command(subcommand)]
-        command: debug_commands::Cmd,
+        command: DebugCommand,
     },
     Elevated,
     OpenDeepLink(DeepLink),
     /// SmokeTest gets its own subcommand for historical reasons.
     SmokeTest,
+}
+
+#[derive(clap::Subcommand)]
+enum DebugCommand {
+    Replicate6791,
+    SetAutostart(SetAutostartArgs),
+}
+
+#[derive(clap::Parser)]
+struct SetAutostartArgs {
+    #[clap(action=clap::ArgAction::Set)]
+    enabled: bool,
+}
+
+#[derive(clap::Parser)]
+struct CheckTokenArgs {
+    token: String,
+}
+
+#[derive(clap::Parser)]
+struct StoreTokenArgs {
+    token: String,
 }
 
 #[derive(Args)]

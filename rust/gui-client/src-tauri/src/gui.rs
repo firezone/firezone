@@ -4,8 +4,8 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::{
-    Cli, Cmd, about,
-    controller::{Controller, ControllerRequest, CtlrTx, GuiIntegration},
+    about,
+    controller::{Controller, ControllerRequest, CtlrTx, Failure, GuiIntegration},
     deep_link, logging,
     settings::{self, AdvancedSettings},
     updates,
@@ -33,7 +33,7 @@ mod os;
 #[path = "gui/os_windows.rs"]
 mod os;
 
-pub(crate) use os::set_autostart;
+pub use os::set_autostart;
 
 /// All managed state that we might need to access from odd places like Tauri commands.
 ///
@@ -114,10 +114,19 @@ impl GuiIntegration for TauriIntegration {
     }
 }
 
+pub struct RunConfig {
+    pub inject_faults: bool,
+    pub debug_update_check: bool,
+    pub smoke_test: bool,
+    pub no_deep_links: bool,
+    pub quit_after: Option<u64>,
+    pub fail_with: Option<Failure>,
+}
+
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 #[instrument(skip_all)]
-pub(crate) fn run(
-    cli: Cli,
+pub fn run(
+    config: RunConfig,
     advanced_settings: AdvancedSettings,
     reloader: firezone_logging::FilterReloadHandle,
     mut telemetry: telemetry::Telemetry,
@@ -138,7 +147,7 @@ pub(crate) fn run(
 
     let managed = Managed {
         ctlr_tx: ctlr_tx.clone(),
-        inject_faults: cli.inject_faults,
+        inject_faults: config.inject_faults,
     };
 
     let (handle_tx, handle_rx) = tokio::sync::oneshot::channel();
@@ -175,13 +184,13 @@ pub(crate) fn run(
         .setup(move |app| {
             // Check for updates
             tokio::spawn(async move {
-                if let Err(error) = updates::checker_task(updates_tx, cli.debug_update_check).await
+                if let Err(error) = updates::checker_task(updates_tx, config.debug_update_check).await
                 {
                     tracing::error!("Error in updates::checker_task: {error:#}");
                 }
             });
 
-            if let Some(Cmd::SmokeTest) = &cli.command {
+            if config.smoke_test {
                 let ctlr_tx = ctlr_tx.clone();
                 tokio::spawn(async move {
                     if let Err(error) = smoke_test(ctlr_tx).await {
@@ -191,8 +200,8 @@ pub(crate) fn run(
                 });
             }
 
-            tracing::debug!(cli.no_deep_links);
-            if !cli.no_deep_links {
+            tracing::debug!(config.no_deep_links);
+            if !config.no_deep_links {
                 // The single-instance check is done, so register our exe
                 // to handle deep links
                 let exe = tauri_utils::platform::current_exe().context("Can't find our own exe path")?;
@@ -200,7 +209,7 @@ pub(crate) fn run(
                 tokio::spawn(accept_deep_links(deep_link_server, ctlr_tx.clone()));
             }
 
-            if let Some(failure) = cli.fail_on_purpose() {
+            if let Some(failure) = config.fail_with {
                 let ctlr_tx = ctlr_tx.clone();
                 tokio::spawn(async move {
                     let delay = 5;
@@ -214,7 +223,7 @@ pub(crate) fn run(
                 });
             }
 
-            if let Some(delay) = cli.quit_after {
+            if let Some(delay) = config.quit_after {
                 let ctlr_tx = ctlr_tx.clone();
                 tokio::spawn(async move {
                     tracing::warn!("Will quit gracefully in {delay} seconds.");

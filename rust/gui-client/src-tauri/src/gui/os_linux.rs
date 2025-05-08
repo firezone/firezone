@@ -2,7 +2,7 @@ use anyhow::{Context as _, Result};
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt as _;
 
-pub(crate) async fn set_autostart(enabled: bool) -> Result<()> {
+pub async fn set_autostart(enabled: bool) -> Result<()> {
     let dir = dirs::config_local_dir()
         .context("Can't compute `config_local_dir`")?
         .join("autostart");

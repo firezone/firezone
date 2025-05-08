@@ -16,11 +16,7 @@ pub async fn connect_to_service(_id: ServiceId) -> Result<ClientStream> {
 }
 
 impl Server {
-    #[expect(
-        clippy::unused_async,
-        reason = "Signture must match other operating systems"
-    )]
-    pub(crate) async fn new(_id: ServiceId) -> Result<Self> {
+    pub(crate) fn new(_id: ServiceId) -> Result<Self> {
         bail!("not implemented")
     }
 

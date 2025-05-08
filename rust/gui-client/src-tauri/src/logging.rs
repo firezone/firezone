@@ -3,7 +3,7 @@
 use crate::gui::Managed;
 use anyhow::{Context as _, Result, bail};
 use firezone_bin_shared::known_dirs;
-use firezone_logging::err_with_src;
+use firezone_logging::{FilterReloadHandle, err_with_src};
 use serde::Serialize;
 use std::{
     fs,
@@ -12,7 +12,7 @@ use std::{
 };
 use tauri_plugin_dialog::DialogExt as _;
 use tokio::task::spawn_blocking;
-use tracing_subscriber::{Layer, Registry, layer::SubscriberExt};
+use tracing_subscriber::{EnvFilter, Layer, Registry, layer::SubscriberExt};
 
 use super::controller::{ControllerRequest, CtlrTx};
 
@@ -120,7 +120,7 @@ pub enum Error {
 /// We need two of these filters for some reason, and `EnvFilter` doesn't implement
 /// `Clone` yet, so that's why we take the directives string
 /// <https://github.com/tokio-rs/tracing/issues/2360>
-pub fn setup(directives: &str) -> Result<Handles> {
+pub fn setup_gui(directives: &str) -> Result<Handles> {
     if let Err(error) = output_vt100::try_init() {
         tracing::debug!("Failed to init terminal colors: {error}");
     }
@@ -152,12 +152,111 @@ pub fn setup(directives: &str) -> Result<Handles> {
         .with(firezone_logging::sentry_layer());
     firezone_logging::init(subscriber)?;
 
-    tracing::debug!(log_path = %log_path.display(), syslog_identifier = syslog_identifier.map(tracing::field::display));
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        os = std::env::consts::OS,
+        version = env!("CARGO_PKG_VERSION"),
+        %directives,
+        system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
+        log_path = %log_path.display(),
+        syslog_identifier = syslog_identifier.map(tracing::field::display),
+        "`gui-client` started logging"
+    );
 
     Ok(Handles {
         logger,
         reloader: stdout_reloader.merge(file_reloader).merge(system_reloader),
     })
+}
+
+/// Starts logging for the production IPC service
+///
+/// Returns: A `Handle` that must be kept alive. Dropping it stops logging
+/// and flushes the log file.
+pub fn setup_ipc(
+    log_path: Option<PathBuf>,
+) -> Result<(
+    firezone_logging::file::Handle,
+    firezone_logging::FilterReloadHandle,
+)> {
+    // If `log_dir` is Some, use that. Else call `ipc_service_logs`
+    let log_path = log_path.map_or_else(
+        || known_dirs::ipc_service_logs().context("Should be able to compute IPC service logs dir"),
+        Ok,
+    )?;
+    std::fs::create_dir_all(&log_path)
+        .context("We should have permissions to create our log dir")?;
+
+    let directives = get_log_filter().context("Couldn't read log filter")?;
+
+    let (file_filter, file_reloader) = firezone_logging::try_filter(&directives)?;
+    let (stdout_filter, stdout_reloader) = firezone_logging::try_filter(&directives)?;
+
+    let (file_layer, file_handle) = firezone_logging::file::layer(&log_path, "ipc-service");
+
+    let stdout_layer = tracing_subscriber::fmt::layer()
+        .with_ansi(firezone_logging::stdout_supports_ansi())
+        .event_format(firezone_logging::Format::new().without_timestamp());
+
+    let subscriber = Registry::default()
+        .with(file_layer.with_filter(file_filter))
+        .with(stdout_layer.with_filter(stdout_filter))
+        .with(firezone_logging::sentry_layer());
+    firezone_logging::init(subscriber)?;
+
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        os = std::env::consts::OS,
+        version = env!("CARGO_PKG_VERSION"),
+        ?directives,
+        system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
+        log_path = %log_path.display(),
+        "`ipc-service` started logging"
+    );
+
+    Ok((file_handle, file_reloader.merge(stdout_reloader)))
+}
+
+/// Sets up logging for stdout only, with INFO level by default
+pub fn setup_stdout() -> Result<FilterReloadHandle> {
+    let directives = get_log_filter().context("Can't read log filter")?;
+    let (filter, reloader) = firezone_logging::try_filter(&directives)?;
+    let layer = tracing_subscriber::fmt::layer()
+        .event_format(firezone_logging::Format::new())
+        .with_filter(filter);
+    let subscriber = Registry::default().with(layer);
+    firezone_logging::init(subscriber)?;
+
+    Ok(reloader)
+}
+/// Reads the log filter for the IPC service or for debug commands
+///
+/// e.g. `info`
+///
+/// Reads from:
+/// 1. `RUST_LOG` env var
+/// 2. `known_dirs::ipc_log_filter()` file
+/// 3. Hard-coded default `SERVICE_RUST_LOG`
+///
+/// Errors if something is badly wrong, e.g. the directory for the config file
+/// can't be computed
+pub(crate) fn get_log_filter() -> Result<String> {
+    #[cfg(not(debug_assertions))]
+    const DEFAULT_LOG_FILTER: &str = "info";
+    #[cfg(debug_assertions)]
+    const DEFAULT_LOG_FILTER: &str = "debug";
+
+    if let Ok(filter) = std::env::var(EnvFilter::DEFAULT_ENV) {
+        return Ok(filter);
+    }
+
+    if let Ok(filter) = std::fs::read_to_string(firezone_bin_shared::known_dirs::ipc_log_filter()?)
+        .map(|s| s.trim().to_string())
+    {
+        return Ok(filter);
+    }
+
+    Ok(DEFAULT_LOG_FILTER.to_string())
 }
 
 #[cfg(target_os = "linux")]
@@ -187,8 +286,7 @@ pub struct FileCount {
 /// If we get an error while removing a file, we still try to remove all other
 /// files, then we return the most recent error.
 pub async fn clear_gui_logs() -> Result<()> {
-    firezone_headless_client::clear_logs(&known_dirs::logs().context("Can't compute GUI log dir")?)
-        .await
+    crate::clear_logs(&known_dirs::logs().context("Can't compute GUI log dir")?).await
 }
 
 /// Exports logs to a zip file

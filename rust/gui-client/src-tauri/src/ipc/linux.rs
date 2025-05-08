@@ -41,19 +41,22 @@ pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
 
 impl Server {
     /// Platform-specific setup
-    pub(crate) async fn new(id: ServiceId) -> Result<Self> {
+    pub(crate) fn new(id: ServiceId) -> Result<Self> {
         let sock_path = ipc_path(id);
+
+        tracing::debug!(socket = %sock_path.display(), "Creating new IPC server");
+
         // Remove the socket if a previous run left it there
-        tokio::fs::remove_file(&sock_path).await.ok();
+        std::fs::remove_file(&sock_path).ok();
         // Create the dir if possible, needed for test paths under `/run/user`
         let dir = sock_path
             .parent()
             .context("`sock_path` should always have a parent")?;
-        tokio::fs::create_dir_all(dir).await?;
+        std::fs::create_dir_all(dir).context("Failed to create socket parent directory")?;
         let listener = UnixListener::bind(&sock_path)
             .with_context(|| format!("Couldn't bind UDS `{}`", sock_path.display()))?;
         let perms = std::fs::Permissions::from_mode(0o660);
-        tokio::fs::set_permissions(&sock_path, perms).await?;
+        std::fs::set_permissions(&sock_path, perms).context("Failed to set permissions on UDS")?;
 
         // TODO: Change this to `notify_service_controller` and put it in
         // the same place in the IPC service's main loop as in the Headless Client.
@@ -87,6 +90,7 @@ impl Server {
 fn ipc_path(id: ServiceId) -> PathBuf {
     match id {
         ServiceId::Prod => PathBuf::from("/run").join(BUNDLE_ID).join("ipc.sock"),
+        #[cfg(test)]
         ServiceId::Test(id) => firezone_bin_shared::known_dirs::runtime()
             .expect("`known_dirs::runtime()` should always work")
             .join(format!("ipc_test_{id}.sock")),

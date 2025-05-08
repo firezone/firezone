@@ -1,240 +1,40 @@
-use crate::{CallbackHandler, CliCommon, ConnlibMsg};
 use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
-use clap::Parser;
-use connlib_model::ResourceView;
+use backoff::ExponentialBackoffBuilder;
+use connlib_client_shared::ConnlibMsg;
 use firezone_bin_shared::{
-    DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
-    known_dirs,
+    DnsControlMethod, DnsController, TunDeviceManager, device_id, device_info, known_dirs,
     platform::{tcp_socket_factory, udp_socket_factory},
     signals,
 };
-use firezone_logging::{FilterReloadHandle, err_with_src, sentry_layer, telemetry_span};
+use firezone_logging::{FilterReloadHandle, err_with_src, telemetry_span};
 use firezone_telemetry::Telemetry;
 use futures::{
     Future as _, SinkExt as _, Stream as _,
     future::poll_fn,
     task::{Context, Poll},
 };
-use phoenix_channel::{DeviceInfo, LoginUrl};
-use secrecy::SecretString;
-use serde::{Deserialize, Serialize};
-use std::{
-    collections::BTreeSet,
-    io::{self, Write},
-    net::IpAddr,
-    path::PathBuf,
-    pin::pin,
-    sync::Arc,
-    time::Duration,
-};
+use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
+use secrecy::{Secret, SecretString};
+use std::{io::Write, pin::pin, sync::Arc, time::Duration};
 use tokio::{sync::mpsc, time::Instant};
-use tracing_subscriber::{Layer, Registry, layer::SubscriberExt};
 use url::Url;
 
-pub mod ipc;
-use backoff::ExponentialBackoffBuilder;
-use connlib_model::ResourceId;
-use ipc::{Server as IpcServer, ServiceId};
-use phoenix_channel::{PhoenixChannel, get_user_agent};
-use secrecy::Secret;
-
 #[cfg(target_os = "linux")]
-#[path = "ipc_service/linux.rs"]
-pub mod platform;
+#[path = "service/linux.rs"]
+mod platform;
 
 #[cfg(target_os = "windows")]
-#[path = "ipc_service/windows.rs"]
-pub mod platform;
+#[path = "service/windows.rs"]
+mod platform;
 
 #[cfg(target_os = "macos")]
-#[path = "ipc_service/macos.rs"]
-pub mod platform;
+#[path = "service/macos.rs"]
+mod platform;
 
-#[derive(clap::Parser)]
-#[command(author, version, about, long_about = None)]
-struct Cli {
-    #[command(subcommand)]
-    command: Cmd,
+pub use platform::{elevation_check, install, run};
 
-    #[command(flatten)]
-    common: CliCommon,
-}
-
-#[derive(clap::Subcommand)]
-enum Cmd {
-    /// Needed to test the IPC service on aarch64 Windows,
-    /// where the Tauri MSI bundler doesn't work yet
-    Install,
-    Run,
-    RunDebug,
-    RunSmokeTest,
-}
-
-impl Default for Cmd {
-    fn default() -> Self {
-        Self::Run
-    }
-}
-
-#[derive(Debug, PartialEq, Deserialize, Serialize)]
-pub enum ClientMsg {
-    ClearLogs,
-    Connect {
-        api_url: String,
-        token: String,
-    },
-    Disconnect,
-    ApplyLogFilter {
-        directives: String,
-    },
-    Reset,
-    SetDns(Vec<IpAddr>),
-    SetDisabledResources(BTreeSet<ResourceId>),
-    StartTelemetry {
-        environment: String,
-        release: String,
-        account_slug: Option<String>,
-    },
-}
-
-/// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
-#[derive(Debug, Deserialize, Serialize, strum::Display)]
-pub enum ServerMsg {
-    /// The IPC service finished clearing its log dir.
-    ClearedLogs(Result<(), String>),
-    ConnectResult(Result<(), Error>),
-    DisconnectedGracefully,
-    OnDisconnect {
-        error_msg: String,
-        is_authentication_error: bool,
-    },
-    OnUpdateResources(Vec<ResourceView>),
-    /// The IPC service is terminating, maybe due to a software update
-    ///
-    /// This is a hint that the Client should exit with a message like,
-    /// "Firezone is updating, please restart the GUI" instead of an error like,
-    /// "IPC connection closed".
-    TerminatingGracefully,
-    /// The interface and tunnel are ready for traffic.
-    TunnelReady,
-}
-
-// All variants are `String` because almost no error type implements `Serialize`
-#[derive(Debug, Deserialize, Serialize, thiserror::Error)]
-pub enum Error {
-    #[error("IO error: {0}")]
-    Io(String),
-    #[error("{0}")]
-    Other(String),
-}
-
-impl From<io::Error> for Error {
-    fn from(v: io::Error) -> Self {
-        Self::Io(v.to_string())
-    }
-}
-
-impl From<anyhow::Error> for Error {
-    fn from(v: anyhow::Error) -> Self {
-        Self::Other(format!("{v:#}"))
-    }
-}
-
-/// Only called from the GUI Client's build of the IPC service
-pub fn run_only_ipc_service() -> Result<()> {
-    // Docs indicate that `remove_var` should actually be marked unsafe
-    // SAFETY: We haven't spawned any other threads, this code should be the first
-    // thing to run after entering `main` and parsing CLI args.
-    // So nobody else is reading the environment.
-    unsafe {
-        // This removes the token from the environment per <https://security.stackexchange.com/a/271285>. We run as root so it may not do anything besides defense-in-depth.
-        std::env::remove_var(TOKEN_ENV_KEY);
-    }
-    assert!(std::env::var(TOKEN_ENV_KEY).is_err());
-    let cli = Cli::try_parse()?;
-    match cli.command {
-        Cmd::Install => platform::install_ipc_service(),
-        Cmd::Run => platform::run_ipc_service(cli.common),
-        Cmd::RunDebug => run_debug_ipc_service(cli),
-        Cmd::RunSmokeTest => run_smoke_test(),
-    }
-}
-
-fn run_debug_ipc_service(cli: Cli) -> Result<()> {
-    let log_filter_reloader = crate::setup_stdout_logging()?;
-    tracing::info!(
-        arch = std::env::consts::ARCH,
-        // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
-        system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs()),
-    );
-    if !platform::elevation_check()? {
-        bail!("IPC service failed its elevation check, try running as admin / root");
-    }
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let _guard = rt.enter();
-    let mut signals = signals::Terminate::new()?;
-    let mut telemetry = Telemetry::default();
-
-    rt.block_on(ipc_listen(
-        cli.common.dns_control,
-        &log_filter_reloader,
-        &mut signals,
-        &mut telemetry,
-    ))
-    .inspect(|_| rt.block_on(telemetry.stop()))
-    .inspect_err(|e| {
-        tracing::error!("IPC service failed: {e:#}");
-
-        rt.block_on(telemetry.stop_on_crash())
-    })
-}
-
-#[cfg(not(debug_assertions))]
-fn run_smoke_test() -> Result<()> {
-    anyhow::bail!("Smoke test is not built for release binaries.");
-}
-
-/// Listen for exactly one connection from a GUI, then exit
-///
-/// This makes the timing neater in case the GUI starts up slowly.
-#[cfg(debug_assertions)]
-fn run_smoke_test() -> Result<()> {
-    let log_filter_reloader = crate::setup_stdout_logging()?;
-    if !platform::elevation_check()? {
-        bail!("IPC service failed its elevation check, try running as admin / root");
-    }
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let _guard = rt.enter();
-    let mut dns_controller = DnsController {
-        dns_control_method: Default::default(),
-    };
-    // Deactivate Firezone DNS control in case the system or IPC service crashed
-    // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
-    dns_controller.deactivate()?;
-    let mut signals = signals::Terminate::new()?;
-    let mut telemetry = Telemetry::default();
-
-    // Couldn't get the loop to work here yet, so SIGHUP is not implemented
-    rt.block_on(async {
-        device_id::get_or_create().context("Failed to read / create device ID")?;
-        let mut server = IpcServer::new(ServiceId::Prod).await?;
-        let _ = Handler::new(
-            &mut server,
-            &mut dns_controller,
-            &log_filter_reloader,
-            &mut telemetry,
-        )
-        .await?
-        .run(&mut signals)
-        .await;
-        Ok::<_, anyhow::Error>(())
-    })
-}
+use crate::ipc::{self, ServiceId};
 
 /// Run the IPC service and terminate gracefully if we catch a terminate signal
 ///
@@ -254,7 +54,7 @@ async fn ipc_listen(
 
     Telemetry::set_firezone_id(firezone_id);
 
-    let mut server = IpcServer::new(ServiceId::Prod).await?;
+    let mut server = ipc::Server::new(ServiceId::Prod)?;
     let mut dns_controller = DnsController { dns_control_method };
     loop {
         let mut handler_fut = pin!(Handler::new(
@@ -307,7 +107,7 @@ struct Session {
 enum Event {
     Callback(ConnlibMsg),
     CallbackChannelClosed,
-    Ipc(ClientMsg),
+    Ipc(ipc::ClientMsg),
     IpcDisconnected,
     IpcError(anyhow::Error),
     Terminate,
@@ -323,7 +123,7 @@ enum HandlerOk {
 
 impl<'a> Handler<'a> {
     async fn new(
-        server: &mut IpcServer,
+        server: &mut ipc::Server,
         dns_controller: &'a mut DnsController,
         log_filter_reloader: &'a FilterReloadHandle,
         telemetry: &'a mut Telemetry,
@@ -389,7 +189,7 @@ impl<'a> Handler<'a> {
                         "Caught SIGINT / SIGTERM / Ctrl+C while an IPC client is connected"
                     );
                     // Ignore the result here because we're terminating anyway.
-                    let _ = self.send_ipc(ServerMsg::TerminatingGracefully).await;
+                    let _ = self.send_ipc(ipc::ServerMsg::TerminatingGracefully).await;
                     break HandlerOk::ServiceTerminating;
                 }
             }
@@ -433,7 +233,7 @@ impl<'a> Handler<'a> {
             } => {
                 let _ = self.session.take();
                 self.dns_controller.deactivate()?;
-                self.send_ipc(ServerMsg::OnDisconnect {
+                self.send_ipc(ipc::ServerMsg::OnDisconnect {
                     error_msg,
                     is_authentication_error,
                 })
@@ -455,45 +255,48 @@ impl<'a> Handler<'a> {
                 self.tun_device.set_routes(ipv4_routes, ipv6_routes).await?;
                 self.dns_controller.flush()?;
 
-                self.send_ipc(ServerMsg::TunnelReady).await?;
+                self.send_ipc(ipc::ServerMsg::TunnelReady).await?;
             }
             ConnlibMsg::OnUpdateResources(resources) => {
                 // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                 self.dns_controller.flush()?;
-                self.send_ipc(ServerMsg::OnUpdateResources(resources))
+                self.send_ipc(ipc::ServerMsg::OnUpdateResources(resources))
                     .await?;
             }
         }
         Ok(())
     }
 
-    async fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
+    async fn handle_ipc_msg(&mut self, msg: ipc::ClientMsg) -> Result<()> {
         match msg {
-            ClientMsg::ClearLogs => {
+            ipc::ClientMsg::ClearLogs => {
                 let result = crate::clear_logs(
                     &firezone_bin_shared::known_dirs::ipc_service_logs()
                         .context("Can't compute logs dir")?,
                 )
                 .await;
-                self.send_ipc(ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
-                    .await?
+                self.send_ipc(ipc::ServerMsg::ClearedLogs(
+                    result.map_err(|e| e.to_string()),
+                ))
+                .await?
             }
-            ClientMsg::Connect { api_url, token } => {
+            ipc::ClientMsg::Connect { api_url, token } => {
                 // Warning: Connection errors don't bubble to callers of `handle_ipc_msg`.
                 let token = secrecy::SecretString::from(token);
                 let result = self.connect_to_firezone(&api_url, token);
 
-                self.send_ipc(ServerMsg::ConnectResult(result)).await?
+                self.send_ipc(ipc::ServerMsg::ConnectResult(result)).await?
             }
-            ClientMsg::Disconnect => {
+            ipc::ClientMsg::Disconnect => {
                 if self.session.take().is_some() {
                     self.dns_controller.deactivate()?;
                 }
                 // Always send `DisconnectedGracefully` even if we weren't connected,
                 // so this will be idempotent.
-                self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
+                self.send_ipc(ipc::ServerMsg::DisconnectedGracefully)
+                    .await?;
             }
-            ClientMsg::ApplyLogFilter { directives } => {
+            ipc::ClientMsg::ApplyLogFilter { directives } => {
                 self.log_filter_reloader.reload(&directives)?;
 
                 let path = known_dirs::ipc_log_filter()?;
@@ -504,7 +307,7 @@ impl<'a> Handler<'a> {
                     tracing::warn!(path = %path.display(), %directives, "Failed to write new log directives: {}", err_with_src(&e));
                 }
             }
-            ClientMsg::Reset => {
+            ipc::ClientMsg::Reset => {
                 if self.last_connlib_start_instant.is_some() {
                     tracing::debug!("Ignoring reset since we're still signing in");
                     return Ok(());
@@ -516,7 +319,7 @@ impl<'a> Handler<'a> {
 
                 session.connlib.reset();
             }
-            ClientMsg::SetDns(resolvers) => {
+            ipc::ClientMsg::SetDns(resolvers) => {
                 let Some(session) = self.session.as_ref() else {
                     tracing::debug!("Cannot set DNS resolvers if we're signed out");
                     return Ok(());
@@ -525,7 +328,7 @@ impl<'a> Handler<'a> {
                 tracing::debug!(?resolvers);
                 session.connlib.set_dns(resolvers);
             }
-            ClientMsg::SetDisabledResources(disabled_resources) => {
+            ipc::ClientMsg::SetDisabledResources(disabled_resources) => {
                 let Some(session) = self.session.as_ref() else {
                     // At this point, the GUI has already saved the disabled Resources to disk, so it'll be correct on the next sign-in anyway.
                     tracing::debug!("Cannot set disabled resources if we're signed out");
@@ -534,7 +337,7 @@ impl<'a> Handler<'a> {
 
                 session.connlib.set_disabled_resources(disabled_resources);
             }
-            ClientMsg::StartTelemetry {
+            ipc::ClientMsg::StartTelemetry {
                 environment,
                 release,
                 account_slug,
@@ -555,7 +358,11 @@ impl<'a> Handler<'a> {
     /// Panics if there's no Tokio runtime or if connlib is already connected
     ///
     /// Throws matchable errors for bad URLs, unable to reach the portal, or unable to create the tunnel device
-    fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<(), Error> {
+    fn connect_to_firezone(
+        &mut self,
+        api_url: &str,
+        token: SecretString,
+    ) -> Result<(), ipc::Error> {
         let _connect_span = telemetry_span!("connect_to_firezone").entered();
 
         assert!(self.session.is_none());
@@ -576,8 +383,7 @@ impl<'a> Handler<'a> {
         .context("Failed to create `LoginUrl`")?;
 
         self.last_connlib_start_instant = Some(Instant::now());
-        let (cb_tx, cb_rx) = mpsc::channel(1_000);
-        let callbacks = CallbackHandler { cb_tx };
+        let (callbacks, cb_rx) = connlib_client_shared::ChannelCallbackHandler::new();
 
         // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
@@ -624,7 +430,7 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    async fn send_ipc(&mut self, msg: ServerMsg) -> Result<()> {
+    async fn send_ipc(&mut self, msg: ipc::ServerMsg) -> Result<()> {
         self.ipc_tx
             .send(&msg)
             .await
@@ -634,69 +440,81 @@ impl<'a> Handler<'a> {
     }
 }
 
-/// Starts logging for the production IPC service
-///
-/// Returns: A `Handle` that must be kept alive. Dropping it stops logging
-/// and flushes the log file.
-fn setup_logging(
-    log_dir: Option<PathBuf>,
-) -> Result<(
-    firezone_logging::file::Handle,
-    firezone_logging::FilterReloadHandle,
-)> {
-    // If `log_dir` is Some, use that. Else call `ipc_service_logs`
-    let log_dir = log_dir.map_or_else(
-        || known_dirs::ipc_service_logs().context("Should be able to compute IPC service logs dir"),
-        Ok,
-    )?;
-    std::fs::create_dir_all(&log_dir)
-        .context("We should have permissions to create our log dir")?;
-
-    let directives = crate::get_log_filter().context("Couldn't read log filter")?;
-
-    let (file_filter, file_reloader) = firezone_logging::try_filter(&directives)?;
-    let (stdout_filter, stdout_reloader) = firezone_logging::try_filter(&directives)?;
-
-    let (file_layer, file_handle) = firezone_logging::file::layer(&log_dir, "ipc-service");
-
-    let stdout_layer = tracing_subscriber::fmt::layer()
-        .with_ansi(firezone_logging::stdout_supports_ansi())
-        .event_format(firezone_logging::Format::new().without_timestamp());
-
-    let subscriber = Registry::default()
-        .with(file_layer.with_filter(file_filter))
-        .with(stdout_layer.with_filter(stdout_filter))
-        .with(sentry_layer());
-    firezone_logging::init(subscriber)?;
-
+pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
+    let log_filter_reloader = crate::logging::setup_stdout()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
         // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
         system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs()),
-        %directives
     );
+    if !elevation_check()? {
+        bail!("IPC service failed its elevation check, try running as admin / root");
+    }
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let _guard = rt.enter();
+    let mut signals = signals::Terminate::new()?;
+    let mut telemetry = Telemetry::default();
 
-    Ok((file_handle, file_reloader.merge(stdout_reloader)))
+    rt.block_on(ipc_listen(
+        dns_control,
+        &log_filter_reloader,
+        &mut signals,
+        &mut telemetry,
+    ))
+    .inspect(|_| rt.block_on(telemetry.stop()))
+    .inspect_err(|e| {
+        tracing::error!("IPC service failed: {e:#}");
+
+        rt.block_on(telemetry.stop_on_crash())
+    })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{Cli, Cmd};
-    use clap::Parser;
-    use std::path::PathBuf;
+/// Listen for exactly one connection from a GUI, then exit
+///
+/// This makes the timing neater in case the GUI starts up slowly.
+#[cfg(debug_assertions)]
+pub fn run_smoke_test() -> Result<()> {
+    use crate::ipc::{self, ServiceId};
+    use anyhow::{Context as _, bail};
+    use firezone_bin_shared::{DnsController, device_id};
 
-    const EXE_NAME: &str = "firezone-client-ipc";
-
-    // Can't remember how Clap works sometimes
-    // Also these are examples
-    #[test]
-    fn cli() {
-        let actual =
-            Cli::try_parse_from([EXE_NAME, "--log-dir", "bogus_log_dir", "run-debug"]).unwrap();
-        assert!(matches!(actual.command, Cmd::RunDebug));
-        assert_eq!(actual.common.log_dir, Some(PathBuf::from("bogus_log_dir")));
-
-        let actual = Cli::try_parse_from([EXE_NAME, "run"]).unwrap();
-        assert!(matches!(actual.command, Cmd::Run));
+    let log_filter_reloader = crate::logging::setup_stdout()?;
+    if !elevation_check()? {
+        bail!("IPC service failed its elevation check, try running as admin / root");
     }
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let _guard = rt.enter();
+    let mut dns_controller = DnsController {
+        dns_control_method: Default::default(),
+    };
+    // Deactivate Firezone DNS control in case the system or IPC service crashed
+    // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
+    dns_controller.deactivate()?;
+    let mut signals = signals::Terminate::new()?;
+    let mut telemetry = Telemetry::default();
+
+    // Couldn't get the loop to work here yet, so SIGHUP is not implemented
+    rt.block_on(async {
+        device_id::get_or_create().context("Failed to read / create device ID")?;
+        let mut server = ipc::Server::new(ServiceId::Prod)?;
+        let _ = Handler::new(
+            &mut server,
+            &mut dns_controller,
+            &log_filter_reloader,
+            &mut telemetry,
+        )
+        .await?
+        .run(&mut signals)
+        .await;
+        Ok::<_, anyhow::Error>(())
+    })
+}
+
+#[cfg(not(debug_assertions))]
+pub fn run_smoke_test() -> Result<()> {
+    anyhow::bail!("Smoke test is not built for release binaries.");
 }
