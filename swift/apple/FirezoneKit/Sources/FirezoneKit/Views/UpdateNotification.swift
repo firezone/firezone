@@ -24,22 +24,12 @@ class UpdateChecker {
 
   private var timer: Timer?
   private let notificationAdapter: NotificationAdapter = NotificationAdapter()
-  private let versionCheckUrl: URL
-  private let marketingVersion: SemanticVersion
+  private let versionCheckUrl = URL(string: "https://www.firezone.dev/api/releases")!
 
   @MainActor @Published private(set) var updateAvailable: Bool = false
 
   init() {
-    guard let versionCheckUrl = URL(string: "https://www.firezone.dev/api/releases"),
-          let versionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
-          let marketingVersion = try? SemanticVersion(versionString)
-    else {
-      fatalError("Should be able to initialize the UpdateChecker")
-    }
-
-    self.versionCheckUrl = versionCheckUrl
-    self.marketingVersion = marketingVersion
-
+    migrateConfigurationIfNeeded()
     startCheckingForUpdates()
   }
 
@@ -83,20 +73,22 @@ class UpdateChecker {
 
       guard let data = data,
             let versions = try? JSONDecoder().decode([String: String].self, from: data),
-            let versionString = versions["apple"],
-            let latestVersion = try? SemanticVersion(versionString)
+            let latestVersion = versions["apple"]
       else {
         Log.error(UpdateError.invalidVersion("data was invalid or 'apple' key not found"))
 
         return
       }
 
-      if latestVersion > marketingVersion {
+      if BundleHelper.version.compare(latestVersion, options: .numeric) == .orderedAscending { // outdated
         Task {
           await MainActor.run {
             self.updateAvailable = true
 
-            if let lastDismissedVersion = getLastDismissedVersion(), lastDismissedVersion >= latestVersion {
+            // Don't show notification if version was already dismissed
+            if let lastDismissedVersion = Configuration.shared.lastDismissedVersion,
+               [.orderedDescending, .orderedSame].contains(
+                lastDismissedVersion.compare(latestVersion, options: .numeric)) {
               return
             }
 
@@ -155,9 +147,9 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
 
   }
 
-  @MainActor func showUpdateNotification(version: SemanticVersion) {
+  @MainActor func showUpdateNotification(version: String) {
     let content = UNMutableNotificationContent()
-    setLastNotifiedVersion(version: version)
+    Configuration.shared.lastNotifiedVersion = version
     content.title = "Update Firezone"
     content.body = "New version available"
     content.sound = .default
@@ -180,8 +172,8 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
                               didReceive response: UNNotificationResponse,
                               withCompletionHandler completionHandler: @escaping () -> Void) {
     if response.actionIdentifier == NotificationAdapter.dismissIdentifier { // User dismissed this notification
-      if let lastNotifiedVersion = getLastNotifiedVersion() { // Don't notify them again for this version
-        setLastDismissedVersion(version: lastNotifiedVersion)
+      if let lastNotifiedVersion = Configuration.shared.lastNotifiedVersion { // Don't notify again for this version
+        Configuration.shared.lastDismissedVersion = lastNotifiedVersion
       }
 
       completionHandler()
@@ -215,50 +207,21 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
 
 }
 
-private let lastDismissedVersionKey = "lastDismissedVersion"
-private let lastNotifiedVersionKey = "lastNotifiedVersion"
-
-private func setLastDismissedVersion(version: SemanticVersion) {
-  setVersion(key: lastDismissedVersionKey, version: version)
-}
-
-private func setLastNotifiedVersion(version: SemanticVersion) {
-  setVersion(key: lastNotifiedVersionKey, version: version)
-}
-
-private func getLastDismissedVersion() -> SemanticVersion? {
-  loadVersion(key: lastDismissedVersionKey)
-}
-
-private func getLastNotifiedVersion() -> SemanticVersion? {
-  loadVersion(key: lastNotifiedVersionKey)
-}
-
-func setVersion(key: String, version: SemanticVersion) {
-  let encoder = PropertyListEncoder()
-
-  do {
-    let data = try encoder.encode(version)
-    UserDefaults.standard.setValue(data, forKey: key)
-  } catch {
-    Log.error(error)
-  }
-}
-
-func loadVersion(key: String) -> SemanticVersion? {
+// Firezone 1.4.14 and below had scattered app configuration everywhere. We've consolidated going forward.
+// TODO: This can be deleted once most users have upgraded past 1.4.14
+private func migrateConfigurationIfNeeded() {
   let decoder = PropertyListDecoder()
 
-  guard let data = UserDefaults.standard.object(forKey: lastDismissedVersionKey) as? Data
-  else { return nil }
+  if let data = UserDefaults.standard.object(forKey: "lastDismissedVersion") as? Data,
+     let version = try? decoder.decode(SemanticVersion.self, from: data) {
+    Configuration.shared.lastDismissedVersion = version.description
+    UserDefaults.standard.removeObject(forKey: "lastDismissedVersion")
+  }
 
-  do {
-    let version = try decoder.decode(SemanticVersion.self, from: data)
-
-    return version
-  } catch {
-    Log.error(error)
-
-    return nil
+  if let data = UserDefaults.standard.object(forKey: "lastNotifiedVersion") as? Data,
+     let version = try? decoder.decode(SemanticVersion.self, from: data) {
+    Configuration.shared.lastNotifiedVersion = version.description
+    UserDefaults.standard.removeObject(forKey: "lastNotifiedVersion")
   }
 }
 

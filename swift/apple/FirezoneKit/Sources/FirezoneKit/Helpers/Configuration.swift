@@ -17,6 +17,8 @@ public class Configuration {
     static let logFilter = "dev.firezone.config.logFilter"
     static let accountSlug = "dev.firezone.config.accountSlug"
     static let internetResourceEnabled = "dev.firezone.config.internetResourceEnabled"
+    static let lastDismissedVersion = "dev.firezone.config.lastDismissedVersion"
+    static let lastNotifiedVersion = "dev.firezone.config.lastNotifiedVersion"
   }
 
   // We expose all configuration getters to return Optionals so that any consumers of this class may distinguish
@@ -54,6 +56,16 @@ public class Configuration {
   public var internetResourceEnabled: Bool? {
     get { userDefaults.bool(forKey: Keys.internetResourceEnabled) }
     set { userDefaults.set(newValue, forKey: Keys.internetResourceEnabled) }
+  }
+
+  public var lastDismissedVersion: String? {
+    get { userDefaults.string(forKey: Keys.lastDismissedVersion) }
+    set { userDefaults.set(newValue, forKey: Keys.lastDismissedVersion) }
+  }
+
+  public var lastNotifiedVersion: String? {
+    get { userDefaults.string(forKey: Keys.lastNotifiedVersion) }
+    set { userDefaults.set(newValue, forKey: Keys.lastNotifiedVersion) }
   }
 
   // Use these to provide default values at the call site if needed
