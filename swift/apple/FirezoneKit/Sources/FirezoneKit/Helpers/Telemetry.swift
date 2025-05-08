@@ -41,12 +41,13 @@ public enum Telemetry {
     }
   }
 
-  public static func setEnvironmentOrClose(_ apiURLString: String) {
+  public static func setEnvironmentOrClose(_ apiURL: URL) {
     var environment: String?
+    let str = apiURL.absoluteString
 
-    if apiURLString.starts(with: "wss://api.firezone.dev") {
+    if str.starts(with: "wss://api.firezone.dev") {
       environment = "production"
-    } else if apiURLString.starts(with: "wss://api.firez.one") {
+    } else if str.starts(with: "wss://api.firez.one") {
       environment = "staging"
     }
 

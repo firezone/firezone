@@ -10,12 +10,15 @@ import System
 import os
 
 enum PacketTunnelProviderError: Error {
-  case savedProtocolConfigurationIsInvalid(String)
+  case apiURLIsInvalid
+  case logFilterIsInvalid
+  case accountSlugIsInvalid
   case tokenNotFoundInKeychain
 }
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
+  private var appConfiguration: UserDefaults
 
   enum LogExportState {
     case inProgress(TunnelLogArchive)
@@ -28,11 +31,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Initialize Telemetry as early as possible
     Telemetry.start()
 
+    guard let userDefaults = UserDefaults(suiteName: BundleHelper.appGroupId)
+    else {
+      fatalError("Could not initialize app configuration")
+    }
+
+    self.appConfiguration = userDefaults
+
     super.init()
   }
 
-  // TODO: Refactor this to shorten function body
-  // swiftlint:disable:next function_body_length
   override func startTunnel(
     options: [String: NSObject]?,
     completionHandler: @escaping (Error?) -> Void
@@ -55,44 +63,29 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let id = loadAndSaveFirezoneId(from: options)
 
       // Now we should have a token, so continue connecting
-      guard let apiURL = protocolConfiguration.serverAddress
+      guard let apiURL = appConfiguration.url(forKey: Store.Keys.apiURL)
       else {
-        throw PacketTunnelProviderError
-          .savedProtocolConfigurationIsInvalid("serverAddress")
+        throw PacketTunnelProviderError.apiURLIsInvalid
       }
 
       // Reconfigure our Telemetry environment now that we know the API URL
       Telemetry.setEnvironmentOrClose(apiURL)
 
-      guard
-        let providerConfiguration = (protocolConfiguration as? NETunnelProviderProtocol)?
-          .providerConfiguration as? [String: String],
-        let logFilter = providerConfiguration[VPNConfigurationManager.Keys.logFilter]
+      guard let logFilter = appConfiguration.string(forKey: Store.Keys.logFilter)
       else {
-        throw PacketTunnelProviderError
-          .savedProtocolConfigurationIsInvalid("providerConfiguration.logFilter")
+        throw PacketTunnelProviderError.logFilterIsInvalid
       }
 
       // Hydrate telemetry account slug
-      guard let accountSlug = providerConfiguration[VPNConfigurationManager.Keys.accountSlug]
+      guard let accountSlug = appConfiguration.string(forKey: Store.Keys.accountSlug)
       else {
-        // This can happen if the user deletes the VPN configuration while it's
-        // connected. The system will try to restart us with a fresh config
-        // once the user fixes the problem, but we'd rather not connect
-        // without a slug.
-        throw PacketTunnelProviderError
-          .savedProtocolConfigurationIsInvalid("providerConfiguration.accountSlug")
+        throw PacketTunnelProviderError.accountSlugIsInvalid
       }
 
       Telemetry.accountSlug = accountSlug
 
-      let internetResourceEnabled: Bool =
-      if let internetResourceEnabledJSON = providerConfiguration[
-        VPNConfigurationManager.Keys.internetResourceEnabled]?.data(using: .utf8) {
-        (try? JSONDecoder().decode(Bool.self, from: internetResourceEnabledJSON )) ?? false
-      } else {
-        false
-      }
+      // Load current internetResourceEnabledState
+      let internetResourceEnabled = appConfiguration.bool(forKey: Store.Keys.accountSlug)
 
       let adapter = Adapter(
         apiURL: apiURL,
