@@ -3,7 +3,6 @@
 //  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
-// TODO: This file can be deleted once most users have upgraded past 1.4.14
 
 import Foundation
 

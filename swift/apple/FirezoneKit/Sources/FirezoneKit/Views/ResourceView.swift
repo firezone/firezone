@@ -170,12 +170,10 @@ struct NonInternetResourceHeader: View {
         }
       }
 
-      if store.favoriteResourceIDs.contains(resource.id) {
+      if store.favorites.contains(resource.id) {
         Button(
           action: {
-            var ids = store.favoriteResourceIDs
-            ids.removeAll { $0 == resource.id }
-            store.setFavoriteResourceIDs(ids)
+            store.favorites.remove(resource.id)
           },
           label: {
             HStack {
@@ -188,9 +186,7 @@ struct NonInternetResourceHeader: View {
       } else {
         Button(
           action: {
-            var ids = store.favoriteResourceIDs
-            ids.append(resource.id)
-            store.setFavoriteResourceIDs(ids)
+            store.favorites.add(resource.id)
           }, label: {
             HStack {
               Image(systemName: "star.fill")
@@ -239,7 +235,7 @@ struct ToggleInternetResourceButton: View {
   @EnvironmentObject var store: Store
 
   private func toggleResourceEnabledText() -> String {
-    if store.internetResourceEnabled == true {
+    if store.configuration?.internetResourceEnabled == true {
       "Disable this resource"
     } else {
       "Enable this resource"

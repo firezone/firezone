@@ -13,6 +13,7 @@ enum PacketTunnelProviderError: Error {
   case apiURLIsInvalid
   case logFilterIsInvalid
   case accountSlugIsInvalid
+  case firezoneIdIsInvalid
   case tokenNotFoundInKeychain
 }
 
@@ -50,28 +51,25 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       // Try to save the token back to the Keychain but continue if we can't
       do { try token.save() } catch { Log.error(error) }
 
-      // Use and persist the provided ID or try loading it from disk,
-      // generating a new one if both of those are nil.
-      let id = loadAndSaveFirezoneId(from: options)
+      // The firezone id should be initialized by now
+      guard let id = ConfigurationManager.shared.firezoneId
+      else {
+        throw PacketTunnelProviderError.firezoneIdIsInvalid
+      }
 
       // Now we should have a token, so continue connecting
-      let apiURL = Configuration.shared.apiURL ?? Configuration.defaultApiURL
+      let apiURL = ConfigurationManager.shared.apiURL ?? Configuration.defaultApiURL
 
       // Reconfigure our Telemetry environment now that we know the API URL
       Telemetry.setEnvironmentOrClose(apiURL)
 
-      let logFilter = Configuration.shared.logFilter ?? Configuration.defaultLogFilter
+      let logFilter = ConfigurationManager.shared.logFilter ?? Configuration.defaultLogFilter
 
       // Hydrate telemetry account slug
-      guard let accountSlug = Configuration.shared.accountSlug
-      else {
-        throw PacketTunnelProviderError.accountSlugIsInvalid
-      }
-
+      let accountSlug = ConfigurationManager.shared.accountSlug
       Telemetry.accountSlug = accountSlug
 
-      // Load current internetResourceEnabledState
-      let internetResourceEnabled = Configuration.shared.internetResourceEnabled ?? false
+      let internetResourceEnabled = ConfigurationManager.shared.internetResourceEnabled ?? false
 
       let adapter = Adapter(
         apiURL: apiURL,
@@ -89,11 +87,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       // Tell the system the tunnel is up, moving the tunnel manager status to
       // `connected`.
       completionHandler(nil)
-
-    } catch let error as PacketTunnelProviderError {
-
-      // These are expected, no need to log them
-      completionHandler(error)
 
     } catch {
 
@@ -145,31 +138,71 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   // It would be helpful to be able to encapsulate Errors here. To do that
   // we need to update ProviderMessage to encode/decode Result to and from Data.
+  // TODO: Move to a more abstract IPC protocol
+  // swiftlint:disable:next cyclomatic_complexity function_body_length
   override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
-    guard let providerMessage = try? PropertyListDecoder().decode(ProviderMessage.self, from: message) else { return }
+    do {
+      let providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
 
-    switch providerMessage {
-    case .internetResourceEnabled(let value):
-      adapter?.setInternetResourceEnabled(value)
-    case .signOut:
-      do {
-        try Token.delete()
-      } catch {
-        Log.error(error)
-      }
-    case .getResourceList(let value):
-      adapter?.getResourcesIfVersionDifferentFrom(hash: value) { resourceListJSON in
-        completionHandler?(resourceListJSON?.data(using: .utf8))
-      }
-    case .clearLogs:
-      clearLogs(completionHandler)
-    case .getLogFolderSize:
-      getLogFolderSize(completionHandler)
-    case .exportLogs:
-      exportLogs(completionHandler!)
+      switch providerMessage {
+      case .getConfiguration(let hash):
+        let configurationPayload = ConfigurationManager.shared.toDataIfChanged(hash: hash)
+        completionHandler?(configurationPayload)
+      case .setAuthURL(let authURL):
+        ConfigurationManager.shared.authURL = authURL
+        completionHandler?(nil)
+      case .setApiURL(let apiURL):
+        ConfigurationManager.shared.apiURL = apiURL
+        completionHandler?(nil)
+      case .setActorName(let actorName):
+        ConfigurationManager.shared.actorName = actorName
+        completionHandler?(nil)
+      case .setAccountSlug(let accountSlug):
+        ConfigurationManager.shared.accountSlug = accountSlug
+        completionHandler?(nil)
+      case .setLogFilter(let logFilter):
+        ConfigurationManager.shared.logFilter = logFilter
+        completionHandler?(nil)
+      case .setInternetResourceEnabled(let enabled):
+        ConfigurationManager.shared.internetResourceEnabled = enabled
+        adapter?.setInternetResourceEnabled(enabled)
+        completionHandler?(nil)
+      case .signOut:
+        do {
+          try Token.delete()
+          Task {
+            await stopTunnel(with: .userInitiated)
+            completionHandler?(nil)
+          }
+        } catch {
+          Log.error(error)
+          completionHandler?(nil)
+        }
+      case .getResourceList(let hash):
+        guard let adapter = adapter
+        else {
+          Log.warning("Adapter is nil")
+          completionHandler?(nil)
 
-    case .consumeStopReason:
-      consumeStopReason(completionHandler!)
+          return
+        }
+
+        adapter.getResourcesIfVersionDifferentFrom(hash: hash) { resourceListJSON in
+          completionHandler?(resourceListJSON?.data(using: .utf8))
+        }
+      case .clearLogs:
+        clearLogs(completionHandler)
+      case .getLogFolderSize:
+        getLogFolderSize(completionHandler)
+      case .exportLogs:
+        exportLogs(completionHandler!)
+
+      case .consumeStopReason:
+        consumeStopReason(completionHandler!)
+      }
+    } catch {
+      Log.error(error)
+      completionHandler?(nil)
     }
   }
 
@@ -185,20 +218,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }()
 
     return Token(passedToken) ?? keychainToken
-  }
-
-  func loadAndSaveFirezoneId(from options: [String: NSObject]?) -> String {
-    let passedId = options?["id"] as? String
-    let persistedId = FirezoneId.load(.post140)
-
-    let id = passedId ?? persistedId ?? UUID().uuidString
-
-    FirezoneId.save(id)
-
-    // Hydrate the telemetry userId with our firezone id
-    Telemetry.firezoneId = id
-
-    return id
   }
 
   func clearLogs(_ completionHandler: ((Data?) -> Void)? = nil) {

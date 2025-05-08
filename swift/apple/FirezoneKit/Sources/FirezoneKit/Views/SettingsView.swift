@@ -79,49 +79,64 @@ class SettingsViewModel: ObservableObject {
   init(store: Store) {
     self.store = store
 
-    self.authURLString = store.authURL.absoluteString
-    self.apiURLString = store.apiURL.absoluteString
-    self.logFilterString = store.logFilter
-    updateDerivedState(authURL: store.authURL, apiURL: store.apiURL, logFilter: store.logFilter)
+    self.authURLString = store.configuration?.authURL?.absoluteString ?? Configuration.defaultAuthURL.absoluteString
+    self.apiURLString = store.configuration?.apiURL?.absoluteString ?? Configuration.defaultApiURL.absoluteString
+    self.logFilterString = store.configuration?.logFilter ?? Configuration.defaultLogFilter
 
-    Publishers.CombineLatest3(store.$authURL, store.$apiURL, store.$logFilter)
+    updateDerivedState()
+
+    Publishers.CombineLatest3($authURLString, $apiURLString, $logFilterString)
       .receive(on: RunLoop.main)
-      .sink { [weak self] (authURL, apiURL, logFilter) in
+      .sink { [weak self] (_, _, _) in
         guard let self = self else { return }
-        self.authURLString = authURL.absoluteString
-        self.apiURLString = apiURL.absoluteString
-        self.logFilterString = logFilter
-        self.updateDerivedState(authURL: authURL, apiURL: apiURL, logFilter: logFilter)
+
+        self.updateDerivedState()
       }
       .store(in: &cancellables)
   }
 
-  private func updateDerivedState(authURL: URL, apiURL: URL, logFilter: String) {
-    self.areSettingsSaved = (self.authURLString == authURL.absoluteString &&
-                             self.apiURLString == apiURL.absoluteString &&
-                             self.logFilterString == logFilter)
-    self.areSettingsValid = (!logFilter.isEmpty &&
-                             ["https", "http"].contains(authURL.scheme) &&
-                             ["wss", "ws"].contains(apiURL.scheme) &&
-                             apiURL.host != nil &&
-                             authURL.host != nil)
-    self.areSettingsDefault = (authURL == Configuration.defaultAuthURL &&
-                               apiURL == Configuration.defaultApiURL &&
-                               logFilter == Configuration.defaultLogFilter)
+  private func updateDerivedState() {
+    self.areSettingsSaved = (self.authURLString == store.configuration?.authURL?.absoluteString &&
+                             self.apiURLString == store.configuration?.apiURL?.absoluteString &&
+                             self.logFilterString == store.configuration?.logFilter)
+
+    if let apiURL = URL(string: apiURLString),
+       let authURL = URL(string: authURLString),
+       authURL.host != nil,
+       apiURL.host != nil,
+       ["https", "http"].contains(authURL.scheme),
+       ["wss", "ws"].contains(apiURL.scheme),
+       !logFilterString.isEmpty {
+
+      self.areSettingsValid = true
+
+    } else {
+
+      self.areSettingsValid = false
+
+    }
+
+    self.areSettingsDefault = (self.authURLString == Configuration.defaultAuthURL.absoluteString &&
+                               self.apiURLString == Configuration.defaultApiURL.absoluteString &&
+                               self.logFilterString == Configuration.defaultLogFilter)
   }
 
-  func applySettingsToStore() {
-    guard let authURL = URL(string: self.authURLString),
-          let apiURL = URL(string: self.apiURLString)
+  func applySettingsToStore() throws {
+    guard let authURL = URL(string: authURLString),
+          let apiURL = URL(string: apiURLString)
     else {
-      Log.warning("Unexpectedly could not parse URL strings while saving settings")
+      Log.warning("Unexpectedly invalid settings")
 
       return
     }
 
-    store.setAuthURL(authURL)
-    store.setApiURL(apiURL)
-    store.setLogFilter(logFilterString)
+    Task {
+      try await store.setApiURL(apiURL)
+      try await store.setLogFilter(logFilterString)
+      try await store.setAuthURL(authURL)
+
+      updateDerivedState()
+    }
   }
 
   func revertToDefaultSettings() {
@@ -131,9 +146,9 @@ class SettingsViewModel: ObservableObject {
   }
 
   func reloadSettingsFromStore() {
-    self.authURLString = store.authURL.absoluteString
-    self.apiURLString = store.apiURL.absoluteString
-    self.logFilterString = store.logFilter
+    self.authURLString = store.configuration?.authURL?.absoluteString ?? Configuration.defaultAuthURL.absoluteString
+    self.apiURLString = store.configuration?.apiURL?.absoluteString ?? Configuration.defaultApiURL.absoluteString
+    self.logFilterString = store.configuration?.logFilter ?? Configuration.defaultLogFilter
   }
 }
 
@@ -155,9 +170,9 @@ public struct SettingsView: View {
       case .none:
         break
       case .saveSettings:
-        view.saveSettings()
+        Task { do { try await view.saveSettings() } catch { Log.error(error) } }
       case .saveAllSettingsAndDismiss:
-        view.saveAllSettingsAndDismiss()
+        Task { do { try await view.saveAllSettingsAndDismiss() } catch { Log.error(error) } }
       }
     }
   }
@@ -528,8 +543,8 @@ public struct SettingsView: View {
     #endif
   }
 
-  func saveAllSettingsAndDismiss() {
-    saveSettings()
+  func saveAllSettingsAndDismiss() async throws {
+    try await saveSettings()
     dismiss()
   }
 
@@ -628,16 +643,16 @@ public struct SettingsView: View {
     }
   }
 
-  func saveSettings() {
+  func saveSettings() async throws {
     do {
       if [.connected, .connecting, .reasserting].contains(store.status) {
-        try self.store.signOut()
+        try await self.store.signOut()
       }
     } catch {
       Log.error(error)
     }
 
-    viewModel.applySettingsToStore()
+    try viewModel.applySettingsToStore()
   }
 
   // Calculates the total size of our logs by summing the size of the

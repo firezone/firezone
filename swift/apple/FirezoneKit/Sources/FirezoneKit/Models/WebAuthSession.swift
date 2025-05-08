@@ -16,7 +16,9 @@ struct WebAuthSession {
   static let anchor = PresentationAnchor()
 
   static func signIn(store: Store) async throws {
-    guard let authClient = try? AuthClient(authURL: store.authURL),
+    let authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
+
+    guard let authClient = try? AuthClient(authURL: authURL),
           let url = try? authClient.build()
     else {
       // Should never get here because we perform URL validation on input, but handle this just in case

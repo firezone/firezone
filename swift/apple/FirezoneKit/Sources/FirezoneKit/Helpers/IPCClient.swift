@@ -8,6 +8,10 @@ import CryptoKit
 import Foundation
 import NetworkExtension
 
+// TODO: Use a more abstract IPC protocol to make this less terse
+// TODO: Consider making this an actor to guarantee strict ordering
+
+// swiftlint:disable:next type_body_length
 class IPCClient {
   enum Error: Swift.Error {
     case invalidNotification
@@ -41,6 +45,10 @@ class IPCClient {
   // return them to callers when they haven't changed.
   var resourcesListCache: ResourceList = ResourceList.loading
 
+  // Cache the configuration on this side of the IPC barrier so we can return it to callers if it hasn't changed.
+  private var configurationHash = Data()
+  private var configurationCache: Configuration?
+
   init(session: NETunnelProviderSession) {
     self.session = session
   }
@@ -61,27 +69,146 @@ class IPCClient {
       options.merge(["token": token as NSObject]) { _, new in new }
     }
 
-    // Pass pre-1.4.0 Firezone ID if it exists. Pre 1.4.0 clients will have this
-    // persisted to the app side container URL.
-    if let id = FirezoneId.load(.pre140) {
-      options.merge(["id": id as NSObject]) { _, new in new }
-    }
-
     try session().startTunnel(options: options)
   }
 
-  func signOut() throws {
-    try session([.connected, .connecting, .reasserting]).stopTunnel()
-    try session().sendProviderMessage(encoder.encode(ProviderMessage.signOut))
+  func signOut() async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(encoder.encode(ProviderMessage.signOut)) { _ in
+          continuation.resume()
+        }
+      } catch {
+        Log.error(error)
+        continuation.resume(throwing: error)
+      }
+    }
   }
 
   func stop() throws {
     try session([.connected, .connecting, .reasserting]).stopTunnel()
   }
 
-  func toggleInternetResource(enabled: Bool) throws {
-    try session([.connected]).sendProviderMessage(
-      encoder.encode(ProviderMessage.internetResourceEnabled(enabled)))
+  func getConfiguration() async throws -> Configuration? {
+    let decoder = PropertyListDecoder()
+
+    return try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(
+          encoder.encode(ProviderMessage.getConfiguration(configurationHash))
+        ) { data in
+          guard let data = data
+          else {
+            // Configuration hasn't changed
+            continuation.resume(returning: self.configurationCache)
+            return
+          }
+
+          // Compute new hash
+          self.configurationHash = Data(SHA256.hash(data: data))
+
+          do {
+            let decoded = try decoder.decode(Configuration.self, from: data)
+            self.configurationCache = decoded
+            continuation.resume(returning: decoded)
+          } catch {
+            continuation.resume(throwing: error)
+          }
+        }
+      } catch {
+        continuation.resume(throwing: error)
+      }
+    }
+  }
+
+  func setAuthURL(_ authURL: URL) async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(
+          encoder.encode(ProviderMessage.setAuthURL(authURL))
+        ) { _ in
+          continuation.resume()
+        }
+      } catch {
+        Log.error(error)
+        continuation.resume(throwing: error)
+      }
+    }
+  }
+
+  func setApiURL(_ apiURL: URL) async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(
+          encoder.encode(ProviderMessage.setApiURL(apiURL))
+        ) { _ in
+          continuation.resume()
+        }
+      } catch {
+        Log.error(error)
+        continuation.resume(throwing: error)
+      }
+    }
+  }
+
+  func setLogFilter(_ logFilter: String) async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(
+          encoder.encode(ProviderMessage.setLogFilter(logFilter))
+        ) { _ in
+          continuation.resume()
+        }
+      } catch {
+        Log.error(error)
+        continuation.resume(throwing: error)
+      }
+    }
+  }
+
+  func setActorName(_ actorName: String) async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(
+          encoder.encode(ProviderMessage.setActorName(actorName))
+        ) { _ in
+          continuation.resume()
+        }
+      } catch {
+        Log.error(error)
+        continuation.resume(throwing: error)
+      }
+    }
+  }
+
+  func setAccountSlug(_ accountSlug: String) async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(
+          encoder.encode(ProviderMessage.setAccountSlug(accountSlug))
+        ) { _ in
+          continuation.resume()
+        }
+      } catch {
+        Log.error(error)
+        continuation.resume(throwing: error)
+      }
+    }
+  }
+
+  func setInternetResourceEnabled(_ enabled: Bool) async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session([.connected]).sendProviderMessage(
+          encoder.encode(ProviderMessage.setInternetResourceEnabled(enabled))
+        ) { _ in
+          continuation.resume()
+        }
+      } catch {
+        Log.error(error)
+        continuation.resume(throwing: error)
+      }
+    }
   }
 
   func fetchResources() async throws -> ResourceList {

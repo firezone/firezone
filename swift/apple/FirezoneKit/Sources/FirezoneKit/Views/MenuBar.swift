@@ -189,7 +189,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
   func setupObservers() {
     // Favorites explicitly sends objectWillChange for lifecycle events. The instance in Store never changes.
-    store.$favoriteResourceIDs
+    store.favorites.objectWillChange
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
@@ -251,14 +251,14 @@ public final class MenuBar: NSObject, ObservableObject {
 
   func populateResourceMenus(_ newResources: [Resource]) {
     // If we have no favorites, then everything is a favorite
-    let hasAnyFavorites = newResources.contains { store.favoriteResourceIDs.contains($0.id) }
+    let hasAnyFavorites = newResources.contains { store.favorites.contains($0.id) }
     let newFavorites = if hasAnyFavorites {
-      newResources.filter { store.favoriteResourceIDs.contains($0.id) || $0.isInternetResource() }
+      newResources.filter { store.favorites.contains($0.id) || $0.isInternetResource() }
     } else {
       newResources
     }
     let newOthers: [Resource] = if hasAnyFavorites {
-      newResources.filter { !store.favoriteResourceIDs.contains($0.id) && !$0.isInternetResource() }
+      newResources.filter { !store.favorites.contains($0.id) && !$0.isInternetResource() }
     } else {
       []
     }
@@ -285,7 +285,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownFavorites = newFavorites
-    wasInternetResourceEnabled = store.internetResourceEnabled
+    wasInternetResourceEnabled = store.configuration?.internetResourceEnabled
   }
 
   func populateOtherResourcesMenu(_ newOthers: [Resource]) {
@@ -313,7 +313,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownOthers = newOthers
-    wasInternetResourceEnabled = store.internetResourceEnabled
+    wasInternetResourceEnabled = store.configuration?.internetResourceEnabled
   }
 
   func updateStatusItemIcon() {
@@ -350,7 +350,7 @@ public final class MenuBar: NSObject, ObservableObject {
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = self
     case .connected, .reasserting, .connecting:
-      let title = "Signed in as \(store.actorName ?? "Unknown User")"
+      let title = "Signed in as \(store.configuration?.actorName ?? "Unknown User")"
       signInMenuItem.title = title
       signInMenuItem.target = nil
       signOutMenuItem.isHidden = false
@@ -416,7 +416,7 @@ public final class MenuBar: NSObject, ObservableObject {
     menu.addItem(resourcesUnavailableReasonMenuItem)
     menu.addItem(resourcesSeparatorMenuItem)
 
-    if !store.favoriteResourceIDs.isEmpty {
+    if !store.favorites.isEmpty() {
       menu.addItem(otherResourcesMenuItem)
       menu.addItem(otherResourcesSeparatorMenuItem)
     }
@@ -467,7 +467,7 @@ public final class MenuBar: NSObject, ObservableObject {
       return false
     }
 
-    return wasInternetResourceEnabled != store.internetResourceEnabled
+    return wasInternetResourceEnabled != store.configuration?.internetResourceEnabled
   }
 
   func refreshUpdateItem() {
@@ -503,7 +503,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   func internetResourceTitle(resource: Resource) -> String {
-    let status = store.internetResourceEnabled == true ? StatusSymbol.enabled : StatusSymbol.disabled
+    let status = store.configuration?.internetResourceEnabled == true ? StatusSymbol.enabled : StatusSymbol.disabled
 
     return status + " " + resource.name
   }
@@ -526,7 +526,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   func internetResourceToggleTitle() -> String {
-    store.internetResourceEnabled == true ? "Disable this resource" : "Enable this resource"
+    store.configuration?.internetResourceEnabled == true ? "Disable this resource" : "Enable this resource"
   }
 
   // TODO: Refactor this when refactoring for macOS 13
@@ -589,7 +589,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
     let toggleFavoriteItem = NSMenuItem()
 
-    if store.favoriteResourceIDs.contains(resource.id) {
+    if store.favorites.contains(resource.id) {
       toggleFavoriteItem.action = #selector(removeFavoriteTapped(_:))
       toggleFavoriteItem.title = "Remove from favorites"
       toggleFavoriteItem.toolTip = "Click to remove this Resource from Favorites"
@@ -689,7 +689,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc func signOutButtonTapped() {
-    do { try store.signOut() } catch { Log.error(error) }
+    Task { do { try await store.signOut() } catch { Log.error(error) } }
   }
 
   @objc func grantPermissionMenuItemTapped() {
@@ -723,7 +723,9 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc func adminPortalButtonTapped() {
-    Task { await NSWorkspace.shared.openAsync(store.authURL) }
+    let authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
+
+    Task { await NSWorkspace.shared.openAsync(authURL) }
   }
 
   @objc func updateAvailableButtonTapped() {
@@ -849,15 +851,11 @@ public final class MenuBar: NSObject, ObservableObject {
   // MARK: Other utility functions
 
   func setFavorited(id: String, favorited: Bool) {
-    var favoriteResourceIDs = store.favoriteResourceIDs
-
     if favorited {
-      favoriteResourceIDs.append(id)
+      store.favorites.add(id)
     } else {
-      favoriteResourceIDs.removeAll { $0 == id }
+      store.favorites.remove(id)
     }
-
-    store.setFavoriteResourceIDs(favoriteResourceIDs)
   }
 
   func copyToClipboard(_ string: String) {

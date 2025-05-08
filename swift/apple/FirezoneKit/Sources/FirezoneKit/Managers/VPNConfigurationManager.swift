@@ -33,8 +33,9 @@ public class VPNConfigurationManager {
     let protocolConfiguration = NETunnelProviderProtocol()
     let manager = NETunnelProviderManager()
 
+    protocolConfiguration.providerConfiguration = nil
     protocolConfiguration.providerBundleIdentifier = VPNConfigurationManager.bundleIdentifier
-    protocolConfiguration.serverAddress = "127.0.0.1" // can be anything
+    protocolConfiguration.serverAddress = "Firezone" // can be any non-empty string
     manager.localizedDescription = VPNConfigurationManager.bundleDescription
     manager.protocolConfiguration = protocolConfiguration
 
@@ -54,9 +55,7 @@ public class VPNConfigurationManager {
     let managers = try await NETunnelProviderManager.loadAllFromPreferences()
 
     for manager in managers where manager.localizedDescription == bundleDescription {
-      let ours = VPNConfigurationManager(from: manager)
-      try await ours.migrateConfigurationIfNeeded()
-      return ours
+      return VPNConfigurationManager(from: manager)
     }
 
     return nil
@@ -76,10 +75,13 @@ public class VPNConfigurationManager {
 
   // Firezone 1.4.14 and below stored some app configuration in the VPN provider configuration fields. This has since
   // been moved to a dedicated UserDefaults-backed persistent store.
-  func migrateConfigurationIfNeeded() async throws {
+  func maybeMigrateConfiguration() async throws {
     guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-          let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
+          let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String],
+          let session = session()
     else { return }
+
+    let ipcClient = IPCClient(session: session)
 
     var migrated = false
 
@@ -87,7 +89,7 @@ public class VPNConfigurationManager {
        let apiURL = URL(string: apiURLString),
        apiURL.host != nil,
        ["wss", "ws"].contains(apiURL.scheme) {
-      Configuration.shared.apiURL = apiURL
+      try await ipcClient.setApiURL(apiURL)
       migrated = true
     }
 
@@ -95,29 +97,29 @@ public class VPNConfigurationManager {
        let authURL = URL(string: authURLString),
        authURL.host != nil,
        ["https", "http"].contains(authURL.scheme) {
-      Configuration.shared.authURL = authURL
+      try await ipcClient.setAuthURL(authURL)
       migrated = true
     }
 
     if let actorName = providerConfiguration["actorName"] {
-      Configuration.shared.actorName = actorName
+      try await ipcClient.setActorName(actorName)
       migrated = true
     }
 
     if let accountSlug = providerConfiguration["accountSlug"] {
-      Configuration.shared.accountSlug = accountSlug
+      try await ipcClient.setAccountSlug(accountSlug)
       migrated = true
     }
 
     if let logFilter = providerConfiguration["logFilter"],
        !logFilter.isEmpty {
-      Configuration.shared.logFilter = logFilter
+      try await ipcClient.setLogFilter(logFilter)
       migrated = true
     }
 
     if let internetResourceEnabled = providerConfiguration["internetResourceEnabled"],
        ["false", "true"].contains(internetResourceEnabled) {
-      Configuration.shared.internetResourceEnabled = internetResourceEnabled == "true"
+      try await ipcClient.setInternetResourceEnabled(internetResourceEnabled == "true")
       migrated = true
     }
 
@@ -125,6 +127,7 @@ public class VPNConfigurationManager {
 
     // Remove fields to prevent confusion if the user sees these in System Settings and wonders why they're stale.
     protocolConfiguration.providerConfiguration = nil
+    protocolConfiguration.serverAddress = "Firezone"
     manager.protocolConfiguration = protocolConfiguration
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()

@@ -7,10 +7,19 @@
 
 import Foundation
 
+// TODO: Can we simplify this / abstract it?
+// swiftlint:disable cyclomatic_complexity
+
 public enum ProviderMessage: Codable {
   case getResourceList(Data)
+  case getConfiguration(Data)
   case signOut
-  case internetResourceEnabled(Bool)
+  case setAuthURL(URL)
+  case setApiURL(URL)
+  case setLogFilter(String)
+  case setActorName(String)
+  case setAccountSlug(String)
+  case setInternetResourceEnabled(Bool)
   case clearLogs
   case getLogFolderSize
   case exportLogs
@@ -23,8 +32,14 @@ public enum ProviderMessage: Codable {
 
   enum MessageType: String, Codable {
     case getResourceList
+    case getConfiguration
     case signOut
-    case internetResourceEnabled
+    case setAuthURL
+    case setApiURL
+    case setLogFilter
+    case setActorName
+    case setAccountSlug
+    case setInternetResourceEnabled
     case clearLogs
     case getLogFolderSize
     case exportLogs
@@ -35,12 +50,30 @@ public enum ProviderMessage: Codable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     let type = try container.decode(MessageType.self, forKey: .type)
     switch type {
-    case .internetResourceEnabled:
+    case .setAuthURL:
+      let value = try container.decode(URL.self, forKey: .value)
+      self = .setAuthURL(value)
+    case .setApiURL:
+      let value = try container.decode(URL.self, forKey: .value)
+      self = .setApiURL(value)
+    case .setLogFilter:
+      let value = try container.decode(String.self, forKey: .value)
+      self = .setLogFilter(value)
+    case .setActorName:
+      let value = try container.decode(String.self, forKey: .value)
+      self = .setActorName(value)
+    case .setAccountSlug:
+      let value = try container.decode(String.self, forKey: .value)
+      self = .setAccountSlug(value)
+    case .setInternetResourceEnabled:
       let value = try container.decode(Bool.self, forKey: .value)
-      self = .internetResourceEnabled(value)
+      self = .setInternetResourceEnabled(value)
     case .getResourceList:
       let value = try container.decode(Data.self, forKey: .value)
       self = .getResourceList(value)
+    case .getConfiguration:
+      let value = try container.decode(Data.self, forKey: .value)
+      self = .getConfiguration(value)
     case .signOut:
       self = .signOut
     case .clearLogs:
@@ -53,14 +86,33 @@ public enum ProviderMessage: Codable {
       self = .consumeStopReason
     }
   }
+
   public func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
     switch self {
-    case .internetResourceEnabled(let value):
-      try container.encode(MessageType.internetResourceEnabled, forKey: .type)
+    case .setAuthURL(let value):
+      try container.encode(MessageType.setAuthURL, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .setApiURL(let value):
+      try container.encode(MessageType.setApiURL, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .setLogFilter(let value):
+      try container.encode(MessageType.setLogFilter, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .setActorName(let value):
+      try container.encode(MessageType.setActorName, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .setAccountSlug(let value):
+      try container.encode(MessageType.setAccountSlug, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .setInternetResourceEnabled(let value):
+      try container.encode(MessageType.setInternetResourceEnabled, forKey: .type)
       try container.encode(value, forKey: .value)
     case .getResourceList(let value):
       try container.encode(MessageType.getResourceList, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .getConfiguration(let value):
+      try container.encode(MessageType.getConfiguration, forKey: .type)
       try container.encode(value, forKey: .value)
     case .signOut:
       try container.encode(MessageType.signOut, forKey: .type)
@@ -75,3 +127,5 @@ public enum ProviderMessage: Codable {
     }
   }
 }
+
+// swiftlint:enable cyclomatic_complexity
