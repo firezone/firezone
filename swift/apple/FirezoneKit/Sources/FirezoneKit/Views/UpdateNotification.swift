@@ -29,7 +29,6 @@ class UpdateChecker {
   @MainActor @Published private(set) var updateAvailable: Bool = false
 
   init() {
-    migrateConfigurationIfNeeded()
     startCheckingForUpdates()
   }
 
@@ -203,25 +202,6 @@ private class NotificationAdapter: NSObject, UNUserNotificationCenterDelegate {
     ) -> Void) {
     // Show the notification even when the app is in the foreground
     completionHandler([.badge, .banner, .sound])
-  }
-
-}
-
-// Firezone 1.4.14 and below had scattered app configuration everywhere. We've consolidated going forward.
-// TODO: This can be deleted once most users have upgraded past 1.4.14
-private func migrateConfigurationIfNeeded() {
-  let decoder = PropertyListDecoder()
-
-  if let data = UserDefaults.standard.object(forKey: "lastDismissedVersion") as? Data,
-     let version = try? decoder.decode(SemanticVersion.self, from: data) {
-    Configuration.shared.lastDismissedVersion = version.description
-    UserDefaults.standard.removeObject(forKey: "lastDismissedVersion")
-  }
-
-  if let data = UserDefaults.standard.object(forKey: "lastNotifiedVersion") as? Data,
-     let version = try? decoder.decode(SemanticVersion.self, from: data) {
-    Configuration.shared.lastNotifiedVersion = version.description
-    UserDefaults.standard.removeObject(forKey: "lastNotifiedVersion")
   }
 }
 
