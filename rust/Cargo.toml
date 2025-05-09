@@ -1,32 +1,32 @@
 [workspace]
 members = [
   "bin-shared",
-  "bufferpool",
+  "connlib/bufferpool",
   "connlib/clients/android",
   "connlib/clients/apple",
   "connlib/clients/shared",
+  "connlib/dns-over-tcp",
+  "connlib/dns-types",
+  "connlib/etherparse-ext",
+  "connlib/ip-packet",
   "connlib/l4-tcp-dns-server",
   "connlib/l4-udp-dns-server",
   "connlib/model",
+  "connlib/phoenix-channel",
   "connlib/snownet",
+  "connlib/socket-factory",
+  "connlib/tun",
   "connlib/tunnel",
-  "dns-over-tcp",
-  "dns-types",
-  "etherparse-ext",
   "gateway",
   "gui-client/src-tauri",
   "headless-client",
-  "ip-packet",
   "logging",
-  "phoenix-channel",
   "relay/ebpf-shared",
   "relay/ebpf-turn-router",
   "relay/server",
-  "socket-factory",
   "telemetry",
   "tests/gui-smoke-test",
   "tests/http-test-server",
-  "tun",
 ]
 
 resolver = "2"
@@ -50,7 +50,7 @@ backoff = { version = "0.4", features = ["tokio"] }
 base64 = { version = "0.22.1", default-features = false }
 bimap = "0.6"
 boringtun = { version = "0.6", default-features = false }
-bufferpool = { path = "bufferpool" }
+bufferpool = { path = "connlib/bufferpool" }
 bytecodec = "0.5.0"
 bytes = { version = "1.9.0", default-features = false }
 caps = "0.5.5"
@@ -65,13 +65,13 @@ difference = "2.0.0"
 dirs = "5.0.1"
 divan = "0.1.17"
 dns-lookup = "2.0"
-dns-over-tcp = { path = "dns-over-tcp" }
-dns-types = { path = "dns-types" }
+dns-over-tcp = { path = "connlib/dns-over-tcp" }
+dns-types = { path = "connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 either = "1"
 env_logger = "0.11.6"
 etherparse = { version = "0.17", default-features = false }
-etherparse-ext = { path = "etherparse-ext" }
+etherparse-ext = { path = "connlib/etherparse-ext" }
 firezone-bin-shared = { path = "bin-shared" }
 firezone-headless-client = { path = "headless-client" }
 firezone-logging = { path = "logging" }
@@ -87,7 +87,7 @@ hex = "0.4.3"
 hex-display = "0.3.0"
 hex-literal = "0.4.1"
 humantime = "2.2"
-ip-packet = { path = "ip-packet" }
+ip-packet = { path = "connlib/ip-packet" }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
 itertools = "0.13"
@@ -116,7 +116,7 @@ opentelemetry_sdk = "0.29.0"
 os_info = { version = "3", default-features = false }
 output_vt100 = "0.1"
 parking_lot = "0.12.3"
-phoenix-channel = { path = "phoenix-channel" }
+phoenix-channel = { path = "connlib/phoenix-channel" }
 png = "0.17.16"
 proptest = "1.6.0"
 proptest-state-machine = "0.3.1"
@@ -144,7 +144,7 @@ smallvec = "1.13.2"
 smbios-lib = "0.9.2"
 smoltcp = { version = "0.12", default-features = false }
 snownet = { path = "connlib/snownet" }
-socket-factory = { path = "socket-factory" }
+socket-factory = { path = "connlib/socket-factory" }
 socket2 = { version = "0.5" }
 static_assertions = "1.1.0"
 str0m = { version = "0.8.0", default-features = false, features = ["sha1"] }
@@ -182,7 +182,7 @@ tracing-opentelemetry = "0.30.0"
 tracing-stackdriver = "0.11.0"
 tracing-subscriber = { version = "0.3.19", features = ["parking_lot"] }
 trackable = "1.3.0"
-tun = { path = "tun" }
+tun = { path = "connlib/tun" }
 url = "2.5.2"
 uuid = "1.16.0"
 which = "4.4.2"
