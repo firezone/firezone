@@ -131,17 +131,27 @@ impl DnsResourceNat {
         domain: &DomainName,
         packet: IpPacket,
     ) -> Option<IpPacket> {
-        if let Some(State::Pending {
-            buffered_packets,
-            should_buffer: true,
-            ..
-        }) = self.inner.get_mut(&(gid, domain.clone()))
-        {
-            buffered_packets.push(packet);
-            return None;
-        }
+        let Some(state) = self.inner.get_mut(&(gid, domain.clone())) else {
+            tracing::debug!(%gid, %domain, "No DNS resource NAT entry");
 
-        Some(packet)
+            return Some(packet); // Pass-through packet.
+        };
+
+        match state {
+            State::Pending {
+                should_buffer: true,
+                buffered_packets,
+                ..
+            } => {
+                buffered_packets.push(packet);
+                None
+            }
+            State::Pending { .. } | State::Recreating { .. } | State::Confirmed | State::Failed => {
+                // Some of these might be black-holed on the Gateway (i.e. in `Failed`).
+                // But there isn't much we can do ...
+                Some(packet)
+            }
+        }
     }
 
     pub fn clear_by_gateway(&mut self, gid: &GatewayId) {
