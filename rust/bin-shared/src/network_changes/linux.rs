@@ -78,9 +78,24 @@ pub struct Worker {
 }
 
 enum Inner {
-    DBus(zbus::proxy::SignalStream<'static>),
+    DBus {
+        stream: zbus::proxy::SignalStream<'static>,
+        executor_tick: tokio::task::JoinHandle<()>,
+    },
     DnsPoller(Interval),
     Null,
+}
+
+impl Drop for Inner {
+    fn drop(&mut self) {
+        match self {
+            Inner::DBus { executor_tick, .. } => {
+                executor_tick.abort();
+            }
+            Inner::DnsPoller(_) => {}
+            Inner::Null => {}
+        }
+    }
 }
 
 impl Worker {
@@ -101,12 +116,29 @@ impl Worker {
             member,
         } = params;
 
-        let cxn = zbus::Connection::system().await?;
+        let cxn = zbus::connection::Builder::system()?
+            .internal_executor(false)
+            .build()
+            .await?;
+
+        let executor_tick = tokio::spawn({
+            let cxn = cxn.clone();
+            async move {
+                loop {
+                    cxn.executor().tick().await;
+                }
+            }
+        });
+
         let proxy = zbus::Proxy::new_owned(cxn, dest, path, interface).await?;
         let stream = proxy.receive_signal(member).await?;
+
         Ok(Self {
             just_started: true,
-            inner: Inner::DBus(stream),
+            inner: Inner::DBus {
+                stream,
+                executor_tick,
+            },
         })
     }
 
@@ -124,7 +156,7 @@ impl Worker {
             Inner::DnsPoller(interval) => {
                 interval.tick().await;
             }
-            Inner::DBus(stream) => {
+            Inner::DBus { stream, .. } => {
                 if stream.next().await.is_none() {
                     futures::future::pending::<()>().await;
                 }

@@ -362,6 +362,7 @@ fn start_send_thread(
 
     std::thread::Builder::new()
         .name("TUN send".into())
+        .stack_size(100 * 1024)
         .spawn(move || loop {
             let Some(packet) = packet_rx.blocking_recv() else {
                 tracing::debug!(
@@ -416,6 +417,7 @@ fn start_recv_thread(
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
         .name("TUN recv".into())
+        .stack_size(100 * 1024)
         .spawn(move || {
             loop {
                 let Some(receive_result) = session.upgrade().map(|s| s.receive_blocking()) else {
