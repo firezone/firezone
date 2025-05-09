@@ -1,10 +1,10 @@
 [workspace]
 members = [
   "bin-shared",
+  "client-shared",
   "connlib/bufferpool",
   "connlib/clients/android",
   "connlib/clients/apple",
-  "connlib/clients/shared",
   "connlib/dns-over-tcp",
   "connlib/dns-types",
   "connlib/etherparse-ext",
@@ -58,7 +58,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 clap = "4.5.37"
 connlib-client-android = { path = "connlib/clients/android" }
 connlib-client-apple = { path = "connlib/clients/apple" }
-connlib-client-shared = { path = "connlib/clients/shared" }
+client-shared = { path = "client-shared" }
 connlib-model = { path = "connlib/model" }
 derive_more = "1.0.0"
 difference = "2.0.0"

@@ -1055,6 +1055,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f46ad14479a25103f283c0f10005961cf086d8dc42205bb44c46ac563475dca6"
 
 [[package]]
+name = "client-shared"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "backoff",
+ "bimap",
+ "chrono",
+ "connlib-model",
+ "dns-types",
+ "firezone-logging",
+ "firezone-tunnel",
+ "ip_network",
+ "phoenix-channel",
+ "rayon",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "snownet",
+ "socket-factory",
+ "thiserror 1.0.69",
+ "time",
+ "tokio",
+ "tracing",
+ "tun",
+ "url",
+]
+
+[[package]]
 name = "clipboard-win"
 version = "5.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1131,7 +1159,7 @@ dependencies = [
  "android_log-sys",
  "anyhow",
  "backoff",
- "connlib-client-shared",
+ "client-shared",
  "connlib-model",
  "dns-types",
  "firezone-logging",
@@ -1163,7 +1191,7 @@ version = "1.4.15"
 dependencies = [
  "anyhow",
  "backoff",
- "connlib-client-shared",
+ "client-shared",
  "connlib-model",
  "dns-types",
  "firezone-logging",
@@ -1185,34 +1213,6 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
- "tun",
- "url",
-]
-
-[[package]]
-name = "connlib-client-shared"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "backoff",
- "bimap",
- "chrono",
- "connlib-model",
- "dns-types",
- "firezone-logging",
- "firezone-tunnel",
- "ip_network",
- "phoenix-channel",
- "rayon",
- "secrecy",
- "serde",
- "serde_json",
- "snownet",
- "socket-factory",
- "thiserror 1.0.69",
- "time",
- "tokio",
- "tracing",
  "tun",
  "url",
 ]
@@ -2196,7 +2196,7 @@ dependencies = [
  "backoff",
  "chrono",
  "clap",
- "connlib-client-shared",
+ "client-shared",
  "connlib-model",
  "derive_more 1.0.0",
  "dirs 5.0.1",
@@ -2258,7 +2258,7 @@ dependencies = [
  "anyhow",
  "backoff",
  "clap",
- "connlib-client-shared",
+ "client-shared",
  "connlib-model",
  "dns-types",
  "firezone-bin-shared",

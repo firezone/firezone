@@ -13,7 +13,7 @@ doc = false
 [dependencies]
 anyhow = { workspace = true }
 backoff = { workspace = true }
-connlib-client-shared = { workspace = true }
+client-shared = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
 firezone-logging = { workspace = true }
