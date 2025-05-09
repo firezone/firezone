@@ -40,7 +40,7 @@ pub fn get() -> Result<DeviceId> {
 /// Per <https://github.com/firezone/firezone/issues/2697> and <https://github.com/firezone/firezone/issues/2711>,
 /// clients must generate their own random IDs and persist them to disk, to handle situations like VMs where a hardware ID is not unique or not available.
 ///
-/// Returns: The UUID as a String, suitable for sending verbatim to `connlib_client_shared::Session::connect`.
+/// Returns: The UUID as a String, suitable for sending verbatim to `client_shared::Session::connect`.
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
 pub fn get_or_create() -> Result<DeviceId> {

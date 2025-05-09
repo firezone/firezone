@@ -8,7 +8,7 @@ mod tun;
 use anyhow::Context;
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
-use connlib_client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
+use client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
 use dns_types::DomainName;
 use firezone_logging::err_with_src;
