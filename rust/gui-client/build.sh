@@ -48,13 +48,44 @@ rm "$BUNDLES_DIR"/*.deb
 # files inside that dir
 INTERMEDIATE_DIR=$(ls -d "$BUNDLES_DIR"/*/)
 
+# Delete the archives, we will re-create them.
+rm "$INTERMEDIATE_DIR"/*.tar.gz
+
+# The directory layout of `$BUNDLES_DIR` now looks like this:
+#  └── firezone-client-gui_1.x.y_$arch
+#     ├── control
+#     │   ├── control
+#     │   └── md5sums
+#     ├── data
+#     │   └── usr
+#     │       ├── bin
+#     │       │   └── firezone-client-gui
+#     │       ├── lib
+#     │       │   ├── systemd
+#     │       │   │   └── system
+#     │       │   │       └── firezone-client-ipc.service
+#     │       │   └── sysusers.d
+#     │       │       └── firezone-client-ipc.conf
+#     │       └── share
+#     │           ├── applications
+#     │           │   └── firezone-client-gui.desktop
+#     │           └── icons
+#     │               └── ...
+#     └── debian-binary
+
 # Add the scripts
 cp src-tauri/deb_files/postinst src-tauri/deb_files/prerm "$INTERMEDIATE_DIR/control/"
+
+# Add the IPC service
+cp ../target/release/firezone-client-ipc "$INTERMEDIATE_DIR/data/usr/bin/"
 
 pushd "$INTERMEDIATE_DIR"
 
 # Rebuild the control tarball
 tar -C "control" -czf "control.tar.gz" control md5sums postinst prerm
+
+# Rebuild the data tarball
+tar -C "data" -czf "data.tar.gz" usr
 
 # Rebuild the deb package, and give it a predictable name that
 # `tauri-rename-linux.sh` can fix
