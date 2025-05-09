@@ -346,6 +346,30 @@ mod tests {
         assert!(maybe_packet.is_some());
     }
 
+    #[test]
+    fn resend_intent_after_2_seconds() {
+        let mut dns_resource_nat = DnsResourceNat::default();
+        let mut now = Instant::now();
+
+        let mut update_fn = |now| {
+            dns_resource_nat.update(
+                EXAMPLE_COM.to_vec(),
+                GID,
+                RID,
+                PROXY_IPS,
+                VecDeque::default(),
+                now,
+            )
+        };
+
+        assert!(update_fn(now).is_some());
+        assert!(update_fn(now).is_none());
+
+        now += Duration::from_secs(2);
+
+        assert!(update_fn(now).is_some());
+    }
+
     const EXAMPLE_COM: DomainNameRef =
         unsafe { DomainNameRef::from_octets_unchecked(b"\x08example\x03com\x00") };
     const GID: GatewayId = GatewayId::from_u128(1);
