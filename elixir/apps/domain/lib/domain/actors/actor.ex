@@ -19,6 +19,7 @@ defmodule Domain.Actors.Actor do
     # TODO: where doesn't work on join tables so soft-deleted records will be preloaded,
     # ref https://github.com/firezone/firezone/issues/2162
     has_many :groups, through: [:memberships, :group]
+    has_many :actor_resources, Domain.Actors.Resource, on_replace: :delete
 
     belongs_to :account, Domain.Accounts.Account
 

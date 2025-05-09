@@ -66,17 +66,28 @@ defmodule Domain.Policies do
     required_permissions = {:one_of, [Authorizer.manage_policies_permission()]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      Policy.Changeset.create(attrs, subject)
-      |> Repo.insert()
-      # TODO: WAL
-      |> case do
-        {:ok, policy} ->
-          :ok = broadcast_policy_events(:create, policy)
-          {:ok, policy}
+      queryable = Policy.Changeset.create(attrs, subject)
 
-        {:error, reason} ->
-          {:error, reason}
-      end
+      Repo.transaction(fn ->
+        result =
+          queryable
+          |> Repo.insert()
+          # TODO: WAL
+          |> case do
+            {:ok, policy} ->
+              :ok = broadcast_policy_events(:create, policy)
+              {:ok, policy}
+
+            {:error, reason} ->
+              {:error, reason}
+          end
+
+        queryable
+        |> Domain.Actors.Resource.Query.insert_for_policies()
+        |> Repo.insert_all()
+
+        result
+      end)
     end
   end
 
@@ -106,35 +117,58 @@ defmodule Domain.Policies do
 
   def disable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
-      Policy.Query.not_deleted()
-      |> Policy.Query.by_id(policy.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Policy.Query,
-        with: &Policy.Changeset.disable(&1, subject),
-        # TODO: WAL
-        after_commit: &broadcast_policy_events(:disable, &1)
-      )
-      |> case do
-        {:ok, policy} ->
-          {:ok, _flows} = Flows.expire_flows_for(policy, subject)
-          {:ok, policy}
+      queryable =
+        Policy.Query.not_deleted()
+        |> Policy.Query.by_id(policy.id)
+        |> Authorizer.for_subject(subject)
 
-        {:error, reason} ->
-          {:error, reason}
-      end
+      Repo.transaction(fn ->
+        result =
+          queryable
+          |> Repo.fetch_and_update(Policy.Query,
+            with: &Policy.Changeset.disable(&1, subject),
+            # TODO: WAL
+            after_commit: &broadcast_policy_events(:disable, &1)
+          )
+
+        queryable
+        |> Domain.Actors.Resource.Query.by_policies()
+        |> Repo.delete_all()
+
+        case result do
+          {:ok, policy} ->
+            {:ok, _flows} = Flows.expire_flows_for(policy, subject)
+            {:ok, policy}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+      end)
     end
   end
 
   def enable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
-      Policy.Query.not_deleted()
-      |> Policy.Query.by_id(policy.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Policy.Query,
-        with: &Policy.Changeset.enable/1,
-        # TODO: WAL
-        after_commit: &broadcast_policy_events(:enable, &1)
-      )
+      queryable =
+        Policy.Query.not_deleted()
+        |> Policy.Query.by_id(policy.id)
+        |> Authorizer.for_subject(subject)
+
+      Repo.transaction(fn ->
+        result =
+          queryable
+          |> Repo.fetch_and_update(Policy.Query,
+            with: &Policy.Changeset.enable/1,
+            # TODO: WAL
+            after_commit: &broadcast_policy_events(:enable, &1)
+          )
+
+        queryable
+        |> Domain.Actors.Resource.Query.insert_for_policies()
+        |> Repo.insert_all()
+
+        result
+      end)
     end
   end
 
@@ -186,10 +220,16 @@ defmodule Domain.Policies do
   end
 
   defp delete_policies(queryable) do
+    # TODO: This will only apply to resurrectable policy delete operations
     {_count, policies} =
-      queryable
-      |> Policy.Query.delete()
-      |> Repo.update_all([])
+      Repo.transaction(fn ->
+        queryable
+        |> Policy.Query.delete()
+        |> Repo.update_all([])
+
+        Actors.Resource.Query.by_policies(queryable)
+        |> Repo.delete_all()
+      end)
 
     # TODO: WAL
     :ok =
