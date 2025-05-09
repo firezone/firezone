@@ -176,7 +176,12 @@ impl Io {
             self.nameservers.evaluate();
         }
 
-        ready!(self.nameservers.poll(cx));
+        let is_evaluating = self.nameservers.poll(cx);
+
+        // Only block the IO-eventloop if we don't yet have a nameserver and are still evaluating.
+        if self.nameservers.fastest().is_none() && is_evaluating.is_pending() {
+            return Poll::Pending;
+        }
 
         if let Poll::Ready(network) = self.sockets.poll_recv_from(cx) {
             return Poll::Ready(Ok(Input::Network(
