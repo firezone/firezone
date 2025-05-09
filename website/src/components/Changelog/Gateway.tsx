@@ -22,7 +22,12 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="9059">
+          Fixes an issue where ICMP unreachable errors for large packets would
+          not be sent.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-05-02")}>
         <ChangeItem pull="9009">
           Fixes an issue where ECN bits got erroneously cleared without updating
