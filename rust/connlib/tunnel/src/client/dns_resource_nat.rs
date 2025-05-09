@@ -306,6 +306,46 @@ mod tests {
         assert_eq!(packets.into_iter().collect::<Vec<_>>(), vec![packet]);
     }
 
+    #[test]
+    fn dont_buffer_packets_upon_recreate() {
+        let mut dns_resource_nat = DnsResourceNat::default();
+
+        dns_resource_nat.update(
+            EXAMPLE_COM.to_vec(),
+            GID,
+            RID,
+            PROXY_IPS,
+            VecDeque::default(),
+            Instant::now(),
+        );
+        dns_resource_nat.on_domain_status(
+            GID,
+            p2p_control::dns_resource_nat::DomainStatus {
+                status: p2p_control::dns_resource_nat::NatStatus::Active,
+                resource: RID,
+                domain: EXAMPLE_COM.to_vec(),
+            },
+        );
+
+        dns_resource_nat.recreate(EXAMPLE_COM.to_vec());
+        dns_resource_nat.update(
+            EXAMPLE_COM.to_vec(),
+            GID,
+            RID,
+            PROXY_IPS,
+            VecDeque::default(),
+            Instant::now(),
+        );
+
+        let packet =
+            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+                .unwrap();
+
+        let maybe_packet = dns_resource_nat.handle_outgoing(GID, &EXAMPLE_COM.to_vec(), packet);
+
+        assert!(maybe_packet.is_some());
+    }
+
     const EXAMPLE_COM: DomainNameRef =
         unsafe { DomainNameRef::from_octets_unchecked(b"\x08example\x03com\x00") };
     const GID: GatewayId = GatewayId::from_u128(1);
