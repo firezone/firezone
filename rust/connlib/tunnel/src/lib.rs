@@ -372,7 +372,7 @@ impl GatewayTunnel {
                     let Some(nameserver) = self.io.fastest_nameserver() else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle TCP DNS query");
 
-                        self.io.send_udp_dns_response(
+                        self.io.send_tcp_dns_response(
                             query.remote,
                             dns_types::Response::servfail(&query.message),
                         )?;
