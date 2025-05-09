@@ -51,10 +51,16 @@ INTERMEDIATE_DIR=$(ls -d "$BUNDLES_DIR"/*/)
 # Add the scripts
 cp src-tauri/deb_files/postinst src-tauri/deb_files/prerm "$INTERMEDIATE_DIR/control/"
 
+# Add the IPC service
+cp ../target/release/firezone-client-ipc "$INTERMEDIATE_DIR/data/usr/bin/"
+
 pushd "$INTERMEDIATE_DIR"
 
 # Rebuild the control tarball
 tar -C "control" -czf "control.tar.gz" control md5sums postinst prerm
+
+# Rebuild the data tarball
+tar -C "data" -czf "data.tar.gz" usr
 
 # Rebuild the deb package, and give it a predictable name that
 # `tauri-rename-linux.sh` can fix
