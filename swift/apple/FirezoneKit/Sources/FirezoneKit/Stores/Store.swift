@@ -90,8 +90,6 @@ public final class Store: ObservableObject {
         do { try await WebAuthSession.signIn(store: self) } catch { Log.error(error) }
       }
     }
-
-    // TODO: setup appConfiguration bindings
   }
 
   func setupTunnelObservers() async throws {

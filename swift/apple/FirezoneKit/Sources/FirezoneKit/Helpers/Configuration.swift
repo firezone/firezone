@@ -87,6 +87,10 @@ public class Configuration {
 
   private var userDefaults: UserDefaults
 
+  // Stores the last known values for keys to detect changes.
+  // The value type is Any? because userDefaults.object(forKey:) returns Any?.
+  private var cachedValues: [String: Any?] = [:]
+
   public init() {
     guard let defaults = UserDefaults(suiteName: BundleHelper.appGroupId)
     else {
@@ -100,6 +104,104 @@ public class Configuration {
     migrateFavorites()
     migrateFirezoneIdOrGenerateNewOne()
   }
+
+  // MARK: - Observation
+
+  public class ObserverToken {
+    private let removeHandler: () -> Void
+    fileprivate init(removeHandler: @escaping () -> Void) {
+      self.removeHandler = removeHandler
+    }
+    public func remove() {
+      removeHandler()
+    }
+    deinit {
+      // Automatically remove the observer when the token is deallocated.
+      removeHandler()
+    }
+  }
+
+  @discardableResult
+  public func addObserver(
+    forKeys keys: [String]? = nil,
+    queue: DispatchQueue = .main,
+    handler: @escaping (_ changedKey: String?, _ configuration: Configuration) -> Void
+  ) -> ObserverToken {
+    let observer = NotificationCenter.default.addObserver(
+      forName: UserDefaults.didChangeNotification,
+      object: self.userDefaults,
+      queue: OperationQueue.main
+    ) { [weak self] _ in // The notification object itself isn't passed to this handler type.
+      guard let self = self else { return }
+
+      var changedKeyForHandler: String?
+      var shouldCallHandler = false
+
+      if let specificKeys = keys, !specificKeys.isEmpty {
+        for key in specificKeys where self.didValueChange(forKey: key) {
+          changedKeyForHandler = key
+          shouldCallHandler = true
+          break // Found a changed key.
+        }
+      } else {
+        shouldCallHandler = true
+      }
+
+      if shouldCallHandler {
+        queue.async {
+          handler(changedKeyForHandler, self)
+        }
+      }
+    }
+    return ObserverToken { [weak self] in
+      self?.removeObserver(observer)
+    }
+  }
+
+  private func removeObserver(_ observer: NSObjectProtocol) {
+    NotificationCenter.default.removeObserver(observer)
+  }
+
+  private func didValueChange(forKey key: String) -> Bool {
+    let currentValue: Any? = userDefaults.object(forKey: key)
+    let previousOptionalValueFromCache: Any?? = cachedValues[key]
+    let previousEffectiveValue: Any?
+
+    if let definitePreviousOptional = previousOptionalValueFromCache { // Unwraps from Optional<Any?> to Any?
+      previousEffectiveValue = definitePreviousOptional
+    } else {
+      previousEffectiveValue = nil
+    }
+
+    let changed = !areValuesEqual(previousEffectiveValue, currentValue)
+
+    // Always update the cache to the current value for the next comparison.
+    // Storing `currentValue` (which is `Any?`) into `cachedValues[key]`.
+    // If `currentValue` is `nil`, `cachedValues[key]` will store `.some(nil)`.
+    // If `currentValue` is `.some(data)`, `cachedValues[key]` will store `.some(.some(data))`.
+    cachedValues[key] = currentValue
+
+    return changed
+  }
+
+  private func areValuesEqual(_ lhs: Any?, _ rhs: Any?) -> Bool {
+    switch (lhs, rhs) {
+    case (nil, nil):
+      return true
+    case (let unwrappedLHS?, let unwrappedRHS?):
+      // UserDefaults stores property list types, which bridge to NSObject subclasses.
+      // Compare using NSObject's isEqual method for robustness with these types.
+      if let lhsObject = unwrappedLHS as? NSObject, let rhsObject = unwrappedRHS as? NSObject {
+        return lhsObject.isEqual(rhsObject)
+      }
+
+      return false
+    default:
+      return false
+    }
+  }
+
+  // MARK: - Migration
 
   private func migrateUpdateChecker() {
     let decoder = PropertyListDecoder()
@@ -139,4 +241,12 @@ public class Configuration {
     self.userDefaults.set(id, forKey: Keys.firezoneId)
     try? FileManager.default.removeItem(at: containerURL)
   }
+}
+
+// Minimal SemanticVersion struct used in migration
+private struct SemanticVersion: Codable, CustomStringConvertible {
+  let major: Int
+  let minor: Int
+  let patch: Int
+  public var description: String { "\(major).\(minor).\(patch)" }
 }
