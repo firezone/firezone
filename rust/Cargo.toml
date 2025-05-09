@@ -1,10 +1,10 @@
 [workspace]
 members = [
+  "android-client-ffi",
+  "apple-client-ffi",
   "bin-shared",
   "client-shared",
   "connlib/bufferpool",
-  "connlib/clients/android",
-  "connlib/clients/apple",
   "connlib/dns-over-tcp",
   "connlib/dns-types",
   "connlib/etherparse-ext",
@@ -36,7 +36,9 @@ license = "Apache-2.0"
 edition = "2024"
 
 [workspace.dependencies]
+android-client-ffi = { path = "android-client-ffi" }
 anyhow = "1.0.98"
+apple-client-ffi = { path = "apple-client-ffi" }
 arboard = { version = "3.5.0", default-features = false }
 async-trait = { version = "0.1", default-features = false }
 atomicwrites = "0.4.4"
@@ -56,8 +58,6 @@ bytes = { version = "1.9.0", default-features = false }
 caps = "0.5.5"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 clap = "4.5.37"
-connlib-client-android = { path = "connlib/clients/android" }
-connlib-client-apple = { path = "connlib/clients/apple" }
 client-shared = { path = "client-shared" }
 connlib-model = { path = "connlib/model" }
 derive_more = "1.0.0"

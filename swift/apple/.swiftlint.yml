@@ -3,5 +3,5 @@ disabled_rules:
   # necessarily imply immediate action needs to be taken.
   - todo
 excluded:
-  - FirezoneNetworkExtension/Connlib/Generated/connlib-client-apple/connlib-client-apple.swift
+  - FirezoneNetworkExtension/Connlib/Generated/apple-client-ffi/apple-client-ffi.swift
   - FirezoneNetworkExtension/Connlib/Generated/SwiftBridgeCore.swift
