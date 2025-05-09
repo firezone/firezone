@@ -79,6 +79,39 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c6cb57a04249c6480766f7f7cef5467412af1490f8d1e243141daddada3264f"
 
 [[package]]
+name = "android-client-ffi"
+version = "1.4.9"
+dependencies = [
+ "android_log-sys",
+ "anyhow",
+ "backoff",
+ "client-shared",
+ "connlib-model",
+ "dns-types",
+ "firezone-logging",
+ "firezone-telemetry",
+ "flume",
+ "futures",
+ "ip-packet",
+ "ip_network",
+ "jni",
+ "libc",
+ "log",
+ "phoenix-channel",
+ "rustls",
+ "secrecy",
+ "serde_json",
+ "socket-factory",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "tun",
+ "url",
+]
+
+[[package]]
 name = "android-tzdata"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -153,6 +186,38 @@ name = "anyhow"
 version = "1.0.98"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
+
+[[package]]
+name = "apple-client-ffi"
+version = "1.4.15"
+dependencies = [
+ "anyhow",
+ "backoff",
+ "client-shared",
+ "connlib-model",
+ "dns-types",
+ "firezone-logging",
+ "firezone-telemetry",
+ "flume",
+ "futures",
+ "ip-packet",
+ "ip_network",
+ "libc",
+ "oslog",
+ "phoenix-channel",
+ "rustls",
+ "secrecy",
+ "serde_json",
+ "socket-factory",
+ "swift-bridge",
+ "swift-bridge-build",
+ "tokio",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "tun",
+ "url",
+]
 
 [[package]]
 name = "arbitrary"
@@ -1151,71 +1216,6 @@ name = "condtype"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "baf0a07a401f374238ab8e2f11a104d2851bf9ce711ec69804834de8af45c7af"
-
-[[package]]
-name = "connlib-client-android"
-version = "1.4.9"
-dependencies = [
- "android_log-sys",
- "anyhow",
- "backoff",
- "client-shared",
- "connlib-model",
- "dns-types",
- "firezone-logging",
- "firezone-telemetry",
- "flume",
- "futures",
- "ip-packet",
- "ip_network",
- "jni",
- "libc",
- "log",
- "phoenix-channel",
- "rustls",
- "secrecy",
- "serde_json",
- "socket-factory",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "tun",
- "url",
-]
-
-[[package]]
-name = "connlib-client-apple"
-version = "1.4.15"
-dependencies = [
- "anyhow",
- "backoff",
- "client-shared",
- "connlib-model",
- "dns-types",
- "firezone-logging",
- "firezone-telemetry",
- "flume",
- "futures",
- "ip-packet",
- "ip_network",
- "libc",
- "oslog",
- "phoenix-channel",
- "rustls",
- "secrecy",
- "serde_json",
- "socket-factory",
- "swift-bridge",
- "swift-bridge-build",
- "tokio",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "tun",
- "url",
-]
 
 [[package]]
 name = "connlib-model"
