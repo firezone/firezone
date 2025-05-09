@@ -157,6 +157,7 @@ enum DnsResourceNatState {
     },
     Recreating,
     Confirmed,
+    Failed,
 }
 
 impl DnsResourceNatState {
@@ -167,6 +168,7 @@ impl DnsResourceNatState {
             } => buffered_packets.len(),
             DnsResourceNatState::Confirmed => 0,
             DnsResourceNatState::Recreating => 0,
+            DnsResourceNatState::Failed => 0,
         }
     }
 
@@ -177,9 +179,14 @@ impl DnsResourceNatState {
             } => Some(buffered_packets.into_iter()),
             DnsResourceNatState::Recreating => None,
             DnsResourceNatState::Confirmed => None,
+            DnsResourceNatState::Failed => None,
         };
 
         buffered_packets.into_iter().flatten()
+    }
+
+    fn failed(&mut self) {
+        *self = DnsResourceNatState::Failed;
     }
 }
 
@@ -407,6 +414,7 @@ impl ClientState {
 
                     match state {
                         DnsResourceNatState::Confirmed => continue,
+                        DnsResourceNatState::Failed => continue,
                         DnsResourceNatState::Recreating => {
                             let mut buffered_packets = UniquePacketBuffer::with_capacity_power_of_2(
                                 5, // 2^5 = 32
@@ -483,7 +491,7 @@ impl ClientState {
             match state {
                 DnsResourceNatState::Pending { .. } => continue,
                 DnsResourceNatState::Recreating => continue,
-                DnsResourceNatState::Confirmed => {
+                DnsResourceNatState::Confirmed | DnsResourceNatState::Failed => {
                     tracing::debug!(domain = %message.domain(), "Re-creating DNS resource NAT");
                     *state = DnsResourceNatState::Recreating;
                 }
@@ -1935,12 +1943,13 @@ fn handle_p2p_control_packet(
                 return;
             };
 
+            let nat_state = nat_entry.get_mut();
+
             if res.status != dns_resource_nat::NatStatus::Active {
                 tracing::debug!(%gid, domain = %res.domain, "DNS resource NAT is not active");
+                nat_state.failed();
                 return;
             }
-
-            let nat_state = nat_entry.get_mut();
 
             tracing::debug!(%gid, domain = %res.domain, num_buffered_packets = %nat_state.num_buffered_packets(), "DNS resource NAT is active");
 
