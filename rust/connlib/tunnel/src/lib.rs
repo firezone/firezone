@@ -70,7 +70,6 @@ pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
-pub use io::NoNameserverAvailable;
 pub use sockets::UdpSocketThreadStopped;
 pub use utils::turn;
 
@@ -352,7 +351,16 @@ impl GatewayTunnel {
                     continue;
                 }
                 Poll::Ready(io::Input::UdpDnsQuery(query)) => {
-                    let nameserver = self.io.fastest_nameserver()?;
+                    let Some(nameserver) = self.io.fastest_nameserver() else {
+                        tracing::warn!(query = ?query.message, "No nameserver available to handle UDP DNS query");
+
+                        self.io.send_udp_dns_response(
+                            query.source,
+                            dns_types::Response::servfail(&query.message),
+                        )?;
+
+                        continue;
+                    };
 
                     self.io.send_dns_query(dns::RecursiveQuery::via_udp(
                         query.source,
@@ -361,7 +369,16 @@ impl GatewayTunnel {
                     ));
                 }
                 Poll::Ready(io::Input::TcpDnsQuery(query)) => {
-                    let nameserver = self.io.fastest_nameserver()?;
+                    let Some(nameserver) = self.io.fastest_nameserver() else {
+                        tracing::warn!(query = ?query.message, "No nameserver available to handle TCP DNS query");
+
+                        self.io.send_udp_dns_response(
+                            query.remote,
+                            dns_types::Response::servfail(&query.message),
+                        )?;
+
+                        continue;
+                    };
 
                     self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
                         query.local,
