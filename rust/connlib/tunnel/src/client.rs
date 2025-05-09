@@ -911,6 +911,7 @@ impl ClientState {
         now: Instant,
     ) {
         use std::collections::hash_map::Entry;
+
         let trigger = trigger.into();
 
         debug_assert!(self.resources_by_id.contains_key(&resource));
@@ -1917,6 +1918,7 @@ fn handle_p2p_control_packet(
     now: Instant,
 ) {
     use p2p_control::dns_resource_nat;
+    use std::collections::btree_map::Entry;
 
     match fz_p2p_control.event_type() {
         p2p_control::DOMAIN_STATUS_EVENT => {
@@ -1926,16 +1928,19 @@ fn handle_p2p_control_packet(
                 return;
             };
 
+            let Entry::Occupied(mut nat_entry) =
+                dns_resource_nat_by_gateway.entry((gid, res.domain.clone()))
+            else {
+                tracing::debug!(%gid, domain = %res.domain, "No DNS resource NAT state, ignoring response");
+                return;
+            };
+
             if res.status != dns_resource_nat::NatStatus::Active {
                 tracing::debug!(%gid, domain = %res.domain, "DNS resource NAT is not active");
                 return;
             }
 
-            let Some(nat_state) = dns_resource_nat_by_gateway.get_mut(&(gid, res.domain.clone()))
-            else {
-                tracing::debug!(%gid, domain = %res.domain, "No DNS resource NAT state, ignoring response");
-                return;
-            };
+            let nat_state = nat_entry.get_mut();
 
             tracing::debug!(%gid, domain = %res.domain, num_buffered_packets = %nat_state.num_buffered_packets(), "DNS resource NAT is active");
 
