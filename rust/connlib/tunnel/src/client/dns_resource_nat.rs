@@ -220,3 +220,62 @@ impl State {
         *self = State::Failed;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::net::Ipv4Addr;
+
+    use dns_types::DomainNameRef;
+    use dns_types::prelude::*;
+
+    use super::*;
+
+    #[test]
+    fn no_recreate_nat_for_failed_response() {
+        let mut dns_resource_nat = DnsResourceNat::default();
+
+        let intent = dns_resource_nat.update(
+            EXAMPLE_COM.to_vec(),
+            GID,
+            RID,
+            PROXY_IPS,
+            VecDeque::default(),
+            Instant::now(),
+        );
+        assert!(intent.is_some());
+
+        dns_resource_nat.on_domain_status(
+            GID,
+            p2p_control::dns_resource_nat::DomainStatus {
+                status: p2p_control::dns_resource_nat::NatStatus::Inactive,
+                resource: RID,
+                domain: EXAMPLE_COM.to_vec(),
+            },
+        );
+
+        let intent = dns_resource_nat.update(
+            EXAMPLE_COM.to_vec(),
+            GID,
+            RID,
+            PROXY_IPS,
+            VecDeque::default(),
+            Instant::now(),
+        );
+        assert!(intent.is_none());
+    }
+
+    const EXAMPLE_COM: DomainNameRef =
+        unsafe { DomainNameRef::from_octets_unchecked(b"\x08example\x03com\x00") };
+    const GID: GatewayId = GatewayId::from_u128(1);
+    const RID: ResourceId = ResourceId::from_u128(2);
+    const PROXY_IPS: &[IpAddr] = &[
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 2)),
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 3)),
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 4)),
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 5)),
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 6)),
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 7)),
+        IpAddr::V4(Ipv4Addr::new(127, 0, 0, 8)),
+    ];
+}
