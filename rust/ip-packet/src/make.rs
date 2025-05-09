@@ -204,3 +204,59 @@ fn icmpv6_address_unreachable(
 #[derive(thiserror::Error, Debug)]
 #[error("IPs must be of the same version")]
 pub struct IpVersionMismatch;
+
+#[cfg(all(test, feature = "proptest"))]
+mod tests {
+    use etherparse::{Ipv4Header, Ipv6Header, UdpHeader};
+    use proptest::{
+        collection,
+        prelude::{Strategy, any},
+    };
+
+    use crate::MAX_IP_SIZE;
+
+    use super::*;
+
+    #[test_strategy::proptest()]
+    fn ipv4_icmp_unreachable(
+        #[strategy(payload(MAX_IP_SIZE - Ipv4Header::MIN_LEN - UdpHeader::LEN))] payload: Vec<u8>,
+    ) {
+        let unreachable_packet =
+            udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, payload).unwrap();
+
+        let icmp_error =
+            icmp_dst_unreachable(ERROR_SRC_IPV4, ERROR_SRC_IPV6, &unreachable_packet).unwrap();
+
+        assert_eq!(icmp_error.destination(), IpAddr::V4(Ipv4Addr::LOCALHOST));
+        assert_eq!(icmp_error.source(), IpAddr::V4(ERROR_SRC_IPV4));
+        assert!(matches!(
+            icmp_error.icmp_unreachable_destination(),
+            Ok(Some(_))
+        ));
+    }
+
+    #[test_strategy::proptest()]
+    fn ipv6_icmp_unreachable_max_payload(
+        #[strategy(payload(MAX_IP_SIZE - Ipv6Header::LEN - UdpHeader::LEN))] payload: Vec<u8>,
+    ) {
+        let unreachable_packet =
+            udp_packet(Ipv6Addr::LOCALHOST, Ipv6Addr::LOCALHOST, 0, 0, payload).unwrap();
+
+        let icmp_error =
+            icmp_dst_unreachable(ERROR_SRC_IPV4, ERROR_SRC_IPV6, &unreachable_packet).unwrap();
+
+        assert_eq!(icmp_error.destination(), IpAddr::V6(Ipv6Addr::LOCALHOST));
+        assert_eq!(icmp_error.source(), IpAddr::V6(ERROR_SRC_IPV6));
+        assert!(matches!(
+            icmp_error.icmp_unreachable_destination(),
+            Ok(Some(_))
+        ));
+    }
+
+    const ERROR_SRC_IPV4: Ipv4Addr = Ipv4Addr::new(1, 1, 1, 1);
+    const ERROR_SRC_IPV6: Ipv6Addr = Ipv6Addr::new(1, 1, 1, 1, 1, 1, 1, 1);
+
+    fn payload(max_size: usize) -> impl Strategy<Value = Vec<u8>> {
+        collection::vec(any::<u8>(), 0..=max_size)
+    }
+}
