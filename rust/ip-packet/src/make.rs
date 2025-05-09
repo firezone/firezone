@@ -1,8 +1,8 @@
 //! Factory module for making all kinds of packets.
 
-use crate::{IpPacket, IpPacketBuf};
+use crate::{IpPacket, IpPacketBuf, MAX_IP_SIZE};
 use anyhow::{Context as _, Result, bail};
-use etherparse::{PacketBuilder, icmpv4, icmpv6};
+use etherparse::{Icmpv6Header, Ipv6Header, PacketBuilder, icmpv4, icmpv6};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 /// Helper macro to turn a [`PacketBuilder`] into an [`IpPacket`].
@@ -181,7 +181,16 @@ fn icmpv4_network_unreachable(
     );
     let payload = original_packet.packet();
 
-    let ip_packet = crate::build!(builder, payload)?;
+    let header_len = original_packet
+        .ipv4_header()
+        .context("Not an IPv4 packet")?
+        .header_len();
+    let icmp_error_payload_len = header_len + 8;
+
+    let actual_payload_len = std::cmp::min(payload.len(), icmp_error_payload_len);
+    let error_payload = &payload[..actual_payload_len];
+
+    let ip_packet = crate::build!(builder, error_payload)?;
 
     Ok(ip_packet)
 }
@@ -191,12 +200,17 @@ fn icmpv6_address_unreachable(
     dst: Ipv6Addr,
     original_packet: &IpPacket,
 ) -> Result<IpPacket, anyhow::Error> {
+    const MAX_ICMP_ERROR_PAYLOAD_LEN: usize = MAX_IP_SIZE - Ipv6Header::LEN - Icmpv6Header::MAX_LEN;
+
     let builder = PacketBuilder::ipv6(src.octets(), dst.octets(), 20).icmpv6(
         crate::Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Address),
     );
     let payload = original_packet.packet();
 
-    let ip_packet = crate::build!(builder, payload)?;
+    let actual_payload_len = std::cmp::min(payload.len(), MAX_ICMP_ERROR_PAYLOAD_LEN);
+    let error_payload = &payload[..actual_payload_len];
+
+    let ip_packet = crate::build!(builder, error_payload)?;
 
     Ok(ip_packet)
 }
