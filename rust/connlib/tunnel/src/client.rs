@@ -1,6 +1,8 @@
+mod dns_resource_nat;
 mod resource;
 
-use dns_types::{DomainName, ResponseCode};
+use dns_resource_nat::DnsResourceNat;
+use dns_types::ResponseCode;
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
@@ -28,7 +30,6 @@ use crate::peer::GatewayOnClient;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
-use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
@@ -93,12 +94,7 @@ pub struct ClientState {
     peers: PeerStore<GatewayId, GatewayOnClient>,
     /// Tracks the flows to resources that we are currently trying to establish.
     pending_flows: HashMap<ResourceId, PendingFlow>,
-    /// Tracks the domains for which we have set up a NAT per gateway.
-    ///
-    /// The IPs for DNS resources get assigned on the client.
-    /// In order to route them to the actual resource, the gateway needs to set up a NAT table.
-    /// Until the NAT is set up, packets sent to these resources are effectively black-holed.
-    dns_resource_nat_by_gateway: BTreeMap<(GatewayId, DomainName), DnsResourceNatState>,
+    dns_resource_nat: DnsResourceNat,
     /// Tracks which gateway to use for a particular Resource.
     resources_gateways: HashMap<ResourceId, GatewayId>,
     /// The site a gateway belongs to.
@@ -147,41 +143,6 @@ pub struct ClientState {
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
-}
-
-enum DnsResourceNatState {
-    Pending {
-        sent_at: Instant,
-        buffered_packets: UniquePacketBuffer,
-
-        is_recreating: bool,
-    },
-    Recreating,
-    Confirmed,
-}
-
-impl DnsResourceNatState {
-    fn num_buffered_packets(&self) -> usize {
-        match self {
-            DnsResourceNatState::Pending {
-                buffered_packets, ..
-            } => buffered_packets.len(),
-            DnsResourceNatState::Confirmed => 0,
-            DnsResourceNatState::Recreating => 0,
-        }
-    }
-
-    fn confirm(&mut self) -> impl Iterator<Item = IpPacket> + use<> {
-        let buffered_packets = match std::mem::replace(self, DnsResourceNatState::Confirmed) {
-            DnsResourceNatState::Pending {
-                buffered_packets, ..
-            } => Some(buffered_packets.into_iter()),
-            DnsResourceNatState::Recreating => None,
-            DnsResourceNatState::Confirmed => None,
-        };
-
-        buffered_packets.into_iter().flatten()
-    }
 }
 
 struct PendingFlow {
@@ -251,7 +212,7 @@ impl ClientState {
             tcp_dns_server: dns_over_tcp::Server::new(now),
             tcp_dns_streams_by_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
-            dns_resource_nat_by_gateway: BTreeMap::new(),
+            dns_resource_nat: Default::default(),
         }
     }
 
@@ -362,8 +323,6 @@ impl ClientState {
                 },
             );
 
-        use std::collections::btree_map::Entry;
-
         for (domain, rid, proxy_ips, gid) in
             self.stub_resolver
                 .resolved_resources()
@@ -385,110 +344,29 @@ impl ClientState {
                 .remove(&(*gid, domain))
                 .unwrap_or_default();
 
-            match self
-                .dns_resource_nat_by_gateway
-                .entry((*gid, domain.clone()))
-            {
-                Entry::Vacant(v) => {
-                    self.peers
-                        .add_ips_with_resource(gid, proxy_ips.iter().copied(), rid);
-                    let mut buffered_packets =
-                        UniquePacketBuffer::with_capacity_power_of_2(5, "dns-resource-nat-initial"); // 2^5 = 32
-                    buffered_packets.extend(packets_for_domain);
-
-                    v.insert(DnsResourceNatState::Pending {
-                        sent_at: now,
-                        buffered_packets,
-
-                        is_recreating: false,
-                    });
-                }
-                Entry::Occupied(mut o) => {
-                    let state = o.get_mut();
-
-                    match state {
-                        DnsResourceNatState::Confirmed => continue,
-                        DnsResourceNatState::Recreating => {
-                            let mut buffered_packets = UniquePacketBuffer::with_capacity_power_of_2(
-                                5, // 2^5 = 32
-                                "dns-resource-nat-recreating",
-                            );
-                            buffered_packets.extend(packets_for_domain);
-
-                            *state = DnsResourceNatState::Pending {
-                                sent_at: now,
-                                buffered_packets,
-                                is_recreating: true,
-                            };
-                        }
-                        DnsResourceNatState::Pending {
-                            sent_at,
-                            buffered_packets,
-                            ..
-                        } => {
-                            let time_since_last_attempt = now.duration_since(*sent_at);
-                            buffered_packets.extend(packets_for_domain);
-
-                            if time_since_last_attempt < Duration::from_secs(2) {
-                                continue;
-                            }
-
-                            *sent_at = now;
-                        }
-                    }
-                }
-            }
-
-            let packet = match p2p_control::dns_resource_nat::assigned_ips(
-                *rid,
+            let Some(intent) = self.dns_resource_nat.update(
                 domain.clone(),
-                proxy_ips.clone(),
-            ) {
-                Ok(packet) => packet,
-                Err(e) => {
-                    tracing::warn!("Failed to create IP packet for `AssignedIp`s event: {e:#}");
-                    continue;
-                }
+                *gid,
+                *rid,
+                proxy_ips,
+                packets_for_domain,
+                now,
+            ) else {
+                continue;
             };
+
+            self.peers
+                .add_ips_with_resource(gid, proxy_ips.iter().copied(), rid);
 
             tracing::debug!(%gid, %domain, "Setting up DNS resource NAT");
 
             encapsulate_and_buffer(
-                packet,
+                intent,
                 *gid,
                 now,
                 &mut self.node,
                 &mut self.buffered_transmits,
             );
-        }
-    }
-
-    /// Recreate the DNS resource NAT state for a given domain.
-    ///
-    /// This will trigger the client to submit another `AssignedIp`s event to the Gateway.
-    /// On the Gateway, such an event causes a new DNS resolution.
-    ///
-    /// We call this function every time a client issues a DNS query for a certain domain.
-    /// Coupling this behaviour together allows a client to refresh the DNS resolution of a DNS resource on the Gateway
-    /// through local DNS resolutions.
-    ///
-    /// We model the [`DnsResourceNatState::Recreating`] state differently from just removing the entry to allow packets
-    /// to continue flowing to the Gateway while the DNS resource NAT is being recreated.
-    /// In most cases, the DNS records will not change and as such, performing this will not interrupt the flow of packets.
-    fn recreate_dns_resource_nat_for_domain(&mut self, message: &dns_types::Response) {
-        for state in self
-            .dns_resource_nat_by_gateway
-            .iter_mut()
-            .filter_map(|((_, candidate), b)| (candidate == &message.domain()).then_some(b))
-        {
-            match state {
-                DnsResourceNatState::Pending { .. } => continue,
-                DnsResourceNatState::Recreating => continue,
-                DnsResourceNatState::Confirmed => {
-                    tracing::debug!(domain = %message.domain(), "Re-creating DNS resource NAT");
-                    *state = DnsResourceNatState::Recreating;
-                }
-            }
         }
     }
 
@@ -549,7 +427,7 @@ impl ClientState {
             handle_p2p_control_packet(
                 gid,
                 fz_p2p_control,
-                &mut self.dns_resource_nat_by_gateway,
+                &mut self.dns_resource_nat,
                 &mut self.node,
                 &mut self.buffered_transmits,
                 now,
@@ -625,7 +503,7 @@ impl ClientState {
         }
     }
 
-    fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
+    fn encapsulate(&mut self, mut packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
         let dst = packet.destination();
 
         if is_definitely_not_a_resource(dst) {
@@ -659,17 +537,9 @@ impl ClientState {
         // Re-send if older than X.
 
         if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst) {
-            if let Some(DnsResourceNatState::Pending {
-                buffered_packets,
-                is_recreating: false, // Important: Only buffer if this is the first time we are setting up the DNS resource NAT (i.e. if we are not recreating it).
-                ..
-            }) = self
-                .dns_resource_nat_by_gateway
-                .get_mut(&(peer.id(), domain.clone()))
-            {
-                buffered_packets.push(packet);
-                return None;
-            }
+            packet = self
+                .dns_resource_nat
+                .handle_outgoing(peer.id(), domain, packet)?;
         }
 
         let gid = peer.id();
@@ -911,6 +781,8 @@ impl ClientState {
         trigger: impl Into<ConnectionTrigger>,
         now: Instant,
     ) {
+        use std::collections::hash_map::Entry;
+
         let trigger = trigger.into();
 
         debug_assert!(self.resources_by_id.contains_key(&resource));
@@ -1014,8 +886,7 @@ impl ClientState {
         self.peers.remove(disconnected_gateway);
         self.resources_gateways
             .retain(|_, g| g != disconnected_gateway);
-        self.dns_resource_nat_by_gateway
-            .retain(|(gateway, _), _| gateway != disconnected_gateway);
+        self.dns_resource_nat.clear_by_gateway(disconnected_gateway);
     }
 
     fn routes(&self) -> impl Iterator<Item = IpNetwork> + '_ {
@@ -1232,7 +1103,7 @@ impl ClientState {
 
         match self.stub_resolver.handle(&message) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.recreate_dns_resource_nat_for_domain(&response);
+                self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
 
                 unwrap_or_debug!(
@@ -1309,7 +1180,7 @@ impl ClientState {
                     return;
                 }
 
-                self.recreate_dns_resource_nat_for_domain(&response);
+                self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
 
                 let maybe_packet = ip_packet::make::udp_packet(
@@ -1383,7 +1254,7 @@ impl ClientState {
 
         match self.stub_resolver.handle(&query.message) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.recreate_dns_resource_nat_for_domain(&response);
+                self.dns_resource_nat.recreate(query.message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
 
                 unwrap_or_debug!(
@@ -1624,7 +1495,7 @@ impl ClientState {
         self.resources_gateways.clear(); // Clear Resource <> Gateway mapping (we will re-create this as new flows are authorized).
 
         self.recently_connected_gateways.clear(); // Ensure we don't have sticky gateways when we roam.
-        self.dns_resource_nat_by_gateway.clear(); // Clear all state related to DNS resource NATs.
+        self.dns_resource_nat.clear(); // Clear all state related to DNS resource NATs.
         self.drain_node_events();
 
         // Resetting the client will trigger a failed `QueryResult` for each one that is in-progress.
@@ -1818,8 +1689,7 @@ impl ClientState {
             .resolved_resources()
             .filter_map(|(domain, candidate, _)| (candidate == &id).then_some(domain))
         {
-            self.dns_resource_nat_by_gateway
-                .retain(|(_, candidate), _| candidate != domain);
+            self.dns_resource_nat.clear_by_domain(domain);
         }
     }
 
@@ -1911,7 +1781,7 @@ fn encapsulate_and_buffer(
 fn handle_p2p_control_packet(
     gid: GatewayId,
     fz_p2p_control: ip_packet::FzP2pControlSlice,
-    dns_resource_nat_by_gateway: &mut BTreeMap<(GatewayId, DomainName), DnsResourceNatState>,
+    dns_resource_nat: &mut DnsResourceNat,
     node: &mut ClientNode<GatewayId, RelayId>,
     buffered_transmits: &mut VecDeque<Transmit>,
     now: Instant,
@@ -1926,20 +1796,7 @@ fn handle_p2p_control_packet(
                 return;
             };
 
-            if res.status != dns_resource_nat::NatStatus::Active {
-                tracing::debug!(%gid, domain = %res.domain, "DNS resource NAT is not active");
-                return;
-            }
-
-            let Some(nat_state) = dns_resource_nat_by_gateway.get_mut(&(gid, res.domain.clone()))
-            else {
-                tracing::debug!(%gid, domain = %res.domain, "No DNS resource NAT state, ignoring response");
-                return;
-            };
-
-            tracing::debug!(%gid, domain = %res.domain, num_buffered_packets = %nat_state.num_buffered_packets(), "DNS resource NAT is active");
-
-            let buffered_packets = nat_state.confirm();
+            let buffered_packets = dns_resource_nat.on_domain_status(gid, res);
 
             for packet in buffered_packets {
                 encapsulate_and_buffer(packet, gid, now, node, buffered_transmits);
