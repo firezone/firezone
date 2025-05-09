@@ -47,6 +47,7 @@ pub struct Io {
     gso_queue: GsoQueue,
 
     nameservers: NameserverSet,
+    reval_nameserver_interval: tokio::time::Interval,
 
     udp_dns_server: l4_udp_dns_server::Server,
     tcp_dns_server: l4_tcp_dns_server::Server,
@@ -92,6 +93,7 @@ pub enum Input<D, I> {
 }
 
 const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
+const RE_EVALUATE_NAMESERVER_INTERVAL: Duration = Duration::from_secs(60);
 
 impl Io {
     /// Creates a new I/O abstraction
@@ -105,18 +107,16 @@ impl Io {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
 
-        let mut nameservers = NameserverSet::new(
-            nameservers,
-            tcp_socket_factory.clone(),
-            udp_socket_factory.clone(),
-        );
-        nameservers.evaluate();
-
         Self {
             outbound_packet_buffer: VecDeque::default(),
             timeout: None,
             sockets,
-            nameservers,
+            nameservers: NameserverSet::new(
+                nameservers,
+                tcp_socket_factory.clone(),
+                udp_socket_factory.clone(),
+            ),
+            reval_nameserver_interval: tokio::time::interval(RE_EVALUATE_NAMESERVER_INTERVAL),
             tcp_socket_factory,
             udp_socket_factory,
             dns_queries: FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000),
@@ -171,6 +171,11 @@ impl Io {
         >,
     > {
         ready!(self.flush(cx)?);
+
+        if self.reval_nameserver_interval.poll_tick(cx).is_ready() {
+            self.nameservers.evaluate();
+        }
+
         ready!(self.nameservers.poll(cx));
 
         if let Poll::Ready(network) = self.sockets.poll_recv_from(cx) {
