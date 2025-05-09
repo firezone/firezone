@@ -16,10 +16,10 @@ public class Configuration {
     static let apiURL = "dev.firezone.config.apiURL"
     static let logFilter = "dev.firezone.config.logFilter"
     static let accountSlug = "dev.firezone.config.accountSlug"
-    static let internetResourceEnabled = "dev.firezone.config.internetResourceEnabled"
     static let lastDismissedVersion = "dev.firezone.config.lastDismissedVersion"
     static let lastNotifiedVersion = "dev.firezone.config.lastNotifiedVersion"
     static let firezoneId = "dev.firezone.config.firezoneId"
+    public static let internetResourceEnabled = "dev.firezone.config.internetResourceEnabled"
   }
 
   // We expose all configuration getters to return Optionals so that any consumers of this class may distinguish
@@ -94,7 +94,7 @@ public class Configuration {
   public init() {
     guard let defaults = UserDefaults(suiteName: BundleHelper.appGroupId)
     else {
-      fatalError("Could not initialize configuration")
+      fatalError("Could not initialize configuration for group id \(BundleHelper.appGroupId)")
     }
 
     self.userDefaults = defaults
@@ -141,7 +141,7 @@ public class Configuration {
         for key in specificKeys where self.didValueChange(forKey: key) {
           changedKeyForHandler = key
           shouldCallHandler = true
-          break // Found a changed key.
+          break
         }
       } else {
         shouldCallHandler = true
@@ -153,6 +153,7 @@ public class Configuration {
         }
       }
     }
+
     return ObserverToken { [weak self] in
       self?.removeObserver(observer)
     }

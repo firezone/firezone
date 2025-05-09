@@ -33,8 +33,9 @@ public class VPNConfigurationManager {
     let protocolConfiguration = NETunnelProviderProtocol()
     let manager = NETunnelProviderManager()
 
+    protocolConfiguration.providerConfiguration = nil
     protocolConfiguration.providerBundleIdentifier = VPNConfigurationManager.bundleIdentifier
-    protocolConfiguration.serverAddress = "127.0.0.1" // can be anything
+    protocolConfiguration.serverAddress = "Firezone" // can be anything
     manager.localizedDescription = VPNConfigurationManager.bundleDescription
     manager.protocolConfiguration = protocolConfiguration
 
@@ -125,6 +126,7 @@ public class VPNConfigurationManager {
 
     // Remove fields to prevent confusion if the user sees these in System Settings and wonders why they're stale.
     protocolConfiguration.providerConfiguration = nil
+    protocolConfiguration.serverAddress = "Firezone"
     manager.protocolConfiguration = protocolConfiguration
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()

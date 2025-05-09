@@ -253,10 +253,13 @@ public final class Store: ObservableObject {
 
     // Reconfigure our Telemetry environment in case it changed
     Telemetry.setEnvironmentOrClose(apiURL)
+
+    self.apiURL = apiURL
   }
 
   func setLogFilter(_ logFilter: String) {
     Configuration.shared.logFilter = logFilter
+    self.logFilter = logFilter
   }
 
   func setInternetResourceEnabled(_ enabled: Bool) {

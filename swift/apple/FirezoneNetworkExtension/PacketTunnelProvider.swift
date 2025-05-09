@@ -20,6 +20,8 @@ enum PacketTunnelProviderError: Error {
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
 
+  private var configurationObserverToken: Configuration.ObserverToken?
+
   enum LogExportState {
     case inProgress(TunnelLogArchive)
     case idle
@@ -32,6 +34,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     Telemetry.start()
 
     super.init()
+
+    bindToConfigurationUpdates()
   }
 
   override func startTunnel(
@@ -48,6 +52,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         throw PacketTunnelProviderError.tokenNotFoundInKeychain
       }
 
+      Log.log("\(token)")
+
       // Try to save the token back to the Keychain but continue if we can't
       do { try token.save() } catch { Log.error(error) }
 
@@ -57,23 +63,33 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         throw PacketTunnelProviderError.firezoneIdIsInvalid
       }
 
+      Log.log("\(id)")
+
       // Now we should have a token, so continue connecting
       let apiURL = Configuration.shared.apiURL ?? Configuration.defaultApiURL
+
+      Log.log("\(apiURL)")
 
       // Reconfigure our Telemetry environment now that we know the API URL
       Telemetry.setEnvironmentOrClose(apiURL)
 
       let logFilter = Configuration.shared.logFilter ?? Configuration.defaultLogFilter
 
+      Log.log("\(logFilter)")
+
       // Hydrate telemetry account slug
       guard let accountSlug = Configuration.shared.accountSlug
       else {
+        Log.log("\(Configuration.shared.accountSlug ?? "Unknown")")
+        Log.log("\(Configuration.shared.actorName ?? "Unknown")")
         throw PacketTunnelProviderError.accountSlugIsInvalid
       }
 
       Telemetry.accountSlug = accountSlug
 
-      // Load current internetResourceEnabledState
+      Log.log("\(accountSlug)")
+
+      // Load current internetResourceEnabled state - can change while tunnel is up
       let internetResourceEnabled = Configuration.shared.internetResourceEnabled ?? false
 
       let adapter = Adapter(
@@ -92,11 +108,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       // Tell the system the tunnel is up, moving the tunnel manager status to
       // `connected`.
       completionHandler(nil)
-
-    } catch let error as PacketTunnelProviderError {
-
-      // These are expected, no need to log them
-      completionHandler(error)
 
     } catch {
 
@@ -275,5 +286,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       .removeItem(at: SharedAccess.providerStopReasonURL)
 
     completionHandler(data)
+  }
+
+  private func bindToConfigurationUpdates() {
+    self.configurationObserverToken = Configuration.shared
+      .addObserver(forKeys: [Configuration.Keys.internetResourceEnabled]) { [weak self] (_, configuration) in
+        guard let self = self else { return }
+
+        self.adapter?.setInternetResourceEnabled(configuration.internetResourceEnabled ?? false)
+      }
   }
 }
