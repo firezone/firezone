@@ -123,12 +123,6 @@ impl Eventloop {
                     }
 
                     if e.root_cause()
-                        .is::<firezone_tunnel::NoNameserverAvailable>()
-                    {
-                        return Poll::Ready(Err(e));
-                    }
-
-                    if e.root_cause()
                         .is::<firezone_tunnel::UdpSocketThreadStopped>()
                     {
                         return Poll::Ready(Err(e));
