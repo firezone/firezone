@@ -93,7 +93,8 @@ fn parse_filter(directives: &str) -> Result<EnvFilter, ParseError> {
     ///
     /// By prepending this directive to the active log filter, a simple directive like `debug` actually produces useful logs.
     /// If necessary, you can still activate logs from these crates by restating them in your directive with a lower filter, i.e. `netlink_proto=debug`.
-    const IRRELEVANT_CRATES: &str = "netlink_proto=warn,os_info=warn,rustls=warn";
+    const IRRELEVANT_CRATES: &str =
+        "netlink_proto=warn,os_info=warn,rustls=warn,opentelemetry_sdk=info";
 
     let env_filter = if directives.is_empty() {
         EnvFilter::try_new(IRRELEVANT_CRATES)?
