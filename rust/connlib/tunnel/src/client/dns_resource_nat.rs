@@ -40,7 +40,7 @@ impl DnsResourceNat {
                     sent_at: now,
                     buffered_packets,
 
-                    is_recreating: false,
+                    should_buffer: true,
                 });
             }
             Entry::Occupied(mut o) => {
@@ -49,7 +49,7 @@ impl DnsResourceNat {
                 match state {
                     State::Confirmed => return None,
                     State::Failed => return None,
-                    State::Recreating => {
+                    State::Recreating { should_buffer } => {
                         let mut buffered_packets = UniquePacketBuffer::with_capacity_power_of_2(
                             5, // 2^5 = 32
                             "dns-resource-nat-recreating",
@@ -59,7 +59,7 @@ impl DnsResourceNat {
                         *state = State::Pending {
                             sent_at: now,
                             buffered_packets,
-                            is_recreating: true,
+                            should_buffer: *should_buffer,
                         };
                     }
                     State::Pending {
@@ -110,14 +110,14 @@ impl DnsResourceNat {
             .iter_mut()
             .filter_map(|((_, candidate), b)| (candidate == &domain).then_some(b))
         {
-            match state {
-                State::Pending { .. } => continue,
-                State::Recreating => continue,
-                State::Confirmed | State::Failed => {
-                    tracing::debug!(%domain, "Re-creating DNS resource NAT");
-                    *state = State::Recreating;
-                }
-            }
+            let should_buffer = match state {
+                State::Recreating { .. } | State::Pending { .. } => continue,
+                State::Confirmed => false, // Don't buffer packets if already confirmed.
+                State::Failed => true,     // No NAT yet, buffer packets until confirmed.
+            };
+
+            tracing::debug!(%domain, "Re-creating DNS resource NAT");
+            *state = State::Recreating { should_buffer };
         }
     }
 
@@ -133,7 +133,7 @@ impl DnsResourceNat {
     ) -> Option<IpPacket> {
         if let Some(State::Pending {
             buffered_packets,
-            is_recreating: false, // Important: Only buffer if this is the first time we are setting up the DNS resource NAT (i.e. if we are not recreating it).
+            should_buffer: true,
             ..
         }) = self.inner.get_mut(&(gid, domain.clone()))
         {
@@ -192,9 +192,11 @@ enum State {
         sent_at: Instant,
         buffered_packets: UniquePacketBuffer,
 
-        is_recreating: bool,
+        should_buffer: bool,
     },
-    Recreating,
+    Recreating {
+        should_buffer: bool,
+    },
     Confirmed,
     Failed,
 }
@@ -206,7 +208,7 @@ impl State {
                 buffered_packets, ..
             } => buffered_packets.len(),
             State::Confirmed => 0,
-            State::Recreating => 0,
+            State::Recreating { .. } => 0,
             State::Failed => 0,
         }
     }
@@ -216,7 +218,7 @@ impl State {
             State::Pending {
                 buffered_packets, ..
             } => Some(buffered_packets.into_iter()),
-            State::Recreating => None,
+            State::Recreating { .. } => None,
             State::Confirmed => None,
             State::Failed => None,
         };
@@ -304,6 +306,15 @@ mod tests {
             Instant::now(),
         );
         assert!(intent.is_some());
+
+        // Should buffer packets if we are coming from `Failed`.
+        let packet =
+            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+                .unwrap();
+
+        let maybe_packet = dns_resource_nat.handle_outgoing(GID, &EXAMPLE_COM.to_vec(), packet);
+
+        assert!(maybe_packet.is_none());
     }
 
     #[test]
