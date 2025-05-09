@@ -28,7 +28,6 @@ use crate::peer::GatewayOnClient;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
-use std::collections::hash_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
@@ -911,6 +910,7 @@ impl ClientState {
         trigger: impl Into<ConnectionTrigger>,
         now: Instant,
     ) {
+        use std::collections::hash_map::Entry;
         let trigger = trigger.into();
 
         debug_assert!(self.resources_by_id.contains_key(&resource));
