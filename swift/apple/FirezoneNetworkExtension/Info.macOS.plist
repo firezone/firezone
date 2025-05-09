@@ -23,13 +23,14 @@
 	<key>LSMinimumSystemVersion</key>
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>AppGroupIdentifier</key>
-	<string>$(APP_GROUP_ID)</string>
+        <!-- macOS system extensions require the app group ID prefix -->
+	<string>$(APP_GROUP_ID_PREFIX)$(APP_GROUP_ID)</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2025 Firezone, Inc. All rights reserved.</string>
   <key>NetworkExtension</key>
   <dict>
     <key>NEMachServiceName</key>
-    <string>$(APP_GROUP_ID)</string>
+    <string>$(APP_GROUP_ID_PREFIX)$(APP_GROUP_ID)</string>
     <key>NEProviderClasses</key>
     <dict>
       <key>com.apple.networkextension.packet-tunnel</key>
