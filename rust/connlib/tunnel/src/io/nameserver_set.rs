@@ -51,7 +51,12 @@ impl NameserverSet {
     }
 
     pub fn evaluate(&mut self) {
-        self.nameserver_by_rtt.clear();
+        if self.inner.is_empty() {
+            return;
+        }
+
+        tracing::info!(ips = ?self.inner, "Evaluating fastest nameserver");
+
         let start = Instant::now();
 
         for nameserver in self.inner.iter().copied() {
