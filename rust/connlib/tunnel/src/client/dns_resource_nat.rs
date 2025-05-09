@@ -121,19 +121,27 @@ impl DnsResourceNat {
         }
     }
 
-    // TODO: Improve name.
-    pub fn is_active(&mut self, gid: GatewayId, domain: &DomainName, packet: &IpPacket) -> bool {
+    /// Handles an outgoing packet for a DNS resource.
+    ///
+    /// If the DNS resource NAT is still being created, the packet gets buffered.
+    /// Otherwise, it is returned again.
+    pub fn handle_outgoing(
+        &mut self,
+        gid: GatewayId,
+        domain: &DomainName,
+        packet: IpPacket,
+    ) -> Option<IpPacket> {
         if let Some(State::Pending {
             buffered_packets,
             is_recreating: false, // Important: Only buffer if this is the first time we are setting up the DNS resource NAT (i.e. if we are not recreating it).
             ..
         }) = self.inner.get_mut(&(gid, domain.clone()))
         {
-            buffered_packets.push(packet.clone());
-            return false;
+            buffered_packets.push(packet);
+            return None;
         }
 
-        true
+        Some(packet)
     }
 
     pub fn clear_by_gateway(&mut self, gid: &GatewayId) {

@@ -503,7 +503,7 @@ impl ClientState {
         }
     }
 
-    fn encapsulate(&mut self, packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
+    fn encapsulate(&mut self, mut packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
         let dst = packet.destination();
 
         if is_definitely_not_a_resource(dst) {
@@ -537,9 +537,9 @@ impl ClientState {
         // Re-send if older than X.
 
         if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst) {
-            if !self.dns_resource_nat.is_active(peer.id(), domain, &packet) {
-                return None;
-            }
+            packet = self
+                .dns_resource_nat
+                .handle_outgoing(peer.id(), domain, packet)?;
         }
 
         let gid = peer.id();
