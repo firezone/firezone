@@ -27,6 +27,10 @@ export default function Gateway() {
           Fixes an issue where ICMP unreachable errors for large packets would
           not be sent.
         </ChangeItem>
+        <ChangeItem pull="9060">
+          Fixes an issue where service discovery for DNS resources would fail
+          in case the Gateway's started up with no network connectivity.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-05-02")}>
         <ChangeItem pull="9009">
