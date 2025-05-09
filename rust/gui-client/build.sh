@@ -48,6 +48,9 @@ rm "$BUNDLES_DIR"/*.deb
 # files inside that dir
 INTERMEDIATE_DIR=$(ls -d "$BUNDLES_DIR"/*/)
 
+# Delete the archives, we will re-create them.
+rm "$INTERMEDIATE_DIR"/*.tar.gz
+
 # Add the scripts
 cp src-tauri/deb_files/postinst src-tauri/deb_files/prerm "$INTERMEDIATE_DIR/control/"
 
