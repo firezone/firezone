@@ -1,4 +1,4 @@
-use super::{NotFound, ServiceId};
+use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::BUNDLE_ID;
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
@@ -18,7 +18,7 @@ pub(crate) type ServerStream = UnixStream;
 
 /// Connect to the IPC service
 #[expect(clippy::wildcard_enum_match_arm)]
-pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
+pub async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
     let path = ipc_path(id);
     let stream = UnixStream::connect(&path)
         .await
@@ -41,7 +41,7 @@ pub async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
 
 impl Server {
     /// Platform-specific setup
-    pub(crate) fn new(id: ServiceId) -> Result<Self> {
+    pub(crate) fn new(id: SocketId) -> Result<Self> {
         let sock_path = ipc_path(id);
 
         tracing::debug!(socket = %sock_path.display(), "Creating new IPC server");
@@ -65,7 +65,6 @@ impl Server {
     }
 
     pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
-        tracing::info!("Listening for GUI to connect over IPC...");
         let (stream, _) = self.listener.accept().await?;
         let cred = stream.peer_cred()?;
         tracing::info!(
@@ -87,11 +86,12 @@ impl Server {
 /// Also systemd can create this dir with the `RuntimeDir=` directive which is nice.
 ///
 /// Test sockets live in e.g. `/run/user/1000/dev.firezone.client/data/`
-fn ipc_path(id: ServiceId) -> PathBuf {
+fn ipc_path(id: SocketId) -> PathBuf {
     match id {
-        ServiceId::Prod => PathBuf::from("/run").join(BUNDLE_ID).join("ipc.sock"),
+        SocketId::Tunnel => PathBuf::from("/run").join(BUNDLE_ID).join("tunnel.sock"),
+        SocketId::Gui => PathBuf::from("/run").join(BUNDLE_ID).join("gui.sock"),
         #[cfg(test)]
-        ServiceId::Test(id) => firezone_bin_shared::known_dirs::runtime()
+        SocketId::Test(id) => firezone_bin_shared::known_dirs::runtime()
             .expect("`known_dirs::runtime()` should always work")
             .join(format!("ipc_test_{id}.sock")),
     }
