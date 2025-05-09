@@ -26,52 +26,52 @@ public class Configuration {
   // between a key that's unset vs set.
   public var favoriteResourceIDs: [String]? {
     get { userDefaults.stringArray(forKey: Keys.favoriteResourceIDs) }
-    set { userDefaults.set(newValue, forKey: Keys.favoriteResourceIDs) }
+    set { userDefaults.set(newValue, forKey: Keys.favoriteResourceIDs); userDefaults.synchronize() }
   }
 
   public var actorName: String? {
     get { userDefaults.string(forKey: Keys.actorName) }
-    set { userDefaults.set(newValue, forKey: Keys.actorName) }
+    set { userDefaults.set(newValue, forKey: Keys.actorName); userDefaults.synchronize() }
   }
 
   public var authURL: URL? {
     get { userDefaults.url(forKey: Keys.authURL) }
-    set { userDefaults.set(newValue, forKey: Keys.authURL) }
+    set { userDefaults.set(newValue, forKey: Keys.authURL); userDefaults.synchronize() }
   }
 
   public var apiURL: URL? {
     get { userDefaults.url(forKey: Keys.apiURL) }
-    set { userDefaults.set(newValue, forKey: Keys.apiURL) }
+    set { userDefaults.set(newValue, forKey: Keys.apiURL); userDefaults.synchronize() }
   }
 
   public var logFilter: String? {
     get { userDefaults.string(forKey: Keys.logFilter) }
-    set { userDefaults.set(newValue, forKey: Keys.logFilter) }
+    set { userDefaults.set(newValue, forKey: Keys.logFilter); userDefaults.synchronize() }
   }
 
   public var accountSlug: String? {
     get { userDefaults.string(forKey: Keys.accountSlug) }
-    set { userDefaults.set(newValue, forKey: Keys.accountSlug) }
+    set { userDefaults.set(newValue, forKey: Keys.accountSlug); userDefaults.synchronize() }
   }
 
   public var internetResourceEnabled: Bool? {
     get { userDefaults.bool(forKey: Keys.internetResourceEnabled) }
-    set { userDefaults.set(newValue, forKey: Keys.internetResourceEnabled) }
+    set { userDefaults.set(newValue, forKey: Keys.internetResourceEnabled); userDefaults.synchronize() }
   }
 
   public var lastDismissedVersion: String? {
     get { userDefaults.string(forKey: Keys.lastDismissedVersion) }
-    set { userDefaults.set(newValue, forKey: Keys.lastDismissedVersion) }
+    set { userDefaults.set(newValue, forKey: Keys.lastDismissedVersion); userDefaults.synchronize() }
   }
 
   public var lastNotifiedVersion: String? {
     get { userDefaults.string(forKey: Keys.lastNotifiedVersion) }
-    set { userDefaults.set(newValue, forKey: Keys.lastNotifiedVersion) }
+    set { userDefaults.set(newValue, forKey: Keys.lastNotifiedVersion); userDefaults.synchronize() }
   }
 
   public var firezoneId: String? {
     get { userDefaults.string(forKey: Keys.firezoneId) }
-    set { userDefaults.set(newValue, forKey: Keys.firezoneId) }
+    set { userDefaults.set(newValue, forKey: Keys.firezoneId); userDefaults.synchronize() }
   }
 
   // Use these to provide default values at the call site if needed

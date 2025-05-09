@@ -135,6 +135,7 @@ class SettingsViewModel: ObservableObject {
 
     Log.debug("\(self.areSettingsSaved) \(self.areSettingsValid) \(self.areSettingsDefault)")
     Log.debug("\(store.authURL) \(store.apiURL) \(store.logFilter)")
+    Log.debug("\(Configuration.shared.apiURL) \(Configuration.shared.authURL) \(Configuration.shared.logFilter)")
   }
 
   func revertToDefaultSettings() {
