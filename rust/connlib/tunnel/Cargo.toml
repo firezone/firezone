@@ -40,6 +40,7 @@ ringbuffer = { workspace = true }
 secrecy = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive", "std"] }
 serde_json = { workspace = true }
+smallvec = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 socket2 = { workspace = true }
