@@ -273,6 +273,40 @@ mod tests {
     }
 
     #[test]
+    fn recreate_failed_nat() {
+        let mut dns_resource_nat = DnsResourceNat::default();
+
+        dns_resource_nat.update(
+            EXAMPLE_COM.to_vec(),
+            GID,
+            RID,
+            PROXY_IPS,
+            VecDeque::default(),
+            Instant::now(),
+        );
+        dns_resource_nat.on_domain_status(
+            GID,
+            p2p_control::dns_resource_nat::DomainStatus {
+                status: p2p_control::dns_resource_nat::NatStatus::Inactive,
+                resource: RID,
+                domain: EXAMPLE_COM.to_vec(),
+            },
+        );
+
+        dns_resource_nat.recreate(EXAMPLE_COM.to_vec());
+
+        let intent = dns_resource_nat.update(
+            EXAMPLE_COM.to_vec(),
+            GID,
+            RID,
+            PROXY_IPS,
+            VecDeque::default(),
+            Instant::now(),
+        );
+        assert!(intent.is_some());
+    }
+
+    #[test]
     fn buffer_packets_until_nat_is_active() {
         let mut dns_resource_nat = DnsResourceNat::default();
 
