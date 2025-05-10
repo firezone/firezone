@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>ORGANIZATIONNAME</key>
+    <string>Firezone, Inc.</string>
+    <key>FILEHEADER</key>
+    <string>
+//  ___FILENAME___
+//  © ___YEAR___ ___ORGANIZATIONNAME___
+//  LICENSE: Apache-2.0
+//  </string>
+</dict>
+</plist>
