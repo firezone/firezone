@@ -19,7 +19,7 @@ atomicwrites = { workspace = true }
 backoff = { workspace = true }
 chrono = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
-connlib-client-shared = { workspace = true }
+client-shared = { workspace = true }
 connlib-model = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 firezone-bin-shared = { workspace = true }
