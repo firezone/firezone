@@ -170,10 +170,12 @@ struct NonInternetResourceHeader: View {
         }
       }
 
-      if store.favorites.contains(resource.id) {
+      if store.favoriteResourceIDs.contains(resource.id) {
         Button(
           action: {
-            store.favorites.remove(resource.id)
+            var ids = store.favoriteResourceIDs
+            ids.removeAll { $0 == resource.id }
+            store.setFavoriteResourceIDs(ids)
           },
           label: {
             HStack {
@@ -186,7 +188,9 @@ struct NonInternetResourceHeader: View {
       } else {
         Button(
           action: {
-            store.favorites.add(resource.id)
+            var ids = store.favoriteResourceIDs
+            ids.append(resource.id)
+            store.setFavoriteResourceIDs(ids)
           }, label: {
             HStack {
               Image(systemName: "star.fill")

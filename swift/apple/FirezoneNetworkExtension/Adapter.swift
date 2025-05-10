@@ -164,7 +164,7 @@ class Adapter {
   }
 
   /// Currently disabled resources
-  private var internetResourceEnabled: Bool = false
+  private var internetResourceEnabled: Bool
 
   /// Cache of internet resource
   private var internetResource: Resource?
@@ -173,14 +173,14 @@ class Adapter {
   private var resourceListJSON: String?
 
   /// Starting parameters
-  private let apiURL: String
+  private let apiURL: URL
   private let token: Token
   private let id: String
   private let logFilter: String
   private let connlibLogFolderPath: String
 
   init(
-    apiURL: String,
+    apiURL: URL,
     token: Token,
     id: String,
     logFilter: String,
@@ -207,7 +207,7 @@ class Adapter {
   }
 
   /// Start the tunnel.
-  public func start() throws {
+  func start() throws {
     Log.log("Adapter.start")
 
     guard session == nil else {
@@ -223,7 +223,7 @@ class Adapter {
 
       // Grab a session pointer
       session = try WrappedSession.connect(
-        apiURL,
+        "\(apiURL)",
         "\(token)",
         "\(id)",
         "\(Telemetry.accountSlug!)",
@@ -255,7 +255,7 @@ class Adapter {
   ///
   ///  This can happen before the tunnel is in the tunnelReady state, such as if the portal
   ///  is slow to send the init.
-  public func stop() {
+  func stop() {
     Log.log("Adapter.stop")
 
     // Assigning `nil` will invoke `Drop` on the Rust side
@@ -267,7 +267,7 @@ class Adapter {
 
   /// Get the current set of resources in the completionHandler, only returning
   /// them if the resource list has changed.
-  public func getResourcesIfVersionDifferentFrom(
+  func getResourcesIfVersionDifferentFrom(
     hash: Data, completionHandler: @escaping (String?) -> Void
   ) {
     // This is async to avoid blocking the main UI thread
@@ -290,7 +290,7 @@ class Adapter {
     return (try? decoder.decode([Resource].self, from: resourceList.data(using: .utf8)!)) ?? []
   }
 
-  public func setInternetResourceEnabled(_ enabled: Bool) {
+  func setInternetResourceEnabled(_ enabled: Bool) {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
@@ -299,7 +299,7 @@ class Adapter {
     }
   }
 
-  public func resourcesUpdated() {
+  func resourcesUpdated() {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
 
@@ -356,7 +356,7 @@ extension Adapter {
 
 extension Adapter: CallbackHandlerDelegate {
   // swiftlint:disable:next function_parameter_count
-  public func onSetInterfaceConfig(
+  func onSetInterfaceConfig(
     tunnelAddressIPv4: String,
     tunnelAddressIPv6: String,
     searchDomain: String?,
@@ -396,7 +396,7 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  public func onUpdateResources(resourceList: String) {
+  func onUpdateResources(resourceList: String) {
     // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
       guard let self = self else { return }
@@ -410,7 +410,7 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  public func onDisconnect(error: String) {
+  func onDisconnect(error: String) {
     // Immediately invalidate our session pointer to prevent workQueue items from trying to use it.
     // Assigning to `nil` will invoke `Drop` on the Rust side.
     session = nil
