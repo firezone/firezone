@@ -12,6 +12,23 @@ clients.
 1. Request your Firezone email added to our Apple Developer Account
 1. Open Xcode, go to Settings -> Account and log in.
 
+If you're working on the macOS client, you'll need to disable SIP and enable
+system extension development mode:
+
+1. Follow
+   [these instructions](https://developer.apple.com/documentation/security/disabling-and-enabling-system-integrity-protection)
+   to disable SIP.
+1. After that's complete, turn on system extension development mode:
+
+```bash
+systemextensionsctl developer on
+```
+
+This will prevent macOS from blocking the Network Extension from loading due to
+notarization or filepath restrictions.
+
+**Be sure to re-enable SIP to test the app in a production-like environment.**
+
 You may consider using a macOS VM (such as Parallels Desktop) to test the
 standalone macOS client, as it can be easier to test different macOS versions
 and configurations without risking your main machine.
