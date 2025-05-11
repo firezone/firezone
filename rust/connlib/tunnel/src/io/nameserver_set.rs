@@ -55,7 +55,7 @@ impl NameserverSet {
             return;
         }
 
-        tracing::info!(ips = ?self.inner, "Evaluating fastest nameserver");
+        tracing::debug!(ips = ?self.inner, "Evaluating fastest nameserver");
 
         let start = Instant::now();
 
@@ -128,7 +128,7 @@ impl NameserverSet {
             };
 
             if self.queries.is_empty() {
-                tracing::info!(%fastest, "Evaluated fastest nameserver");
+                tracing::debug!(%fastest, "Evaluated fastest nameserver");
 
                 return Poll::Ready(());
             }
