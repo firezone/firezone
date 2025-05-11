@@ -11,7 +11,6 @@ import NetworkExtension
 // TODO: Use a more abstract IPC protocol to make this less terse
 // TODO: Consider making this an actor to guarantee strict ordering
 
-// swiftlint:disable:next type_body_length
 class IPCClient {
   enum Error: Swift.Error {
     case invalidNotification
@@ -54,12 +53,8 @@ class IPCClient {
   }
 
   // Encoder used to send messages to the tunnel
-  let encoder = {
-    let encoder = PropertyListEncoder()
-    encoder.outputFormat = .binary
-
-    return encoder
-  }()
+  let encoder = PropertyListEncoder()
+  let decoder = PropertyListDecoder()
 
   func start(token: String? = nil) throws {
     var options: [String: NSObject] = [:]
@@ -73,16 +68,7 @@ class IPCClient {
   }
 
   func signOut() async throws {
-    try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session().sendProviderMessage(encoder.encode(ProviderMessage.signOut)) { _ in
-          continuation.resume()
-        }
-      } catch {
-        Log.error(error)
-        continuation.resume(throwing: error)
-      }
-    }
+    try await sendMessageWithoutResponse(ProviderMessage.signOut)
   }
 
   func stop() throws {
@@ -90,8 +76,6 @@ class IPCClient {
   }
 
   func getConfiguration() async throws -> Configuration? {
-    let decoder = PropertyListDecoder()
-
     return try await withCheckedThrowingContinuation { continuation in
       do {
         try session().sendProviderMessage(
@@ -108,7 +92,7 @@ class IPCClient {
           self.configurationHash = Data(SHA256.hash(data: data))
 
           do {
-            let decoded = try decoder.decode(Configuration.self, from: data)
+            let decoded = try self.decoder.decode(Configuration.self, from: data)
             self.configurationCache = decoded
             continuation.resume(returning: decoded)
           } catch {
@@ -122,93 +106,27 @@ class IPCClient {
   }
 
   func setAuthURL(_ authURL: URL) async throws {
-    try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session().sendProviderMessage(
-          encoder.encode(ProviderMessage.setAuthURL(authURL))
-        ) { _ in
-          continuation.resume()
-        }
-      } catch {
-        Log.error(error)
-        continuation.resume(throwing: error)
-      }
-    }
+    try await sendMessageWithoutResponse(ProviderMessage.setAuthURL(authURL))
   }
 
   func setApiURL(_ apiURL: URL) async throws {
-    try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session().sendProviderMessage(
-          encoder.encode(ProviderMessage.setApiURL(apiURL))
-        ) { _ in
-          continuation.resume()
-        }
-      } catch {
-        Log.error(error)
-        continuation.resume(throwing: error)
-      }
-    }
+    try await sendMessageWithoutResponse(ProviderMessage.setApiURL(apiURL))
   }
 
   func setLogFilter(_ logFilter: String) async throws {
-    try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session().sendProviderMessage(
-          encoder.encode(ProviderMessage.setLogFilter(logFilter))
-        ) { _ in
-          continuation.resume()
-        }
-      } catch {
-        Log.error(error)
-        continuation.resume(throwing: error)
-      }
-    }
+    try await sendMessageWithoutResponse(ProviderMessage.setLogFilter(logFilter))
   }
 
   func setActorName(_ actorName: String) async throws {
-    try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session().sendProviderMessage(
-          encoder.encode(ProviderMessage.setActorName(actorName))
-        ) { _ in
-          continuation.resume()
-        }
-      } catch {
-        Log.error(error)
-        continuation.resume(throwing: error)
-      }
-    }
+    try await sendMessageWithoutResponse(ProviderMessage.setActorName(actorName))
   }
 
   func setAccountSlug(_ accountSlug: String) async throws {
-    try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session().sendProviderMessage(
-          encoder.encode(ProviderMessage.setAccountSlug(accountSlug))
-        ) { _ in
-          continuation.resume()
-        }
-      } catch {
-        Log.error(error)
-        continuation.resume(throwing: error)
-      }
-    }
+    try await sendMessageWithoutResponse(ProviderMessage.setAccountSlug(accountSlug))
   }
 
   func setInternetResourceEnabled(_ enabled: Bool) async throws {
-    try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session([.connected]).sendProviderMessage(
-          encoder.encode(ProviderMessage.setInternetResourceEnabled(enabled))
-        ) { _ in
-          continuation.resume()
-        }
-      } catch {
-        Log.error(error)
-        continuation.resume(throwing: error)
-      }
-    }
+    try await sendMessageWithoutResponse(ProviderMessage.setInternetResourceEnabled(enabled))
   }
 
   func fetchResources() async throws -> ResourceList {
@@ -229,11 +147,11 @@ class IPCClient {
             // Save hash to compare against
             self.resourceListHash = Data(SHA256.hash(data: data))
 
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let jsonDecoder = JSONDecoder()
+            jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
 
             do {
-              let decoded = try decoder.decode([Resource].self, from: data)
+              let decoded = try jsonDecoder.decode([Resource].self, from: data)
               self.resourcesListCache = ResourceList.loaded(decoded)
 
               continuation.resume(returning: self.resourcesListCache)
@@ -248,15 +166,7 @@ class IPCClient {
   }
 
   func clearLogs() async throws {
-    return try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session().sendProviderMessage(encoder.encode(ProviderMessage.clearLogs)) { _ in
-          continuation.resume()
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
+    try await sendMessageWithoutResponse(ProviderMessage.clearLogs)
   }
 
   func getLogFolderSize() async throws -> Int64 {
@@ -291,8 +201,6 @@ class IPCClient {
     appender: @escaping (LogChunk) -> Void,
     errorHandler: @escaping (Error) -> Void
   ) {
-    let decoder = PropertyListDecoder()
-
     func loop() {
       do {
         try session().sendProviderMessage(
@@ -305,7 +213,7 @@ class IPCClient {
             return
           }
 
-          guard let chunk = try? decoder.decode(
+          guard let chunk = try? self.decoder.decode(
             LogChunk.self, from: data
           )
           else {
@@ -386,5 +294,18 @@ class IPCClient {
     }
 
     throw Error.invalidStatus(session.status)
+  }
+
+  private func sendMessageWithoutResponse(_ message: ProviderMessage) async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(encoder.encode(message)) { _ in
+          continuation.resume()
+        }
+      } catch {
+        Log.error(error)
+        continuation.resume(throwing: error)
+      }
+    }
   }
 }
