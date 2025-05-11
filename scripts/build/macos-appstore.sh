@@ -7,8 +7,8 @@ set -euo pipefail
 source "./scripts/build/lib.sh"
 
 # Define needed variables
-app_profile_id=2bf20e38-81ea-40d0-91e5-330cf58f52d9
-ne_profile_id=2c683d1a-4479-451c-9ee6-ae7d4aca5c93
+app_profile_id=$(extract_uuid "$MACOS_APP_PROVISIONING_PROFILE")
+ne_profile_id=$(extract_uuid "$MACOS_NE_PROVISIONING_PROFILE")
 temp_dir="${TEMP_DIR:-$(mktemp -d)}"
 package_path="$temp_dir/Firezone.pkg"
 git_sha=${GITHUB_SHA:-$(git rev-parse HEAD)}

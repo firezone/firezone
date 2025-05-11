@@ -7,8 +7,8 @@ set -euo pipefail
 source "./scripts/build/lib.sh"
 
 # Define needed variables
-app_profile_id=8da59aa3-e8da-4a8c-9902-2d540324d92c
-ne_profile_id=0fccb78a-97c0-41b9-8c54-9c995280ea8e
+app_profile_id=$(extract_uuid "$IOS_APP_PROVISIONING_PROFILE")
+ne_profile_id=$(extract_uuid "$IOS_NE_PROVISIONING_PROFILE")
 temp_dir="${TEMP_DIR:-$(mktemp -d)}"
 archive_path="$temp_dir/Firezone.xcarchive"
 export_options_plist_path="$temp_dir/ExportOptions.plist"
