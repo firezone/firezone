@@ -113,7 +113,7 @@ done
 
 target_list="${target_list% }"
 
-# Set the project (build) version to the current epoch so that's it monotonically increases
+# Set the project (build) version to the current epoch so that it monotonically increases
 seconds_since_epoch=$(date +%s)
 export CURRENT_PROJECT_VERSION=$seconds_since_epoch
 
