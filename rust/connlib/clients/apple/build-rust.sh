@@ -113,9 +113,5 @@ done
 
 target_list="${target_list% }"
 
-# Set the project (build) version to the current epoch so that it monotonically increases
-seconds_since_epoch=$(date +%s)
-export CURRENT_PROJECT_VERSION=$seconds_since_epoch
-
 # Build the library
 cargo build --verbose $target_list $CONFIGURATION_ARGS
