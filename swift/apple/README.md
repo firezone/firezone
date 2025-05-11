@@ -255,12 +255,6 @@ APPLE_MACOS_NE_PROVISIONING_PROFILE
 base64 < profile.mobileprovision
 ```
 
-1. Now, you need to update the build scripts to use these. Edit
-   `scripts/build/*-appstore.sh` and update the provisioning profile UUIDs. The
-   UUID can be found by grepping for them in the provisioning profile files
-   themselves, or just opening them in a text editor and looking halfway down
-   the file. They should be the only UUIDs in the file.
-
 ## Generating new signing certificates and provisioning profiles for standalone distribution
 
 The process is much the same as above for the macOS standalone client, with one
