@@ -108,6 +108,7 @@ impl Server {
         self.sockets = sockets;
         self.listen_endpoints = listen_endpoints;
         self.received_queries.clear();
+        self.pending_sockets_by_local_remote_and_query_id.clear();
     }
 
     /// Checks whether this server can handle the given packet.
