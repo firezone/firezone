@@ -14,51 +14,41 @@ class ConfigurationManager {
 
   let encoder = PropertyListEncoder()
 
-  enum Keys {
-    static let authURL = "dev.firezone.configuration.authURL"
-    static let apiURL = "dev.firezone.configuration.apiURL"
-    static let logFilter = "dev.firezone.configuration.logFilter"
-    static let actorName = "dev.firezone.configuration.actorName"
-    static let accountSlug = "dev.firezone.configuration.accountSlug"
-    static let internetResourceEnabled = "dev.firezone.configuration.internetResourceEnabled"
-    static let firezoneId = "dev.firezone.configuration.firezoneId"
-  }
-
   private var userDefaults: UserDefaults
 
   var authURL: URL? {
-    get { userDefaults.url(forKey: Keys.authURL) }
-    set { userDefaults.set(newValue, forKey: Keys.authURL) }
+    get { userDefaults.url(forKey: Configuration.Keys.authURL) }
+    set { userDefaults.set(newValue, forKey: Configuration.Keys.authURL) }
   }
 
   var apiURL: URL? {
-    get { userDefaults.url(forKey: Keys.apiURL) }
-    set { userDefaults.set(newValue, forKey: Keys.apiURL) }
+    get { userDefaults.url(forKey: Configuration.Keys.apiURL) }
+    set { userDefaults.set(newValue, forKey: Configuration.Keys.apiURL) }
   }
 
   var logFilter: String? {
-    get { userDefaults.string(forKey: Keys.logFilter) }
-    set { userDefaults.set(newValue, forKey: Keys.logFilter) }
+    get { userDefaults.string(forKey: Configuration.Keys.logFilter) }
+    set { userDefaults.set(newValue, forKey: Configuration.Keys.logFilter) }
   }
 
   var actorName: String? {
-    get { userDefaults.string(forKey: Keys.actorName) }
-    set { userDefaults.set(newValue, forKey: Keys.actorName) }
+    get { userDefaults.string(forKey: Configuration.Keys.actorName) }
+    set { userDefaults.set(newValue, forKey: Configuration.Keys.actorName) }
   }
 
   var accountSlug: String? {
-    get { userDefaults.string(forKey: Keys.accountSlug) }
-    set { userDefaults.set(newValue, forKey: Keys.accountSlug) }
+    get { userDefaults.string(forKey: Configuration.Keys.accountSlug) }
+    set { userDefaults.set(newValue, forKey: Configuration.Keys.accountSlug) }
   }
 
   var internetResourceEnabled: Bool? {
-    get { userDefaults.bool(forKey: Keys.internetResourceEnabled) }
-    set { userDefaults.set(newValue, forKey: Keys.internetResourceEnabled) }
+    get { userDefaults.bool(forKey: Configuration.Keys.internetResourceEnabled) }
+    set { userDefaults.set(newValue, forKey: Configuration.Keys.internetResourceEnabled) }
   }
 
   var firezoneId: String? {
-    get { userDefaults.string(forKey: Keys.firezoneId) }
-    set { userDefaults.set(newValue, forKey: Keys.firezoneId) }
+    get { userDefaults.string(forKey: Configuration.Keys.firezoneId) }
+    set { userDefaults.set(newValue, forKey: Configuration.Keys.firezoneId) }
   }
 
   private init() {
@@ -87,13 +77,13 @@ class ConfigurationManager {
   func toDataIfChanged(hash: Data?) -> Data? {
     var dict: [String: Any] = [:]
 
-    dict[Keys.accountSlug] = accountSlug
-    dict[Keys.actorName] = actorName
-    dict[Keys.firezoneId] = firezoneId
-    dict[Keys.internetResourceEnabled] = internetResourceEnabled
-    dict[Keys.authURL] = authURL
-    dict[Keys.apiURL] = apiURL
-    dict[Keys.logFilter] = logFilter
+    dict[Configuration.Keys.accountSlug] = accountSlug
+    dict[Configuration.Keys.actorName] = actorName
+    dict[Configuration.Keys.firezoneId] = firezoneId
+    dict[Configuration.Keys.internetResourceEnabled] = internetResourceEnabled
+    dict[Configuration.Keys.authURL] = authURL
+    dict[Configuration.Keys.apiURL] = apiURL
+    dict[Configuration.Keys.logFilter] = logFilter
 
     let configuration = Configuration(from: dict)
 
