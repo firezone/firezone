@@ -14,6 +14,8 @@ import AppKit
 #endif
 
 @MainActor
+// TODO: Move some state logic to view models
+// swiftlint:disable:next type_body_length
 public final class Store: ObservableObject {
   @Published private(set) var favorites = Favorites()
   @Published private(set) var resourceList: ResourceList = .loading
@@ -36,6 +38,8 @@ public final class Store: ObservableObject {
 
   let sessionNotification = SessionNotification()
 
+  private var configurationTimer: Timer?
+  private var configurationUpdateTask: Task<Void, Never>?
   private var resourcesTimer: Timer?
   private var resourceUpdateTask: Task<Void, Never>?
 
@@ -104,6 +108,14 @@ public final class Store: ObservableObject {
 
   func handleStatusChange(newStatus: NEVPNStatus) async throws {
     status = newStatus
+
+    if status == .invalid {
+      // VPN configuration was yanked from system settings
+      endConfigurationPolling()
+    } else {
+      // This is a no-op if the timer is already active
+      beginConfigurationPolling()
+    }
 
     if status == .connected {
       beginUpdatingResources()
@@ -271,6 +283,44 @@ public final class Store: ObservableObject {
 
   private func start(token: String? = nil) throws {
     try ipcClient().start(token: token)
+  }
+
+  private func beginConfigurationPolling() {
+    // Ensure we're idempotent if called twice
+    if self.configurationTimer != nil {
+      return
+    }
+
+    let updateConfiguration: @Sendable (Timer) -> Void = { _ in
+      Task {
+        await MainActor.run {
+          self.configurationUpdateTask?.cancel()
+          self.configurationUpdateTask = Task {
+            if !Task.isCancelled {
+              do {
+                self.configuration = try await self.ipcClient().getConfiguration()
+              } catch {
+                Log.error(error)
+              }
+            }
+          }
+        }
+      }
+    }
+
+    let intervalInSeconds: TimeInterval = 1
+    let timer = Timer(timeInterval: intervalInSeconds, repeats: true, block: updateConfiguration)
+
+    RunLoop.main.add(timer, forMode: .common)
+    self.configurationTimer = timer
+    updateConfiguration(timer)
+  }
+
+  private func endConfigurationPolling() {
+    configurationUpdateTask?.cancel()
+    configurationTimer?.invalidate()
+    configurationTimer = nil
+    self.configuration = nil
   }
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
