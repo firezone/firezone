@@ -313,7 +313,6 @@ public final class Store: ObservableObject {
 
     RunLoop.main.add(timer, forMode: .common)
     self.configurationTimer = timer
-    updateConfiguration(timer)
   }
 
   private func endConfigurationPolling() {
