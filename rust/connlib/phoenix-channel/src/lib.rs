@@ -306,7 +306,7 @@ where
         if self.pending_messages.len() > MAX_BUFFERED_MESSAGES {
             self.pending_messages.clear();
 
-            tracing::warn!(
+            tracing::debug!(
                 "Dropping pending messages to portal because we exceeded the maximum of {MAX_BUFFERED_MESSAGES}"
             );
         }
