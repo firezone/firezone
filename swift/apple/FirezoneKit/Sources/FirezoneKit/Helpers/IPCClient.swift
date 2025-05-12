@@ -8,6 +8,9 @@ import CryptoKit
 import Foundation
 import NetworkExtension
 
+// TODO: Use a more abstract IPC protocol to make this less terse
+// TODO: Consider making this an actor to guarantee strict ordering
+
 class IPCClient {
   enum Error: Swift.Error {
     case invalidNotification
@@ -41,17 +44,17 @@ class IPCClient {
   // return them to callers when they haven't changed.
   var resourcesListCache: ResourceList = ResourceList.loading
 
+  // Cache the configuration on this side of the IPC barrier so we can return it to callers if it hasn't changed.
+  private var configurationHash = Data()
+  private var configurationCache: Configuration?
+
   init(session: NETunnelProviderSession) {
     self.session = session
   }
 
   // Encoder used to send messages to the tunnel
-  let encoder = {
-    let encoder = PropertyListEncoder()
-    encoder.outputFormat = .binary
-
-    return encoder
-  }()
+  let encoder = PropertyListEncoder()
+  let decoder = PropertyListDecoder()
 
   func start(token: String? = nil) throws {
     var options: [String: NSObject] = [:]
@@ -61,27 +64,69 @@ class IPCClient {
       options.merge(["token": token as NSObject]) { _, new in new }
     }
 
-    // Pass pre-1.4.0 Firezone ID if it exists. Pre 1.4.0 clients will have this
-    // persisted to the app side container URL.
-    if let id = FirezoneId.load(.pre140) {
-      options.merge(["id": id as NSObject]) { _, new in new }
-    }
-
     try session().startTunnel(options: options)
   }
 
-  func signOut() throws {
-    try session([.connected, .connecting, .reasserting]).stopTunnel()
-    try session().sendProviderMessage(encoder.encode(ProviderMessage.signOut))
+  func signOut() async throws {
+    try await sendMessageWithoutResponse(ProviderMessage.signOut)
   }
 
   func stop() throws {
     try session([.connected, .connecting, .reasserting]).stopTunnel()
   }
 
-  func toggleInternetResource(enabled: Bool) throws {
-    try session([.connected]).sendProviderMessage(
-      encoder.encode(ProviderMessage.internetResourceEnabled(enabled)))
+  func getConfiguration() async throws -> Configuration? {
+    return try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(
+          encoder.encode(ProviderMessage.getConfiguration(configurationHash))
+        ) { data in
+          guard let data = data
+          else {
+            // Configuration hasn't changed
+            continuation.resume(returning: self.configurationCache)
+            return
+          }
+
+          // Compute new hash
+          self.configurationHash = Data(SHA256.hash(data: data))
+
+          do {
+            let decoded = try self.decoder.decode(Configuration.self, from: data)
+            self.configurationCache = decoded
+            continuation.resume(returning: decoded)
+          } catch {
+            continuation.resume(throwing: error)
+          }
+        }
+      } catch {
+        continuation.resume(throwing: error)
+      }
+    }
+  }
+
+  func setAuthURL(_ authURL: URL) async throws {
+    try await sendMessageWithoutResponse(ProviderMessage.setAuthURL(authURL))
+  }
+
+  func setApiURL(_ apiURL: URL) async throws {
+    try await sendMessageWithoutResponse(ProviderMessage.setApiURL(apiURL))
+  }
+
+  func setLogFilter(_ logFilter: String) async throws {
+    try await sendMessageWithoutResponse(ProviderMessage.setLogFilter(logFilter))
+  }
+
+  func setActorName(_ actorName: String) async throws {
+    try await sendMessageWithoutResponse(ProviderMessage.setActorName(actorName))
+  }
+
+  func setAccountSlug(_ accountSlug: String) async throws {
+    try await sendMessageWithoutResponse(ProviderMessage.setAccountSlug(accountSlug))
+  }
+
+  func setInternetResourceEnabled(_ enabled: Bool) async throws {
+    try await sendMessageWithoutResponse(ProviderMessage.setInternetResourceEnabled(enabled))
   }
 
   func fetchResources() async throws -> ResourceList {
@@ -102,11 +147,11 @@ class IPCClient {
             // Save hash to compare against
             self.resourceListHash = Data(SHA256.hash(data: data))
 
-            let decoder = JSONDecoder()
-            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            let jsonDecoder = JSONDecoder()
+            jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
 
             do {
-              let decoded = try decoder.decode([Resource].self, from: data)
+              let decoded = try jsonDecoder.decode([Resource].self, from: data)
               self.resourcesListCache = ResourceList.loaded(decoded)
 
               continuation.resume(returning: self.resourcesListCache)
@@ -121,15 +166,7 @@ class IPCClient {
   }
 
   func clearLogs() async throws {
-    return try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session().sendProviderMessage(encoder.encode(ProviderMessage.clearLogs)) { _ in
-          continuation.resume()
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
+    try await sendMessageWithoutResponse(ProviderMessage.clearLogs)
   }
 
   func getLogFolderSize() async throws -> Int64 {
@@ -164,8 +201,6 @@ class IPCClient {
     appender: @escaping (LogChunk) -> Void,
     errorHandler: @escaping (Error) -> Void
   ) {
-    let decoder = PropertyListDecoder()
-
     func loop() {
       do {
         try session().sendProviderMessage(
@@ -178,7 +213,7 @@ class IPCClient {
             return
           }
 
-          guard let chunk = try? decoder.decode(
+          guard let chunk = try? self.decoder.decode(
             LogChunk.self, from: data
           )
           else {
@@ -259,5 +294,18 @@ class IPCClient {
     }
 
     throw Error.invalidStatus(session.status)
+  }
+
+  private func sendMessageWithoutResponse(_ message: ProviderMessage) async throws {
+    try await withCheckedThrowingContinuation { continuation in
+      do {
+        try session().sendProviderMessage(encoder.encode(message)) { _ in
+          continuation.resume()
+        }
+      } catch {
+        Log.error(error)
+        continuation.resume(throwing: error)
+      }
+    }
   }
 }

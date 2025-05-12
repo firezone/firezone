@@ -40,7 +40,7 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
         )
     }
     .sheet(isPresented: $isSettingsPresented) {
-      SettingsView()
+      SettingsView(store: store)
     }
     .navigationViewStyle(StackNavigationViewStyle())
   }
@@ -60,7 +60,7 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
   private var authMenu: some View {
     Menu {
       if store.status == .connected {
-        Text("Signed in as \(store.actorName ?? "Unknown user")")
+        Text("Signed in as \(store.configuration?.actorName ?? "Unknown user")")
         Button(
           action: {
             signOutButtonTapped()
@@ -120,17 +120,19 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
   }
 
   func signOutButtonTapped() {
-    do {
-      try store.signOut()
-    } catch {
-      Log.error(error)
+    Task {
+      do {
+        try await store.signOut()
+      } catch {
+        Log.error(error)
 
-      self.errorHandler.handle(
-        ErrorAlert(
-          title: "Error signing out",
-          error: error
+        self.errorHandler.handle(
+          ErrorAlert(
+            title: "Error signing out",
+            error: error
+          )
         )
-      )
+      }
     }
   }
 }

@@ -285,7 +285,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownFavorites = newFavorites
-    wasInternetResourceEnabled = store.internetResourceEnabled
+    wasInternetResourceEnabled = store.configuration?.internetResourceEnabled
   }
 
   func populateOtherResourcesMenu(_ newOthers: [Resource]) {
@@ -313,7 +313,7 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownOthers = newOthers
-    wasInternetResourceEnabled = store.internetResourceEnabled
+    wasInternetResourceEnabled = store.configuration?.internetResourceEnabled
   }
 
   func updateStatusItemIcon() {
@@ -350,7 +350,7 @@ public final class MenuBar: NSObject, ObservableObject {
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = self
     case .connected, .reasserting, .connecting:
-      let title = "Signed in as \(store.actorName ?? "Unknown User")"
+      let title = "Signed in as \(store.configuration?.actorName ?? "Unknown User")"
       signInMenuItem.title = title
       signInMenuItem.target = nil
       signOutMenuItem.isHidden = false
@@ -467,7 +467,7 @@ public final class MenuBar: NSObject, ObservableObject {
       return false
     }
 
-    return wasInternetResourceEnabled != store.internetResourceEnabled
+    return wasInternetResourceEnabled != store.configuration?.internetResourceEnabled
   }
 
   func refreshUpdateItem() {
@@ -503,7 +503,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   func internetResourceTitle(resource: Resource) -> String {
-    let status = store.internetResourceEnabled == true ? StatusSymbol.enabled : StatusSymbol.disabled
+    let status = store.configuration?.internetResourceEnabled == true ? StatusSymbol.enabled : StatusSymbol.disabled
 
     return status + " " + resource.name
   }
@@ -526,7 +526,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   func internetResourceToggleTitle() -> String {
-    store.internetResourceEnabled == true ? "Disable this resource" : "Enable this resource"
+    store.configuration?.internetResourceEnabled == true ? "Disable this resource" : "Enable this resource"
   }
 
   // TODO: Refactor this when refactoring for macOS 13
@@ -689,7 +689,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc func signOutButtonTapped() {
-    do { try store.signOut() } catch { Log.error(error) }
+    Task { do { try await store.signOut() } catch { Log.error(error) } }
   }
 
   @objc func grantPermissionMenuItemTapped() {
@@ -723,10 +723,9 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc func adminPortalButtonTapped() {
-    guard let url = URL(string: store.settings.authBaseURL)
-    else { return }
+    let authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
 
-    Task { await NSWorkspace.shared.openAsync(url) }
+    Task { await NSWorkspace.shared.openAsync(authURL) }
   }
 
   @objc func updateAvailableButtonTapped() {
