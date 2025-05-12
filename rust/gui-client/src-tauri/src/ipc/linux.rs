@@ -6,6 +6,15 @@ use tokio::net::{UnixListener, UnixStream};
 
 pub(crate) struct Server {
     listener: UnixListener,
+    id: SocketId,
+}
+
+impl Drop for Server {
+    fn drop(&mut self) {
+        let sock_path = ipc_path(self.id);
+
+        std::fs::remove_file(&sock_path).ok();
+    }
 }
 
 /// Alias for the client's half of a platform-specific IPC stream
@@ -61,7 +70,7 @@ impl Server {
         // TODO: Change this to `notify_service_controller` and put it in
         // the same place in the IPC service's main loop as in the Headless Client.
         sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
-        Ok(Self { listener })
+        Ok(Self { listener, id })
     }
 
     pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
