@@ -121,7 +121,7 @@ class SettingsViewModel: ObservableObject {
                                self.logFilterString == Configuration.defaultLogFilter)
   }
 
-  func applySettingsToStore() throws {
+  func applySettingsToStore() async throws {
     guard let authURL = URL(string: authURLString),
           let apiURL = URL(string: apiURLString)
     else {
@@ -130,13 +130,11 @@ class SettingsViewModel: ObservableObject {
       return
     }
 
-    Task {
-      try await store.setApiURL(apiURL)
-      try await store.setLogFilter(logFilterString)
-      try await store.setAuthURL(authURL)
+    try await store.setApiURL(apiURL)
+    try await store.setLogFilter(logFilterString)
+    try await store.setAuthURL(authURL)
 
-      updateDerivedState()
-    }
+    updateDerivedState()
   }
 
   func revertToDefaultSettings() {
@@ -644,15 +642,16 @@ public struct SettingsView: View {
   }
 
   func saveSettings() async throws {
+    try await viewModel.applySettingsToStore()
+
     do {
       if [.connected, .connecting, .reasserting].contains(store.status) {
+        // TODO: Warn user instead of signing out
         try await self.store.signOut()
       }
     } catch {
       Log.error(error)
     }
-
-    try viewModel.applySettingsToStore()
   }
 
   // Calculates the total size of our logs by summing the size of the
