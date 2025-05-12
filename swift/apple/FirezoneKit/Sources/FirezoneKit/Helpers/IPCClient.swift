@@ -303,7 +303,6 @@ class IPCClient {
           continuation.resume()
         }
       } catch {
-        Log.error(error)
         continuation.resume(throwing: error)
       }
     }
