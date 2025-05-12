@@ -161,6 +161,7 @@ jobs:
       - name: Run smoke test
         working-directory: ./rust
         run: cargo run -p gui-smoke-test
+        timeout-minutes: 2
 
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}
