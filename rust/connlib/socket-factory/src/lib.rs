@@ -3,7 +3,7 @@ use bufferpool::{Buffer, BufferPool};
 use bytes::{Buf as _, BytesMut};
 use firezone_logging::err_with_src;
 use gat_lending_iterator::LendingIterator;
-use ip_packet::Ecn;
+use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
 use opentelemetry::KeyValue;
 use parking_lot::Mutex;
 use quinn_udp::{EcnCodepoint, Transmit};
@@ -322,7 +322,7 @@ impl UdpSocket {
 
         match transmit.segment_size {
             Some(segment_size) => {
-                let chunk_size = self.calculate_chunk_size(segment_size);
+                let chunk_size = self.calculate_chunk_size(segment_size, transmit.destination);
                 let num_batches = transmit.contents.len() / chunk_size;
 
                 for (idx, chunk) in transmit
@@ -370,12 +370,19 @@ impl UdpSocket {
 
     /// Calculate the chunk size for a given segment size.
     ///
-    /// At most, a UDP packet passed to the kernel can be 65535 (`u16::MAX`) bytes.
+    /// At most, an IP packet can 65535 (`u16::MAX`) bytes.
+    /// To know the maximum size we can pass as the UDP payload, we need to subtract the IP and UDP header length as overhead.
+    ///
     /// In case GSO is not supported at all by the kernel, `quinn_udp` will detect this and set `max_gso_segments` to 1.
     /// We need to honor both of these constraints when calculating the chunk size.
-    fn calculate_chunk_size(&self, segment_size: usize) -> usize {
+    fn calculate_chunk_size(&self, segment_size: usize, dst: SocketAddr) -> usize {
+        let header_overhead = match dst {
+            SocketAddr::V4(_) => Ipv4Header::MAX_LEN + UdpHeader::LEN,
+            SocketAddr::V6(_) => Ipv6Header::LEN + UdpHeader::LEN,
+        };
+
         let max_segments_by_config = self.state.max_gso_segments();
-        let max_segments_by_size = u16::MAX as usize / segment_size;
+        let max_segments_by_size = (u16::MAX as usize - header_overhead) / segment_size;
 
         let max_segments = std::cmp::min(max_segments_by_config, max_segments_by_size);
 
