@@ -4,10 +4,7 @@
 
 use anyhow::{Context as _, Result, bail};
 use clap::Parser;
-use std::{
-    ffi::OsStr,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 use subprocess::Exec;
 
 #[cfg(target_os = "linux")]
@@ -36,8 +33,6 @@ fn main() -> Result<()> {
     let cli = Cli::try_parse()?;
 
     let app = App::new()?;
-
-    dump_syms()?;
 
     // Run normal smoke test
     let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
@@ -153,32 +148,6 @@ impl App {
     }
 }
 
-// Get debug symbols from the exe / pdb
-fn dump_syms() -> Result<()> {
-    Exec::cmd("dump_syms")
-        .args(&[
-            debug_db_path().as_os_str(),
-            gui_path().as_os_str(),
-            OsStr::new("--output"),
-            syms_path().as_os_str(),
-        ])
-        .join()?
-        .fz_exit_ok()?;
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-fn debug_db_path() -> PathBuf {
-    Path::new("target").join("debug").join(GUI_NAME)
-}
-
-#[cfg(target_os = "windows")]
-fn debug_db_path() -> PathBuf {
-    Path::new("target")
-        .join("debug")
-        .join("firezone_gui_client.pdb")
-}
-
 #[cfg(target_os = "linux")]
 fn ipc_service_command() -> Exec {
     Exec::cmd("sudo").args(&[
@@ -226,8 +195,4 @@ fn ipc_path() -> PathBuf {
         .join("debug")
         .join(IPC_NAME)
         .with_extension(EXE_EXTENSION)
-}
-
-fn syms_path() -> PathBuf {
-    gui_path().with_extension("syms")
 }
