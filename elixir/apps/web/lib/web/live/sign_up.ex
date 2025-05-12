@@ -418,8 +418,8 @@ defmodule Web.SignUp do
       :identity,
       fn _repo, %{actor: actor, provider: provider} ->
         Auth.create_identity(actor, provider, %{
-          provider_identifier: registration.email,
-          provider_identifier_confirmation: registration.email
+          "provider_identifier" => registration.email,
+          "provider_identifier_confirmation" => registration.email
         })
       end
     )
