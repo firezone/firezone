@@ -235,7 +235,7 @@ struct ToggleInternetResourceButton: View {
   @EnvironmentObject var store: Store
 
   private func toggleResourceEnabledText() -> String {
-    if store.internetResourceEnabled == true {
+    if store.configuration?.internetResourceEnabled == true {
       "Disable this resource"
     } else {
       "Enable this resource"

@@ -6,7 +6,7 @@
 
 import Foundation
 
-enum BundleHelper {
+public enum BundleHelper {
   static func isAppStore() -> Bool {
     if let receiptURL = Bundle.main.appStoreReceiptURL,
        FileManager.default.fileExists(atPath: receiptURL.path) {
@@ -24,7 +24,7 @@ enum BundleHelper {
     return String(gitSha.prefix(8))
   }
 
-  static var appGroupId: String {
+  public static var appGroupId: String {
     guard let appGroupId = Bundle.main.object(forInfoDictionaryKey: "AppGroupIdentifier") as? String
     else {
       fatalError("AppGroupIdentifier missing in app's Info.plist")

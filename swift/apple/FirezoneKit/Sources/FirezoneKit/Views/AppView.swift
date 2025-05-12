@@ -37,8 +37,8 @@ public struct AppView: View {
           WindowDefinition.main.openWindow()
         }
 
-        // Close window upon launch for day-to-day use
-        if status != .invalid && systemExtensionStatus == .installed && FirezoneId.load(.pre140) != nil {
+        // Close window for day to day use
+        if status != .invalid && systemExtensionStatus == .installed && launchedBefore() {
           WindowDefinition.main.window()?.close()
         }
       })
@@ -74,6 +74,13 @@ public struct AppView: View {
         return false
       }
     }
+  }
+
+  private static func launchedBefore() -> Bool {
+    let bool = UserDefaults.standard.bool(forKey: "launchedBefore")
+    UserDefaults.standard.set(true, forKey: "launchedBefore")
+
+    return bool
   }
 #endif
 

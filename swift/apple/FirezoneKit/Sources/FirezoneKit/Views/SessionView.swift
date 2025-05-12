@@ -81,7 +81,7 @@ struct ResourceSection: View {
   @EnvironmentObject var store: Store
 
   private func internetResourceTitle(resource: Resource) -> String {
-    let status = store.internetResourceEnabled == true ? StatusSymbol.enabled : StatusSymbol.disabled
+    let status = store.configuration?.internetResourceEnabled == true ? StatusSymbol.enabled : StatusSymbol.disabled
 
     return status + " " + resource.name
   }

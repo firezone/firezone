@@ -17,23 +17,22 @@ import AppKit
 public final class Store: ObservableObject {
   @Published private(set) var favorites = Favorites()
   @Published private(set) var resourceList: ResourceList = .loading
-  @Published private(set) var actorName: String?
 
-  // Make our tunnel configuration convenient for SettingsView to consume
-  @Published private(set) var settings = Settings.defaultValue
+  // UserDefaults-backed app configuration that will publish updates to SwiftUI components
+  @Published private(set) var configuration: Configuration?
 
-  // Enacapsulate Tunnel status here to make it easier for other components
-  // to observe
+  // Enacapsulate Tunnel status here to make it easier for other components to observe
   @Published private(set) var status: NEVPNStatus?
 
+  // User notifications
   @Published private(set) var decision: UNAuthorizationStatus?
-
-  @Published private(set) var internetResourceEnabled: Bool?
 
 #if os(macOS)
   // Track whether our system extension has been installed (macOS)
   @Published private(set) var systemExtensionStatus: SystemExtensionStatus?
 #endif
+
+  var firezoneId: String?
 
   let sessionNotification = SessionNotification()
 
@@ -78,11 +77,13 @@ public final class Store: ObservableObject {
       do {
         // Try to load existing configuration
         if let manager = try await VPNConfigurationManager.load() {
+          try await manager.maybeMigrateConfiguration()
           self.vpnConfigurationManager = manager
-          self.settings = try manager.settings()
           try await setupTunnelObservers()
           try await manager.enableConfiguration()
           try ipcClient().start()
+          self.configuration = try await ipcClient().getConfiguration()
+          Telemetry.firezoneId = configuration?.firezoneId
         } else {
           status = .invalid
         }
@@ -105,13 +106,6 @@ public final class Store: ObservableObject {
     status = newStatus
 
     if status == .connected {
-      // Load saved actorName
-      actorName = try? manager().actorName()
-
-      // Load saved internet resource status
-      internetResourceEnabled = try? manager().internetResourceEnabled()
-
-      // Load Resources
       beginUpdatingResources()
     } else {
       endUpdatingResources()
@@ -179,6 +173,9 @@ public final class Store: ObservableObject {
     // Create a new VPN configuration in system settings.
     self.vpnConfigurationManager = try await VPNConfigurationManager()
 
+    self.configuration = try await ipcClient().getConfiguration()
+    Telemetry.firezoneId = configuration?.firezoneId
+
     try await setupTunnelObservers()
   }
 
@@ -204,44 +201,73 @@ public final class Store: ObservableObject {
     self.decision = try await sessionNotification.askUserForNotificationPermissions()
   }
 
-  func authURL() -> URL? {
-    return URL(string: settings.authBaseURL)
-  }
-
   func stop() throws {
     try ipcClient().stop()
   }
 
   func signIn(authResponse: AuthResponse) async throws {
     // Save actorName
-    self.actorName = authResponse.actorName
+    try await setActorName(authResponse.actorName)
+    try await setAccountSlug(authResponse.accountSlug)
 
-    try await manager().save(authResponse: authResponse)
+    try await manager().enableConfiguration()
 
     // Bring the tunnel up and send it a token to start
     try ipcClient().start(token: authResponse.token)
   }
 
-  func signOut() throws {
-    try ipcClient().signOut()
+  func signOut() async throws {
+    try await ipcClient().signOut()
   }
 
   func clearLogs() async throws {
     try await ipcClient().clearLogs()
   }
 
-  func saveSettings(_ newSettings: Settings) async throws {
-    try await manager().save(settings: newSettings)
-    self.settings = newSettings
-  }
-
   func toggleInternetResource() async throws {
-    internetResourceEnabled = !(internetResourceEnabled ?? false)
-    settings.internetResourceEnabled = internetResourceEnabled
-
-    try ipcClient().toggleInternetResource(enabled: internetResourceEnabled == true)
-    try await manager().save(settings: settings)
+    let enabled = configuration?.internetResourceEnabled == true
+    try await setInternetResourceEnabled(!enabled)
   }
+
+  // MARK: App configuration setters
+
+  func setActorName(_ actorName: String) async throws {
+    try await ipcClient().setActorName(actorName)
+    self.configuration?.actorName = actorName
+  }
+
+  func setAccountSlug(_ accountSlug: String) async throws {
+    try await ipcClient().setAccountSlug(accountSlug)
+
+    // Configure our Telemetry environment, closing if we're definitely not running against Firezone infrastructure.
+    Telemetry.accountSlug = accountSlug
+  }
+
+  func setAuthURL(_ authURL: URL) async throws {
+    try await ipcClient().setAuthURL(authURL)
+    self.configuration?.authURL = authURL
+  }
+
+  func setApiURL(_ apiURL: URL) async throws {
+    try await ipcClient().setApiURL(apiURL)
+
+    // Reconfigure our Telemetry environment in case it changed
+    Telemetry.setEnvironmentOrClose(apiURL)
+
+    self.configuration?.apiURL = apiURL
+  }
+
+  func setLogFilter(_ logFilter: String) async throws {
+    try await ipcClient().setLogFilter(logFilter)
+    self.configuration?.logFilter = logFilter
+  }
+
+  func setInternetResourceEnabled(_ enabled: Bool) async throws {
+    try await ipcClient().setInternetResourceEnabled(enabled)
+    self.configuration?.internetResourceEnabled = enabled
+  }
+
+  // MARK: Private functions
 
   private func start(token: String? = nil) throws {
     try ipcClient().start(token: token)
