@@ -152,6 +152,7 @@ where
                 let tx = FramedWrite::new(tx, Encoder::default());
                 return Ok((rx, tx));
             }
+            Err(error) if error.root_cause().is::<NotFound>() => return Err(error), // If the socket isn't there, fail right away.
             Err(error) => {
                 tracing::debug!("Couldn't connect to IPC socket: {error}");
                 last_err = Some(error);
