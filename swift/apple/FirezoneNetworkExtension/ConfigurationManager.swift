@@ -62,12 +62,7 @@ class ConfigurationManager {
   }
 
   private init() {
-    guard let defaults = UserDefaults(suiteName: BundleHelper.appGroupId)
-    else {
-      fatalError("Could not create UserDefaults for app group \(BundleHelper.appGroupId)")
-    }
-
-    self.userDefaults = defaults
+    self.userDefaults = UserDefaults.standard
 
     if let containerURL = FileManager.default.containerURL(
                           forSecurityApplicationGroupIdentifier: BundleHelper.appGroupId),
