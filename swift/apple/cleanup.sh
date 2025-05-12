@@ -24,7 +24,7 @@ fi
 
 if [[ $ARG == "rust" ]] || [[ $ARG == "all" ]]; then
   set -x
-  cd ../../rust/connlib/clients/apple && cargo clean
+  cd ../../rust/apple-client-ffi && cargo clean
   cd Sources/Connlib/Generated && git clean -df
   set +x
 fi

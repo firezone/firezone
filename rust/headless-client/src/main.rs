@@ -5,7 +5,7 @@
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use connlib_client_shared::{ChannelCallbackHandler, ConnlibMsg, Session};
+use client_shared::{ChannelCallbackHandler, ConnlibMsg, Session};
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
     new_dns_notifier, new_network_notifier,
