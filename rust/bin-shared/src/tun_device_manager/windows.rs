@@ -212,6 +212,8 @@ struct TunState {
 
 impl Drop for Tun {
     fn drop(&mut self) {
+        const SHUTDOWN_WAIT: Duration = Duration::from_secs(10);
+
         let recv_thread = self
             .recv_thread
             .take()
@@ -226,13 +228,20 @@ impl Drop for Tun {
 
         let start = Instant::now();
 
-        while !recv_thread.is_finished() || !send_thread.is_finished() {
-            std::thread::sleep(Duration::from_millis(100));
+        loop {
+            let recv_thread_finished = recv_thread.is_finished();
+            let send_thread_finished = send_thread.is_finished();
 
-            if start.elapsed() > Duration::from_secs(5) {
-                tracing::warn!(recv_thread_finished = %recv_thread.is_finished(), send_thread_finished = %send_thread.is_finished(), "TUN worker threads did not exit gracefully in 5s");
+            if recv_thread_finished && send_thread_finished {
+                break;
+            }
+
+            if start.elapsed() > SHUTDOWN_WAIT {
+                tracing::warn!(%recv_thread_finished, %send_thread_finished, "TUN worker threads did not exit gracefully in {SHUTDOWN_WAIT:?}");
                 return;
             }
+
+            std::thread::sleep(Duration::from_millis(100));
         }
 
         tracing::debug!(
