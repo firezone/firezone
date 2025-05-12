@@ -100,7 +100,7 @@ impl Eventloop {
                             || e.kind() == io::ErrorKind::HostUnreachable
                             || e.kind() == io::ErrorKind::AddrNotAvailable
                     }) {
-                        // `NetworkUnreachable`, `HostUnreachabke`, `AddrNotAvailable` most likely means we don't have IPv4 or IPv6 connectivity.
+                        // `NetworkUnreachable`, `HostUnreachable`, `AddrNotAvailable` most likely means we don't have IPv4 or IPv6 connectivity.
                         tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
                         continue;
                     }
