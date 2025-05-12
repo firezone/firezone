@@ -1,5 +1,5 @@
-$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/connlib-client-apple/connlib-client-apple.swift
-$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/connlib-client-apple/connlib-client-apple.h
+$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/apple-client-ffi/apple-client-ffi.swift
+$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/apple-client-ffi/apple-client-ffi.h
 $(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/SwiftBridgeCore.h
 $(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated/SwiftBridgeCore.swift
 $(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/connlib.h

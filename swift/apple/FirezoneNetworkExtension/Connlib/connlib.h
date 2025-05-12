@@ -4,6 +4,6 @@
 #define connlib_h
 
 #include "Generated/SwiftBridgeCore.h"
-#include "Generated/connlib-client-apple/connlib-client-apple.h"
+#include "Generated/apple-client-ffi/apple-client-ffi.h"
 
 #endif

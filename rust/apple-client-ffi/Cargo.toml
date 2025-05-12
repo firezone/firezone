@@ -1,19 +1,17 @@
 [package]
-name = "connlib-client-android"
-# mark:next-android-version
-version = "1.4.9"
+name = "apple-client-ffi"
+# mark:next-apple-version
+version = "1.4.15"
 edition = { workspace = true }
 license = { workspace = true }
 
-[lib]
-name = "connlib"
-crate-type = ["lib", "cdylib"]
-doc = false
+[build-dependencies]
+swift-bridge-build = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
 backoff = { workspace = true }
-connlib-client-shared = { workspace = true }
+client-shared = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
 firezone-logging = { workspace = true }
@@ -22,24 +20,27 @@ flume = { workspace = true }
 futures = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
-jni = { workspace = true, features = ["invocation"] }
 libc = { workspace = true }
-log = { workspace = true }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }
 serde_json = { workspace = true }
 socket-factory = { workspace = true }
-thiserror = { workspace = true }
+swift-bridge = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
-tracing = { workspace = true, features = ["std", "attributes"] }
+tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
 tun = { workspace = true }
 url = { workspace = true }
 
-[target.'cfg(target_os = "android")'.dependencies]
-android_log-sys = "0.3.2"
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+oslog = { version = "0.2.0", default-features = false }
+
+[lib]
+name = "connlib"
+crate-type = ["staticlib"]
+doc = false
 
 [lints]
 workspace = true
