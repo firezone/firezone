@@ -11,7 +11,7 @@ license = { workspace = true }
 anyhow = { workspace = true }
 backoff = { workspace = true }
 clap = { workspace = true, features = ["derive", "env", "string"] }
-connlib-client-shared = { workspace = true }
+client-shared = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
 firezone-bin-shared = { workspace = true }

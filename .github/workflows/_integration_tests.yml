@@ -68,6 +68,9 @@ on:
         type: string
         default: ${{ github.sha }}
 
+env:
+  COMPOSE_PARALLEL_LIMIT: 1 # Temporary fix for https://github.com/docker/compose/pull/12752 until compose v2.36.0 lands on GitHub actions runners.
+
 jobs:
   integration-tests:
     name: ${{ matrix.test.name }}

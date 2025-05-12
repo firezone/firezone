@@ -7,8 +7,8 @@ set -euo pipefail
 source "./scripts/build/lib.sh"
 
 # Define needed variables
-app_profile_id=c5d97f71-de80-4dfc-80f8-d0a4393ff082
-ne_profile_id=153db941-2136-4d6c-96ef-52f748521e78
+app_profile_id=$(extract_uuid "$STANDALONE_MACOS_APP_PROVISIONING_PROFILE")
+ne_profile_id=$(extract_uuid "$STANDALONE_MACOS_NE_PROVISIONING_PROFILE")
 notarize=${NOTARIZE:-"false"}
 temp_dir="${TEMP_DIR:-$(mktemp -d)}"
 dmg_dir="$temp_dir/dmg"
@@ -31,7 +31,6 @@ fi
 
 # Build and sign
 echo "Building and signing app..."
-seconds_since_epoch=$(date +%s)
 xcodebuild build \
     GIT_SHA="$git_sha" \
     CODE_SIGN_STYLE=Manual \
@@ -43,7 +42,6 @@ xcodebuild build \
     APP_PROFILE_ID="$app_profile_id" \
     NE_PROFILE_ID="$ne_profile_id" \
     ONLY_ACTIVE_ARCH=NO \
-    CURRENT_PROJECT_VERSION="$seconds_since_epoch" \
     -project "$project_file" \
     -skipMacroValidation \
     -configuration Release \

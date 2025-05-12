@@ -1,7 +1,7 @@
 use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
-use connlib_client_shared::ConnlibMsg;
+use client_shared::ConnlibMsg;
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager, device_id, device_info, known_dirs,
     platform::{tcp_socket_factory, udp_socket_factory},
@@ -101,7 +101,7 @@ struct Handler<'a> {
 
 struct Session {
     cb_rx: mpsc::Receiver<ConnlibMsg>,
-    connlib: connlib_client_shared::Session,
+    connlib: client_shared::Session,
 }
 
 enum Event {
@@ -383,7 +383,7 @@ impl<'a> Handler<'a> {
         .context("Failed to create `LoginUrl`")?;
 
         self.last_connlib_start_instant = Some(Instant::now());
-        let (callbacks, cb_rx) = connlib_client_shared::ChannelCallbackHandler::new();
+        let (callbacks, cb_rx) = client_shared::ChannelCallbackHandler::new();
 
         // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
@@ -404,7 +404,7 @@ impl<'a> Handler<'a> {
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
-        let connlib = connlib_client_shared::Session::connect(
+        let connlib = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(udp_socket_factory),
             callbacks,

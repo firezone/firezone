@@ -56,6 +56,12 @@ function setup_runner() {
         "$keychain_path"
 }
 
+function extract_uuid() {
+    local b64_profile="$1"
+
+    echo "$b64_profile" | base64 --decode | security cms -D | plutil -extract UUID raw -o - -
+}
+
 function base64_decode() {
     local input_stdin="$1"
     local output_path="$2"

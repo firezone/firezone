@@ -6,4 +6,6 @@ APP_GROUP_ID_PRE_1_4_0[sdk=macosx*] = 47R2M6779T.group.dev.firezone.firezone
 APP_GROUP_ID[sdk=iphoneos*] = group.dev.firezone.firezone
 APP_GROUP_ID_PRE_1_4_0[sdk=iphoneos*] = group.dev.firezone.firezone
 CODE_SIGN_STYLE = Automatic
-CURRENT_PROJECT_VERSION = 0
+
+// Include the dynamic build number created during the build phase
+#include? "dynamic_build_number.xcconfig"
