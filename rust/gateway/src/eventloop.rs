@@ -98,8 +98,10 @@ impl Eventloop {
                     if e.root_cause().downcast_ref::<io::Error>().is_some_and(|e| {
                         e.kind() == io::ErrorKind::NetworkUnreachable
                             || e.kind() == io::ErrorKind::HostUnreachable
+                            || e.kind() == io::ErrorKind::AddrNotAvailable
                     }) {
-                        // Network unreachable most likely means we don't have IPv4 or IPv6 connectivity.
+                        // `NetworkUnreachable`, `HostUnreachabke`, `AddrNotAvailable` most likely means we don't have IPv4 or IPv6 connectivity.
+                        tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
                         continue;
                     }
 
