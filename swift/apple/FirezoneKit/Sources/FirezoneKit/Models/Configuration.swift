@@ -6,94 +6,81 @@
 
 import Foundation
 
-public struct Configuration: Codable {
-  private enum BaseKeys {
-    private static let authURL = "authURL"
-    private static let apiURL = "apiURL"
-    private static let logFilter = "logFilter"
-    private static let accountSlug = "accountSlug"
-    private static let internetResourceEnabled = "internetResourceEnabled"
-  }
+public class Configuration: Codable {
+
+#if DEBUG
+  public static let defaultAuthURL = URL(string: "https://app.firez.one")!
+  public static let defaultApiURL = URL(string: "wss://api.firez.one")!
+  public static let defaultLogFilter = "debug"
+#else
+  public static let defaultAuthURL = URL(string: "https://app.firezone.dev")!
+  public static let defaultApiURL = URL(string: "wss://api.firezone.dev")!
+  public static let defaultLogFilter = "info"
+#endif
 
   public enum Keys {
-    public static let authURL = userKeyPrefix + BaseKeys.authURL
-    public static let apiURL = userKeyPrefix + BaseKeys.apiURL
-    public static let logFilter = userKeyPrefix + BaseKeys.logFilter
-    public static let actorName = userKeyPrefix + BaseKeys.actorName
-    public static let accountSlug = userKeyPrefix + BaseKeys.accountSlug
-    public static let internetResourceEnabled = userKeyPrefix + BaseKeys.internetResourceEnabled
-    public static let firezoneId = userKeyPrefix + BaseKeys.firezoneId
+    public static let authURL = "authURL"
+    public static let apiURL = "apiURL"
+    public static let logFilter = "logFilter"
+    public static let actorName = "actorName"
+    public static let accountSlug = "accountSlug"
+    public static let internetResourceEnabled = "internetResourceEnabled"
+    public static let firezoneId = "firezoneId"
   }
 
-  private static let userKeyPrefix = "dev.firezone.configuration."
+  public var authURL: URL?
+  public var actorName: String?
+  public var firezoneId: String?
+  public var apiURL: URL?
+  public var logFilter: String?
+  public var accountSlug: String?
+  public var internetResourceEnabled: Bool?
 
-  private var userDict: [String: Any?]
-  private var managedDict: [String: Any?]
-
-  // User configuration only
-
-  private(set) var actorName: String? { userDict[Keys.actorName] as? String }
-
-  private(set) var firezoneId: String? { userDict[Keys.firezoneId] as? String }
-
-  // User and managed keys
-
-  private(set) var authURL: URL? {
-    if let val = managedDict[BaseKeys.authURL] as? URL {
-      return val
-    }
-
-    return userDict[Keys.authURL] as? URL
-  }
-
-  private(set) var apiURL: URL? {
-    if let val = managedDict[BaseKeys.apiURL] as? URL {
-      return val
-    }
-
-    return userDict[Keys.apiURL] as? URL
-  }
-
-  private(set) var logFilter: String? {
-    if let val = managedDict[BaseKeys.logFilter] as? String {
-      return val
-    }
-
-    return userDict[Keys.logFilter] as? String
-  }
-
-  private(set) var accountSlug: String? {
-    if let val = managedDict[BaseKeys.accountSlug] as? String {
-      return val
-    }
-
-    return userDict[Keys.accountSlug] as? String
-  }
-
-  private(set) var internetResourceEnabled: Bool? {
-    if let val = managedDict[BaseKeys.internetResourceEnabled] as? Bool {
-      return val
-    }
-
-    return userDict[Keys.internetResourceEnabled] as? Bool
-  }
+  private var overriddenKeys: Set<String> = []
 
   public init(userDict: [String: Any?], managedDict: [String: Any?]) {
-    userDict = userDict
-    managedDict = managedDict
+    self.actorName = userDict[Keys.actorName] as? String
+    self.firezoneId = userDict[Keys.firezoneId] as? String
+
+    if let authURLString = managedDict[Keys.authURL] as? String,
+       let authURL = URL(string: authURLString) {
+      self.overriddenKeys.insert(Keys.authURL)
+      self.authURL = authURL
+    } else if let authURLString = userDict[Keys.authURL] as? String {
+      self.authURL = URL(string: authURLString)
+    }
+
+    if let apiURLString = managedDict[Keys.apiURL] as? String,
+       let apiURL = URL(string: apiURLString) {
+      self.overriddenKeys.insert(Keys.apiURL)
+      self.apiURL = apiURL
+    } else if let apiURLString = userDict[Keys.apiURL] as? String {
+      self.apiURL = URL(string: apiURLString)
+    }
+
+    if let logFilter = managedDict[Keys.logFilter] as? String {
+      self.overriddenKeys.insert(Keys.logFilter)
+      self.logFilter = logFilter
+    } else {
+      self.logFilter = userDict[Keys.logFilter] as? String
+    }
+
+    if let accountSlug = managedDict[Keys.accountSlug] as? String {
+      self.overriddenKeys.insert(Keys.accountSlug)
+      self.accountSlug = accountSlug
+    } else {
+      self.accountSlug = userDict[Keys.accountSlug] as? String
+    }
+
+    if let internetResourceEnabled = managedDict[Keys.internetResourceEnabled] as? Bool {
+      self.overriddenKeys.insert(Keys.internetResourceEnabled)
+      self.internetResourceEnabled = internetResourceEnabled
+    } else {
+      self.internetResourceEnabled = userDict[Keys.internetResourceEnabled] as? Bool
+    }
   }
 
   func isOverridden(key: String) -> Bool {
-    return managedDict[key] != nil
+    return overriddenKeys.contains(key)
   }
-
-  #if DEBUG
-    public static let defaultAuthURL = URL(string: "https://app.firez.one")!
-    public static let defaultApiURL = URL(string: "wss://api.firez.one")!
-    public static let defaultLogFilter = "debug"
-  #else
-    public static let defaultAuthURL = URL(string: "https://app.firezone.dev")!
-    public static let defaultApiURL = URL(string: "wss://api.firezone.dev")!
-    public static let defaultLogFilter = "info"
-  #endif
 }
