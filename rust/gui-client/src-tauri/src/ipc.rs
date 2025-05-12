@@ -52,7 +52,7 @@ pub struct NotFound(String);
 ///
 /// Because the paths are so different (and Windows actually uses a `String`),
 /// we have this [`SocketId`] abstraction instead of just a `PathBuf`.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum SocketId {
     /// The IPC socket used by Firezone GUI Client in production to connect to the tunnel service.
     ///
@@ -135,8 +135,9 @@ where
     W: Serialize,
 {
     tracing::debug!(
+        ?id,
         client_pid = std::process::id(),
-        "Connecting to IPC socket..."
+        "Connecting to IPC socket"
     );
 
     // This is how ChatGPT recommended, and I couldn't think of any more clever
