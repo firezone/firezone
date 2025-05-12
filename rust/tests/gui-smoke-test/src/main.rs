@@ -37,7 +37,7 @@ fn main() -> Result<()> {
 
     let app = App::new()?;
 
-    dump_syms()?;
+    dump_syms().context("Failed to run `dump_syms`")?;
 
     // Run normal smoke test
     let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
