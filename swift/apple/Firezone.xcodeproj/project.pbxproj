@@ -303,6 +303,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8DCC024328D512AE007E12D2 /* Build configuration list for PBXNativeTarget "Firezone" */;
 			buildPhases = (
+				8D40C0B72DD1335C00ACF8D7 /* Generate build number */,
 				8DCC021528D512AC007E12D2 /* Sources */,
 				8D70FAE62D4971E900216473 /* SwiftLint */,
 				8DCC021628D512AC007E12D2 /* Frameworks */,
@@ -400,6 +401,25 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		8D40C0B72DD1335C00ACF8D7 /* Generate build number */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Generate build number";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Set the project (build) version to the current epoch so that it monotonically increases\nseconds_since_epoch=$(date +%s)\necho \"CURRENT_PROJECT_VERSION = $seconds_since_epoch\" > Firezone/xcconfig/dynamic_build_number.xcconfig\n";
+		};
 		8D70FAE62D4971E900216473 /* SwiftLint */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;

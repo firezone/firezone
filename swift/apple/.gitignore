@@ -4,3 +4,4 @@ build/
 DerivedData/
 xcuserdata/
 **/*.xcuserstate
+Firezone/xcconfig/dynamic_build_number.xcconfig
