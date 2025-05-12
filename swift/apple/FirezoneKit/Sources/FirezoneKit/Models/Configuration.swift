@@ -25,7 +25,13 @@ public struct Configuration: Codable {
   var firezoneId: String?
   var internetResourceEnabled: Bool?
 
-  public init(from dict: [String: Any?]) {
+  // Keys from managed configuration we want to mask the app configuration with if set.
+  // This will prevent the user from modifying them in the app.
+  private var overriddenKeys: [String]
+
+  public init(from dict: [String: Any?], overriddenKeys: [String] = []) {
+    self.overriddenKeys = overriddenKeys
+
     self.actorName = dict[Keys.actorName] as? String
     self.authURL = dict[Keys.authURL] as? URL
     self.apiURL = dict[Keys.apiURL] as? URL
