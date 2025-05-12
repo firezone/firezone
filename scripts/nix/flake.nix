@@ -53,7 +53,7 @@
     {
       devShells = {
         x86_64-linux.default = pkgs.mkShell {
-          packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.pnpm pkgs.cargo-sort pkgs.cargo-deny pkgs.cargo-autoinherit ];
+          packages = [ pkgs.cargo-tauri pkgs.iptables pkgs.pnpm pkgs.cargo-sort pkgs.cargo-deny pkgs.cargo-autoinherit pkgs.dump_syms pkgs.xvfb-run ];
           buildInputs = packages;
           src = ../..;
 
