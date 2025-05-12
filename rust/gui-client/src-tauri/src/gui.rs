@@ -175,9 +175,12 @@ pub fn run(
     match ipc_result {
         Err(e) if e.root_cause().is::<ipc::NotFound>() => {
             // If we can't find the socket, we must be the first instance.
+            tracing::debug!("We appear to be the first instance of the GUI client")
         }
         Ok(()) => {
             // If we managed to send the IPC message then another instance of Firezone is already running.
+            tracing::debug!("Another instance of the Firezone GUI client is already running");
+
             return Err(anyhow::Error::new(AlreadyRunning));
         }
         Err(e) => {
