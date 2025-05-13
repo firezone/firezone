@@ -32,6 +32,10 @@ export default function Apple() {
           Further improves performance of relayed connections on IPv4-only
           systems.
         </ChangeItem>
+        <ChangeItem pull="9093">
+          Fixes a rare panic when the DNS servers on the system would change
+          while Firezone is connected.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-02")}>
         <ChangeItem pull="9005">

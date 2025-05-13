@@ -28,6 +28,10 @@ export default function GUI({ os }: { os: OS }) {
             initialised.
           </ChangeItem>
         )}
+        <ChangeItem pull="9093">
+          Fixes a rare panic when the DNS servers on the system would change
+          while Firezone is connected.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.12" date={new Date("2025-04-30")}>
         {os === OS.Linux && (

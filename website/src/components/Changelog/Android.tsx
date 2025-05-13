@@ -28,6 +28,10 @@ export default function Android() {
           Further improves performance of relayed connections on IPv4-only
           systems.
         </ChangeItem>
+        <ChangeItem pull="9093">
+          Fixes a rare panic when the DNS servers on the system would change
+          while Firezone is connected.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-04-30")}>
         <ChangeItem pull="8920">
