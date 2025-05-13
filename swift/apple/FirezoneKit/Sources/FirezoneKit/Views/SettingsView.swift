@@ -75,6 +75,11 @@ class SettingsViewModel: ObservableObject {
   @Published var areSettingsDefault = true
   @Published var areSettingsValid = true
   @Published var areSettingsSaved = true
+  @Published private(set) var isAuthURLOverridden = false
+  @Published private(set) var isApiURLOverridden = false
+  @Published private(set) var isLogFilterOverridden = false
+  @Published private(set) var shouldDisableApplyButton = false
+  @Published private(set) var shouldDisableResetButton = false
 
   init(store: Store) {
     self.store = store
@@ -85,12 +90,25 @@ class SettingsViewModel: ObservableObject {
 
     updateDerivedState()
 
+    // Update our state from our text fields
     Publishers.CombineLatest3($authURLString, $apiURLString, $logFilterString)
       .receive(on: RunLoop.main)
       .sink { [weak self] (_, _, _) in
         guard let self = self else { return }
 
         self.updateDerivedState()
+      }
+      .store(in: &cancellables)
+
+    // Update our state from configuration updates
+    store.$configuration
+      .receive(on: RunLoop.main)
+      .sink { [weak self] newConfiguration in
+        self?.isAuthURLOverridden = newConfiguration?.isOverridden(Configuration.Keys.authURL) ?? false
+        self?.isApiURLOverridden = newConfiguration?.isOverridden(Configuration.Keys.apiURL) ?? false
+        self?.isLogFilterOverridden = newConfiguration?.isOverridden(Configuration.Keys.logFilter) ?? false
+
+        self?.updateDerivedState()
       }
       .store(in: &cancellables)
   }
@@ -119,6 +137,14 @@ class SettingsViewModel: ObservableObject {
     self.areSettingsDefault = (self.authURLString == Configuration.defaultAuthURL.absoluteString &&
                                self.apiURLString == Configuration.defaultApiURL.absoluteString &&
                                self.logFilterString == Configuration.defaultLogFilter)
+
+    self.shouldDisableApplyButton = (
+      isAuthURLOverridden && isApiURLOverridden && isLogFilterOverridden
+    ) || areSettingsSaved || !areSettingsValid
+
+    self.shouldDisableResetButton = (
+      isAuthURLOverridden && isApiURLOverridden && isLogFilterOverridden
+    ) || areSettingsDefault
   }
 
   func applySettingsToStore() throws {
@@ -238,9 +264,7 @@ public struct SettingsView: View {
                 action.performAction(on: self)
               }
             }
-            .disabled(
-              (viewModel.areSettingsSaved || !viewModel.areSettingsValid)
-            )
+            .disabled(viewModel.shouldDisableApplyButton)
           }
           ToolbarItem(placement: .navigationBarLeading) {
             Button("Cancel") {
@@ -316,18 +340,21 @@ public struct SettingsView: View {
               text: $viewModel.authURLString,
               prompt: Text(PlaceholderText.authBaseURL)
             )
+            .disabled(viewModel.isAuthURLOverridden)
 
             TextField(
               "API URL:",
               text: $viewModel.apiURLString,
               prompt: Text(PlaceholderText.apiURL)
             )
+            .disabled(viewModel.isApiURLOverridden)
 
             TextField(
               "Log Filter:",
               text: $viewModel.logFilterString,
               prompt: Text(PlaceholderText.logFilter)
             )
+            .disabled(viewModel.isLogFilterOverridden)
 
             Text(FootnoteText.forAdvanced ?? "")
               .foregroundStyle(.secondary)
@@ -345,7 +372,7 @@ public struct SettingsView: View {
                   }
                 }
               )
-              .disabled(viewModel.areSettingsSaved || !viewModel.areSettingsValid)
+              .disabled(viewModel.shouldDisableApplyButton)
 
               Button(
                 "Reset to Defaults",
@@ -353,7 +380,7 @@ public struct SettingsView: View {
                   viewModel.revertToDefaultSettings()
                 }
               )
-              .disabled(viewModel.areSettingsDefault)
+              .disabled(viewModel.shouldDisableResetButton)
             }
             .padding(.top, 5)
           }
@@ -384,6 +411,7 @@ public struct SettingsView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
+                .disabled(viewModel.isAuthURLOverridden)
               }
               VStack(alignment: .leading, spacing: 2) {
                 Text("API URL")
@@ -396,6 +424,7 @@ public struct SettingsView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
+                .disabled(viewModel.isApiURLOverridden)
               }
               VStack(alignment: .leading, spacing: 2) {
                 Text("Log Filter")
@@ -408,6 +437,7 @@ public struct SettingsView: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
+                .disabled(viewModel.isLogFilterOverridden)
               }
               HStack {
                 Spacer()
@@ -417,7 +447,7 @@ public struct SettingsView: View {
                     viewModel.revertToDefaultSettings()
                   }
                 )
-                .disabled(viewModel.areSettingsDefault)
+                .disabled(viewModel.shouldDisableResetButton)
                 Spacer()
               }
             },

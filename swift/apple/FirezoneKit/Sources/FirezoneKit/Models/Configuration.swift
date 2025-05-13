@@ -6,7 +6,7 @@
 
 import Foundation
 
-public class Configuration: Codable {
+public class Configuration: ObservableObject, Codable {
 
 #if DEBUG
   public static let defaultAuthURL = URL(string: "https://app.firez.one")!
@@ -80,7 +80,7 @@ public class Configuration: Codable {
     }
   }
 
-  func isOverridden(key: String) -> Bool {
+  func isOverridden(_ key: String) -> Bool {
     return overriddenKeys.contains(key)
   }
 }
