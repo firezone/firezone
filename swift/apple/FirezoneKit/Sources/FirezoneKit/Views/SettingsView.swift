@@ -268,26 +268,33 @@ public struct SettingsView: View {
   }
 
   public var body: some View {
-    #if os(iOS)
-      NavigationView {
-        TabView {
-          generalTab
-            .tabItem {
-              Image(systemName: "slider.horizontal.2")
-              Text("General")
-            }
-          advancedTab
-            .tabItem {
-              Image(systemName: "slider.horizontal.3")
-              Text("Advanced")
-            }
-            .badge(viewModel.areSettingsValid ? nil : "!")
-          logsTab
-            .tabItem {
-              Image(systemName: "doc.text")
-              Text("Diagnostic Logs")
-            }
+#if os(iOS)
+    NavigationView {
+      ZStack {
+        Color(UIColor.systemGroupedBackground)
+          .ignoresSafeArea()
+
+        VStack {
+          TabView {
+            generalTab
+              .tabItem {
+                Image(systemName: "slider.horizontal.3")
+                Text("General")
+              }
+            advancedTab
+              .tabItem {
+                Image(systemName: "gearshape.2")
+                Text("Advanced")
+              }
+              .badge(viewModel.areSettingsValid ? nil : "!")
+            logsTab
+              .tabItem {
+                Image(systemName: "doc.text")
+                Text("Diagnostic Logs")
+              }
+          }
         }
+        .padding(.bottom, 10)
         .toolbar {
           ToolbarItem(placement: .navigationBarTrailing) {
             Button("Save") {
@@ -309,24 +316,24 @@ public struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .alert(
+          "Saving settings will sign you out",
+          isPresented: $isShowingConfirmationAlert,
+          presenting: confirmationAlertContinueAction,
+          actions: { confirmationAlertContinueAction in
+            Button("Cancel", role: .cancel) {
+              // Nothing to do
+            }
+            Button("Continue") {
+              withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
+            }
+          },
+          message: { _ in
+            Text("Changing settings will sign you out and disconnect you from resources")
+          }
+        )
       }
-      .alert(
-        "Saving settings will sign you out",
-        isPresented: $isShowingConfirmationAlert,
-        presenting: confirmationAlertContinueAction,
-        actions: { confirmationAlertContinueAction in
-          Button("Cancel", role: .cancel) {
-            // Nothing to do
-          }
-          Button("Continue") {
-            withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
-          }
-        },
-        message: { _ in
-          Text("Changing settings will sign you out and disconnect you from resources")
-        }
-      )
-
+    }
     #elseif os(macOS)
       VStack {
         TabView {
@@ -441,55 +448,10 @@ public struct SettingsView: View {
               .submitLabel(.done)
               .disabled(viewModel.isAuthURLOverridden)
             }
-            VStack(alignment: .leading, spacing: 2) {
-              Text("API URL")
-                .foregroundStyle(.secondary)
-                .font(.caption)
-              TextField(
-                PlaceholderText.apiURL,
-                text: $viewModel.apiURLString
-              )
-              .autocorrectionDisabled()
-              .textInputAutocapitalization(.never)
-              .submitLabel(.done)
-              .disabled(viewModel.isApiURLOverridden)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-              Text("Log Filter")
-                .foregroundStyle(.secondary)
-                .font(.caption)
-              TextField(
-                PlaceholderText.logFilter,
-                text: $viewModel.logFilterString
-              )
-              .autocorrectionDisabled()
-              .textInputAutocapitalization(.never)
-              .submitLabel(.done)
-              .disabled(viewModel.isLogFilterOverridden)
-            }
-            HStack {
-              Spacer()
-              Button(
-                "Reset to Defaults",
-                action: {
-                  viewModel.revertToDefaultSettings()
-                }
-              )
-              .disabled(viewModel.shouldDisableResetButton)
-              Spacer()
-            }
           },
-          header: { Text("Advanced Settings") },
-          footer: { Text(FootnoteText.forAdvanced ?? "") }
+          header: { Text("General Settings") },
         )
       }
-      Spacer()
-      HStack {
-        Text("Build: \(BundleHelper.gitSha)")
-          .textSelection(.enabled)
-          .foregroundColor(.gray)
-        Spacer()
-      }.padding([.leading, .bottom], 20)
     }
 #endif
   }
@@ -625,8 +587,11 @@ public struct SettingsView: View {
             .textSelection(.enabled)
             .foregroundColor(.gray)
           Spacer()
-        }.padding([.leading, .bottom], 20)
+        }
+        .padding([.leading, .bottom], 20)
+        .background(Color(uiColor: .secondarySystemBackground))
       }
+      .background(Color(uiColor: .secondarySystemBackground))
     #endif
   }
 
