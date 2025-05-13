@@ -69,9 +69,9 @@ class SettingsViewModel: ObservableObject {
   private let store: Store
   private var cancellables = Set<AnyCancellable>()
 
-  @Published var authURLString: String
-  @Published var apiURLString: String
-  @Published var logFilterString: String
+  @Published var authURL: String
+  @Published var apiURL: String
+  @Published var logFilter: String
   @Published private(set) var isAuthURLOverridden = false
   @Published private(set) var isApiURLOverridden = false
   @Published private(set) var isLogFilterOverridden = false
@@ -84,14 +84,14 @@ class SettingsViewModel: ObservableObject {
   init(store: Store) {
     self.store = store
 
-    self.authURLString = store.configuration?.authURL?.absoluteString ?? Configuration.defaultAuthURL.absoluteString
-    self.apiURLString = store.configuration?.apiURL?.absoluteString ?? Configuration.defaultApiURL.absoluteString
-    self.logFilterString = store.configuration?.logFilter ?? Configuration.defaultLogFilter
+    self.authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
+    self.apiURL = store.configuration?.apiURL ?? Configuration.defaultApiURL
+    self.logFilter = store.configuration?.logFilter ?? Configuration.defaultLogFilter
 
     updateDerivedState()
 
     // Update our state from our text fields
-    Publishers.CombineLatest3($authURLString, $apiURLString, $logFilterString)
+    Publishers.CombineLatest3($authURL, $apiURL, $logFilter)
       .receive(on: RunLoop.main)
       .sink { [weak self] (_, _, _) in
         guard let self = self else { return }
@@ -114,17 +114,17 @@ class SettingsViewModel: ObservableObject {
   }
 
   private func updateDerivedState() {
-    self.areSettingsSaved = (self.authURLString == store.configuration?.authURL?.absoluteString &&
-                             self.apiURLString == store.configuration?.apiURL?.absoluteString &&
-                             self.logFilterString == store.configuration?.logFilter)
+    self.areSettingsSaved = (self.authURL == store.configuration?.authURL &&
+                             self.apiURL == store.configuration?.apiURL &&
+                             self.logFilter == store.configuration?.logFilter)
 
-    if let apiURL = URL(string: apiURLString),
-       let authURL = URL(string: authURLString),
+    if let apiURL = URL(string: apiURL),
+       let authURL = URL(string: authURL),
        authURL.host != nil,
        apiURL.host != nil,
        ["https", "http"].contains(authURL.scheme),
        ["wss", "ws"].contains(apiURL.scheme),
-       !logFilterString.isEmpty {
+       !logFilter.isEmpty {
 
       self.areSettingsValid = true
 
@@ -134,9 +134,9 @@ class SettingsViewModel: ObservableObject {
 
     }
 
-    self.areSettingsDefault = (self.authURLString == Configuration.defaultAuthURL.absoluteString &&
-                               self.apiURLString == Configuration.defaultApiURL.absoluteString &&
-                               self.logFilterString == Configuration.defaultLogFilter)
+    self.areSettingsDefault = (self.authURL == Configuration.defaultAuthURL &&
+                               self.apiURL == Configuration.defaultApiURL &&
+                               self.logFilter == Configuration.defaultLogFilter)
 
     self.shouldDisableApplyButton = (
       isAuthURLOverridden && isApiURLOverridden && isLogFilterOverridden
@@ -148,31 +148,23 @@ class SettingsViewModel: ObservableObject {
   }
 
   func applySettingsToStore() async throws {
-    guard let authURL = URL(string: authURLString),
-          let apiURL = URL(string: apiURLString)
-    else {
-      Log.warning("Unexpectedly invalid settings")
-
-      return
-    }
-
     try await store.setApiURL(apiURL)
-    try await store.setLogFilter(logFilterString)
+    try await store.setLogFilter(logFilter)
     try await store.setAuthURL(authURL)
 
     updateDerivedState()
   }
 
   func revertToDefaultSettings() {
-    self.authURLString = Configuration.defaultAuthURL.absoluteString
-    self.apiURLString = Configuration.defaultApiURL.absoluteString
-    self.logFilterString = Configuration.defaultLogFilter
+    self.authURL = Configuration.defaultAuthURL
+    self.apiURL = Configuration.defaultApiURL
+    self.logFilter = Configuration.defaultLogFilter
   }
 
   func reloadSettingsFromStore() {
-    self.authURLString = store.configuration?.authURL?.absoluteString ?? Configuration.defaultAuthURL.absoluteString
-    self.apiURLString = store.configuration?.apiURL?.absoluteString ?? Configuration.defaultApiURL.absoluteString
-    self.logFilterString = store.configuration?.logFilter ?? Configuration.defaultLogFilter
+    self.authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
+    self.apiURL = store.configuration?.apiURL ?? Configuration.defaultApiURL
+    self.logFilter = store.configuration?.logFilter ?? Configuration.defaultLogFilter
   }
 }
 
@@ -336,21 +328,21 @@ public struct SettingsView: View {
           Form {
             TextField(
               "Auth Base URL:",
-              text: $viewModel.authURLString,
+              text: $viewModel.authURL,
               prompt: Text(PlaceholderText.authBaseURL)
             )
             .disabled(viewModel.isAuthURLOverridden)
 
             TextField(
               "API URL:",
-              text: $viewModel.apiURLString,
+              text: $viewModel.apiURL,
               prompt: Text(PlaceholderText.apiURL)
             )
             .disabled(viewModel.isApiURLOverridden)
 
             TextField(
               "Log Filter:",
-              text: $viewModel.logFilterString,
+              text: $viewModel.logFilter,
               prompt: Text(PlaceholderText.logFilter)
             )
             .disabled(viewModel.isLogFilterOverridden)
@@ -405,7 +397,7 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.authBaseURL,
-                  text: $viewModel.authURLString
+                  text: $viewModel.authURL
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -418,7 +410,7 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.apiURL,
-                  text: $viewModel.apiURLString
+                  text: $viewModel.apiURL
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -431,7 +423,7 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.logFilter,
-                  text: $viewModel.logFilterString
+                  text: $viewModel.logFilter
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)

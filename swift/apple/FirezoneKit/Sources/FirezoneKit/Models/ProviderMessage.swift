@@ -14,8 +14,8 @@ public enum ProviderMessage: Codable {
   case getResourceList(Data)
   case getConfiguration(Data)
   case signOut
-  case setAuthURL(URL)
-  case setApiURL(URL)
+  case setAuthURL(String)
+  case setApiURL(String)
   case setLogFilter(String)
   case setActorName(String)
   case setAccountSlug(String)
@@ -51,10 +51,10 @@ public enum ProviderMessage: Codable {
     let type = try container.decode(MessageType.self, forKey: .type)
     switch type {
     case .setAuthURL:
-      let value = try container.decode(URL.self, forKey: .value)
+      let value = try container.decode(String.self, forKey: .value)
       self = .setAuthURL(value)
     case .setApiURL:
-      let value = try container.decode(URL.self, forKey: .value)
+      let value = try container.decode(String.self, forKey: .value)
       self = .setApiURL(value)
     case .setLogFilter:
       let value = try container.decode(String.self, forKey: .value)
