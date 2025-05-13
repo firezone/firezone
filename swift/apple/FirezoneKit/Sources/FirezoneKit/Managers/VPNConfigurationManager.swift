@@ -85,18 +85,12 @@ public class VPNConfigurationManager {
 
     var migrated = false
 
-    if let apiURLString = providerConfiguration["apiURL"],
-       let apiURL = URL(string: apiURLString),
-       apiURL.host != nil,
-       ["wss", "ws"].contains(apiURL.scheme) {
+    if let apiURL = providerConfiguration["apiURL"] {
       try await ipcClient.setApiURL(apiURL)
       migrated = true
     }
 
-    if let authURLString = providerConfiguration["authBaseURL"],
-       let authURL = URL(string: authURLString),
-       authURL.host != nil,
-       ["https", "http"].contains(authURL.scheme) {
+    if let authURL = providerConfiguration["authBaseURL"] {
       try await ipcClient.setAuthURL(authURL)
       migrated = true
     }
