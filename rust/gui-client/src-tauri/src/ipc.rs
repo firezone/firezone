@@ -128,10 +128,20 @@ impl<E: serde::Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
     }
 }
 
+pub struct ConnectOptions {
+    pub num_attempts: usize,
+}
+
+impl Default for ConnectOptions {
+    fn default() -> Self {
+        Self { num_attempts: 10 }
+    }
+}
+
 /// Attempt to connect to an IPC socket.
 pub async fn connect<R, W>(
     id: SocketId,
-    num_attempts: usize,
+    options: ConnectOptions,
 ) -> Result<(ClientRead<R>, ClientWrite<W>)>
 where
     R: DeserializeOwned,
@@ -147,7 +157,7 @@ where
     // way before I asked it.
     let mut last_err = None;
 
-    for _ in 0..num_attempts {
+    for _ in 0..options.num_attempts {
         match platform::connect_to_socket(id).await {
             Ok(stream) => {
                 let (rx, tx) = tokio::io::split(stream);
@@ -196,7 +206,10 @@ mod tests {
         let _guard = firezone_logging::test("trace");
         const ID: SocketId = SocketId::Test("H56FRXVH");
 
-        if super::connect::<(), ()>(ID, 10).await.is_ok() {
+        if super::connect::<(), ()>(ID, super::ConnectOptions::default())
+            .await
+            .is_ok()
+        {
             bail!("`connect_to_service` should have failed for a non-existent service");
         }
         Ok(())
@@ -241,7 +254,7 @@ mod tests {
 
         let client_task: JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
-                let (mut rx, mut tx) = super::connect(ID, 10)
+                let (mut rx, mut tx) = super::connect(ID, super::ConnectOptions::default())
                     .await
                     .context("Error while connecting to IPC server")?;
 

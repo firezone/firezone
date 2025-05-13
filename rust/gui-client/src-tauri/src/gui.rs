@@ -158,7 +158,11 @@ pub fn run(
     let _guard = rt.enter();
 
     let ipc_result = rt.block_on(async move {
-        let (mut read, mut write) = ipc::connect::<ServerMsg, ClientMsg>(SocketId::Gui, 1).await?;
+        let (mut read, mut write) = ipc::connect::<ServerMsg, ClientMsg>(
+            SocketId::Gui,
+            ipc::ConnectOptions { num_attempts: 1 },
+        )
+        .await?;
 
         write.send(&ClientMsg::NewInstance).await?;
         let response = read

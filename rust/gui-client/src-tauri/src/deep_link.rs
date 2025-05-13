@@ -33,8 +33,13 @@ mod imp;
 pub use imp::register;
 
 pub async fn open(url: url::Url) -> Result<()> {
-    let (mut read, mut write) =
-        crate::ipc::connect::<gui::ServerMsg, gui::ClientMsg>(SocketId::Gui, 10).await?;
+    crate::logging::setup_stdout()?;
+
+    let (mut read, mut write) = crate::ipc::connect::<gui::ServerMsg, gui::ClientMsg>(
+        SocketId::Gui,
+        crate::ipc::ConnectOptions::default(),
+    )
+    .await?;
 
     write
         .send(&gui::ClientMsg::Deeplink(url))
