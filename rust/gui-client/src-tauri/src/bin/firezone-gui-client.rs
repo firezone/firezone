@@ -70,6 +70,8 @@ fn main() -> anyhow::Result<()> {
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => run_gui(config),
         Some(Cmd::OpenDeepLink(deep_link)) => {
+            firezone_gui_client::logging::setup_stdout()?;
+
             let rt = tokio::runtime::Runtime::new()?;
             if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
                 tracing::error!("Error in `OpenDeepLink`: {error:#}");
