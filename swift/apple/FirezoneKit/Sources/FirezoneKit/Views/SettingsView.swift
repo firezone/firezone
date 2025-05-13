@@ -121,7 +121,7 @@ class SettingsViewModel: ObservableObject {
                                self.logFilterString == Configuration.defaultLogFilter)
   }
 
-  func applySettingsToStore() throws {
+  func applySettingsToStore() async throws {
     guard let authURL = URL(string: authURLString),
           let apiURL = URL(string: apiURLString)
     else {
@@ -130,13 +130,11 @@ class SettingsViewModel: ObservableObject {
       return
     }
 
-    Task {
-      try await store.setApiURL(apiURL)
-      try await store.setLogFilter(logFilterString)
-      try await store.setAuthURL(authURL)
+    try await store.setApiURL(apiURL)
+    try await store.setLogFilter(logFilterString)
+    try await store.setAuthURL(authURL)
 
-      updateDerivedState()
-    }
+    updateDerivedState()
   }
 
   func revertToDefaultSettings() {
@@ -157,6 +155,7 @@ class SettingsViewModel: ObservableObject {
 public struct SettingsView: View {
   @StateObject private var viewModel: SettingsViewModel
   @Environment(\.dismiss) var dismiss
+  @EnvironmentObject var errorHandler: GlobalErrorHandler
 
   private let store: Store
 
@@ -165,14 +164,14 @@ public struct SettingsView: View {
     case saveSettings
     case saveAllSettingsAndDismiss
 
-    func performAction(on view: SettingsView) {
+    func performAction(on view: SettingsView) async throws {
       switch self {
       case .none:
         break
       case .saveSettings:
-        Task { do { try await view.saveSettings() } catch { Log.error(error) } }
+        try await view.saveSettings()
       case .saveAllSettingsAndDismiss:
-        Task { do { try await view.saveAllSettingsAndDismiss() } catch { Log.error(error) } }
+        try await view.saveAllSettingsAndDismiss()
       }
     }
   }
@@ -235,7 +234,7 @@ public struct SettingsView: View {
                 self.confirmationAlertContinueAction = action
                 self.isShowingConfirmationAlert = true
               } else {
-                action.performAction(on: self)
+                withErrorHandler { try await action.performAction(on: self) }
               }
             }
             .disabled(
@@ -260,7 +259,7 @@ public struct SettingsView: View {
             // Nothing to do
           }
           Button("Continue") {
-            confirmationAlertContinueAction.performAction(on: self)
+            withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
           }
         },
         message: { _ in
@@ -291,7 +290,7 @@ public struct SettingsView: View {
             // Nothing to do
           }
           Button("Continue", role: .destructive) {
-            confirmationAlertContinueAction.performAction(on: self)
+            withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
           }
         },
         message: { _ in
@@ -341,7 +340,7 @@ public struct SettingsView: View {
                     self.confirmationAlertContinueAction = action
                     self.isShowingConfirmationAlert = true
                   } else {
-                    action.performAction(on: self)
+                    withErrorHandler { try await action.performAction(on: self) }
                   }
                 }
               )
@@ -644,15 +643,12 @@ public struct SettingsView: View {
   }
 
   private func saveSettings() async throws {
-    do {
-      if [.connected, .connecting, .reasserting].contains(store.status) {
-        try await self.store.signOut()
-      }
-    } catch {
-      Log.error(error)
-    }
+    try await viewModel.applySettingsToStore()
 
-    try viewModel.applySettingsToStore()
+    if [.connected, .connecting, .reasserting].contains(store.status) {
+      // TODO: Warn user instead of signing out
+      try await self.store.signOut()
+    }
   }
 
   // Calculates the total size of our logs by summing the size of the
@@ -714,6 +710,21 @@ public struct SettingsView: View {
 #if os(macOS)
     try await store.clearLogs()
 #endif
+  }
+
+  private func withErrorHandler(action: @escaping () async throws -> Void) {
+    Task {
+      do {
+        try await action()
+      } catch {
+        Log.error(error)
+#if os(iOS)
+        errorHandler.handle(ErrorAlert(title: "Error performing action", error: error))
+#elseif os(macOS)
+        macOSAlert.show(for: error)
+#endif
+      }
+    }
   }
 }
 
