@@ -28,6 +28,10 @@ export default function Apple() {
           Fixes an issue where idle connections would be slow (~60s) in
           detecting changes to network connectivity.
         </ChangeItem>
+        <ChangeItem pull="9018">
+          Further improves performance of relayed connections on IPv4-only
+          systems.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-02")}>
         <ChangeItem pull="9005">

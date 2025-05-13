@@ -13,6 +13,10 @@ export default function GUI({ os }: { os: OS }) {
           Fixes an issue where idle connections would be slow (~60s) in
           detecting changes to network connectivity.
         </ChangeItem>
+        <ChangeItem pull="9018">
+          Further improves performance of relayed connections on IPv4-only
+          systems.
+        </ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="9021">
             Optimizes network change detection.

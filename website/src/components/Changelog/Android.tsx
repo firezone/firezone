@@ -24,6 +24,10 @@ export default function Android() {
           Fixes an issue where idle connections would be slow (~60s) in
           detecting changes to network connectivity.
         </ChangeItem>
+        <ChangeItem pull="9018">
+          Further improves performance of relayed connections on IPv4-only
+          systems.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-04-30")}>
         <ChangeItem pull="8920">
