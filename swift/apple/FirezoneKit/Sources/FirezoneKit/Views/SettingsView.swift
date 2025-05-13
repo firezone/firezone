@@ -72,9 +72,9 @@ class SettingsViewModel: ObservableObject {
   @Published var authURLString: String
   @Published var apiURLString: String
   @Published var logFilterString: String
-  @Published var areSettingsDefault = true
-  @Published var areSettingsValid = true
-  @Published var areSettingsSaved = true
+  @Published private(set) var areSettingsDefault = true
+  @Published private(set) var areSettingsValid = true
+  @Published private(set) var areSettingsSaved = true
 
   init(store: Store) {
     self.store = store
@@ -160,7 +160,7 @@ public struct SettingsView: View {
 
   private let store: Store
 
-  enum ConfirmationAlertContinueAction: Int {
+  private enum ConfirmationAlertContinueAction: Int {
     case none
     case saveSettings
     case saveAllSettingsAndDismiss
@@ -191,13 +191,13 @@ public struct SettingsView: View {
     @State private var isPresentingExportLogShareSheet = false
   #endif
 
-  struct PlaceholderText {
+  private struct PlaceholderText {
     static let authBaseURL = "Admin portal base URL"
     static let apiURL = "Control plane WebSocket URL"
     static let logFilter = "RUST_LOG-style filter string"
   }
 
-  struct FootnoteText {
+  private struct FootnoteText {
     static let forAdvanced = try? AttributedString(
       markdown: """
         **WARNING:** These settings are intended for internal debug purposes **only**. \
@@ -543,18 +543,18 @@ public struct SettingsView: View {
     #endif
   }
 
-  func saveAllSettingsAndDismiss() async throws {
+  private func saveAllSettingsAndDismiss() async throws {
     try await saveSettings()
     dismiss()
   }
 
-  func reloadSettings() {
+  private func reloadSettings() {
     viewModel.reloadSettingsFromStore()
     dismiss()
   }
 
   #if os(macOS)
-    func exportLogsWithSavePanelOnMac() {
+    private func exportLogsWithSavePanelOnMac() {
       self.isExportingLogs = true
 
       let savePanel = NSSavePanel()
@@ -609,7 +609,7 @@ public struct SettingsView: View {
     }
   #endif
 
-  func refreshLogSize() {
+  private func refreshLogSize() {
     guard !self.isCalculatingLogsSize else {
       return
     }
@@ -625,11 +625,11 @@ public struct SettingsView: View {
     }
   }
 
-  func cancelRefreshLogSize() {
+  private func cancelRefreshLogSize() {
     self.calculateLogSizeTask?.cancel()
   }
 
-  func clearLogFiles() {
+  private func clearLogFiles() {
     self.isClearingLogs = true
     self.cancelRefreshLogSize()
     Task.detached(priority: .background) {
@@ -643,7 +643,7 @@ public struct SettingsView: View {
     }
   }
 
-  func saveSettings() async throws {
+  private func saveSettings() async throws {
     do {
       if [.connected, .connecting, .reasserting].contains(store.status) {
         try await self.store.signOut()
@@ -666,7 +666,7 @@ public struct SettingsView: View {
   // Unfortunately the IPC method doesn't work on iOS because the tunnel process
   // is not started on demand, so the IPC calls hang. Thus, we use separate code
   // paths for iOS and macOS.
-  func calculateLogDirSize() async -> String {
+  private func calculateLogDirSize() async -> String {
     Log.log("\(#function)")
 
     guard let logFilesFolderURL = SharedAccess.logFolderURL else {
@@ -706,7 +706,7 @@ public struct SettingsView: View {
   // On iOS, all the logs are stored in one directory.
   // On macOS, we need to clear logs from the app process, then call over IPC
   // to clear the provider's log directory.
-  func clearAllLogs() async throws {
+  private func clearAllLogs() async throws {
     Log.log("\(#function)")
 
     try Log.clear(in: SharedAccess.logFolderURL)
