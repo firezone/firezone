@@ -176,10 +176,12 @@ pub fn run(
         anyhow::Ok(())
     });
 
-    match ipc_result {
+    let gui_ipc = match ipc_result {
         Err(e) if e.root_cause().is::<ipc::NotFound>() => {
             // If we can't find the socket, we must be the first instance.
-            tracing::debug!("We appear to be the first instance of the GUI client")
+            tracing::debug!("We appear to be the first instance of the GUI client");
+
+            ipc::Server::new(SocketId::Gui).context("Failed to create GUI IPC socket")?
         }
         Ok(()) => {
             // If we managed to send the IPC message then another instance of Firezone is already running.
@@ -193,9 +195,7 @@ pub fn run(
 
             return Err(anyhow::Error::new(AlreadyRunning));
         }
-    }
-
-    let gui_ipc = ipc::Server::new(SocketId::Gui).context("Failed to create GUI IPC socket")?;
+    };
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let (ready_tx, mut ready_rx) = mpsc::channel::<tauri::AppHandle>(1);
