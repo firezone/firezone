@@ -529,7 +529,7 @@ public final class MenuBar: NSObject, ObservableObject {
     let isEnabled = store.configuration?.internetResourceEnabled == true
 
     if store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false {
-      return isEnabled ? "Overridden: Enabled" : "Overridden: Disabled"
+      return isEnabled ? "Managed: Enabled" : "Managed: Disabled"
     }
 
     return isEnabled ? "Disable this resource" : "Enable this resource"
@@ -628,7 +628,7 @@ public final class MenuBar: NSObject, ObservableObject {
     enableToggle.target = self
 
     if store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false {
-      enableToggle.toolTip = "This setting is overridden by your organization"
+      enableToggle.toolTip = "This setting is managed by your organization"
       enableToggle.isEnabled = false
       enableToggle.action = nil
     } else {

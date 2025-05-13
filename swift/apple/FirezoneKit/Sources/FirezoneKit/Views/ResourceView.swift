@@ -238,7 +238,7 @@ struct ToggleInternetResourceButton: View {
     let isEnabled = store.configuration?.internetResourceEnabled ?? false
 
     if store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false {
-      return isEnabled ? "Overridden: Enabled" : "Overridden: Disabled"
+      return isEnabled ? "Managed: Enabled" : "Managed: Disabled"
     }
 
     return isEnabled ? "Disable this resource" : "Enable this resource"
