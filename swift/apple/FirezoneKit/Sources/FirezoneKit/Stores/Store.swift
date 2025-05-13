@@ -245,11 +245,12 @@ public final class Store: ObservableObject {
 
   func setActorName(_ actorName: String) async throws {
     try await ipcClient().setActorName(actorName)
-    self.configuration?.actorName = actorName
+    configuration?.actorName = actorName
   }
 
   func setAccountSlug(_ accountSlug: String) async throws {
     try await ipcClient().setAccountSlug(accountSlug)
+    configuration?.accountSlug = accountSlug
 
     // Configure our Telemetry environment, closing if we're definitely not running against Firezone infrastructure.
     Telemetry.accountSlug = accountSlug
@@ -257,26 +258,25 @@ public final class Store: ObservableObject {
 
   func setAuthURL(_ authURL: URL) async throws {
     try await ipcClient().setAuthURL(authURL)
-    self.configuration?.authURL = authURL
+    configuration?.authURL = authURL
   }
 
   func setApiURL(_ apiURL: URL) async throws {
     try await ipcClient().setApiURL(apiURL)
+    configuration?.apiURL = apiURL
 
     // Reconfigure our Telemetry environment in case it changed
     Telemetry.setEnvironmentOrClose(apiURL)
-
-    self.configuration?.apiURL = apiURL
   }
 
   func setLogFilter(_ logFilter: String) async throws {
     try await ipcClient().setLogFilter(logFilter)
-    self.configuration?.logFilter = logFilter
+    configuration?.logFilter = logFilter
   }
 
-  func setInternetResourceEnabled(_ enabled: Bool) async throws {
-    try await ipcClient().setInternetResourceEnabled(enabled)
-    self.configuration?.internetResourceEnabled = enabled
+  func setInternetResourceEnabled(_ internetResourceEnabled: Bool) async throws {
+    try await ipcClient().setInternetResourceEnabled(internetResourceEnabled)
+    configuration?.internetResourceEnabled = internetResourceEnabled
   }
 
   // MARK: Private functions
