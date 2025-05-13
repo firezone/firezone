@@ -2339,7 +2339,7 @@ defmodule Domain.AuthTest do
     test "creates an identity" do
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_userpass_provider(account: account)
-      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+      provider_identifier = to_string(Domain.Fixture.unique_integer())
 
       actor =
         Fixtures.Actors.create_actor(
