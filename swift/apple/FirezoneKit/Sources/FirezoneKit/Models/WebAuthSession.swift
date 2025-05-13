@@ -16,7 +16,8 @@ struct WebAuthSession {
   static let anchor = PresentationAnchor()
 
   static func signIn(store: Store) async throws {
-    let authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
+    let baseURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
+    let authURL = baseURL.appendingPathComponent(store.configuration?.accountSlug ?? "")
 
     guard let authClient = try? AuthClient(authURL: authURL),
           let url = try? authClient.build()
