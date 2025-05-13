@@ -422,7 +422,9 @@ public final class MenuBar: NSObject, ObservableObject {
     }
 
     menu.addItem(aboutMenuItem)
-    menu.addItem(adminPortalMenuItem)
+    if !(store.configuration?.hideAdminPortalMenuItem ?? false) {
+      menu.addItem(adminPortalMenuItem)
+    }
     menu.addItem(helpMenuItem)
     menu.addItem(settingsMenuItem)
     menu.addItem(NSMenuItem.separator())
