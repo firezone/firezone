@@ -11,7 +11,6 @@ public class Configuration: Codable {
   public static let defaultLogFilter = "info"
 #endif
 
-  // Replace Keys enum with string constants
   public struct Keys {
     public static let authURL = "authURL"
     public static let apiURL = "apiURL"
@@ -50,7 +49,7 @@ public class Configuration: Codable {
   }
 
   private func setValue<T>(
-    forKey key: String, // Changed from Keys to String
+    forKey key: String,
     from managedDict: [String: Any?],
     and userDict: [String: Any?],
     setter: (T) -> Void
