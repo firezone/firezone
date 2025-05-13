@@ -627,7 +627,7 @@ public final class MenuBar: NSObject, ObservableObject {
     enableToggle.title = internetResourceToggleTitle()
     enableToggle.target = self
 
-    if true {// store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false {
+    if store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false {
       enableToggle.toolTip = "This setting is overridden by your organization"
       enableToggle.isEnabled = false
       enableToggle.action = nil

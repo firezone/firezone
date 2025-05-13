@@ -235,11 +235,13 @@ struct ToggleInternetResourceButton: View {
   @EnvironmentObject var store: Store
 
   private func toggleResourceEnabledText() -> String {
-    if store.configuration?.internetResourceEnabled == true {
-      "Disable this resource"
-    } else {
-      "Enable this resource"
+    let isEnabled = store.configuration?.internetResourceEnabled ?? false
+
+    if store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false {
+      return isEnabled ? "Overridden: Enabled" : "Overridden: Disabled"
     }
+
+    return isEnabled ? "Disable this resource" : "Enable this resource"
   }
 
   var body: some View {
@@ -260,6 +262,7 @@ struct ToggleInternetResourceButton: View {
         }
       }
     )
+    .disabled(store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false)
   }
 }
 
