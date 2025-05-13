@@ -21,13 +21,20 @@ use std::collections::hash_map::Entry;
 use std::pin::Pin;
 use tokio::io::Interest;
 
-pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
+pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {
+    fn reset(&self);
+}
 
 pub const SEND_BUFFER_SIZE: usize = ONE_MB;
 pub const RECV_BUFFER_SIZE: usize = 10 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
 
-impl<F, S> SocketFactory<S> for F where F: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
+impl<F, S> SocketFactory<S> for F
+where
+    F: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static,
+{
+    fn reset(&self) {}
+}
 
 pub fn tcp(addr: &SocketAddr) -> io::Result<TcpSocket> {
     let socket = match addr {
