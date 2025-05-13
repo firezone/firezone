@@ -6,7 +6,7 @@
 
 import Foundation
 
-public class Configuration: ObservableObject, Codable {
+public class Configuration: Codable {
 
 #if DEBUG
   public static let defaultAuthURL = URL(string: "https://app.firez.one")!
