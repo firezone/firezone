@@ -26,10 +26,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   private var logExportState: LogExportState = .idle
+  private var configuration: Configuration
 
   override init() {
     // Initialize Telemetry as early as possible
     Telemetry.start()
+
+    self.configuration = Configuration(
+      userDict: ConfigurationManager.shared.userDict,
+      managedDict: ConfigurationManager.shared.managedDict
+    )
 
     super.init()
   }
@@ -52,24 +58,24 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       do { try token.save() } catch { Log.error(error) }
 
       // The firezone id should be initialized by now
-      guard let id = ConfigurationManager.shared.firezoneId
+      guard let id = configuration.firezoneId
       else {
         throw PacketTunnelProviderError.firezoneIdIsInvalid
       }
 
       // Now we should have a token, so continue connecting
-      let apiURL = ConfigurationManager.shared.apiURL ?? Configuration.defaultApiURL
+      let apiURL = configuration.apiURL ?? Configuration.defaultApiURL
 
       // Reconfigure our Telemetry environment now that we know the API URL
       Telemetry.setEnvironmentOrClose(apiURL)
 
-      let logFilter = ConfigurationManager.shared.logFilter ?? Configuration.defaultLogFilter
+      let logFilter = configuration.logFilter ?? Configuration.defaultLogFilter
 
       // Hydrate telemetry account slug
-      let accountSlug = ConfigurationManager.shared.accountSlug
+      let accountSlug = configuration.accountSlug
       Telemetry.accountSlug = accountSlug
 
-      let internetResourceEnabled = ConfigurationManager.shared.internetResourceEnabled ?? false
+      let internetResourceEnabled = configuration.internetResourceEnabled ?? false
 
       let adapter = Adapter(
         apiURL: apiURL,
@@ -145,28 +151,41 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
 
       switch providerMessage {
+
       case .getConfiguration(let hash):
-        let configurationPayload = ConfigurationManager.shared.toDataIfChanged(hash: hash)
+        let configurationPayload = configuration.toDataIfChanged(hash: hash)
         completionHandler?(configurationPayload)
+
       case .setAuthURL(let authURL):
-        ConfigurationManager.shared.authURL = authURL
+        configuration.authURL = authURL
+        ConfigurationManager.shared.setAuthURL(authURL)
         completionHandler?(nil)
+
       case .setApiURL(let apiURL):
-        ConfigurationManager.shared.apiURL = apiURL
+        configuration.apiURL = apiURL
+        ConfigurationManager.shared.setApiURL(apiURL)
         completionHandler?(nil)
+
       case .setActorName(let actorName):
-        ConfigurationManager.shared.actorName = actorName
+        configuration.actorName = actorName
+        ConfigurationManager.shared.setActorName(actorName)
         completionHandler?(nil)
+
       case .setAccountSlug(let accountSlug):
-        ConfigurationManager.shared.accountSlug = accountSlug
+        configuration.accountSlug = accountSlug
+        ConfigurationManager.shared.setAccountSlug(accountSlug)
         completionHandler?(nil)
+
       case .setLogFilter(let logFilter):
-        ConfigurationManager.shared.logFilter = logFilter
+        configuration.logFilter = logFilter
+        ConfigurationManager.shared.setLogFilter(logFilter)
         completionHandler?(nil)
+
       case .setInternetResourceEnabled(let enabled):
-        ConfigurationManager.shared.internetResourceEnabled = enabled
-        adapter?.setInternetResourceEnabled(enabled)
+        configuration.internetResourceEnabled = enabled
+        ConfigurationManager.shared.setInternetResourceEnabled(enabled)
         completionHandler?(nil)
+
       case .signOut:
         do {
           try Token.delete()

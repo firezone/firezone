@@ -3,7 +3,7 @@
 //  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
-//  A wrapper around UserDefaults
+//  A wrapper around UserDefaults.
 
 import Foundation
 import FirezoneKit
@@ -12,83 +12,95 @@ import CryptoKit
 class ConfigurationManager {
   static let shared = ConfigurationManager()
 
-  let encoder = PropertyListEncoder()
+  let userDictKey = "dev.firezone.configuration"
+  let managedDictKey = "com.apple.configuration.managed"
 
   private var userDefaults: UserDefaults
 
-  var authURL: URL? {
-    get { userDefaults.url(forKey: Configuration.Keys.authURL) }
-    set { userDefaults.set(newValue, forKey: Configuration.Keys.authURL) }
-  }
+  // We maintain a cache of the user dictionary to buffer against unnecessary reads from UserDefaults which
+  // can cause deadlocks in rare cases.
+  var userDict: [String: Any?]
 
-  var apiURL: URL? {
-    get { userDefaults.url(forKey: Configuration.Keys.apiURL) }
-    set { userDefaults.set(newValue, forKey: Configuration.Keys.apiURL) }
-  }
-
-  var logFilter: String? {
-    get { userDefaults.string(forKey: Configuration.Keys.logFilter) }
-    set { userDefaults.set(newValue, forKey: Configuration.Keys.logFilter) }
-  }
-
-  var actorName: String? {
-    get { userDefaults.string(forKey: Configuration.Keys.actorName) }
-    set { userDefaults.set(newValue, forKey: Configuration.Keys.actorName) }
-  }
-
-  var accountSlug: String? {
-    get { userDefaults.string(forKey: Configuration.Keys.accountSlug) }
-    set { userDefaults.set(newValue, forKey: Configuration.Keys.accountSlug) }
-  }
-
-  var internetResourceEnabled: Bool? {
-    get { userDefaults.bool(forKey: Configuration.Keys.internetResourceEnabled) }
-    set { userDefaults.set(newValue, forKey: Configuration.Keys.internetResourceEnabled) }
-  }
-
-  var firezoneId: String? {
-    get { userDefaults.string(forKey: Configuration.Keys.firezoneId) }
-    set { userDefaults.set(newValue, forKey: Configuration.Keys.firezoneId) }
+  var managedDict: [String: Any?] {
+    userDefaults.dictionary(forKey: managedDictKey) ?? [:]
   }
 
   private init() {
-    self.userDefaults = UserDefaults.standard
+    userDefaults = UserDefaults.standard
+    userDict = userDefaults.dictionary(forKey: userDictKey) ?? [:]
 
-    if let containerURL = FileManager.default.containerURL(
-                          forSecurityApplicationGroupIdentifier: BundleHelper.appGroupId),
-       let idFromFile = try? String(contentsOf: containerURL.appendingPathComponent("firezone-id")) {
-
-      self.firezoneId = idFromFile
-      try? FileManager.default.removeItem(at: containerURL.appendingPathComponent("firezone-id"))
-      Telemetry.firezoneId = idFromFile
-
-      return
-    }
-
-    if let firezoneId {
-      Telemetry.firezoneId = firezoneId
-      return
-    }
-
-    self.firezoneId = UUID().uuidString
-    Telemetry.firezoneId = firezoneId
+    migrateFirezoneId()
+    Telemetry.firezoneId = userDict[Configuration.Keys.firezoneId] as? String
   }
 
+  func setAuthURL(_ authURL: URL) {
+    userDict[Configuration.Keys.authURL] = authURL.absoluteString
+    saveUserDict()
+  }
+
+  func setApiURL(_ apiURL: URL) {
+    userDict[Configuration.Keys.apiURL] = apiURL.absoluteString
+    saveUserDict()
+  }
+
+  func setLogFilter(_ logFilter: String) {
+    userDict[Configuration.Keys.logFilter] = logFilter
+    saveUserDict()
+  }
+
+  func setActorName(_ actorName: String) {
+    userDict[Configuration.Keys.actorName] = actorName
+    saveUserDict()
+  }
+
+  func setAccountSlug(_ accountSlug: String) {
+    userDict[Configuration.Keys.accountSlug] = accountSlug
+    saveUserDict()
+  }
+
+  func setInternetResourceEnabled(_ internetResourceEnabled: Bool) {
+    userDict[Configuration.Keys.internetResourceEnabled] = internetResourceEnabled
+    saveUserDict()
+  }
+
+  // Firezone ID migration. Can be removed once most clients migrate past 1.4.15.
+  private func migrateFirezoneId() {
+
+    // 1. Try to load from file, deleting it
+    if let containerURL = FileManager.default.containerURL(
+      forSecurityApplicationGroupIdentifier: BundleHelper.appGroupId),
+       let idFromFile = try? String(contentsOf: containerURL.appendingPathComponent("firezone-id")) {
+      setFirezoneId(idFromFile)
+      try? FileManager.default.removeItem(at: containerURL.appendingPathComponent("firezone-id"))
+      return
+    }
+
+    // 2. Try to load from dict
+    if userDict[Configuration.Keys.firezoneId] is String {
+      return
+    }
+
+    // 3. Generate and save new one
+    setFirezoneId(UUID().uuidString)
+  }
+
+  private func saveUserDict() {
+    userDefaults.set(userDict, forKey: userDictKey)
+  }
+
+  private func setFirezoneId(_ firezoneId: String) {
+    userDict[Configuration.Keys.firezoneId] = firezoneId
+    saveUserDict()
+  }
+}
+
+// Add methods needed by the tunnel side
+extension Configuration {
   func toDataIfChanged(hash: Data?) -> Data? {
-    var dict: [String: Any] = [:]
-
-    dict[Configuration.Keys.accountSlug] = accountSlug
-    dict[Configuration.Keys.actorName] = actorName
-    dict[Configuration.Keys.firezoneId] = firezoneId
-    dict[Configuration.Keys.internetResourceEnabled] = internetResourceEnabled
-    dict[Configuration.Keys.authURL] = authURL
-    dict[Configuration.Keys.apiURL] = apiURL
-    dict[Configuration.Keys.logFilter] = logFilter
-
-    let configuration = Configuration(from: dict)
+    let encoder = PropertyListEncoder()
 
     do {
-      let encoded = try encoder.encode(configuration)
+      let encoded = try encoder.encode(self)
       let hashData = Data(SHA256.hash(data: encoded))
 
       if hash == hashData {
