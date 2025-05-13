@@ -9,6 +9,14 @@ export default function GUI({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9014">
+          Fixes an issue where idle connections would be slow (~60s) in
+          detecting changes to network connectivity.
+        </ChangeItem>
+        <ChangeItem pull="9018">
+          Further improves performance of relayed connections on IPv4-only
+          systems.
+        </ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="9021">
             Optimizes network change detection.
@@ -18,6 +26,15 @@ export default function GUI({ os }: { os: OS }) {
           <ChangeItem pull="9112">
             Fixes a rare crash that could occur if the tray menu cannot be
             initialised.
+          </ChangeItem>
+        )}
+        <ChangeItem pull="9093">
+          Fixes a rare panic when the DNS servers on the system would change
+          while Firezone is connected.
+        </ChangeItem>
+        {os === OS.Windows && (
+          <ChangeItem pull="9112">
+            Fixes a crash when the tray menu cannot be initialised.
           </ChangeItem>
         )}
       </Unreleased>

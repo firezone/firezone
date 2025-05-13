@@ -31,6 +31,10 @@ export default function Gateway() {
           Fixes an issue where service discovery for DNS resources would fail
           in case the Gateway's started up with no network connectivity.
         </ChangeItem>
+        <ChangeItem pull="9088">
+          Fixes an issue where large batches of packets to the same Client got
+          dropped under high load.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-05-02")}>
         <ChangeItem pull="9009">
