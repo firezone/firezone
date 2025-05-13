@@ -5,9 +5,7 @@ use firezone_logging::err_with_src;
 use gat_lending_iterator::LendingIterator;
 use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
 use opentelemetry::KeyValue;
-use parking_lot::Mutex;
 use quinn_udp::{EcnCodepoint, Transmit};
-use std::collections::HashMap;
 use std::io;
 use std::io::IoSliceMut;
 use std::ops::Deref;
@@ -17,7 +15,6 @@ use std::{
 };
 
 use std::any::Any;
-use std::collections::hash_map::Entry;
 use std::pin::Pin;
 use tokio::io::Interest;
 
@@ -159,9 +156,6 @@ pub struct UdpSocket {
     source_ip_resolver:
         Box<dyn Fn(IpAddr) -> std::io::Result<Option<IpAddr>> + Send + Sync + 'static>,
 
-    /// A cache of source IPs by their destination IPs.
-    src_by_dst_cache: Mutex<HashMap<IpAddr, IpAddr>>,
-
     /// A buffer pool for batches of incoming UDP packets.
     buffer_pool: BufferPool<Vec<u8>>,
 
@@ -179,7 +173,6 @@ impl UdpSocket {
             port,
             inner,
             source_ip_resolver: Box::new(|_| Ok(None)),
-            src_by_dst_cache: Default::default(),
             buffer_pool: BufferPool::new(
                 u16::MAX as usize,
                 match socket_addr.ip() {
@@ -447,7 +440,7 @@ impl UdpSocket {
     ) -> io::Result<Option<quinn_udp::Transmit<'a>>> {
         let src_ip = match src_ip {
             Some(src_ip) => Some(src_ip),
-            None => match self.resolve_source_for(dst.ip()) {
+            None => match (self.source_ip_resolver)(dst.ip()) {
                 Ok(src_ip) => src_ip,
                 Err(e) => {
                     tracing::trace!(
@@ -473,24 +466,6 @@ impl UdpSocket {
         };
 
         Ok(Some(transmit))
-    }
-
-    /// Attempt to resolve the source IP to use for sending to the given destination IP.
-    fn resolve_source_for(&self, dst: IpAddr) -> std::io::Result<Option<IpAddr>> {
-        let src = match self.src_by_dst_cache.lock().entry(dst) {
-            Entry::Occupied(occ) => *occ.get(),
-            Entry::Vacant(vac) => {
-                // Caching errors could be a good idea to not incur in multiple calls for the resolver which can be costly
-                // For some cases like hosts ipv4-only stack trying to send ipv6 packets this can happen quite often but doing this is also a risk
-                // that in case that the adapter for some reason is temporarily unavailable it'd prevent the system from recovery.
-                let Some(src) = (self.source_ip_resolver)(dst)? else {
-                    return Ok(None);
-                };
-                *vac.insert(src)
-            }
-        };
-
-        Ok(Some(src))
     }
 }
 
