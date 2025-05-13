@@ -150,7 +150,7 @@ pub struct UdpSocket {
     inner: tokio::net::UdpSocket,
     state: quinn_udp::UdpSocketState,
     source_ip_resolver:
-        Box<dyn Fn(IpAddr) -> std::io::Result<Option<IpAddr>> + Send + Sync + 'static>,
+        Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
 
     /// A cache of source IPs by their destination IPs.
     src_by_dst_cache: Mutex<HashMap<IpAddr, IpAddr>>,
@@ -171,7 +171,7 @@ impl UdpSocket {
             state: quinn_udp::UdpSocketState::new(quinn_udp::UdpSockRef::from(&inner))?,
             port,
             inner,
-            source_ip_resolver: Box::new(|_| Ok(None)),
+            source_ip_resolver: None,
             src_by_dst_cache: Default::default(),
             buffer_pool: BufferPool::new(
                 u16::MAX as usize,
@@ -222,9 +222,9 @@ impl UdpSocket {
     /// Errors during resolution result in the packet being dropped.
     pub fn with_source_ip_resolver(
         mut self,
-        resolver: Box<dyn Fn(IpAddr) -> std::io::Result<Option<IpAddr>> + Send + Sync + 'static>,
+        resolver: Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>,
     ) -> Self {
-        self.source_ip_resolver = resolver;
+        self.source_ip_resolver = Some(resolver);
         self
     }
 }
@@ -476,9 +476,14 @@ impl UdpSocket {
                 // Caching errors could be a good idea to not incur in multiple calls for the resolver which can be costly
                 // For some cases like hosts ipv4-only stack trying to send ipv6 packets this can happen quite often but doing this is also a risk
                 // that in case that the adapter for some reason is temporarily unavailable it'd prevent the system from recovery.
-                let Some(src) = (self.source_ip_resolver)(dst)? else {
+
+                let Some(resolver) = self.source_ip_resolver.as_ref() else {
+                    // If we don't have a resolver, let the operating system decide.
                     return Ok(None);
                 };
+
+                let src = (resolver)(dst)?;
+
                 *vac.insert(src)
             }
         };
