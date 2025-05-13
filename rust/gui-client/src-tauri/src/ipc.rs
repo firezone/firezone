@@ -128,8 +128,11 @@ impl<E: serde::Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
     }
 }
 
-/// Connect to an IPC socket
-pub async fn connect<R, W>(id: SocketId) -> Result<(ClientRead<R>, ClientWrite<W>)>
+/// Attempt to connect to an IPC socket.
+pub async fn connect<R, W>(
+    id: SocketId,
+    num_attempts: usize,
+) -> Result<(ClientRead<R>, ClientWrite<W>)>
 where
     R: DeserializeOwned,
     W: Serialize,
@@ -144,7 +147,7 @@ where
     // way before I asked it.
     let mut last_err = None;
 
-    for _ in 0..10 {
+    for _ in 0..num_attempts {
         match platform::connect_to_socket(id).await {
             Ok(stream) => {
                 let (rx, tx) = tokio::io::split(stream);
@@ -152,7 +155,6 @@ where
                 let tx = FramedWrite::new(tx, Encoder::default());
                 return Ok((rx, tx));
             }
-            Err(error) if error.root_cause().is::<NotFound>() => return Err(error), // If the socket isn't there, fail right away.
             Err(error) => {
                 tracing::debug!("Couldn't connect to IPC socket: {error}");
                 last_err = Some(error);
@@ -194,7 +196,7 @@ mod tests {
         let _guard = firezone_logging::test("trace");
         const ID: SocketId = SocketId::Test("H56FRXVH");
 
-        if super::connect::<(), ()>(ID).await.is_ok() {
+        if super::connect::<(), ()>(ID, 10).await.is_ok() {
             bail!("`connect_to_service` should have failed for a non-existent service");
         }
         Ok(())
@@ -239,7 +241,7 @@ mod tests {
 
         let client_task: JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
-                let (mut rx, mut tx) = super::connect(ID)
+                let (mut rx, mut tx) = super::connect(ID, 10)
                     .await
                     .context("Error while connecting to IPC server")?;
 
