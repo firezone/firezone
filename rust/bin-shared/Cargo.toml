@@ -23,10 +23,10 @@ serde_json = { workspace = true }
 smbios-lib = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["io-util", "net", "rt", "sync", "process"] }
+tokio = { workspace = true, features = ["io-util", "net", "rt", "sync", "process", "signal"] }
 tracing = { workspace = true }
 tun = { workspace = true }
-uuid = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 bufferpool = { workspace = true }
