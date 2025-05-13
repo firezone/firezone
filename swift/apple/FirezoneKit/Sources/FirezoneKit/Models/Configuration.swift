@@ -80,7 +80,7 @@ public class Configuration: Codable {
     }
   }
 
-  func isOverridden(key: String) -> Bool {
+  func isOverridden(_ key: String) -> Bool {
     return overriddenKeys.contains(key)
   }
 }
