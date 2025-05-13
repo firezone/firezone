@@ -204,7 +204,8 @@ mod tests {
             Ok::<_, anyhow::Error>(())
         });
 
-        let (_rx, _tx) = crate::ipc::connect::<(), ()>(ID).await?;
+        let (_rx, _tx) =
+            crate::ipc::connect::<(), ()>(ID, crate::ipc::ConnectOptions::default()).await?;
 
         match super::create_pipe_server(&pipe_path) {
             Err(super::PipeError::AccessDenied) => {}
