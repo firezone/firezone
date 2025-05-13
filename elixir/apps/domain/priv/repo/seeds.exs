@@ -201,14 +201,14 @@ defmodule Domain.Repo.Seeds do
 
     {:ok, unprivileged_actor_email_identity} =
       Auth.create_identity(unprivileged_actor, email_provider, %{
-        "provider_identifier" => unprivileged_actor_email,
-        "provider_identifier_confirmation" => unprivileged_actor_email
+        provider_identifier: unprivileged_actor_email,
+        provider_identifier_confirmation: unprivileged_actor_email
       })
 
     {:ok, unprivileged_actor_userpass_identity} =
       Auth.create_identity(unprivileged_actor, userpass_provider, %{
-        "provider_identifier" => unprivileged_actor_email,
-        "provider_virtual_state" => %{
+        provider_identifier: unprivileged_actor_email,
+        provider_virtual_state: %{
           "password" => "Firezone1234",
           "password_confirmation" => "Firezone1234"
         }
@@ -221,14 +221,14 @@ defmodule Domain.Repo.Seeds do
 
     {:ok, admin_actor_email_identity} =
       Auth.create_identity(admin_actor, email_provider, %{
-        "provider_identifier" => admin_actor_email,
-        "provider_identifier_confirmation" => admin_actor_email
+        provider_identifier: admin_actor_email,
+        provider_identifier_confirmation: admin_actor_email
       })
 
     {:ok, _admin_actor_userpass_identity} =
       Auth.create_identity(admin_actor, userpass_provider, %{
-        "provider_identifier" => admin_actor_email,
-        "provider_virtual_state" => %{
+        provider_identifier: admin_actor_email,
+        provider_virtual_state: %{
           "password" => "Firezone1234",
           "password_confirmation" => "Firezone1234"
         }
@@ -236,8 +236,8 @@ defmodule Domain.Repo.Seeds do
 
     {:ok, admin_actor_oidc_identity} =
       Auth.create_identity(admin_actor, oidc_provider, %{
-        "provider_identifier" => admin_actor_email,
-        "provider_identifier_confirmation" => admin_actor_email
+        provider_identifier: admin_actor_email,
+        provider_identifier_confirmation: admin_actor_email
       })
 
     admin_actor_oidc_identity
@@ -254,8 +254,8 @@ defmodule Domain.Repo.Seeds do
 
       {:ok, identity} =
         Auth.create_identity(actor, oidc_provider, %{
-          "provider_identifier" => email,
-          "provider_identifier_confirmation" => email
+          provider_identifier: email,
+          provider_identifier_confirmation: email
         })
 
       identity =
@@ -330,8 +330,8 @@ defmodule Domain.Repo.Seeds do
 
     {:ok, _other_unprivileged_actor_userpass_identity} =
       Auth.create_identity(other_unprivileged_actor, other_userpass_provider, %{
-        "provider_identifier" => other_unprivileged_actor_email,
-        "provider_virtual_state" => %{
+        provider_identifier: other_unprivileged_actor_email,
+        provider_virtual_state: %{
           "password" => "Firezone1234",
           "password_confirmation" => "Firezone1234"
         }
@@ -339,8 +339,8 @@ defmodule Domain.Repo.Seeds do
 
     {:ok, _other_admin_actor_userpass_identity} =
       Auth.create_identity(other_admin_actor, other_userpass_provider, %{
-        "provider_identifier" => other_admin_actor_email,
-        "provider_virtual_state" => %{
+        provider_identifier: other_admin_actor_email,
+        provider_virtual_state: %{
           "password" => "Firezone1234",
           "password_confirmation" => "Firezone1234"
         }
