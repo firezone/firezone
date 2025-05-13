@@ -105,7 +105,7 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
 }
 
 pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let source_ip_resolver = |dst| Ok(Some(get_best_non_tunnel_route(dst)?.addr));
+    let source_ip_resolver = |dst| Ok(get_best_non_tunnel_route(dst)?.addr);
 
     let socket =
         socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(source_ip_resolver));

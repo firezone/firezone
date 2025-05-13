@@ -9,7 +9,6 @@ anyhow = { workspace = true }
 bufferpool = { workspace = true }
 bytes = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
-firezone-logging = { workspace = true }
 gat-lending-iterator = { workspace = true }
 ip-packet = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }

@@ -1,7 +1,6 @@
 use anyhow::{Context as _, Result};
 use bufferpool::{Buffer, BufferPool};
 use bytes::{Buf as _, BytesMut};
-use firezone_logging::err_with_src;
 use gat_lending_iterator::LendingIterator;
 use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
 use opentelemetry::KeyValue;
@@ -150,7 +149,7 @@ pub struct UdpSocket {
     inner: tokio::net::UdpSocket,
     state: quinn_udp::UdpSocketState,
     source_ip_resolver:
-        Box<dyn Fn(IpAddr) -> std::io::Result<Option<IpAddr>> + Send + Sync + 'static>,
+        Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
 
     /// A cache of source IPs by their destination IPs.
     src_by_dst_cache: Mutex<HashMap<IpAddr, IpAddr>>,
@@ -171,7 +170,7 @@ impl UdpSocket {
             state: quinn_udp::UdpSocketState::new(quinn_udp::UdpSockRef::from(&inner))?,
             port,
             inner,
-            source_ip_resolver: Box::new(|_| Ok(None)),
+            source_ip_resolver: None,
             src_by_dst_cache: Default::default(),
             buffer_pool: BufferPool::new(
                 u16::MAX as usize,
@@ -222,9 +221,9 @@ impl UdpSocket {
     /// Errors during resolution result in the packet being dropped.
     pub fn with_source_ip_resolver(
         mut self,
-        resolver: Box<dyn Fn(IpAddr) -> std::io::Result<Option<IpAddr>> + Send + Sync + 'static>,
+        resolver: Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>,
     ) -> Self {
-        self.source_ip_resolver = resolver;
+        self.source_ip_resolver = Some(resolver);
         self
     }
 }
@@ -307,16 +306,13 @@ impl UdpSocket {
     }
 
     pub async fn send(&self, datagram: DatagramOut) -> Result<()> {
-        let Some(transmit) = self.prepare_transmit(
+        let transmit = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
             datagram.packet.chunk(),
             datagram.segment_size,
             datagram.ecn,
-        )?
-        else {
-            return Ok(());
-        };
+        )?;
 
         let dst = datagram.dst;
 
@@ -406,8 +402,8 @@ impl UdpSocket {
         payload: &[u8],
     ) -> io::Result<Vec<u8>> {
         let transmit = self
-            .prepare_transmit(dst, None, payload, None, Ecn::NonEct)?
-            .ok_or_else(|| io::Error::other("Failed to prepare `Transmit`"))?;
+            .prepare_transmit(dst, None, payload, None, Ecn::NonEct)
+            .map_err(|e| io::Error::other(format!("{e:#}")))?;
 
         self.inner
             .async_io(Interest::WRITABLE, || {
@@ -437,19 +433,15 @@ impl UdpSocket {
         packet: &'a [u8],
         segment_size: Option<usize>,
         ecn: Ecn,
-    ) -> io::Result<Option<quinn_udp::Transmit<'a>>> {
+    ) -> Result<quinn_udp::Transmit<'a>> {
         let src_ip = match src_ip {
             Some(src_ip) => Some(src_ip),
-            None => match self.resolve_source_for(dst.ip()) {
-                Ok(src_ip) => src_ip,
-                Err(e) => {
-                    tracing::trace!(
-                        dst = %dst.ip(),
-                        "No available interface for packet: {}", err_with_src(&e)
-                    );
-                    return Ok(None); // Not an error because we log it above already.
-                }
-            },
+            None => self.resolve_source_for(dst.ip()).with_context(|| {
+                format!(
+                    "Failed to select egress interface for packet to {}",
+                    dst.ip()
+                )
+            })?,
         };
 
         let transmit = quinn_udp::Transmit {
@@ -465,7 +457,7 @@ impl UdpSocket {
             src_ip,
         };
 
-        Ok(Some(transmit))
+        Ok(transmit)
     }
 
     /// Attempt to resolve the source IP to use for sending to the given destination IP.
@@ -476,9 +468,14 @@ impl UdpSocket {
                 // Caching errors could be a good idea to not incur in multiple calls for the resolver which can be costly
                 // For some cases like hosts ipv4-only stack trying to send ipv6 packets this can happen quite often but doing this is also a risk
                 // that in case that the adapter for some reason is temporarily unavailable it'd prevent the system from recovery.
-                let Some(src) = (self.source_ip_resolver)(dst)? else {
+
+                let Some(resolver) = self.source_ip_resolver.as_ref() else {
+                    // If we don't have a resolver, let the operating system decide.
                     return Ok(None);
                 };
+
+                let src = (resolver)(dst)?;
+
                 *vac.insert(src)
             }
         };
