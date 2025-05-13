@@ -14,6 +14,12 @@ export default function GUI({ os }: { os: OS }) {
             Optimizes network change detection.
           </ChangeItem>
         )}
+        {os === OS.Windows && (
+          <ChangeItem pull="9112">
+            Fixes a rare crash that could occur if the tray menu cannot be
+            initialised.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.4.12" date={new Date("2025-04-30")}>
         {os === OS.Linux && (
