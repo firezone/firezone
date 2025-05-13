@@ -329,6 +329,7 @@ pub fn run(
             advanced_settings,
             reloader,
             updates_rx,
+            gui_ipc
         ));
 
         anyhow::Ok(ctrl_task)
