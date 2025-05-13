@@ -184,6 +184,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       case .setInternetResourceEnabled(let enabled):
         configuration.internetResourceEnabled = enabled
         ConfigurationManager.shared.setInternetResourceEnabled(enabled)
+        adapter?.setInternetResourceEnabled(enabled)
         completionHandler?(nil)
 
       case .signOut:
