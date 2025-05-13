@@ -446,7 +446,7 @@ public struct SettingsView: View {
               .autocorrectionDisabled()
               .textInputAutocapitalization(.never)
               .submitLabel(.done)
-              .disabled(viewModel.isAuthURLOverridden)
+              .disabled(viewModel.isAccountSlugOverridden)
             }
           },
           header: { Text("General Settings") },
