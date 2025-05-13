@@ -274,7 +274,6 @@ skip = [
   "windows-core",
   "windows-future",
   "windows-implement",
-  "windows-interface",
   "windows-numerics",
   "windows-result",
   "windows-strings",
