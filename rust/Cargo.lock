@@ -6369,7 +6369,6 @@ dependencies = [
  "bufferpool",
  "bytes",
  "derive_more 1.0.0",
- "firezone-logging",
  "gat-lending-iterator",
  "ip-packet",
  "opentelemetry",
