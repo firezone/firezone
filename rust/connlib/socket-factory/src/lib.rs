@@ -1,7 +1,6 @@
 use anyhow::{Context as _, Result};
 use bufferpool::{Buffer, BufferPool};
 use bytes::{Buf as _, BytesMut};
-use firezone_logging::err_with_src;
 use gat_lending_iterator::LendingIterator;
 use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
 use opentelemetry::KeyValue;
@@ -307,16 +306,13 @@ impl UdpSocket {
     }
 
     pub async fn send(&self, datagram: DatagramOut) -> Result<()> {
-        let Some(transmit) = self.prepare_transmit(
+        let transmit = self.prepare_transmit(
             datagram.dst,
             datagram.src.map(|s| s.ip()),
             datagram.packet.chunk(),
             datagram.segment_size,
             datagram.ecn,
-        )?
-        else {
-            return Ok(());
-        };
+        )?;
 
         let dst = datagram.dst;
 
@@ -406,8 +402,8 @@ impl UdpSocket {
         payload: &[u8],
     ) -> io::Result<Vec<u8>> {
         let transmit = self
-            .prepare_transmit(dst, None, payload, None, Ecn::NonEct)?
-            .ok_or_else(|| io::Error::other("Failed to prepare `Transmit`"))?;
+            .prepare_transmit(dst, None, payload, None, Ecn::NonEct)
+            .map_err(|e| io::Error::other(format!("{e:#}")))?;
 
         self.inner
             .async_io(Interest::WRITABLE, || {
@@ -437,19 +433,15 @@ impl UdpSocket {
         packet: &'a [u8],
         segment_size: Option<usize>,
         ecn: Ecn,
-    ) -> io::Result<Option<quinn_udp::Transmit<'a>>> {
+    ) -> Result<quinn_udp::Transmit<'a>> {
         let src_ip = match src_ip {
             Some(src_ip) => Some(src_ip),
-            None => match self.resolve_source_for(dst.ip()) {
-                Ok(src_ip) => src_ip,
-                Err(e) => {
-                    tracing::trace!(
-                        dst = %dst.ip(),
-                        "No available interface for packet: {}", err_with_src(&e)
-                    );
-                    return Ok(None); // Not an error because we log it above already.
-                }
-            },
+            None => self.resolve_source_for(dst.ip()).with_context(|| {
+                format!(
+                    "Failed to select egress interface for packet to {}",
+                    dst.ip()
+                )
+            })?,
         };
 
         let transmit = quinn_udp::Transmit {
@@ -465,7 +457,7 @@ impl UdpSocket {
             src_ip,
         };
 
-        Ok(Some(transmit))
+        Ok(transmit)
     }
 
     /// Attempt to resolve the source IP to use for sending to the given destination IP.
