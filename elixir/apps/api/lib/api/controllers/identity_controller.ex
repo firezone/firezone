@@ -49,13 +49,7 @@ defmodule API.IdentityController do
         "identity" => params
       }) do
     subject = conn.assigns.subject
-
-    params =
-      Map.put_new(
-        params,
-        "provider_identifier_confirmation",
-        Map.get(params, "provider_identifier")
-      )
+    params = put_identifier_confirmation(params)
 
     with {:ok, actor} <- Domain.Actors.fetch_actor_by_id(actor_id, subject),
          {:ok, provider} <- Auth.fetch_provider_by_id(provider_id, subject),
@@ -139,5 +133,13 @@ defmodule API.IdentityController do
       |> Enum.member?(:manual)
 
     {:provider_check, valid?}
+  end
+
+  defp put_identifier_confirmation(params) do
+    Map.put_new(
+      params,
+      "provider_identifier_confirmation",
+      Map.get(params, "provider_identifier")
+    )
   end
 end

@@ -97,7 +97,6 @@ defmodule Domain.Auth.Identity.Sync do
     |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
       attrs =
         Map.get(attrs_by_provider_identifier, provider_identifier)
-        |> add_email_attr()
 
       changeset = Identity.Changeset.create_identity_and_actor(provider, attrs)
 
@@ -142,11 +141,7 @@ defmodule Domain.Auth.Identity.Sync do
     |> Enum.uniq()
     |> Enum.reduce_while({:ok, []}, fn provider_identifier, {:ok, acc} ->
       identity = Map.get(identity_by_provider_identifier, provider_identifier)
-
-      attrs =
-        Map.get(attrs_by_provider_identifier, provider_identifier)
-        |> add_email_attr()
-
+      attrs = Map.get(attrs_by_provider_identifier, provider_identifier)
       changeset = Identity.Changeset.update_identity_and_actor(identity, attrs)
 
       case Repo.update(changeset) do
@@ -157,15 +152,5 @@ defmodule Domain.Auth.Identity.Sync do
           {:halt, {:error, changeset}}
       end
     end)
-  end
-
-  defp add_email_attr(attrs) do
-    email = attrs["provider_state"]["userinfo"]["email"] || ""
-
-    if Domain.Auth.valid_email?(email) do
-      Map.put(attrs, "email", email)
-    else
-      attrs
-    end
   end
 end

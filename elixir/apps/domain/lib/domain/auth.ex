@@ -435,11 +435,6 @@ defmodule Domain.Auth do
         %Provider{account_id: account_id} = provider,
         attrs
       ) do
-    attrs =
-      attrs
-      |> maybe_put_email()
-      |> maybe_put_identifier()
-
     Identity.Changeset.create_identity(actor, provider, attrs)
     |> Adapters.identity_changeset(provider)
     |> Repo.insert()
@@ -911,59 +906,8 @@ defmodule Domain.Auth do
     MapSet.subset?(granted_permissions, subject.permissions)
   end
 
-  def valid_email?(email) do
-    to_string(email) =~ email_regex()
-  end
-
   def email_regex do
     # Regex to check if string is in the shape of an email
-    ~r/^[^\s]+@[^\s]+\.[^\s]+$/
-  end
-
-  defp maybe_put_email(params) do
-    email =
-      params["email"]
-      |> to_string
-      |> String.trim()
-
-    identifier =
-      params["provider_identifier"]
-      |> to_string()
-      |> String.trim()
-
-    cond do
-      valid_email?(email) ->
-        params
-
-      valid_email?(identifier) ->
-        Map.put(params, "email", identifier)
-
-      true ->
-        params
-    end
-  end
-
-  defp maybe_put_identifier(params) do
-    email =
-      params["email"]
-      |> to_string()
-      |> String.trim()
-
-    identifier =
-      params["provider_identifier"]
-      |> to_string()
-      |> String.trim()
-
-    cond do
-      identifier != "" ->
-        params
-
-      valid_email?(email) ->
-        Map.put(params, "provider_identifier", email)
-        |> Map.put("provider_identifier_confirmation", email)
-
-      true ->
-        params
-    end
+    ~r/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z0-9]+$/
   end
 end
