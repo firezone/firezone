@@ -102,7 +102,7 @@ lockfree-object-pool = "0.1.6"
 log = "0.4"
 lru = "0.12.5"
 mio = "1.0.3"
-moka = "0.12.10"
+moka = "0.12.11"
 native-dialog = "0.7.0"
 network-types = "0.0.8"
 nix = "0.29.0"
@@ -216,6 +216,7 @@ ip_network_table = { git = "https://github.com/edmonds/ip_network_table", branch
 tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "bump-otel-0.29" } # Waiting for release.
 softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
+moka = { git = "https://github.com/moka-rs/moka", branch = "main" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
