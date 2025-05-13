@@ -15,7 +15,7 @@ jobs:
 
       - name: Check links on website
         id: lychee
-        uses: lycheeverse/lychee-action@1d97d84f0bc547f7b25f4c2170d87d810dc2fb2c # v2.4.0
+        uses: lycheeverse/lychee-action@e203314714efe5700a013ace5248a697313082b2 # testing https://github.com/lycheeverse/lychee-action/pull/292#issuecomment-2874071328
         with:
           fail: false
           args: --verbose --no-progress --exclude-all-private --cache --cache-exclude-status 400..599 --max-concurrency 1 --retry-wait-time 60 --base https://firezone.dev .
