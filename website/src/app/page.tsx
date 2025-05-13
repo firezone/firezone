@@ -367,7 +367,8 @@ export default function Page() {
 
       <UseCaseCards />
 
-      <BattleCard />
+      {/* Needs to be updated */}
+      {/*<BattleCard />*/}
     </>
   );
 }
