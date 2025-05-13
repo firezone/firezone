@@ -10,6 +10,10 @@ export default function Headless({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9014">
+          Fixes an issue where idle connections would be slow (~60s) in
+          detecting changes to network connectivity.
+        </ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="9021">
             Optimizes network change detection.

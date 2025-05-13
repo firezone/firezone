@@ -19,7 +19,12 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="9014">
+          Fixes an issue where idle connections would be slow (~60s) in
+          detecting changes to network connectivity.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-04-30")}>
         <ChangeItem pull="8920">
           Improves connection reliability by maintaining the order of IP packets

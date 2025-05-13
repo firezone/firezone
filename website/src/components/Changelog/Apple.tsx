@@ -23,7 +23,12 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="9014">
+          Fixes an issue where idle connections would be slow (~60s) in
+          detecting changes to network connectivity.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-02")}>
         <ChangeItem pull="9005">
           Fixes an issue where the IP checksum was not updated when ECN bits were set.
