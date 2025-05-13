@@ -105,11 +105,11 @@ class IPCClient {
     }
   }
 
-  func setAuthURL(_ authURL: URL) async throws {
+  func setAuthURL(_ authURL: String) async throws {
     try await sendMessageWithoutResponse(ProviderMessage.setAuthURL(authURL))
   }
 
-  func setApiURL(_ apiURL: URL) async throws {
+  func setApiURL(_ apiURL: String) async throws {
     try await sendMessageWithoutResponse(ProviderMessage.setApiURL(apiURL))
   }
 

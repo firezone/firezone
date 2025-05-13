@@ -173,14 +173,14 @@ class Adapter {
   private var resourceListJSON: String?
 
   /// Starting parameters
-  private let apiURL: URL
+  private let apiURL: String
   private let token: Token
   private let id: String
   private let logFilter: String
   private let connlibLogFolderPath: String
 
   init(
-    apiURL: URL,
+    apiURL: String,
     token: Token,
     id: String,
     logFilter: String,
@@ -223,7 +223,7 @@ class Adapter {
 
       // Grab a session pointer
       session = try WrappedSession.connect(
-        "\(apiURL)",
+        apiURL,
         "\(token)",
         "\(id)",
         "\(Telemetry.accountSlug!)",
