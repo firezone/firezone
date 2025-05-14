@@ -737,11 +737,14 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc func adminPortalButtonTapped() {
-    guard let authURL = URL(string: store.configuration?.authURL ?? Configuration.defaultAuthURL)
+    guard let baseURL = URL(string: store.configuration?.authURL ?? Configuration.defaultAuthURL)
     else {
       Log.warning("admin portal URL invalid: \(String(describing: store.configuration?.authURL))")
       return
     }
+
+    let accountSlug = store.configuration?.accountSlug ?? ""
+    let authURL = baseURL.appendingPathComponent(accountSlug)
 
     Task { await NSWorkspace.shared.openAsync(authURL) }
   }
