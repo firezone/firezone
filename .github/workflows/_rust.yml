@@ -30,7 +30,7 @@ jobs:
       - uses: ./.github/actions/setup-rust
         id: setup-rust
       - uses: ./.github/actions/setup-tauri-v2
-        timeout-minutes: 5
+        timeout-minutes: 10
       - uses: taiki-e/install-action@33734a118689b0b418824fb78ea2bf18e970b43b # v2.50.4
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -139,7 +139,7 @@ jobs:
       - uses: ./.github/actions/setup-node
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri-v2
-        timeout-minutes: 5
+        timeout-minutes: 10
         with:
           runtime: true
         # These steps must be synchronized with build.sh and build.bat in `rust/gui-client`
@@ -180,7 +180,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-rust
       - uses: ./.github/actions/setup-tauri-v2
-        timeout-minutes: 5
+        timeout-minutes: 10
       - run: scripts/tests/${{ matrix.test }}
         name: "test script"
         working-directory: ./
