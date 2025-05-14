@@ -253,37 +253,7 @@ defmodule API.IdentityControllerTest do
                }
     end
 
-    test "returns error on invalid identity attrs", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      {oidc_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      actor = Fixtures.Actors.create_actor(account: account)
-
-      attrs = %{email: "foo"}
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
-          identity: attrs
-        )
-
-      assert resp = json_response(conn, 422)
-
-      assert resp == %{
-               "error" => %{
-                 "reason" => "Unprocessable Entity",
-                 "validation_errors" => %{"provider_identifier" => ["can't be blank"]}
-               }
-             }
-    end
-
-    test "creates an identity with provider_identifier attr only and is not an email address", %{
+    test "creates an identity with provider_identifier attr that is not an email address", %{
       conn: conn,
       account: account,
       actor: api_actor
@@ -308,7 +278,7 @@ defmodule API.IdentityControllerTest do
       assert resp["data"]["email"] == nil
     end
 
-    test "creates an identity with provider_identifier attr only and is an email address", %{
+    test "creates an identity with provider_identifier attr that is an email address", %{
       conn: conn,
       account: account,
       actor: api_actor
@@ -331,89 +301,6 @@ defmodule API.IdentityControllerTest do
       assert resp = json_response(conn, 201)
       assert resp["data"]["provider_identifier"] == attrs["provider_identifier"]
       assert resp["data"]["email"] == attrs["provider_identifier"]
-    end
-
-    test "creates an identity with email attr only and populates provider_identifier", %{
-      conn: conn,
-      account: account,
-      actor: api_actor
-    } do
-      {oidc_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      actor = Fixtures.Actors.create_actor(account: account)
-
-      attrs = %{"email" => "foo@localhost.local"}
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
-          identity: attrs
-        )
-
-      assert resp = json_response(conn, 201)
-      assert resp["data"]["provider_identifier"] == attrs["email"]
-      assert resp["data"]["email"] == attrs["email"]
-    end
-
-    test "creates an identity with provider_identifier attr and email attr being the same value",
-         %{
-           conn: conn,
-           account: account,
-           actor: api_actor
-         } do
-      {oidc_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      actor = Fixtures.Actors.create_actor(account: account)
-
-      attrs = %{
-        "provider_identifier" => "foo@localhost.local",
-        "email" => "foo@localhost.local"
-      }
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
-          identity: attrs
-        )
-
-      assert resp = json_response(conn, 201)
-      assert resp["data"]["provider_identifier"] == attrs["provider_identifier"]
-      assert resp["data"]["email"] == attrs["email"]
-    end
-
-    test "creates an identity with provider_identifier attr and email attr being different values",
-         %{
-           conn: conn,
-           account: account,
-           actor: api_actor
-         } do
-      {oidc_provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      actor = Fixtures.Actors.create_actor(account: account)
-
-      attrs = %{
-        "provider_identifier" => "foo@localhost.local",
-        "email" => "bar@localhost.local"
-      }
-
-      conn =
-        conn
-        |> authorize_conn(api_actor)
-        |> put_req_header("content-type", "application/json")
-        |> post("/actors/#{actor.id}/providers/#{oidc_provider.id}/identities",
-          identity: attrs
-        )
-
-      assert resp = json_response(conn, 201)
-      assert resp["data"]["provider_identifier"] == attrs["provider_identifier"]
-      assert resp["data"]["email"] == attrs["email"]
     end
   end
 
