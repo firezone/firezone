@@ -21,8 +21,6 @@ use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
 
-use ControllerRequest as Req;
-
 mod ran_before;
 
 pub type CtlrTx = mpsc::Sender<ControllerRequest>;
@@ -433,8 +431,10 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     async fn handle_request(&mut self, req: ControllerRequest) -> Result<()> {
+        use ControllerRequest::*;
+
         match req {
-            Req::ApplySettings(settings) => {
+            ApplySettings(settings) => {
                 self.log_filter_reloader
                     .reload(&settings.log_filter)
                     .context("Couldn't reload log filter")?;
@@ -451,7 +451,7 @@ impl<I: GuiIntegration> Controller<I> {
                 // Refresh the menu in case the favorites were reset.
                 self.refresh_system_tray_menu();
             }
-            Req::ClearLogs(completion_tx) => {
+            ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
                     tracing::error!(
                         "Can't clear logs, we're already waiting on another log-clearing operation"
@@ -463,20 +463,20 @@ impl<I: GuiIntegration> Controller<I> {
                 self.send_ipc(&service::ClientMsg::ClearLogs).await?;
                 self.clear_logs_callback = Some(completion_tx);
             }
-            Req::ExportLogs { path, stem } => logging::export_logs_to(path, stem)
+            ExportLogs { path, stem } => logging::export_logs_to(path, stem)
                 .await
                 .context("Failed to export logs to zip")?,
-            Req::Fail(Failure::Crash) => {
+            Fail(Failure::Crash) => {
                 tracing::error!("Crashing on purpose");
                 // SAFETY: Crashing is unsafe
                 unsafe { sadness_generator::raise_segfault() }
             }
-            Req::Fail(Failure::Error) => Err(anyhow!("Test error"))?,
-            Req::Fail(Failure::Panic) => panic!("Test panic"),
-            Req::GetAdvancedSettings(tx) => {
+            Fail(Failure::Error) => Err(anyhow!("Test error"))?,
+            Fail(Failure::Panic) => panic!("Test panic"),
+            GetAdvancedSettings(tx) => {
                 tx.send(self.advanced_settings.clone()).ok();
             }
-            Req::SignIn | Req::SystemTrayMenu(system_tray::Event::SignIn) => {
+            SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
                 let req = self
                     .auth
                     .start_sign_in()
@@ -489,21 +489,21 @@ impl<I: GuiIntegration> Controller<I> {
                     .context("Couldn't open auth page")?;
                 self.integration.set_welcome_window_visible(false)?;
             }
-            Req::SystemTrayMenu(system_tray::Event::AddFavorite(resource_id)) => {
+            SystemTrayMenu(system_tray::Event::AddFavorite(resource_id)) => {
                 self.advanced_settings
                     .favorite_resources
                     .insert(resource_id);
                 self.refresh_favorite_resources().await?;
             }
-            Req::SystemTrayMenu(system_tray::Event::AdminPortal) => self
+            SystemTrayMenu(system_tray::Event::AdminPortal) => self
                 .integration
                 .open_url(&self.advanced_settings.auth_base_url)
                 .context("Couldn't open auth page")?,
-            Req::SystemTrayMenu(system_tray::Event::Copy(s)) => arboard::Clipboard::new()
+            SystemTrayMenu(system_tray::Event::Copy(s)) => arboard::Clipboard::new()
                 .context("Couldn't access clipboard")?
                 .set_text(s)
                 .context("Couldn't copy resource URL or other text to clipboard")?,
-            Req::SystemTrayMenu(system_tray::Event::CancelSignIn) => match &self.status {
+            SystemTrayMenu(system_tray::Event::CancelSignIn) => match &self.status {
                 Status::Disconnected
                 | Status::RetryingConnection { .. }
                 | Status::WaitingForPortal { .. } => {
@@ -521,24 +521,24 @@ impl<I: GuiIntegration> Controller<I> {
                     self.sign_out().await?;
                 }
             },
-            Req::SystemTrayMenu(system_tray::Event::RemoveFavorite(resource_id)) => {
+            SystemTrayMenu(system_tray::Event::RemoveFavorite(resource_id)) => {
                 self.advanced_settings
                     .favorite_resources
                     .remove(&resource_id);
                 self.refresh_favorite_resources().await?;
             }
-            Req::SystemTrayMenu(system_tray::Event::RetryPortalConnection) => {
+            SystemTrayMenu(system_tray::Event::RetryPortalConnection) => {
                 self.try_retry_connection().await?
             }
-            Req::SystemTrayMenu(system_tray::Event::EnableInternetResource) => {
+            SystemTrayMenu(system_tray::Event::EnableInternetResource) => {
                 self.advanced_settings.internet_resource_enabled = Some(true);
                 self.update_disabled_resources().await?;
             }
-            Req::SystemTrayMenu(system_tray::Event::DisableInternetResource) => {
+            SystemTrayMenu(system_tray::Event::DisableInternetResource) => {
                 self.advanced_settings.internet_resource_enabled = Some(false);
                 self.update_disabled_resources().await?;
             }
-            Req::SystemTrayMenu(system_tray::Event::ShowWindow(window)) => {
+            SystemTrayMenu(system_tray::Event::ShowWindow(window)) => {
                 self.integration.show_window(window)?;
                 // When the About or Settings windows are hidden / shown, log the
                 // run ID and uptime. This makes it easy to check client stability on
@@ -550,21 +550,21 @@ impl<I: GuiIntegration> Controller<I> {
                     "Uptime info"
                 );
             }
-            Req::SystemTrayMenu(system_tray::Event::SignOut) => {
+            SystemTrayMenu(system_tray::Event::SignOut) => {
                 tracing::info!("User asked to sign out");
                 self.sign_out().await?;
             }
-            Req::SystemTrayMenu(system_tray::Event::Url(url)) => self
+            SystemTrayMenu(system_tray::Event::Url(url)) => self
                 .integration
                 .open_url(&url)
                 .context("Couldn't open URL from system tray")?,
-            Req::SystemTrayMenu(system_tray::Event::Quit) => {
+            SystemTrayMenu(system_tray::Event::Quit) => {
                 tracing::info!("User clicked Quit in the menu");
                 self.status = Status::Quitting;
                 self.send_ipc(&service::ClientMsg::Disconnect).await?;
                 self.refresh_system_tray_menu();
             }
-            Req::UpdateNotificationClicked(download_url) => {
+            UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
                 self.integration
                     .open_url(&download_url)
