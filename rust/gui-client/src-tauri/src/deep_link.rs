@@ -33,8 +33,6 @@ mod imp;
 pub use imp::register;
 
 pub async fn open(url: url::Url) -> Result<()> {
-    crate::logging::setup_stdout()?;
-
     let (mut read, mut write) = crate::ipc::connect::<gui::ServerMsg, gui::ClientMsg>(
         SocketId::Gui,
         crate::ipc::ConnectOptions::default(),
