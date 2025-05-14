@@ -73,10 +73,12 @@ class SettingsViewModel: ObservableObject {
   @Published var apiURL: String
   @Published var logFilter: String
   @Published var accountSlug: String
+  @Published var connectOnStart: Bool
   @Published private(set) var isAuthURLOverridden = false
   @Published private(set) var isApiURLOverridden = false
   @Published private(set) var isLogFilterOverridden = false
   @Published private(set) var isAccountSlugOverridden = false
+  @Published private(set) var isConnectOnStartOverridden = false
   @Published private(set) var shouldDisableApplyButton = false
   @Published private(set) var shouldDisableResetButton = false
   @Published private(set) var areSettingsDefault = true
@@ -90,18 +92,22 @@ class SettingsViewModel: ObservableObject {
     self.apiURL = store.configuration?.apiURL ?? Configuration.defaultApiURL
     self.logFilter = store.configuration?.logFilter ?? Configuration.defaultLogFilter
     self.accountSlug = store.configuration?.accountSlug ?? ""
+    self.connectOnStart = store.configuration?.connectOnStart ?? true
 
     updateDerivedState()
 
     // Update our state from our text fields
-    Publishers.CombineLatest4($authURL, $apiURL, $logFilter, $accountSlug)
-      .receive(on: RunLoop.main)
-      .sink { [weak self] (_, _, _, _) in
-        guard let self = self else { return }
+    Publishers.CombineLatest(
+      Publishers.CombineLatest4($authURL, $apiURL, $logFilter, $accountSlug),
+      $connectOnStart
+    )
+    .receive(on: RunLoop.main)
+    .sink { [weak self] _ in
+      guard let self = self else { return }
 
-        self.updateDerivedState()
-      }
-      .store(in: &cancellables)
+      self.updateDerivedState()
+    }
+    .store(in: &cancellables)
 
     // Update our state from configuration updates
     store.$configuration
@@ -111,6 +117,7 @@ class SettingsViewModel: ObservableObject {
         self?.isApiURLOverridden = newConfiguration?.isOverridden(Configuration.Keys.apiURL) ?? false
         self?.isLogFilterOverridden = newConfiguration?.isOverridden(Configuration.Keys.logFilter) ?? false
         self?.isAccountSlugOverridden = newConfiguration?.isOverridden(Configuration.Keys.accountSlug) ?? false
+        self?.isConnectOnStartOverridden = newConfiguration?.isOverridden(Configuration.Keys.connectOnStart) ?? false
 
         self?.updateDerivedState()
       }
@@ -156,21 +163,31 @@ class SettingsViewModel: ObservableObject {
     self.areSettingsSaved = (self.authURL == store.configuration?.authURL &&
                              self.apiURL == store.configuration?.apiURL &&
                              self.logFilter == store.configuration?.logFilter &&
-                             self.accountSlug == store.configuration?.accountSlug)
+                             self.accountSlug == store.configuration?.accountSlug &&
+                             self.connectOnStart == store.configuration?.connectOnStart)
 
     self.areSettingsValid = isAuthURLValid() && isApiURLValid() && isLogFilterValid() && isAccountSlugValid()
 
     self.areSettingsDefault = (self.authURL == Configuration.defaultAuthURL &&
                                self.apiURL == Configuration.defaultApiURL &&
                                self.logFilter == Configuration.defaultLogFilter &&
-                               self.accountSlug == "")
+                               self.accountSlug == "" &&
+                               self.connectOnStart == true)
 
     self.shouldDisableApplyButton = (
-      isAuthURLOverridden && isApiURLOverridden && isLogFilterOverridden && isAccountSlugOverridden
+      isAuthURLOverridden &&
+      isApiURLOverridden &&
+      isLogFilterOverridden &&
+      isAccountSlugOverridden &&
+      isConnectOnStartOverridden
     ) || areSettingsSaved || !areSettingsValid
 
     self.shouldDisableResetButton = (
-      isAuthURLOverridden && isApiURLOverridden && isLogFilterOverridden && isAccountSlugOverridden
+      isAuthURLOverridden &&
+      isApiURLOverridden &&
+      isLogFilterOverridden &&
+      isAccountSlugOverridden &&
+      isConnectOnStartOverridden
     ) || areSettingsDefault
   }
 
@@ -179,6 +196,7 @@ class SettingsViewModel: ObservableObject {
     try await store.setLogFilter(logFilter)
     try await store.setAuthURL(authURL)
     try await store.setAccountSlug(accountSlug)
+    try await store.setConnectOnStart(connectOnStart)
 
     updateDerivedState()
   }
@@ -188,6 +206,7 @@ class SettingsViewModel: ObservableObject {
     self.apiURL = Configuration.defaultApiURL
     self.logFilter = Configuration.defaultLogFilter
     self.accountSlug = ""
+    self.connectOnStart = true
   }
 
   func reloadSettingsFromStore() {
@@ -195,6 +214,7 @@ class SettingsViewModel: ObservableObject {
     self.apiURL = store.configuration?.apiURL ?? Configuration.defaultApiURL
     self.logFilter = store.configuration?.logFilter ?? Configuration.defaultLogFilter
     self.accountSlug = store.configuration?.accountSlug ?? ""
+    self.connectOnStart = store.configuration?.connectOnStart ?? true
   }
 }
 
@@ -416,6 +436,12 @@ public struct SettingsView: View {
             .disabled(viewModel.isAccountSlugOverridden)
             .frame(width: 250)
           }
+          .padding(.bottom, 10)
+          Toggle(isOn: $viewModel.connectOnStart) {
+            Text("Connect on launch")
+          }
+          .toggleStyle(.checkbox)
+          .disabled(viewModel.isConnectOnStartOverridden)
         }
         .padding(10)
         Spacer()
@@ -439,6 +465,15 @@ public struct SettingsView: View {
               .textInputAutocapitalization(.never)
               .submitLabel(.done)
               .disabled(viewModel.isAccountSlugOverridden)
+              .padding(.bottom, 10)
+
+              Spacer()
+
+              Toggle(isOn: $viewModel.connectOnStart) {
+                Text("Connect on launch")
+              }
+              .toggleStyle(.switch)
+              .disabled(viewModel.isConnectOnStartOverridden)
             }
           },
           header: { Text("General Settings") },

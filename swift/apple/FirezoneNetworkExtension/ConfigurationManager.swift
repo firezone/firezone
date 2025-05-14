@@ -63,6 +63,11 @@ class ConfigurationManager {
     saveUserDict()
   }
 
+  func setConnectOnStart(_ connectOnStart: Bool) {
+    userDict[Configuration.Keys.connectOnStart] = connectOnStart
+    saveUserDict()
+  }
+
   // Firezone ID migration. Can be removed once most clients migrate past 1.4.15.
   private func migrateFirezoneId() {
 
