@@ -160,6 +160,14 @@ defmodule Domain.Auth do
     end
   end
 
+  # Used during client auth
+  def fetch_default_provider_for_account(%Accounts.Account{} = account, opts \\ []) do
+    Provider.Query.not_disabled()
+    |> Provider.Query.by_account_id(account.id)
+    |> Provider.Query.assigned_default()
+    |> Repo.fetch(Provider.Query, opts)
+  end
+
   # used to build list of auth options for the UI
   def all_active_providers_for_account!(%Accounts.Account{} = account) do
     Provider.Query.not_disabled()
@@ -250,6 +258,34 @@ defmodule Domain.Auth do
         :cant_disable_the_last_provider
       end
     end)
+  end
+
+  # Update default provider for client auth
+  def assign_default_provider(%Provider{} = provider, %Subject{} = subject) do
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
+      Repo.transaction(fn ->
+        # 1. Clear default for all other providers
+        Provider.Query.not_disabled()
+        |> Provider.Query.by_account_id(provider.account_id)
+        |> Repo.update_all(set: [assigned_default_at: nil])
+
+        # 2. Set default for the given provider
+        Provider.Query.not_disabled()
+        |> Provider.Query.by_id(provider.id)
+        |> Authorizer.for_subject(Provider, subject)
+        |> Repo.fetch_and_update(Provider.Query,
+          with: &Provider.Changeset.assign_default_provider/1
+        )
+      end)
+    end
+  end
+
+  def clear_default_provider(%Subject{} = subject) do
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
+      Provider.Query.not_disabled()
+      |> Provider.Query.by_account_id(subject.account.id)
+      |> Repo.update_all(set: [assigned_default_at: nil])
+    end
   end
 
   def enable_provider(%Provider{} = provider, %Subject{} = subject) do

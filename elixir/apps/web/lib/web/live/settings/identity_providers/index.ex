@@ -2,6 +2,7 @@ defmodule Web.Settings.IdentityProviders.Index do
   use Web, :live_view
   import Web.Settings.IdentityProviders.Components
   alias Domain.{Auth, Actors}
+  require Logger
 
   def mount(_params, _session, socket) do
     with {:ok, identities_count_by_provider_id} <-
@@ -11,6 +12,7 @@ defmodule Web.Settings.IdentityProviders.Index do
       socket =
         socket
         |> assign(
+          default_provider_changed: false,
           page_title: "Identity Providers",
           identities_count_by_provider_id: identities_count_by_provider_id,
           groups_count_by_provider_id: groups_count_by_provider_id
@@ -69,6 +71,19 @@ defmodule Web.Settings.IdentityProviders.Index do
       <:content>
         <.flash_group flash={@flash} />
 
+        <div class="pb-8 px-1">
+          <div class="text-lg text-neutral-600 mb-4">
+            Default Authentication Provider
+          </div>
+          <.default_provider_form
+            providers={@providers}
+            default_provider_changed={@default_provider_changed}
+          />
+        </div>
+
+        <div class="text-lg text-neutral-600 mb-4 px-1">
+          All identity providers
+        </div>
         <.live_table
           id="providers"
           rows={@providers}
@@ -82,6 +97,7 @@ defmodule Web.Settings.IdentityProviders.Index do
             <.link navigate={view_provider(@account, provider)} class={[link_style()]}>
               {provider.name}
             </.link>
+            <.assigned_default_badge provider={provider} />
           </:col>
           <:col :let={provider} label="Type" class="w-2/12">
             {adapter_name(provider.adapter)}
@@ -115,6 +131,116 @@ defmodule Web.Settings.IdentityProviders.Index do
     """
   end
 
+  attr :providers, :list, required: true
+  attr :default_provider_changed, :boolean, required: true
+
+  defp default_provider_form(assigns) do
+    options =
+      assigns.providers
+      |> Enum.filter(fn provider ->
+        provider.adapter not in [:email, :userpass]
+      end)
+      |> Enum.map(fn provider ->
+        {provider.name, provider.id}
+      end)
+
+    options = [{"None", :none} | options]
+
+    value =
+      assigns.providers
+      |> Enum.find(%{id: :none}, fn provider ->
+        !is_nil(provider.assigned_default_at)
+      end)
+      |> Map.get(:id)
+
+    assigns = assign(assigns, options: options, value: value)
+
+    ~H"""
+    <.form phx-submit="default_provider_save" phx-change="default_provider_change" for={nil}>
+      <div class="flex gap-2 items-center">
+        <div class="w-32">
+          <.input name="provider_id" type="select" options={@options} value={@value} />
+        </div>
+        <.submit_button
+          phx-disable-with="Saving..."
+          {if @default_provider_changed, do: [], else: [disabled: true, style: "disabled"]}
+          icon="hero-identification"
+        >
+          Make Default
+        </.submit_button>
+      </div>
+      <p class="text-xs text-neutral-500 mt-2">
+        When selected, users signing in from the Firezone client will be taken directly to this provider for authentication.
+      </p>
+    </.form>
+    """
+  end
+
+  def handle_event("default_provider_change", _params, socket) do
+    {:noreply, assign(socket, default_provider_changed: true)}
+  end
+
+  def handle_event("default_provider_save", %{"provider_id" => provider_id}, socket) do
+    assign_default_provider(provider_id, socket)
+  end
+
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
     do: handle_live_table_event(event, params, socket)
+
+  # Clear default provider
+  defp assign_default_provider("none", socket) do
+    with {_count, nil} <- Auth.clear_default_provider(socket.assigns.subject),
+         {:ok, providers, _metadata} <- Auth.list_providers(socket.assigns.subject) do
+      socket =
+        socket
+        |> put_flash(:info, "Default authentication provider cleared")
+        |> assign(default_provider_changed: false, providers: providers)
+
+      {:noreply, socket}
+    else
+      error ->
+        Logger.warning("Failed to clear default auth provider",
+          error: inspect(error)
+        )
+
+        socket =
+          socket
+          |> put_flash(
+            :error,
+            "Failed to update default auth provider. Contact support if this issue persists."
+          )
+
+        {:noreply, socket}
+    end
+  end
+
+  defp assign_default_provider(provider_id, socket) do
+    provider =
+      socket.assigns.providers
+      |> Enum.find(fn provider -> provider.id == provider_id end)
+
+    with {:ok, _provider} <- Auth.assign_default_provider(provider, socket.assigns.subject),
+         {:ok, providers, _metadata} <- Auth.list_providers(socket.assigns.subject) do
+      socket =
+        socket
+        |> put_flash(:info, "Default authentication provider set to #{provider.name}")
+        |> assign(default_provider_changed: false, providers: providers)
+
+      {:noreply, socket}
+    else
+      error ->
+        Logger.warning("Failed to set default auth provider",
+          error: inspect(error)
+        )
+
+        socket =
+          socket
+          |> put_flash(
+            :error,
+            "Failed to update default auth provider. Contact support if this issue persists."
+          )
+
+        {:noreply, socket}
+    end
+  end
 end
