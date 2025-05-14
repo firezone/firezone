@@ -85,9 +85,12 @@ public final class Store: ObservableObject {
           self.vpnConfigurationManager = manager
           try await setupTunnelObservers()
           try await manager.enableConfiguration()
-          try ipcClient().start()
           self.configuration = try await ipcClient().getConfiguration()
           Telemetry.firezoneId = configuration?.firezoneId
+
+          if configuration?.connectOnStart ?? true {
+            try ipcClient().start()
+          }
         } else {
           status = .invalid
         }
@@ -280,6 +283,11 @@ public final class Store: ObservableObject {
   func setInternetResourceEnabled(_ internetResourceEnabled: Bool) async throws {
     try await ipcClient().setInternetResourceEnabled(internetResourceEnabled)
     configuration?.internetResourceEnabled = internetResourceEnabled
+  }
+
+  func setConnectOnStart(_ connectOnStart: Bool) async throws {
+    try await ipcClient().setConnectOnStart(connectOnStart)
+    configuration?.connectOnStart = connectOnStart
   }
 
   // MARK: Private functions

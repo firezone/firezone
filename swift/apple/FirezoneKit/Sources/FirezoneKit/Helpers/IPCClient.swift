@@ -129,6 +129,10 @@ class IPCClient {
     try await sendMessageWithoutResponse(ProviderMessage.setInternetResourceEnabled(enabled))
   }
 
+  func setConnectOnStart(_ connectOnStart: Bool) async throws {
+    try await sendMessageWithoutResponse(ProviderMessage.setConnectOnStart(connectOnStart))
+  }
+
   func fetchResources() async throws -> ResourceList {
     return try await withCheckedThrowingContinuation { continuation in
       do {
