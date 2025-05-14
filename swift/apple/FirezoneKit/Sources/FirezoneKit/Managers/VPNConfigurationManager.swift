@@ -49,6 +49,16 @@ public class VPNConfigurationManager {
     self.manager = manager
   }
 
+  public static func legacyConfiguration(protocolConfiguration: NETunnelProviderProtocol?) -> [String: String]? {
+    guard let protocolConfiguration = protocolConfiguration,
+          let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
+    else {
+      return nil
+    }
+
+    return providerConfiguration
+  }
+
   static func load() async throws -> VPNConfigurationManager? {
     // loadAllFromPreferences() returns list of VPN configurations created by our main app's bundle ID.
     // Since our bundle ID can change (by us), find the one that's current and ignore the others.
@@ -76,42 +86,45 @@ public class VPNConfigurationManager {
   // Firezone 1.4.14 and below stored some app configuration in the VPN provider configuration fields. This has since
   // been moved to a dedicated UserDefaults-backed persistent store.
   func maybeMigrateConfiguration() async throws {
-    guard let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol,
-          let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String],
+    guard let legacyConfiguration = Self.legacyConfiguration(
+      protocolConfiguration: manager.protocolConfiguration as? NETunnelProviderProtocol
+    ),
           let session = session()
-    else { return }
+    else {
+      return
+    }
 
     let ipcClient = IPCClient(session: session)
 
     var migrated = false
 
-    if let apiURL = providerConfiguration["apiURL"] {
+    if let apiURL = legacyConfiguration["apiURL"] {
       try await ipcClient.setApiURL(apiURL)
       migrated = true
     }
 
-    if let authURL = providerConfiguration["authBaseURL"] {
+    if let authURL = legacyConfiguration["authBaseURL"] {
       try await ipcClient.setAuthURL(authURL)
       migrated = true
     }
 
-    if let actorName = providerConfiguration["actorName"] {
+    if let actorName = legacyConfiguration["actorName"] {
       try await ipcClient.setActorName(actorName)
       migrated = true
     }
 
-    if let accountSlug = providerConfiguration["accountSlug"] {
+    if let accountSlug = legacyConfiguration["accountSlug"] {
       try await ipcClient.setAccountSlug(accountSlug)
       migrated = true
     }
 
-    if let logFilter = providerConfiguration["logFilter"],
+    if let logFilter = legacyConfiguration["logFilter"],
        !logFilter.isEmpty {
       try await ipcClient.setLogFilter(logFilter)
       migrated = true
     }
 
-    if let internetResourceEnabled = providerConfiguration["internetResourceEnabled"],
+    if let internetResourceEnabled = legacyConfiguration["internetResourceEnabled"],
        ["false", "true"].contains(internetResourceEnabled) {
       try await ipcClient.setInternetResourceEnabled(internetResourceEnabled == "true")
       migrated = true
@@ -120,10 +133,12 @@ public class VPNConfigurationManager {
     if !migrated { return }
 
     // Remove fields to prevent confusion if the user sees these in System Settings and wonders why they're stale.
-    protocolConfiguration.providerConfiguration = nil
-    protocolConfiguration.serverAddress = "Firezone"
-    manager.protocolConfiguration = protocolConfiguration
-    try await manager.saveToPreferences()
-    try await manager.loadFromPreferences()
+    if let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol {
+      protocolConfiguration.providerConfiguration = nil
+      protocolConfiguration.serverAddress = "Firezone"
+      manager.protocolConfiguration = protocolConfiguration
+      try await manager.saveToPreferences()
+      try await manager.loadFromPreferences()
+    }
   }
 }

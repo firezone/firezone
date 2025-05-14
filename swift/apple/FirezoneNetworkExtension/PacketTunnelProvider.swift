@@ -47,6 +47,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     super.startTunnel(options: options, completionHandler: completionHandler)
     Log.log("\(#function)")
 
+    // If the tunnel starts up before the GUI after an upgrade crossing the 1.4.15 version boundary,
+    // the old system settings-based config will still be present and the new configuration will be empty.
+    // So handle that edge case gracefully.
+    let legacyConfiguration = VPNConfigurationManager.legacyConfiguration(
+      protocolConfiguration: protocolConfiguration as? NETunnelProviderProtocol
+    )
+
     do {
       // If we don't have a token, we can't continue.
       guard let token = loadAndSaveToken(from: options)
@@ -64,24 +71,29 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       }
 
       // Now we should have a token, so continue connecting
-      let apiURL = configuration.apiURL ?? Configuration.defaultApiURL
+      let apiURL = legacyConfiguration?["apiURL"] ?? configuration.apiURL ?? Configuration.defaultApiURL
 
       // Reconfigure our Telemetry environment now that we know the API URL
       Telemetry.setEnvironmentOrClose(apiURL)
 
-      let logFilter = configuration.logFilter ?? Configuration.defaultLogFilter
+      let logFilter = legacyConfiguration?["logFilter"] ?? configuration.logFilter ?? Configuration.defaultLogFilter
 
-      // Hydrate telemetry account slug
-      let accountSlug = configuration.accountSlug
+      guard let accountSlug = legacyConfiguration?["accountSlug"] ?? configuration.accountSlug
+      else {
+        throw PacketTunnelProviderError.accountSlugIsInvalid
+      }
       Telemetry.accountSlug = accountSlug
 
-      let internetResourceEnabled = configuration.internetResourceEnabled ?? false
+      let enabled = legacyConfiguration?["internetResourceEnabled"]
+      let internetResourceEnabled =
+        enabled != nil ? enabled == "true" : (configuration.internetResourceEnabled ?? false)
 
       let adapter = Adapter(
         apiURL: apiURL,
         token: token,
         id: id,
         logFilter: logFilter,
+        accountSlug: accountSlug,
         internetResourceEnabled: internetResourceEnabled,
         packetTunnelProvider: self
       )
