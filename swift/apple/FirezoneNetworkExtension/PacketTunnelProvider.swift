@@ -187,6 +187,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         adapter?.setInternetResourceEnabled(enabled)
         completionHandler?(nil)
 
+      case .setConnectOnStart(let connectOnStart):
+        configuration.connectOnStart = connectOnStart
+        ConfigurationManager.shared.setConnectOnStart(connectOnStart)
+        completionHandler?(nil)
+
       case .signOut:
         do {
           try Token.delete()

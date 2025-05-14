@@ -20,6 +20,7 @@ public class Configuration: Codable {
     public static let internetResourceEnabled = "internetResourceEnabled"
     public static let firezoneId = "firezoneId"
     public static let hideAdminPortalMenuItem = "hideAdminPortalMenuItem"
+    public static let connectOnStart = "connectOnStart"
   }
 
   public var authURL: String?
@@ -30,6 +31,7 @@ public class Configuration: Codable {
   public var accountSlug: String?
   public var internetResourceEnabled: Bool?
   public var hideAdminPortalMenuItem: Bool?
+  public var connectOnStart: Bool?
 
   private var overriddenKeys: Set<String> = []
 
@@ -47,6 +49,9 @@ public class Configuration: Codable {
     setValue(forKey: Keys.hideAdminPortalMenuItem, from: managedDict, and: userDict) { [weak self] in
       self?.hideAdminPortalMenuItem = $0
     }
+    setValue(forKey: Keys.connectOnStart, from: managedDict, and: userDict) { [weak self] in
+      self?.connectOnStart = $0
+    }
   }
 
   func isOverridden(_ key: String) -> Bool {
@@ -59,11 +64,15 @@ public class Configuration: Codable {
     and userDict: [String: Any?],
     setter: (T) -> Void
   ) {
-    if let value = managedDict[key] as? T {
+    if let value = managedDict[key],
+       let typedValue = value as? T {
       overriddenKeys.insert(key)
-      setter(value)
-    } else if let value = userDict[key] as? T {
-      setter(value)
+      return setter(typedValue)
+    }
+
+    if let value = userDict[key],
+       let typedValue = value as? T {
+      setter(typedValue)
     }
   }
 }

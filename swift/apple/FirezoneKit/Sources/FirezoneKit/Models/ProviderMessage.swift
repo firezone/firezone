@@ -20,6 +20,7 @@ public enum ProviderMessage: Codable {
   case setActorName(String)
   case setAccountSlug(String)
   case setInternetResourceEnabled(Bool)
+  case setConnectOnStart(Bool)
   case clearLogs
   case getLogFolderSize
   case exportLogs
@@ -40,6 +41,7 @@ public enum ProviderMessage: Codable {
     case setActorName
     case setAccountSlug
     case setInternetResourceEnabled
+    case setConnectOnStart
     case clearLogs
     case getLogFolderSize
     case exportLogs
@@ -68,6 +70,9 @@ public enum ProviderMessage: Codable {
     case .setInternetResourceEnabled:
       let value = try container.decode(Bool.self, forKey: .value)
       self = .setInternetResourceEnabled(value)
+    case .setConnectOnStart:
+      let value = try container.decode(Bool.self, forKey: .value)
+      self = .setConnectOnStart(value)
     case .getResourceList:
       let value = try container.decode(Data.self, forKey: .value)
       self = .getResourceList(value)
@@ -107,6 +112,9 @@ public enum ProviderMessage: Codable {
       try container.encode(value, forKey: .value)
     case .setInternetResourceEnabled(let value):
       try container.encode(MessageType.setInternetResourceEnabled, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .setConnectOnStart(let value):
+      try container.encode(MessageType.setConnectOnStart, forKey: .type)
       try container.encode(value, forKey: .value)
     case .getResourceList(let value):
       try container.encode(MessageType.getResourceList, forKey: .type)
