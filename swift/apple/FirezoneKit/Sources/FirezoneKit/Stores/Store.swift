@@ -259,12 +259,12 @@ public final class Store: ObservableObject {
     Telemetry.accountSlug = accountSlug
   }
 
-  func setAuthURL(_ authURL: URL) async throws {
+  func setAuthURL(_ authURL: String) async throws {
     try await ipcClient().setAuthURL(authURL)
     configuration?.authURL = authURL
   }
 
-  func setApiURL(_ apiURL: URL) async throws {
+  func setApiURL(_ apiURL: String) async throws {
     try await ipcClient().setApiURL(apiURL)
     configuration?.apiURL = apiURL
 

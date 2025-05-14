@@ -526,7 +526,13 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   func internetResourceToggleTitle() -> String {
-    store.configuration?.internetResourceEnabled == true ? "Disable this resource" : "Enable this resource"
+    let isEnabled = store.configuration?.internetResourceEnabled == true
+
+    if store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false {
+      return isEnabled ? "Managed: Enabled" : "Managed: Disabled"
+    }
+
+    return isEnabled ? "Disable this resource" : "Enable this resource"
   }
 
   // TODO: Refactor this when refactoring for macOS 13
@@ -618,11 +624,19 @@ public final class MenuBar: NSObject, ObservableObject {
     // Resource enable / disable toggle
     subMenu.addItem(NSMenuItem.separator())
     let enableToggle = NSMenuItem()
-    enableToggle.action = #selector(internetResourceToggle(_:))
     enableToggle.title = internetResourceToggleTitle()
-    enableToggle.toolTip = "Enable or disable resource"
-    enableToggle.isEnabled = true
     enableToggle.target = self
+
+    if store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false {
+      enableToggle.toolTip = "This setting is managed by your organization"
+      enableToggle.isEnabled = false
+      enableToggle.action = nil
+    } else {
+      enableToggle.toolTip = "Enable or disable resource"
+      enableToggle.isEnabled = true
+      enableToggle.action = #selector(internetResourceToggle(_:))
+    }
+
     subMenu.addItem(enableToggle)
 
     return subMenu
@@ -723,7 +737,11 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc func adminPortalButtonTapped() {
-    let authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
+    guard let authURL = URL(string: store.configuration?.authURL ?? Configuration.defaultAuthURL)
+    else {
+      Log.warning("admin portal URL invalid: \(String(describing: store.configuration?.authURL))")
+      return
+    }
 
     Task { await NSWorkspace.shared.openAsync(authURL) }
   }

@@ -69,9 +69,9 @@ class SettingsViewModel: ObservableObject {
   private let store: Store
   private var cancellables = Set<AnyCancellable>()
 
-  @Published var authURLString: String
-  @Published var apiURLString: String
-  @Published var logFilterString: String
+  @Published var authURL: String
+  @Published var apiURL: String
+  @Published var logFilter: String
   @Published var accountSlug: String
   @Published private(set) var isAuthURLOverridden = false
   @Published private(set) var isApiURLOverridden = false
@@ -86,15 +86,15 @@ class SettingsViewModel: ObservableObject {
   init(store: Store) {
     self.store = store
 
-    self.authURLString = store.configuration?.authURL?.absoluteString ?? Configuration.defaultAuthURL.absoluteString
-    self.apiURLString = store.configuration?.apiURL?.absoluteString ?? Configuration.defaultApiURL.absoluteString
-    self.logFilterString = store.configuration?.logFilter ?? Configuration.defaultLogFilter
+    self.authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
+    self.apiURL = store.configuration?.apiURL ?? Configuration.defaultApiURL
+    self.logFilter = store.configuration?.logFilter ?? Configuration.defaultLogFilter
     self.accountSlug = store.configuration?.accountSlug ?? ""
 
     updateDerivedState()
 
     // Update our state from our text fields
-    Publishers.CombineLatest4($authURLString, $apiURLString, $logFilterString, $accountSlug)
+    Publishers.CombineLatest4($authURL, $apiURL, $logFilter, $accountSlug)
       .receive(on: RunLoop.main)
       .sink { [weak self] (_, _, _, _) in
         guard let self = self else { return }
@@ -118,7 +118,7 @@ class SettingsViewModel: ObservableObject {
   }
 
   private func isAuthURLValid() -> Bool {
-    if let authURL = URL(string: authURLString),
+    if let authURL = URL(string: authURL),
        authURL.host != nil,
        ["https", "http"].contains(authURL.scheme),
        // Be restrictive - account slug will be appended
@@ -131,7 +131,7 @@ class SettingsViewModel: ObservableObject {
   }
 
   private func isApiURLValid() -> Bool {
-    if let apiURL = URL(string: apiURLString),
+    if let apiURL = URL(string: apiURL),
        apiURL.host != nil,
        ["wss", "ws"].contains(apiURL.scheme),
        // Be restrictive - account slug will be appended
@@ -144,7 +144,7 @@ class SettingsViewModel: ObservableObject {
   }
 
   private func isLogFilterValid() -> Bool {
-    return !logFilterString.isEmpty
+    return !logFilter.isEmpty
   }
 
   private func isAccountSlugValid() -> Bool {
@@ -153,16 +153,16 @@ class SettingsViewModel: ObservableObject {
   }
 
   private func updateDerivedState() {
-    self.areSettingsSaved = (self.authURLString == store.configuration?.authURL?.absoluteString &&
-                             self.apiURLString == store.configuration?.apiURL?.absoluteString &&
-                             self.logFilterString == store.configuration?.logFilter &&
+    self.areSettingsSaved = (self.authURL == store.configuration?.authURL &&
+                             self.apiURL == store.configuration?.apiURL &&
+                             self.logFilter == store.configuration?.logFilter &&
                              self.accountSlug == store.configuration?.accountSlug)
 
     self.areSettingsValid = isAuthURLValid() && isApiURLValid() && isLogFilterValid() && isAccountSlugValid()
 
-    self.areSettingsDefault = (self.authURLString == Configuration.defaultAuthURL.absoluteString &&
-                               self.apiURLString == Configuration.defaultApiURL.absoluteString &&
-                               self.logFilterString == Configuration.defaultLogFilter &&
+    self.areSettingsDefault = (self.authURL == Configuration.defaultAuthURL.absoluteString &&
+                               self.apiURL == Configuration.defaultApiURL.absoluteString &&
+                               self.logFilter == Configuration.defaultLogFilter &&
                                self.accountSlug == "")
 
     self.shouldDisableApplyButton = (
@@ -175,16 +175,8 @@ class SettingsViewModel: ObservableObject {
   }
 
   func applySettingsToStore() async throws {
-    guard let authURL = URL(string: authURLString),
-          let apiURL = URL(string: apiURLString)
-    else {
-      Log.warning("Unexpectedly invalid settings")
-
-      return
-    }
-
     try await store.setApiURL(apiURL)
-    try await store.setLogFilter(logFilterString)
+    try await store.setLogFilter(logFilter)
     try await store.setAuthURL(authURL)
     try await store.setAccountSlug(accountSlug)
 
@@ -192,16 +184,16 @@ class SettingsViewModel: ObservableObject {
   }
 
   func revertToDefaultSettings() {
-    self.authURLString = Configuration.defaultAuthURL.absoluteString
-    self.apiURLString = Configuration.defaultApiURL.absoluteString
-    self.logFilterString = Configuration.defaultLogFilter
+    self.authURL = Configuration.defaultAuthURL
+    self.apiURL = Configuration.defaultApiURL
+    self.logFilter = Configuration.defaultLogFilter
     self.accountSlug = ""
   }
 
   func reloadSettingsFromStore() {
-    self.authURLString = store.configuration?.authURL?.absoluteString ?? Configuration.defaultAuthURL.absoluteString
-    self.apiURLString = store.configuration?.apiURL?.absoluteString ?? Configuration.defaultApiURL.absoluteString
-    self.logFilterString = store.configuration?.logFilter ?? Configuration.defaultLogFilter
+    self.authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
+    self.apiURL = store.configuration?.apiURL ?? Configuration.defaultApiURL
+    self.logFilter = store.configuration?.logFilter ?? Configuration.defaultLogFilter
     self.accountSlug = store.configuration?.accountSlug ?? ""
   }
 }
@@ -482,7 +474,7 @@ public struct SettingsView: View {
               .frame(width: 150, alignment: .trailing)
             TextField(
               "",
-              text: $viewModel.authURLString,
+              text: $viewModel.authURL,
               prompt: Text(PlaceholderText.authBaseURL)
             )
             .disabled(viewModel.isAuthURLOverridden)
@@ -495,7 +487,7 @@ public struct SettingsView: View {
               .frame(width: 150, alignment: .trailing)
             TextField(
               "",
-              text: $viewModel.apiURLString,
+              text: $viewModel.apiURL,
               prompt: Text(PlaceholderText.apiURL)
             )
             .disabled(viewModel.isApiURLOverridden)
@@ -508,7 +500,7 @@ public struct SettingsView: View {
               .frame(width: 150, alignment: .trailing)
             TextField(
               "",
-              text: $viewModel.logFilterString,
+              text: $viewModel.logFilter,
               prompt: Text(PlaceholderText.logFilter)
             )
             .disabled(viewModel.isLogFilterOverridden)
@@ -532,7 +524,7 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.authBaseURL,
-                  text: $viewModel.authURLString
+                  text: $viewModel.authURL
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -545,7 +537,7 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.apiURL,
-                  text: $viewModel.apiURLString
+                  text: $viewModel.apiURL
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
@@ -558,7 +550,7 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.logFilter,
-                  text: $viewModel.logFilterString
+                  text: $viewModel.logFilter
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)

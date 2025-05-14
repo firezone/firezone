@@ -42,8 +42,7 @@ defmodule API.Schemas.Identity do
       required: [:identity],
       example: %{
         "identity" => %{
-          "provider_identifier" => "2551705710219359",
-          "email" => "foo@bar.com"
+          "provider_identifier" => "2551705710219359 or foo@bar.com"
         }
       }
     })

@@ -104,8 +104,6 @@ defmodule Web.Actors.Users.NewIdentity do
   end
 
   def handle_event("submit", %{"identity" => attrs}, socket) do
-    attrs = add_email(attrs)
-
     with {:ok, identity} <-
            Auth.create_identity(
              socket.assigns.actor,
@@ -135,16 +133,6 @@ defmodule Web.Actors.Users.NewIdentity do
     case socket.assigns.next_step do
       "edit_groups" -> ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}/edit_groups"
       _ -> ~p"/#{socket.assigns.account}/actors/#{socket.assigns.actor}"
-    end
-  end
-
-  defp add_email(attrs) do
-    identifier = attrs["provider_identifier"]
-
-    if Domain.Auth.valid_email?(identifier) do
-      Map.put(attrs, "email", identifier)
-    else
-      Map.put(attrs, "email", nil)
     end
   end
 end

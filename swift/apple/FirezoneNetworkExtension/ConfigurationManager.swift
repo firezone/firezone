@@ -33,13 +33,13 @@ class ConfigurationManager {
     Telemetry.firezoneId = userDict[Configuration.Keys.firezoneId] as? String
   }
 
-  func setAuthURL(_ authURL: URL) {
-    userDict[Configuration.Keys.authURL] = authURL.absoluteString
+  func setAuthURL(_ authURL: String) {
+    userDict[Configuration.Keys.authURL] = authURL
     saveUserDict()
   }
 
-  func setApiURL(_ apiURL: URL) {
-    userDict[Configuration.Keys.apiURL] = apiURL.absoluteString
+  func setApiURL(_ apiURL: String) {
+    userDict[Configuration.Keys.apiURL] = apiURL
     saveUserDict()
   }
 
