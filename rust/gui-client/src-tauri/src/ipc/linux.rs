@@ -11,9 +11,11 @@ pub(crate) struct Server {
 
 impl Drop for Server {
     fn drop(&mut self) {
-        let sock_path = ipc_path(self.id);
+        let path = ipc_path(self.id);
 
-        std::fs::remove_file(&sock_path).ok();
+        if let Err(e) = std::fs::remove_file(&path) {
+            tracing::debug!(path = %path.display(), "Failed to delete IPC socket: {e}");
+        }
     }
 }
 
