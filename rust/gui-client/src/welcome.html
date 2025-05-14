@@ -14,19 +14,41 @@
       <div class="flex justify-center mt-8">
         <h1 class="text-3xl font-bold">Welcome to Firezone.</h1>
       </div>
-      <p class="mt-8 flex justify-center">Sign in below to get started.</p>
+
       <img
         src="logo.png"
         alt="Firezone Logo"
         class="mt-8 rounded-full w-48 h-48 mx-auto bg-white shadow-sm border-2 border-black"
       />
-      <div class="flex justify-center mt-8">
-        <button
-          class="text-white bg-accent-450 hover:bg-accent-700 font-medium rounded-sm text-lg w-full sm:w-auto px-5 py-2.5 text-center"
-          id="sign-in"
-        >
-          Sign in
-        </button>
+
+      <div id="signed-out">
+        <p class="mt-8 flex justify-center">Sign in below to get started.</p>
+        <div class="flex justify-center mt-8">
+          <button
+            class="text-white bg-accent-450 hover:bg-accent-700 font-medium rounded-sm text-lg w-full sm:w-auto px-5 py-2.5 text-center"
+            id="sign-in"
+          >
+            Sign in
+          </button>
+        </div>
+      </div>
+
+      <div id="signed-in">
+        <p class="mt-8 flex justify-center">
+          You are currently signed into&nbsp;<span
+            class="font-bold"
+            id="account_slug"
+          ></span
+          >&nbsp;as&nbsp;<span class="font-bold" id="actor_name"></span>.
+        </p>
+        <div class="flex justify-center mt-8">
+          <button
+            class="text-white bg-accent-450 hover:bg-accent-700 font-medium rounded-sm text-lg w-full sm:w-auto px-5 py-2.5 text-center"
+            id="sign-out"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     </div>
   </body>

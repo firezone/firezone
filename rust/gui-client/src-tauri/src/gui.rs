@@ -4,7 +4,7 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::{
-    about,
+    about, auth,
     controller::{Controller, ControllerRequest, CtlrTx, Failure, GuiIntegration},
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
@@ -17,7 +17,7 @@ use firezone_logging::err_with_src;
 use firezone_telemetry as telemetry;
 use futures::SinkExt as _;
 use std::time::Duration;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 use tracing::instrument;
@@ -61,7 +61,11 @@ impl Drop for TauriIntegration {
 }
 
 impl GuiIntegration for TauriIntegration {
-    fn set_welcome_window_visible(&self, visible: bool) -> Result<()> {
+    fn set_welcome_window_visible(
+        &self,
+        visible: bool,
+        current_session: Option<&auth::Session>,
+    ) -> Result<()> {
         let win = self
             .app
             .get_webview_window("welcome")
@@ -72,6 +76,29 @@ impl GuiIntegration for TauriIntegration {
         } else {
             win.hide().context("Couldn't hide Welcome window")?;
         }
+
+        // Ensure state in frontend is up-to-date.
+        match current_session {
+            Some(session) => self.notify_signed_in(session)?,
+            None => self.notify_signed_out()?,
+        };
+
+        Ok(())
+    }
+
+    fn notify_signed_in(&self, session: &auth::Session) -> Result<()> {
+        self.app
+            .emit("signed_in", session)
+            .context("Failed to send `signed_in` event")?;
+
+        Ok(())
+    }
+
+    fn notify_signed_out(&self) -> Result<()> {
+        self.app
+            .emit("signed_out", ())
+            .context("Failed to send `signed_out` event")?;
+
         Ok(())
     }
 
@@ -139,10 +166,6 @@ pub enum ServerMsg {
     Ack,
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("Another instance of Firezone is already running")]
-pub struct AlreadyRunning;
-
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 #[instrument(skip_all)]
 pub fn run(
@@ -198,6 +221,7 @@ pub fn run(
             settings::reset_advanced_settings,
             settings::get_advanced_settings,
             crate::welcome::sign_in,
+            crate::welcome::sign_out,
         ])
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
@@ -428,6 +452,14 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: system_tray::Event) -
     Ok(())
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("Another instance of Firezone is already running")]
+pub struct AlreadyRunning;
+
+#[derive(Debug, thiserror::Error)]
+#[error("Failed to communicate with existing Firezone instance")]
+pub struct NewInstanceHandshakeFailed(anyhow::Error);
+
 /// Create a new instance of the GUI IPC server.
 ///
 /// Every time Firezone gets launched, we attempt to connect to this server.
@@ -459,7 +491,9 @@ async fn create_gui_ipc_server() -> Result<ipc::Server> {
 
     tokio::time::timeout(Duration::from_secs(5), new_instance_handshake(read, write))
         .await
-        .context("Failed to handshake with existing instance in 5s")??;
+        .context("Failed to handshake with existing instance in 5s")
+        .map_err(NewInstanceHandshakeFailed)?
+        .map_err(NewInstanceHandshakeFailed)?;
 
     // If we managed to send the IPC message then another instance of Firezone is already running.
 

@@ -56,7 +56,14 @@ pub struct Controller<I: GuiIntegration> {
 }
 
 pub trait GuiIntegration {
-    fn set_welcome_window_visible(&self, visible: bool) -> Result<()>;
+    fn set_welcome_window_visible(
+        &self,
+        visible: bool,
+        current_session: Option<&auth::Session>,
+    ) -> Result<()>;
+
+    fn notify_signed_in(&self, session: &auth::Session) -> Result<()>;
+    fn notify_signed_out(&self) -> Result<()>;
 
     /// Also opens non-URLs
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
@@ -83,6 +90,7 @@ pub enum ControllerRequest {
     Fail(Failure),
     GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SignIn,
+    SignOut,
     SystemTrayMenu(system_tray::Event),
     UpdateNotificationClicked(Url),
 }
@@ -248,7 +256,8 @@ impl<I: GuiIntegration> Controller<I> {
         }
 
         if !ran_before::get().await? {
-            self.integration.set_welcome_window_visible(true)?;
+            self.integration
+                .set_welcome_window_visible(true, self.auth.session())?;
         }
 
         while let Some(tick) = self.tick().await {
@@ -390,7 +399,12 @@ impl<I: GuiIntegration> Controller<I> {
             start_instant,
             token,
         };
+
+        let session = self.auth.session().context("Missing session")?;
+        self.integration.notify_signed_in(session)?;
+
         self.refresh_system_tray_menu();
+
         Ok(())
     }
 
@@ -487,7 +501,8 @@ impl<I: GuiIntegration> Controller<I> {
                 self.integration
                     .open_url(url.expose_secret())
                     .context("Couldn't open auth page")?;
-                self.integration.set_welcome_window_visible(false)?;
+                self.integration
+                    .set_welcome_window_visible(false, self.auth.session())?;
             }
             SystemTrayMenu(system_tray::Event::AddFavorite(resource_id)) => {
                 self.advanced_settings
@@ -550,7 +565,7 @@ impl<I: GuiIntegration> Controller<I> {
                     "Uptime info"
                 );
             }
-            SystemTrayMenu(system_tray::Event::SignOut) => {
+            SignOut | SystemTrayMenu(system_tray::Event::SignOut) => {
                 tracing::info!("User asked to sign out");
                 self.sign_out().await?;
             }
@@ -677,7 +692,8 @@ impl<I: GuiIntegration> Controller<I> {
                 }
             },
             gui::ClientMsg::NewInstance => {
-                tracing::debug!("A new instance of Firezone has been launched")
+                self.integration
+                    .set_welcome_window_visible(true, self.auth.session())?;
             }
         }
 
@@ -853,6 +869,7 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::WaitingForTunnel { .. } => {}
         }
         self.auth.sign_out()?;
+        self.integration.notify_signed_out()?;
         self.status = Status::Disconnected;
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
