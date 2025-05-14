@@ -19,6 +19,7 @@ public class Configuration: Codable {
     public static let accountSlug = "accountSlug"
     public static let internetResourceEnabled = "internetResourceEnabled"
     public static let firezoneId = "firezoneId"
+    public static let hideAdminPortalMenuItem = "hideAdminPortalMenuItem"
   }
 
   public var authURL: String?
@@ -28,6 +29,7 @@ public class Configuration: Codable {
   public var logFilter: String?
   public var accountSlug: String?
   public var internetResourceEnabled: Bool?
+  public var hideAdminPortalMenuItem: Bool?
 
   private var overriddenKeys: Set<String> = []
 
@@ -41,6 +43,9 @@ public class Configuration: Codable {
     setValue(forKey: Keys.accountSlug, from: managedDict, and: userDict) { [weak self] in self?.accountSlug = $0 }
     setValue(forKey: Keys.internetResourceEnabled, from: managedDict, and: userDict) { [weak self] in
       self?.internetResourceEnabled = $0
+    }
+    setValue(forKey: Keys.hideAdminPortalMenuItem, from: managedDict, and: userDict) { [weak self] in
+      self?.hideAdminPortalMenuItem = $0
     }
   }
 
