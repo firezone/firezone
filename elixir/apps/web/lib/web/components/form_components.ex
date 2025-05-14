@@ -108,7 +108,7 @@ defmodule Web.FormComponents do
           id={@id}
           name={@name}
           value={@value}
-          checked={@checked}
+          {if @checked, do: [checked: true], else: []}
           class={[
             "w-4 h-4 border-neutral-300",
             @class
@@ -130,7 +130,7 @@ defmodule Web.FormComponents do
       id={@id}
       name={@name}
       value={@value}
-      checked={@checked}
+      {if @checked, do: [checked: true], else: []}
       class={[
         "hidden peer",
         @class
@@ -158,7 +158,7 @@ defmodule Web.FormComponents do
           id={@id}
           name={@name}
           value={@value}
-          checked={@checked}
+          {if @checked, do: [checked: true], else: []}
           class={[
             "bg-neutral-50",
             "border border-neutral-300 text-neutral-900 rounded",
