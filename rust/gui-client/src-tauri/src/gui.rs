@@ -7,7 +7,7 @@ use crate::{
     about,
     controller::{Controller, ControllerRequest, CtlrTx, Failure, GuiIntegration},
     deep_link,
-    ipc::{self, SocketId},
+    ipc::{self, ClientRead, ClientWrite, SocketId},
     logging,
     settings::{self, AdvancedSettings},
     updates,
@@ -440,7 +440,7 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: system_tray::Event) -
 /// An instance of Firezone may already be running but it is not responding.
 /// Launching another instance on top of it would likely create more problems that it solves, so we also need to fail for that case.
 async fn create_gui_ipc_server() -> Result<ipc::Server> {
-    let (mut read, mut write) = match ipc::connect::<ServerMsg, ClientMsg>(
+    let (read, write) = match ipc::connect::<ServerMsg, ClientMsg>(
         SocketId::Gui,
         ipc::ConnectOptions { num_attempts: 1 },
     )
@@ -457,6 +457,19 @@ async fn create_gui_ipc_server() -> Result<ipc::Server> {
         }
     };
 
+    tokio::time::timeout(Duration::from_secs(5), new_instance_handshake(read, write))
+        .await
+        .context("Failed to handshake with existing instance in 5s")??;
+
+    // If we managed to send the IPC message then another instance of Firezone is already running.
+
+    bail!("Successfully handshaked with existing instance of Firezone GUI")
+}
+
+async fn new_instance_handshake(
+    mut read: ClientRead<ServerMsg>,
+    mut write: ClientWrite<ClientMsg>,
+) -> Result<()> {
     write.send(&ClientMsg::NewInstance).await?;
     let response = read
         .next()
@@ -466,7 +479,5 @@ async fn create_gui_ipc_server() -> Result<ipc::Server> {
 
     anyhow::ensure!(response == ServerMsg::Ack);
 
-    // If we managed to send the IPC message then another instance of Firezone is already running.
-
-    bail!("Successfully handshaked with existing instance of Firezone GUI")
+    Ok(())
 }
