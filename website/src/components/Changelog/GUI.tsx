@@ -33,11 +33,6 @@ export default function GUI({ os }: { os: OS }) {
           Fixes a rare panic when the DNS servers on the system would change
           while Firezone is connected.
         </ChangeItem>
-        {os === OS.Windows && (
-          <ChangeItem pull="9112">
-            Fixes a crash when the tray menu cannot be initialised.
-          </ChangeItem>
-        )}
       </Entry>
       <Entry version="1.4.12" date={new Date("2025-04-30")}>
         {os === OS.Linux && (
