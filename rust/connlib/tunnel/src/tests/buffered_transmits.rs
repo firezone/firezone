@@ -46,14 +46,14 @@ impl BufferedTransmits {
             return;
         };
 
-        self.push(
-            Transmit {
-                src: Some(src),
-                ..transmit
-            },
-            sending_host.latency(),
-            now,
-        );
+        let transmit = Transmit {
+            src: Some(src),
+            ..transmit
+        };
+
+        tracing::trace!(?transmit, "Scheduling transmit");
+
+        self.push(transmit, sending_host.latency(), now);
     }
 
     pub(crate) fn push(
@@ -75,15 +75,19 @@ impl BufferedTransmits {
     }
 
     pub(crate) fn pop(&mut self, now: Instant) -> Option<Transmit> {
-        let next = self.inner.peek()?.0.at;
-
-        if next > now {
+        if self.next_transmit()? > now {
             return None;
         }
 
         let next = self.inner.pop().unwrap().0;
 
+        tracing::trace!(transmit = ?next.value, "Delivering transmit");
+
         Some(next.value)
+    }
+
+    pub(crate) fn next_transmit(&self) -> Option<Instant> {
+        Some(self.inner.peek()?.0.at)
     }
 
     pub(crate) fn drain(&mut self) -> impl Iterator<Item = (Transmit, Instant)> + '_ {

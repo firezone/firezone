@@ -559,7 +559,7 @@ impl TunnelTest {
         }
 
         // Handle the client's `Transmit`s and timeout.
-        while let Some(transmit) = self.client.poll_transmit(now) {
+        while let Some(transmit) = self.client.poll_inbox(now) {
             self.client.exec_mut(|c| c.receive(transmit, now))
         }
         self.client.exec_mut(|c| {
@@ -574,7 +574,7 @@ impl TunnelTest {
                 buffered_transmits.push_from(transmit, gateway, now);
             }
 
-            while let Some(transmit) = gateway.poll_transmit(now) {
+            while let Some(transmit) = gateway.poll_inbox(now) {
                 let Some(reply) = gateway.exec_mut(|g| {
                     g.receive(transmit, unreachable_hosts, now, self.flux_capacitor.now())
                 }) else {
@@ -593,7 +593,7 @@ impl TunnelTest {
 
         // Handle all relay `Transmit`s and timeouts.
         for (_, relay) in self.relays.iter_mut() {
-            while let Some(transmit) = relay.poll_transmit(now) {
+            while let Some(transmit) = relay.poll_inbox(now) {
                 let Some(reply) = relay.exec_mut(|r| r.receive(transmit, now)) else {
                     continue;
                 };
@@ -610,16 +610,16 @@ impl TunnelTest {
     }
 
     fn poll_timeout(&mut self) -> Option<Instant> {
-        let client = self.client.exec_mut(|c| c.sut.poll_timeout());
+        let client = self.client.poll_timeout();
         let gateway = self
             .gateways
             .values_mut()
-            .flat_map(|g| g.exec_mut(|g| g.sut.poll_timeout()))
+            .flat_map(|g| g.poll_timeout())
             .min();
         let relay = self
             .relays
             .values_mut()
-            .flat_map(|r| r.exec_mut(|r| r.sut.poll_timeout()))
+            .flat_map(|r| r.poll_timeout())
             .min();
 
         earliest(client, earliest(gateway, relay))
