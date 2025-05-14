@@ -157,37 +157,10 @@ pub fn run(
 
     let _guard = rt.enter();
 
-    let ipc_result = rt.block_on(async move {
-        let (mut read, mut write) = ipc::connect::<ServerMsg, ClientMsg>(
-            SocketId::Gui,
-            ipc::ConnectOptions { num_attempts: 1 },
-        )
-        .await?;
-
-        write.send(&ClientMsg::NewInstance).await?;
-        let response = read
-            .next()
-            .await
-            .context("No response received")?
-            .context("Failed to receive response")?;
-
-        anyhow::ensure!(response == ServerMsg::Ack);
-
-        anyhow::Ok(())
-    });
-
-    let gui_ipc = match ipc_result {
+    let gui_ipc = match rt.block_on(create_gui_ipc_server()) {
+        Ok(gui_ipc) => gui_ipc,
         Err(e) => {
-            // If we can't connect to the socket, we must be the first instance.
-            tracing::debug!(
-                "We appear to be the first instance of the GUI client; connecting to socket yielded: {e:#}"
-            );
-
-            ipc::Server::new(SocketId::Gui).context("Failed to create GUI IPC socket")?
-        }
-        Ok(()) => {
-            // If we managed to send the IPC message then another instance of Firezone is already running.
-            tracing::debug!("Another instance of the Firezone GUI client is already running");
+            tracing::debug!("{e:#}");
 
             return Err(anyhow::Error::new(AlreadyRunning));
         }
@@ -453,4 +426,47 @@ fn handle_system_tray_event(app: &tauri::AppHandle, event: system_tray::Event) -
         .ctlr_tx
         .blocking_send(ControllerRequest::SystemTrayMenu(event))?;
     Ok(())
+}
+
+/// Create a new instance of the GUI IPC server.
+///
+/// Every time Firezone gets launched, we attempt to connect to this server.
+/// If we can successfully connect and handshake a message, then we know that there is a functioning instance of Firezone already running.
+///
+/// If we hit an IO errors during the connection, we assume that there isn't already an instance of Firezone and we consider us to be the first instance.
+///
+/// There is a third, somewhat gnarly case:
+///
+/// An instance of Firezone may already be running but it is not responding.
+/// Launching another instance on top of it would likely create more problems that it solves, so we also need to fail for that case.
+async fn create_gui_ipc_server() -> Result<ipc::Server> {
+    let (mut read, mut write) = match ipc::connect::<ServerMsg, ClientMsg>(
+        SocketId::Gui,
+        ipc::ConnectOptions { num_attempts: 1 },
+    )
+    .await
+    {
+        Ok(pair) => pair,
+        Err(e) => {
+            // If we can't connect to the socket, we must be the first instance.
+            tracing::debug!(
+                "We appear to be the first instance of the GUI client; connecting to socket yielded: {e:#}"
+            );
+
+            return ipc::Server::new(SocketId::Gui).context("Failed to create GUI IPC socket");
+        }
+    };
+
+    write.send(&ClientMsg::NewInstance).await?;
+    let response = read
+        .next()
+        .await
+        .context("No response received")?
+        .context("Failed to receive response")?;
+
+    anyhow::ensure!(response == ServerMsg::Ack);
+
+    // If we managed to send the IPC message then another instance of Firezone is already running.
+
+    bail!("Successfully handshaked with existing instance of Firezone GUI")
 }
