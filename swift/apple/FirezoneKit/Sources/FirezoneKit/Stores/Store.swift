@@ -220,6 +220,9 @@ public final class Store: ObservableObject {
   func signIn(authResponse: AuthResponse) async throws {
     // Save actorName
     try await setActorName(authResponse.actorName)
+
+    // This will save the account slug even if overridden from MDM. This is what we want - if the admin removes the
+    // override, this will take effect again.
     try await setAccountSlug(authResponse.accountSlug)
 
     try await manager().enableConfiguration()

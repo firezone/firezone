@@ -24,6 +24,11 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9119">
+          Automatically saves the account slug after the first sign in, and adds
+          a new
+          <code>General</code> tab in Settings to allow updating it.
+        </ChangeItem>
         <ChangeItem pull="9014">
           Fixes an issue where idle connections would be slow (~60s) in
           detecting changes to network connectivity.
@@ -39,8 +44,9 @@ export default function Apple() {
       </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-02")}>
         <ChangeItem pull="9005">
-          Fixes an issue where the IP checksum was not updated when ECN bits were set.
-          This caused packet loss on recent MacOS versions which default to using ECN.
+          Fixes an issue where the IP checksum was not updated when ECN bits
+          were set. This caused packet loss on recent MacOS versions which
+          default to using ECN.
         </ChangeItem>
       </Entry>
       <Entry version="1.4.13" date={new Date("2025-04-30")}>
@@ -58,8 +64,8 @@ export default function Apple() {
           Rolls over to a new log-file as soon as logs are cleared.
         </ChangeItem>
         <ChangeItem pull="8935">
-          Improves reliability for upload-intensive connections with many concurrent
-          DNS queries.
+          Improves reliability for upload-intensive connections with many
+          concurrent DNS queries.
         </ChangeItem>
       </Entry>
       <Entry version="1.4.12" date={new Date("2025-04-21")}>

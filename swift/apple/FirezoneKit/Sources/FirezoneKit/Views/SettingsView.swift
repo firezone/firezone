@@ -72,9 +72,11 @@ class SettingsViewModel: ObservableObject {
   @Published var authURL: String
   @Published var apiURL: String
   @Published var logFilter: String
+  @Published var accountSlug: String
   @Published private(set) var isAuthURLOverridden = false
   @Published private(set) var isApiURLOverridden = false
   @Published private(set) var isLogFilterOverridden = false
+  @Published private(set) var isAccountSlugOverridden = false
   @Published private(set) var shouldDisableApplyButton = false
   @Published private(set) var shouldDisableResetButton = false
   @Published private(set) var areSettingsDefault = true
@@ -87,13 +89,14 @@ class SettingsViewModel: ObservableObject {
     self.authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
     self.apiURL = store.configuration?.apiURL ?? Configuration.defaultApiURL
     self.logFilter = store.configuration?.logFilter ?? Configuration.defaultLogFilter
+    self.accountSlug = store.configuration?.accountSlug ?? ""
 
     updateDerivedState()
 
     // Update our state from our text fields
-    Publishers.CombineLatest3($authURL, $apiURL, $logFilter)
+    Publishers.CombineLatest4($authURL, $apiURL, $logFilter, $accountSlug)
       .receive(on: RunLoop.main)
-      .sink { [weak self] (_, _, _) in
+      .sink { [weak self] (_, _, _, _) in
         guard let self = self else { return }
 
         self.updateDerivedState()
@@ -107,43 +110,67 @@ class SettingsViewModel: ObservableObject {
         self?.isAuthURLOverridden = newConfiguration?.isOverridden(Configuration.Keys.authURL) ?? false
         self?.isApiURLOverridden = newConfiguration?.isOverridden(Configuration.Keys.apiURL) ?? false
         self?.isLogFilterOverridden = newConfiguration?.isOverridden(Configuration.Keys.logFilter) ?? false
+        self?.isAccountSlugOverridden = newConfiguration?.isOverridden(Configuration.Keys.accountSlug) ?? false
 
         self?.updateDerivedState()
       }
       .store(in: &cancellables)
   }
 
+  private func isAuthURLValid() -> Bool {
+    if let authURL = URL(string: authURL),
+       authURL.host != nil,
+       ["https", "http"].contains(authURL.scheme),
+       // Be restrictive - account slug will be appended
+       authURL.pathComponents.isEmpty {
+
+      return true
+    }
+
+    return false
+  }
+
+  private func isApiURLValid() -> Bool {
+    if let apiURL = URL(string: apiURL),
+       apiURL.host != nil,
+       ["wss", "ws"].contains(apiURL.scheme),
+       // Be restrictive - account slug will be appended
+       apiURL.pathComponents.isEmpty {
+
+      return true
+    }
+
+    return false
+  }
+
+  private func isLogFilterValid() -> Bool {
+    return !logFilter.isEmpty
+  }
+
+  private func isAccountSlugValid() -> Bool {
+    // URL automatically percent-encodes
+    return true
+  }
+
   private func updateDerivedState() {
     self.areSettingsSaved = (self.authURL == store.configuration?.authURL &&
                              self.apiURL == store.configuration?.apiURL &&
-                             self.logFilter == store.configuration?.logFilter)
+                             self.logFilter == store.configuration?.logFilter &&
+                             self.accountSlug == store.configuration?.accountSlug)
 
-    if let apiURL = URL(string: apiURL),
-       let authURL = URL(string: authURL),
-       authURL.host != nil,
-       apiURL.host != nil,
-       ["https", "http"].contains(authURL.scheme),
-       ["wss", "ws"].contains(apiURL.scheme),
-       !logFilter.isEmpty {
-
-      self.areSettingsValid = true
-
-    } else {
-
-      self.areSettingsValid = false
-
-    }
+    self.areSettingsValid = isAuthURLValid() && isApiURLValid() && isLogFilterValid() && isAccountSlugValid()
 
     self.areSettingsDefault = (self.authURL == Configuration.defaultAuthURL &&
                                self.apiURL == Configuration.defaultApiURL &&
-                               self.logFilter == Configuration.defaultLogFilter)
+                               self.logFilter == Configuration.defaultLogFilter &&
+                               self.accountSlug == "")
 
     self.shouldDisableApplyButton = (
-      isAuthURLOverridden && isApiURLOverridden && isLogFilterOverridden
+      isAuthURLOverridden && isApiURLOverridden && isLogFilterOverridden && isAccountSlugOverridden
     ) || areSettingsSaved || !areSettingsValid
 
     self.shouldDisableResetButton = (
-      isAuthURLOverridden && isApiURLOverridden && isLogFilterOverridden
+      isAuthURLOverridden && isApiURLOverridden && isLogFilterOverridden && isAccountSlugOverridden
     ) || areSettingsDefault
   }
 
@@ -151,6 +178,7 @@ class SettingsViewModel: ObservableObject {
     try await store.setApiURL(apiURL)
     try await store.setLogFilter(logFilter)
     try await store.setAuthURL(authURL)
+    try await store.setAccountSlug(accountSlug)
 
     updateDerivedState()
   }
@@ -159,12 +187,14 @@ class SettingsViewModel: ObservableObject {
     self.authURL = Configuration.defaultAuthURL
     self.apiURL = Configuration.defaultApiURL
     self.logFilter = Configuration.defaultLogFilter
+    self.accountSlug = ""
   }
 
   func reloadSettingsFromStore() {
     self.authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
     self.apiURL = store.configuration?.apiURL ?? Configuration.defaultApiURL
     self.logFilter = store.configuration?.logFilter ?? Configuration.defaultLogFilter
+    self.accountSlug = store.configuration?.accountSlug ?? ""
   }
 }
 
@@ -212,6 +242,7 @@ public struct SettingsView: View {
     static let authBaseURL = "Admin portal base URL"
     static let apiURL = "Control plane WebSocket URL"
     static let logFilter = "RUST_LOG-style filter string"
+    static let accountSlug = "Account slug or ID (optional)"
   }
 
   private struct FootnoteText {
@@ -229,21 +260,33 @@ public struct SettingsView: View {
   }
 
   public var body: some View {
-    #if os(iOS)
-      NavigationView {
-        TabView {
-          advancedTab
-            .tabItem {
-              Image(systemName: "slider.horizontal.3")
-              Text("Advanced")
-            }
-            .badge(viewModel.areSettingsValid ? nil : "!")
-          logsTab
-            .tabItem {
-              Image(systemName: "doc.text")
-              Text("Diagnostic Logs")
-            }
+#if os(iOS)
+    NavigationView {
+      ZStack {
+        Color(UIColor.systemGroupedBackground)
+          .ignoresSafeArea()
+
+        VStack {
+          TabView {
+            generalTab
+              .tabItem {
+                Image(systemName: "slider.horizontal.3")
+                Text("General")
+              }
+            advancedTab
+              .tabItem {
+                Image(systemName: "gearshape.2")
+                Text("Advanced")
+              }
+              .badge(viewModel.areSettingsValid ? nil : "!")
+            logsTab
+              .tabItem {
+                Image(systemName: "doc.text")
+                Text("Diagnostic Logs")
+              }
+          }
         }
+        .padding(.bottom, 10)
         .toolbar {
           ToolbarItem(placement: .navigationBarTrailing) {
             Button("Save") {
@@ -265,27 +308,31 @@ public struct SettingsView: View {
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .alert(
+          "Saving settings will sign you out",
+          isPresented: $isShowingConfirmationAlert,
+          presenting: confirmationAlertContinueAction,
+          actions: { confirmationAlertContinueAction in
+            Button("Cancel", role: .cancel) {
+              // Nothing to do
+            }
+            Button("Continue") {
+              withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
+            }
+          },
+          message: { _ in
+            Text("Changing settings will sign you out and disconnect you from resources")
+          }
+        )
       }
-      .alert(
-        "Saving settings will sign you out",
-        isPresented: $isShowingConfirmationAlert,
-        presenting: confirmationAlertContinueAction,
-        actions: { confirmationAlertContinueAction in
-          Button("Cancel", role: .cancel) {
-            // Nothing to do
-          }
-          Button("Continue") {
-            withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
-          }
-        },
-        message: { _ in
-          Text("Changing settings will sign you out and disconnect you from resources")
-        }
-      )
-
+    }
     #elseif os(macOS)
       VStack {
         TabView {
+          generalTab
+            .tabItem {
+              Text("General")
+            }
           advancedTab
             .tabItem {
               Text("Advanced")
@@ -296,6 +343,38 @@ public struct SettingsView: View {
             }
         }
         .padding(20)
+        Spacer()
+        HStack(spacing: 5) {
+          Text("Build: \(BundleHelper.gitSha)")
+            .textSelection(.enabled)
+            .foregroundColor(.gray)
+          Spacer()
+          Button(
+            "Reset to Defaults",
+            action: {
+              viewModel.revertToDefaultSettings()
+            }
+          )
+          .disabled(viewModel.shouldDisableResetButton)
+
+          Button(
+            "Apply",
+            action: {
+              let action = ConfirmationAlertContinueAction.saveSettings
+              if [.connected, .connecting, .reasserting].contains(store.status) {
+                self.confirmationAlertContinueAction = action
+                self.isShowingConfirmationAlert = true
+              } else {
+                withErrorHandler { try await action.performAction(on: self) }
+              }
+            }
+          )
+          .disabled(viewModel.shouldDisableApplyButton)
+
+        }
+        .padding([.bottom], 20)
+        .padding([.leading, .trailing], 40)
+        Spacer()
       }
       .alert(
         "Saving settings will sign you out",
@@ -319,73 +398,121 @@ public struct SettingsView: View {
     #endif
   }
 
+  private var generalTab: some View {
+#if os(macOS)
+    VStack {
+      Spacer()
+      HStack {
+        Spacer()
+        Form {
+          HStack {
+            Text("Account Slug")
+              .frame(width: 150, alignment: .trailing)
+            TextField(
+              "",
+              text: $viewModel.accountSlug,
+              prompt: Text(PlaceholderText.accountSlug)
+            )
+            .disabled(viewModel.isAccountSlugOverridden)
+            .frame(width: 250)
+          }
+        }
+        .padding(10)
+        Spacer()
+      }
+      Spacer()
+    }
+#elseif os(iOS)
+    VStack {
+      Form {
+        Section(
+          content: {
+            VStack(alignment: .leading, spacing: 2) {
+              Text("Account Slug")
+                .foregroundStyle(.secondary)
+                .font(.caption)
+              TextField(
+                PlaceholderText.accountSlug,
+                text: $viewModel.accountSlug
+              )
+              .autocorrectionDisabled()
+              .textInputAutocapitalization(.never)
+              .submitLabel(.done)
+              .disabled(viewModel.isAccountSlugOverridden)
+            }
+          },
+          header: { Text("General Settings") },
+        )
+      }
+    }
+#endif
+  }
+
   private var advancedTab: some View {
     #if os(macOS)
-      VStack {
+    VStack {
+      Spacer()
+
+      // Note
+      HStack {
         Spacer()
-        HStack {
-          Spacer()
-          Form {
+        Text(FootnoteText.forAdvanced ?? "")
+          .foregroundStyle(.secondary)
+          .frame(width: 400, alignment: .trailing)
+        Spacer()
+      }
+
+      Spacer()
+
+      // Text fields
+      HStack {
+        Spacer()
+        Form {
+          // Auth Base URL
+          HStack {
+            Text("Auth Base URL")
+              .frame(width: 150, alignment: .trailing)
             TextField(
-              "Auth Base URL:",
+              "",
               text: $viewModel.authURL,
               prompt: Text(PlaceholderText.authBaseURL)
             )
             .disabled(viewModel.isAuthURLOverridden)
+            .frame(width: 250)
+          }
 
+          // API URL
+          HStack {
+            Text("API URL")
+              .frame(width: 150, alignment: .trailing)
             TextField(
-              "API URL:",
+              "",
               text: $viewModel.apiURL,
               prompt: Text(PlaceholderText.apiURL)
             )
             .disabled(viewModel.isApiURLOverridden)
+            .frame(width: 250)
+          }
 
+          // Log Filter
+          HStack {
+            Text("Log Filter")
+              .frame(width: 150, alignment: .trailing)
             TextField(
-              "Log Filter:",
+              "",
               text: $viewModel.logFilter,
               prompt: Text(PlaceholderText.logFilter)
             )
             .disabled(viewModel.isLogFilterOverridden)
-
-            Text(FootnoteText.forAdvanced ?? "")
-              .foregroundStyle(.secondary)
-
-            HStack(spacing: 30) {
-              Button(
-                "Apply",
-                action: {
-                  let action = ConfirmationAlertContinueAction.saveSettings
-                  if [.connected, .connecting, .reasserting].contains(store.status) {
-                    self.confirmationAlertContinueAction = action
-                    self.isShowingConfirmationAlert = true
-                  } else {
-                    withErrorHandler { try await action.performAction(on: self) }
-                  }
-                }
-              )
-              .disabled(viewModel.shouldDisableApplyButton)
-
-              Button(
-                "Reset to Defaults",
-                action: {
-                  viewModel.revertToDefaultSettings()
-                }
-              )
-              .disabled(viewModel.shouldDisableResetButton)
-            }
-            .padding(.top, 5)
+            .frame(width: 250)
           }
-          .padding(10)
-          Spacer()
         }
+        .frame(width: 500)
         Spacer()
-        HStack {
-          Text("Build: \(BundleHelper.gitSha)")
-            .textSelection(.enabled)
-            .foregroundColor(.gray)
-          Spacer()
-        }.padding([.leading, .bottom], 20)
       }
+
+      Spacer()
+    }
     #elseif os(iOS)
       VStack {
         Form {
@@ -452,8 +579,11 @@ public struct SettingsView: View {
             .textSelection(.enabled)
             .foregroundColor(.gray)
           Spacer()
-        }.padding([.leading, .bottom], 20)
+        }
+        .padding([.leading, .bottom], 20)
+        .background(Color(uiColor: .secondarySystemBackground))
       }
+      .background(Color(uiColor: .secondarySystemBackground))
     #endif
   }
 
