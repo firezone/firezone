@@ -160,8 +160,8 @@ class SettingsViewModel: ObservableObject {
 
     self.areSettingsValid = isAuthURLValid() && isApiURLValid() && isLogFilterValid() && isAccountSlugValid()
 
-    self.areSettingsDefault = (self.authURL == Configuration.defaultAuthURL.absoluteString &&
-                               self.apiURL == Configuration.defaultApiURL.absoluteString &&
+    self.areSettingsDefault = (self.authURL == Configuration.defaultAuthURL &&
+                               self.apiURL == Configuration.defaultApiURL &&
                                self.logFilter == Configuration.defaultLogFilter &&
                                self.accountSlug == "")
 
