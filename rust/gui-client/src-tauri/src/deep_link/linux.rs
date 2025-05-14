@@ -85,7 +85,6 @@ impl Server {
 }
 
 pub async fn open(url: &url::Url) -> Result<()> {
-    crate::logging::setup_stdout()?;
     let path = sock_path()?;
     let mut stream = UnixStream::connect(&path).await?;
 
