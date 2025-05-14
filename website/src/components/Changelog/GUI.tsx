@@ -8,7 +8,8 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.13" date={new Date("2025-05-14")}>
         <ChangeItem pull="9014">
           Fixes an issue where idle connections would be slow (~60s) in
           detecting changes to network connectivity.
@@ -37,7 +38,7 @@ export default function GUI({ os }: { os: OS }) {
             Fixes a crash when the tray menu cannot be initialised.
           </ChangeItem>
         )}
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.12" date={new Date("2025-04-30")}>
         {os === OS.Linux && (
           <ChangeItem pull="8731">
