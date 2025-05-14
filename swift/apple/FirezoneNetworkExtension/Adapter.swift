@@ -47,6 +47,9 @@ class Adapter {
 
   private var session: WrappedSession?
 
+  // Our local copy of the accountSlug
+  private var accountSlug: String
+
   /// Network settings
   private var networkSettings: NetworkSettings?
 
@@ -184,6 +187,7 @@ class Adapter {
     token: Token,
     id: String,
     logFilter: String,
+    accountSlug: String,
     internetResourceEnabled: Bool,
     packetTunnelProvider: PacketTunnelProvider
   ) {
@@ -193,6 +197,7 @@ class Adapter {
     self.packetTunnelProvider = packetTunnelProvider
     self.callbackHandler = CallbackHandler()
     self.logFilter = logFilter
+    self.accountSlug = accountSlug
     self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
     self.networkSettings = nil
     self.internetResourceEnabled = internetResourceEnabled
@@ -226,7 +231,7 @@ class Adapter {
         apiURL,
         "\(token)",
         "\(id)",
-        "\(Telemetry.accountSlug!)",
+        accountSlug,
         DeviceMetadata.getDeviceName(),
         DeviceMetadata.getOSVersion(),
         connlibLogFolderPath,
