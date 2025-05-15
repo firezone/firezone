@@ -130,7 +130,6 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, settings: AdvancedSettings) 
 /// `gui::run` but wrapped in `anyhow::Result`
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
-// Can't `instrument` this because logging isn't running when we enter it.
 fn run_gui(
     rt: &tokio::runtime::Runtime,
     config: RunConfig,
