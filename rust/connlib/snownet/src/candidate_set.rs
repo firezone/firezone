@@ -4,6 +4,9 @@ use itertools::Itertools;
 use str0m::{Candidate, CandidateKind};
 
 /// Custom "set" implementation for [`Candidate`]s based on a [`HashSet`] with an enforced ordering when iterating.
+///
+/// The set only allows host and server-reflexive candidates as only those need to be de-duplicated in order to avoid
+/// spamming the remote with duplicate candidates.
 #[derive(Debug, Default)]
 pub struct CandidateSet {
     host: HashSet<Candidate>,
