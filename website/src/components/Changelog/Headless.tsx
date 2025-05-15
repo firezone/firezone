@@ -9,7 +9,12 @@ export default function Headless({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="9147">
+          Fixes an issue where connections failed to establish on machines
+          with multiple valid egress IPs.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-05-14")}>
         <ChangeItem pull="9014">
           Fixes an issue where idle connections would be slow (~60s) in

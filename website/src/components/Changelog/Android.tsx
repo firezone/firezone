@@ -32,6 +32,10 @@ export default function Android() {
           Fixes a rare panic when the DNS servers on the system would change
           while Firezone is connected.
         </ChangeItem>
+        <ChangeItem pull="9147">
+          Fixes an issue where connections failed to establish on machines
+          with multiple valid egress IPs.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-04-30")}>
         <ChangeItem pull="8920">

@@ -22,7 +22,12 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="9147">
+          Fixes an issue where connections failed to establish on machines
+          with multiple valid egress IPs.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.9" date={new Date("2025-05-14")}>
         <ChangeItem pull="9059">
           Fixes an issue where ICMP unreachable errors for large packets would

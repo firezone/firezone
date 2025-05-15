@@ -1,12 +1,16 @@
 use std::collections::HashSet;
 
 use itertools::Itertools;
-use str0m::Candidate;
+use str0m::{Candidate, CandidateKind};
 
 /// Custom "set" implementation for [`Candidate`]s based on a [`HashSet`] with an enforced ordering when iterating.
+///
+/// The set only allows host and server-reflexive candidates as only those need to be de-duplicated in order to avoid
+/// spamming the remote with duplicate candidates.
 #[derive(Debug, Default)]
 pub struct CandidateSet {
-    inner: HashSet<Candidate>,
+    host: HashSet<Candidate>,
+    server_reflexive: HashSet<Candidate>,
 }
 
 impl CandidateSet {
@@ -15,32 +19,43 @@ impl CandidateSet {
         reason = "We don't care about the ordering."
     )]
     pub fn insert(&mut self, new: Candidate) -> bool {
-        // Hashing a `Candidate` takes longer than checking a handful of entries using their `PartialEq` implementation.
-        // This function is in the hot-path so it needs to be fast ...
-        if self.inner.iter().any(|c| c == &new) {
-            return false;
+        match new.kind() {
+            CandidateKind::PeerReflexive | CandidateKind::Relayed => {
+                debug_assert!(false);
+                tracing::warn!(
+                    "CandidateSet is not meant to be used with candidates of kind {}",
+                    new.kind()
+                );
+
+                false
+            }
+            CandidateKind::Host => self.host.insert(new),
+            CandidateKind::ServerReflexive => {
+                // Hashing a `Candidate` takes longer than checking a handful of entries using their `PartialEq` implementation.
+                // This function is in the hot-path so it needs to be fast ...
+                if self.server_reflexive.iter().any(|c| c == &new) {
+                    return false;
+                }
+
+                self.server_reflexive.retain(|current| {
+                    let is_ip_version_different = current.addr().is_ipv4() != new.addr().is_ipv4();
+
+                    if !is_ip_version_different {
+                        tracing::debug!(%current, %new, "Replacing server-reflexive candidate");
+                    }
+
+                    // Candidates of different IP version are also kept.
+                    is_ip_version_different
+                });
+
+                self.server_reflexive.insert(new)
+            }
         }
-
-        self.inner.retain(|current| {
-            if current.kind() != new.kind() {
-                return true; // Don't evict candidates of different kinds.
-            }
-
-            let is_ip_version_different = current.addr().is_ipv4() != new.addr().is_ipv4();
-
-            if !is_ip_version_different {
-                tracing::debug!(%current, %new, "Replacing server-reflexive candidate");
-            }
-
-            // Candidates of different IP version are also kept.
-            is_ip_version_different
-        });
-
-        self.inner.insert(new)
     }
 
     pub fn clear(&mut self) {
-        self.inner.clear()
+        self.host.clear();
+        self.server_reflexive.clear();
     }
 
     #[expect(
@@ -48,7 +63,10 @@ impl CandidateSet {
         reason = "We are guaranteeing a stable ordering"
     )]
     pub fn iter(&self) -> impl Iterator<Item = &Candidate> {
-        self.inner.iter().sorted_by_key(|c| c.prio())
+        std::iter::empty()
+            .chain(self.host.iter())
+            .chain(self.server_reflexive.iter())
+            .sorted_by(|l, r| l.prio().cmp(&r.prio()).then(l.addr().cmp(&r.addr())))
     }
 }
 
@@ -94,5 +112,18 @@ mod tests {
             set.iter().cloned().collect::<Vec<_>>(),
             vec![c2, c4, host1, host2]
         );
+    }
+
+    #[test]
+    fn allows_multiple_host_candidates_of_same_ip_base() {
+        let mut set = CandidateSet::default();
+
+        let host1 = Candidate::host(SOCK_ADDR1, Protocol::Udp).unwrap();
+        let host2 = Candidate::host(SOCK_ADDR2, Protocol::Udp).unwrap();
+
+        assert!(set.insert(host1.clone()));
+        assert!(set.insert(host2.clone()));
+
+        assert_eq!(set.iter().cloned().collect::<Vec<_>>(), vec![host1, host2]);
     }
 }
