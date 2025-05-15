@@ -159,6 +159,13 @@ fn run_gui(config: RunConfig) -> Result<()> {
                 return Err(anyhow);
             }
 
+            if anyhow.root_cause().is::<controller::FailedToReceiveHello>() {
+                show_error_dialog(
+                    "The Firezone Tunnel service is not responding. If the issue persists, contact your administrator.",
+                )?;
+                return Err(anyhow);
+            }
+
             show_error_dialog(
                 "An unexpected error occurred. Please try restarting Firezone. If the issue persists, contact your administrator.",
             )?;

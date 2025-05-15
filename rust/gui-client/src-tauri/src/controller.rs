@@ -194,6 +194,10 @@ enum EventloopTick {
     ),
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("Failed to receive hello: {0:#}")]
+pub struct FailedToReceiveHello(anyhow::Error);
+
 impl<I: GuiIntegration> Controller<I> {
     pub(crate) async fn start(
         ctlr_tx: CtlrTx,
@@ -209,7 +213,9 @@ impl<I: GuiIntegration> Controller<I> {
         let (mut ipc_rx, ipc_client) =
             ipc::connect(SocketId::Tunnel, ipc::ConnectOptions::default()).await?;
 
-        receive_hello(&mut ipc_rx).await?;
+        receive_hello(&mut ipc_rx)
+            .await
+            .map_err(FailedToReceiveHello)?;
 
         let dns_notifier = new_dns_notifier().await?.boxed();
         let network_notifier = new_network_notifier().await?.boxed();
