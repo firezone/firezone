@@ -152,7 +152,7 @@ pub fn install() -> Result<()> {
     let manager_access = ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE;
     let service_manager = ServiceManager::local_computer(None::<&str>, manager_access)?;
 
-    let name = "FirezoneClientIpcServiceDebug";
+    let name = "FirezoneTunnelServiceDebug";
 
     // Un-install existing one first if needed
     if let Err(e) = uninstall_ipc_service(&service_manager, name)
@@ -164,7 +164,7 @@ pub fn install() -> Result<()> {
     let executable_path = std::env::current_exe()?;
     let service_info = ServiceInfo {
         name: OsString::from(name),
-        display_name: OsString::from("Firezone Client IPC (Debug)"),
+        display_name: OsString::from("Firezone Tunnel Service (Debug)"),
         service_type: ServiceType::OWN_PROCESS,
         start_type: ServiceStartType::AutoStart,
         error_control: ServiceErrorControl::Normal,

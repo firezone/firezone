@@ -6,4 +6,4 @@ msiexec //i "$BINARY_DEST_PATH.msi" //log install.log //qn
 # For debugging
 cat install.log
 # Make sure the Tunnel service is running
-sc query FirezoneClientIpcService | grep RUNNING
+sc query FirezoneTunnelService | grep RUNNING
