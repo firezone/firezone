@@ -142,7 +142,6 @@ impl Telemetry {
             return;
         };
         tracing::info!("Stopping telemetry");
-        sentry::end_session_with_status(status);
 
         // Sentry uses blocking IO for flushing ..
         let _ = tokio::task::spawn_blocking(move || {
@@ -154,6 +153,8 @@ impl Telemetry {
             tracing::debug!("Flushed telemetry");
         })
         .await;
+
+        sentry::end_session_with_status(status);
     }
 
     pub fn set_account_slug(slug: String) {
