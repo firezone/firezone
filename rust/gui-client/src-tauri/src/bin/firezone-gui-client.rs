@@ -87,43 +87,50 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettin
     } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
 
     match cli.command {
-        None => {
-            if cli.check_elevation() {
-                match elevation::gui_check() {
-                    Ok(true) => {}
-                    Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
-                    #[cfg(target_os = "linux")] // Windows/MacOS elevation check never fails.
-                    Err(error) => {
-                        show_error_dialog(&error.user_friendly_msg())?;
+        None if cli.check_elevation() => match elevation::gui_check() {
+            Ok(true) => {}
+            Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
+            #[cfg(target_os = "linux")] // Windows/MacOS elevation check never fails.
+            Err(error) => {
+                show_error_dialog(&error.user_friendly_msg())?;
 
-                        return Err(error.into());
-                    }
-                }
+                return Err(error.into());
             }
-
-            return run_gui(rt, config, settings, reloader);
+        },
+        None | Some(Cmd::Elevated) => {
+            // Fall-through to running the GUI if elevation check should be bypassed.
         }
+
+        // All commands below _don't_ end up running the GUI.
         Some(Cmd::Debug {
             command: DebugCommand::Replicate6791,
         }) => {
             firezone_gui_client::auth::replicate_6791()?;
+
+            return Ok(());
         }
         Some(Cmd::Debug {
             command: DebugCommand::SetAutostart(SetAutostartArgs { enabled }),
         }) => {
             rt.block_on(firezone_gui_client::gui::set_autostart(enabled))?;
+
+            return Ok(());
         }
-        // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => run_gui(rt, config, settings, reloader)?,
         Some(Cmd::OpenDeepLink(deep_link)) => {
             rt.block_on(deep_link::open(deep_link.url))
                 .context("Failed to open deep-link")?;
+
+            return Ok(());
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
             gui::run(rt, config, settings, reloader)?;
+
+            return Ok(());
         }
     };
+
+    run_gui(rt, config, settings, reloader)?;
 
     Ok(())
 }
