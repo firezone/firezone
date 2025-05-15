@@ -20,12 +20,16 @@
     "flowbite": "^3.1.2"
   },
   "devDependencies": {
+    "@rollup/plugin-typescript": "^12.1.2",
+    "@tailwindcss/vite": "^4.1.6",
     "@tauri-apps/cli": "^2.5.0",
     "@types/node": "^22.15.3",
     "http-server": "^14.1.1",
     "run-script-os": "^1.1.6",
     "tailwindcss": "^4.1.5",
+    "tslib": "^2.8.1",
     "typescript": "^5.8.3",
-    "vite": "^6.3.4"
+    "vite": "^6.3.4",
+    "vite-plugin-typescript": "^1.0.4"
   }
 }

@@ -11,14 +11,5 @@ stop() {
 }
 trap stop INT TERM
 
-# Copy frontend dependencies
-cp node_modules/flowbite/dist/flowbite.min.js src/
-
-# Compile TypeScript
-tsc --watch &
-
-# Compile CSS
-tailwindcss -i src/input.css -o src/output.css --watch &
-
 # Start Tauri hot-reloading: Not applicable for Windows
-# tauri dev
+tauri dev
