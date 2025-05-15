@@ -141,7 +141,6 @@ impl Telemetry {
         let Some(inner) = self.inner.take() else {
             return;
         };
-
         tracing::info!("Stopping telemetry");
 
         // Sentry uses blocking IO for flushing ..
