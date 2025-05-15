@@ -42,7 +42,8 @@
   "app": {
     "withGlobalTauri": true,
     "security": {
-      "csp": null
+      "csp": null,
+      "capabilities": ["default-capability"]
     },
     "windows": [
       {
@@ -50,9 +51,9 @@
         "title": "About Firezone",
         "url": "src/about.html",
         "fullscreen": false,
-        "resizable": true,
-        "width": 640,
-        "height": 480,
+        "resizable": false,
+        "width": 400,
+        "height": 300,
         "visible": false
       },
       {
