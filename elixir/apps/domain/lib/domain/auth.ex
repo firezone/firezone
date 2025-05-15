@@ -152,20 +152,20 @@ defmodule Domain.Auth do
     end
   end
 
-  def list_providers(%Subject{} = subject, opts \\ []) do
-    with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
-      Provider.Query.not_deleted()
-      |> Authorizer.for_subject(Provider, subject)
-      |> Repo.list(Provider.Query, opts)
-    end
-  end
-
   # Used during client auth
   def fetch_default_provider_for_account(%Accounts.Account{} = account, opts \\ []) do
     Provider.Query.not_disabled()
     |> Provider.Query.by_account_id(account.id)
     |> Provider.Query.assigned_default()
     |> Repo.fetch(Provider.Query, opts)
+  end
+
+  def list_providers(%Subject{} = subject, opts \\ []) do
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
+      Provider.Query.not_deleted()
+      |> Authorizer.for_subject(Provider, subject)
+      |> Repo.list(Provider.Query, opts)
+    end
   end
 
   # used to build list of auth options for the UI

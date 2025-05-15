@@ -217,6 +217,32 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "fetch_default_provider_for_account/2" do
+    test "returns empty list if there are no default providers" do
+      account = Fixtures.Accounts.create_account()
+      assert fetch_default_provider_for_account(account) == []
+    end
+
+    test "returns default provider for account" do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(
+          account: account,
+          assigned_default_at: DateTime.utc_now()
+        )
+
+      assert {:ok, fetched_provider} = fetch_default_provider_for_account(account)
+      assert fetched_provider.id == provider.id
+    end
+  end
+
+  describe "assign_default_provider/2" do
+  end
+
+  describe "clear_default_provider/1" do
+  end
+
   describe "list_providers/2" do
     test "returns all not soft-deleted providers for a given account" do
       account = Fixtures.Accounts.create_account()

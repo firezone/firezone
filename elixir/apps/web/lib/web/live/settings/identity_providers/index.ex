@@ -219,7 +219,8 @@ defmodule Web.Settings.IdentityProviders.Index do
       socket.assigns.providers
       |> Enum.find(fn provider -> provider.id == provider_id end)
 
-    with {:ok, _provider} <- Auth.assign_default_provider(provider, socket.assigns.subject),
+    with true <- provider.adapter not in [:email, :userpass],
+         {:ok, _provider} <- Auth.assign_default_provider(provider, socket.assigns.subject),
          {:ok, providers, _metadata} <- Auth.list_providers(socket.assigns.subject) do
       socket =
         socket
