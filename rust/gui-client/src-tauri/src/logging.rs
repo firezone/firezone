@@ -169,7 +169,7 @@ pub fn setup_gui(directives: &str) -> Result<Handles> {
     })
 }
 
-/// Starts logging for the production IPC service
+/// Starts logging for the production Tunnel service
 ///
 /// Returns: A `Handle` that must be kept alive. Dropping it stops logging
 /// and flushes the log file.
@@ -181,7 +181,7 @@ pub fn setup_ipc(
 )> {
     // If `log_dir` is Some, use that. Else call `ipc_service_logs`
     let log_path = log_path.map_or_else(
-        || known_dirs::ipc_service_logs().context("Should be able to compute IPC service logs dir"),
+        || known_dirs::ipc_service_logs().context("Should be able to compute Tunnel service logs dir"),
         Ok,
     )?;
     std::fs::create_dir_all(&log_path)
@@ -229,7 +229,7 @@ pub fn setup_stdout() -> Result<FilterReloadHandle> {
 
     Ok(reloader)
 }
-/// Reads the log filter for the IPC service or for debug commands
+/// Reads the log filter for the Tunnel service or for debug commands
 ///
 /// e.g. `info`
 ///
@@ -332,7 +332,7 @@ fn add_dir_to_zip(
         Ok(x) => x,
         Err(error) => {
             if matches!(error.kind(), NotFound) {
-                // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not add any files to the zip
+                // In smoke tests, the Tunnel service runs in debug mode, so it won't write any logs to disk. If the Tunnel service's log dir doesn't exist, we shouldn't crash, it's correct to simply not add any files to the zip
                 return Ok(());
             }
             // But any other error like permissions errors, should bubble.
@@ -384,7 +384,7 @@ async fn count_one_dir(path: &Path) -> Result<FileCount> {
 fn log_paths() -> Result<Vec<LogPath>> {
     Ok(vec![
         LogPath {
-            src: known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?,
+            src: known_dirs::ipc_service_logs().context("Can't compute Tunnel service logs dir")?,
             dst: PathBuf::from("connlib"),
         },
         LogPath {

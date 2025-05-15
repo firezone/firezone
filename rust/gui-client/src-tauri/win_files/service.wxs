@@ -3,7 +3,7 @@
   <Fragment>
     <DirectoryRef Id="INSTALLDIR">
         <Component Id="FirezoneClientIpcService" Guid="a8092ff9-30fa-48bb-9b2d-45fe39d16c66">
-          <File Id="FirezoneClientIpcServiceExe" Name="firezone-client-ipc.exe" Source="../../firezone-client-ipc.exe" KeyPath="yes" />
+          <File Id="FirezoneTunnelServiceExe" Name="firezone-tunnel-service.exe" Source="../../firezone-tunnel-service.exe" KeyPath="yes" />
           <ServiceInstall
               Id="FirezoneClientServiceInstaller"
               Arguments="run"

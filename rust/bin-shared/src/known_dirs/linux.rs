@@ -1,7 +1,7 @@
 use crate::BUNDLE_ID;
 use std::path::PathBuf;
 
-/// Path for IPC service config that the IPC service can write
+/// Path for Tunnel service config that the Tunnel service can write
 ///
 /// All writes should use `atomicwrites`.
 ///

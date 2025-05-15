@@ -7,7 +7,7 @@ pub async fn clear_logs(path: &Path) -> Result<()> {
         Ok(x) => x,
         Err(error) => {
             if matches!(error.kind(), NotFound) {
-                // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
+                // In smoke tests, the Tunnel service runs in debug mode, so it won't write any logs to disk. If the Tunnel service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
                 return Ok(());
             }
             // But any other error like permissions errors, should bubble.

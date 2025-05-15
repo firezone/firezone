@@ -4,12 +4,12 @@
 
 set -euo pipefail
 
-SERVICE_NAME="firezone-client-ipc"
+SERVICE_NAME="firezone-tunnel-service"
 
 # Creates the system group `firezone-client`
 sudo systemd-sysusers
 
-echo "Starting and enabling Firezone IPC service..."
+echo "Starting and enabling Firezone Tunnel service..."
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl restart "$SERVICE_NAME"

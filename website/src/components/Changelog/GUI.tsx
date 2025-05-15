@@ -17,6 +17,9 @@ export default function GUI({ os }: { os: OS }) {
           Launching Firezone while it is already running while now re-activate
           the "Welcome" screen, allowing the user to sign in and out.
         </ChangeItem>
+        <ChangeItem pull="9154">
+          Renames the IPC service to Tunnel service.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.13" date={new Date("2025-05-14")}>
         <ChangeItem pull="9014">

@@ -25,7 +25,7 @@ mkdir -p \
 
 BINS="%{_topdir}/../../target/release"
 
-cp "$BINS/firezone-client-ipc" "%{buildroot}/usr/bin/"
+cp "$BINS/firezone-tunnel-service" "%{buildroot}/usr/bin/"
 cp "$BINS/firezone-client-gui" "%{buildroot}/usr/lib/dev.firezone.client/"
 cp "%{_topdir}/../src-tauri/rpm_files/gui-shim.sh" "%{buildroot}/usr/bin/firezone-client-gui"
 
@@ -103,12 +103,12 @@ mkdir -p \
 "$ICONS/512x512/apps"
 
 cp \
-"%{_topdir}/../src-tauri/deb_files/firezone-client-ipc.service" \
+"%{_topdir}/../src-tauri/deb_files/firezone-tunnel-service.service" \
 "%{buildroot}/usr/lib/systemd/system/"
 
 cp \
 "%{_topdir}/../src-tauri/deb_files/sysusers.conf" \
-"%{buildroot}/usr/lib/sysusers.d/firezone-client-ipc.conf"
+"%{buildroot}/usr/lib/sysusers.d/firezone-tunnel-service.conf"
 
 cp \
 "%{_topdir}/../src-tauri/rpm_files/firezone-client-gui.desktop" \
@@ -127,7 +127,7 @@ cp \
 "$ICONS/512x512/apps/firezone-client-gui.png"
 
 %files
-/usr/bin/firezone-client-ipc
+/usr/bin/firezone-tunnel-service
 /usr/bin/firezone-client-gui
 /usr/lib/dev.firezone.client/firezone-client-gui
 
@@ -163,8 +163,8 @@ cp \
 /usr/lib/dev.firezone.client/libX11.so.6
 /usr/lib/dev.firezone.client/libX11-xcb.so.1
 
-/usr/lib/systemd/system/firezone-client-ipc.service
-/usr/lib/sysusers.d/firezone-client-ipc.conf
+/usr/lib/systemd/system/firezone-tunnel-service.service
+/usr/lib/sysusers.d/firezone-tunnel-service.conf
 
 /usr/share/applications/firezone-client-gui.desktop
 /usr/share/icons/hicolor/32x32/apps/firezone-client-gui.png
@@ -188,10 +188,10 @@ cp \
 %endif
 
 %post
-%systemd_post firezone-client-ipc.service
+%systemd_post firezone-tunnel-service.service
 
 %preun
-%systemd_preun firezone-client-ipc.service
+%systemd_preun firezone-tunnel-service.service
 
 %postun
-%systemd_postun_with_restart firezone-client-ipc.service
+%systemd_postun_with_restart firezone-tunnel-service.service

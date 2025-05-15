@@ -32,7 +32,7 @@ use windows_service::{
 const SERVICE_NAME: &str = "firezone_client_ipc";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
-/// Returns true if the IPC service can run properly
+/// Returns true if the Tunnel service can run properly
 pub fn elevation_check() -> Result<bool> {
     let token = ProcessToken::our_process().context("Failed to get process token")?;
     let elevated = token
@@ -219,7 +219,7 @@ fn fallible_service_run(
 ) -> Result<()> {
     tracing::info!(?arguments, "fallible_windows_service_run");
     if !elevation_check()? {
-        bail!("IPC service failed its elevation check, try running as admin / root");
+        bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -289,7 +289,7 @@ fn fallible_service_run(
         ))
         .inspect(|_| rt.block_on(telemetry.stop()))
         .inspect_err(|e| {
-            tracing::error!("IPC service failed: {e:#}");
+            tracing::error!("Tunnel service failed: {e:#}");
 
             rt.block_on(telemetry.stop_on_crash())
         });

@@ -50,7 +50,7 @@ impl DnsController {
     }
 }
 
-// TODO: Move DNS and network change listening to the IPC service, so this won't
+// TODO: Move DNS and network change listening to the Tunnel service, so this won't
 // need to be public.
 pub fn system_resolvers_for_gui() -> Result<Vec<IpAddr>> {
     system_resolvers(DnsControlMethod::default())

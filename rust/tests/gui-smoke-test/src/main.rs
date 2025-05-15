@@ -1,6 +1,6 @@
 // Invoke with `cargo run --bin gui-smoke-test`
 //
-// Starts up the IPC service and GUI app and lets them run for a bit
+// Starts up the Tunnel service and GUI app and lets them run for a bit
 
 use anyhow::{Context as _, Result, bail};
 use clap::Parser;
@@ -14,7 +14,7 @@ use subprocess::Exec;
 const FZ_GROUP: &str = "firezone-client";
 
 const GUI_NAME: &str = "firezone-gui-client";
-const IPC_NAME: &str = "firezone-client-ipc";
+const TUNNEL_NAME: &str = "firezone-tunnel-service";
 
 #[cfg(target_os = "linux")]
 const EXE_EXTENSION: &str = "";
@@ -47,7 +47,7 @@ fn main() -> Result<()> {
 
     gui.wait()?.fz_exit_ok().context("GUI process")?;
 
-    ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
+    ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
 
     // Force the GUI to crash
     let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
@@ -55,7 +55,7 @@ fn main() -> Result<()> {
 
     // Ignore exit status here since we asked the GUI to crash on purpose
     gui.wait()?;
-    ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
+    ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
 
     if cli.manual_tests {
         manual_tests(&app)?;
@@ -75,7 +75,7 @@ fn manual_tests(app: &App) -> Result<()> {
 
     // Expect exit codes of 0
     gui.wait()?.fz_exit_ok().context("GUI process")?;
-    ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
+    ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
 
     Ok(())
 }
@@ -228,7 +228,7 @@ fn gui_path() -> PathBuf {
 fn ipc_path() -> PathBuf {
     Path::new("target")
         .join("debug")
-        .join(IPC_NAME)
+        .join(TUNNEL_NAME)
         .with_extension(EXE_EXTENSION)
 }
 

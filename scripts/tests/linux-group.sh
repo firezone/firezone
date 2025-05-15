@@ -5,9 +5,9 @@
 
 source "./scripts/tests/lib.sh"
 
-BINARY_NAME=firezone-client-ipc
+BINARY_NAME=firezone-tunnel-service
 FZ_GROUP="firezone-client"
-SERVICE_NAME=firezone-client-ipc
+SERVICE_NAME=firezone-tunnel-service
 SOCKET=/run/dev.firezone.client/tunnel.sock
 export RUST_LOG=info
 
@@ -25,7 +25,7 @@ sudo cp "rust/target/debug/$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
 # Set up the systemd service
 sudo cp "rust/gui-client/src-tauri/deb_files/$SERVICE_NAME.service" /usr/lib/systemd/system/
-sudo cp "scripts/tests/systemd/env" "/etc/default/firezone-client-ipc"
+sudo cp "scripts/tests/systemd/env" "/etc/default/firezone-tunnel-service"
 
 # The firezone group must exist before the daemon starts
 sudo groupadd "$FZ_GROUP"

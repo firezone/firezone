@@ -1,5 +1,5 @@
 [Unit]
-Description=Firezone Client
+Description=Firezone Tunnel Service
 After=systemd-resolved.service
 Wants=systemd-resolved.service
 
@@ -40,9 +40,9 @@ SystemCallFilter=@aio @basic-io @file-system @io-event @ipc @network-io @signal 
 UMask=077
 
 Environment="LOG_DIR=/var/log/dev.firezone.client"
-EnvironmentFile=-/etc/default/firezone-client-ipc
+EnvironmentFile=-/etc/default/firezone-tunnel-service
 
-ExecStart=firezone-client-ipc run
+ExecStart=firezone-tunnel-service run
 Type=notify
 # Unfortunately we need root to control DNS
 User=root
