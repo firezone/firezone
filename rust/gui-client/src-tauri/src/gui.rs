@@ -146,11 +146,10 @@ pub struct AlreadyRunning;
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 #[instrument(skip_all)]
 pub fn run(
-    rt: tokio::runtime::Runtime,
+    rt: &tokio::runtime::Runtime,
     config: RunConfig,
     advanced_settings: AdvancedSettings,
     reloader: firezone_logging::FilterReloadHandle,
-    mut telemetry: telemetry::Telemetry,
 ) -> Result<()> {
     // Needed for the deep link server
     tauri::async_runtime::set(rt.handle().clone());
@@ -337,8 +336,7 @@ pub fn run(
             .context("Controller failed")?;
 
         anyhow::Ok(())
-    })
-    .inspect_err(|_| rt.block_on(telemetry.stop_on_crash()))?;
+    })?;
 
     tracing::info!("Controller exited gracefully");
 

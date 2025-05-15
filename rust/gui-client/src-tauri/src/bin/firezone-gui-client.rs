@@ -4,6 +4,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use std::process::ExitCode;
+
 use anyhow::{Context as _, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
@@ -13,7 +15,7 @@ use gui::RunConfig;
 use settings::AdvancedSettings;
 use tracing_subscriber::EnvFilter;
 
-fn main() -> anyhow::Result<()> {
+fn main() -> ExitCode {
     // Mitigates a bug in Ubuntu 22.04 - Under Wayland, some features of the window decorations like minimizing, closing the windows, etc., doesn't work unless you double-click the titlebar first.
     // SAFETY: No other thread is running yet
     unsafe {
@@ -27,6 +29,40 @@ fn main() -> anyhow::Result<()> {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
+    let settings = settings::load_advanced_settings().unwrap_or_default();
+
+    let mut telemetry = Telemetry::default();
+    telemetry.start(
+        settings.api_url.as_ref(),
+        firezone_gui_client::RELEASE,
+        firezone_telemetry::GUI_DSN,
+    );
+
+    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
+    // Technically this means we can fail to get the device ID on a newly-installed system, since the IPC service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
+    if let Ok(id) = firezone_bin_shared::device_id::get() {
+        Telemetry::set_firezone_id(id.id);
+    }
+
+    let rt = tokio::runtime::Runtime::new().expect("Couldn't start Tokio runtime");
+
+    match try_main(cli, &rt, settings) {
+        Ok(()) => {
+            rt.block_on(telemetry.stop());
+
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            tracing::error!("GUI failed: {e:#}");
+
+            rt.block_on(telemetry.stop_on_crash());
+
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, settings: AdvancedSettings) -> Result<()> {
     let config = gui::RunConfig {
         inject_faults: cli.inject_faults,
         debug_update_check: cli.debug_update_check,
@@ -39,9 +75,6 @@ fn main() -> anyhow::Result<()> {
         fail_with: cli.fail_on_purpose(),
     };
 
-    let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
-    let settings = settings::load_advanced_settings().unwrap_or_default();
-
     match cli.command {
         None => {
             if cli.no_deep_links {
@@ -49,61 +82,49 @@ fn main() -> anyhow::Result<()> {
             }
             match elevation::gui_check() {
                 // Our elevation is correct (not elevated), just run the GUI
-                Ok(true) => run_gui(rt, config, settings),
+                Ok(true) => run_gui(rt, config, settings)?,
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 #[cfg(target_os = "linux")] // Windows/MacOS elevation check never fails.
                 Err(error) => {
                     show_error_dialog(&error.user_friendly_msg())?;
-                    Err(error.into())
+
+                    return Err(error.into());
                 }
             }
         }
         Some(Cmd::Debug {
             command: DebugCommand::Replicate6791,
-        }) => firezone_gui_client::auth::replicate_6791(),
+        }) => {
+            firezone_gui_client::auth::replicate_6791()?;
+        }
         Some(Cmd::Debug {
             command: DebugCommand::SetAutostart(SetAutostartArgs { enabled }),
         }) => {
             firezone_gui_client::logging::setup_stdout()?;
             rt.block_on(firezone_gui_client::gui::set_autostart(enabled))?;
-
-            Ok(())
         }
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => run_gui(rt, config, settings),
+        Some(Cmd::Elevated) => run_gui(rt, config, settings)?,
         Some(Cmd::OpenDeepLink(deep_link)) => {
             firezone_gui_client::logging::setup_stdout()?;
 
             if let Err(error) = rt.block_on(deep_link::open(deep_link.url)) {
                 tracing::error!("Error in `OpenDeepLink`: {error:#}");
             }
-            Ok(())
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            let mut telemetry = Telemetry::default();
-            telemetry.start(
-                settings.api_url.as_ref(),
-                firezone_gui_client::RELEASE,
-                firezone_telemetry::GUI_DSN,
-            );
             // Don't fix the log filter for smoke tests
             let logging::Handles {
                 logger: _logger,
                 reloader,
             } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
-            let result = gui::run(rt, config, settings, reloader, telemetry);
-            if let Err(error) = &result {
-                // In smoke-test mode, don't show the dialog, since it might be running
-                // unattended in CI and the dialog would hang forever
 
-                // Because of <https://github.com/firezone/firezone/issues/3567>,
-                // errors returned from `gui::run` may not be logged correctly
-                tracing::error!("{error:#}");
-            }
-            Ok(result?)
+            gui::run(rt, config, settings, reloader)?;
         }
-    }
+    };
+
+    Ok(())
 }
 
 /// `gui::run` but wrapped in `anyhow::Result`
@@ -111,29 +132,17 @@ fn main() -> anyhow::Result<()> {
 /// Automatically logs or shows error dialogs for important user-actionable errors
 // Can't `instrument` this because logging isn't running when we enter it.
 fn run_gui(
-    rt: tokio::runtime::Runtime,
+    rt: &tokio::runtime::Runtime,
     config: RunConfig,
     mut settings: AdvancedSettings,
 ) -> Result<()> {
-    let mut telemetry = Telemetry::default();
-    // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
-    telemetry.start(
-        settings.api_url.as_ref(),
-        firezone_gui_client::RELEASE,
-        firezone_telemetry::GUI_DSN,
-    );
-    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
-    // Technically this means we can fail to get the device ID on a newly-installed system, since the IPC service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
-    if let Ok(id) = firezone_bin_shared::device_id::get() {
-        Telemetry::set_firezone_id(id.id);
-    }
     fix_log_filter(&mut settings)?;
     let logging::Handles {
         logger: _logger,
         reloader,
     } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
 
-    match gui::run(rt, config, settings, reloader, telemetry) {
+    match gui::run(rt, config, settings, reloader) {
         Ok(()) => Ok(()),
         Err(anyhow) => {
             if anyhow
@@ -165,7 +174,6 @@ fn run_gui(
             show_error_dialog(
                 "An unexpected error occurred. Please try restarting Firezone. If the issue persists, contact your administrator.",
             )?;
-            tracing::error!("GUI failed: {anyhow:#}");
 
             Err(anyhow)
         }
