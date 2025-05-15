@@ -116,13 +116,11 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettin
         // If we already tried to elevate ourselves, don't try again
         Some(Cmd::Elevated) => run_gui(rt, config, settings, reloader)?,
         Some(Cmd::OpenDeepLink(deep_link)) => {
-            if let Err(error) = rt.block_on(deep_link::open(deep_link.url)) {
-                tracing::error!("Error in `OpenDeepLink`: {error:#}");
-            }
+            rt.block_on(deep_link::open(deep_link.url))
+                .context("Failed to open deep-link")?;
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-
             gui::run(rt, config, settings, reloader)?;
         }
     };
