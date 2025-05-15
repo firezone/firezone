@@ -6,7 +6,8 @@ use str0m::{Candidate, CandidateKind};
 /// Custom "set" implementation for [`Candidate`]s based on a [`HashSet`] with an enforced ordering when iterating.
 #[derive(Debug, Default)]
 pub struct CandidateSet {
-    inner: HashSet<Candidate>,
+    host: HashSet<Candidate>,
+    server_reflexive: HashSet<Candidate>,
 }
 
 impl CandidateSet {
@@ -22,41 +23,36 @@ impl CandidateSet {
                     "CandidateSet is not meant to be used with candidates of kind {}",
                     new.kind()
                 );
-                return false;
+
+                false
             }
-            CandidateKind::ServerReflexive | CandidateKind::Host => {}
+            CandidateKind::Host => self.host.insert(new),
+            CandidateKind::ServerReflexive => {
+                // Hashing a `Candidate` takes longer than checking a handful of entries using their `PartialEq` implementation.
+                // This function is in the hot-path so it needs to be fast ...
+                if self.server_reflexive.iter().any(|c| c == &new) {
+                    return false;
+                }
+
+                self.server_reflexive.retain(|current| {
+                    let is_ip_version_different = current.addr().is_ipv4() != new.addr().is_ipv4();
+
+                    if !is_ip_version_different {
+                        tracing::debug!(%current, %new, "Replacing server-reflexive candidate");
+                    }
+
+                    // Candidates of different IP version are also kept.
+                    is_ip_version_different
+                });
+
+                self.server_reflexive.insert(new)
+            }
         }
-
-        // Hashing a `Candidate` takes longer than checking a handful of entries using their `PartialEq` implementation.
-        // This function is in the hot-path so it needs to be fast ...
-        if self.inner.iter().any(|c| c == &new) {
-            return false;
-        }
-
-        self.inner.retain(|current| {
-            if current.kind() != new.kind() {
-                return true; // Don't evict candidates of different kinds.
-            }
-
-            if current.kind() != CandidateKind::ServerReflexive {
-                return true; // Don't evit candidates other than server reflexive.
-            }
-
-            let is_ip_version_different = current.addr().is_ipv4() != new.addr().is_ipv4();
-
-            if !is_ip_version_different {
-                tracing::debug!(%current, %new, "Replacing server-reflexive candidate");
-            }
-
-            // Candidates of different IP version are also kept.
-            is_ip_version_different
-        });
-
-        self.inner.insert(new)
     }
 
     pub fn clear(&mut self) {
-        self.inner.clear()
+        self.host.clear();
+        self.server_reflexive.clear();
     }
 
     #[expect(
@@ -64,8 +60,9 @@ impl CandidateSet {
         reason = "We are guaranteeing a stable ordering"
     )]
     pub fn iter(&self) -> impl Iterator<Item = &Candidate> {
-        self.inner
-            .iter()
+        std::iter::empty()
+            .chain(self.host.iter())
+            .chain(self.server_reflexive.iter())
             .sorted_by(|l, r| l.prio().cmp(&r.prio()).then(l.addr().cmp(&r.addr())))
     }
 }
