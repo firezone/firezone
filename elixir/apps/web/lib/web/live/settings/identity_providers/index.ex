@@ -156,10 +156,21 @@ defmodule Web.Settings.IdentityProviders.Index do
     assigns = assign(assigns, options: options, value: value)
 
     ~H"""
-    <.form phx-submit="default_provider_save" phx-change="default_provider_change" for={nil}>
+    <.form
+      id="default-provider-form"
+      phx-submit="default_provider_save"
+      phx-change="default_provider_change"
+      for={nil}
+    >
       <div class="flex gap-2 items-center">
         <div class="w-32">
-          <.input name="provider_id" type="select" options={@options} value={@value} />
+          <.input
+            id="default-provider-select"
+            name="provider_id"
+            type="select"
+            options={@options}
+            value={@value}
+          />
         </div>
         <.submit_button
           phx-disable-with="Saving..."

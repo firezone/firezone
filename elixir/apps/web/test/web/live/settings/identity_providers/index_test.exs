@@ -63,6 +63,80 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
     assert Floki.text(button) =~ "Add Identity Provider"
   end
 
+  test "renders default provider form", %{account: account, identity: identity, conn: conn} do
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers")
+
+    assert Floki.text(html) =~ "Default Authentication Provider"
+    assert form = Floki.find(html, "form#default-provider-form")
+
+    assert Floki.text(form) =~
+             "When selected, users signing in from the Firezone client will be taken directly to this provider for authentication."
+  end
+
+  test "allows setting a default provider", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {provider, _bypass} = Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+    {:ok, lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers")
+
+    assert Floki.text(html) =~ "Default Authentication Provider"
+
+    html =
+      lv
+      |> form("#default-provider-form", %{
+        "provider_id" => provider.id
+      })
+      |> render_submit()
+
+    # Assert the default provider is set
+    assert html
+           |> Floki.find("option[selected]")
+           |> Floki.attribute("value") == [to_string(provider.id)]
+  end
+
+  test "allows clearing the default provider", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {provider, _bypass} =
+      Fixtures.Auth.start_and_create_openid_connect_provider(
+        account: account,
+        assigned_default_at: DateTime.utc_now()
+      )
+
+    {:ok, lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/identity_providers")
+
+    assert Floki.text(html) =~ "Default Authentication Provider"
+
+    html =
+      lv
+      |> form("#default-provider-form", %{
+        "provider_id" => "none"
+      })
+      |> render_submit()
+
+    # Assert the default provider is set
+    assert html
+           |> Floki.find("option[selected]")
+           |> Floki.attribute("value") == ["none"]
+
+    provider = Repo.reload(provider)
+    assert is_nil(provider.assigned_default_at)
+  end
+
   test "renders table with multiple providers", %{
     account: account,
     openid_connect_provider: openid_connect_provider,
