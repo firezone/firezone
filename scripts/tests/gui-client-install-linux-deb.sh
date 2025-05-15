@@ -4,7 +4,7 @@
 
 set -euox pipefail
 
-SERVICE_NAME=firezone-tunnel-service
+SERVICE_NAME=firezone-client-tunnel
 
 function debug_exit() {
     systemctl status "$SERVICE_NAME"
@@ -21,7 +21,7 @@ dpkg --listfiles firezone-client-gui
 dpkg --info "$DEB_PATH"
 
 # Confirm that both binaries and at least one icon were installed
-which firezone-client-gui firezone-tunnel-service
+which firezone-client-gui firezone-client-tunnel
 stat /usr/share/icons/hicolor/512x512/apps/firezone-client-gui.png
 
 # Make sure the binary got built, packaged, and installed, and at least

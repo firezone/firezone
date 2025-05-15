@@ -2,8 +2,8 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
     <DirectoryRef Id="INSTALLDIR">
-        <Component Id="FirezoneTunnelService" Guid="a8092ff9-30fa-48bb-9b2d-45fe39d16c66">
-          <File Id="FirezoneTunnelServiceExe" Name="firezone-tunnel-service.exe" Source="../../firezone-tunnel-service.exe" KeyPath="yes" />
+        <Component Id="FirezoneClientTunnelService" Guid="a8092ff9-30fa-48bb-9b2d-45fe39d16c66">
+          <File Id="FirezoneClientTunnelServiceExe" Name="firezone-client-tunnel.exe" Source="../../firezone-client-tunnel.exe" KeyPath="yes" />
 
           <ServiceControl Id="RemoveOldFirezoneService" Name="FirezoneClientIpcService" Stop="both" Remove="uninstall" Wait="yes" />
           <ServiceControl Id="RemoveOldFirezoneDebugService" Name="FirezoneClientIpcServiceDebug" Stop="both" Remove="uninstall" Wait="yes" />
@@ -13,7 +13,7 @@
               Arguments="run"
               Type="ownProcess"
               Vital="yes"
-              Name="FirezoneTunnelService"
+              Name="FirezoneClientTunnelService"
               DisplayName="Firezone Tunnel Service"
               Start="auto"
               Account="LocalSystem"
@@ -21,7 +21,7 @@
               Interactive="no">
             </ServiceInstall>
 
-            <ServiceControl Id="FirezoneClientServiceControl" Start="install" Stop="both" Remove="both" Name="FirezoneTunnelService" Wait="yes" />
+            <ServiceControl Id="FirezoneClientServiceControl" Start="install" Stop="both" Remove="both" Name="FirezoneClientTunnelService" Wait="yes" />
       </Component>
     </DirectoryRef>
   </Fragment>

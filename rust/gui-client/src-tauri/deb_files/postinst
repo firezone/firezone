@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-SERVICE_NAME="firezone-tunnel-service"
+SERVICE_NAME="firezone-client-tunnel"
 
 # Creates the system group `firezone-client`
 sudo systemd-sysusers

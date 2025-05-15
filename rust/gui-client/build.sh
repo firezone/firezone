@@ -57,9 +57,9 @@ rm "$INTERMEDIATE_DIR"/*.tar.gz
 #     │       ├── lib
 #     │       │   ├── systemd
 #     │       │   │   └── system
-#     │       │   │       └── firezone-tunnel-service.service
+#     │       │   │       └── firezone-client-tunnel.service
 #     │       │   └── sysusers.d
-#     │       │       └── firezone-tunnel-service.conf
+#     │       │       └── firezone-client-tunnel.conf
 #     │       └── share
 #     │           ├── applications
 #     │           │   └── firezone-client-gui.desktop
@@ -71,7 +71,7 @@ rm "$INTERMEDIATE_DIR"/*.tar.gz
 cp src-tauri/deb_files/postinst src-tauri/deb_files/prerm "$INTERMEDIATE_DIR/control/"
 
 # Add the Tunnel service
-cp ../target/release/firezone-tunnel-service "$INTERMEDIATE_DIR/data/usr/bin/"
+cp ../target/release/firezone-client-tunnel "$INTERMEDIATE_DIR/data/usr/bin/"
 
 pushd "$INTERMEDIATE_DIR"
 

@@ -152,7 +152,7 @@ pub fn install() -> Result<()> {
     let manager_access = ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE;
     let service_manager = ServiceManager::local_computer(None::<&str>, manager_access)?;
 
-    let name = "FirezoneTunnelServiceDebug";
+    let name = "FirezoneClientTunnelServiceDebug";
 
     // Un-install existing one first if needed
     if let Err(e) = uninstall_ipc_service(&service_manager, name)

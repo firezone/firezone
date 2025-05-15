@@ -80,7 +80,7 @@ mod tests {
     use clap::Parser;
     use std::path::PathBuf;
 
-    const EXE_NAME: &str = "firezone-tunnel-service";
+    const EXE_NAME: &str = "firezone-client-tunnel";
 
     // Can't remember how Clap works sometimes
     // Also these are examples

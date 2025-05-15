@@ -10,8 +10,8 @@
     "linux": {
       "deb": {
         "files": {
-          "/usr/lib/systemd/system/firezone-tunnel-service.service": "./deb_files/firezone-tunnel-service.service",
-          "/usr/lib/sysusers.d/firezone-tunnel-service.conf": "./deb_files/sysusers.conf"
+          "/usr/lib/systemd/system/firezone-client-tunnel.service": "./deb_files/firezone-client-tunnel.service",
+          "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./deb_files/sysusers.conf"
         },
         "desktopTemplate": "./deb_files/firezone-client-gui.desktop"
       }
@@ -20,7 +20,7 @@
     "windows": {
       "wix": {
         "bannerPath": "./win_files/banner.png",
-        "componentRefs": ["FirezoneTunnelService"],
+        "componentRefs": ["FirezoneClientTunnelService"],
         "dialogImagePath": "./win_files/install_dialog.png",
         "fragmentPaths": ["./win_files/service.wxs"],
         "template": "./win_files/main.wxs"

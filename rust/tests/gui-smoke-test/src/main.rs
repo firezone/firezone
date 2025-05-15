@@ -14,7 +14,7 @@ use subprocess::Exec;
 const FZ_GROUP: &str = "firezone-client";
 
 const GUI_NAME: &str = "firezone-gui-client";
-const TUNNEL_NAME: &str = "firezone-tunnel-service";
+const TUNNEL_NAME: &str = "firezone-client-tunnel";
 
 #[cfg(target_os = "linux")]
 const EXE_EXTENSION: &str = "";
