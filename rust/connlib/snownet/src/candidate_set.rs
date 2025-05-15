@@ -15,6 +15,18 @@ impl CandidateSet {
         reason = "We don't care about the ordering."
     )]
     pub fn insert(&mut self, new: Candidate) -> bool {
+        match new.kind() {
+            CandidateKind::PeerReflexive | CandidateKind::Relayed => {
+                debug_assert!(false);
+                tracing::warn!(
+                    "CandidateSet is not meant to be used with candidates of kind {}",
+                    new.kind()
+                );
+                return false;
+            }
+            CandidateKind::ServerReflexive | CandidateKind::Host => {}
+        }
+
         // Hashing a `Candidate` takes longer than checking a handful of entries using their `PartialEq` implementation.
         // This function is in the hot-path so it needs to be fast ...
         if self.inner.iter().any(|c| c == &new) {
@@ -111,21 +123,5 @@ mod tests {
         assert!(set.insert(host2.clone()));
 
         assert_eq!(set.iter().cloned().collect::<Vec<_>>(), vec![host1, host2]);
-    }
-
-    #[test]
-    fn allows_multiple_relay_candidates_of_same_ip_base() {
-        let mut set = CandidateSet::default();
-
-        let relay1 = Candidate::relayed(SOCK_ADDR1, SOCK_ADDR_IP4_BASE, Protocol::Udp).unwrap();
-        let relay2 = Candidate::relayed(SOCK_ADDR2, SOCK_ADDR_IP4_BASE, Protocol::Udp).unwrap();
-
-        assert!(set.insert(relay1.clone()));
-        assert!(set.insert(relay2.clone()));
-
-        assert_eq!(
-            set.iter().cloned().collect::<Vec<_>>(),
-            vec![relay1, relay2]
-        );
     }
 }
