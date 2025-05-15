@@ -181,7 +181,10 @@ pub fn setup_ipc(
 )> {
     // If `log_dir` is Some, use that. Else call `ipc_service_logs`
     let log_path = log_path.map_or_else(
-        || known_dirs::ipc_service_logs().context("Should be able to compute Tunnel service logs dir"),
+        || {
+            known_dirs::ipc_service_logs()
+                .context("Should be able to compute Tunnel service logs dir")
+        },
         Ok,
     )?;
     std::fs::create_dir_all(&log_path)
