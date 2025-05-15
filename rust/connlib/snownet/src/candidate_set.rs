@@ -95,4 +95,33 @@ mod tests {
             vec![c2, c4, host1, host2]
         );
     }
+
+    #[test]
+    fn allows_multiple_host_candidates_of_same_ip_base() {
+        let mut set = CandidateSet::default();
+
+        let host1 = Candidate::host(SOCK_ADDR1, Protocol::Udp).unwrap();
+        let host2 = Candidate::host(SOCK_ADDR2, Protocol::Udp).unwrap();
+
+        assert!(set.insert(host1.clone()));
+        assert!(set.insert(host2.clone()));
+
+        assert_eq!(set.iter().cloned().collect::<Vec<_>>(), vec![host1, host2]);
+    }
+
+    #[test]
+    fn allows_multiple_relay_candidates_of_same_ip_base() {
+        let mut set = CandidateSet::default();
+
+        let relay1 = Candidate::relayed(SOCK_ADDR1, SOCK_ADDR_IP4_BASE, Protocol::Udp).unwrap();
+        let relay2 = Candidate::relayed(SOCK_ADDR2, SOCK_ADDR_IP4_BASE, Protocol::Udp).unwrap();
+
+        assert!(set.insert(relay1.clone()));
+        assert!(set.insert(relay2.clone()));
+
+        assert_eq!(
+            set.iter().cloned().collect::<Vec<_>>(),
+            vec![relay1, relay2]
+        );
+    }
 }
