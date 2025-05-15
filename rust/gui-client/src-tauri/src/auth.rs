@@ -77,7 +77,7 @@ pub(crate) struct Response {
     pub(crate) state: SecretString,
 }
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Default, Clone, Deserialize, Serialize)]
 pub struct Session {
     pub(crate) account_slug: String,
     pub(crate) actor_name: String,

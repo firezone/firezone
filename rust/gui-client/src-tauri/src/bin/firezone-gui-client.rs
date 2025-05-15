@@ -145,8 +145,12 @@ fn run_gui(config: RunConfig) -> Result<()> {
             }
 
             if anyhow.root_cause().is::<gui::AlreadyRunning>() {
+                return Ok(());
+            }
+
+            if anyhow.root_cause().is::<gui::NewInstanceHandshakeFailed>() {
                 show_error_dialog(
-                    "Firezone is already running. If it's not responding, force-stop it.",
+                    "Firezone is already running but not responding. Please force-stop it first.",
                 )?;
                 return Err(anyhow);
             }

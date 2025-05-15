@@ -13,6 +13,10 @@ export default function GUI({ os }: { os: OS }) {
           Fixes an issue where connections failed to establish on machines
           with multiple valid egress IPs.
         </ChangeItem>
+        <ChangeItem pull="9136">
+          Launching Firezone while it is already running while now re-activate
+          the "Welcome" screen, allowing the user to sign in and out.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.13" date={new Date("2025-05-14")}>
         <ChangeItem pull="9014">
