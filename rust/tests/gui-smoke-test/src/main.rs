@@ -118,6 +118,7 @@ impl App {
                 .to_str()
                 .context("Should be able to convert Path to &str")?, // For some reason `xvfb-run` doesn't just use our current working dir
             "--no-deep-links",
+            "--no-elevation-check",
         ]
         .into_iter()
         .chain(args.iter().copied())
@@ -149,7 +150,10 @@ impl App {
 
     // Strange signature needed to match Linux
     fn gui_command(&self, args: &[&str]) -> Result<Exec> {
-        Ok(Exec::cmd(gui_path()).arg("--no-deep-links").args(args))
+        Ok(Exec::cmd(gui_path())
+            .arg("--no-deep-links")
+            .arg("--no-elevation-check")
+            .args(args))
     }
 }
 

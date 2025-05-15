@@ -88,20 +88,20 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettin
 
     match cli.command {
         None => {
-            if cli.no_deep_links {
-                return run_gui(rt, config, settings, reloader);
-            }
-            match elevation::gui_check() {
-                // Our elevation is correct (not elevated), just run the GUI
-                Ok(true) => run_gui(rt, config, settings, reloader)?,
-                Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
-                #[cfg(target_os = "linux")] // Windows/MacOS elevation check never fails.
-                Err(error) => {
-                    show_error_dialog(&error.user_friendly_msg())?;
+            if cli.check_elevation() {
+                match elevation::gui_check() {
+                    Ok(true) => {}
+                    Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
+                    #[cfg(target_os = "linux")] // Windows/MacOS elevation check never fails.
+                    Err(error) => {
+                        show_error_dialog(&error.user_friendly_msg())?;
 
-                    return Err(error.into());
+                        return Err(error.into());
+                    }
                 }
             }
+
+            return run_gui(rt, config, settings, reloader);
         }
         Some(Cmd::Debug {
             command: DebugCommand::Replicate6791,
@@ -240,9 +240,12 @@ struct Cli {
     /// If true, show a fake update notification that opens the Firezone release page when clicked
     #[arg(long, hide = true)]
     test_update_notification: bool,
-    /// For headless CI, disable deep links and allow the GUI to run as admin
+    /// For headless CI, disable deep links.
     #[arg(long, hide = true)]
     no_deep_links: bool,
+    /// For headless CI, disable the elevation check.
+    #[arg(long, hide = true)]
+    no_elevation_check: bool,
 }
 
 impl Cli {
@@ -256,6 +259,10 @@ impl Cli {
         } else {
             None
         }
+    }
+
+    fn check_elevation(&self) -> bool {
+        !self.no_elevation_check
     }
 }
 
