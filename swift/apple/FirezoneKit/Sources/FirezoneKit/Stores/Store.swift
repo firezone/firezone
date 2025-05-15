@@ -15,12 +15,15 @@ import AppKit
 
 @MainActor
 // TODO: Move some state logic to view models
-// swiftlint:disable:next type_body_length
 public final class Store: ObservableObject {
+  @Published private(set) var actorName: String
   @Published private(set) var favorites = Favorites()
   @Published private(set) var resourceList: ResourceList = .loading
 
-  // UserDefaults-backed app configuration that will publish updates to SwiftUI components
+  // User-configurable settings
+  @Published private(set) var settings: Settings?
+
+  // UserDefaults-backed app configuration
   @Published private(set) var configuration: Configuration?
 
   // Enacapsulate Tunnel status here to make it easier for other components to observe
@@ -46,6 +49,9 @@ public final class Store: ObservableObject {
   private var vpnConfigurationManager: VPNConfigurationManager?
 
   public init() {
+    // Load GUI-only cached state
+    self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
+
     self.sessionNotification.signInHandler = {
       Task {
         do { try await WebAuthSession.signIn(store: self) } catch { Log.error(error) }
@@ -84,10 +90,10 @@ public final class Store: ObservableObject {
           try await manager.maybeMigrateConfiguration()
           self.vpnConfigurationManager = manager
           try await setupTunnelObservers()
-          try await manager.enableConfiguration()
           self.configuration = try await ipcClient().getConfiguration()
           Telemetry.firezoneId = configuration?.firezoneId
 
+          try await manager.enableConfiguration()
           if configuration?.connectOnStart ?? true {
             try ipcClient().start()
           }
@@ -221,17 +227,18 @@ public final class Store: ObservableObject {
   }
 
   func signIn(authResponse: AuthResponse) async throws {
-    // Save actorName
-    try await setActorName(authResponse.actorName)
+    let actorName = authResponse.actorName
+    let accountSlug = authResponse.accountSlug
 
-    // This will save the account slug even if overridden from MDM. This is what we want - if the admin removes the
-    // override, this will take effect again.
-    try await setAccountSlug(authResponse.accountSlug)
+    // This is only shown in the GUI, cache it here
+    UserDefaults.standard.set(actorName, forKey: "actorName")
+
+    Telemetry.accountSlug = accountSlug
 
     try await manager().enableConfiguration()
 
     // Bring the tunnel up and send it a token to start
-    try ipcClient().start(token: authResponse.token)
+    try ipcClient().start(token: authResponse.token, accountSlug: accountSlug)
   }
 
   func signOut() async throws {
@@ -249,52 +256,17 @@ public final class Store: ObservableObject {
 
   // MARK: App configuration setters
 
-  func setActorName(_ actorName: String) async throws {
-    try await ipcClient().setActorName(actorName)
-    configuration?.actorName = actorName
+  func applySettingsToConfiguration(_ settings: Settings) async throws {
+    configuration?.applySettings(settings)
+    try await setConfiguration(configuration)
   }
 
-  func setAccountSlug(_ accountSlug: String) async throws {
-    try await ipcClient().setAccountSlug(accountSlug)
-    configuration?.accountSlug = accountSlug
-
-    // Configure our Telemetry environment, closing if we're definitely not running against Firezone infrastructure.
-    Telemetry.accountSlug = accountSlug
-  }
-
-  func setAuthURL(_ authURL: String) async throws {
-    try await ipcClient().setAuthURL(authURL)
-    configuration?.authURL = authURL
-  }
-
-  func setApiURL(_ apiURL: String) async throws {
-    try await ipcClient().setApiURL(apiURL)
-    configuration?.apiURL = apiURL
-
-    // Reconfigure our Telemetry environment in case it changed
-    Telemetry.setEnvironmentOrClose(apiURL)
-  }
-
-  func setLogFilter(_ logFilter: String) async throws {
-    try await ipcClient().setLogFilter(logFilter)
-    configuration?.logFilter = logFilter
-  }
-
-  func setInternetResourceEnabled(_ internetResourceEnabled: Bool) async throws {
-    try await ipcClient().setInternetResourceEnabled(internetResourceEnabled)
+  private func setInternetResourceEnabled(_ internetResourceEnabled: Bool) async throws {
     configuration?.internetResourceEnabled = internetResourceEnabled
-  }
-
-  func setConnectOnStart(_ connectOnStart: Bool) async throws {
-    try await ipcClient().setConnectOnStart(connectOnStart)
-    configuration?.connectOnStart = connectOnStart
+    try await setConfiguration(configuration)
   }
 
   // MARK: Private functions
-
-  private func start(token: String? = nil) throws {
-    try ipcClient().start(token: token)
-  }
 
   private func beginConfigurationPolling() {
     // Ensure we're idempotent if called twice
@@ -377,5 +349,16 @@ public final class Store: ObservableObject {
     resourcesTimer?.invalidate()
     resourcesTimer = nil
     resourceList = ResourceList.loading
+  }
+
+  private func setConfiguration(_ configuration: Configuration?) async throws {
+    guard let configuration = configuration
+    else {
+      Log.warning("Tried to set configuration before it was initialized")
+      return
+    }
+
+    try await ipcClient().setConfiguration(configuration)
+    self.configuration = configuration
   }
 }

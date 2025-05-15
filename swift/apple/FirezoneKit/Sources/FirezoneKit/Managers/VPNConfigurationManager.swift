@@ -96,41 +96,45 @@ public class VPNConfigurationManager {
 
     let ipcClient = IPCClient(session: session)
 
+    var userDict: [String: Any?] = [:]
     var migrated = false
 
+    if let actorName = legacyConfiguration["actorName"] {
+      UserDefaults.standard.set(actorName, forKey: "actorName")
+      migrated = true
+    }
+
     if let apiURL = legacyConfiguration["apiURL"] {
-      try await ipcClient.setApiURL(apiURL)
+      userDict[Configuration.Keys.apiURL] = apiURL
       migrated = true
     }
 
     if let authURL = legacyConfiguration["authBaseURL"] {
-      try await ipcClient.setAuthURL(authURL)
-      migrated = true
-    }
-
-    if let actorName = legacyConfiguration["actorName"] {
-      try await ipcClient.setActorName(actorName)
+      userDict[Configuration.Keys.authURL] = authURL
       migrated = true
     }
 
     if let accountSlug = legacyConfiguration["accountSlug"] {
-      try await ipcClient.setAccountSlug(accountSlug)
+      userDict[Configuration.Keys.accountSlug] = accountSlug
       migrated = true
     }
 
     if let logFilter = legacyConfiguration["logFilter"],
        !logFilter.isEmpty {
-      try await ipcClient.setLogFilter(logFilter)
+      userDict[Configuration.Keys.logFilter] = logFilter
       migrated = true
     }
 
     if let internetResourceEnabled = legacyConfiguration["internetResourceEnabled"],
        ["false", "true"].contains(internetResourceEnabled) {
-      try await ipcClient.setInternetResourceEnabled(internetResourceEnabled == "true")
+      userDict[Configuration.Keys.internetResourceEnabled] = internetResourceEnabled == "true"
       migrated = true
     }
 
     if !migrated { return }
+
+    let configuration = Configuration(userDict: userDict, managedDict: [:])
+    try await ipcClient.setConfiguration(configuration)
 
     // Remove fields to prevent confusion if the user sees these in System Settings and wonders why they're stale.
     if let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol {
