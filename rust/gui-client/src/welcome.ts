@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import "flowbite"
 
 const signInBtn = <HTMLButtonElement>document.getElementById("sign-in");
 
