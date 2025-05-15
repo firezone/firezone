@@ -13,8 +13,8 @@ const signOutBtn = <HTMLButtonElement>document.getElementById("sign-out");
 const signedInDiv = <HTMLDivElement>document.getElementById("signed-in");
 const signedOutDiv = <HTMLDivElement>document.getElementById("signed-out");
 
-const accountSlugSpan = <HTMLSpanElement>document.getElementById("account_slug");
-const actorNameSpan = <HTMLSpanElement>document.getElementById("actor_name");
+const accountSlugSpan = <HTMLSpanElement>document.getElementById("account-slug");
+const actorNameSpan = <HTMLSpanElement>document.getElementById("actor-name");
 
 // Initial state is to assume we are signed out.
 signedOutDiv.style.display = "block";
