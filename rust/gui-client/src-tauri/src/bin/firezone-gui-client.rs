@@ -62,7 +62,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, settings: AdvancedSettings) -> Result<()> {
+fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettings) -> Result<()> {
     let config = gui::RunConfig {
         inject_faults: cli.inject_faults,
         debug_update_check: cli.debug_update_check,
@@ -74,6 +74,11 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, settings: AdvancedSettings) 
         quit_after: cli.quit_after,
         fail_with: cli.fail_on_purpose(),
     };
+
+    // Don't fix the log filter for smoke tests because we can't show a dialog there.
+    if !config.smoke_test {
+        fix_log_filter(&mut settings)?;
+    }
 
     match cli.command {
         None => {
@@ -114,7 +119,6 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, settings: AdvancedSettings) 
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            // Don't fix the log filter for smoke tests
             let logging::Handles {
                 logger: _logger,
                 reloader,
@@ -133,9 +137,8 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, settings: AdvancedSettings) 
 fn run_gui(
     rt: &tokio::runtime::Runtime,
     config: RunConfig,
-    mut settings: AdvancedSettings,
+    settings: AdvancedSettings,
 ) -> Result<()> {
-    fix_log_filter(&mut settings)?;
     let logging::Handles {
         logger: _logger,
         reloader,
