@@ -39,14 +39,16 @@ fn main() -> anyhow::Result<()> {
         fail_with: cli.fail_on_purpose(),
     };
 
+    let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
+
     match cli.command {
         None => {
             if cli.no_deep_links {
-                return run_gui(config);
+                return run_gui(rt, config);
             }
             match elevation::gui_check() {
                 // Our elevation is correct (not elevated), just run the GUI
-                Ok(true) => run_gui(config),
+                Ok(true) => run_gui(rt, config),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 #[cfg(target_os = "linux")] // Windows/MacOS elevation check never fails.
                 Err(error) => {
@@ -62,17 +64,15 @@ fn main() -> anyhow::Result<()> {
             command: DebugCommand::SetAutostart(SetAutostartArgs { enabled }),
         }) => {
             firezone_gui_client::logging::setup_stdout()?;
-            let rt = tokio::runtime::Runtime::new()?;
             rt.block_on(firezone_gui_client::gui::set_autostart(enabled))?;
 
             Ok(())
         }
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => run_gui(config),
+        Some(Cmd::Elevated) => run_gui(rt, config),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             firezone_gui_client::logging::setup_stdout()?;
 
-            let rt = tokio::runtime::Runtime::new()?;
             if let Err(error) = rt.block_on(deep_link::open(deep_link.url)) {
                 tracing::error!("Error in `OpenDeepLink`: {error:#}");
             }
@@ -92,7 +92,7 @@ fn main() -> anyhow::Result<()> {
                 logger: _logger,
                 reloader,
             } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
-            let result = gui::run(config, settings, reloader, telemetry);
+            let result = gui::run(rt, config, settings, reloader, telemetry);
             if let Err(error) = &result {
                 // In smoke-test mode, don't show the dialog, since it might be running
                 // unattended in CI and the dialog would hang forever
@@ -110,7 +110,7 @@ fn main() -> anyhow::Result<()> {
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
 // Can't `instrument` this because logging isn't running when we enter it.
-fn run_gui(config: RunConfig) -> Result<()> {
+fn run_gui(rt: tokio::runtime::Runtime, config: RunConfig) -> Result<()> {
     let mut settings = settings::load_advanced_settings().unwrap_or_default();
     let mut telemetry = Telemetry::default();
     // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
@@ -130,7 +130,7 @@ fn run_gui(config: RunConfig) -> Result<()> {
         reloader,
     } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
 
-    match gui::run(config, settings, reloader, telemetry) {
+    match gui::run(rt, config, settings, reloader, telemetry) {
         Ok(()) => Ok(()),
         Err(anyhow) => {
             if anyhow

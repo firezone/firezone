@@ -146,13 +146,13 @@ pub struct AlreadyRunning;
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 #[instrument(skip_all)]
 pub fn run(
+    rt: tokio::runtime::Runtime,
     config: RunConfig,
     advanced_settings: AdvancedSettings,
     reloader: firezone_logging::FilterReloadHandle,
     mut telemetry: telemetry::Telemetry,
 ) -> Result<()> {
     // Needed for the deep link server
-    let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
     tauri::async_runtime::set(rt.handle().clone());
 
     let _guard = rt.enter();
