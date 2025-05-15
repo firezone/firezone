@@ -10,6 +10,7 @@ use anyhow::{Context as _, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, elevation, gui, logging, settings};
+use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
 use gui::RunConfig;
 use settings::AdvancedSettings;
@@ -80,14 +81,19 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettin
         fix_log_filter(&mut settings)?;
     }
 
+    let logging::Handles {
+        logger: _logger,
+        reloader,
+    } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
+
     match cli.command {
         None => {
             if cli.no_deep_links {
-                return run_gui(rt, config, settings);
+                return run_gui(rt, config, settings, reloader);
             }
             match elevation::gui_check() {
                 // Our elevation is correct (not elevated), just run the GUI
-                Ok(true) => run_gui(rt, config, settings)?,
+                Ok(true) => run_gui(rt, config, settings, reloader)?,
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 #[cfg(target_os = "linux")] // Windows/MacOS elevation check never fails.
                 Err(error) => {
@@ -105,24 +111,17 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettin
         Some(Cmd::Debug {
             command: DebugCommand::SetAutostart(SetAutostartArgs { enabled }),
         }) => {
-            firezone_gui_client::logging::setup_stdout()?;
             rt.block_on(firezone_gui_client::gui::set_autostart(enabled))?;
         }
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => run_gui(rt, config, settings)?,
+        Some(Cmd::Elevated) => run_gui(rt, config, settings, reloader)?,
         Some(Cmd::OpenDeepLink(deep_link)) => {
-            firezone_gui_client::logging::setup_stdout()?;
-
             if let Err(error) = rt.block_on(deep_link::open(deep_link.url)) {
                 tracing::error!("Error in `OpenDeepLink`: {error:#}");
             }
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            let logging::Handles {
-                logger: _logger,
-                reloader,
-            } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
 
             gui::run(rt, config, settings, reloader)?;
         }
@@ -138,12 +137,8 @@ fn run_gui(
     rt: &tokio::runtime::Runtime,
     config: RunConfig,
     settings: AdvancedSettings,
+    reloader: FilterReloadHandle,
 ) -> Result<()> {
-    let logging::Handles {
-        logger: _logger,
-        reloader,
-    } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
-
     match gui::run(rt, config, settings, reloader) {
         Ok(()) => Ok(()),
         Err(anyhow) => {
