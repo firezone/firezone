@@ -10,9 +10,7 @@ use anyhow::{Context as _, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, elevation, gui, logging, settings};
-use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
-use gui::RunConfig;
 use settings::AdvancedSettings;
 use tracing_subscriber::EnvFilter;
 
@@ -130,22 +128,8 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettin
         }
     };
 
-    run_gui(rt, config, settings, reloader)?;
-
-    Ok(())
-}
-
-/// `gui::run` but wrapped in `anyhow::Result`
-///
-/// Automatically logs or shows error dialogs for important user-actionable errors
-fn run_gui(
-    rt: &tokio::runtime::Runtime,
-    config: RunConfig,
-    settings: AdvancedSettings,
-    reloader: FilterReloadHandle,
-) -> Result<()> {
     match gui::run(rt, config, settings, reloader) {
-        Ok(()) => Ok(()),
+        Ok(()) => {}
         Err(anyhow) => {
             if anyhow
                 .chain()
@@ -177,9 +161,11 @@ fn run_gui(
                 "An unexpected error occurred. Please try restarting Firezone. If the issue persists, contact your administrator.",
             )?;
 
-            Err(anyhow)
+            return Err(anyhow);
         }
-    }
+    };
+
+    Ok(())
 }
 
 /// Parse the log filter from settings, showing an error and fixing it if needed
