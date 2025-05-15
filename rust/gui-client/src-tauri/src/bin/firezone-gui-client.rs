@@ -40,15 +40,16 @@ fn main() -> anyhow::Result<()> {
     };
 
     let rt = tokio::runtime::Runtime::new().context("Couldn't start Tokio runtime")?;
+    let settings = settings::load_advanced_settings().unwrap_or_default();
 
     match cli.command {
         None => {
             if cli.no_deep_links {
-                return run_gui(rt, config);
+                return run_gui(rt, config, settings);
             }
             match elevation::gui_check() {
                 // Our elevation is correct (not elevated), just run the GUI
-                Ok(true) => run_gui(rt, config),
+                Ok(true) => run_gui(rt, config, settings),
                 Ok(false) => bail!("The GUI should run as a normal user, not elevated"),
                 #[cfg(target_os = "linux")] // Windows/MacOS elevation check never fails.
                 Err(error) => {
@@ -69,7 +70,7 @@ fn main() -> anyhow::Result<()> {
             Ok(())
         }
         // If we already tried to elevate ourselves, don't try again
-        Some(Cmd::Elevated) => run_gui(rt, config),
+        Some(Cmd::Elevated) => run_gui(rt, config, settings),
         Some(Cmd::OpenDeepLink(deep_link)) => {
             firezone_gui_client::logging::setup_stdout()?;
 
@@ -80,7 +81,6 @@ fn main() -> anyhow::Result<()> {
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            let settings = settings::load_advanced_settings().unwrap_or_default();
             let mut telemetry = Telemetry::default();
             telemetry.start(
                 settings.api_url.as_ref(),
@@ -110,8 +110,11 @@ fn main() -> anyhow::Result<()> {
 ///
 /// Automatically logs or shows error dialogs for important user-actionable errors
 // Can't `instrument` this because logging isn't running when we enter it.
-fn run_gui(rt: tokio::runtime::Runtime, config: RunConfig) -> Result<()> {
-    let mut settings = settings::load_advanced_settings().unwrap_or_default();
+fn run_gui(
+    rt: tokio::runtime::Runtime,
+    config: RunConfig,
+    mut settings: AdvancedSettings,
+) -> Result<()> {
     let mut telemetry = Telemetry::default();
     // In the future telemetry will be opt-in per organization, that's why this isn't just at the top of `main`
     telemetry.start(
