@@ -13,11 +13,20 @@ import SwiftUI
 
 enum SettingsViewError: Error {
   case logFolderIsUnavailable
+  case configurationNotInitialized
 
   var localizedDescription: String {
     switch self {
     case .logFolderIsUnavailable:
-      return "Log folder is unavailable."
+      return """
+        Log folder is unavailable.
+        Try restarting your device or reinstalling Firezone if this issue persists.
+      """
+    case .configurationNotInitialized:
+      return """
+        Configuration is not initialized.
+        Try restarting your device or reinstalling Firezone if this issue persists.
+      """
     }
   }
 }
@@ -69,153 +78,78 @@ class SettingsViewModel: ObservableObject {
   private let store: Store
   private var cancellables = Set<AnyCancellable>()
 
-  @Published var authURL: String
-  @Published var apiURL: String
-  @Published var logFilter: String
-  @Published var accountSlug: String
-  @Published var connectOnStart: Bool
-  @Published private(set) var isAuthURLOverridden = false
-  @Published private(set) var isApiURLOverridden = false
-  @Published private(set) var isLogFilterOverridden = false
-  @Published private(set) var isAccountSlugOverridden = false
-  @Published private(set) var isConnectOnStartOverridden = false
+  @Published var settings: Settings
+
   @Published private(set) var shouldDisableApplyButton = false
   @Published private(set) var shouldDisableResetButton = false
-  @Published private(set) var areSettingsDefault = true
-  @Published private(set) var areSettingsValid = true
-  @Published private(set) var areSettingsSaved = true
 
   init(store: Store) {
     self.store = store
 
-    self.authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
-    self.apiURL = store.configuration?.apiURL ?? Configuration.defaultApiURL
-    self.logFilter = store.configuration?.logFilter ?? Configuration.defaultLogFilter
-    self.accountSlug = store.configuration?.accountSlug ?? ""
-    self.connectOnStart = store.configuration?.connectOnStart ?? true
-
-    updateDerivedState()
-
-    // Update our state from our text fields
-    Publishers.CombineLatest(
-      Publishers.CombineLatest4($authURL, $apiURL, $logFilter, $accountSlug),
-      $connectOnStart
-    )
-    .receive(on: RunLoop.main)
-    .sink { [weak self] _ in
-      guard let self = self else { return }
-
-      self.updateDerivedState()
+    guard let configuration = store.configuration
+    else {
+      fatalError("Configuration must be initialized to view settings")
     }
+
+    self.settings = Settings(from: configuration)
+    setupObservers()
+
+    // TODO: Handle updates to configuration while the SettingsView is open?
+  }
+
+  func reset() {
+    settings.reset()
+    objectWillChange.send()
+    updateDerivedState()
+  }
+
+  func save() async throws {
+    try await store.applySettingsToConfiguration(settings)
+
+    guard let configuration = store.configuration
+    else {
+      throw SettingsViewError.configurationNotInitialized
+    }
+
+    self.settings = Settings(from: configuration)
+    setupObservers()
+  }
+
+  private func setupObservers() {
+    // These all need to be the same underlying type
+    Publishers.MergeMany([
+      settings.$authURL,
+      settings.$apiURL,
+      settings.$accountSlug,
+      settings.$logFilter
+    ])
+    .receive(on: RunLoop.main)
+    .sink(receiveValue: { [weak self] _ in
+      self?.updateDerivedState()
+    })
     .store(in: &cancellables)
 
-    // Update our state from configuration updates
-    store.$configuration
+    settings.$connectOnStart
       .receive(on: RunLoop.main)
-      .sink { [weak self] newConfiguration in
-        self?.isAuthURLOverridden = newConfiguration?.isOverridden(Configuration.Keys.authURL) ?? false
-        self?.isApiURLOverridden = newConfiguration?.isOverridden(Configuration.Keys.apiURL) ?? false
-        self?.isLogFilterOverridden = newConfiguration?.isOverridden(Configuration.Keys.logFilter) ?? false
-        self?.isAccountSlugOverridden = newConfiguration?.isOverridden(Configuration.Keys.accountSlug) ?? false
-        self?.isConnectOnStartOverridden = newConfiguration?.isOverridden(Configuration.Keys.connectOnStart) ?? false
-
+      .sink(receiveValue: { [weak self] _ in
         self?.updateDerivedState()
-      }
+      })
       .store(in: &cancellables)
   }
 
-  private func isAuthURLValid() -> Bool {
-    if let authURL = URL(string: authURL),
-       authURL.host != nil,
-       ["https", "http"].contains(authURL.scheme),
-       // Be restrictive - account slug will be appended
-       authURL.pathComponents.isEmpty {
-
-      return true
-    }
-
-    return false
-  }
-
-  private func isApiURLValid() -> Bool {
-    if let apiURL = URL(string: apiURL),
-       apiURL.host != nil,
-       ["wss", "ws"].contains(apiURL.scheme),
-       // Be restrictive - account slug will be appended
-       apiURL.pathComponents.isEmpty {
-
-      return true
-    }
-
-    return false
-  }
-
-  private func isLogFilterValid() -> Bool {
-    return !logFilter.isEmpty
-  }
-
-  private func isAccountSlugValid() -> Bool {
-    // URL automatically percent-encodes
-    return true
-  }
-
   private func updateDerivedState() {
-    self.areSettingsSaved = (self.authURL == store.configuration?.authURL &&
-                             self.apiURL == store.configuration?.apiURL &&
-                             self.logFilter == store.configuration?.logFilter &&
-                             self.accountSlug == store.configuration?.accountSlug &&
-                             self.connectOnStart == store.configuration?.connectOnStart)
-
-    self.areSettingsValid = isAuthURLValid() && isApiURLValid() && isLogFilterValid() && isAccountSlugValid()
-
-    self.areSettingsDefault = (self.authURL == Configuration.defaultAuthURL &&
-                               self.apiURL == Configuration.defaultApiURL &&
-                               self.logFilter == Configuration.defaultLogFilter &&
-                               self.accountSlug == "" &&
-                               self.connectOnStart == true)
-
     self.shouldDisableApplyButton = (
-      isAuthURLOverridden &&
-      isApiURLOverridden &&
-      isLogFilterOverridden &&
-      isAccountSlugOverridden &&
-      isConnectOnStartOverridden
-    ) || areSettingsSaved || !areSettingsValid
+      settings.areAllFieldsOverridden() ||
+      settings.isSaved() ||
+      !settings.isValid()
+    )
 
     self.shouldDisableResetButton = (
-      isAuthURLOverridden &&
-      isApiURLOverridden &&
-      isLogFilterOverridden &&
-      isAccountSlugOverridden &&
-      isConnectOnStartOverridden
-    ) || areSettingsDefault
+      settings.areAllFieldsOverridden() ||
+      settings.isDefault()
+    )
   }
 
-  func applySettingsToStore() async throws {
-    try await store.setApiURL(apiURL)
-    try await store.setLogFilter(logFilter)
-    try await store.setAuthURL(authURL)
-    try await store.setAccountSlug(accountSlug)
-    try await store.setConnectOnStart(connectOnStart)
-
-    updateDerivedState()
-  }
-
-  func revertToDefaultSettings() {
-    self.authURL = Configuration.defaultAuthURL
-    self.apiURL = Configuration.defaultApiURL
-    self.logFilter = Configuration.defaultLogFilter
-    self.accountSlug = ""
-    self.connectOnStart = true
-  }
-
-  func reloadSettingsFromStore() {
-    self.authURL = store.configuration?.authURL ?? Configuration.defaultAuthURL
-    self.apiURL = store.configuration?.apiURL ?? Configuration.defaultApiURL
-    self.logFilter = store.configuration?.logFilter ?? Configuration.defaultLogFilter
-    self.accountSlug = store.configuration?.accountSlug ?? ""
-    self.connectOnStart = store.configuration?.connectOnStart ?? true
-  }
 }
 
 // TODO: Move business logic to ViewModel to remove dependency on Store and fix body length
@@ -298,7 +232,7 @@ public struct SettingsView: View {
                 Image(systemName: "gearshape.2")
                 Text("Advanced")
               }
-              .badge(viewModel.areSettingsValid ? nil : "!")
+              .badge(viewModel.settings.isValid() ? nil : "!")
             logsTab
               .tabItem {
                 Image(systemName: "doc.text")
@@ -321,9 +255,7 @@ public struct SettingsView: View {
             .disabled(viewModel.shouldDisableApplyButton)
           }
           ToolbarItem(placement: .navigationBarLeading) {
-            Button("Cancel") {
-              self.reloadSettings()
-            }
+            Button("Cancel") { dismiss() }
           }
         }
         .navigationTitle("Settings")
@@ -372,7 +304,7 @@ public struct SettingsView: View {
           Button(
             "Reset to Defaults",
             action: {
-              viewModel.revertToDefaultSettings()
+              viewModel.reset()
             }
           )
           .disabled(viewModel.shouldDisableResetButton)
@@ -412,7 +344,6 @@ public struct SettingsView: View {
           Text("Changing settings will sign you out and disconnect you from resources")
         }
       )
-      .onDisappear(perform: { self.reloadSettings() })
     #else
       #error("Unsupported platform")
     #endif
@@ -430,18 +361,18 @@ public struct SettingsView: View {
               .frame(width: 150, alignment: .trailing)
             TextField(
               "",
-              text: $viewModel.accountSlug,
+              text: $viewModel.settings.accountSlug,
               prompt: Text(PlaceholderText.accountSlug)
             )
-            .disabled(viewModel.isAccountSlugOverridden)
+            .disabled(viewModel.settings.isAccountSlugOverridden)
             .frame(width: 250)
           }
           .padding(.bottom, 10)
-          Toggle(isOn: $viewModel.connectOnStart) {
+          Toggle(isOn: $viewModel.settings.connectOnStart) {
             Text("Connect on launch")
           }
           .toggleStyle(.checkbox)
-          .disabled(viewModel.isConnectOnStartOverridden)
+          .disabled(viewModel.settings.isConnectOnStartOverridden)
         }
         .padding(10)
         Spacer()
@@ -459,21 +390,21 @@ public struct SettingsView: View {
                 .font(.caption)
               TextField(
                 PlaceholderText.accountSlug,
-                text: $viewModel.accountSlug
+                text: $viewModel.settings.accountSlug
               )
               .autocorrectionDisabled()
               .textInputAutocapitalization(.never)
               .submitLabel(.done)
-              .disabled(viewModel.isAccountSlugOverridden)
+              .disabled(viewModel.settings.isAccountSlugOverridden)
               .padding(.bottom, 10)
 
               Spacer()
 
-              Toggle(isOn: $viewModel.connectOnStart) {
+              Toggle(isOn: $viewModel.settings.connectOnStart) {
                 Text("Connect on launch")
               }
               .toggleStyle(.switch)
-              .disabled(viewModel.isConnectOnStartOverridden)
+              .disabled(viewModel.settings.isConnectOnStartOverridden)
             }
           },
           header: { Text("General Settings") },
@@ -509,10 +440,10 @@ public struct SettingsView: View {
               .frame(width: 150, alignment: .trailing)
             TextField(
               "",
-              text: $viewModel.authURL,
+              text: $viewModel.settings.authURL,
               prompt: Text(PlaceholderText.authBaseURL)
             )
-            .disabled(viewModel.isAuthURLOverridden)
+            .disabled(viewModel.settings.isAuthURLOverridden)
             .frame(width: 250)
           }
 
@@ -522,10 +453,10 @@ public struct SettingsView: View {
               .frame(width: 150, alignment: .trailing)
             TextField(
               "",
-              text: $viewModel.apiURL,
+              text: $viewModel.settings.apiURL,
               prompt: Text(PlaceholderText.apiURL)
             )
-            .disabled(viewModel.isApiURLOverridden)
+            .disabled(viewModel.settings.isApiURLOverridden)
             .frame(width: 250)
           }
 
@@ -535,10 +466,10 @@ public struct SettingsView: View {
               .frame(width: 150, alignment: .trailing)
             TextField(
               "",
-              text: $viewModel.logFilter,
+              text: $viewModel.settings.logFilter,
               prompt: Text(PlaceholderText.logFilter)
             )
-            .disabled(viewModel.isLogFilterOverridden)
+            .disabled(viewModel.settings.isLogFilterOverridden)
             .frame(width: 250)
           }
         }
@@ -559,12 +490,12 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.authBaseURL,
-                  text: $viewModel.authURL
+                  text: $viewModel.settings.authURL
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
-                .disabled(viewModel.isAuthURLOverridden)
+                .disabled(viewModel.settings.isAuthURLOverridden)
               }
               VStack(alignment: .leading, spacing: 2) {
                 Text("API URL")
@@ -572,12 +503,12 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.apiURL,
-                  text: $viewModel.apiURL
+                  text: $viewModel.settings.apiURL
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
-                .disabled(viewModel.isApiURLOverridden)
+                .disabled(viewModel.settings.isApiURLOverridden)
               }
               VStack(alignment: .leading, spacing: 2) {
                 Text("Log Filter")
@@ -585,19 +516,19 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.logFilter,
-                  text: $viewModel.logFilter
+                  text: $viewModel.settings.logFilter
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
-                .disabled(viewModel.isLogFilterOverridden)
+                .disabled(viewModel.settings.isLogFilterOverridden)
               }
               HStack {
                 Spacer()
                 Button(
                   "Reset to Defaults",
                   action: {
-                    viewModel.revertToDefaultSettings()
+                    viewModel.reset()
                   }
                 )
                 .disabled(viewModel.shouldDisableResetButton)
@@ -734,11 +665,6 @@ public struct SettingsView: View {
     dismiss()
   }
 
-  private func reloadSettings() {
-    viewModel.reloadSettingsFromStore()
-    dismiss()
-  }
-
   #if os(macOS)
     private func exportLogsWithSavePanelOnMac() {
       self.isExportingLogs = true
@@ -830,7 +756,7 @@ public struct SettingsView: View {
   }
 
   private func saveSettings() async throws {
-    try await viewModel.applySettingsToStore()
+    try await viewModel.save()
 
     if [.connected, .connecting, .reasserting].contains(store.status) {
       // TODO: Warn user instead of signing out

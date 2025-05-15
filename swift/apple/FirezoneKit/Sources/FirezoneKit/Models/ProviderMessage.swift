@@ -7,20 +7,11 @@
 
 import Foundation
 
-// TODO: Can we simplify this / abstract it?
-// swiftlint:disable cyclomatic_complexity
-
 public enum ProviderMessage: Codable {
   case getResourceList(Data)
   case getConfiguration(Data)
+  case setConfiguration(Configuration)
   case signOut
-  case setAuthURL(String)
-  case setApiURL(String)
-  case setLogFilter(String)
-  case setActorName(String)
-  case setAccountSlug(String)
-  case setInternetResourceEnabled(Bool)
-  case setConnectOnStart(Bool)
   case clearLogs
   case getLogFolderSize
   case exportLogs
@@ -34,14 +25,8 @@ public enum ProviderMessage: Codable {
   enum MessageType: String, Codable {
     case getResourceList
     case getConfiguration
+    case setConfiguration
     case signOut
-    case setAuthURL
-    case setApiURL
-    case setLogFilter
-    case setActorName
-    case setAccountSlug
-    case setInternetResourceEnabled
-    case setConnectOnStart
     case clearLogs
     case getLogFolderSize
     case exportLogs
@@ -52,33 +37,15 @@ public enum ProviderMessage: Codable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     let type = try container.decode(MessageType.self, forKey: .type)
     switch type {
-    case .setAuthURL:
-      let value = try container.decode(String.self, forKey: .value)
-      self = .setAuthURL(value)
-    case .setApiURL:
-      let value = try container.decode(String.self, forKey: .value)
-      self = .setApiURL(value)
-    case .setLogFilter:
-      let value = try container.decode(String.self, forKey: .value)
-      self = .setLogFilter(value)
-    case .setActorName:
-      let value = try container.decode(String.self, forKey: .value)
-      self = .setActorName(value)
-    case .setAccountSlug:
-      let value = try container.decode(String.self, forKey: .value)
-      self = .setAccountSlug(value)
-    case .setInternetResourceEnabled:
-      let value = try container.decode(Bool.self, forKey: .value)
-      self = .setInternetResourceEnabled(value)
-    case .setConnectOnStart:
-      let value = try container.decode(Bool.self, forKey: .value)
-      self = .setConnectOnStart(value)
     case .getResourceList:
       let value = try container.decode(Data.self, forKey: .value)
       self = .getResourceList(value)
     case .getConfiguration:
       let value = try container.decode(Data.self, forKey: .value)
       self = .getConfiguration(value)
+    case .setConfiguration:
+      let value = try container.decode(Configuration.self, forKey: .value)
+      self = .setConfiguration(value)
     case .signOut:
       self = .signOut
     case .clearLogs:
@@ -95,32 +62,14 @@ public enum ProviderMessage: Codable {
   public func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
     switch self {
-    case .setAuthURL(let value):
-      try container.encode(MessageType.setAuthURL, forKey: .type)
-      try container.encode(value, forKey: .value)
-    case .setApiURL(let value):
-      try container.encode(MessageType.setApiURL, forKey: .type)
-      try container.encode(value, forKey: .value)
-    case .setLogFilter(let value):
-      try container.encode(MessageType.setLogFilter, forKey: .type)
-      try container.encode(value, forKey: .value)
-    case .setActorName(let value):
-      try container.encode(MessageType.setActorName, forKey: .type)
-      try container.encode(value, forKey: .value)
-    case .setAccountSlug(let value):
-      try container.encode(MessageType.setAccountSlug, forKey: .type)
-      try container.encode(value, forKey: .value)
-    case .setInternetResourceEnabled(let value):
-      try container.encode(MessageType.setInternetResourceEnabled, forKey: .type)
-      try container.encode(value, forKey: .value)
-    case .setConnectOnStart(let value):
-      try container.encode(MessageType.setConnectOnStart, forKey: .type)
-      try container.encode(value, forKey: .value)
     case .getResourceList(let value):
       try container.encode(MessageType.getResourceList, forKey: .type)
       try container.encode(value, forKey: .value)
     case .getConfiguration(let value):
       try container.encode(MessageType.getConfiguration, forKey: .type)
+      try container.encode(value, forKey: .value)
+    case .setConfiguration(let value):
+      try container.encode(MessageType.setConfiguration, forKey: .type)
       try container.encode(value, forKey: .value)
     case .signOut:
       try container.encode(MessageType.signOut, forKey: .type)
@@ -135,5 +84,3 @@ public enum ProviderMessage: Codable {
     }
   }
 }
-
-// swiftlint:enable cyclomatic_complexity

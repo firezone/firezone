@@ -11,11 +11,13 @@ public class Configuration: Codable {
   public static let defaultLogFilter = "info"
 #endif
 
+  public static let defaultAccountSlug = ""
+  public static let defaultConnectOnStart = true
+
   public struct Keys {
     public static let authURL = "authURL"
     public static let apiURL = "apiURL"
     public static let logFilter = "logFilter"
-    public static let actorName = "actorName"
     public static let accountSlug = "accountSlug"
     public static let internetResourceEnabled = "internetResourceEnabled"
     public static let firezoneId = "firezoneId"
@@ -24,7 +26,6 @@ public class Configuration: Codable {
   }
 
   public var authURL: String?
-  public var actorName: String?
   public var firezoneId: String?
   public var apiURL: String?
   public var logFilter: String?
@@ -36,7 +37,6 @@ public class Configuration: Codable {
   private var overriddenKeys: Set<String> = []
 
   public init(userDict: [String: Any?], managedDict: [String: Any?]) {
-    self.actorName = userDict[Keys.actorName] as? String
     self.firezoneId = userDict[Keys.firezoneId] as? String
 
     setValue(forKey: Keys.authURL, from: managedDict, and: userDict) { [weak self] in self?.authURL = $0 }
@@ -56,6 +56,14 @@ public class Configuration: Codable {
 
   func isOverridden(_ key: String) -> Bool {
     return overriddenKeys.contains(key)
+  }
+
+  func applySettings(_ settings: Settings) {
+    self.authURL = settings.authURL
+    self.apiURL = settings.apiURL
+    self.logFilter = settings.logFilter
+    self.accountSlug = settings.accountSlug
+    self.connectOnStart = settings.connectOnStart
   }
 
   private func setValue<T>(

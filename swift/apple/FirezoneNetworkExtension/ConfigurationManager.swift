@@ -19,9 +19,9 @@ class ConfigurationManager {
 
   // We maintain a cache of the user dictionary to buffer against unnecessary reads from UserDefaults which
   // can cause deadlocks in rare cases.
-  var userDict: [String: Any?]
+  private var userDict: [String: Any?]
 
-  var managedDict: [String: Any?] {
+  private var managedDict: [String: Any?] {
     userDefaults.dictionary(forKey: managedDictKey) ?? [:]
   }
 
@@ -33,39 +33,19 @@ class ConfigurationManager {
     Telemetry.firezoneId = userDict[Configuration.Keys.firezoneId] as? String
   }
 
-  func setAuthURL(_ authURL: String) {
-    userDict[Configuration.Keys.authURL] = authURL
+  // Save user-settable configuration
+  func setConfiguration(_ configuration: Configuration) {
+    userDict[Configuration.Keys.authURL] = configuration.authURL
+    userDict[Configuration.Keys.apiURL] = configuration.apiURL
+    userDict[Configuration.Keys.logFilter] = configuration.logFilter
+    userDict[Configuration.Keys.accountSlug] = configuration.accountSlug
+    userDict[Configuration.Keys.connectOnStart] = configuration.connectOnStart
+
     saveUserDict()
   }
 
-  func setApiURL(_ apiURL: String) {
-    userDict[Configuration.Keys.apiURL] = apiURL
-    saveUserDict()
-  }
-
-  func setLogFilter(_ logFilter: String) {
-    userDict[Configuration.Keys.logFilter] = logFilter
-    saveUserDict()
-  }
-
-  func setActorName(_ actorName: String) {
-    userDict[Configuration.Keys.actorName] = actorName
-    saveUserDict()
-  }
-
-  func setAccountSlug(_ accountSlug: String) {
-    userDict[Configuration.Keys.accountSlug] = accountSlug
-    saveUserDict()
-  }
-
-  func setInternetResourceEnabled(_ internetResourceEnabled: Bool) {
-    userDict[Configuration.Keys.internetResourceEnabled] = internetResourceEnabled
-    saveUserDict()
-  }
-
-  func setConnectOnStart(_ connectOnStart: Bool) {
-    userDict[Configuration.Keys.connectOnStart] = connectOnStart
-    saveUserDict()
+  func toConfiguration() -> Configuration {
+    return Configuration(userDict: userDict, managedDict: managedDict)
   }
 
   // Firezone ID migration. Can be removed once most clients migrate past 1.4.15.

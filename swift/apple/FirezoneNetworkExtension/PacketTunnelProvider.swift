@@ -32,10 +32,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Initialize Telemetry as early as possible
     Telemetry.start()
 
-    self.configuration = Configuration(
-      userDict: ConfigurationManager.shared.userDict,
-      managedDict: ConfigurationManager.shared.managedDict
-    )
+    self.configuration = ConfigurationManager.shared.toConfiguration()
 
     super.init()
   }
@@ -78,10 +75,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       let logFilter = legacyConfiguration?["logFilter"] ?? configuration.logFilter ?? Configuration.defaultLogFilter
 
-      guard let accountSlug = legacyConfiguration?["accountSlug"] ?? configuration.accountSlug
+      // Prioritize passed accountSlug, updating saved account slug for next connect
+      guard let accountSlug = options?["accountSlug"] as? String ??
+              legacyConfiguration?["accountSlug"] ??
+              configuration.accountSlug
       else {
         throw PacketTunnelProviderError.accountSlugIsInvalid
       }
+      configuration.accountSlug = accountSlug
+      ConfigurationManager.shared.setConfiguration(configuration)
       Telemetry.accountSlug = accountSlug
 
       let enabled = legacyConfiguration?["internetResourceEnabled"]
@@ -157,7 +159,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   // It would be helpful to be able to encapsulate Errors here. To do that
   // we need to update ProviderMessage to encode/decode Result to and from Data.
   // TODO: Move to a more abstract IPC protocol
-  // swiftlint:disable:next cyclomatic_complexity function_body_length
+  // swiftlint:disable:next cyclomatic_complexity
   override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
     do {
       let providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
@@ -168,40 +170,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let configurationPayload = configuration.toDataIfChanged(hash: hash)
         completionHandler?(configurationPayload)
 
-      case .setAuthURL(let authURL):
-        configuration.authURL = authURL
-        ConfigurationManager.shared.setAuthURL(authURL)
-        completionHandler?(nil)
-
-      case .setApiURL(let apiURL):
-        configuration.apiURL = apiURL
-        ConfigurationManager.shared.setApiURL(apiURL)
-        completionHandler?(nil)
-
-      case .setActorName(let actorName):
-        configuration.actorName = actorName
-        ConfigurationManager.shared.setActorName(actorName)
-        completionHandler?(nil)
-
-      case .setAccountSlug(let accountSlug):
-        configuration.accountSlug = accountSlug
-        ConfigurationManager.shared.setAccountSlug(accountSlug)
-        completionHandler?(nil)
-
-      case .setLogFilter(let logFilter):
-        configuration.logFilter = logFilter
-        ConfigurationManager.shared.setLogFilter(logFilter)
-        completionHandler?(nil)
-
-      case .setInternetResourceEnabled(let enabled):
-        configuration.internetResourceEnabled = enabled
-        ConfigurationManager.shared.setInternetResourceEnabled(enabled)
-        adapter?.setInternetResourceEnabled(enabled)
-        completionHandler?(nil)
-
-      case .setConnectOnStart(let connectOnStart):
-        configuration.connectOnStart = connectOnStart
-        ConfigurationManager.shared.setConnectOnStart(connectOnStart)
+      case .setConfiguration(let configuration):
+        self.configuration = configuration
+        ConfigurationManager.shared.setConfiguration(configuration)
         completionHandler?(nil)
 
       case .signOut:
