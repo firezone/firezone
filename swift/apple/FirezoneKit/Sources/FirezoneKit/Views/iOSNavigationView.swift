@@ -60,7 +60,7 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
   private var authMenu: some View {
     Menu {
       if store.status == .connected {
-        Text("Signed in as \(store.configuration?.actorName ?? "Unknown user")")
+        Text("Signed in as \(store.actorName)")
         Button(
           action: {
             signOutButtonTapped()

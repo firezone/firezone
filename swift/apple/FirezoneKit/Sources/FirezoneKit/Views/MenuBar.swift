@@ -210,6 +210,13 @@ public final class MenuBar: NSObject, ObservableObject {
         self.handleStatusChanged()
       }).store(in: &cancellables)
 
+    store.$configuration
+      .receive(on: DispatchQueue.main)
+      .sink(receiveValue: { [weak self] _ in
+        self?.updateSignInMenuItems()
+      })
+      .store(in: &cancellables)
+
     updateChecker.$updateAvailable
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
@@ -350,13 +357,18 @@ public final class MenuBar: NSObject, ObservableObject {
       signOutMenuItem.isHidden = true
       settingsMenuItem.target = self
     case .connected, .reasserting, .connecting:
-      let title = "Signed in as \(store.configuration?.actorName ?? "Unknown User")"
+      let title = "Signed in as \(store.actorName)"
       signInMenuItem.title = title
       signInMenuItem.target = nil
       signOutMenuItem.isHidden = false
       settingsMenuItem.target = self
     @unknown default:
       break
+    }
+
+    // Configuration must be initialized to manage settings
+    if store.configuration == nil {
+      settingsMenuItem.target = nil
     }
   }
 

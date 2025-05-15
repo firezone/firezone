@@ -56,13 +56,17 @@ class IPCClient {
   let encoder = PropertyListEncoder()
   let decoder = PropertyListDecoder()
 
-  func start(token: String? = nil) throws {
-    var options: [String: NSObject] = [:]
+  // Auto-connect
+  func start() throws {
+    try session().startTunnel(options: nil)
+  }
 
-    // Pass token if provided
-    if let token = token {
-      options.merge(["token": token as NSObject]) { _, new in new }
-    }
+  // Sign in
+  func start(token: String, accountSlug: String) throws {
+    let options: [String: NSObject] = [
+      "token": token as NSObject,
+      "accountSlug": accountSlug as NSObject
+    ]
 
     try session().startTunnel(options: options)
   }
@@ -105,32 +109,8 @@ class IPCClient {
     }
   }
 
-  func setAuthURL(_ authURL: String) async throws {
-    try await sendMessageWithoutResponse(ProviderMessage.setAuthURL(authURL))
-  }
-
-  func setApiURL(_ apiURL: String) async throws {
-    try await sendMessageWithoutResponse(ProviderMessage.setApiURL(apiURL))
-  }
-
-  func setLogFilter(_ logFilter: String) async throws {
-    try await sendMessageWithoutResponse(ProviderMessage.setLogFilter(logFilter))
-  }
-
-  func setActorName(_ actorName: String) async throws {
-    try await sendMessageWithoutResponse(ProviderMessage.setActorName(actorName))
-  }
-
-  func setAccountSlug(_ accountSlug: String) async throws {
-    try await sendMessageWithoutResponse(ProviderMessage.setAccountSlug(accountSlug))
-  }
-
-  func setInternetResourceEnabled(_ enabled: Bool) async throws {
-    try await sendMessageWithoutResponse(ProviderMessage.setInternetResourceEnabled(enabled))
-  }
-
-  func setConnectOnStart(_ connectOnStart: Bool) async throws {
-    try await sendMessageWithoutResponse(ProviderMessage.setConnectOnStart(connectOnStart))
+  func setConfiguration(_ configuration: Configuration) async throws {
+    try await sendMessageWithoutResponse(ProviderMessage.setConfiguration(configuration))
   }
 
   func fetchResources() async throws -> ResourceList {
