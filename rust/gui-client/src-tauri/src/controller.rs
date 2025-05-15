@@ -6,7 +6,7 @@ use crate::{
     settings::{self, AdvancedSettings},
     updates, uptime,
 };
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use connlib_model::ResourceView;
 use firezone_bin_shared::DnsControlMethod;
 use firezone_logging::FilterReloadHandle;
@@ -16,7 +16,13 @@ use futures::{
     stream::{self, BoxStream},
 };
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, task::Poll, time::Instant};
+use std::{
+    collections::BTreeSet,
+    ops::ControlFlow,
+    path::PathBuf,
+    task::Poll,
+    time::{Duration, Instant},
+};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
@@ -200,8 +206,10 @@ impl<I: GuiIntegration> Controller<I> {
     ) -> Result<()> {
         tracing::debug!("Starting new instance of `Controller`");
 
-        let (ipc_rx, ipc_client) =
+        let (mut ipc_rx, ipc_client) =
             ipc::connect(SocketId::Tunnel, ipc::ConnectOptions::default()).await?;
+
+        receive_hello(&mut ipc_rx).await?;
 
         let dns_notifier = new_dns_notifier().await?.boxed();
         let network_notifier = new_network_notifier().await?.boxed();
@@ -649,6 +657,7 @@ impl<I: GuiIntegration> Controller<I> {
                 )?;
                 self.refresh_system_tray_menu();
             }
+            service::ServerMsg::Hello => {}
         }
         Ok(ControlFlow::Continue(()))
     }
@@ -896,4 +905,22 @@ async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
 
         Ok(Some(((), worker)))
     }))
+}
+
+async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<()> {
+    const TIMEOUT: Duration = Duration::from_secs(5);
+
+    let server_msg = tokio::time::timeout(TIMEOUT, ipc_rx.next())
+        .await
+        .with_context(|| {
+            format!("Timeout while waiting for message from tunnel service for {TIMEOUT:?}")
+        })?
+        .context("No message received from tunnel service")?
+        .context("Failed to receive message from tunnel service")?;
+
+    if !matches!(server_msg, service::ServerMsg::Hello) {
+        bail!("Expected `Hello` from tunnel service but got `{server_msg}`")
+    }
+
+    Ok(())
 }

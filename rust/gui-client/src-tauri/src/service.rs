@@ -67,6 +67,7 @@ pub enum ClientMsg {
 /// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
 #[derive(Debug, serde::Deserialize, serde::Serialize, strum::Display)]
 pub enum ServerMsg {
+    Hello,
     /// The IPC service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
     ConnectResult(Result<(), ConnectError>),
@@ -150,7 +151,13 @@ async fn ipc_listen(
             tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C while waiting on the next client.");
             break;
         };
-        let mut handler = handler?;
+        let mut handler = match handler {
+            Ok(handler) => handler,
+            Err(e) => {
+                tracing::warn!("Failed to initialise IPC handler: {e:#}");
+                continue;
+            }
+        };
         if let HandlerOk::ServiceTerminating = handler.run(signals).await {
             break;
         }
@@ -206,11 +213,16 @@ impl<'a> Handler<'a> {
             "Listening for GUI to connect over IPC..."
         );
 
-        let (ipc_rx, ipc_tx) = server
+        let (ipc_rx, mut ipc_tx) = server
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
         let tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, 1)?;
+
+        ipc_tx
+            .send(&ServerMsg::Hello)
+            .await
+            .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
 
         Ok(Self {
             dns_controller,
