@@ -1,4 +1,4 @@
-use super::{NotFound, ServiceId};
+use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result, bail};
 use firezone_bin_shared::BUNDLE_ID;
 use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
@@ -19,12 +19,12 @@ pub type ClientStream = named_pipe::NamedPipeClient;
 /// Alias for the server's half of a platform-specific IPC stream
 pub(crate) type ServerStream = named_pipe::NamedPipeServer;
 
-/// Connect to the IPC service
+/// Connect to an IPC socket.
 ///
 /// This is async on Linux
 #[expect(clippy::unused_async)]
 #[expect(clippy::wildcard_enum_match_arm)]
-pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
+pub(crate) async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
     let path = ipc_path(id);
     let stream = named_pipe::ClientOptions::new()
         .open(&path)
@@ -47,7 +47,7 @@ pub(crate) async fn connect_to_service(id: ServiceId) -> Result<ClientStream> {
 impl Server {
     /// Platform-specific setup
     #[expect(clippy::unnecessary_wraps, reason = "Linux impl is fallible")]
-    pub(crate) fn new(id: ServiceId) -> Result<Self> {
+    pub(crate) fn new(id: SocketId) -> Result<Self> {
         let pipe_path = ipc_path(id);
         Ok(Self { pipe_path })
     }
@@ -64,10 +64,6 @@ impl Server {
             .bind_to_pipe()
             .await
             .context("Couldn't bind to named pipe")?;
-        tracing::debug!(
-            server_pid = std::process::id(),
-            "Listening for GUI to connect over IPC..."
-        );
         // Note that Tokio has no `poll_connect`
         server
             .connect()
@@ -153,12 +149,13 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
     }
 }
 
-/// Named pipe for IPC between GUI client and IPC service
-fn ipc_path(id: ServiceId) -> String {
+/// Named pipe for an IPC connection
+fn ipc_path(id: SocketId) -> String {
     let name = match id {
-        ServiceId::Prod => format!("{BUNDLE_ID}.ipc_service"),
+        SocketId::Tunnel => format!("{BUNDLE_ID}_tunnel.ipc"),
+        SocketId::Gui => format!("{BUNDLE_ID}_gui.ipc"),
         #[cfg(test)]
-        ServiceId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc_service"),
+        SocketId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc"),
     };
     named_pipe_path(&name)
 }
@@ -177,7 +174,7 @@ pub fn named_pipe_path(id: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Server, ServiceId};
+    use super::{Server, SocketId};
     use anyhow::Context as _;
     use futures::StreamExt;
 
@@ -191,23 +188,24 @@ mod tests {
 
     #[test]
     fn ipc_path() {
-        assert!(super::ipc_path(ServiceId::Prod).starts_with(r"\\.\pipe\"));
+        assert!(super::ipc_path(SocketId::Tunnel).starts_with(r"\\.\pipe\"));
     }
 
     #[tokio::test]
     async fn single_instance() -> anyhow::Result<()> {
         let _guard = firezone_logging::test("trace");
-        const ID: ServiceId = ServiceId::Test("2GOCMPBG");
+        const ID: SocketId = SocketId::Test("2GOCMPBG");
         let mut server_1 = Server::new(ID)?;
         let pipe_path = server_1.pipe_path.clone();
 
         tokio::spawn(async move {
-            let (mut rx, _tx) = server_1.next_client_split().await?;
+            let (mut rx, _tx) = server_1.next_client_split::<(), ()>().await?;
             rx.next().await;
             Ok::<_, anyhow::Error>(())
         });
 
-        let (_rx, _tx) = crate::ipc::connect_to_service(ID).await?;
+        let (_rx, _tx) =
+            crate::ipc::connect::<(), ()>(ID, crate::ipc::ConnectOptions::default()).await?;
 
         match super::create_pipe_server(&pipe_path) {
             Err(super::PipeError::AccessDenied) => {}
