@@ -64,7 +64,9 @@ impl CandidateSet {
         reason = "We are guaranteeing a stable ordering"
     )]
     pub fn iter(&self) -> impl Iterator<Item = &Candidate> {
-        self.inner.iter().sorted_by_key(|c| c.prio())
+        self.inner
+            .iter()
+            .sorted_by(|l, r| l.prio().cmp(&r.prio()).then(l.addr().cmp(&r.addr())))
     }
 }
 
