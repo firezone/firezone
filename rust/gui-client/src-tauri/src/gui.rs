@@ -14,7 +14,6 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use firezone_logging::err_with_src;
-use firezone_telemetry as telemetry;
 use futures::SinkExt as _;
 use std::time::Duration;
 use tauri::Manager;
