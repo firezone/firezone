@@ -9,12 +9,6 @@ BUNDLES_DIR=../target/release/bundle/deb
 # Prep the RPM container
 docker build . -f ../Dockerfile-rpm -t rpmbuild
 
-# Copy frontend dependencies
-cp node_modules/flowbite/dist/flowbite.min.js src/
-
-# Compile CSS
-pnpm tailwindcss -i src/input.css -o src/output.css
-
 # Bundle all web assets
 pnpm vite build
 

@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import "flowbite"
 
 const cargoVersionSpan = <HTMLSpanElement>(
   document.getElementById("cargo-version")
