@@ -99,7 +99,7 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettin
             // Fall-through to running the GUI if elevation check should be bypassed.
         }
 
-        // All commands below _don't_ end up running the GUI.
+        // All commands below _don't_ end up running the GUI because they return early.
         Some(Cmd::Debug {
             command: DebugCommand::Replicate6791,
         }) => {
@@ -127,6 +127,8 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettin
             return Ok(());
         }
     };
+
+    // Happy-path: Run the GUI.
 
     match gui::run(rt, config, settings, reloader) {
         Ok(()) => {}
