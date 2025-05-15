@@ -73,6 +73,7 @@ impl GuiIntegration for TauriIntegration {
 
         if visible {
             win.show().context("Couldn't show Welcome window")?;
+            win.set_focus().context("Failed to focus window")?;
         } else {
             win.hide().context("Couldn't hide Welcome window")?;
         }
