@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use itertools::Itertools;
-use str0m::Candidate;
+use str0m::{Candidate, CandidateKind};
 
 /// Custom "set" implementation for [`Candidate`]s based on a [`HashSet`] with an enforced ordering when iterating.
 #[derive(Debug, Default)]
@@ -24,6 +24,10 @@ impl CandidateSet {
         self.inner.retain(|current| {
             if current.kind() != new.kind() {
                 return true; // Don't evict candidates of different kinds.
+            }
+
+            if current.kind() != CandidateKind::ServerReflexive {
+                return true; // Don't evit candidates other than server reflexive.
             }
 
             let is_ip_version_different = current.addr().is_ipv4() != new.addr().is_ipv4();
