@@ -1,9 +1,8 @@
+//! Defines a reusable, bi-directional, cross-platform IPC framework that uses JSON for message serialisation.
+
 use anyhow::{Context as _, Result};
-use connlib_model::{ResourceId, ResourceView};
-use futures::SinkExt;
 use platform::{ClientStream, ServerStream};
-use secrecy::{ExposeSecret, SecretString};
-use std::{collections::BTreeSet, io, net::IpAddr};
+use serde::{Serialize, de::DeserializeOwned};
 use tokio::io::{ReadHalf, WriteHalf};
 use tokio_util::{
     bytes::BytesMut,
@@ -12,10 +11,10 @@ use tokio_util::{
 
 pub(crate) use platform::Server;
 
-pub type ClientRead = FramedRead<ReadHalf<ClientStream>, Decoder<ServerMsg>>;
-pub type ClientWrite = FramedWrite<WriteHalf<ClientStream>, Encoder<ClientMsg>>;
-pub(crate) type ServerRead = FramedRead<ReadHalf<ServerStream>, Decoder<ClientMsg>>;
-pub(crate) type ServerWrite = FramedWrite<WriteHalf<ServerStream>, Encoder<ServerMsg>>;
+pub type ClientRead<M> = FramedRead<ReadHalf<ClientStream>, Decoder<M>>;
+pub type ClientWrite<M> = FramedWrite<WriteHalf<ClientStream>, Encoder<M>>;
+pub(crate) type ServerRead<M> = FramedRead<ReadHalf<ServerStream>, Decoder<M>>;
+pub(crate) type ServerWrite<M> = FramedWrite<WriteHalf<ServerStream>, Encoder<M>>;
 
 #[cfg(target_os = "linux")]
 #[path = "ipc/linux.rs"]
@@ -28,62 +27,6 @@ pub(crate) mod platform;
 #[cfg(target_os = "macos")]
 #[path = "ipc/macos.rs"]
 pub(crate) mod platform;
-
-pub struct Client {
-    // Needed temporarily to avoid a big refactor. We can remove this in the future.
-    tx: ClientWrite,
-}
-
-impl Client {
-    pub async fn new() -> Result<(Self, ClientRead)> {
-        tracing::debug!(
-            client_pid = std::process::id(),
-            "Connecting to IPC service..."
-        );
-        let (rx, tx) = connect_to_service(ServiceId::Prod).await?;
-
-        Ok((Self { tx }, rx))
-    }
-
-    pub async fn disconnect_from_ipc(mut self) -> Result<()> {
-        self.tx.close().await?;
-        Ok(())
-    }
-
-    pub async fn send_msg(&mut self, msg: &ClientMsg) -> Result<()> {
-        self.tx
-            .send(msg)
-            .await
-            .context("Couldn't send IPC message")?;
-        Ok(())
-    }
-
-    pub async fn connect_to_firezone(&mut self, api_url: &str, token: SecretString) -> Result<()> {
-        let token = token.expose_secret().clone();
-        self.send_msg(&ClientMsg::Connect {
-            api_url: api_url.to_string(),
-            token,
-        })
-        .await
-        .context("Couldn't send Connect message")?;
-        Ok(())
-    }
-
-    pub async fn reset(&mut self) -> Result<()> {
-        self.send_msg(&ClientMsg::Reset)
-            .await
-            .context("Couldn't send Reset")?;
-        Ok(())
-    }
-
-    /// Tell connlib about the system's default resolvers
-    pub async fn set_dns(&mut self, dns: Vec<IpAddr>) -> Result<()> {
-        self.send_msg(&ClientMsg::SetDns(dns))
-            .await
-            .context("Couldn't send SetDns")?;
-        Ok(())
-    }
-}
 
 #[derive(Debug, thiserror::Error)]
 #[error("Couldn't find IPC service `{0}`")]
@@ -108,15 +51,19 @@ pub struct NotFound(String);
 /// on all platforms.
 ///
 /// Because the paths are so different (and Windows actually uses a `String`),
-/// we have this `ServiceId` abstraction instead of just a `PathBuf`.
-#[derive(Clone, Copy)]
-pub enum ServiceId {
-    /// The IPC service used by Firezone GUI Client in production
+/// we have this [`SocketId`] abstraction instead of just a `PathBuf`.
+#[derive(Clone, Copy, Debug)]
+pub enum SocketId {
+    /// The IPC socket used by Firezone GUI Client in production to connect to the tunnel service.
     ///
     /// This must go in `/run/dev.firezone.client` on Linux, which requires
     /// root permission
-    Prod,
-    /// An IPC service used for unit tests.
+    Tunnel,
+    /// The IPC socket used by the Firezone GUI Client in production to connect to an already running instance.
+    ///
+    /// This is used for deeplinks and duplicate launch handling.
+    Gui,
+    /// An IPC socket used for unit tests.
     ///
     /// This must go in `/run/user/$UID/dev.firezone.client` on Linux so
     /// the unit tests won't need root.
@@ -181,16 +128,37 @@ impl<E: serde::Serialize> tokio_util::codec::Encoder<&E> for Encoder<E> {
     }
 }
 
-/// Connect to the IPC service
-///
-/// Public because the GUI Client will need it
-pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrite)> {
+pub struct ConnectOptions {
+    pub num_attempts: usize,
+}
+
+impl Default for ConnectOptions {
+    fn default() -> Self {
+        Self { num_attempts: 10 }
+    }
+}
+
+/// Attempt to connect to an IPC socket.
+pub async fn connect<R, W>(
+    id: SocketId,
+    options: ConnectOptions,
+) -> Result<(ClientRead<R>, ClientWrite<W>)>
+where
+    R: DeserializeOwned,
+    W: Serialize,
+{
+    tracing::debug!(
+        ?id,
+        client_pid = std::process::id(),
+        "Connecting to IPC socket"
+    );
+
     // This is how ChatGPT recommended, and I couldn't think of any more clever
     // way before I asked it.
     let mut last_err = None;
 
-    for _ in 0..10 {
-        match platform::connect_to_service(id).await {
+    for _ in 0..options.num_attempts {
+        match platform::connect_to_socket(id).await {
             Ok(stream) => {
                 let (rx, tx) = tokio::io::split(stream);
                 let rx = FramedRead::new(rx, Decoder::default());
@@ -198,7 +166,7 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
                 return Ok((rx, tx));
             }
             Err(error) => {
-                tracing::debug!("Couldn't connect to IPC service: {error}");
+                tracing::debug!("Couldn't connect to IPC socket: {error}");
                 last_err = Some(error);
 
                 // This won't come up much for humans but it helps the automated
@@ -211,75 +179,17 @@ pub async fn connect_to_service(id: ServiceId) -> Result<(ClientRead, ClientWrit
 }
 
 impl platform::Server {
-    pub(crate) async fn next_client_split(&mut self) -> Result<(ServerRead, ServerWrite)> {
+    pub(crate) async fn next_client_split<R, W>(
+        &mut self,
+    ) -> Result<(ServerRead<R>, ServerWrite<W>)>
+    where
+        R: DeserializeOwned,
+        W: Serialize,
+    {
         let (rx, tx) = tokio::io::split(self.next_client().await?);
         let rx = FramedRead::new(rx, Decoder::default());
         let tx = FramedWrite::new(tx, Encoder::default());
         Ok((rx, tx))
-    }
-}
-
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
-pub enum ClientMsg {
-    ClearLogs,
-    Connect {
-        api_url: String,
-        token: String,
-    },
-    Disconnect,
-    ApplyLogFilter {
-        directives: String,
-    },
-    Reset,
-    SetDns(Vec<IpAddr>),
-    SetDisabledResources(BTreeSet<ResourceId>),
-    StartTelemetry {
-        environment: String,
-        release: String,
-        account_slug: Option<String>,
-    },
-}
-
-/// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
-#[derive(Debug, serde::Deserialize, serde::Serialize, strum::Display)]
-pub enum ServerMsg {
-    /// The IPC service finished clearing its log dir.
-    ClearedLogs(Result<(), String>),
-    ConnectResult(Result<(), Error>),
-    DisconnectedGracefully,
-    OnDisconnect {
-        error_msg: String,
-        is_authentication_error: bool,
-    },
-    OnUpdateResources(Vec<ResourceView>),
-    /// The IPC service is terminating, maybe due to a software update
-    ///
-    /// This is a hint that the Client should exit with a message like,
-    /// "Firezone is updating, please restart the GUI" instead of an error like,
-    /// "IPC connection closed".
-    TerminatingGracefully,
-    /// The interface and tunnel are ready for traffic.
-    TunnelReady,
-}
-
-// All variants are `String` because almost no error type implements `Serialize`
-#[derive(Debug, serde::Deserialize, serde::Serialize, thiserror::Error)]
-pub enum Error {
-    #[error("IO error: {0}")]
-    Io(String),
-    #[error("{0}")]
-    Other(String),
-}
-
-impl From<io::Error> for Error {
-    fn from(v: io::Error) -> Self {
-        Self::Io(v.to_string())
-    }
-}
-
-impl From<anyhow::Error> for Error {
-    fn from(v: anyhow::Error) -> Self {
-        Self::Other(format!("{v:#}"))
     }
 }
 
@@ -294,12 +204,25 @@ mod tests {
     #[tokio::test]
     async fn no_such_service() -> Result<()> {
         let _guard = firezone_logging::test("trace");
-        const ID: ServiceId = ServiceId::Test("H56FRXVH");
+        const ID: SocketId = SocketId::Test("H56FRXVH");
 
-        if super::connect_to_service(ID).await.is_ok() {
+        if super::connect::<(), ()>(ID, super::ConnectOptions::default())
+            .await
+            .is_ok()
+        {
             bail!("`connect_to_service` should have failed for a non-existent service");
         }
         Ok(())
+    }
+
+    #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+    enum ClientMsg {
+        Foo,
+    }
+
+    #[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+    enum ServerMsg {
+        Bar,
     }
 
     /// Make sure the IPC client and server can exchange messages
@@ -307,20 +230,20 @@ mod tests {
     async fn smoke() -> Result<()> {
         let _guard = firezone_logging::test("trace");
         let loops = 10;
-        const ID: ServiceId = ServiceId::Test("OB5SZCGN");
+        const ID: SocketId = SocketId::Test("OB5SZCGN");
 
         let mut server = Server::new(ID).expect("Error while starting IPC server");
 
         let server_task: tokio::task::JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
                 let (mut rx, mut tx) = server
-                    .next_client_split()
+                    .next_client_split::<ClientMsg, ServerMsg>()
                     .await
                     .expect("Error while waiting for next IPC client");
                 while let Some(req) = rx.next().await {
                     let req = req.expect("Error while reading from IPC client");
-                    ensure!(req == ClientMsg::Reset);
-                    tx.send(&ServerMsg::OnUpdateResources(vec![]))
+                    ensure!(req == ClientMsg::Foo);
+                    tx.send(&ServerMsg::Bar)
                         .await
                         .expect("Error while writing to IPC client");
                 }
@@ -331,11 +254,11 @@ mod tests {
 
         let client_task: JoinHandle<Result<()>> = tokio::spawn(async move {
             for _ in 0..loops {
-                let (mut rx, mut tx) = super::connect_to_service(ID)
+                let (mut rx, mut tx) = super::connect(ID, super::ConnectOptions::default())
                     .await
                     .context("Error while connecting to IPC server")?;
 
-                let req = ClientMsg::Reset;
+                let req = ClientMsg::Foo;
                 for _ in 0..10 {
                     tx.send(&req)
                         .await
@@ -345,7 +268,7 @@ mod tests {
                         .await
                         .expect("Should have gotten a reply from the IPC server")
                         .expect("Error while reading from IPC server");
-                    ensure!(matches!(resp, ServerMsg::OnUpdateResources(_)));
+                    ensure!(matches!(resp, ServerMsg::Bar));
                 }
             }
             Ok(())
@@ -388,7 +311,7 @@ mod tests {
     async fn loop_to_next_client() -> Result<()> {
         let _guard = firezone_logging::test("trace");
 
-        let mut server = Server::new(ServiceId::Test("H6L73DG5"))?;
+        let mut server = Server::new(SocketId::Test("H6L73DG5"))?;
         for i in 0..5 {
             if let Ok(Err(err)) = timeout(Duration::from_secs(1), server.next_client()).await {
                 Err(err).with_context(|| {

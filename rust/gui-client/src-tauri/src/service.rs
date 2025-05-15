@@ -1,7 +1,9 @@
+use crate::ipc::{self, SocketId};
 use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
 use client_shared::ConnlibMsg;
+use connlib_model::{ResourceId, ResourceView};
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager, device_id, device_info, known_dirs,
     platform::{tcp_socket_factory, udp_socket_factory},
@@ -16,7 +18,14 @@ use futures::{
 };
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{Secret, SecretString};
-use std::{io::Write, pin::pin, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    io::{self, Write},
+    net::IpAddr,
+    pin::pin,
+    sync::Arc,
+    time::Duration,
+};
 use tokio::{sync::mpsc, time::Instant};
 use url::Url;
 
@@ -34,7 +43,69 @@ mod platform;
 
 pub use platform::{elevation_check, install, run};
 
-use crate::ipc::{self, ServiceId};
+#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+pub enum ClientMsg {
+    ClearLogs,
+    Connect {
+        api_url: String,
+        token: String,
+    },
+    Disconnect,
+    ApplyLogFilter {
+        directives: String,
+    },
+    Reset,
+    SetDns(Vec<IpAddr>),
+    SetDisabledResources(BTreeSet<ResourceId>),
+    StartTelemetry {
+        environment: String,
+        release: String,
+        account_slug: Option<String>,
+    },
+}
+
+/// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
+#[derive(Debug, serde::Deserialize, serde::Serialize, strum::Display)]
+pub enum ServerMsg {
+    /// The IPC service finished clearing its log dir.
+    ClearedLogs(Result<(), String>),
+    ConnectResult(Result<(), ConnectError>),
+    DisconnectedGracefully,
+    OnDisconnect {
+        error_msg: String,
+        is_authentication_error: bool,
+    },
+    OnUpdateResources(Vec<ResourceView>),
+    /// The IPC service is terminating, maybe due to a software update
+    ///
+    /// This is a hint that the Client should exit with a message like,
+    /// "Firezone is updating, please restart the GUI" instead of an error like,
+    /// "IPC connection closed".
+    TerminatingGracefully,
+    /// The interface and tunnel are ready for traffic.
+    TunnelReady,
+}
+
+// All variants are `String` because almost no error type implements `Serialize`
+#[derive(Debug, serde::Deserialize, serde::Serialize, thiserror::Error)]
+pub enum ConnectError {
+    #[error("IO error: {0}")]
+    Io(String),
+    #[error("{0}")]
+    Other(String),
+}
+
+impl From<io::Error> for ConnectError {
+    fn from(v: io::Error) -> Self {
+        Self::Io(v.to_string())
+    }
+}
+
+impl From<anyhow::Error> for ConnectError {
+    fn from(v: anyhow::Error) -> Self {
+        Self::Other(format!("{v:#}"))
+    }
+}
 
 /// Run the IPC service and terminate gracefully if we catch a terminate signal
 ///
@@ -54,7 +125,7 @@ async fn ipc_listen(
 
     Telemetry::set_firezone_id(firezone_id);
 
-    let mut server = ipc::Server::new(ServiceId::Prod)?;
+    let mut server = ipc::Server::new(SocketId::Tunnel)?;
     let mut dns_controller = DnsController { dns_control_method };
     loop {
         let mut handler_fut = pin!(Handler::new(
@@ -90,8 +161,8 @@ async fn ipc_listen(
 /// Handles one IPC client
 struct Handler<'a> {
     dns_controller: &'a mut DnsController,
-    ipc_rx: ipc::ServerRead,
-    ipc_tx: ipc::ServerWrite,
+    ipc_rx: ipc::ServerRead<ClientMsg>,
+    ipc_tx: ipc::ServerWrite<ServerMsg>,
     last_connlib_start_instant: Option<Instant>,
     log_filter_reloader: &'a FilterReloadHandle,
     session: Option<Session>,
@@ -107,7 +178,7 @@ struct Session {
 enum Event {
     Callback(ConnlibMsg),
     CallbackChannelClosed,
-    Ipc(ipc::ClientMsg),
+    Ipc(ClientMsg),
     IpcDisconnected,
     IpcError(anyhow::Error),
     Terminate,
@@ -129,6 +200,12 @@ impl<'a> Handler<'a> {
         telemetry: &'a mut Telemetry,
     ) -> Result<Self> {
         dns_controller.deactivate()?;
+
+        tracing::info!(
+            server_pid = std::process::id(),
+            "Listening for GUI to connect over IPC..."
+        );
+
         let (ipc_rx, ipc_tx) = server
             .next_client_split()
             .await
@@ -189,7 +266,7 @@ impl<'a> Handler<'a> {
                         "Caught SIGINT / SIGTERM / Ctrl+C while an IPC client is connected"
                     );
                     // Ignore the result here because we're terminating anyway.
-                    let _ = self.send_ipc(ipc::ServerMsg::TerminatingGracefully).await;
+                    let _ = self.send_ipc(ServerMsg::TerminatingGracefully).await;
                     break HandlerOk::ServiceTerminating;
                 }
             }
@@ -233,7 +310,7 @@ impl<'a> Handler<'a> {
             } => {
                 let _ = self.session.take();
                 self.dns_controller.deactivate()?;
-                self.send_ipc(ipc::ServerMsg::OnDisconnect {
+                self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg,
                     is_authentication_error,
                 })
@@ -255,48 +332,45 @@ impl<'a> Handler<'a> {
                 self.tun_device.set_routes(ipv4_routes, ipv6_routes).await?;
                 self.dns_controller.flush()?;
 
-                self.send_ipc(ipc::ServerMsg::TunnelReady).await?;
+                self.send_ipc(ServerMsg::TunnelReady).await?;
             }
             ConnlibMsg::OnUpdateResources(resources) => {
                 // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                 self.dns_controller.flush()?;
-                self.send_ipc(ipc::ServerMsg::OnUpdateResources(resources))
+                self.send_ipc(ServerMsg::OnUpdateResources(resources))
                     .await?;
             }
         }
         Ok(())
     }
 
-    async fn handle_ipc_msg(&mut self, msg: ipc::ClientMsg) -> Result<()> {
+    async fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
-            ipc::ClientMsg::ClearLogs => {
+            ClientMsg::ClearLogs => {
                 let result = crate::clear_logs(
                     &firezone_bin_shared::known_dirs::ipc_service_logs()
                         .context("Can't compute logs dir")?,
                 )
                 .await;
-                self.send_ipc(ipc::ServerMsg::ClearedLogs(
-                    result.map_err(|e| e.to_string()),
-                ))
-                .await?
+                self.send_ipc(ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
+                    .await?
             }
-            ipc::ClientMsg::Connect { api_url, token } => {
+            ClientMsg::Connect { api_url, token } => {
                 // Warning: Connection errors don't bubble to callers of `handle_ipc_msg`.
                 let token = secrecy::SecretString::from(token);
                 let result = self.connect_to_firezone(&api_url, token);
 
-                self.send_ipc(ipc::ServerMsg::ConnectResult(result)).await?
+                self.send_ipc(ServerMsg::ConnectResult(result)).await?
             }
-            ipc::ClientMsg::Disconnect => {
+            ClientMsg::Disconnect => {
                 if self.session.take().is_some() {
                     self.dns_controller.deactivate()?;
                 }
                 // Always send `DisconnectedGracefully` even if we weren't connected,
                 // so this will be idempotent.
-                self.send_ipc(ipc::ServerMsg::DisconnectedGracefully)
-                    .await?;
+                self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
             }
-            ipc::ClientMsg::ApplyLogFilter { directives } => {
+            ClientMsg::ApplyLogFilter { directives } => {
                 self.log_filter_reloader.reload(&directives)?;
 
                 let path = known_dirs::ipc_log_filter()?;
@@ -307,7 +381,7 @@ impl<'a> Handler<'a> {
                     tracing::warn!(path = %path.display(), %directives, "Failed to write new log directives: {}", err_with_src(&e));
                 }
             }
-            ipc::ClientMsg::Reset => {
+            ClientMsg::Reset => {
                 if self.last_connlib_start_instant.is_some() {
                     tracing::debug!("Ignoring reset since we're still signing in");
                     return Ok(());
@@ -319,7 +393,7 @@ impl<'a> Handler<'a> {
 
                 session.connlib.reset();
             }
-            ipc::ClientMsg::SetDns(resolvers) => {
+            ClientMsg::SetDns(resolvers) => {
                 let Some(session) = self.session.as_ref() else {
                     tracing::debug!("Cannot set DNS resolvers if we're signed out");
                     return Ok(());
@@ -328,7 +402,7 @@ impl<'a> Handler<'a> {
                 tracing::debug!(?resolvers);
                 session.connlib.set_dns(resolvers);
             }
-            ipc::ClientMsg::SetDisabledResources(disabled_resources) => {
+            ClientMsg::SetDisabledResources(disabled_resources) => {
                 let Some(session) = self.session.as_ref() else {
                     // At this point, the GUI has already saved the disabled Resources to disk, so it'll be correct on the next sign-in anyway.
                     tracing::debug!("Cannot set disabled resources if we're signed out");
@@ -337,7 +411,7 @@ impl<'a> Handler<'a> {
 
                 session.connlib.set_disabled_resources(disabled_resources);
             }
-            ipc::ClientMsg::StartTelemetry {
+            ClientMsg::StartTelemetry {
                 environment,
                 release,
                 account_slug,
@@ -362,7 +436,7 @@ impl<'a> Handler<'a> {
         &mut self,
         api_url: &str,
         token: SecretString,
-    ) -> Result<(), ipc::Error> {
+    ) -> Result<(), ConnectError> {
         let _connect_span = telemetry_span!("connect_to_firezone").entered();
 
         assert!(self.session.is_none());
@@ -430,7 +504,7 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    async fn send_ipc(&mut self, msg: ipc::ServerMsg) -> Result<()> {
+    async fn send_ipc(&mut self, msg: ServerMsg) -> Result<()> {
         self.ipc_tx
             .send(&msg)
             .await
@@ -476,7 +550,7 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
 /// This makes the timing neater in case the GUI starts up slowly.
 #[cfg(debug_assertions)]
 pub fn run_smoke_test() -> Result<()> {
-    use crate::ipc::{self, ServiceId};
+    use crate::ipc::{self, SocketId};
     use anyhow::{Context as _, bail};
     use firezone_bin_shared::{DnsController, device_id};
 
@@ -500,7 +574,7 @@ pub fn run_smoke_test() -> Result<()> {
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
         device_id::get_or_create().context("Failed to read / create device ID")?;
-        let mut server = ipc::Server::new(ServiceId::Prod)?;
+        let mut server = ipc::Server::new(SocketId::Tunnel)?;
         let _ = Handler::new(
             &mut server,
             &mut dns_controller,

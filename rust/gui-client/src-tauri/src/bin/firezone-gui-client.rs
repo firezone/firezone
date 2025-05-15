@@ -73,7 +73,7 @@ fn main() -> anyhow::Result<()> {
             firezone_gui_client::logging::setup_stdout()?;
 
             let rt = tokio::runtime::Runtime::new()?;
-            if let Err(error) = rt.block_on(deep_link::open(&deep_link.url)) {
+            if let Err(error) = rt.block_on(deep_link::open(deep_link.url)) {
                 tracing::error!("Error in `OpenDeepLink`: {error:#}");
             }
             Ok(())
@@ -144,7 +144,7 @@ fn run_gui(config: RunConfig) -> Result<()> {
                 return Err(anyhow);
             }
 
-            if anyhow.root_cause().is::<deep_link::CantListen>() {
+            if anyhow.root_cause().is::<gui::AlreadyRunning>() {
                 show_error_dialog(
                     "Firezone is already running. If it's not responding, force-stop it.",
                 )?;

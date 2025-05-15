@@ -6,17 +6,20 @@
 use crate::{
     about,
     controller::{Controller, ControllerRequest, CtlrTx, Failure, GuiIntegration},
-    deep_link, logging,
+    deep_link,
+    ipc::{self, ClientRead, ClientWrite, SocketId},
+    logging,
     settings::{self, AdvancedSettings},
     updates,
 };
 use anyhow::{Context, Result, bail};
 use firezone_logging::err_with_src;
 use firezone_telemetry as telemetry;
-use secrecy::{ExposeSecret as _, SecretString};
-use std::{str::FromStr, time::Duration};
+use futures::SinkExt as _;
+use std::time::Duration;
 use tauri::Manager;
 use tokio::sync::mpsc;
+use tokio_stream::StreamExt;
 use tracing::instrument;
 
 pub mod system_tray;
@@ -123,6 +126,23 @@ pub struct RunConfig {
     pub fail_with: Option<Failure>,
 }
 
+/// IPC Messages that a newly launched instance (i.e. a client) may send to an already running instance of Firezone.
+#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+pub enum ClientMsg {
+    Deeplink(url::Url),
+    NewInstance,
+}
+
+/// IPC Messages that an already running instance of Firezone may send to a newly launched instance.
+#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+pub enum ServerMsg {
+    Ack,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Another instance of Firezone is already running")]
+pub struct AlreadyRunning;
+
 /// Runs the Tauri GUI and returns on exit or unrecoverable error
 #[instrument(skip_all)]
 pub fn run(
@@ -137,10 +157,14 @@ pub fn run(
 
     let _guard = rt.enter();
 
-    // Make sure we're single-instance
-    // We register our deep links to call the `open-deep-link` subcommand,
-    // so if we're at this point, we know we've been launched manually
-    let deep_link_server = rt.block_on(deep_link::Server::new())?;
+    let gui_ipc = match rt.block_on(create_gui_ipc_server()) {
+        Ok(gui_ipc) => gui_ipc,
+        Err(e) => {
+            tracing::debug!("{e:#}");
+
+            return Err(anyhow::Error::new(AlreadyRunning));
+        }
+    };
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let (ready_tx, mut ready_rx) = mpsc::channel::<tauri::AppHandle>(1);
@@ -218,7 +242,6 @@ pub fn run(
             // to handle deep links
             let exe = tauri_utils::platform::current_exe().context("Can't find our own exe path")?;
             deep_link::register(exe).context("Failed to register deep link handler")?;
-            tokio::spawn(accept_deep_links(deep_link_server, ctlr_tx.clone()));
         }
 
         if let Some(failure) = config.fail_with {
@@ -275,6 +298,7 @@ pub fn run(
             advanced_settings,
             reloader,
             updates_rx,
+            gui_ipc
         ));
 
         anyhow::Ok(ctrl_task)
@@ -396,40 +420,64 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     Ok::<_, anyhow::Error>(())
 }
 
-/// Worker task to accept deep links from a named pipe forever
-///
-/// * `server` An initial named pipe server to consume before making new servers. This lets us also use the named pipe to enforce single-instance
-async fn accept_deep_links(mut server: deep_link::Server, ctlr_tx: CtlrTx) -> Result<()> {
-    loop {
-        match server.accept().await {
-            Ok(Some(bytes)) => {
-                let url = SecretString::from_str(
-                    std::str::from_utf8(bytes.expose_secret())
-                        .context("Incoming deep link was not valid UTF-8")?,
-                )
-                .context("Impossible: can't wrap String into SecretString")?;
-                // Ignore errors from this, it would only happen if the app is shutting down, otherwise we would wait
-                ctlr_tx
-                    .send(ControllerRequest::SchemeRequest(url))
-                    .await
-                    .ok();
-            }
-            Ok(None) => {
-                tracing::debug!("Accepted deep-link but read 0 bytes, trying again ...");
-            }
-            Err(error) => {
-                tracing::warn!("Failed to accept deep link: {error:#}")
-            }
-        }
-        // We re-create the named pipe server every time we get a link, because of an oddity in the Windows API.
-        server = deep_link::Server::new().await?;
-    }
-}
-
 fn handle_system_tray_event(app: &tauri::AppHandle, event: system_tray::Event) -> Result<()> {
     app.try_state::<Managed>()
         .context("can't get Managed struct from Tauri")?
         .ctlr_tx
         .blocking_send(ControllerRequest::SystemTrayMenu(event))?;
+    Ok(())
+}
+
+/// Create a new instance of the GUI IPC server.
+///
+/// Every time Firezone gets launched, we attempt to connect to this server.
+/// If we can successfully connect and handshake a message, then we know that there is a functioning instance of Firezone already running.
+///
+/// If we hit an IO errors during the connection, we assume that there isn't already an instance of Firezone and we consider us to be the first instance.
+///
+/// There is a third, somewhat gnarly case:
+///
+/// An instance of Firezone may already be running but it is not responding.
+/// Launching another instance on top of it would likely create more problems that it solves, so we also need to fail for that case.
+async fn create_gui_ipc_server() -> Result<ipc::Server> {
+    let (read, write) = match ipc::connect::<ServerMsg, ClientMsg>(
+        SocketId::Gui,
+        ipc::ConnectOptions { num_attempts: 1 },
+    )
+    .await
+    {
+        Ok(pair) => pair,
+        Err(e) => {
+            // If we can't connect to the socket, we must be the first instance.
+            tracing::debug!(
+                "We appear to be the first instance of the GUI client; connecting to socket yielded: {e:#}"
+            );
+
+            return ipc::Server::new(SocketId::Gui).context("Failed to create GUI IPC socket");
+        }
+    };
+
+    tokio::time::timeout(Duration::from_secs(5), new_instance_handshake(read, write))
+        .await
+        .context("Failed to handshake with existing instance in 5s")??;
+
+    // If we managed to send the IPC message then another instance of Firezone is already running.
+
+    bail!("Successfully handshaked with existing instance of Firezone GUI")
+}
+
+async fn new_instance_handshake(
+    mut read: ClientRead<ServerMsg>,
+    mut write: ClientWrite<ClientMsg>,
+) -> Result<()> {
+    write.send(&ClientMsg::NewInstance).await?;
+    let response = read
+        .next()
+        .await
+        .context("No response received")?
+        .context("Failed to receive response")?;
+
+    anyhow::ensure!(response == ServerMsg::Ack);
+
     Ok(())
 }
