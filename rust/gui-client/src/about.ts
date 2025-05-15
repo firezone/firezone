@@ -18,8 +18,8 @@ function get_cargo_version() {
 
 function get_git_version() {
   try {
-    invoke("get_git_version").then((gitVersion: unknown) => {
-      gitVersionSpan.innerText = gitVersion as string;
+    invoke<string>("get_git_version").then((gitVersion) => {
+      gitVersionSpan.innerText = gitVersion.substring(0, 8); // Trim Git hash
     });
   } catch (e) {
     gitVersionSpan.innerText = "Unknown";

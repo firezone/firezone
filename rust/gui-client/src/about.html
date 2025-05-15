@@ -10,14 +10,22 @@
     <script type="module" src="about.ts" defer></script>
   </head>
 
-  <body class="bg-neutral-100 text-neutral-900">
-    <div class="container">
-      <img src="logo.png" alt="Firezone Logo" class="mt-16 w-64 h-64 mx-auto" />
-      <p class="mt-12 text-center">
-        Version
-        <strong><span id="cargo-version"></span></strong>
+  <body class="bg-neutral-100 min-h-screen flex items-center justify-center">
+    <div class="w-full max-w-sm flex flex-col items-center">
+      <img src="logo.png" alt="Firezone Logo" class="w-20 h-20 mb-6" />
+      <p class="text-neutral-600 mb-1">Version</p>
+      <p class="text-2xl font-bold mb-1">
+        <span id="cargo-version"></span>
+      </p>
+      <p class="text-neutral-400 text-sm mb-6">
         (<span id="git-version"></span>)
       </p>
+      <a
+        href="https://docs.firezone.dev"
+        target="_blank"
+        class="text-accent-450 hover:underline text-sm"
+        >Documentation</a
+      >
     </div>
   </body>
 </html>
