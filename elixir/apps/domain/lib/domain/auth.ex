@@ -263,11 +263,11 @@ defmodule Domain.Auth do
   # Update default provider for client auth
   def assign_default_provider(%Provider{} = provider, %Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
-      {:ok, {:ok, default_provider}} =
+      {:ok, result} =
         Repo.transaction(fn ->
           # 1. Clear default for all other providers
           Provider.Query.not_disabled()
-          |> Provider.Query.by_account_id(provider.account_id)
+          |> Authorizer.for_subject(Provider, subject)
           |> Repo.update_all(set: [assigned_default_at: nil])
 
           # 2. Set default for the given provider
@@ -279,14 +279,14 @@ defmodule Domain.Auth do
           )
         end)
 
-      {:ok, default_provider}
+      result
     end
   end
 
   def clear_default_provider(%Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_providers_permission()) do
       Provider.Query.not_disabled()
-      |> Provider.Query.by_account_id(subject.account.id)
+      |> Authorizer.for_subject(Provider, subject)
       |> Repo.update_all(set: [assigned_default_at: nil])
     end
   end

@@ -260,7 +260,10 @@ defmodule Domain.AuthTest do
       assert provider.assigned_default_at
     end
 
-    test "removes default from all other providers", %{account: account, subject: subject} do
+    test "clears default from all other providers in same account", %{
+      account: account,
+      subject: subject
+    } do
       {provider1, _bypass} =
         Fixtures.Auth.start_and_create_openid_connect_provider(
           account: account,
@@ -275,6 +278,20 @@ defmodule Domain.AuthTest do
 
       assert provider1 = Repo.reload(provider1)
       assert is_nil(provider1.assigned_default_at)
+    end
+
+    test "prevents clearing default from other accounts' providers", %{
+      subject: subject
+    } do
+      other_account = Fixtures.Accounts.create_account()
+
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(
+          account: other_account,
+          assigned_default_at: DateTime.utc_now()
+        )
+
+      assert {:error, :not_found} = assign_default_provider(other_provider, subject)
     end
   end
 
