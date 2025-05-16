@@ -46,6 +46,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Dummy start to get the extension running on macOS after upgrade
     if options?["dryRun"] as? Bool == true {
       completionHandler(nil)
+      return
     }
 
     // If the tunnel starts up before the GUI after an upgrade crossing the 1.4.15 version boundary,
