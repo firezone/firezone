@@ -3,7 +3,7 @@ defmodule Domain.Auth.Provider.Changeset do
   alias Domain.Accounts
   alias Domain.Auth.{Subject, Provider, Adapters}
 
-  @create_fields ~w[id name adapter provisioner adapter_config adapter_state disabled_at]a
+  @create_fields ~w[id name adapter provisioner adapter_config adapter_state disabled_at assigned_default_at]a
   @update_fields ~w[name adapter_config
                     last_syncs_failed last_sync_error sync_disabled_at sync_error_emailed_at
                     adapter_state provisioner disabled_at deleted_at]a
@@ -41,6 +41,12 @@ defmodule Domain.Auth.Provider.Changeset do
     provider
     |> cast(attrs, @update_fields)
     |> changeset()
+  end
+
+  def assign_default_provider(%Provider{} = provider) do
+    provider
+    |> change()
+    |> put_change(:assigned_default_at, DateTime.utc_now())
   end
 
   def sync_finished(%Provider{} = provider) do
@@ -88,6 +94,10 @@ defmodule Domain.Auth.Provider.Changeset do
     |> unique_constraint(:base,
       name: :unique_account_adapter_index,
       message: "only one of this adapter type may be enabled per account"
+    )
+    |> unique_constraint(:base,
+      name: :auth_providers_account_id_assigned_default_at_index,
+      message: "only one provider may be assigned default for client authentication"
     )
     |> validate_provisioner()
     |> validate_required(@required_fields)

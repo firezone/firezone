@@ -217,6 +217,117 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "fetch_default_provider_for_account/2" do
+    test "returns not found if no default providers exist" do
+      account = Fixtures.Accounts.create_account()
+      assert fetch_default_provider_for_account(account) == {:error, :not_found}
+    end
+
+    test "returns default provider for account" do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(
+          account: account,
+          assigned_default_at: DateTime.utc_now()
+        )
+
+      assert {:ok, fetched_provider} = fetch_default_provider_for_account(account)
+      assert fetched_provider.id == provider.id
+    end
+  end
+
+  describe "assign_default_provider/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "assigns default provider for account", %{account: account, subject: subject} do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      assert {:ok, provider} = assign_default_provider(provider, subject)
+      assert provider.assigned_default_at
+    end
+
+    test "clears default from all other providers in same account", %{
+      account: account,
+      subject: subject
+    } do
+      {provider1, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(
+          account: account,
+          assigned_default_at: DateTime.utc_now()
+        )
+
+      {provider2, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      assert {:ok, provider} = assign_default_provider(provider2, subject)
+      assert provider.assigned_default_at
+
+      assert provider1 = Repo.reload(provider1)
+      assert is_nil(provider1.assigned_default_at)
+    end
+
+    test "prevents clearing default from other accounts' providers", %{
+      subject: subject
+    } do
+      other_account = Fixtures.Accounts.create_account()
+
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(
+          account: other_account,
+          assigned_default_at: DateTime.utc_now()
+        )
+
+      assert_raise MatchError, fn ->
+        assign_default_provider(other_provider, subject)
+      end
+    end
+  end
+
+  describe "clear_default_provider/1" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
+
+    test "clears default provider from account", %{account: account, subject: subject} do
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(
+          account: account,
+          assigned_default_at: DateTime.utc_now()
+        )
+
+      assert {:ok, default_provider} = fetch_default_provider_for_account(account)
+      assert provider.id == default_provider.id
+
+      assert {_count, nil} = clear_default_provider(subject)
+      provider = Repo.reload(provider)
+      assert is_nil(provider.assigned_default_at)
+    end
+  end
+
   describe "list_providers/2" do
     test "returns all not soft-deleted providers for a given account" do
       account = Fixtures.Accounts.create_account()

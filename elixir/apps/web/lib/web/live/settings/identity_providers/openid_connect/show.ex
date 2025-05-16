@@ -132,7 +132,10 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
           <.vertical_table id="provider">
             <.vertical_table_row>
               <:label>Name</:label>
-              <:value>{@provider.name}</:value>
+              <:value>
+                {@provider.name}
+                <.assigned_default_badge provider={@provider} />
+              </:value>
             </.vertical_table_row>
             <.vertical_table_row>
               <:label>Status</:label>
