@@ -9,7 +9,7 @@
           <ServiceControl Id="RemoveOldFirezoneDebugService" Name="FirezoneClientIpcServiceDebug" Stop="uninstall" Remove="uninstall" Wait="yes" />
 
           <ServiceInstall
-              Id="FirezoneClientServiceInstaller"
+              Id="FirezoneClientTunnelServiceInstaller"
               Arguments="run"
               Type="ownProcess"
               Vital="yes"
