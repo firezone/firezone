@@ -1,5 +1,5 @@
 [Unit]
-Description=Firezone Tunnel Service
+Description=Firezone Client Tunnel Service
 After=systemd-resolved.service
 Wants=systemd-resolved.service
 
