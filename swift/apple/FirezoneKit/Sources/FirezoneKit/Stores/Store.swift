@@ -36,7 +36,6 @@ public final class Store: ObservableObject {
 #if os(macOS)
   // Track whether our system extension has been installed (macOS)
   @Published private(set) var systemExtensionStatus: SystemExtensionStatus?
-  private var systemExtensionManager = SystemExtensionManager()
 #endif
 
   var firezoneId: String?
@@ -77,26 +76,13 @@ public final class Store: ObservableObject {
   }
 
 #if os(macOS)
-  func checkSystemExtensionStatus() async throws -> SystemExtensionStatus {
+  func systemExtensionRequest(_ requestType: SystemExtensionRequestType) async throws -> SystemExtensionStatus {
+    let manager = SystemExtensionManager()
+
     let status =
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
-      systemExtensionManager.checkStatus(
-        identifier: VPNConfigurationManager.bundleIdentifier,
-        continuation: continuation
-      )
-    }
-
-    self.systemExtensionStatus = status
-
-    return status
-  }
-
-  func installSystemExtension() async throws -> SystemExtensionStatus {
-    // Apple recommends installing the system extension as early as possible after app launch.
-    // See https://developer.apple.com/documentation/systemextensions/installing-system-extensions-and-drivers
-    let status =
-    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
-      systemExtensionManager.installSystemExtension(
+      manager.sendRequest(
+        requestType: requestType,
         identifier: VPNConfigurationManager.bundleIdentifier,
         continuation: continuation
       )
@@ -108,9 +94,6 @@ public final class Store: ObservableObject {
   }
 #endif
 
-  // On iOS we need to subscribe only to VPN status changes.
-  // On macOS, however, we need to also listen for the system extension status changes. On macOS, the tunnel is
-  // operational only if vpn status is not .invalid and the extension status is .installed.
   private func setupTunnelObservers() async throws {
     let vpnStatusChangeHandler: (NEVPNStatus) async throws -> Void = { [weak self] status in
       try await self?.handleVPNStatusChange(newVPNStatus: status)
@@ -145,7 +128,7 @@ public final class Store: ObservableObject {
     // When this happens, it's because either our VPN configuration or System Extension (or both) were removed.
     // So load the system extension status again to determine which view to load.
     if vpnStatus == .invalid {
-      self.systemExtensionStatus = try await checkSystemExtensionStatus()
+      self.systemExtensionStatus = try await systemExtensionRequest(.check)
     }
 #endif
   }
@@ -156,11 +139,11 @@ public final class Store: ObservableObject {
 
   private func initSystemExtension() async throws {
 #if os(macOS)
-    var systemExtensionStatus = try await self.checkSystemExtensionStatus()
+    var systemExtensionStatus = try await systemExtensionRequest(.check)
 
     // If already installed but the wrong version, go ahead and install. This shouldn't prompt the user.
     if systemExtensionStatus == .needsReplacement {
-      systemExtensionStatus = try await installSystemExtension()
+      systemExtensionStatus = try await systemExtensionRequest(.install)
     }
 
     self.systemExtensionStatus = systemExtensionStatus

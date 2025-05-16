@@ -30,36 +30,34 @@ enum SystemExtensionStatus {
   case installed
 }
 
+enum SystemExtensionRequestType {
+  case install
+  case check
+}
+
 class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
   // Delegate methods complete with either a true or false outcome or an Error
   private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
 
-  func installSystemExtension(
+  func sendRequest(
+    requestType: SystemExtensionRequestType,
     identifier: String,
     continuation: CheckedContinuation<SystemExtensionStatus, Error>
   ) {
     self.continuation = continuation
 
-    let request = OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier: identifier, queue: .main)
+    let request = switch requestType {
+    case .install:
+      OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier: identifier, queue: .main)
+    case .check:
+      OSSystemExtensionRequest.propertiesRequest(
+        forExtensionWithIdentifier: identifier,
+        queue: .main
+      )
+    }
+
     request.delegate = self
 
-    // Install extension
-    OSSystemExtensionManager.shared.submitRequest(request)
-  }
-
-  func checkStatus(
-    identifier: String,
-    continuation: CheckedContinuation<SystemExtensionStatus, Error>
-  ) {
-    self.continuation = continuation
-
-    let request = OSSystemExtensionRequest.propertiesRequest(
-      forExtensionWithIdentifier: identifier,
-      queue: .main
-    )
-    request.delegate = self
-
-    // Send request
     OSSystemExtensionManager.shared.submitRequest(request)
   }
 

@@ -136,7 +136,7 @@ struct GrantVPNView: View {
   func installSystemExtension() {
     Task {
       do {
-        _ = try await store.installSystemExtension()
+        _ = try await store.systemExtensionRequest(.install)
 
         // The window has a tendency to go to the background after installing
         // the system extension

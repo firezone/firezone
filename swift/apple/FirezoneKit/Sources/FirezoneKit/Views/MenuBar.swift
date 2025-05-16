@@ -727,7 +727,7 @@ public final class MenuBar: NSObject, ObservableObject {
         // our VPN configuration got removed. Since we don't know which, reinstall
         // the system extension here too just in case. It's a no-op if already
         // installed.
-        _ = try await store.installSystemExtension()
+        _ = try await store.systemExtensionRequest(.install)
         try await store.installVPNConfiguration()
       } catch let error as NSError {
         if error.domain == "NEVPNErrorDomain" && error.code == 5 {
