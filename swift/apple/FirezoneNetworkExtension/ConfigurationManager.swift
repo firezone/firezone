@@ -21,16 +21,26 @@ class ConfigurationManager {
   // can cause deadlocks in rare cases.
   private var userDict: [String: Any?]
 
-  private var managedDict: [String: Any?] {
-    userDefaults.dictionary(forKey: managedDictKey) ?? [:]
-  }
+  private var managedDict: [String: Any?]
 
   private init() {
     userDefaults = UserDefaults.standard
     userDict = userDefaults.dictionary(forKey: userDictKey) ?? [:]
+    managedDict = userDefaults.dictionary(forKey: managedDictKey) ?? [:]
 
     migrateFirezoneId()
     Telemetry.firezoneId = userDict[Configuration.Keys.firezoneId] as? String
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleUserDefaultsChanged),
+      name: UserDefaults.didChangeNotification,
+      object: userDefaults
+    )
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self, name: UserDefaults.didChangeNotification, object: userDefaults)
   }
 
   // Save user-settable configuration
@@ -67,6 +77,10 @@ class ConfigurationManager {
 
     // 3. Generate and save new one
     setFirezoneId(UUID().uuidString)
+  }
+
+  @objc private func handleUserDefaultsChanged(_ notification: Notification) {
+    self.managedDict = userDefaults.dictionary(forKey: managedDictKey) ?? [:]
   }
 
   private func saveUserDict() {
