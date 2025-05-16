@@ -15,7 +15,7 @@ struct SessionView: View {
   @EnvironmentObject var store: Store
 
   var body: some View {
-    switch store.status {
+    switch store.vpnStatus {
     case .connected:
       switch store.resourceList {
       case .loaded(let resources):

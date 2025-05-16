@@ -7,7 +7,7 @@
 #if os(macOS)
 import SystemExtensions
 
-public enum SystemExtensionError: Error {
+enum SystemExtensionError: Error {
   case unknownResult(OSSystemExtensionRequest.Result)
 
   var description: String {
@@ -18,7 +18,7 @@ public enum SystemExtensionError: Error {
   }
 }
 
-public enum SystemExtensionStatus {
+enum SystemExtensionStatus {
   // Not installed or enabled at all
   case needsInstall
 
@@ -30,43 +30,41 @@ public enum SystemExtensionStatus {
   case installed
 }
 
-public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
+enum SystemExtensionRequestType {
+  case install
+  case check
+}
+
+class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate, ObservableObject {
   // Delegate methods complete with either a true or false outcome or an Error
   private var continuation: CheckedContinuation<SystemExtensionStatus, Error>?
 
-  public func installSystemExtension(
+  func sendRequest(
+    requestType: SystemExtensionRequestType,
     identifier: String,
     continuation: CheckedContinuation<SystemExtensionStatus, Error>
   ) {
     self.continuation = continuation
 
-    let request = OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier: identifier, queue: .main)
+    let request = switch requestType {
+    case .install:
+      OSSystemExtensionRequest.activationRequest(forExtensionWithIdentifier: identifier, queue: .main)
+    case .check:
+      OSSystemExtensionRequest.propertiesRequest(
+        forExtensionWithIdentifier: identifier,
+        queue: .main
+      )
+    }
+
     request.delegate = self
 
-    // Install extension
-    OSSystemExtensionManager.shared.submitRequest(request)
-  }
-
-  public func checkStatus(
-    identifier: String,
-    continuation: CheckedContinuation<SystemExtensionStatus, Error>
-  ) {
-    self.continuation = continuation
-
-    let request = OSSystemExtensionRequest.propertiesRequest(
-      forExtensionWithIdentifier: identifier,
-      queue: .main
-    )
-    request.delegate = self
-
-    // Send request
     OSSystemExtensionManager.shared.submitRequest(request)
   }
 
   // MARK: - OSSystemExtensionRequestDelegate
 
   // Result of system extension installation
-  public func request(
+  func request(
     _ request: OSSystemExtensionRequest,
     didFinishWithResult result: OSSystemExtensionRequest.Result
   ) {
@@ -81,7 +79,7 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate,
   }
 
   // Result of properties request
-  public func request(
+  func request(
     _ request: OSSystemExtensionRequest,
     foundProperties properties: [OSSystemExtensionProperties]
   ) {
@@ -116,15 +114,15 @@ public class SystemExtensionManager: NSObject, OSSystemExtensionRequestDelegate,
     resume(returning: .needsInstall)
   }
 
-  public func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
+  func request(_ request: OSSystemExtensionRequest, didFailWithError error: Error) {
     resume(throwing: error)
   }
 
-  public func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
+  func requestNeedsUserApproval(_ request: OSSystemExtensionRequest) {
     // We assume this state until we receive a success response.
   }
 
-  public func request(
+  func request(
     _ request: OSSystemExtensionRequest,
     actionForReplacingExtension existing: OSSystemExtensionProperties,
     withExtension ext: OSSystemExtensionProperties

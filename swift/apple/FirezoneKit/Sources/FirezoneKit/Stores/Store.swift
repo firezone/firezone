@@ -15,6 +15,7 @@ import AppKit
 
 @MainActor
 // TODO: Move some state logic to view models
+// swiftlint:disable:next type_body_length
 public final class Store: ObservableObject {
   @Published private(set) var actorName: String
   @Published private(set) var favorites = Favorites()
@@ -27,7 +28,7 @@ public final class Store: ObservableObject {
   @Published private(set) var configuration: Configuration?
 
   // Enacapsulate Tunnel status here to make it easier for other components to observe
-  @Published private(set) var status: NEVPNStatus?
+  @Published private(set) var vpnStatus: NEVPNStatus?
 
   // User notifications
   @Published private(set) var decision: UNAuthorizationStatus?
@@ -59,74 +60,48 @@ public final class Store: ObservableObject {
     }
 
     // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
-    initNotifications()
-    initSystemExtension()
-    initVPNConfiguration()
-  }
-
-  func initNotifications() {
+    // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
     Task {
-      self.decision = await self.sessionNotification.loadAuthorizationStatus()
+      do {
+        await initNotifications()
+        try await initSystemExtension()
+        try await initVPNConfiguration()
+        try await setupTunnelObservers()
+        try await initConfiguration()
+        try await maybeAutoConnect()
+      } catch {
+        Log.error(error)
+      }
     }
   }
 
-  func initSystemExtension() {
 #if os(macOS)
-    Task {
-      do {
-        self.systemExtensionStatus = try await self.checkSystemExtensionStatus()
-      } catch {
-        Log.error(error)
-      }
+  func systemExtensionRequest(_ requestType: SystemExtensionRequestType) async throws {
+    let manager = SystemExtensionManager()
+
+    self.systemExtensionStatus =
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
+      manager.sendRequest(
+        requestType: requestType,
+        identifier: VPNConfigurationManager.bundleIdentifier,
+        continuation: continuation
+      )
     }
+  }
 #endif
+
+  private func setupTunnelObservers() async throws {
+    let vpnStatusChangeHandler: (NEVPNStatus) async throws -> Void = { [weak self] status in
+      try await self?.handleVPNStatusChange(newVPNStatus: status)
+    }
+    try ipcClient().subscribeToVPNStatusUpdates(handler: vpnStatusChangeHandler)
+    self.vpnStatus = try ipcClient().sessionStatus()
   }
 
-  func initVPNConfiguration() {
-    Task {
-      do {
-        // Try to load existing configuration
-        if let manager = try await VPNConfigurationManager.load() {
-          try await manager.maybeMigrateConfiguration()
-          self.vpnConfigurationManager = manager
-          try await setupTunnelObservers()
-          self.configuration = try await ipcClient().getConfiguration()
-          Telemetry.firezoneId = configuration?.firezoneId
+  private func handleVPNStatusChange(newVPNStatus: NEVPNStatus) async throws {
+    self.vpnStatus = newVPNStatus
 
-          try await manager.enableConfiguration()
-          if configuration?.connectOnStart ?? true {
-            try ipcClient().start()
-          }
-        } else {
-          status = .invalid
-        }
-      } catch {
-        Log.error(error)
-      }
-    }
-  }
-
-  func setupTunnelObservers() async throws {
-    let statusChangeHandler: (NEVPNStatus) async throws -> Void = { [weak self] status in
-      try await self?.handleStatusChange(newStatus: status)
-    }
-
-    try ipcClient().subscribeToVPNStatusUpdates(handler: statusChangeHandler)
-    try await handleStatusChange(newStatus: ipcClient().sessionStatus())
-  }
-
-  func handleStatusChange(newStatus: NEVPNStatus) async throws {
-    status = newStatus
-
-    if status == .invalid {
-      // VPN configuration was yanked from system settings
-      endConfigurationPolling()
-    } else {
-      // This is a no-op if the timer is already active
-      beginConfigurationPolling()
-    }
-
-    if status == .connected {
+    if newVPNStatus == .connected {
       beginUpdatingResources()
     } else {
       endUpdatingResources()
@@ -135,7 +110,7 @@ public final class Store: ObservableObject {
 #if os(macOS)
     // On macOS we must show notifications from the UI process. On iOS, we've already initiated the notification
     // from the tunnel process, because the UI process is not guaranteed to be alive.
-    if status == .disconnected {
+    if vpnStatus == .disconnected {
       do {
         let reason = try await ipcClient().consumeStopReason()
         if reason == .authenticationCanceled {
@@ -148,54 +123,65 @@ public final class Store: ObservableObject {
 
     // When this happens, it's because either our VPN configuration or System Extension (or both) were removed.
     // So load the system extension status again to determine which view to load.
-    if status == .invalid {
-      self.systemExtensionStatus = try await checkSystemExtensionStatus()
+    if vpnStatus == .invalid {
+      try await systemExtensionRequest(.check)
     }
 #endif
   }
 
+  private func initNotifications() async {
+    self.decision = await self.sessionNotification.loadAuthorizationStatus()
+  }
+
+  private func initSystemExtension() async throws {
 #if os(macOS)
-  func checkSystemExtensionStatus() async throws -> SystemExtensionStatus {
-    let checker = SystemExtensionManager()
+    try await systemExtensionRequest(.check)
 
-    let status =
-    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
-      checker.checkStatus(
-        identifier: VPNConfigurationManager.bundleIdentifier,
-        continuation: continuation
-      )
+    // If already installed but the wrong version, go ahead and install. This shouldn't prompt the user.
+    if systemExtensionStatus == .needsReplacement {
+      try await systemExtensionRequest(.install)
     }
-
-    // If already installed but the wrong version, go ahead and install.
-    // This shouldn't prompt the user.
-    if status == .needsReplacement {
-      try await installSystemExtension()
-    }
-
-    return status
-  }
-
-  func installSystemExtension() async throws {
-    let installer = SystemExtensionManager()
-
-    // Apple recommends installing the system extension as early as possible after app launch.
-    // See https://developer.apple.com/documentation/systemextensions/installing-system-extensions-and-drivers
-    self.systemExtensionStatus =
-    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
-      installer.installSystemExtension(
-        identifier: VPNConfigurationManager.bundleIdentifier,
-        continuation: continuation
-      )
-    }
-  }
 #endif
+  }
 
+  private func initVPNConfiguration() async throws {
+    // Try to load existing configuration
+    if let manager = try await VPNConfigurationManager.load() {
+      try await manager.maybeMigrateConfiguration()
+      self.vpnConfigurationManager = manager
+    } else {
+      self.vpnStatus = .invalid
+    }
+  }
+
+  // On macOS, after upgrading Firezone, we need to issue a startTunnel to start the IPC service so that we
+  // can fetch configuration. We try a few times here to do that so that we can determine connectOnStart, before
+  // giving up and polling configuration anyway.
+  private func initConfiguration() async throws {
+    var configuration: Configuration?
+    let end = Date().addingTimeInterval(3)
+
+    while configuration == nil && Date() < end {
+      configuration = try await getConfigurationStartingSystemExtension()
+      try await Task.sleep(nanoseconds: 100_000_000)
+    }
+
+    self.configuration = configuration
+
+    beginConfigurationPolling()
+  }
+
+  private func maybeAutoConnect() async throws {
+    if configuration?.connectOnStart == true {
+      try await manager().enableConfiguration()
+      try ipcClient().start()
+    }
+  }
   func installVPNConfiguration() async throws {
     // Create a new VPN configuration in system settings.
     self.vpnConfigurationManager = try await VPNConfigurationManager()
 
     self.configuration = try await ipcClient().getConfiguration()
-    Telemetry.firezoneId = configuration?.firezoneId
 
     try await setupTunnelObservers()
   }
@@ -281,7 +267,14 @@ public final class Store: ObservableObject {
           self.configurationUpdateTask = Task {
             if !Task.isCancelled {
               do {
-                self.configuration = try await self.ipcClient().getConfiguration()
+                self.configuration = try await self.getConfigurationStartingSystemExtension()
+              } catch let error as NSError {
+                // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
+                if error.domain == "NEVPNErrorDomain" && error.code == 1 {
+                  // not initialized yet
+                } else {
+                  Log.error(error)
+                }
               } catch {
                 Log.error(error)
               }
@@ -298,11 +291,21 @@ public final class Store: ObservableObject {
     self.configurationTimer = timer
   }
 
-  private func endConfigurationPolling() {
-    configurationUpdateTask?.cancel()
-    configurationTimer?.invalidate()
-    configurationTimer = nil
-    self.configuration = nil
+  private func getConfigurationStartingSystemExtension() async throws -> Configuration? {
+    var configuration = try await ipcClient().getConfiguration()
+
+#if os(macOS)
+    if configuration == nil {
+      try ipcClient().startSystemExtension()
+      configuration = try await ipcClient().getConfiguration()
+    }
+#endif
+
+    if Telemetry.firezoneId == nil {
+      Telemetry.firezoneId = configuration?.firezoneId
+    }
+
+    return configuration
   }
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
@@ -323,6 +326,13 @@ public final class Store: ObservableObject {
             if !Task.isCancelled {
               do {
                 self.resourceList = try await self.ipcClient().fetchResources()
+              } catch let error as NSError {
+                // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
+                if error.domain == "NEVPNErrorDomain" && error.code == 1 {
+                  // not initialized yet
+                } else {
+                  Log.error(error)
+                }
               } catch {
                 Log.error(error)
               }

@@ -245,7 +245,7 @@ public struct SettingsView: View {
           ToolbarItem(placement: .navigationBarTrailing) {
             Button("Save") {
               let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
-              if case .connected = store.status {
+              if case .connected = store.vpnStatus {
                 self.confirmationAlertContinueAction = action
                 self.isShowingConfirmationAlert = true
               } else {
@@ -313,7 +313,7 @@ public struct SettingsView: View {
             "Apply",
             action: {
               let action = ConfirmationAlertContinueAction.saveSettings
-              if [.connected, .connecting, .reasserting].contains(store.status) {
+              if [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
                 self.confirmationAlertContinueAction = action
                 self.isShowingConfirmationAlert = true
               } else {
@@ -758,7 +758,7 @@ public struct SettingsView: View {
   private func saveSettings() async throws {
     try await viewModel.save()
 
-    if [.connected, .connecting, .reasserting].contains(store.status) {
+    if [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
       // TODO: Warn user instead of signing out
       try await self.store.signOut()
     }
