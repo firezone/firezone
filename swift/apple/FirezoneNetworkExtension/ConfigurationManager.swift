@@ -80,7 +80,17 @@ class ConfigurationManager {
   }
 
   @objc private func handleUserDefaultsChanged(_ notification: Notification) {
-    self.managedDict = userDefaults.dictionary(forKey: managedDictKey) ?? [:]
+    let newManagedDict = (userDefaults.dictionary(forKey: managedDictKey) ?? [:]) as [String: Any?]
+
+    // NSDictionary conforms to Equatable
+    if (managedDict as NSDictionary) != (newManagedDict as NSDictionary) {
+      Log.log("""
+        Applying MDM configuration:
+          Old: \(managedDict)
+          New: \(newManagedDict)
+      """)
+      self.managedDict = newManagedDict
+    }
   }
 
   private func saveUserDict() {
