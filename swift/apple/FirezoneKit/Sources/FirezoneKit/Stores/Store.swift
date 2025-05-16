@@ -173,6 +173,7 @@ public final class Store: ObservableObject {
 
   private func maybeAutoConnect() async throws {
     if configuration?.connectOnStart == true {
+      try await manager().enableConfiguration()
       try ipcClient().start()
     }
   }
