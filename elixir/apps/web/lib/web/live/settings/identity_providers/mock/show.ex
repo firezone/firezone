@@ -46,9 +46,7 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
         <span :if={not is_nil(@provider.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
       <:action :if={is_nil(@provider.deleted_at)}>
-        <.edit_button navigate={
-          ~p"/#{@account}/settings/identity_providers/mock/#{@provider.id}/edit"
-        }>
+        <.edit_button navigate={~p"/#{@account}/settings/identity_providers/mock/#{@provider}/edit"}>
           Edit
         </.edit_button>
       </:action>

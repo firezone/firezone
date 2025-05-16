@@ -10,6 +10,34 @@ defmodule Domain.Actors.Group.Query do
     |> where([groups: groups], is_nil(groups.deleted_at))
   end
 
+  def not_deleted_and_not_excluded do
+    not_deleted()
+    |> not_excluded()
+  end
+
+  def not_excluded(queryable \\ all()) do
+    queryable
+    |> join(:left, [groups: groups], providers in assoc(groups, :provider), as: :providers)
+    |> where(
+      [groups: groups, providers: providers],
+      is_nil(groups.provider_id) or
+        (not is_nil(groups.provider_id) and
+           (is_nil(providers.group_filters_enabled_at) or
+              groups.provider_identifier in providers.included_groups))
+    )
+  end
+
+  def excluded(queryable) do
+    queryable
+    |> join(:inner, [groups: groups], providers in assoc(groups, :provider), as: :providers)
+    |> where(
+      [groups: groups, providers: providers],
+      not is_nil(groups.provider_id) and
+        (not is_nil(providers.group_filters_enabled_at) and
+           groups.provider_identifier not in providers.included_groups)
+    )
+  end
+
   def not_editable(queryable) do
     where(queryable, [groups: groups], not is_nil(groups.provider_id) or groups.type != :static)
   end
