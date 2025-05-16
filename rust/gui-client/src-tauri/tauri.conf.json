@@ -71,9 +71,9 @@
         "title": "Welcome",
         "url": "src/welcome.html",
         "fullscreen": false,
-        "resizable": true,
-        "width": 640,
-        "height": 480,
+        "resizable": false,
+        "width": 800,
+        "height": 450,
         "visible": false
       }
     ]
