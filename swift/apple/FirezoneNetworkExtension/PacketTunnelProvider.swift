@@ -176,8 +176,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         completionHandler?(configurationPayload)
 
       case .setConfiguration(let configuration):
-        self.configuration = configuration
         ConfigurationManager.shared.setConfiguration(configuration)
+        self.configuration = ConfigurationManager.shared.toConfiguration()
         completionHandler?(nil)
 
       case .signOut:
