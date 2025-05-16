@@ -105,7 +105,7 @@ public final class Store: ObservableObject {
   private func handleVPNStatusChange(newVPNStatus: NEVPNStatus) async throws {
     self.vpnStatus = newVPNStatus
 
-    if vpnStatus == .connected {
+    if newVPNStatus == .connected {
       beginUpdatingResources()
     } else {
       endUpdatingResources()
