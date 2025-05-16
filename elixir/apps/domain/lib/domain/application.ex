@@ -41,9 +41,7 @@ defmodule Domain.Application do
 
       # Observability
       Domain.Telemetry
-    ] ++
-      oban() ++
-      replication()
+    ] ++ oban() ++ replication()
   end
 
   defp configure_logger do
@@ -86,31 +84,9 @@ defmodule Domain.Application do
     config = Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
 
     if config[:enabled] do
-      [
-        replication_child_spec()
-      ]
+      [Domain.Events.ReplicationConnectionManager]
     else
       []
     end
-  end
-
-  defp replication_child_spec do
-    {connection_opts, config} =
-      Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
-      |> Keyword.pop(:connection_opts)
-
-    init_state = %{
-      connection_opts: connection_opts,
-      instance: struct(Domain.Events.ReplicationConnection, config)
-    }
-
-    %{
-      id: Domain.Events.ReplicationConnection,
-      start: {Domain.Events.ReplicationConnection, :start_link, [init_state]},
-      restart: :transient,
-      # Allow up to 240 restarts in 20 minutes - covers duration of a deploy
-      max_restarts: 240,
-      max_seconds: 1200
-    }
   end
 end

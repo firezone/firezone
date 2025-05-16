@@ -26,6 +26,8 @@ defmodule Domain.Events.ReplicationConnection do
   alias Domain.Events.Decoder
   alias Domain.Events.Protocol.{KeepAlive, Write}
 
+  @status_log_interval :timer.minutes(5)
+
   @type t :: %__MODULE__{
           schema: String.t(),
           step:
@@ -41,7 +43,8 @@ defmodule Domain.Events.ReplicationConnection do
           output_plugin: String.t(),
           proto_version: integer(),
           table_subscriptions: list(),
-          relations: map()
+          relations: map(),
+          counter: integer()
         }
   defstruct schema: "public",
             step: :disconnected,
@@ -50,25 +53,14 @@ defmodule Domain.Events.ReplicationConnection do
             output_plugin: "pgoutput",
             proto_version: 1,
             table_subscriptions: [],
-            relations: %{}
+            relations: %{},
+            counter: 0
 
   def start_link(%{instance: %__MODULE__{} = instance, connection_opts: connection_opts}) do
     # Start only one ReplicationConnection in the cluster.
     opts = connection_opts ++ [name: {:global, __MODULE__}]
 
-    case(Postgrex.ReplicationConnection.start_link(__MODULE__, instance, opts)) do
-      {:ok, pid} ->
-        {:ok, pid}
-
-      {:error, {:already_started, pid}} ->
-        {:ok, pid}
-
-      error ->
-        # This is expected in clustered environments.
-        Logger.info("Failed to start replication connection", error: inspect(error))
-
-        error
-    end
+    Postgrex.ReplicationConnection.start_link(__MODULE__, instance, opts)
   end
 
   @impl true
@@ -120,6 +112,9 @@ defmodule Domain.Events.ReplicationConnection do
 
   def handle_result([%Postgrex.Result{}], %__MODULE__{step: :start_replication_slot} = state) do
     Logger.info("Starting replication slot", state: inspect(state))
+
+    # Start logging regular status updates
+    send(self(), :interval_logger)
 
     query =
       "START_REPLICATION SLOT \"#{state.replication_slot_name}\" LOGICAL 0/0  (proto_version '#{state.proto_version}', publication_names '#{state.publication_name}')"
@@ -193,10 +188,9 @@ defmodule Domain.Events.ReplicationConnection do
   def handle_data(data, state) when is_write(data) do
     %Write{message: message} = parse(data)
 
-    # TODO: Telemetry: Mark start
     message
     |> decode_message()
-    |> handle_message(state)
+    |> handle_message(%{state | counter: state.counter + 1})
   end
 
   def handle_data(data, state) do
@@ -273,13 +267,21 @@ defmodule Domain.Events.ReplicationConnection do
   defp handle_message(%Decoder.Messages.Unsupported{data: data}, state) do
     Logger.warning("Unsupported message received",
       data: inspect(data),
-      state: inspect(state)
+      counter: state.counter
     )
 
     {:noreply, [], state}
   end
 
   @impl true
+
+  def handle_info(:interval_logger, state) do
+    Logger.info("Processed #{state.counter} write messages from the WAL stream")
+
+    Process.send_after(self(), :interval_logger, @status_log_interval)
+
+    {:noreply, state}
+  end
 
   def handle_info(:shutdown, _), do: {:disconnect, :normal}
   def handle_info({:DOWN, _, :process, _, _}, _), do: {:disconnect, :normal}
@@ -303,7 +305,7 @@ defmodule Domain.Events.ReplicationConnection do
   @impl true
   def handle_disconnect(state) do
     Logger.info("Replication connection disconnected",
-      state: inspect(state)
+      counter: state.counter
     )
 
     {:noreply, %{state | step: :disconnected}}
