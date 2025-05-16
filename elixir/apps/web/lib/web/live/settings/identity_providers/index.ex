@@ -93,11 +93,13 @@ defmodule Web.Settings.IdentityProviders.Index do
           ordered_by={@order_by_table_id["providers"]}
           metadata={@providers_metadata}
         >
-          <:col :let={provider} field={{:providers, :name}} label="Name" class="w-2/12">
-            <.link navigate={view_provider(@account, provider)} class={[link_style()]}>
-              {provider.name}
-            </.link>
-            <.assigned_default_badge provider={provider} />
+          <:col :let={provider} field={{:providers, :name}} label="Name" class="w-3/12">
+            <div class="flex flex-wrap">
+              <.link navigate={view_provider(@account, provider)} class={[link_style()]}>
+                {provider.name}
+              </.link>
+              <.assigned_default_badge provider={provider} />
+            </div>
           </:col>
           <:col :let={provider} label="Type" class="w-2/12">
             {adapter_name(provider.adapter)}
@@ -163,15 +165,13 @@ defmodule Web.Settings.IdentityProviders.Index do
       for={nil}
     >
       <div class="flex gap-2 items-center">
-        <div class="flex-1 min-w-[12rem]">
-          <.input
-            id="default-provider-select"
-            name="provider_id"
-            type="select"
-            options={@options}
-            value={@value}
-          />
-        </div>
+        <.input
+          id="default-provider-select"
+          name="provider_id"
+          type="select"
+          options={@options}
+          value={@value}
+        />
         <.submit_button
           phx-disable-with="Saving..."
           {if @default_provider_changed, do: [], else: [disabled: true, style: "disabled"]}
