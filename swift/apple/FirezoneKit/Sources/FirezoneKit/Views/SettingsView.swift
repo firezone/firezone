@@ -376,7 +376,7 @@ public struct SettingsView: View {
             Text("Automatically connect when Firezone is launched")
           }
           .toggleStyle(.checkbox)
-          .disabled(viewModel.settings.isConnectOnStartOverridden)
+          .disabled(viewModel.settings.isStartOnLoginOverridden)
 
           Toggle(isOn: $viewModel.settings.startOnLogin) {
             Text("Start Firezone when you sign into your Mac")
