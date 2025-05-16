@@ -60,6 +60,7 @@ public class Configuration: Codable {
     }
     setValue(forKey: Keys.startOnLogin, from: managedDict, and: userDict) { [weak self] in
       self?.startOnLogin = $0
+    }
     setValue(forKey: Keys.disableUpdateCheck, from: managedDict, and: userDict) { [weak self] in
       self?.disableUpdateCheck = $0
     }
