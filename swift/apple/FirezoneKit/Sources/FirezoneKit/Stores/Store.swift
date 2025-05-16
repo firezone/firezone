@@ -8,9 +8,9 @@ import Combine
 import NetworkExtension
 import UserNotifications
 import OSLog
-import ServiceManagement
 
 #if os(macOS)
+import ServiceManagement
 import AppKit
 #endif
 
@@ -313,6 +313,7 @@ public final class Store: ObservableObject {
   // Register / unregister our launch service based on configuration. This is a major pain to do on macOS 12 and below,
   // so this feature only enabled for macOS 13 and higher given the tiny Firezone installbase for macOS 12.
   private func updateAppService() async throws {
+#if os(macOS)
     if #available(macOS 13.0, *) {
       let startOnLogin = configuration?.startOnLogin ?? Configuration.defaultStartOnLogin
 
@@ -325,6 +326,7 @@ public final class Store: ObservableObject {
         try SMAppService.mainApp.register()
       }
     }
+#endif
   }
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
