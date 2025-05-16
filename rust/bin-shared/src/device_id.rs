@@ -53,7 +53,7 @@ pub fn get_or_create() -> Result<DeviceId> {
     fs::create_dir_all(dir).context("Failed to create dir for firezone-id")?;
     set_dir_permissions(dir).with_context(|| {
         format!(
-            "Couldn't set permissions on IPC service config dir `{}`",
+            "Couldn't set permissions on Tunnel service config dir `{}`",
             dir.display()
         )
     })?;

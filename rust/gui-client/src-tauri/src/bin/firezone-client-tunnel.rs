@@ -60,7 +60,7 @@ pub struct Cli {
 
 #[derive(clap::Subcommand)]
 enum Cmd {
-    /// Needed to test the IPC service on aarch64 Windows,
+    /// Needed to test the Tunnel service on aarch64 Windows,
     /// where the Tauri MSI bundler doesn't work yet
     Install,
     Run,
@@ -80,7 +80,7 @@ mod tests {
     use clap::Parser;
     use std::path::PathBuf;
 
-    const EXE_NAME: &str = "firezone-client-ipc";
+    const EXE_NAME: &str = "firezone-client-tunnel";
 
     // Can't remember how Clap works sometimes
     // Also these are examples

@@ -86,7 +86,7 @@ pub trait GuiIntegration {
 pub enum ControllerRequest {
     /// The GUI wants us to use these settings in-memory, they've already been saved to disk
     ApplySettings(Box<AdvancedSettings>),
-    /// Clear the GUI's logs and await the IPC service to clear its logs
+    /// Clear the GUI's logs and await the Tunnel service to clear its logs
     ClearLogs(oneshot::Sender<Result<(), String>>),
     /// The same as the arguments to `client::logging::export_logs_to`
     ExportLogs {
@@ -654,12 +654,12 @@ impl<I: GuiIntegration> Controller<I> {
                 self.update_disabled_resources().await?;
             }
             service::ServerMsg::TerminatingGracefully => {
-                tracing::info!("IPC service exited gracefully");
+                tracing::info!("Tunnel service exited gracefully");
                 self.integration
                     .set_tray_icon(system_tray::icon_terminating());
                 self.integration.show_notification(
                     "Firezone disconnected",
-                    "The Firezone IPC service was shutdown, quitting GUI process.",
+                    "The Firezone Tunnel service was shutdown, quitting GUI process.",
                 )?;
 
                 return Ok(ControlFlow::Break(()));

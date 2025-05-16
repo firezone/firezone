@@ -1,6 +1,6 @@
 //! A module for registering, catching, and parsing deep links that are sent over to the app's already-running instance
 
-// The IPC parts use the same primitives as the IPC service, UDS on Linux
+// The IPC parts use the same primitives as the Tunnel service, UDS on Linux
 // and named pipes on Windows, so TODO de-dupe the IPC code
 
 use crate::{

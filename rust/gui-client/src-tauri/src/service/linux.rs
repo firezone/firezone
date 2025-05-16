@@ -11,7 +11,7 @@ use firezone_telemetry::Telemetry;
 pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()> {
     let (_handle, log_filter_reloader) = crate::logging::setup_ipc(log_dir)?;
     if !elevation_check()? {
-        bail!("IPC service failed its elevation check, try running as admin / root");
+        bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -28,13 +28,13 @@ pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()
     ))
     .inspect(|_| rt.block_on(telemetry.stop()))
     .inspect_err(|e| {
-        tracing::error!("IPC service failed: {e:#}");
+        tracing::error!("Tunnel service failed: {e:#}");
 
         rt.block_on(telemetry.stop_on_crash())
     })
 }
 
-/// Returns true if the IPC service can run properly
+/// Returns true if the Tunnel service can run properly
 // Fallible on Windows
 #[expect(clippy::unnecessary_wraps)]
 pub fn elevation_check() -> Result<bool> {

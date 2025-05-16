@@ -8,7 +8,7 @@ mod platform {
 
     /// Returns true if all permissions are correct for the GUI to run
     ///
-    /// Everything that needs root / admin powers happens in the IPC services,
+    /// Everything that needs root / admin powers happens in the Tunnel services,
     /// so for security and practicality reasons the GUIs must be non-root.
     /// (In Linux by default a root GUI app barely works at all)
     pub fn gui_check() -> Result<bool, Error> {

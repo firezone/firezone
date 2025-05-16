@@ -15,7 +15,7 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
     Ok(path)
 }
 
-/// Path for IPC service config that the IPC service can write
+/// Path for Tunnel service config that the Tunnel service can write
 ///
 /// All writes should use `atomicwrites`.
 ///

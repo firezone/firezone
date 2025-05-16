@@ -36,15 +36,15 @@ If the client stops running while signed in, then the token may be stored in Win
 
 ## Linux Permissions
 
-- [ ] The IPC service with `run-debug` can NOT run as a normal user
-- [ ] The IPC service with `run-debug` can run with `sudo`
+- [ ] The Tunnel service with `run-debug` can NOT run as a normal user
+- [ ] The Tunnel service with `run-debug` can run with `sudo`
 - [ ] The GUI can run as a normal user
 - [ ] The GUI can NOT run with `sudo`
 
 ## Windows Permissions
 
-- [ ] The IPC service with `run-debug` can NOT run as a normal user
-- [ ] The IPC service with `run-debug` can run as admin
+- [ ] The Tunnel service with `run-debug` can NOT run as a normal user
+- [ ] The Tunnel service with `run-debug` can run as admin
 - [ ] The GUI can run as a normal user
 - [ ] The GUI can run as admin
 

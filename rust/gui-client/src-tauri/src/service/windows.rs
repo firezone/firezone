@@ -32,7 +32,7 @@ use windows_service::{
 const SERVICE_NAME: &str = "firezone_client_ipc";
 const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
 
-/// Returns true if the IPC service can run properly
+/// Returns true if the Tunnel service can run properly
 pub fn elevation_check() -> Result<bool> {
     let token = ProcessToken::our_process().context("Failed to get process token")?;
     let elevated = token
@@ -152,7 +152,7 @@ pub fn install() -> Result<()> {
     let manager_access = ServiceManagerAccess::CONNECT | ServiceManagerAccess::CREATE_SERVICE;
     let service_manager = ServiceManager::local_computer(None::<&str>, manager_access)?;
 
-    let name = "FirezoneClientIpcServiceDebug";
+    let name = "FirezoneClientTunnelServiceDebug";
 
     // Un-install existing one first if needed
     if let Err(e) = uninstall_ipc_service(&service_manager, name)
@@ -164,7 +164,7 @@ pub fn install() -> Result<()> {
     let executable_path = std::env::current_exe()?;
     let service_info = ServiceInfo {
         name: OsString::from(name),
-        display_name: OsString::from("Firezone Client IPC (Debug)"),
+        display_name: OsString::from("Firezone Tunnel Service (Debug)"),
         service_type: ServiceType::OWN_PROCESS,
         start_type: ServiceStartType::AutoStart,
         error_control: ServiceErrorControl::Normal,
@@ -219,7 +219,7 @@ fn fallible_service_run(
 ) -> Result<()> {
     tracing::info!(?arguments, "fallible_windows_service_run");
     if !elevation_check()? {
-        bail!("IPC service failed its elevation check, try running as admin / root");
+        bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
 
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -289,7 +289,7 @@ fn fallible_service_run(
         ))
         .inspect(|_| rt.block_on(telemetry.stop()))
         .inspect_err(|e| {
-            tracing::error!("IPC service failed: {e:#}");
+            tracing::error!("Tunnel service failed: {e:#}");
 
             rt.block_on(telemetry.stop_on_crash())
         });
