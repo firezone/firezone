@@ -804,7 +804,6 @@ where
     /// This heuristic might fail because we are also handling wireguard packets.
     /// Those are fully encrypted and thus any byte pattern may appear at the front of the packet.
     /// We can detect this by further checking the origin of the packet.
-    #[must_use]
     fn allocations_try_handle<'p>(
         &mut self,
         from: SocketAddr,
@@ -859,7 +858,6 @@ where
         }
     }
 
-    #[must_use]
     fn agents_try_handle(
         &mut self,
         from: SocketAddr,
@@ -892,7 +890,6 @@ where
         ControlFlow::Break(Ok(()))
     }
 
-    #[must_use]
     fn connections_try_handle(
         &mut self,
         from: SocketAddr,
