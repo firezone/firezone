@@ -291,7 +291,9 @@ defmodule Domain.AuthTest do
           assigned_default_at: DateTime.utc_now()
         )
 
-      assert {:error, :not_found} = assign_default_provider(other_provider, subject)
+      assert_raise MatchError, fn ->
+        assign_default_provider(other_provider, subject)
+      end
     end
   end
 
