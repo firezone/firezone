@@ -268,6 +268,7 @@ public final class Store: ObservableObject {
               do {
                 self.configuration = try await self.getConfigurationStartingSystemExtension()
               } catch let error as NSError {
+                // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
                 if error.domain == "NEVPNErrorDomain" && error.code == 1 {
                   // not initialized yet
                 } else {
@@ -325,6 +326,7 @@ public final class Store: ObservableObject {
               do {
                 self.resourceList = try await self.ipcClient().fetchResources()
               } catch let error as NSError {
+                // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
                 if error.domain == "NEVPNErrorDomain" && error.code == 1 {
                   // not initialized yet
                 } else {
