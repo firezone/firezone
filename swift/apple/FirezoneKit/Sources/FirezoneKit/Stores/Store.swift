@@ -10,6 +10,7 @@ import UserNotifications
 import OSLog
 
 #if os(macOS)
+import ServiceManagement
 import AppKit
 #endif
 
@@ -158,15 +159,12 @@ public final class Store: ObservableObject {
   // can fetch configuration. We try a few times here to do that so that we can determine connectOnStart, before
   // giving up and polling configuration anyway.
   private func initConfiguration() async throws {
-    var configuration: Configuration?
     let end = Date().addingTimeInterval(3)
 
     while configuration == nil && Date() < end {
-      configuration = try await getConfigurationStartingSystemExtension()
+      _ = try await reloadConfigurationStartingSystemExtension()
       try await Task.sleep(nanoseconds: 100_000_000)
     }
-
-    self.configuration = configuration
 
     beginConfigurationPolling()
   }
@@ -267,7 +265,7 @@ public final class Store: ObservableObject {
           self.configurationUpdateTask = Task {
             if !Task.isCancelled {
               do {
-                self.configuration = try await self.getConfigurationStartingSystemExtension()
+                _ = try await self.reloadConfigurationStartingSystemExtension()
               } catch let error as NSError {
                 // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
                 if error.domain == "NEVPNErrorDomain" && error.code == 1 {
@@ -291,7 +289,7 @@ public final class Store: ObservableObject {
     self.configurationTimer = timer
   }
 
-  private func getConfigurationStartingSystemExtension() async throws -> Configuration? {
+  private func reloadConfigurationStartingSystemExtension() async throws -> Configuration? {
     var configuration = try await ipcClient().getConfiguration()
 
 #if os(macOS)
@@ -301,11 +299,34 @@ public final class Store: ObservableObject {
     }
 #endif
 
+    self.configuration = configuration
+
     if Telemetry.firezoneId == nil {
       Telemetry.firezoneId = configuration?.firezoneId
     }
 
+    try await updateAppService()
+
     return configuration
+  }
+
+  // Register / unregister our launch service based on configuration. This is a major pain to do on macOS 12 and below,
+  // so this feature only enabled for macOS 13 and higher given the tiny Firezone installbase for macOS 12.
+  private func updateAppService() async throws {
+#if os(macOS)
+    if #available(macOS 13.0, *) {
+      let startOnLogin = configuration?.startOnLogin ?? Configuration.defaultStartOnLogin
+
+      if !startOnLogin, SMAppService.mainApp.status == .enabled {
+        try await SMAppService.mainApp.unregister()
+        return
+      }
+
+      if startOnLogin, SMAppService.mainApp.status != .enabled {
+        try SMAppService.mainApp.register()
+      }
+    }
+#endif
   }
 
   // Network Extensions don't have a 2-way binding up to the GUI process,

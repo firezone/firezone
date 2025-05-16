@@ -129,12 +129,15 @@ class SettingsViewModel: ObservableObject {
     })
     .store(in: &cancellables)
 
-    settings.$connectOnStart
-      .receive(on: RunLoop.main)
-      .sink(receiveValue: { [weak self] _ in
-        self?.updateDerivedState()
-      })
-      .store(in: &cancellables)
+    Publishers.MergeMany([
+      settings.$connectOnStart,
+      settings.$startOnLogin
+    ])
+    .receive(on: RunLoop.main)
+    .sink(receiveValue: { [weak self] _ in
+      self?.updateDerivedState()
+    })
+    .store(in: &cancellables)
   }
 
   private func updateDerivedState() {
@@ -368,11 +371,18 @@ public struct SettingsView: View {
             .frame(width: 250)
           }
           .padding(.bottom, 10)
+
           Toggle(isOn: $viewModel.settings.connectOnStart) {
-            Text("Connect on launch")
+            Text("Automatically connect when Firezone is launched")
           }
           .toggleStyle(.checkbox)
           .disabled(viewModel.settings.isConnectOnStartOverridden)
+
+          Toggle(isOn: $viewModel.settings.startOnLogin) {
+            Text("Start Firezone when you sign into your Mac")
+          }
+          .toggleStyle(.checkbox)
+          .disabled(viewModel.settings.isStartOnLoginOverridden)
         }
         .padding(10)
         Spacer()
@@ -401,7 +411,7 @@ public struct SettingsView: View {
               Spacer()
 
               Toggle(isOn: $viewModel.settings.connectOnStart) {
-                Text("Connect on launch")
+                Text("Automatically connect when Firezone is launched")
               }
               .toggleStyle(.switch)
               .disabled(viewModel.settings.isConnectOnStartOverridden)
