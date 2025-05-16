@@ -139,6 +139,7 @@ function gui() {
     find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gui_version}"'/g;}' {} \;
     find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -exec sed "${SEDARG[@]}" -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gui_version}"'/;}' {} \;
     find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "*.rs" -exec sed "${SEDARG[@]}" -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gui_version}"'/;}' {} \;
+    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "*.spec" -exec sed "${SEDARG[@]}" -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gui_version}"'/;}' {} \;
     cargo_update_workspace
 }
 
