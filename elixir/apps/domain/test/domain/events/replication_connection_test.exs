@@ -13,11 +13,12 @@ defmodule Domain.Events.ReplicationConnectionTest do
     output_plugin: "pgoutput",
     proto_version: 1,
     table_subscriptions: ["accounts", "resources"],
-    relations: %{}
+    relations: %{},
+    counter: 0
   }
 
   # Used to test live connection
-  setup_all do
+  setup do
     {connection_opts, config} =
       Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
       |> Keyword.pop(:connection_opts)
@@ -29,11 +30,17 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
     child_spec = %{
       id: Domain.Events.ReplicationConnection,
-      start: {Domain.Events.ReplicationConnection, :start_link, [init_state]},
-      restart: :transient
+      start: {Domain.Events.ReplicationConnection, :start_link, [init_state]}
     }
 
-    {:ok, pid} = start_supervised(child_spec)
+    {:ok, pid} =
+      case start_supervised(child_spec) do
+        {:ok, pid} ->
+          {:ok, pid}
+
+        {:error, {:already_started, pid}} ->
+          {:ok, pid}
+      end
 
     {:ok, pid: pid}
   end
@@ -169,7 +176,9 @@ defmodule Domain.Events.ReplicationConnectionTest do
       write_data =
         <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64, message::binary>>
 
-      assert {:noreply, [], ^state} = ReplicationConnection.handle_data(write_data, state)
+      new_state = %{state | counter: state.counter + 1}
+
+      assert {:noreply, [], ^new_state} = ReplicationConnection.handle_data(write_data, state)
     end
 
     test "handle_data handles unknown message" do

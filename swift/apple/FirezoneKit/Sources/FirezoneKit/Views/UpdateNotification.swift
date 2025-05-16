@@ -7,9 +7,11 @@
 // Note: it should be easy to expand this module to iOS
 #if os(macOS)
 import Foundation
+import Combine
 import UserNotifications
 import Cocoa
 
+@MainActor
 class UpdateChecker {
   enum UpdateError: Error {
     case invalidVersion(String)
@@ -26,10 +28,13 @@ class UpdateChecker {
   private let notificationAdapter: NotificationAdapter = NotificationAdapter()
   private let versionCheckUrl: URL
   private let marketingVersion: SemanticVersion
+  private let store: Store
 
-  @MainActor @Published private(set) var updateAvailable: Bool = false
+  private var cancellables: Set<AnyCancellable> = []
 
-  init() {
+  @Published private(set) var updateAvailable: Bool = false
+
+  init(store: Store) {
     guard let versionCheckUrl = URL(string: "https://www.firezone.dev/api/releases"),
           let versionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
           let marketingVersion = try? SemanticVersion(versionString)
@@ -40,18 +45,47 @@ class UpdateChecker {
     self.versionCheckUrl = versionCheckUrl
     self.marketingVersion = marketingVersion
 
-    startCheckingForUpdates()
+    self.store = store
+
+    store.$configuration
+      .receive(on: RunLoop.main)
+      .sink { [weak self] _ in
+        self?.handleConfigurationChange()
+      }
+      .store(in: &cancellables)
+
+    handleConfigurationChange()
+  }
+
+  private func handleConfigurationChange() {
+    let disabled = (
+      store.configuration?.disableUpdateCheck ?? Configuration.defaultDisableUpdateCheck
+    ) || BundleHelper.isAppStore()
+
+    if disabled {
+      stopCheckingForUpdates()
+    } else {
+      startCheckingForUpdates()
+    }
   }
 
   private func startCheckingForUpdates() {
-    timer = Timer.scheduledTimer(
+    guard timer == nil else { return }
+
+    self.timer = Timer.scheduledTimer(
       timeInterval: 6 * 60 * 60,
       target: self,
       selector: #selector(checkForUpdates),
       userInfo: nil,
       repeats: true
     )
+
     checkForUpdates()
+  }
+
+  private func stopCheckingForUpdates() {
+    timer?.invalidate()
+    self.timer = nil
   }
 
   deinit {
@@ -110,10 +144,6 @@ class UpdateChecker {
   }
 
   static func downloadURL() -> URL {
-    if BundleHelper.isAppStore() {
-      return URL(string: "https://apps.apple.com/app/firezone/id6443661826")!
-    }
-
     return URL(string: "https://www.firezone.dev/dl/firezone-client-macos/latest")!
   }
 }
