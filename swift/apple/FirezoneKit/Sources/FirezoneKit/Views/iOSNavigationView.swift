@@ -54,12 +54,12 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
         Label("Settings", systemImage: "gear")
       }
     )
-    .disabled(store.status == .invalid)
+    .disabled(store.vpnStatus == .invalid)
   }
 
   private var authMenu: some View {
     Menu {
-      if store.status == .connected {
+      if store.vpnStatus == .connected {
         Text("Signed in as \(store.actorName)")
         Button(
           action: {

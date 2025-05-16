@@ -27,18 +27,18 @@ public struct AppView: View {
   // handle.
   private static var cancellables: Set<AnyCancellable> = []
   public static func subscribeToGlobalEvents(store: Store) {
-    store.$status
+    store.$vpnStatus
       .combineLatest(store.$systemExtensionStatus)
       .receive(on: DispatchQueue.main)
       .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main) // Prevents flurry of windows from opening
-      .sink(receiveValue: { status, systemExtensionStatus in
+      .sink(receiveValue: { vpnStatus, systemExtensionStatus in
         // Open window in case permissions are revoked
-        if status == .invalid || systemExtensionStatus != .installed {
+        if vpnStatus == .invalid || systemExtensionStatus != .installed {
           WindowDefinition.main.openWindow()
         }
 
         // Close window for day to day use
-        if status != .invalid && systemExtensionStatus == .installed && launchedBefore() {
+        if vpnStatus != .invalid && systemExtensionStatus == .installed && launchedBefore() {
           WindowDefinition.main.window()?.close()
         }
       })
@@ -89,7 +89,7 @@ public struct AppView: View {
   @ViewBuilder
   public var body: some View {
 #if os(iOS)
-    switch (store.status, store.decision) {
+    switch (store.vpnStatus, store.decision) {
     case (nil, _), (_, nil):
       ProgressView()
     case (.invalid, _):
@@ -106,9 +106,12 @@ public struct AppView: View {
       }
     }
 #elseif os(macOS)
-    switch (store.systemExtensionStatus, store.status) {
+    switch (store.systemExtensionStatus, store.vpnStatus) {
     case (nil, nil):
-      ProgressView()
+      VStack {
+        ProgressView()
+        Text("Getting things ready... this should only take a few seconds.")
+      }
     case (.needsInstall, _), (_, .invalid):
       GrantVPNView()
     default:
