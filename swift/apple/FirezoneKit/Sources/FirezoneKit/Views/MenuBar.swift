@@ -25,7 +25,7 @@ public final class MenuBar: NSObject, ObservableObject {
   var lastShownOthers: [Resource] = []
   var wasInternetResourceEnabled: Bool?
   var cancellables: Set<AnyCancellable> = []
-  var updateChecker: UpdateChecker = UpdateChecker()
+  var updateChecker: UpdateChecker
   var updateMenuDisplayed: Bool = false
   var signedOutIcon: NSImage?
   var signedInConnectedIcon: NSImage?
@@ -167,6 +167,7 @@ public final class MenuBar: NSObject, ObservableObject {
   public init(store: Store) {
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     self.store = store
+    self.updateChecker = UpdateChecker(store: store)
     self.signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
     self.signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
     self.signedOutIconNotification = NSImage(named: "MenuBarIconSignedOutNotification")

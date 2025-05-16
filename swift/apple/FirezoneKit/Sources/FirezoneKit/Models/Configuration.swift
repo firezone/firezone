@@ -13,6 +13,7 @@ public class Configuration: Codable {
 
   public static let defaultAccountSlug = ""
   public static let defaultConnectOnStart = true
+  public static let defaultDisableUpdateCheck = false
 
   public struct Keys {
     public static let authURL = "authURL"
@@ -23,6 +24,7 @@ public class Configuration: Codable {
     public static let firezoneId = "firezoneId"
     public static let hideAdminPortalMenuItem = "hideAdminPortalMenuItem"
     public static let connectOnStart = "connectOnStart"
+    public static let disableUpdateCheck = "disableUpdateCheck"
   }
 
   public var authURL: String?
@@ -33,6 +35,7 @@ public class Configuration: Codable {
   public var internetResourceEnabled: Bool?
   public var hideAdminPortalMenuItem: Bool?
   public var connectOnStart: Bool?
+  public var disableUpdateCheck: Bool?
 
   private var overriddenKeys: Set<String> = []
 
@@ -51,6 +54,9 @@ public class Configuration: Codable {
     }
     setValue(forKey: Keys.connectOnStart, from: managedDict, and: userDict) { [weak self] in
       self?.connectOnStart = $0
+    }
+    setValue(forKey: Keys.disableUpdateCheck, from: managedDict, and: userDict) { [weak self] in
+      self?.disableUpdateCheck = $0
     }
   }
 
