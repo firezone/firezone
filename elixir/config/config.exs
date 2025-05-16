@@ -49,6 +49,7 @@ config :domain, Domain.Events.ReplicationConnection,
     accounts
     actor_group_memberships
     actor_groups
+    actor_resources
     actors
     auth_identities
     auth_providers

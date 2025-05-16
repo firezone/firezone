@@ -1,13 +1,13 @@
 defmodule Domain.Events.Hooks.RelayGroups do
-  def insert(_data) do
+  def on_insert(_data) do
     :ok
   end
 
-  def update(_old_data, _data) do
+  def on_update(_old_data, _data) do
     :ok
   end
 
-  def delete(_old_data) do
+  def on_delete(_old_data) do
     :ok
   end
 end
