@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
     <DirectoryRef Id="INSTALLDIR">
-        <Component Id="FirezoneClientTunnelService" Guid="a8092ff9-30fa-48bb-9b2d-45fe39d16c66">
+        <Component Id="FirezoneClientTunnelService" Guid="2c808b80-a2f2-4d2a-9563-1706cf72e040">
           <File Id="FirezoneClientTunnelServiceExe" Name="firezone-client-tunnel.exe" Source="../../firezone-client-tunnel.exe" KeyPath="yes" />
 
           <ServiceControl Id="RemoveOldFirezoneService" Name="FirezoneClientIpcService" Stop="both" Remove="uninstall" Wait="yes" />
