@@ -16,6 +16,11 @@ BuildRequires: systemd-rpm-macros
 
 %prep
 
+%pre
+# Stop and disable the old service. The service may no longer exist so we ensure this never fails.
+systemctl stop firezone-client-ipc.service || true
+systemctl disable firezone-client-ipc.service || true
+
 %build
 
 %install
