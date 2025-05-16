@@ -368,4 +368,18 @@ defmodule Web.Settings.IdentityProviders.Components do
     </div>
     """
   end
+
+  attr :provider, Domain.Auth.Provider, required: true
+
+  def assigned_default_badge(assigns) do
+    ~H"""
+    <.badge
+      :if={!is_nil(@provider.assigned_default_at)}
+      title="This provider is the default for client authentication"
+      class="ml-2"
+    >
+      default
+    </.badge>
+    """
+  end
 end

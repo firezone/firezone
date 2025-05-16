@@ -14,6 +14,10 @@ defmodule Domain.Auth.Provider.Query do
     where(queryable, [providers: providers], is_nil(providers.disabled_at))
   end
 
+  def assigned_default(queryable) do
+    where(queryable, [providers: providers], not is_nil(providers.assigned_default_at))
+  end
+
   def by_id(queryable, id)
 
   def by_id(queryable, {:not, id}) do

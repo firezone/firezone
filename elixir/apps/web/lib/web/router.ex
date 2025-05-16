@@ -74,7 +74,12 @@ defmodule Web.Router do
   end
 
   scope "/:account_id_or_slug", Web do
-    pipe_through [:public, :account, :redirect_if_user_is_authenticated]
+    pipe_through [
+      :public,
+      :account,
+      :redirect_if_user_is_authenticated,
+      Web.Plugs.AutoRedirectDefaultProvider
+    ]
 
     live_session :redirect_if_user_is_authenticated,
       on_mount: [

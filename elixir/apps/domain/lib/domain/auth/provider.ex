@@ -28,6 +28,7 @@ defmodule Domain.Auth.Provider do
 
     field :disabled_at, :utc_datetime_usec
     field :deleted_at, :utc_datetime_usec
+    field :assigned_default_at, :utc_datetime_usec
     timestamps()
   end
 end

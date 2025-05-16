@@ -234,7 +234,7 @@ defmodule Web.FormComponents do
         class={[
           "text-sm bg-neutral-50",
           "border border-neutral-300 text-neutral-900 rounded",
-          "block p-2.5",
+          "block",
           !@inline_errors && "w-full",
           @errors != [] && "border-rose-400 focus:border-rose-400"
         ]}
