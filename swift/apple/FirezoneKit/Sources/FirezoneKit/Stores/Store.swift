@@ -76,10 +76,10 @@ public final class Store: ObservableObject {
   }
 
 #if os(macOS)
-  func systemExtensionRequest(_ requestType: SystemExtensionRequestType) async throws -> SystemExtensionStatus {
+  func systemExtensionRequest(_ requestType: SystemExtensionRequestType) async throws {
     let manager = SystemExtensionManager()
 
-    let status =
+    self.systemExtensionStatus =
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
       manager.sendRequest(
         requestType: requestType,
@@ -87,10 +87,6 @@ public final class Store: ObservableObject {
         continuation: continuation
       )
     }
-
-    self.systemExtensionStatus = status
-
-    return status
   }
 #endif
 
@@ -128,7 +124,7 @@ public final class Store: ObservableObject {
     // When this happens, it's because either our VPN configuration or System Extension (or both) were removed.
     // So load the system extension status again to determine which view to load.
     if vpnStatus == .invalid {
-      self.systemExtensionStatus = try await systemExtensionRequest(.check)
+      try await systemExtensionRequest(.check)
     }
 #endif
   }
@@ -139,14 +135,12 @@ public final class Store: ObservableObject {
 
   private func initSystemExtension() async throws {
 #if os(macOS)
-    var systemExtensionStatus = try await systemExtensionRequest(.check)
+    try await systemExtensionRequest(.check)
 
     // If already installed but the wrong version, go ahead and install. This shouldn't prompt the user.
     if systemExtensionStatus == .needsReplacement {
-      systemExtensionStatus = try await systemExtensionRequest(.install)
+      try await systemExtensionRequest(.install)
     }
-
-    self.systemExtensionStatus = systemExtensionStatus
 #endif
   }
 
