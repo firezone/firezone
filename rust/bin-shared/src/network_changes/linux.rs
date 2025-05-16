@@ -78,7 +78,7 @@ pub struct Worker {
 }
 
 enum Inner {
-    DBus(zbus::proxy::SignalStream<'static>),
+    DBus(Box<zbus::proxy::SignalStream<'static>>),
     DnsPoller(Interval),
     Null,
 }
@@ -106,7 +106,7 @@ impl Worker {
         let stream = proxy.receive_signal(member).await?;
         Ok(Self {
             just_started: true,
-            inner: Inner::DBus(stream),
+            inner: Inner::DBus(Box::new(stream)),
         })
     }
 

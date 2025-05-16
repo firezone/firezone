@@ -1061,7 +1061,7 @@ impl ClientState {
                     query: query_result.query,
                     message: query_result
                         .result
-                        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("{e:#}"))),
+                        .map_err(|e| io::Error::other(format!("{e:#}"))),
                     transport: dns::Transport::Tcp { local, remote },
                 });
                 continue;
