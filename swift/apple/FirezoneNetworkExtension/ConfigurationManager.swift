@@ -40,6 +40,7 @@ class ConfigurationManager {
     userDict[Configuration.Keys.logFilter] = configuration.logFilter
     userDict[Configuration.Keys.accountSlug] = configuration.accountSlug
     userDict[Configuration.Keys.connectOnStart] = configuration.connectOnStart
+    userDict[Configuration.Keys.startOnLogin] = configuration.startOnLogin
 
     saveUserDict()
   }
