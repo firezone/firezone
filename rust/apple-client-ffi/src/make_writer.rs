@@ -38,8 +38,7 @@ impl<'l> tracing_subscriber::fmt::MakeWriter<'l> for MakeWriter {
 
 impl io::Write for Writer<'_> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let message =
-            std::str::from_utf8(buf).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let message = std::str::from_utf8(buf).map_err(io::Error::other)?;
 
         self.oslog.with_level(self.level, message);
 

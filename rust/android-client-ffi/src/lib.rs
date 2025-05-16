@@ -110,7 +110,7 @@ impl CallbackHandler {
                 &[JValue::Int(socket)],
             )
         })
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        .map_err(io::Error::other)
     }
 }
 
