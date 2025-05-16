@@ -1,6 +1,8 @@
 defmodule Domain.Repo.Migrations.AddDefaultToAuthProviders do
   use Ecto.Migration
 
+  @disable_ddl_transaction true
+
   def up do
     alter table(:auth_providers) do
       add(:assigned_default_at, :utc_datetime_usec)
@@ -10,7 +12,8 @@ defmodule Domain.Repo.Migrations.AddDefaultToAuthProviders do
       index(:auth_providers, :account_id,
         name: :auth_providers_account_id_assigned_default_at_index,
         unique: true,
-        where: "deleted_at IS NULL AND disabled_at IS NULL AND assigned_default_at IS NOT NULL"
+        where: "deleted_at IS NULL AND disabled_at IS NULL AND assigned_default_at IS NOT NULL",
+        concurrently: true
       )
     )
   end
@@ -20,7 +23,8 @@ defmodule Domain.Repo.Migrations.AddDefaultToAuthProviders do
       index(:auth_providers, :account_id,
         name: :auth_providers_account_id_assigned_default_at_index,
         unique: true,
-        where: "deleted_at IS NULL AND disabled_at IS NULL AND assigned_default_at IS NOT NULL"
+        where: "deleted_at IS NULL AND disabled_at IS NULL AND assigned_default_at IS NOT NULL",
+        concurrently: true
       )
     )
 
