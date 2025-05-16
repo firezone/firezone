@@ -9,46 +9,51 @@
     <script type="module" src="welcome.ts" defer></script>
   </head>
 
-  <body class="bg-neutral-100 text-neutral-900">
-    <div class="container mx-auto">
-      <div class="flex justify-center mt-8">
-        <h1 class="text-3xl font-bold">Welcome to Firezone.</h1>
+  <body
+    class="bg-neutral-100 min-h-screen flex items-center flex-col justify-center gap-4"
+  >
+    <img src="logo.png" alt="Firezone Logo" class="w-40 h-40" />
+
+    <h1 class="text-6xl font-bold">Firezone</h1>
+
+    <div id="signed-out">
+      <div class="flex flex-col items-center gap-4">
+        <p class="text-center">
+          You can sign in by clicking the Firezone icon the task bar or by clicking 'Sign-in' below.
+        </p>
+        <button
+          class="text-white bg-accent-450 hover:bg-accent-700 font-medium rounded-md text-md px-5 py-1.5"
+          id="sign-in"
+        >
+          Sign in
+        </button>
+        <p class="text-xs text-center">
+          Firezone will continue running after this window is closed.</br>
+          It is always available from the task bar.
+        </p>
       </div>
+    </div>
 
-      <img
-        src="logo.png"
-        alt="Firezone Logo"
-        class="mt-8 rounded-full w-48 h-48 mx-auto bg-white shadow-sm border-2 border-black"
-      />
-
-      <div id="signed-out">
-        <p class="mt-8 flex justify-center">Sign in below to get started.</p>
-        <div class="flex justify-center mt-8">
-          <button
-            class="text-white bg-accent-450 hover:bg-accent-700 font-medium rounded-sm text-lg w-full sm:w-auto px-5 py-2.5 text-center"
-            id="sign-in"
-          >
-            Sign in
-          </button>
-        </div>
-      </div>
-
-      <div id="signed-in">
-        <p class="mt-8 flex justify-center">
-          You are currently signed into&nbsp;<span
+    <div id="signed-in">
+      <div class="flex flex-col items-center gap-4">
+        <p class="text-center">
+            You are currently signed into&nbsp;<span
             class="font-bold"
             id="account-slug"
-          ></span
-          >&nbsp;as&nbsp;<span class="font-bold" id="actor-name"></span>.
+            ></span
+            >&nbsp;as&nbsp;<span class="font-bold" id="actor-name"></span>.</br>
+            Click the Firezone icon in the task bar to see the list of Resources.
         </p>
-        <div class="flex justify-center mt-8">
-          <button
-            class="text-white bg-accent-450 hover:bg-accent-700 font-medium rounded-sm text-lg w-full sm:w-auto px-5 py-2.5 text-center"
-            id="sign-out"
+        <button
+            class="text-white bg-accent-450 hover:bg-accent-700 font-medium rounded-md text-md px-5 py-1.5"
+          id="sign-out"
           >
-            Sign out
-          </button>
-        </div>
+          Sign out
+        </button>
+        <p class="text-xs text-center">
+          Firezone will continue running after this window is closed.</br>
+          It is always available from the task bar.
+        </p>
       </div>
     </div>
   </body>
