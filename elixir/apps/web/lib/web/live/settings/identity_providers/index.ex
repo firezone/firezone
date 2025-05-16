@@ -163,7 +163,7 @@ defmodule Web.Settings.IdentityProviders.Index do
       for={nil}
     >
       <div class="flex gap-2 items-center">
-        <div class="w-48">
+        <div class="flex-1 min-w-[12rem]">
           <.input
             id="default-provider-select"
             name="provider_id"
