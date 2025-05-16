@@ -17,6 +17,9 @@ defmodule Domain.Events.Event do
     data = zip(tuple_data, relation.columns)
 
     process(op, table, old_data, data)
+
+    # TODO: This is only for load testing. Remove this.
+    Domain.PubSub.broadcast("events", {op, table, old_data, data})
   end
 
   ############
