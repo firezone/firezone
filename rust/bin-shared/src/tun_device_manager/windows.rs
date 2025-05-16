@@ -339,7 +339,7 @@ impl tun::Tun for Tun {
         ready!(
             self.state
                 .as_mut()
-                .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Internal state gone"))?
+                .ok_or_else(|| io::Error::other("Internal state gone"))?
                 .outbound_tx
                 .poll_reserve(cx)
                 .map_err(io::Error::other)?
@@ -352,7 +352,7 @@ impl tun::Tun for Tun {
     fn send(&mut self, packet: IpPacket) -> io::Result<()> {
         self.state
             .as_mut()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::Other, "Internal state gone"))?
+            .ok_or_else(|| io::Error::other("Internal state gone"))?
             .outbound_tx
             .send_item(packet)
             .map_err(io::Error::other)?;
