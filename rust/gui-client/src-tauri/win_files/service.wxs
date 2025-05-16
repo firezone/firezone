@@ -5,8 +5,8 @@
         <Component Id="FirezoneClientTunnelService" Guid="2c808b80-a2f2-4d2a-9563-1706cf72e040">
           <File Id="FirezoneClientTunnelServiceExe" Name="firezone-client-tunnel.exe" Source="../../firezone-client-tunnel.exe" KeyPath="yes" />
 
-          <ServiceControl Id="RemoveOldFirezoneService" Name="FirezoneClientIpcService" Stop="both" Remove="uninstall" Wait="yes" />
-          <ServiceControl Id="RemoveOldFirezoneDebugService" Name="FirezoneClientIpcServiceDebug" Stop="both" Remove="uninstall" Wait="yes" />
+          <ServiceControl Id="RemoveOldFirezoneService" Name="FirezoneClientIpcService" Stop="uninstall" Remove="uninstall" Wait="yes" />
+          <ServiceControl Id="RemoveOldFirezoneDebugService" Name="FirezoneClientIpcServiceDebug" Stop="uninstall" Remove="uninstall" Wait="yes" />
 
           <ServiceInstall
               Id="FirezoneClientServiceInstaller"
