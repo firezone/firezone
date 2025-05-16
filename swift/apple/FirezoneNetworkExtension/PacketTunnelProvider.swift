@@ -42,7 +42,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler: @escaping (Error?) -> Void
   ) {
     super.startTunnel(options: options, completionHandler: completionHandler)
-    Log.log("\(#function)")
+
+    // Dummy start to get the extension running on macOS after upgrade
+    if options?["dryRun"] as? Bool == true {
+      completionHandler(nil)
+      return
+    }
 
     // If the tunnel starts up before the GUI after an upgrade crossing the 1.4.15 version boundary,
     // the old system settings-based config will still be present and the new configuration will be empty.

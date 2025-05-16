@@ -203,7 +203,7 @@ public final class MenuBar: NSObject, ObservableObject {
         self.handleResourceListChanged()
       }).store(in: &cancellables)
 
-    store.$status
+    store.$vpnStatus
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
@@ -242,7 +242,7 @@ public final class MenuBar: NSObject, ObservableObject {
     updateStatusItemIcon()
     updateSignInMenuItems()
     quitMenuItem.title = {
-      switch store.status {
+      switch store.vpnStatus {
       case .connected, .connecting:
         return "Disconnect and Quit"
       default:
@@ -324,13 +324,13 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   func updateStatusItemIcon() {
-    updateAnimation(status: store.status)
-    statusItem.button?.image = getStatusIcon(status: store.status, notification: updateChecker.updateAvailable)
+    updateAnimation(status: store.vpnStatus)
+    statusItem.button?.image = getStatusIcon(status: store.vpnStatus, notification: updateChecker.updateAvailable)
   }
 
   func updateSignInMenuItems() {
     // Update "Sign In" / "Sign Out" menu items
-    switch store.status {
+    switch store.vpnStatus {
     case nil:
       signInMenuItem.title = "Loading VPN configurations from system settings…"
       signInMenuItem.action = nil
@@ -374,7 +374,7 @@ public final class MenuBar: NSObject, ObservableObject {
 
   func updateResourcesMenuItems() {
     // Update resources "header" menu items
-    switch store.status {
+    switch store.vpnStatus {
     case .connecting:
       resourcesTitleMenuItem.isHidden = true
       resourcesUnavailableMenuItem.isHidden = false
@@ -727,7 +727,7 @@ public final class MenuBar: NSObject, ObservableObject {
         // our VPN configuration got removed. Since we don't know which, reinstall
         // the system extension here too just in case. It's a no-op if already
         // installed.
-        try await store.installSystemExtension()
+        try await store.systemExtensionRequest(.install)
         try await store.installVPNConfiguration()
       } catch let error as NSError {
         if error.domain == "NEVPNErrorDomain" && error.code == 5 {
