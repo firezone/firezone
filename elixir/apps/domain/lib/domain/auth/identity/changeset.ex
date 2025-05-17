@@ -11,8 +11,7 @@ defmodule Domain.Auth.Identity.Changeset do
       ) do
     actor
     |> create_identity(provider, attrs)
-    |> put_change(:created_by, :identity)
-    |> put_change(:created_by_identity_id, subject.identity.id)
+    |> put_subject_trail(:created_by, subject)
   end
 
   def create_identity(
@@ -21,13 +20,13 @@ defmodule Domain.Auth.Identity.Changeset do
         attrs
       ) do
     %Identity{}
-    |> cast(attrs, ~w[provider_identifier provider_virtual_state]a)
+    |> cast(attrs, ~w[email provider_identifier provider_virtual_state]a)
     |> validate_required(~w[provider_identifier]a)
     |> maybe_put_email_from_identifier()
     |> put_change(:actor_id, actor.id)
     |> put_change(:provider_id, provider.id)
     |> put_change(:account_id, account_id)
-    |> put_change(:created_by, :system)
+    |> put_subject_trail(:created_by, :system)
     |> changeset()
   end
 
@@ -36,7 +35,7 @@ defmodule Domain.Auth.Identity.Changeset do
         attrs
       ) do
     %Identity{}
-    |> cast(attrs, ~w[provider_identifier provider_state provider_virtual_state]a)
+    |> cast(attrs, ~w[email provider_identifier provider_state provider_virtual_state]a)
     |> validate_required(~w[provider_identifier]a)
     |> maybe_put_email_from_state()
     |> cast_assoc(:actor,
@@ -47,13 +46,13 @@ defmodule Domain.Auth.Identity.Changeset do
     )
     |> put_change(:provider_id, provider.id)
     |> put_change(:account_id, account_id)
-    |> put_change(:created_by, :provider)
+    |> put_subject_trail(:created_by, :provider)
     |> changeset()
   end
 
   def update_identity_and_actor(%Identity{} = identity, attrs) do
     identity
-    |> cast(attrs, ~w[provider_state]a)
+    |> cast(attrs, ~w[email provider_state]a)
     |> maybe_put_email_from_state()
     |> cast_assoc(:actor,
       with: fn actor, attrs ->

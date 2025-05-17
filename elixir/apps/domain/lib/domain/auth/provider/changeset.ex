@@ -12,8 +12,8 @@ defmodule Domain.Auth.Provider.Changeset do
   def create(account, attrs, %Subject{} = subject) do
     account
     |> create(attrs)
-    |> put_change(:created_by, :identity)
-    |> put_change(:created_by_identity_id, subject.identity.id)
+    |> reset_created_by()
+    |> put_subject_trail(:created_by, subject)
   end
 
   def create(%Accounts.Account{} = account, attrs) do
@@ -34,7 +34,7 @@ defmodule Domain.Auth.Provider.Changeset do
     |> put_change(:account_id, account.id)
     |> changeset()
     |> validate_inclusion(:adapter, allowed_adapters)
-    |> put_change(:created_by, :system)
+    |> put_subject_trail(:created_by, :system)
   end
 
   def update(%Provider{} = provider, attrs) do
@@ -134,5 +134,13 @@ defmodule Domain.Auth.Provider.Changeset do
     provider
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())
+  end
+
+  defp reset_created_by(changeset) do
+    changeset
+    |> put_change(:created_by, nil)
+    |> put_change(:created_by_identity_id, nil)
+    |> put_change(:created_by_actor_id, nil)
+    |> put_change(:created_by_subject, nil)
   end
 end

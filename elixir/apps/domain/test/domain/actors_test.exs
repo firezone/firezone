@@ -757,6 +757,7 @@ defmodule Domain.ActorsTest do
 
         assert group.created_by == :provider
         assert group.provider_id == provider.id
+        assert group.created_by_subject == %{"email" => nil, "name" => "Provider"}
 
         assert group.name in group_names
 
@@ -1485,6 +1486,11 @@ defmodule Domain.ActorsTest do
       assert {:ok, group} = create_group(attrs, subject)
       assert group.id
       assert group.name == attrs.name
+
+      assert group.created_by_subject == %{
+               "name" => subject.actor.name,
+               "email" => subject.identity.email
+             }
 
       group = Repo.preload(group, :memberships)
       assert group.memberships == []

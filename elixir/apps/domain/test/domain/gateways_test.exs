@@ -215,6 +215,11 @@ defmodule Domain.GatewaysTest do
 
       assert group.created_by == :identity
       assert group.created_by_identity_id == subject.identity.id
+
+      assert group.created_by_subject == %{
+               "name" => subject.actor.name,
+               "email" => subject.identity.email
+             }
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -481,6 +486,12 @@ defmodule Domain.GatewaysTest do
       assert token.created_by_identity_id == subject.identity.id
       assert token.created_by_user_agent == context.user_agent
       assert token.created_by_remote_ip.address == context.remote_ip
+
+      assert token.created_by_subject == %{
+               "name" => subject.actor.name,
+               "email" => subject.identity.email
+             }
+
       refute token.expires_at
     end
 
