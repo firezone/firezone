@@ -169,19 +169,22 @@ pub fn setup_gui(directives: &str) -> Result<Handles> {
     })
 }
 
-/// Starts logging for the production IPC service
+/// Starts logging for the production Tunnel service
 ///
 /// Returns: A `Handle` that must be kept alive. Dropping it stops logging
 /// and flushes the log file.
-pub fn setup_ipc(
+pub fn setup_tunnel(
     log_path: Option<PathBuf>,
 ) -> Result<(
     firezone_logging::file::Handle,
     firezone_logging::FilterReloadHandle,
 )> {
-    // If `log_dir` is Some, use that. Else call `ipc_service_logs`
+    // If `log_dir` is Some, use that. Else call `tunnel_service_logs`
     let log_path = log_path.map_or_else(
-        || known_dirs::ipc_service_logs().context("Should be able to compute IPC service logs dir"),
+        || {
+            known_dirs::tunnel_service_logs()
+                .context("Should be able to compute Tunnel service logs dir")
+        },
         Ok,
     )?;
     std::fs::create_dir_all(&log_path)
@@ -211,7 +214,7 @@ pub fn setup_ipc(
         ?directives,
         system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
         log_path = %log_path.display(),
-        "`ipc-service` started logging"
+        "`tunnel service` started logging"
     );
 
     Ok((file_handle, file_reloader.merge(stdout_reloader)))
@@ -229,13 +232,13 @@ pub fn setup_stdout() -> Result<FilterReloadHandle> {
 
     Ok(reloader)
 }
-/// Reads the log filter for the IPC service or for debug commands
+/// Reads the log filter for the Tunnel service or for debug commands
 ///
 /// e.g. `info`
 ///
 /// Reads from:
 /// 1. `RUST_LOG` env var
-/// 2. `known_dirs::ipc_log_filter()` file
+/// 2. `known_dirs::tunnel_log_filter()` file
 /// 3. Hard-coded default `SERVICE_RUST_LOG`
 ///
 /// Errors if something is badly wrong, e.g. the directory for the config file
@@ -250,8 +253,9 @@ pub(crate) fn get_log_filter() -> Result<String> {
         return Ok(filter);
     }
 
-    if let Ok(filter) = std::fs::read_to_string(firezone_bin_shared::known_dirs::ipc_log_filter()?)
-        .map(|s| s.trim().to_string())
+    if let Ok(filter) =
+        std::fs::read_to_string(firezone_bin_shared::known_dirs::tunnel_log_filter()?)
+            .map(|s| s.trim().to_string())
     {
         return Ok(filter);
     }
@@ -332,7 +336,7 @@ fn add_dir_to_zip(
         Ok(x) => x,
         Err(error) => {
             if matches!(error.kind(), NotFound) {
-                // In smoke tests, the IPC service runs in debug mode, so it won't write any logs to disk. If the IPC service's log dir doesn't exist, we shouldn't crash, it's correct to simply not add any files to the zip
+                // In smoke tests, the Tunnel service runs in debug mode, so it won't write any logs to disk. If the Tunnel service's log dir doesn't exist, we shouldn't crash, it's correct to simply not add any files to the zip
                 return Ok(());
             }
             // But any other error like permissions errors, should bubble.
@@ -384,7 +388,8 @@ async fn count_one_dir(path: &Path) -> Result<FileCount> {
 fn log_paths() -> Result<Vec<LogPath>> {
     Ok(vec![
         LogPath {
-            src: known_dirs::ipc_service_logs().context("Can't compute IPC service logs dir")?,
+            src: known_dirs::tunnel_service_logs()
+                .context("Can't compute Tunnel service logs dir")?,
             dst: PathBuf::from("connlib"),
         },
         LogPath {

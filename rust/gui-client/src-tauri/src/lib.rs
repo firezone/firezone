@@ -21,6 +21,6 @@ pub use clear_logs::clear_logs;
 
 /// The Sentry "release" we are part of.
 ///
-/// IPC service and GUI client are always bundled into a single release.
-/// Hence, we have a single constant for IPC service and GUI client.
+/// Tunnel service and GUI client are always bundled into a single release.
+/// Hence, we have a single constant for Tunnel service and GUI client.
 pub const RELEASE: &str = concat!("gui-client@", env!("CARGO_PKG_VERSION"));

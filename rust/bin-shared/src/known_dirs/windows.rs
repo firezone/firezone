@@ -15,12 +15,12 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
     Ok(path)
 }
 
-/// Path for IPC service config that the IPC service can write
+/// Path for Tunnel service config that the Tunnel service can write
 ///
 /// All writes should use `atomicwrites`.
 ///
 /// On Windows, `C:/ProgramData/$BUNDLE_ID/config`
-pub fn ipc_service_config() -> Option<PathBuf> {
+pub fn tunnel_service_config() -> Option<PathBuf> {
     Some(
         get_known_folder_path(KnownFolder::ProgramData)?
             .join(BUNDLE_ID)
@@ -28,7 +28,7 @@ pub fn ipc_service_config() -> Option<PathBuf> {
     )
 }
 
-pub fn ipc_service_logs() -> Option<PathBuf> {
+pub fn tunnel_service_logs() -> Option<PathBuf> {
     Some(
         get_known_folder_path(KnownFolder::ProgramData)?
             .join(BUNDLE_ID)

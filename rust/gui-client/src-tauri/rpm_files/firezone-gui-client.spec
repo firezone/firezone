@@ -16,6 +16,11 @@ BuildRequires: systemd-rpm-macros
 
 %prep
 
+%pre
+# Stop and disable the old service. The service may no longer exist so we ensure this never fails.
+systemctl disable "$OLD_SERVICE_NAME" >/dev/null 2>&1 || true
+systemctl stop "$OLD_SERVICE_NAME" >/dev/null 2>&1 || true
+
 %build
 
 %install
@@ -25,7 +30,7 @@ mkdir -p \
 
 BINS="%{_topdir}/../../target/release"
 
-cp "$BINS/firezone-client-ipc" "%{buildroot}/usr/bin/"
+cp "$BINS/firezone-client-tunnel" "%{buildroot}/usr/bin/"
 cp "$BINS/firezone-client-gui" "%{buildroot}/usr/lib/dev.firezone.client/"
 cp "%{_topdir}/../src-tauri/rpm_files/gui-shim.sh" "%{buildroot}/usr/bin/firezone-client-gui"
 
@@ -103,12 +108,12 @@ mkdir -p \
 "$ICONS/512x512/apps"
 
 cp \
-"%{_topdir}/../src-tauri/deb_files/firezone-client-ipc.service" \
+"%{_topdir}/../src-tauri/deb_files/firezone-client-tunnel.service" \
 "%{buildroot}/usr/lib/systemd/system/"
 
 cp \
 "%{_topdir}/../src-tauri/deb_files/sysusers.conf" \
-"%{buildroot}/usr/lib/sysusers.d/firezone-client-ipc.conf"
+"%{buildroot}/usr/lib/sysusers.d/firezone-client-tunnel.conf"
 
 cp \
 "%{_topdir}/../src-tauri/rpm_files/firezone-client-gui.desktop" \
@@ -127,7 +132,7 @@ cp \
 "$ICONS/512x512/apps/firezone-client-gui.png"
 
 %files
-/usr/bin/firezone-client-ipc
+/usr/bin/firezone-client-tunnel
 /usr/bin/firezone-client-gui
 /usr/lib/dev.firezone.client/firezone-client-gui
 
@@ -163,8 +168,8 @@ cp \
 /usr/lib/dev.firezone.client/libX11.so.6
 /usr/lib/dev.firezone.client/libX11-xcb.so.1
 
-/usr/lib/systemd/system/firezone-client-ipc.service
-/usr/lib/sysusers.d/firezone-client-ipc.conf
+/usr/lib/systemd/system/firezone-client-tunnel.service
+/usr/lib/sysusers.d/firezone-client-tunnel.conf
 
 /usr/share/applications/firezone-client-gui.desktop
 /usr/share/icons/hicolor/32x32/apps/firezone-client-gui.png
@@ -188,10 +193,10 @@ cp \
 %endif
 
 %post
-%systemd_post firezone-client-ipc.service
+%systemd_post firezone-client-tunnel.service
 
 %preun
-%systemd_preun firezone-client-ipc.service
+%systemd_preun firezone-client-tunnel.service
 
 %postun
-%systemd_postun_with_restart firezone-client-ipc.service
+%systemd_postun_with_restart firezone-client-tunnel.service

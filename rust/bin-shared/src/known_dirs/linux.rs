@@ -1,7 +1,7 @@
 use crate::BUNDLE_ID;
 use std::path::PathBuf;
 
-/// Path for IPC service config that the IPC service can write
+/// Path for Tunnel service config that the Tunnel service can write
 ///
 /// All writes should use `atomicwrites`.
 ///
@@ -15,12 +15,12 @@ use std::path::PathBuf;
 ///
 /// `config` to match how Windows has `config` and `data` both under `AppData/Local/$BUNDLE_ID`
 #[expect(clippy::unnecessary_wraps)] // Signature must match Windows
-pub fn ipc_service_config() -> Option<PathBuf> {
+pub fn tunnel_service_config() -> Option<PathBuf> {
     Some(PathBuf::from("/var/lib").join(BUNDLE_ID).join("config"))
 }
 
 #[expect(clippy::unnecessary_wraps)] // Signature must match Windows
-pub fn ipc_service_logs() -> Option<PathBuf> {
+pub fn tunnel_service_logs() -> Option<PathBuf> {
     // TODO: This is magic, it must match the systemd file
     Some(PathBuf::from("/var/log").join(BUNDLE_ID))
 }

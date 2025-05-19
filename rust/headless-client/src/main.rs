@@ -157,7 +157,7 @@ fn main() -> Result<()> {
     assert!(std::env::var(TOKEN_ENV_KEY).is_err());
 
     // TODO: This might have the same issue with fatal errors not getting logged
-    // as addressed for the IPC service in PR #5216
+    // as addressed for the Tunnel service in PR #5216
     let (layer, _handle) = cli
         .log_dir
         .as_deref()
@@ -169,7 +169,7 @@ fn main() -> Result<()> {
     // in case a previous run of Firezone left DNS control on and messed anything up.
     let dns_control_method = cli.dns_control;
     let mut dns_controller = DnsController { dns_control_method };
-    // Deactivate Firezone DNS control in case the system or IPC service crashed
+    // Deactivate Firezone DNS control in case the system or Tunnel service crashed
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
 

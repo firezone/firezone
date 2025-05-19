@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
-pub fn ipc_service_config() -> Option<PathBuf> {
+pub fn tunnel_service_config() -> Option<PathBuf> {
     unimplemented!()
 }
 
-pub fn ipc_service_logs() -> Option<PathBuf> {
+pub fn tunnel_service_logs() -> Option<PathBuf> {
     unimplemented!()
 }
 

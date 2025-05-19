@@ -1,6 +1,6 @@
-//! Implementation of headless Client and IPC service for Windows
+//! Implementation of headless Client and Tunnel service for Windows
 //!
-//! Try not to panic in the IPC service. Windows doesn't consider the
+//! Try not to panic in the Tunnel service. Windows doesn't consider the
 //! service to be stopped even if its only process ends, for some reason.
 //! We must tell Windows explicitly when our service is stopping.
 

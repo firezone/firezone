@@ -127,13 +127,13 @@ To fix, perform these steps:
    `Settings -> Network and Internet -> Additional network settings -> Network Reset -> Reset now`.
 3. Reinstall Firezone and any other software you previously uninstalled.
 
-### Check if Firezone Client IPC service is running
+### Check if Firezone Client Tunnel service is running
 
 In the Start Menu, search for "Windows Powershell". Open it and run this
 command:
 
 ```pwsh
-Get-Service -Name FirezoneClientIpcService
+Get-Service -Name FirezoneClientTunnelService
 ```
 
 Good output
@@ -202,10 +202,10 @@ Get-DnsClientNrptRule | where Comment -eq firezone-fd0020211111 | foreach { Remo
 
 ### Viewing logs
 
-The Firezone Client is split into 2 main processes: An IPC service which runs
+The Firezone Client is split into 2 main processes: A Tunnel service which runs
 the tunnel, and a GUI which allows the user to control Firezone.
 
-- IPC service logs are stored at `%PROGRAMDATA%\dev.firezone.client\data\logs\`,
+- Tunnel service logs are stored at `%PROGRAMDATA%\dev.firezone.client\data\logs\`,
   where `%PROGRAMDATA%` is almost always `C:\ProgramData`
 - GUI logs are stored at `%LOCALAPPDATA%\dev.firezone.client\data\logs`, where
   `%LOCALAPPDATA%` is, e.g. `C:\Users\username\AppData\Local`

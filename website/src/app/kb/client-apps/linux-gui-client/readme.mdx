@@ -65,7 +65,7 @@ already work properly.
    from being auto-removed if Firezone is removed)
 3. `sudo dnf install ./firezone-client-gui-*.rpm`
 4. `sudo usermod -aG firezone-client $USER`
-5. `sudo systemctl enable firezone-client-ipc.service` (See
+5. `sudo systemctl enable firezone-client-tunnel.service` (See
    https://www.freedesktop.org/software/systemd/man/latest/systemd.preset.html,
    "It is not recommended to ship preset files within the respective software
    packages implementing the units". The Fedora family of distros also seem to
@@ -153,12 +153,12 @@ To export or clear your logs:
 1. Click `Diagnostic Logs`.
 1. Click `Export Logs` or `Clear Log Directory`.
 
-The IPC service (`firezone-client-ipc.service`) also logs to stdout which is
-captured by systemd and sent to journald. To view the logs of the IPC service,
+The Tunnel service (`firezone-client-tunnel.service`) also logs to stdout which is
+captured by systemd and sent to journald. To view the logs of the Tunnel service,
 use:
 
 ```bash
-journalctl --pager-end --follow --unit firezone-client-ipc.service
+journalctl --pager-end --follow --unit firezone-client-tunnel.service
 ```
 
 The GUI client logs to journald directly as well with the syslog identifier
@@ -242,15 +242,15 @@ If the network interface stays up and DNS does not revert, you can try
 restarting the tunnel service. Quit the Firezone GUI, then run:
 
 ```bash
-sudo systemctl restart firezone-client-ipc
+sudo systemctl restart firezone-client-tunnel
 ```
 
 ### Viewing logs
 
-The Firezone Client is split into 2 main processes: An IPC service which runs
+The Firezone Client is split into 2 main processes: A Tunnel service which runs
 the tunnel, and a GUI which allows the user to control Firezone.
 
-- IPC service logs are stored at `/var/log/dev.firezone.client/`
+- Tunnel service logs are stored at `/var/log/dev.firezone.client/`
 - GUI logs are stored at `$HOME/.cache/dev.firezone.client/data/logs/`, where
   `$HOME` is, e.g. `/home/username/`
 
