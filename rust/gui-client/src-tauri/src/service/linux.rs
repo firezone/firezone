@@ -22,6 +22,7 @@ pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()
         &log_filter_reloader,
         &mut signals,
     ))
+    .inspect_err(|e| tracing::error!("IPC service failed: {e:#}"))
 }
 
 /// Returns true if the Tunnel service can run properly
