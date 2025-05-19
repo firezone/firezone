@@ -238,7 +238,7 @@ pub fn setup_stdout() -> Result<FilterReloadHandle> {
 ///
 /// Reads from:
 /// 1. `RUST_LOG` env var
-/// 2. `known_dirs::ipc_log_filter()` file
+/// 2. `known_dirs::tunnel_log_filter()` file
 /// 3. Hard-coded default `SERVICE_RUST_LOG`
 ///
 /// Errors if something is badly wrong, e.g. the directory for the config file
@@ -253,8 +253,9 @@ pub(crate) fn get_log_filter() -> Result<String> {
         return Ok(filter);
     }
 
-    if let Ok(filter) = std::fs::read_to_string(firezone_bin_shared::known_dirs::ipc_log_filter()?)
-        .map(|s| s.trim().to_string())
+    if let Ok(filter) =
+        std::fs::read_to_string(firezone_bin_shared::known_dirs::tunnel_log_filter()?)
+            .map(|s| s.trim().to_string())
     {
         return Ok(filter);
     }

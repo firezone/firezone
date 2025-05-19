@@ -385,7 +385,7 @@ impl<'a> Handler<'a> {
             ClientMsg::ApplyLogFilter { directives } => {
                 self.log_filter_reloader.reload(&directives)?;
 
-                let path = known_dirs::ipc_log_filter()?;
+                let path = known_dirs::tunnel_log_filter()?;
 
                 if let Err(e) = AtomicFile::new(&path, OverwriteBehavior::AllowOverwrite)
                     .write(|f| f.write_all(directives.as_bytes()))
