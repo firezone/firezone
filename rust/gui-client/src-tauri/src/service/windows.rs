@@ -280,16 +280,18 @@ fn try_run_service(
         process_id: None,
     })?;
 
+    let mut signals = firezone_bin_shared::signals::Terminate::from_channel(shutdown_rx);
     let mut telemetry = Telemetry::default();
 
     // Add new features in `service_run_async` if possible.
     // We don't want to bail out of `fallible_service_run` and forget to tell
     // Windows that we're shutting down.
     let result = rt
-        .block_on(service_run_async(
+        .block_on(super::ipc_listen(
+            DnsControlMethod::Nrpt,
             &log_filter_reloader,
+            &mut signals,
             &mut telemetry,
-            shutdown_rx,
         ))
         .inspect(|_| rt.block_on(telemetry.stop()))
         .inspect_err(|e| {
@@ -322,34 +324,6 @@ fn try_run_service(
         .context("Should be able to tell Windows we're stopping")?;
     // Generally unreachable. Windows typically kills the process first,
     // but doesn't guarantee it.
-    Ok(())
-}
-
-/// The main loop for the Windows service
-///
-/// This is split off from other functions because we don't want to accidentally
-/// bail out of a fallible function and not tell Windows that we're stopping
-/// the service. So it's okay to bail out of `service_run_async`, but not
-/// out of its caller.
-///
-/// Logging must already be set up before calling this.
-async fn service_run_async(
-    log_filter_reloader: &FilterReloadHandle,
-    telemetry: &mut Telemetry,
-    shutdown_rx: mpsc::Receiver<()>,
-) -> Result<()> {
-    // Useless - Windows will never send us Ctrl+C when running as a service
-    // This just keeps the signatures simpler
-    let mut signals = firezone_bin_shared::signals::Terminate::from_channel(shutdown_rx);
-    super::ipc_listen(
-        DnsControlMethod::Nrpt,
-        log_filter_reloader,
-        &mut signals,
-        telemetry,
-    )
-    .await
-    .context("`ipc_listen` threw an error")?;
-
     Ok(())
 }
 
