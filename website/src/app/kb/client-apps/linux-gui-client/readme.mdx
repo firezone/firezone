@@ -15,7 +15,7 @@ present to authenticate with your identity provider interactively.
 ## Prerequisites
 
 - **x86-64** or **ARM64** CPU architecture
-- Ubuntu **22.04** or higher, or CentOS 9 or higher. Other distributions may
+- Ubuntu **22.04** or higher, or CentOS 10 or higher. Other distributions may
   work, but are not officially supported.
 - **systemd-resolved**. Ubuntu already uses this by default.
 
@@ -61,26 +61,20 @@ already work properly.
 
 1. Download the RPM:
    [Download the latest Linux GUI `.rpm` from GitHub Releases](https://www.github.com/firezone/firezone/releases)
-2. `sudo dnf install systemd-resolved` (Installing it explicitly prevents it
+1. `sudo dnf install systemd-resolved` (Installing it explicitly prevents it
    from being auto-removed if Firezone is removed)
-3. `sudo dnf install ./firezone-client-gui-*.rpm`
-4. `sudo usermod -aG firezone-client $USER`
-5. `sudo systemctl enable firezone-client-tunnel.service` (See
-   https://www.freedesktop.org/software/systemd/man/latest/systemd.preset.html,
-   "It is not recommended to ship preset files within the respective software
-   packages implementing the units". The Fedora family of distros also seem to
-   have their own policy that installing a service should not auto-start or
-   enable it.)
-6. Reboot to finish adding yourself to the group. Logging out and back in is not
+1. `sudo dnf install ./firezone-client-gui-*.rpm`
+1. `sudo usermod -aG firezone-client $USER`
+1. Reboot to finish adding yourself to the group. Logging out and back in is not
    enough. This also starts the new services for us.
-7. `sudo cp /etc/resolv.conf /etc/resolv.conf.before-firezone` Back up your
+1. `sudo cp /etc/resolv.conf /etc/resolv.conf.before-firezone` Back up your
    resolv.conf file. If anything goes wrong with your DNS, you can copy this
    back into place.
-8. `sudo ln --force --symbolic /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf`
+1. `sudo ln --force --symbolic /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf`
    This puts `systemd-resolved`, and therefore Firezone, in control of the
    system's DNS. `systemd-resolved` does not do this automatically, since it's
    under `/etc`.
-9. Run `Firezone Client` from the app menu.
+1. Run `Firezone Client` from the app menu.
 
 ## Usage
 
