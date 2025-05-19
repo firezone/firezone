@@ -14,8 +14,6 @@ defmodule Domain.Policies.Policy do
 
     field :created_by, Ecto.Enum, values: ~w[actor identity]a
     field :created_by_subject, :map
-    belongs_to :created_by_identity, Domain.Auth.Identity
-    belongs_to :created_by_actor, Domain.Actors.Actor
 
     belongs_to :replaced_by_policy, Domain.Policies.Policy
     has_one :replaces_policy, Domain.Policies.Policy, foreign_key: :replaced_by_policy_id

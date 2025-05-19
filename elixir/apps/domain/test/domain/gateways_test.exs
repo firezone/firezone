@@ -214,7 +214,6 @@ defmodule Domain.GatewaysTest do
       assert group.name == "foo"
 
       assert group.created_by == :identity
-      assert group.created_by_identity_id == subject.identity.id
 
       assert group.created_by_subject == %{
                "name" => subject.actor.name,
@@ -469,7 +468,6 @@ defmodule Domain.GatewaysTest do
       assert token.account_id == account.id
       assert token.gateway_group_id == group.id
       assert token.created_by == :identity
-      assert token.created_by_identity_id == subject.identity.id
       assert token.created_by_user_agent == context.user_agent
       assert token.created_by_remote_ip.address == context.remote_ip
 

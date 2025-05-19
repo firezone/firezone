@@ -323,8 +323,7 @@ defmodule Web.Live.Actors.ShowTest do
         Fixtures.Auth.create_identity(account: account, actor: actor)
         |> Ecto.Changeset.change(
           created_by: :identity,
-          created_by_identity_id: admin_identity.id,
-          created_by_subject: %{"name" => actor.name, "email" => admin_identity.email}
+          created_by_subject: %{"email" => admin_identity.email, "name" => actor.name}
         )
         |> Repo.update!()
 
@@ -386,7 +385,7 @@ defmodule Web.Live.Actors.ShowTest do
         Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
         |> Ecto.Changeset.change(
           created_by: :identity,
-          created_by_identity_id: admin_identity.id
+          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
         )
         |> Repo.update!()
 
@@ -425,7 +424,7 @@ defmodule Web.Live.Actors.ShowTest do
         )
         |> Ecto.Changeset.change(
           created_by: :identity,
-          created_by_identity_id: admin_identity.id
+          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
         )
         |> Repo.update!()
 
@@ -457,7 +456,7 @@ defmodule Web.Live.Actors.ShowTest do
         Fixtures.Auth.create_identity(account: account, actor: actor, provider: provider)
         |> Ecto.Changeset.change(
           created_by: :identity,
-          created_by_identity_id: admin_identity.id
+          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
         )
         |> Repo.update!()
 
@@ -536,7 +535,7 @@ defmodule Web.Live.Actors.ShowTest do
         Fixtures.Auth.create_identity(account: account, actor: actor, provider: email_provider)
         |> Ecto.Changeset.change(
           created_by: :identity,
-          created_by_identity_id: admin_identity.id
+          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
         )
         |> Repo.update!()
 
@@ -582,7 +581,7 @@ defmodule Web.Live.Actors.ShowTest do
         Fixtures.Auth.create_identity(account: account, actor: actor)
         |> Ecto.Changeset.change(
           created_by: :identity,
-          created_by_identity_id: admin_identity.id
+          created_by_subject: %{"email" => admin_identity.email, "name" => ""}
         )
         |> Repo.update!()
 

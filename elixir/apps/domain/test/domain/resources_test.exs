@@ -1235,7 +1235,6 @@ defmodule Domain.ResourcesTest do
       assert resource.account_id == account.id
 
       assert resource.created_by == :identity
-      assert resource.created_by_identity_id == subject.identity.id
 
       assert resource.created_by_subject == %{
                "name" => subject.actor.name,
@@ -1247,7 +1246,6 @@ defmodule Domain.ResourcesTest do
       assert connection.gateway_group_id == gateway.group_id
       assert connection.account_id == account.id
       assert connection.created_by == :identity
-      assert connection.created_by_identity_id == subject.identity.id
 
       assert resource.created_by_subject == %{
                "name" => subject.actor.name,

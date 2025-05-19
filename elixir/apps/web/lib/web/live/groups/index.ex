@@ -24,7 +24,7 @@ defmodule Web.Groups.Index do
   end
 
   def handle_groups_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, [:provider, created_by_identity: [:actor]])
+    list_opts = Keyword.put(list_opts, :preload, [:provider])
 
     with {:ok, groups, metadata} <- Actors.list_groups(socket.assigns.subject, list_opts),
          {:ok, group_actors} <- Actors.peek_group_actors(groups, 3, socket.assigns.subject) do

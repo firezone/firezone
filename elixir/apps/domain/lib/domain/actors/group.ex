@@ -22,8 +22,6 @@ defmodule Domain.Actors.Group do
 
     field :created_by, Ecto.Enum, values: ~w[actor identity provider system]a
     field :created_by_subject, :map
-    belongs_to :created_by_identity, Domain.Auth.Identity
-    belongs_to :created_by_actor, Domain.Actors.Actor
 
     belongs_to :account, Domain.Accounts.Account
 

@@ -86,4 +86,11 @@ defmodule Domain.Fixtures.Clients do
     {:ok, client} = Clients.verify_client(client, subject)
     client
   end
+
+  def verify_client(client, subject) do
+    client = Repo.preload(client, :account)
+
+    {:ok, client} = Clients.verify_client(client, subject)
+    client
+  end
 end
