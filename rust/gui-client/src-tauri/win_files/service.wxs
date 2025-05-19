@@ -15,7 +15,7 @@
         whether the file is in use.
           If we rename the service file, it the new name will not be in used and therefore, Windows won't
         shut it down prior to installation.
-          
+
           It will however try to shut the GUI process down by sending WM_CLOSE. Firezone typically doesn't
         have any Windows open and therefore,
           WM_CLOSE does nothing and the installer hangs forever trying to close our program.
