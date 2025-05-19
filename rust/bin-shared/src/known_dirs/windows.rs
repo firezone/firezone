@@ -28,7 +28,7 @@ pub fn tunnel_service_config() -> Option<PathBuf> {
     )
 }
 
-pub fn ipc_service_logs() -> Option<PathBuf> {
+pub fn tunnel_service_logs() -> Option<PathBuf> {
     Some(
         get_known_folder_path(KnownFolder::ProgramData)?
             .join(BUNDLE_ID)

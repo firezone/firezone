@@ -179,10 +179,10 @@ pub fn setup_ipc(
     firezone_logging::file::Handle,
     firezone_logging::FilterReloadHandle,
 )> {
-    // If `log_dir` is Some, use that. Else call `ipc_service_logs`
+    // If `log_dir` is Some, use that. Else call `tunnel_service_logs`
     let log_path = log_path.map_or_else(
         || {
-            known_dirs::ipc_service_logs()
+            known_dirs::tunnel_service_logs()
                 .context("Should be able to compute Tunnel service logs dir")
         },
         Ok,
@@ -387,7 +387,8 @@ async fn count_one_dir(path: &Path) -> Result<FileCount> {
 fn log_paths() -> Result<Vec<LogPath>> {
     Ok(vec![
         LogPath {
-            src: known_dirs::ipc_service_logs().context("Can't compute Tunnel service logs dir")?,
+            src: known_dirs::tunnel_service_logs()
+                .context("Can't compute Tunnel service logs dir")?,
             dst: PathBuf::from("connlib"),
         },
         LogPath {

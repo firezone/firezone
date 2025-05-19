@@ -20,7 +20,7 @@ pub fn tunnel_service_config() -> Option<PathBuf> {
 }
 
 #[expect(clippy::unnecessary_wraps)] // Signature must match Windows
-pub fn ipc_service_logs() -> Option<PathBuf> {
+pub fn tunnel_service_logs() -> Option<PathBuf> {
     // TODO: This is magic, it must match the systemd file
     Some(PathBuf::from("/var/log").join(BUNDLE_ID))
 }

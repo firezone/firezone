@@ -360,7 +360,7 @@ impl<'a> Handler<'a> {
         match msg {
             ClientMsg::ClearLogs => {
                 let result = crate::clear_logs(
-                    &firezone_bin_shared::known_dirs::ipc_service_logs()
+                    &firezone_bin_shared::known_dirs::tunnel_service_logs()
                         .context("Can't compute logs dir")?,
                 )
                 .await;
