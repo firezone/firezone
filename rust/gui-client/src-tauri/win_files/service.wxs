@@ -2,35 +2,53 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
     <DirectoryRef Id="INSTALLDIR">
-        <Component Id="FirezoneClientIpcService" Guid="a8092ff9-30fa-48bb-9b2d-45fe39d16c66">
+      <Component Id="RemoveOldFirezoneService" Guid="2cfa312f-9a0a-4a3c-bfe8-c7304f69a467">
+        <ServiceControl Id="RemoveOldFirezoneService" Name="FirezoneClientIpcService"
+          Stop="both" Remove="both" Wait="yes" />
+        <ServiceControl Id="RemoveOldFirezoneDebugService" Name="FirezoneClientIpcServiceDebug"
+          Stop="both" Remove="both" Wait="yes" />
 
-          <!-- Dummy registry key so we have a valid `Component` -->
-          <RegistryKey Root="HKCU" Key="Software\Firezone\RemoveOldService">
-            <RegistryValue Name="dummy" Type="string" Value="1" KeyPath="yes"/>
-          </RegistryKey>
+        <!--
+          Hack to make the rename of the service work:
 
-          <ServiceControl Id="RemoveOldFirezoneService" Name="FirezoneClientIpcService" Stop="uninstall" Remove="uninstall" Wait="yes" />
-          <ServiceControl Id="RemoveOldFirezoneDebugService" Name="FirezoneClientIpcServiceDebug" Stop="uninstall" Remove="uninstall" Wait="yes" />
-        </Component>
+          The Windows installer wants to close already running applications and it detects those by checking
+        whether the file is in use.
+          If we rename the service file, it the new name will not be in used and therefore, Windows won't
+        shut it down prior to installation.
+          
+          It will however try to shut the GUI process down by sending WM_CLOSE. Firezone typically doesn't
+        have any Windows open and therefore,
+          WM_CLOSE does nothing and the installer hangs forever trying to close our program.
 
-        <Component Id="FirezoneClientTunnelService" Guid="2c808b80-a2f2-4d2a-9563-1706cf72e040">
-          <File Id="FirezoneClientTunnelServiceExe" Name="firezone-client-tunnel.exe" Source="../../firezone-client-tunnel.exe" KeyPath="yes" />
+          To fix this, we install the service binary under the old AND new name to force the installer to
+        shut down the service.
+          Unfortunately, this means we ship the binary twice for some amount of time.
+          Eventually, once enough users have upgraded to a newer version of Firezone, we can remove this.
+        -->
+        <File Id="FirezoneClientIpcServiceExe" Name="firezone-client-ipc.exe"
+          Source="../../firezone-client-tunnel.exe" KeyPath="yes" />
+      </Component>
 
-          <ServiceInstall
-              Id="FirezoneClientTunnelServiceInstaller"
-              Arguments="run"
-              Type="ownProcess"
-              Vital="yes"
-              Name="FirezoneClientTunnelService"
-              DisplayName="Firezone Tunnel Service"
-              Start="auto"
-              Account="LocalSystem"
-              ErrorControl="normal"
-              Interactive="no">
-            </ServiceInstall>
+      <Component Id="FirezoneClientTunnelService" Guid="bd082abf-bd17-4e6f-aed1-4126a8596ecd">
+        <File Id="FirezoneClientTunnelServiceExe" Name="firezone-client-tunnel.exe"
+          Source="../../firezone-client-tunnel.exe" KeyPath="yes" />
 
-            <ServiceControl Id="FirezoneClientTunnelServiceControl" Start="install" Stop="both" Remove="both" Name="FirezoneClientTunnelService" Wait="yes" />
-        </Component>
+        <ServiceInstall
+          Id="FirezoneClientTunnelServiceInstaller"
+          Arguments="run"
+          Type="ownProcess"
+          Vital="yes"
+          Name="FirezoneClientTunnelService"
+          DisplayName="Firezone Tunnel Service"
+          Start="auto"
+          Account="LocalSystem"
+          ErrorControl="normal"
+          Interactive="no">
+        </ServiceInstall>
+
+        <ServiceControl Id="FirezoneClientTunnelServiceControl" Start="install" Stop="both"
+          Remove="both" Name="FirezoneClientTunnelService" Wait="yes" />
+      </Component>
     </DirectoryRef>
   </Fragment>
 </Wix>
