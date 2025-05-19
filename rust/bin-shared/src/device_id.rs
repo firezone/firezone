@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Debug, Clone)]
 pub struct DeviceId {
     pub id: String,
 }

@@ -1,6 +1,6 @@
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::DnsControlMethod;
-use firezone_telemetry::Telemetry;
+use firezone_logging::FilterReloadHandle;
 use futures::channel::mpsc;
 use std::path::PathBuf;
 use std::{
@@ -279,28 +279,14 @@ fn run_service(arguments: Vec<OsString>) {
     });
 
     let mut signals = firezone_bin_shared::signals::Terminate::from_channel(shutdown_rx);
-    let mut telemetry = Telemetry::default();
 
-    // Add new features in `service_run_async` if possible.
-    // We don't want to bail out of `fallible_service_run` and forget to tell
-    // Windows that we're shutting down.
     let result = rt
         .block_on(super::ipc_listen(
             DnsControlMethod::Nrpt,
-            &log_filter_reloader,
+            log_filter_reloader,
             &mut signals,
-            &mut telemetry,
         ))
-        .inspect(|()| {
-            tracing::info!("Windows service exited gracefully");
-
-            rt.block_on(telemetry.stop())
-        })
-        .inspect_err(|e| {
-            tracing::error!("Tunnel service failed: {e:#}");
-
-            rt.block_on(telemetry.stop_on_crash())
-        });
+        .inspect_err(|e| tracing::error!("Tunnel service failed: {e:#}"));
 
     // Tell Windows that we're stopping
     // Per Windows docs, this will cause Windows to kill our process eventually.
