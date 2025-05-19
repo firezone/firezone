@@ -345,6 +345,17 @@ component.
         </InstallExecuteSequence>
         {{/if}}
 
+        <!-- Hack for removing duplicate service binary. Can be removed in later versions when most/all users have upgraded to a newer version of Firezone. -->
+        <CustomAction Id="DeleteOldServiceFile"
+            Directory="INSTALLDIR"
+            Execute="deferred"
+            Return="ignore"
+            ExeCommand="powershell.exe -NoProfile -WindowStyle Hidden -Command &quot;Remove-Item -Path '[INSTALLDIR]firezone-client-ipc.exe' -Force -ErrorAction SilentlyContinue&quot;" />
+
+        <InstallExecuteSequence>
+            <Custom Action="DeleteOldServiceFile" Before="InstallFinalize">NOT Installed</Custom>
+        </InstallExecuteSequence>
+
         <InstallExecuteSequence>
           <Custom Action="LaunchApplication" After="InstallFinalize">AUTOLAUNCHAPP AND NOT Installed</Custom>
         </InstallExecuteSequence>

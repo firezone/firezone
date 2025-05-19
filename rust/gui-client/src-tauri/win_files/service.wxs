@@ -22,8 +22,7 @@
 
           To fix this, we install the service binary under the old AND new name to force the installer to
         shut down the service.
-          Unfortunately, this means we ship the binary twice for some amount of time.
-          Eventually, once enough users have upgraded to a newer version of Firezone, we can remove this.
+          The duplicate file is removed as part of a custom action in `main.wxs`
         -->
         <File Id="FirezoneClientIpcServiceExe" Name="firezone-client-ipc.exe"
           Source="../../firezone-client-tunnel.exe" KeyPath="yes" />
