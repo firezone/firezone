@@ -194,19 +194,20 @@ fn uninstall_tunnel_service(
 ///
 /// Linux uses the CLI args from here, Windows does not
 pub fn run(_log_dir: Option<PathBuf>, _dns_control: DnsControlMethod) -> Result<()> {
-    windows_service::service_dispatcher::start(SERVICE_NAME, ffi_service_run).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?")
+    windows_service::service_dispatcher::start(SERVICE_NAME, run_service_ffi).context("windows_service::service_dispatcher failed. This isn't running in an interactive terminal, right?")
 }
 
-// Generates `ffi_service_run` from `service_run`
-windows_service::define_windows_service!(ffi_service_run, service_run);
+// Generates `run_service_ffi` from `service_run`
+windows_service::define_windows_service!(run_service_ffi, run_service);
 
-fn service_run(arguments: Vec<OsString>) {
+fn run_service(arguments: Vec<OsString>) {
     // `arguments` doesn't seem to work right when running as a Windows service
     // (even though it's meant for that) so just use the default log dir.
     let (handle, log_filter_reloader) =
         crate::logging::setup_tunnel(None).expect("Should be able to set up logging");
-    if let Err(error) = fallible_service_run(arguments, handle, log_filter_reloader) {
-        tracing::error!("`fallible_windows_service_run` returned an error: {error:#}");
+
+    if let Err(error) = try_run_service(arguments, handle, log_filter_reloader) {
+        tracing::error!("Failed to run Windows service: {error:#}");
     }
 }
 
@@ -215,12 +216,12 @@ fn service_run(arguments: Vec<OsString>) {
 // The arguments don't seem to match the ones passed to the main thread at all.
 //
 // If Windows stops us gracefully, this function may never return.
-fn fallible_service_run(
+fn try_run_service(
     arguments: Vec<OsString>,
     logging_handle: firezone_logging::file::Handle,
     log_filter_reloader: FilterReloadHandle,
 ) -> Result<()> {
-    tracing::info!(?arguments, "fallible_windows_service_run");
+    tracing::info!(?arguments, "try_run_service");
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
