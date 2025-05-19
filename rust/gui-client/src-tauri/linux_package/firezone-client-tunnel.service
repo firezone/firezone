@@ -1,0 +1,52 @@
+[Unit]
+Description=Firezone Client Tunnel Service
+After=systemd-resolved.service
+Wants=systemd-resolved.service
+
+[Service]
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_CHOWN CAP_NET_ADMIN
+DeviceAllow=/dev/net/tun
+LockPersonality=true
+LogsDirectory=dev.firezone.client
+# Allow anyone to read log files
+LogsDirectoryMode=755
+MemoryDenyWriteExecute=true
+NoNewPrivileges=true
+PrivateMounts=true
+PrivateTmp=true
+# We need to be real root, not just root in our cgroup
+PrivateUsers=false
+ProcSubset=pid
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+# Docs say it's useless when running as root, but defense-in-depth
+ProtectProc=invisible
+ProtectSystem=strict
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RuntimeDirectory=dev.firezone.client
+StateDirectory=dev.firezone.client
+SystemCallArchitectures=native
+# TODO: Minimize
+SystemCallFilter=@aio @basic-io @file-system @io-event @ipc @network-io @signal @system-service
+UMask=077
+
+Environment="LOG_DIR=/var/log/dev.firezone.client"
+EnvironmentFile=-/etc/default/firezone-client-tunnel
+
+ExecStart=firezone-client-tunnel run
+Type=notify
+# Unfortunately we need root to control DNS
+User=root
+Group=firezone-client
+
+[Install]
+WantedBy=default.target
