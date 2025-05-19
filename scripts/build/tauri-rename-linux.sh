@@ -5,7 +5,7 @@
 set -euox pipefail
 
 # For debugging
-ls "$TARGET_DIR/release" "$TARGET_DIR/release/bundle/deb"
+ls "$TARGET_DIR/release" "$TARGET_DIR/release/bundle/deb" "$TARGET_DIR/release/bundle/rpm"
 
 # In release mode the name comes from tauri.conf.json
 # Using a glob for the source, there will only be one deb anyway
