@@ -3,11 +3,7 @@
 
 set -euo pipefail
 
-OLD_SERVICE_NAME="firezone-client-ipc"
 SERVICE_NAME="firezone-client-tunnel"
-
-sudo systemctl disable "$OLD_SERVICE_NAME" || true
-sudo systemctl stop "$OLD_SERVICE_NAME" || true
 
 sudo systemctl disable "$SERVICE_NAME"
 sudo systemctl stop "$SERVICE_NAME"

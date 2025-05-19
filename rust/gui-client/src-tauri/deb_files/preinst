@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Usage: dpkg will call this after installing our files
+# This must be idempotent
+
+set -euo pipefail
+
+OLD_SERVICE_NAME="firezone-client-ipc"
+
+sudo systemctl disable "$OLD_SERVICE_NAME" >/dev/null 2>&1 || true
+sudo systemctl stop "$OLD_SERVICE_NAME" >/dev/null 2>&1 || true

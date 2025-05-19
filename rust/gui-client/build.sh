@@ -68,7 +68,7 @@ rm "$INTERMEDIATE_DIR"/*.tar.gz
 #     └── debian-binary
 
 # Add the scripts
-cp src-tauri/deb_files/postinst src-tauri/deb_files/prerm "$INTERMEDIATE_DIR/control/"
+cp src-tauri/deb_files/postinst src-tauri/deb_files/prerm src-tauri/deb_files/preinst "$INTERMEDIATE_DIR/control/"
 
 # Add the Tunnel service
 cp ../target/release/firezone-client-tunnel "$INTERMEDIATE_DIR/data/usr/bin/"
@@ -76,7 +76,7 @@ cp ../target/release/firezone-client-tunnel "$INTERMEDIATE_DIR/data/usr/bin/"
 pushd "$INTERMEDIATE_DIR"
 
 # Rebuild the control tarball
-tar -C "control" -czf "control.tar.gz" control md5sums postinst prerm
+tar -C "control" -czf "control.tar.gz" control md5sums preinst postinst prerm
 
 # Rebuild the data tarball
 tar -C "data" -czf "data.tar.gz" usr
