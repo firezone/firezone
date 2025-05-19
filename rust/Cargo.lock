@@ -523,7 +523,7 @@ dependencies = [
 [[package]]
 name = "aya"
 version = "0.13.1"
-source = "git+https://github.com/aya-rs/aya#f74a1579074016168e4e64a32e902e8b50a75b85"
+source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
 dependencies = [
  "assert_matches",
  "aya-obj",
@@ -541,7 +541,7 @@ dependencies = [
 [[package]]
 name = "aya-build"
 version = "0.1.2"
-source = "git+https://github.com/aya-rs/aya#f74a1579074016168e4e64a32e902e8b50a75b85"
+source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -550,7 +550,7 @@ dependencies = [
 [[package]]
 name = "aya-ebpf"
 version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#f74a1579074016168e4e64a32e902e8b50a75b85"
+source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
 dependencies = [
  "aya-ebpf-bindings",
  "aya-ebpf-cty",
@@ -561,7 +561,7 @@ dependencies = [
 [[package]]
 name = "aya-ebpf-bindings"
 version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#f74a1579074016168e4e64a32e902e8b50a75b85"
+source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
 dependencies = [
  "aya-ebpf-cty",
 ]
@@ -569,12 +569,12 @@ dependencies = [
 [[package]]
 name = "aya-ebpf-cty"
 version = "0.2.2"
-source = "git+https://github.com/aya-rs/aya#f74a1579074016168e4e64a32e902e8b50a75b85"
+source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
 
 [[package]]
 name = "aya-ebpf-macros"
 version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#f74a1579074016168e4e64a32e902e8b50a75b85"
+source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
 dependencies = [
  "proc-macro2",
  "proc-macro2-diagnostics",
@@ -585,7 +585,7 @@ dependencies = [
 [[package]]
 name = "aya-log"
 version = "0.2.1"
-source = "git+https://github.com/aya-rs/aya#f74a1579074016168e4e64a32e902e8b50a75b85"
+source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
 dependencies = [
  "aya",
  "aya-log-common",
@@ -598,7 +598,7 @@ dependencies = [
 [[package]]
 name = "aya-log-common"
 version = "0.1.15"
-source = "git+https://github.com/aya-rs/aya#f74a1579074016168e4e64a32e902e8b50a75b85"
+source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
 dependencies = [
  "num_enum",
 ]
@@ -606,7 +606,7 @@ dependencies = [
 [[package]]
 name = "aya-log-ebpf"
 version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#f74a1579074016168e4e64a32e902e8b50a75b85"
+source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
 dependencies = [
  "aya-ebpf",
  "aya-log-common",
@@ -616,7 +616,7 @@ dependencies = [
 [[package]]
 name = "aya-log-ebpf-macros"
 version = "0.1.0"
-source = "git+https://github.com/aya-rs/aya#f74a1579074016168e4e64a32e902e8b50a75b85"
+source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
 dependencies = [
  "aya-log-common",
  "aya-log-parser",
@@ -628,7 +628,7 @@ dependencies = [
 [[package]]
 name = "aya-log-parser"
 version = "0.1.13"
-source = "git+https://github.com/aya-rs/aya#f74a1579074016168e4e64a32e902e8b50a75b85"
+source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
 dependencies = [
  "aya-log-common",
 ]
@@ -636,7 +636,7 @@ dependencies = [
 [[package]]
 name = "aya-obj"
 version = "0.2.1"
-source = "git+https://github.com/aya-rs/aya#f74a1579074016168e4e64a32e902e8b50a75b85"
+source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
 dependencies = [
  "bytes",
  "hashbrown 0.15.2",
@@ -3734,7 +3734,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4979f22fdb869068da03c9f7528f8297c6fd2606bc3a4affe42e6a823fdb8da4"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.48.5",
 ]
 
 [[package]]
@@ -4286,7 +4286,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
 dependencies = [
- "proc-macro-crate 3.2.0",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "syn 2.0.87",
