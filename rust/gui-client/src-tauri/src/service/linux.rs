@@ -9,7 +9,7 @@ use firezone_telemetry::Telemetry;
 ///
 /// Linux uses the CLI args from here, Windows does not
 pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()> {
-    let (_handle, log_filter_reloader) = crate::logging::setup_ipc(log_dir)?;
+    let (_handle, log_filter_reloader) = crate::logging::setup_tunnel(log_dir)?;
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }

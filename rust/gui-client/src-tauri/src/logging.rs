@@ -173,7 +173,7 @@ pub fn setup_gui(directives: &str) -> Result<Handles> {
 ///
 /// Returns: A `Handle` that must be kept alive. Dropping it stops logging
 /// and flushes the log file.
-pub fn setup_ipc(
+pub fn setup_tunnel(
     log_path: Option<PathBuf>,
 ) -> Result<(
     firezone_logging::file::Handle,
@@ -214,7 +214,7 @@ pub fn setup_ipc(
         ?directives,
         system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
         log_path = %log_path.display(),
-        "`ipc-service` started logging"
+        "`tunnel service` started logging"
     );
 
     Ok((file_handle, file_reloader.merge(stdout_reloader)))
