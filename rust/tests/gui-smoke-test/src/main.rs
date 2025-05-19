@@ -193,7 +193,7 @@ fn tunnel_service_command() -> Exec {
         "--group",
         "firezone-client",
         "--whitelist-environment=RUST_LOG",
-        ipc_path()
+        tunnel_path()
             .to_str()
             .expect("IPC binary path should be valid Unicode"),
     ])
@@ -201,7 +201,7 @@ fn tunnel_service_command() -> Exec {
 
 #[cfg(target_os = "windows")]
 fn tunnel_service_command() -> Exec {
-    Exec::cmd(ipc_path())
+    Exec::cmd(tunnel_path())
 }
 
 // `ExitStatus::exit_ok` is nightly, so we add an equivalent here
@@ -225,7 +225,7 @@ fn gui_path() -> PathBuf {
         .with_extension(EXE_EXTENSION)
 }
 
-fn ipc_path() -> PathBuf {
+fn tunnel_path() -> PathBuf {
     Path::new("target")
         .join("debug")
         .join(TUNNEL_NAME)
