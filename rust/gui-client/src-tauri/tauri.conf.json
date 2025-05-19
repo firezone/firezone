@@ -9,11 +9,14 @@
     "shortDescription": "Firezone",
     "linux": {
       "deb": {
+        "postInstallScript": "./linux_package/postinst",
+        "preRemoveScript": "./linux_package/prerm",
         "files": {
-          "/usr/lib/systemd/system/firezone-client-ipc.service": "./deb_files/firezone-client-ipc.service",
-          "/usr/lib/sysusers.d/firezone-client-ipc.conf": "./deb_files/sysusers.conf"
+          "/usr/lib/systemd/system/firezone-client-ipc.service": "./linux_package/firezone-client-ipc.service",
+          "/usr/lib/sysusers.d/firezone-client-ipc.conf": "./linux_package/sysusers.conf",
+          "/usr/bin/firezone-client-ipc": "../../target/release/firezone-client-ipc"
         },
-        "desktopTemplate": "./deb_files/firezone-client-gui.desktop"
+        "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
       }
     },
     "targets": ["deb", "msi"],
