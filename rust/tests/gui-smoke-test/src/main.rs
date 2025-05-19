@@ -40,7 +40,7 @@ fn main() -> Result<()> {
     dump_syms().context("Failed to run `dump_syms`")?;
 
     // Run normal smoke test
-    let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
+    let mut ipc_service = tunnel_service_command().arg("run-smoke-test").popen()?;
     let mut gui = app
         .gui_command(&["smoke-test"])? // Disable deep links because they don't work in the headless CI environment
         .popen()?;
@@ -50,7 +50,7 @@ fn main() -> Result<()> {
     ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
 
     // Force the GUI to crash
-    let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
+    let mut ipc_service = tunnel_service_command().arg("run-smoke-test").popen()?;
     let mut gui = app.gui_command(&["--crash"])?.popen()?;
 
     // Ignore exit status here since we asked the GUI to crash on purpose
@@ -70,7 +70,7 @@ fn manual_tests(app: &App) -> Result<()> {
         .popen()?
         .wait()?;
 
-    let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
+    let mut ipc_service = tunnel_service_command().arg("run-smoke-test").popen()?;
     let mut gui = app.gui_command(&["--quit-after", "10"])?.popen()?;
 
     // Expect exit codes of 0
@@ -184,7 +184,7 @@ fn debug_db_path() -> PathBuf {
 }
 
 #[cfg(target_os = "linux")]
-fn ipc_service_command() -> Exec {
+fn tunnel_service_command() -> Exec {
     Exec::cmd("sudo").args(&[
         "--preserve-env",
         "runuser", // The `runuser` looks redundant but CI will complain if we use `sudo` directly, not sure why
@@ -200,7 +200,7 @@ fn ipc_service_command() -> Exec {
 }
 
 #[cfg(target_os = "windows")]
-fn ipc_service_command() -> Exec {
+fn tunnel_service_command() -> Exec {
     Exec::cmd(ipc_path())
 }
 
