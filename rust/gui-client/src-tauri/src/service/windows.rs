@@ -155,7 +155,7 @@ pub fn install() -> Result<()> {
     let name = "FirezoneClientTunnelServiceDebug";
 
     // Un-install existing one first if needed
-    if let Err(e) = uninstall_ipc_service(&service_manager, name)
+    if let Err(e) = uninstall_tunnel_service(&service_manager, name)
         .with_context(|| format!("Failed to uninstall `{name}`"))
     {
         tracing::debug!("{e:#}");
@@ -179,7 +179,10 @@ pub fn install() -> Result<()> {
     Ok(())
 }
 
-fn uninstall_ipc_service(service_manager: &ServiceManager, name: impl AsRef<OsStr>) -> Result<()> {
+fn uninstall_tunnel_service(
+    service_manager: &ServiceManager,
+    name: impl AsRef<OsStr>,
+) -> Result<()> {
     let service_access = ServiceAccess::DELETE;
     let service = service_manager.open_service(name, service_access)?;
     service.delete()?;
