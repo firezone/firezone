@@ -17,6 +17,18 @@ export default function GUI({ os }: { os: OS }) {
           Launching Firezone while it is already running while now re-activate
           the "Welcome" screen, allowing the user to sign in and out.
         </ChangeItem>
+        {os === OS.Windows && (
+          <ChangeItem pull="9154">
+            Renames the background service from `FirezoneClientIpcService`
+            to `FirezoneClientTunnelService`.
+          </ChangeItem>
+        )}
+        {os === OS.Linux && (
+          <ChangeItem pull="9154">
+            Renames the systemd service from `firezone-client-ipc.service`
+            to `firezone-client-tunnel.service`.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.4.13" date={new Date("2025-05-14")}>
         <ChangeItem pull="9014">

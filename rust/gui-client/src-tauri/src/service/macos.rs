@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 pub fn run(log_dir: Option<PathBuf>, _dns_control: DnsControlMethod) -> Result<()> {
     // We call this here to avoid a dead-code warning.
-    let (_handle, _log_filter_reloader) = crate::logging::setup_ipc(log_dir)?;
+    let (_handle, _log_filter_reloader) = crate::logging::setup_tunnel(log_dir)?;
 
     bail!("not implemented")
 }

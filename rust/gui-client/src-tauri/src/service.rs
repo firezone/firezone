@@ -64,11 +64,11 @@ pub enum ClientMsg {
     },
 }
 
-/// Messages that end up in the GUI, either forwarded from connlib or from the IPC service.
+/// Messages that end up in the GUI, either forwarded from connlib or from the Tunnel service.
 #[derive(Debug, serde::Deserialize, serde::Serialize, strum::Display)]
 pub enum ServerMsg {
     Hello,
-    /// The IPC service finished clearing its log dir.
+    /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
     ConnectResult(Result<(), ConnectError>),
     DisconnectedGracefully,
@@ -77,7 +77,7 @@ pub enum ServerMsg {
         is_authentication_error: bool,
     },
     OnUpdateResources(Vec<ResourceView>),
-    /// The IPC service is terminating, maybe due to a software update
+    /// The Tunnel service is terminating, maybe due to a software update
     ///
     /// This is a hint that the Client should exit with a message like,
     /// "Firezone is updating, please restart the GUI" instead of an error like,
@@ -108,7 +108,7 @@ impl From<anyhow::Error> for ConnectError {
     }
 }
 
-/// Run the IPC service and terminate gracefully if we catch a terminate signal
+/// Run the Tunnel service and terminate gracefully if we catch a terminate signal
 ///
 /// If an IPC client is connected when we catch a terminate signal, we send the
 /// client a hint about that before we exit.
@@ -118,7 +118,7 @@ async fn ipc_listen(
     signals: &mut signals::Terminate,
     telemetry: &mut Telemetry,
 ) -> Result<()> {
-    // Create the device ID and IPC service config dir if needed
+    // Create the device ID and Tunnel service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
     let firezone_id = device_id::get_or_create()
         .context("Failed to read / create device ID")?
@@ -238,7 +238,7 @@ impl<'a> Handler<'a> {
 
     /// Run the event loop to communicate with an IPC client.
     ///
-    /// If the IPC service needs to terminate, we catch that from `signals` and send
+    /// If the Tunnel service needs to terminate, we catch that from `signals` and send
     /// the client a hint to shut itself down gracefully.
     ///
     /// The return type is infallible so that we only give up on an IPC client explicitly
@@ -360,7 +360,7 @@ impl<'a> Handler<'a> {
         match msg {
             ClientMsg::ClearLogs => {
                 let result = crate::clear_logs(
-                    &firezone_bin_shared::known_dirs::ipc_service_logs()
+                    &firezone_bin_shared::known_dirs::tunnel_service_logs()
                         .context("Can't compute logs dir")?,
                 )
                 .await;
@@ -385,7 +385,7 @@ impl<'a> Handler<'a> {
             ClientMsg::ApplyLogFilter { directives } => {
                 self.log_filter_reloader.reload(&directives)?;
 
-                let path = known_dirs::ipc_log_filter()?;
+                let path = known_dirs::tunnel_log_filter()?;
 
                 if let Err(e) = AtomicFile::new(&path, OverwriteBehavior::AllowOverwrite)
                     .write(|f| f.write_all(directives.as_bytes()))
@@ -531,7 +531,7 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
         system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs()),
     );
     if !elevation_check()? {
-        bail!("IPC service failed its elevation check, try running as admin / root");
+        bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -548,7 +548,7 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
     ))
     .inspect(|_| rt.block_on(telemetry.stop()))
     .inspect_err(|e| {
-        tracing::error!("IPC service failed: {e:#}");
+        tracing::error!("Tunnel service failed: {e:#}");
 
         rt.block_on(telemetry.stop_on_crash())
     })
@@ -565,7 +565,7 @@ pub fn run_smoke_test() -> Result<()> {
 
     let log_filter_reloader = crate::logging::setup_stdout()?;
     if !elevation_check()? {
-        bail!("IPC service failed its elevation check, try running as admin / root");
+        bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -574,7 +574,7 @@ pub fn run_smoke_test() -> Result<()> {
     let mut dns_controller = DnsController {
         dns_control_method: Default::default(),
     };
-    // Deactivate Firezone DNS control in case the system or IPC service crashed
+    // Deactivate Firezone DNS control in case the system or Tunnel service crashed
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
     let mut signals = signals::Terminate::new()?;

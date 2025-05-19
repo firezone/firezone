@@ -38,7 +38,7 @@ fn main() -> ExitCode {
     );
 
     // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
-    // Technically this means we can fail to get the device ID on a newly-installed system, since the IPC service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
+    // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
     if let Ok(id) = firezone_bin_shared::device_id::get() {
         Telemetry::set_firezone_id(id.id);
     }
@@ -159,7 +159,9 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettin
                 .root_cause()
                 .is::<firezone_gui_client::ipc::NotFound>()
             {
-                show_error_dialog("Couldn't find Firezone IPC service. Is the service running?")?;
+                show_error_dialog(
+                    "Couldn't find Firezone Tunnel service. Is the service running?",
+                )?;
                 return Err(anyhow);
             }
 

@@ -122,7 +122,7 @@ where
     }
 }
 
-/// Messages that connlib can produce and send to the headless Client, IPC service, or GUI process.
+/// Messages that connlib can produce and send to the headless Client, Tunnel service, or GUI process.
 ///
 /// i.e. callbacks
 // The names are CamelCase versions of the connlib callbacks.

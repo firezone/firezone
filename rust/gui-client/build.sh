@@ -57,9 +57,9 @@ rm "$INTERMEDIATE_DIR"/*.tar.gz
 #     │       ├── lib
 #     │       │   ├── systemd
 #     │       │   │   └── system
-#     │       │   │       └── firezone-client-ipc.service
+#     │       │   │       └── firezone-client-tunnel.service
 #     │       │   └── sysusers.d
-#     │       │       └── firezone-client-ipc.conf
+#     │       │       └── firezone-client-tunnel.conf
 #     │       └── share
 #     │           ├── applications
 #     │           │   └── firezone-client-gui.desktop
@@ -68,15 +68,15 @@ rm "$INTERMEDIATE_DIR"/*.tar.gz
 #     └── debian-binary
 
 # Add the scripts
-cp src-tauri/deb_files/postinst src-tauri/deb_files/prerm "$INTERMEDIATE_DIR/control/"
+cp src-tauri/deb_files/postinst src-tauri/deb_files/prerm src-tauri/deb_files/preinst "$INTERMEDIATE_DIR/control/"
 
-# Add the IPC service
-cp ../target/release/firezone-client-ipc "$INTERMEDIATE_DIR/data/usr/bin/"
+# Add the Tunnel service
+cp ../target/release/firezone-client-tunnel "$INTERMEDIATE_DIR/data/usr/bin/"
 
 pushd "$INTERMEDIATE_DIR"
 
 # Rebuild the control tarball
-tar -C "control" -czf "control.tar.gz" control md5sums postinst prerm
+tar -C "control" -czf "control.tar.gz" control md5sums preinst postinst prerm
 
 # Rebuild the data tarball
 tar -C "data" -czf "data.tar.gz" usr

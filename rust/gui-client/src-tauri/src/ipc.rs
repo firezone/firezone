@@ -29,7 +29,7 @@ pub(crate) mod platform;
 pub(crate) mod platform;
 
 #[derive(Debug, thiserror::Error)]
-#[error("Couldn't find IPC service `{0}`")]
+#[error("Couldn't find IPC socket `{0}`")]
 pub struct NotFound(String);
 
 /// A name that both the server and client can use to find each other
@@ -304,7 +304,7 @@ mod tests {
 
     /// Replicate #5143
     ///
-    /// When the IPC service has disconnected from a GUI and loops over, sometimes
+    /// When the Tunnel service has disconnected from a GUI and loops over, sometimes
     /// the named pipe is not ready. If our IPC code doesn't handle this right,
     /// this test will fail.
     #[tokio::test]

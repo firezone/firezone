@@ -54,7 +54,7 @@ impl Server {
 
     // `&mut self` needed to match the Linux signature
     pub(crate) async fn next_client(&mut self) -> Result<ServerStream> {
-        // Fixes #5143. In the IPC service, if we close the pipe and immediately re-open
+        // Fixes #5143. In the Tunnel service, if we close the pipe and immediately re-open
         // it, Tokio may not get a chance to clean up the pipe. Yielding seems to fix
         // this in tests, but `yield_now` doesn't make any such guarantees, so
         // we also do a loop.

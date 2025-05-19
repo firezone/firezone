@@ -17,7 +17,7 @@ pub struct DeviceId {
 /// e.g. `C:\ProgramData\dev.firezone.client/firezone-id.json` or
 /// `/var/lib/dev.firezone.client/config/firezone-id.json`.
 pub(crate) fn path() -> Result<PathBuf> {
-    let path = crate::known_dirs::ipc_service_config()
+    let path = crate::known_dirs::tunnel_service_config()
         .context("Failed to compute path for firezone-id file")?
         .join("firezone-id.json");
     Ok(path)
@@ -53,7 +53,7 @@ pub fn get_or_create() -> Result<DeviceId> {
     fs::create_dir_all(dir).context("Failed to create dir for firezone-id")?;
     set_dir_permissions(dir).with_context(|| {
         format!(
-            "Couldn't set permissions on IPC service config dir `{}`",
+            "Couldn't set permissions on Tunnel service config dir `{}`",
             dir.display()
         )
     })?;

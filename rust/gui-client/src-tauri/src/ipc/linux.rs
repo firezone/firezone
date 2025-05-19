@@ -27,7 +27,7 @@ pub type ClientStream = UnixStream;
 /// On Windows `ClientStream` and `ServerStream` differ
 pub(crate) type ServerStream = UnixStream;
 
-/// Connect to the IPC service
+/// Connect to the Tunnel service
 #[expect(clippy::wildcard_enum_match_arm)]
 pub async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
     let path = ipc_path(id);
@@ -70,7 +70,7 @@ impl Server {
         std::fs::set_permissions(&sock_path, perms).context("Failed to set permissions on UDS")?;
 
         // TODO: Change this to `notify_service_controller` and put it in
-        // the same place in the IPC service's main loop as in the Headless Client.
+        // the same place in the Tunnel service's main loop as in the Headless Client.
         sd_notify::notify(true, &[sd_notify::NotifyState::Ready])?;
         Ok(Self { listener, id })
     }

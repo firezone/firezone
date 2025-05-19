@@ -1,6 +1,6 @@
 // Invoke with `cargo run --bin gui-smoke-test`
 //
-// Starts up the IPC service and GUI app and lets them run for a bit
+// Starts up the Tunnel service and GUI app and lets them run for a bit
 
 use anyhow::{Context as _, Result, bail};
 use clap::Parser;
@@ -14,7 +14,7 @@ use subprocess::Exec;
 const FZ_GROUP: &str = "firezone-client";
 
 const GUI_NAME: &str = "firezone-gui-client";
-const IPC_NAME: &str = "firezone-client-ipc";
+const TUNNEL_NAME: &str = "firezone-client-tunnel";
 
 #[cfg(target_os = "linux")]
 const EXE_EXTENSION: &str = "";
@@ -40,22 +40,22 @@ fn main() -> Result<()> {
     dump_syms().context("Failed to run `dump_syms`")?;
 
     // Run normal smoke test
-    let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
+    let mut ipc_service = tunnel_service_command().arg("run-smoke-test").popen()?;
     let mut gui = app
         .gui_command(&["smoke-test"])? // Disable deep links because they don't work in the headless CI environment
         .popen()?;
 
     gui.wait()?.fz_exit_ok().context("GUI process")?;
 
-    ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
+    ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
 
     // Force the GUI to crash
-    let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
+    let mut ipc_service = tunnel_service_command().arg("run-smoke-test").popen()?;
     let mut gui = app.gui_command(&["--crash"])?.popen()?;
 
     // Ignore exit status here since we asked the GUI to crash on purpose
     gui.wait()?;
-    ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
+    ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
 
     if cli.manual_tests {
         manual_tests(&app)?;
@@ -70,12 +70,12 @@ fn manual_tests(app: &App) -> Result<()> {
         .popen()?
         .wait()?;
 
-    let mut ipc_service = ipc_service_command().arg("run-smoke-test").popen()?;
+    let mut ipc_service = tunnel_service_command().arg("run-smoke-test").popen()?;
     let mut gui = app.gui_command(&["--quit-after", "10"])?.popen()?;
 
     // Expect exit codes of 0
     gui.wait()?.fz_exit_ok().context("GUI process")?;
-    ipc_service.wait()?.fz_exit_ok().context("IPC service")?;
+    ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
 
     Ok(())
 }
@@ -184,7 +184,7 @@ fn debug_db_path() -> PathBuf {
 }
 
 #[cfg(target_os = "linux")]
-fn ipc_service_command() -> Exec {
+fn tunnel_service_command() -> Exec {
     Exec::cmd("sudo").args(&[
         "--preserve-env",
         "runuser", // The `runuser` looks redundant but CI will complain if we use `sudo` directly, not sure why
@@ -193,15 +193,15 @@ fn ipc_service_command() -> Exec {
         "--group",
         "firezone-client",
         "--whitelist-environment=RUST_LOG",
-        ipc_path()
+        tunnel_path()
             .to_str()
             .expect("IPC binary path should be valid Unicode"),
     ])
 }
 
 #[cfg(target_os = "windows")]
-fn ipc_service_command() -> Exec {
-    Exec::cmd(ipc_path())
+fn tunnel_service_command() -> Exec {
+    Exec::cmd(tunnel_path())
 }
 
 // `ExitStatus::exit_ok` is nightly, so we add an equivalent here
@@ -225,10 +225,10 @@ fn gui_path() -> PathBuf {
         .with_extension(EXE_EXTENSION)
 }
 
-fn ipc_path() -> PathBuf {
+fn tunnel_path() -> PathBuf {
     Path::new("target")
         .join("debug")
-        .join(IPC_NAME)
+        .join(TUNNEL_NAME)
         .with_extension(EXE_EXTENSION)
 }
 
