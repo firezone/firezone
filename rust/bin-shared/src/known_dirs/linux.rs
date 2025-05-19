@@ -15,7 +15,7 @@ use std::path::PathBuf;
 ///
 /// `config` to match how Windows has `config` and `data` both under `AppData/Local/$BUNDLE_ID`
 #[expect(clippy::unnecessary_wraps)] // Signature must match Windows
-pub fn ipc_service_config() -> Option<PathBuf> {
+pub fn tunnel_service_config() -> Option<PathBuf> {
     Some(PathBuf::from("/var/lib").join(BUNDLE_ID).join("config"))
 }
 

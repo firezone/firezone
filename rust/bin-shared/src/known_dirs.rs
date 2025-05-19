@@ -10,7 +10,7 @@
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
-pub use platform::{ipc_service_config, ipc_service_logs, logs, runtime, session, settings};
+pub use platform::{ipc_service_logs, logs, runtime, session, settings, tunnel_service_config};
 
 #[cfg(target_os = "linux")]
 #[path = "known_dirs/linux.rs"]
@@ -25,8 +25,8 @@ pub mod platform;
 pub mod platform;
 
 pub fn ipc_log_filter() -> Result<PathBuf> {
-    Ok(ipc_service_config()
-        .context("Failed to compute `ipc_service_config` directory")?
+    Ok(tunnel_service_config()
+        .context("Failed to compute `tunnel_service_config` directory")?
         .join("log-filter"))
 }
 
@@ -37,7 +37,7 @@ mod tests {
     #[test]
     fn smoke() {
         for dir in [
-            ipc_service_config(),
+            tunnel_service_config(),
             ipc_service_logs(),
             logs(),
             runtime(),

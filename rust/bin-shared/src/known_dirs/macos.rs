@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-pub fn ipc_service_config() -> Option<PathBuf> {
+pub fn tunnel_service_config() -> Option<PathBuf> {
     unimplemented!()
 }
 
