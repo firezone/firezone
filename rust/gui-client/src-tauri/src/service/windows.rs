@@ -1,6 +1,5 @@
-use anyhow::{Context as _, Result, bail};
+use anyhow::{Context as _, Result};
 use firezone_bin_shared::DnsControlMethod;
-use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
 use futures::channel::mpsc;
 use std::path::PathBuf;
@@ -203,32 +202,22 @@ windows_service::define_windows_service!(run_service_ffi, run_service);
 fn run_service(arguments: Vec<OsString>) {
     // `arguments` doesn't seem to work right when running as a Windows service
     // (even though it's meant for that) so just use the default log dir.
-    let (handle, log_filter_reloader) =
+    let (_handle, log_filter_reloader) =
         crate::logging::setup_tunnel(None).expect("Should be able to set up logging");
 
-    if let Err(error) = try_run_service(arguments, handle, log_filter_reloader) {
-        tracing::error!("Failed to run Windows service: {error:#}");
-    }
-}
+    tracing::info!(?arguments, "run_service");
 
-// Most of the Windows-specific service stuff should go here
-//
-// The arguments don't seem to match the ones passed to the main thread at all.
-//
-// If Windows stops us gracefully, this function may never return.
-fn try_run_service(
-    arguments: Vec<OsString>,
-    logging_handle: firezone_logging::file::Handle,
-    log_filter_reloader: FilterReloadHandle,
-) -> Result<()> {
-    tracing::info!(?arguments, "try_run_service");
-    if !elevation_check()? {
-        bail!("Tunnel service failed its elevation check, try running as admin / root");
+    if !elevation_check().is_ok_and(|elevated| elevated) {
+        tracing::info!("Tunnel service failed its elevation check, try running as admin / root");
+
+        return;
     }
 
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
-        .build()?;
+        .build()
+        .expect("Failed to create tokio runtime");
+
     let (mut shutdown_tx, shutdown_rx) = mpsc::channel(1);
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
@@ -266,9 +255,18 @@ fn try_run_service(
         }
     };
 
+    let status_handle = match service_control_handler::register(SERVICE_NAME, event_handler)
+        .context("Failed to register Windows service")
+    {
+        Ok(handle) => handle,
+        Err(e) => {
+            tracing::error!("{e:#}");
+            return;
+        }
+    };
+
     // Tell Windows that we're running (equivalent to sd_notify in systemd)
-    let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
-    status_handle.set_service_status(ServiceStatus {
+    let _ = status_handle.set_service_status(ServiceStatus {
         service_type: SERVICE_TYPE,
         current_state: ServiceState::Running,
         controls_accepted: ServiceControlAccept::POWER_EVENT
@@ -278,7 +276,7 @@ fn try_run_service(
         checkpoint: 0,
         wait_hint: Duration::default(),
         process_id: None,
-    })?;
+    });
 
     let mut signals = firezone_bin_shared::signals::Terminate::from_channel(shutdown_rx);
     let mut telemetry = Telemetry::default();
@@ -293,38 +291,28 @@ fn try_run_service(
             &mut signals,
             &mut telemetry,
         ))
-        .inspect(|_| rt.block_on(telemetry.stop()))
+        .inspect(|()| {
+            tracing::info!("Windows service exited gracefully");
+
+            rt.block_on(telemetry.stop())
+        })
         .inspect_err(|e| {
             tracing::error!("Tunnel service failed: {e:#}");
 
             rt.block_on(telemetry.stop_on_crash())
         });
 
-    // Drop the logging handle so it flushes the logs before we let Windows kill our process.
-    // There is no obvious and elegant way to do this, since the logging and `ServiceState`
-    // changes are interleaved, not nested:
-    // - Start logging
-    // - ServiceState::Running
-    // - Stop logging
-    // - ServiceState::Stopped
-    std::mem::drop(logging_handle);
-
     // Tell Windows that we're stopping
     // Per Windows docs, this will cause Windows to kill our process eventually.
-    status_handle
-        .set_service_status(ServiceStatus {
-            service_type: SERVICE_TYPE,
-            current_state: ServiceState::Stopped,
-            controls_accepted: ServiceControlAccept::empty(),
-            exit_code: ServiceExitCode::Win32(if result.is_ok() { 0 } else { 1 }),
-            checkpoint: 0,
-            wait_hint: Duration::default(),
-            process_id: None,
-        })
-        .context("Should be able to tell Windows we're stopping")?;
-    // Generally unreachable. Windows typically kills the process first,
-    // but doesn't guarantee it.
-    Ok(())
+    let _ = status_handle.set_service_status(ServiceStatus {
+        service_type: SERVICE_TYPE,
+        current_state: ServiceState::Stopped,
+        controls_accepted: ServiceControlAccept::empty(),
+        exit_code: ServiceExitCode::Win32(if result.is_ok() { 0 } else { 1 }),
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    });
 }
 
 #[cfg(test)]
