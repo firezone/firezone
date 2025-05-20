@@ -27,6 +27,7 @@ fi
 
 # Build and sign
 echo "Building and signing app..."
+seconds_since_epoch=$(date +%s)
 xcodebuild build \
     GIT_SHA="$git_sha" \
     CODE_SIGN_STYLE=Manual \
@@ -34,6 +35,7 @@ xcodebuild build \
     CONFIGURATION_BUILD_DIR="$temp_dir" \
     APP_PROFILE_ID="$app_profile_id" \
     NE_PROFILE_ID="$ne_profile_id" \
+    CURRENT_PROJECT_VERSION="$seconds_since_epoch" \
     ONLY_ACTIVE_ARCH=NO \
     -project "$project_file" \
     -skipMacroValidation \
