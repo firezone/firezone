@@ -63,8 +63,6 @@ already work properly.
    [Download the latest Linux GUI `.rpm` from GitHub Releases](https://www.github.com/firezone/firezone/releases)
 1. `sudo dnf install systemd-resolved` (Installing it explicitly prevents it
    from being auto-removed if Firezone is removed)
-1. `sudo dnf install zenity` (or another dialog implementation, depending on
-   your desktop)
 1. `sudo dnf install ./firezone-client-gui-*.rpm`
 1. `sudo usermod -aG firezone-client $USER`
 1. Reboot to finish adding yourself to the group. Logging out and back in is not
