@@ -1,6 +1,5 @@
 use anyhow::{Context as _, Result};
 use firezone_bin_shared::DnsControlMethod;
-use firezone_logging::FilterReloadHandle;
 use futures::channel::mpsc;
 use std::path::PathBuf;
 use std::{
@@ -283,7 +282,7 @@ fn run_service(arguments: Vec<OsString>) {
     let result = rt
         .block_on(super::ipc_listen(
             DnsControlMethod::Nrpt,
-            log_filter_reloader,
+            &log_filter_reloader,
             &mut signals,
         ))
         .inspect_err(|e| tracing::error!("Tunnel service failed: {e:#}"));
