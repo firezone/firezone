@@ -29,6 +29,11 @@ export default function GUI({ os }: { os: OS }) {
             to `firezone-client-tunnel.service`.
           </ChangeItem>
         )}
+        {os === OS.Linux && (
+          <ChangeItem pull="9181">
+            Increases minimum supported CentOS version to 10.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.4.13" date={new Date("2025-05-14")}>
         <ChangeItem pull="9014">

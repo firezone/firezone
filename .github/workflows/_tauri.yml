@@ -116,7 +116,7 @@ jobs:
       - name: Upload deb / msi package
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ${{ env.ARTIFACT_DST }}-pkg
+          name: ${{ env.ARTIFACT_DST }}-${{ matrix.pkg-extension }}
           path: ${{ env.ARTIFACT_SRC }}.${{ matrix.pkg-extension }}
           if-no-files-found: error
       - name: Upload rpm package

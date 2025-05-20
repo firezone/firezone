@@ -24,7 +24,7 @@ function debug_exit() {
 sudo cp "rust/target/debug/$BINARY_NAME" "/usr/bin/$BINARY_NAME"
 
 # Set up the systemd service
-sudo cp "rust/gui-client/src-tauri/deb_files/$SERVICE_NAME.service" /usr/lib/systemd/system/
+sudo cp "rust/gui-client/src-tauri/linux_package/$SERVICE_NAME.service" /usr/lib/systemd/system/
 sudo cp "scripts/tests/systemd/env" "/etc/default/firezone-client-tunnel"
 
 # The firezone group must exist before the daemon starts
