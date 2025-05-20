@@ -2,5 +2,6 @@
   "build": {
     "beforeBundleCommand": "bash -c '../../scripts/build/sign.sh ../target/release/Firezone.exe ../target/release/firezone-client-tunnel.exe'"
   },
-  "mainBinaryName": "Firezone"
+  "mainBinaryName": "Firezone",
+  "productName": "Firezone"
 }
