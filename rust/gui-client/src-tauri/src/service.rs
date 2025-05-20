@@ -527,7 +527,7 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
     let log_filter_reloader = crate::logging::setup_stdout()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
-        // version = env!("CARGO_PKG_VERSION"), TODO: Fix once `ipc_service` is moved to `gui-client`.
+        version = env!("CARGO_PKG_VERSION"),
         system_uptime_seconds = firezone_bin_shared::uptime::get().map(|dur| dur.as_secs()),
     );
     if !elevation_check()? {
