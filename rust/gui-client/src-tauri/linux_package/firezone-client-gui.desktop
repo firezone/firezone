@@ -3,6 +3,6 @@ Categories=
 Comment=Firezone
 Exec={{exec}}
 Icon={{icon}}
-Name=Firezone Client
+Name=Firezone
 Terminal=false
 Type=Application
