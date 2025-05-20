@@ -79,10 +79,12 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettin
         fix_log_filter(&mut settings)?;
     }
 
+    let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| settings.log_filter.clone());
+
     let logging::Handles {
         logger: _logger,
         reloader,
-    } = firezone_gui_client::logging::setup_gui(&settings.log_filter)?;
+    } = firezone_gui_client::logging::setup_gui(&log_filter)?;
 
     match cli.command {
         None if cli.check_elevation() => match elevation::gui_check() {
