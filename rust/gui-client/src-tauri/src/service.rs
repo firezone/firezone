@@ -5,7 +5,9 @@ use backoff::ExponentialBackoffBuilder;
 use client_shared::ConnlibMsg;
 use connlib_model::{ResourceId, ResourceView};
 use firezone_bin_shared::{
-    DnsControlMethod, DnsController, TunDeviceManager, device_id, device_info, known_dirs,
+    DnsControlMethod, DnsController, TunDeviceManager,
+    device_id::{self, DeviceId},
+    device_info, known_dirs,
     platform::{tcp_socket_factory, udp_socket_factory},
     signals,
 };
@@ -116,24 +118,19 @@ async fn ipc_listen(
     dns_control_method: DnsControlMethod,
     log_filter_reloader: &FilterReloadHandle,
     signals: &mut signals::Terminate,
-    telemetry: &mut Telemetry,
 ) -> Result<()> {
     // Create the device ID and Tunnel service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
-    let firezone_id = device_id::get_or_create()
-        .context("Failed to read / create device ID")?
-        .id;
-
-    Telemetry::set_firezone_id(firezone_id);
+    let device_id = device_id::get_or_create().context("Failed to read / create device ID")?;
 
     let mut server = ipc::Server::new(SocketId::Tunnel)?;
     let mut dns_controller = DnsController { dns_control_method };
     loop {
         let mut handler_fut = pin!(Handler::new(
+            device_id.clone(),
             &mut server,
             &mut dns_controller,
             log_filter_reloader,
-            telemetry,
         ));
         let Some(handler) = poll_fn(|cx| {
             if let Poll::Ready(()) = signals.poll_recv(cx) {
@@ -167,13 +164,14 @@ async fn ipc_listen(
 
 /// Handles one IPC client
 struct Handler<'a> {
+    device_id: DeviceId,
     dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead<ClientMsg>,
     ipc_tx: ipc::ServerWrite<ServerMsg>,
     last_connlib_start_instant: Option<Instant>,
     log_filter_reloader: &'a FilterReloadHandle,
     session: Option<Session>,
-    telemetry: &'a mut Telemetry, // Handle to the sentry.io telemetry module
+    telemetry: Telemetry,
     tun_device: TunDeviceManager,
 }
 
@@ -201,10 +199,10 @@ enum HandlerOk {
 
 impl<'a> Handler<'a> {
     async fn new(
+        device_id: DeviceId,
         server: &mut ipc::Server,
         dns_controller: &'a mut DnsController,
         log_filter_reloader: &'a FilterReloadHandle,
-        telemetry: &'a mut Telemetry,
     ) -> Result<Self> {
         dns_controller.deactivate()?;
 
@@ -225,13 +223,14 @@ impl<'a> Handler<'a> {
             .context("Failed to greet to new GUI process")?; // Greet the GUI process. If the GUI process doesn't receive this after connecting, it knows that the tunnel service isn't responding.
 
         Ok(Self {
+            device_id,
             dns_controller,
             ipc_rx,
             ipc_tx,
             last_connlib_start_instant: None,
             log_filter_reloader,
             session: None,
-            telemetry,
+            telemetry: Telemetry::default(),
             tun_device,
         })
     }
@@ -243,7 +242,7 @@ impl<'a> Handler<'a> {
     ///
     /// The return type is infallible so that we only give up on an IPC client explicitly
     async fn run(&mut self, signals: &mut signals::Terminate) -> HandlerOk {
-        loop {
+        let ret = loop {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
                 Event::Callback(x) => {
                     if let Err(error) = self.handle_connlib_cb(x).await {
@@ -282,7 +281,11 @@ impl<'a> Handler<'a> {
                     break HandlerOk::ServiceTerminating;
                 }
             }
-        }
+        };
+
+        self.telemetry.stop().await; // Stop the telemetry session once the client disconnects or we are shutting down.
+
+        ret
     }
 
     fn next_event(
@@ -430,6 +433,7 @@ impl<'a> Handler<'a> {
             } => {
                 self.telemetry
                     .start(&environment, &release, firezone_telemetry::GUI_DSN);
+                Telemetry::set_firezone_id(self.device_id.id.clone());
 
                 if let Some(account_slug) = account_slug {
                     Telemetry::set_account_slug(account_slug);
@@ -538,20 +542,8 @@ pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
         .build()?;
     let _guard = rt.enter();
     let mut signals = signals::Terminate::new()?;
-    let mut telemetry = Telemetry::default();
 
-    rt.block_on(ipc_listen(
-        dns_control,
-        &log_filter_reloader,
-        &mut signals,
-        &mut telemetry,
-    ))
-    .inspect(|_| rt.block_on(telemetry.stop()))
-    .inspect_err(|e| {
-        tracing::error!("Tunnel service failed: {e:#}");
-
-        rt.block_on(telemetry.stop_on_crash())
-    })
+    rt.block_on(ipc_listen(dns_control, &log_filter_reloader, &mut signals))
 }
 
 /// Listen for exactly one connection from a GUI, then exit
@@ -578,17 +570,16 @@ pub fn run_smoke_test() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
     let mut signals = signals::Terminate::new()?;
-    let mut telemetry = Telemetry::default();
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
-        device_id::get_or_create().context("Failed to read / create device ID")?;
+        let device_id = device_id::get_or_create().context("Failed to read / create device ID")?;
         let mut server = ipc::Server::new(SocketId::Tunnel)?;
         let _ = Handler::new(
+            device_id,
             &mut server,
             &mut dns_controller,
             &log_filter_reloader,
-            &mut telemetry,
         )
         .await?
         .run(&mut signals)
