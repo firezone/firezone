@@ -424,6 +424,15 @@ defmodule Domain.Fixtures.Auth do
         random_provider_identifier(provider)
       end)
 
+    {email, attrs} =
+      Map.pop_lazy(attrs, :email, fn ->
+        if to_string(provider_identifier) =~ Domain.Auth.email_regex() do
+          provider_identifier
+        else
+          email()
+        end
+      end)
+
     {actor, attrs} =
       pop_assoc_fixture(attrs, :actor, fn assoc_attrs ->
         assoc_attrs
@@ -435,8 +444,11 @@ defmodule Domain.Fixtures.Auth do
         |> Fixtures.Actors.create_actor()
       end)
 
-    attrs = Map.put(attrs, :provider_identifier, provider_identifier)
-    attrs = Map.put(attrs, :provider_identifier_confirmation, provider_identifier)
+    attrs =
+      attrs
+      |> Map.put(:provider_identifier, provider_identifier)
+      |> Map.put(:provider_identifier_confirmation, provider_identifier)
+      |> Map.put(:email, email)
 
     {:ok, identity} = Auth.upsert_identity(actor, provider, attrs)
 

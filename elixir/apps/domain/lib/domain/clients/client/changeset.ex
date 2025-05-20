@@ -183,6 +183,7 @@ defmodule Domain.Clients.Client.Changeset do
     |> put_change(:verified_by, nil)
     |> put_change(:verified_by_actor_id, nil)
     |> put_change(:verified_by_identity_id, nil)
+    |> put_change(:verified_by_subject, nil)
   end
 
   def update(%Clients.Client{} = client, attrs) do

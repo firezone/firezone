@@ -7,6 +7,7 @@ defmodule Domain.Resources.Connection do
     belongs_to :gateway_group, Domain.Gateways.Group, primary_key: true
 
     field :created_by, Ecto.Enum, values: ~w[actor identity system]a
+    field :created_by_subject, :map
     belongs_to :created_by_identity, Domain.Auth.Identity
     belongs_to :created_by_actor, Domain.Actors.Actor
 

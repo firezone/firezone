@@ -185,6 +185,7 @@ defmodule Domain.TokensTest do
       assert token.account_id == account.id
       assert token.actor_id == actor.id
       assert token.identity_id == identity.id
+      assert token.created_by_subject == %{"name" => "System", "email" => nil}
     end
   end
 
@@ -263,6 +264,11 @@ defmodule Domain.TokensTest do
       assert token.account_id == account.id
       assert token.actor_id == actor.id
       assert token.identity_id == identity.id
+
+      assert token.created_by_subject == %{
+               "name" => actor.name,
+               "email" => identity.email
+             }
     end
   end
 

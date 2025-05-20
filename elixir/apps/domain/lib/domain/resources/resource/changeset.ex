@@ -52,7 +52,7 @@ defmodule Domain.Resources.Resource.Changeset do
     |> validate_address(account)
     |> put_change(:persistent_id, Ecto.UUID.generate())
     |> put_change(:account_id, account.id)
-    |> put_change(:created_by, :system)
+    |> put_subject_trail(:created_by, :system)
     |> cast_assoc(:connections,
       with: &Connection.Changeset.changeset(account.id, &1, &2)
     )

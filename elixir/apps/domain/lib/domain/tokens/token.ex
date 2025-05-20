@@ -44,6 +44,7 @@ defmodule Domain.Tokens.Token do
 
     # Maybe this is not needed and they should be in the join tables (eg. relay_group_tokens)
     field :created_by, Ecto.Enum, values: ~w[actor identity system]a
+    field :created_by_subject, :map
     belongs_to :created_by_identity, Domain.Auth.Identity
     belongs_to :created_by_actor, Domain.Actors.Actor
     field :created_by_user_agent, :string

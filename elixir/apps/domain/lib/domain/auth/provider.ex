@@ -17,8 +17,10 @@ defmodule Domain.Auth.Provider do
     has_many :actor_groups, Domain.Actors.Group, where: [deleted_at: nil]
     has_many :identities, Domain.Auth.Identity, where: [deleted_at: nil]
 
-    field :created_by, Ecto.Enum, values: ~w[system identity]a
+    field :created_by, Ecto.Enum, values: ~w[system identity actor]a
+    field :created_by_subject, :map
     belongs_to :created_by_identity, Domain.Auth.Identity
+    belongs_to :created_by_actor, Domain.Actors.Actor
 
     field :last_syncs_failed, :integer
     field :last_sync_error, :string

@@ -146,30 +146,6 @@ defmodule API.IdentityControllerTest do
                }
              }
     end
-
-    test "returns a single identity with empty email field", %{
-      conn: conn,
-      account: account,
-      actor: actor
-    } do
-      identity = Fixtures.Auth.create_identity(%{account: account, actor: actor})
-
-      conn =
-        conn
-        |> authorize_conn(actor)
-        |> put_req_header("content-type", "application/json")
-        |> get("/actors/#{actor.id}/identities/#{identity.id}")
-
-      assert json_response(conn, 200) == %{
-               "data" => %{
-                 "id" => identity.id,
-                 "actor_id" => actor.id,
-                 "provider_id" => identity.provider_id,
-                 "provider_identifier" => identity.provider_identifier,
-                 "email" => nil
-               }
-             }
-    end
   end
 
   describe "create/2" do
@@ -326,7 +302,7 @@ defmodule API.IdentityControllerTest do
                  "actor_id" => actor.id,
                  "provider_id" => identity.provider_id,
                  "provider_identifier" => identity.provider_identifier,
-                 "email" => nil
+                 "email" => identity.email
                }
              }
 

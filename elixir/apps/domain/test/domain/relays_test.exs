@@ -174,6 +174,11 @@ defmodule Domain.RelaysTest do
 
       assert group.created_by == :identity
       assert group.created_by_identity_id == subject.identity.id
+
+      assert group.created_by_subject == %{
+               "name" => subject.actor.name,
+               "email" => subject.identity.email
+             }
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -221,6 +226,7 @@ defmodule Domain.RelaysTest do
 
       assert group.created_by == :system
       assert is_nil(group.created_by_identity_id)
+      assert group.created_by_subject == %{"name" => "System", "email" => nil}
     end
   end
 

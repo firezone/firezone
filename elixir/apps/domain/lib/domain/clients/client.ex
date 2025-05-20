@@ -36,6 +36,7 @@ defmodule Domain.Clients.Client do
     # Verification
     field :verified_at, :utc_datetime_usec
     field :verified_by, Ecto.Enum, values: [:system, :actor, :identity]
+    field :verified_by_subject, :map
     belongs_to :verified_by_actor, Domain.Actors.Actor
     belongs_to :verified_by_identity, Domain.Auth.Identity
 

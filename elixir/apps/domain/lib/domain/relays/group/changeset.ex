@@ -8,15 +8,14 @@ defmodule Domain.Relays.Group.Changeset do
   def create(attrs) do
     %Relays.Group{}
     |> changeset(attrs)
-    |> put_change(:created_by, :system)
+    |> put_subject_trail(:created_by, :system)
   end
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Relays.Group{account: account}
     |> changeset(attrs)
     |> put_change(:account_id, account.id)
-    |> put_change(:created_by, :identity)
-    |> put_change(:created_by_identity_id, subject.identity.id)
+    |> put_subject_trail(:created_by, subject)
   end
 
   def update(%Relays.Group{} = group, attrs, %Auth.Subject{}) do

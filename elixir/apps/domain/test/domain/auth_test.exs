@@ -637,7 +637,12 @@ defmodule Domain.AuthTest do
     } do
       assert changeset = new_provider(account)
       assert %Ecto.Changeset{data: %Domain.Auth.Provider{}} = changeset
-      assert changeset.changes == %{account_id: account.id, created_by: :system}
+
+      assert changeset.changes == %{
+               account_id: account.id,
+               created_by: :system,
+               created_by_subject: %{"email" => nil, "name" => "System"}
+             }
 
       provider_attrs =
         Fixtures.Auth.provider_attrs(
@@ -774,6 +779,7 @@ defmodule Domain.AuthTest do
       assert provider.account_id == account.id
 
       assert provider.created_by == :system
+      assert provider.created_by_subject == %{"email" => nil, "name" => "System"}
       assert is_nil(provider.created_by_identity_id)
 
       assert is_nil(provider.disabled_at)
@@ -837,6 +843,11 @@ defmodule Domain.AuthTest do
 
       assert provider.created_by == :identity
       assert provider.created_by_identity_id == subject.identity.id
+
+      assert provider.created_by_subject == %{
+               "email" => subject.identity.email,
+               "name" => subject.actor.name
+             }
     end
   end
 
@@ -1685,6 +1696,7 @@ defmodule Domain.AuthTest do
         assert identity.provider_identifier in provider_identifiers
         assert identity.actor.name in actor_names
         assert identity.actor.last_synced_at
+        assert identity.created_by_subject == %{"email" => nil, "name" => "Provider"}
 
         assert Map.get(actor_ids_by_provider_identifier, identity.provider_identifier) ==
                  identity.actor_id

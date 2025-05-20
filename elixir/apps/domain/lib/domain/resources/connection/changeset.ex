@@ -12,7 +12,7 @@ defmodule Domain.Resources.Connection.Changeset do
 
   def changeset(account_id, connection, attrs) do
     base_changeset(account_id, connection, attrs)
-    |> put_change(:created_by, :system)
+    |> put_subject_trail(:created_by, :system)
   end
 
   defp base_changeset(account_id, connection, attrs) do

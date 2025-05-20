@@ -532,6 +532,7 @@ defmodule Domain.Repo.Seeds do
               provider_id: oidc_provider.id,
               provider_identifier: Ecto.UUID.generate(),
               created_by: :provider,
+              created_by_subject: %{"name" => "Provider", "email" => nil},
               account_id: admin_subject.account.id,
               inserted_at: DateTime.utc_now(),
               updated_at: DateTime.utc_now()

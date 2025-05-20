@@ -29,6 +29,7 @@ defmodule Domain.Resources.Resource do
     has_many :authorized_by_policies, Domain.Policies.Policy, where: [id: {:fragment, "FALSE"}]
 
     field :created_by, Ecto.Enum, values: ~w[identity actor system]a
+    field :created_by_subject, :map
     belongs_to :created_by_actor, Domain.Actors.Actor
     belongs_to :created_by_identity, Domain.Auth.Identity
 
