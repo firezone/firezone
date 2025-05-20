@@ -311,6 +311,11 @@ defmodule Domain.PoliciesTest do
       assert {:ok, policy} = create_policy(attrs, subject)
       assert policy.actor_group_id == actor_group.id
       assert policy.resource_id == resource.id
+
+      assert policy.created_by_subject == %{
+               "name" => subject.actor.name,
+               "email" => subject.identity.email
+             }
     end
 
     test "creates a policy with conditions", %{
@@ -352,6 +357,11 @@ defmodule Domain.PoliciesTest do
       }
 
       assert {:ok, policy} = create_policy(attrs, subject)
+
+      assert policy.created_by_subject == %{
+               "name" => subject.actor.name,
+               "email" => subject.identity.email
+             }
 
       assert policy.conditions == [
                %Policies.Condition{

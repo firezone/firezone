@@ -30,7 +30,7 @@ defmodule Domain.Actors.Group.Changeset do
     |> changeset()
     |> put_change(:account_id, account.id)
     |> cast_membership_assocs(account.id)
-    |> put_change(:created_by, :system)
+    |> put_subject_trail(:created_by, :system)
   end
 
   def create(%Auth.Provider{} = provider, attrs) do
@@ -43,7 +43,7 @@ defmodule Domain.Actors.Group.Changeset do
     |> put_change(:account_id, provider.account_id)
     # resurrect synced groups
     |> put_change(:deleted_at, nil)
-    |> put_change(:created_by, :provider)
+    |> put_subject_trail(:created_by, :provider)
   end
 
   def update(%Actors.Group{} = group, attrs) do
