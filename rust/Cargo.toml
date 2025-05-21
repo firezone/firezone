@@ -69,7 +69,6 @@ dns-over-tcp = { path = "connlib/dns-over-tcp" }
 dns-types = { path = "connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 either = "1"
-env_logger = "0.11.6"
 etherparse = { version = "0.17", default-features = false }
 etherparse-ext = { path = "connlib/etherparse-ext" }
 firezone-bin-shared = { path = "bin-shared" }
