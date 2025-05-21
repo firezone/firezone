@@ -70,6 +70,7 @@ pub trait GuiIntegration {
 
     fn notify_signed_in(&self, session: &auth::Session) -> Result<()>;
     fn notify_signed_out(&self) -> Result<()>;
+    fn notify_settings_changed(&self, settings: &AdvancedSettings) -> Result<()>;
 
     /// Also opens non-URLs
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
@@ -79,7 +80,7 @@ pub trait GuiIntegration {
     fn show_notification(&self, title: &str, body: &str) -> Result<()>;
     fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()>;
 
-    fn show_settings_window(&self) -> Result<()>;
+    fn show_settings_window(&self, settings: &AdvancedSettings) -> Result<()>;
     fn show_about_window(&self) -> Result<()>;
 }
 
@@ -94,7 +95,6 @@ pub enum ControllerRequest {
         stem: PathBuf,
     },
     Fail(Failure),
-    GetAdvancedSettings(oneshot::Sender<AdvancedSettings>),
     SignIn,
     SignOut,
     SystemTrayMenu(system_tray::Event),
@@ -474,6 +474,9 @@ impl<I: GuiIntegration> Controller<I> {
                 })
                 .await?;
 
+                self.integration
+                    .notify_settings_changed(&self.advanced_settings)?;
+
                 tracing::debug!("Applied new settings. Log level will take effect immediately.");
 
                 // Refresh the menu in case the favorites were reset.
@@ -501,9 +504,6 @@ impl<I: GuiIntegration> Controller<I> {
             }
             Fail(Failure::Error) => Err(anyhow!("Test error"))?,
             Fail(Failure::Panic) => panic!("Test panic"),
-            GetAdvancedSettings(tx) => {
-                tx.send(self.advanced_settings.clone()).ok();
-            }
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
                 let req = self
                     .auth
@@ -570,7 +570,9 @@ impl<I: GuiIntegration> Controller<I> {
             SystemTrayMenu(system_tray::Event::ShowWindow(window)) => {
                 match window {
                     system_tray::Window::About => self.integration.show_about_window()?,
-                    system_tray::Window::Settings => self.integration.show_settings_window()?,
+                    system_tray::Window::Settings => self
+                        .integration
+                        .show_settings_window(&self.advanced_settings)?,
                 };
 
                 // When the About or Settings windows are hidden / shown, log the

@@ -119,6 +119,14 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
+    fn notify_settings_changed(&self, settings: &AdvancedSettings) -> Result<()> {
+        self.app
+            .emit("settings_changed", settings)
+            .context("Failed to send `settings_changed` event")?;
+
+        Ok(())
+    }
+
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
         tauri_plugin_opener::open_url(url, Option::<&str>::None)?;
 
@@ -141,8 +149,11 @@ impl GuiIntegration for TauriIntegration {
         os::show_update_notification(&self.app, ctlr_tx, title, url)
     }
 
-    fn show_settings_window(&self) -> Result<()> {
-        self.show_window("settings")
+    fn show_settings_window(&self, settings: &AdvancedSettings) -> Result<()> {
+        self.show_window("settings")?;
+        self.notify_settings_changed(settings)?; // Ensure settings are up to date in GUI.
+
+        Ok(())
     }
 
     fn show_about_window(&self) -> Result<()> {
@@ -224,7 +235,6 @@ pub fn run(
             logging::export_logs,
             settings::apply_advanced_settings,
             settings::reset_advanced_settings,
-            settings::get_advanced_settings,
             crate::welcome::sign_in,
             crate::welcome::sign_out,
         ])

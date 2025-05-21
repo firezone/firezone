@@ -8,7 +8,6 @@ use firezone_bin_shared::known_dirs;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use std::{collections::HashSet, path::PathBuf};
-use tokio::sync::oneshot;
 use url::Url;
 
 use super::controller::{ControllerRequest, CtlrTx};
@@ -32,39 +31,24 @@ pub(crate) async fn apply_advanced_settings(
 #[tauri::command]
 pub(crate) async fn reset_advanced_settings(
     managed: tauri::State<'_, Managed>,
-) -> Result<AdvancedSettings, String> {
-    let settings = AdvancedSettings::default();
-    apply_advanced_settings(managed, settings.clone()).await?;
-    Ok(settings)
+) -> Result<(), String> {
+    apply_advanced_settings(managed, AdvancedSettings::default()).await?;
+
+    Ok(())
 }
 
 /// Saves the settings to disk and then tells `Controller` to apply them in-memory
 async fn apply_inner(ctlr_tx: &CtlrTx, settings: AdvancedSettings) -> Result<()> {
+    // TODO: Should this be done by the controller?
     save(&settings).await?;
+
     // TODO: Errors aren't handled here. But there isn't much that can go wrong
     // since it's just applying a new `Settings` object in memory.
     ctlr_tx
         .send(ControllerRequest::ApplySettings(Box::new(settings)))
         .await?;
+
     Ok(())
-}
-
-#[tauri::command]
-pub(crate) async fn get_advanced_settings(
-    managed: tauri::State<'_, Managed>,
-) -> Result<AdvancedSettings, String> {
-    let (tx, rx) = oneshot::channel();
-
-    managed
-        .ctlr_tx
-        .send(ControllerRequest::GetAdvancedSettings(tx))
-        .await
-        .context("couldn't request advanced settings from controller task")
-        .map_err(|e| e.to_string())?;
-
-    rx.await.map_err(|_| {
-        "Couldn't get settings from `Controller`, maybe the program is crashing".to_string()
-    })
 }
 
 #[derive(Clone, Deserialize, Serialize)]
