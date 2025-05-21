@@ -1,6 +1,7 @@
 defmodule Domain.Auth.Identity.Sync do
   alias Domain.Repo
   alias Domain.Auth.{Identity, Provider}
+  require Logger
 
   def sync_provider_identities(%Provider{} = provider, attrs_list) do
     attrs_by_provider_identifier =
@@ -13,7 +14,7 @@ defmodule Domain.Auth.Identity.Sync do
     with {:ok, identities} <- all_provider_identities(provider),
          {:ok, {insert, update, delete}} <-
            plan_identities_update(identities, provider_identifiers),
-         :ok <- deletion_circuit_breaker(identities, delete),
+         :ok <- deletion_circuit_breaker(identities, delete, provider),
          {:ok, deleted} <- delete_identities(provider, delete),
          {:ok, inserted} <-
            insert_identities(provider, attrs_by_provider_identifier, insert),
@@ -75,16 +76,16 @@ defmodule Domain.Auth.Identity.Sync do
 
   # Used to make sure we don't accidentally mass delete identities
   # due to an error in the Identity Provider API (e.g. Google Admin SDK API)
-  defp deletion_circuit_breaker([], _identities_to_delete) do
+  defp deletion_circuit_breaker([], _identities_to_delete, _provider) do
     # If there are no identities then there can't be anything to delete
     :ok
   end
 
-  defp deletion_circuit_breaker(_identities, []) do
+  defp deletion_circuit_breaker(_identities, [], _provider) do
     :ok
   end
 
-  defp deletion_circuit_breaker(identities, identities_to_delete) do
+  defp deletion_circuit_breaker(identities, identities_to_delete, provider) do
     identities_length = length(identities)
     deletion_length = length(identities_to_delete)
 
@@ -92,9 +93,21 @@ defmodule Domain.Auth.Identity.Sync do
 
     cond do
       identities_length > 40 and delete_percentage >= 25 ->
+        Logger.error("Refusing to mass delete identities",
+          groups_length: identities_length,
+          deletion_length: deletion_length,
+          provider_id: provider.id
+        )
+
         {:error, "Sync deletion of identities too large"}
 
       identities_length <= 40 and delete_percentage >= 50 ->
+        Logger.error("Refusing to mass delete identities",
+          groups_length: identities_length,
+          deletion_length: deletion_length,
+          provider_id: provider.id
+        )
+
         {:error, "Sync deletion of identities too large"}
 
       true ->

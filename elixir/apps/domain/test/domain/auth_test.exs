@@ -1943,7 +1943,7 @@ defmodule Domain.AuthTest do
       assert_receive {:expire_flow, ^flow_id, _client_id, _resource_id}
     end
 
-    test "circuit breaker preventes mass deletions of identities", %{
+    test "circuit breaker prevents mass deletions of identities", %{
       account: account,
       provider: provider
     } do
