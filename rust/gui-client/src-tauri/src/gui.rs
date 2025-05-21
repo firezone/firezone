@@ -51,6 +51,23 @@ struct TauriIntegration {
     tray: system_tray::Tray,
 }
 
+impl TauriIntegration {
+    fn show_window(&self, label: &str) -> Result<()> {
+        let win = self
+            .app
+            .get_webview_window(label)
+            .with_context(|| format!("Couldn't get handle to `{label}` window"))?;
+
+        // Needed to bring shown windows to the front
+        // `request_user_attention` and `set_focus` don't work, at least on Linux
+        win.hide()?;
+        // Needed to show windows that are completely hidden
+        win.show()?;
+
+        Ok(())
+    }
+}
+
 impl Drop for TauriIntegration {
     fn drop(&mut self) {
         tracing::debug!("Instructing Tauri to exit");
@@ -124,23 +141,12 @@ impl GuiIntegration for TauriIntegration {
         os::show_update_notification(&self.app, ctlr_tx, title, url)
     }
 
-    fn show_window(&self, window: system_tray::Window) -> Result<()> {
-        let id = match window {
-            system_tray::Window::About => "about",
-            system_tray::Window::Settings => "settings",
-        };
+    fn show_settings_window(&self) -> Result<()> {
+        self.show_window("settings")
+    }
 
-        let win = self
-            .app
-            .get_webview_window(id)
-            .context("Couldn't get handle to `{id}` window")?;
-
-        // Needed to bring shown windows to the front
-        // `request_user_attention` and `set_focus` don't work, at least on Linux
-        win.hide()?;
-        // Needed to show windows that are completely hidden
-        win.show()?;
-        Ok(())
+    fn show_about_window(&self) -> Result<()> {
+        self.show_window("about")
     }
 }
 

@@ -79,8 +79,8 @@ pub trait GuiIntegration {
     fn show_notification(&self, title: &str, body: &str) -> Result<()>;
     fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()>;
 
-    /// Shows a window that the system tray knows about, e.g. not Welcome.
-    fn show_window(&self, window: system_tray::Window) -> Result<()>;
+    fn show_settings_window(&self) -> Result<()>;
+    fn show_about_window(&self) -> Result<()>;
 }
 
 pub enum ControllerRequest {
@@ -568,7 +568,11 @@ impl<I: GuiIntegration> Controller<I> {
                 self.update_disabled_resources().await?;
             }
             SystemTrayMenu(system_tray::Event::ShowWindow(window)) => {
-                self.integration.show_window(window)?;
+                match window {
+                    system_tray::Window::About => self.integration.show_about_window()?,
+                    system_tray::Window::Settings => self.integration.show_settings_window()?,
+                };
+
                 // When the About or Settings windows are hidden / shown, log the
                 // run ID and uptime. This makes it easy to check client stability on
                 // dev or test systems without parsing the whole log file.
