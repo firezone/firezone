@@ -43,14 +43,14 @@ android {
     }
 
     namespace = "dev.firezone.android"
-    compileSdk = 35
-    ndkVersion = "27.2.12479018" // Must match `.github/actions/setup-android/action.yml`
+    compileSdk = 36
+    ndkVersion = "28.1.13356709" // Must match `.github/actions/setup-android/action.yml`
 
     defaultConfig {
         applicationId = "dev.firezone.android"
         // Android 8
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 36
         versionCode = (System.currentTimeMillis() / 1000 / 10).toInt()
         // mark:next-android-version
         versionName = "1.4.9"
