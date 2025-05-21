@@ -54,7 +54,7 @@ pub struct AdvancedSettings {
 mod defaults {
     pub(crate) const AUTH_BASE_URL: &str = "https://app.firez.one";
     pub(crate) const API_URL: &str = "wss://api.firez.one/";
-    pub(crate) const LOG_FILTER: &str = "firezone_gui_client=debug,info";
+    pub(crate) const LOG_FILTER: &str = "debug";
 }
 
 #[cfg(not(debug_assertions))]
