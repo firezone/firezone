@@ -18,7 +18,7 @@ runs:
     - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
 
     - name: Install NDK
-      run: sdkmanager "ndk;27.2.12479018" # Must match `kotlin/android/app/build.gradle.kts`
+      run: sdkmanager "ndk;28.1.13356709" # Must match `kotlin/android/app/build.gradle.kts`
       shell: bash
 
     - name: Validate Gradle wrapper
