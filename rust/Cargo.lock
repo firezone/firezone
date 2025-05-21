@@ -2188,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.4.14"
+version = "1.4.15"
 dependencies = [
  "anyhow",
  "arboard",
