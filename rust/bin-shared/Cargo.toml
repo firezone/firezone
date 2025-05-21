@@ -56,6 +56,7 @@ winreg = { workspace = true }
 tokio-util = { workspace = true }
 ipconfig = "0.3.2"
 itertools = { workspace = true }
+winreg-listener = { workspace = true }
 
 [target.'cfg(windows)'.dependencies.windows]
 workspace = true

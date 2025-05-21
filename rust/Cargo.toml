@@ -25,6 +25,7 @@ members = [
   "relay/ebpf-turn-router",
   "relay/server",
   "telemetry",
+  "winreg-listener",
   "tests/gui-smoke-test",
   "tests/http-test-server",
 ]
@@ -188,6 +189,7 @@ uuid = "1.16.0"
 which = "4.4.2"
 windows = "0.61.0"
 windows-core = "0.61.1"
+winreg-listener = { path = "winreg-listener" }
 windows-implement = "0.60.0"
 windows-service = "0.8.0"
 winreg = "0.52.0"

@@ -2133,6 +2133,7 @@ dependencies = [
  "windows-core 0.61.1",
  "windows-implement 0.60.0",
  "winreg 0.52.0",
+ "winreg-listener",
  "wintun",
  "zbus 5.5.0",
 ]
@@ -8714,6 +8715,17 @@ checksum = "a277a57398d4bfa075df44f501a17cfdf8542d224f0d36095a2adc7aee4ef0a5"
 dependencies = [
  "cfg-if",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "winreg-listener"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "tokio",
+ "windows 0.61.1",
+ "winreg 0.52.0",
 ]
 
 [[package]]

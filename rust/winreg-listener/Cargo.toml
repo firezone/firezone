@@ -1,0 +1,19 @@
+[package]
+name = "winreg-listener"
+version = "0.1.0"
+edition = { workspace = true }
+description = "Listens for changes to Windows registry keys"
+license = { workspace = true }
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+
+[target.'cfg(windows)'.dependencies]
+anyhow = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true }
+windows = { workspace = true }
+winreg = { workspace = true }
+
+[lints]
+workspace = true
