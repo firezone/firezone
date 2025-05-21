@@ -73,7 +73,7 @@ public class VPNConfigurationManager {
 
   // If another VPN is activated on the system, ours becomes disabled. This is provided so that we may call it before
   // each start attempt in order to reactivate our configuration.
-  func enableConfiguration() async throws {
+  func enable() async throws {
     manager.isEnabled = true
     try await manager.saveToPreferences()
     try await manager.loadFromPreferences()
@@ -85,6 +85,7 @@ public class VPNConfigurationManager {
 
   // Firezone 1.4.14 and below stored some app configuration in the VPN provider configuration fields. This has since
   // been moved to a dedicated UserDefaults-backed persistent store.
+  @MainActor
   func maybeMigrateConfiguration() async throws {
     guard let legacyConfiguration = Self.legacyConfiguration(
       protocolConfiguration: manager.protocolConfiguration as? NETunnelProviderProtocol
@@ -94,46 +95,35 @@ public class VPNConfigurationManager {
       return
     }
 
+    let configuration = Configuration.shared
     let ipcClient = IPCClient(session: session)
-
-    var userDict: [String: Any?] = [:]
-    var migrated = false
 
     if let actorName = legacyConfiguration["actorName"] {
       UserDefaults.standard.set(actorName, forKey: "actorName")
-      migrated = true
     }
 
     if let apiURL = legacyConfiguration["apiURL"] {
-      userDict[Configuration.Keys.apiURL] = apiURL
-      migrated = true
+      configuration.apiURL = apiURL
     }
 
     if let authURL = legacyConfiguration["authBaseURL"] {
-      userDict[Configuration.Keys.authURL] = authURL
-      migrated = true
+      configuration.authURL = authURL
     }
 
     if let accountSlug = legacyConfiguration["accountSlug"] {
-      userDict[Configuration.Keys.accountSlug] = accountSlug
-      migrated = true
+      configuration.accountSlug = accountSlug
     }
 
     if let logFilter = legacyConfiguration["logFilter"],
        !logFilter.isEmpty {
-      userDict[Configuration.Keys.logFilter] = logFilter
-      migrated = true
+      configuration.logFilter = logFilter
     }
 
     if let internetResourceEnabled = legacyConfiguration["internetResourceEnabled"],
        ["false", "true"].contains(internetResourceEnabled) {
-      userDict[Configuration.Keys.internetResourceEnabled] = internetResourceEnabled == "true"
-      migrated = true
+      configuration.internetResourceEnabled = internetResourceEnabled == "true"
     }
 
-    if !migrated { return }
-
-    let configuration = Configuration(userDict: userDict, managedDict: [:])
     try await ipcClient.setConfiguration(configuration)
 
     // Remove fields to prevent confusion if the user sees these in System Settings and wonders why they're stale.

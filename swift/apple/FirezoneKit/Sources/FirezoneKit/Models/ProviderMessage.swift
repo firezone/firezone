@@ -9,8 +9,7 @@ import Foundation
 
 public enum ProviderMessage: Codable {
   case getResourceList(Data)
-  case getConfiguration(Data)
-  case setConfiguration(Configuration)
+  case setConfiguration(TunnelConfiguration)
   case signOut
   case clearLogs
   case getLogFolderSize
@@ -24,7 +23,6 @@ public enum ProviderMessage: Codable {
 
   enum MessageType: String, Codable {
     case getResourceList
-    case getConfiguration
     case setConfiguration
     case signOut
     case clearLogs
@@ -40,11 +38,8 @@ public enum ProviderMessage: Codable {
     case .getResourceList:
       let value = try container.decode(Data.self, forKey: .value)
       self = .getResourceList(value)
-    case .getConfiguration:
-      let value = try container.decode(Data.self, forKey: .value)
-      self = .getConfiguration(value)
     case .setConfiguration:
-      let value = try container.decode(Configuration.self, forKey: .value)
+      let value = try container.decode(TunnelConfiguration.self, forKey: .value)
       self = .setConfiguration(value)
     case .signOut:
       self = .signOut
@@ -64,9 +59,6 @@ public enum ProviderMessage: Codable {
     switch self {
     case .getResourceList(let value):
       try container.encode(MessageType.getResourceList, forKey: .type)
-      try container.encode(value, forKey: .value)
-    case .getConfiguration(let value):
-      try container.encode(MessageType.getConfiguration, forKey: .type)
       try container.encode(value, forKey: .value)
     case .setConfiguration(let value):
       try container.encode(MessageType.setConfiguration, forKey: .type)

@@ -235,9 +235,9 @@ struct ToggleInternetResourceButton: View {
   @EnvironmentObject var store: Store
 
   private func toggleResourceEnabledText() -> String {
-    let isEnabled = store.configuration?.internetResourceEnabled ?? false
+    let isEnabled = Configuration.shared.internetResourceEnabled
 
-    if store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false {
+    if Configuration.shared.isInternetResourceEnabledForced {
       return isEnabled ? "Managed: Enabled" : "Managed: Disabled"
     }
 
@@ -262,7 +262,7 @@ struct ToggleInternetResourceButton: View {
         }
       }
     )
-    .disabled(store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false)
+    .disabled(Configuration.shared.isInternetResourceEnabledForced)
   }
 }
 

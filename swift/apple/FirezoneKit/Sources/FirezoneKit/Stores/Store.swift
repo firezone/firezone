@@ -16,17 +16,10 @@ import AppKit
 
 @MainActor
 // TODO: Move some state logic to view models
-// swiftlint:disable:next type_body_length
 public final class Store: ObservableObject {
   @Published private(set) var actorName: String
   @Published private(set) var favorites = Favorites()
   @Published private(set) var resourceList: ResourceList = .loading
-
-  // User-configurable settings
-  @Published private(set) var settings: Settings?
-
-  // UserDefaults-backed app configuration
-  @Published private(set) var configuration: Configuration?
 
   // Enacapsulate Tunnel status here to make it easier for other components to observe
   @Published private(set) var vpnStatus: NEVPNStatus?
@@ -43,14 +36,14 @@ public final class Store: ObservableObject {
 
   let sessionNotification = SessionNotification()
 
-  private var configurationTimer: Timer?
-  private var configurationUpdateTask: Task<Void, Never>?
   private var resourcesTimer: Timer?
   private var resourceUpdateTask: Task<Void, Never>?
-
+  private var configuration: Configuration
   private var vpnConfigurationManager: VPNConfigurationManager?
 
-  public init() {
+  public init(configuration: Configuration? = nil) {
+    self.configuration = configuration ?? Configuration.shared
+
     // Load GUI-only cached state
     self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
 
@@ -68,7 +61,6 @@ public final class Store: ObservableObject {
         try await initSystemExtension()
         try await initVPNConfiguration()
         try await setupTunnelObservers()
-        try await initConfiguration()
         try await maybeAutoConnect()
       } catch {
         Log.error(error)
@@ -155,31 +147,15 @@ public final class Store: ObservableObject {
     }
   }
 
-  // On macOS, after upgrading Firezone, we need to issue a startTunnel to start the IPC service so that we
-  // can fetch configuration. We try a few times here to do that so that we can determine connectOnStart, before
-  // giving up and polling configuration anyway.
-  private func initConfiguration() async throws {
-    let end = Date().addingTimeInterval(3)
-
-    while configuration == nil && Date() < end {
-      _ = try await reloadConfigurationStartingSystemExtension()
-      try await Task.sleep(nanoseconds: 100_000_000)
-    }
-
-    beginConfigurationPolling()
-  }
-
   private func maybeAutoConnect() async throws {
-    if configuration?.connectOnStart == true {
-      try await manager().enableConfiguration()
+    if configuration.connectOnStart == true {
+      try await manager().enable()
       try ipcClient().start()
     }
   }
   func installVPNConfiguration() async throws {
     // Create a new VPN configuration in system settings.
     self.vpnConfigurationManager = try await VPNConfigurationManager()
-
-    self.configuration = try await ipcClient().getConfiguration()
 
     try await setupTunnelObservers()
   }
@@ -219,10 +195,11 @@ public final class Store: ObservableObject {
 
     Telemetry.accountSlug = accountSlug
 
-    try await manager().enableConfiguration()
+    try await manager().enable()
+    try await ipcClient().setConfiguration(configuration)
 
     // Bring the tunnel up and send it a token to start
-    try ipcClient().start(token: authResponse.token, accountSlug: accountSlug)
+    try ipcClient().start(token: authResponse.token)
   }
 
   func signOut() async throws {
@@ -234,100 +211,11 @@ public final class Store: ObservableObject {
   }
 
   func toggleInternetResource() async throws {
-    let enabled = configuration?.internetResourceEnabled == true
-    try await setInternetResourceEnabled(!enabled)
-  }
-
-  // MARK: App configuration setters
-
-  func applySettingsToConfiguration(_ settings: Settings) async throws {
-    configuration?.applySettings(settings)
-    try await setConfiguration(configuration)
-  }
-
-  private func setInternetResourceEnabled(_ internetResourceEnabled: Bool) async throws {
-    configuration?.internetResourceEnabled = internetResourceEnabled
-    try await setConfiguration(configuration)
+    configuration.internetResourceEnabled = !configuration.internetResourceEnabled
+    try await ipcClient().setConfiguration(configuration)
   }
 
   // MARK: Private functions
-
-  private func beginConfigurationPolling() {
-    // Ensure we're idempotent if called twice
-    if self.configurationTimer != nil {
-      return
-    }
-
-    let updateConfiguration: @Sendable (Timer) -> Void = { _ in
-      Task {
-        await MainActor.run {
-          self.configurationUpdateTask?.cancel()
-          self.configurationUpdateTask = Task {
-            if !Task.isCancelled {
-              do {
-                _ = try await self.reloadConfigurationStartingSystemExtension()
-              } catch let error as NSError {
-                // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
-                if error.domain == "NEVPNErrorDomain" && error.code == 1 {
-                  // not initialized yet
-                } else {
-                  Log.error(error)
-                }
-              } catch {
-                Log.error(error)
-              }
-            }
-          }
-        }
-      }
-    }
-
-    let intervalInSeconds: TimeInterval = 1
-    let timer = Timer(timeInterval: intervalInSeconds, repeats: true, block: updateConfiguration)
-
-    RunLoop.main.add(timer, forMode: .common)
-    self.configurationTimer = timer
-  }
-
-  private func reloadConfigurationStartingSystemExtension() async throws -> Configuration? {
-    var configuration = try await ipcClient().getConfiguration()
-
-#if os(macOS)
-    if configuration == nil {
-      try ipcClient().startSystemExtension()
-      configuration = try await ipcClient().getConfiguration()
-    }
-#endif
-
-    self.configuration = configuration
-
-    if Telemetry.firezoneId == nil {
-      Telemetry.firezoneId = configuration?.firezoneId
-    }
-
-    try await updateAppService()
-
-    return configuration
-  }
-
-  // Register / unregister our launch service based on configuration. This is a major pain to do on macOS 12 and below,
-  // so this feature only enabled for macOS 13 and higher given the tiny Firezone installbase for macOS 12.
-  private func updateAppService() async throws {
-#if os(macOS)
-    if #available(macOS 13.0, *) {
-      let startOnLogin = configuration?.startOnLogin ?? Configuration.defaultStartOnLogin
-
-      if !startOnLogin, SMAppService.mainApp.status == .enabled {
-        try await SMAppService.mainApp.unregister()
-        return
-      }
-
-      if startOnLogin, SMAppService.mainApp.status != .enabled {
-        try SMAppService.mainApp.register()
-      }
-    }
-#endif
-  }
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
@@ -380,16 +268,5 @@ public final class Store: ObservableObject {
     resourcesTimer?.invalidate()
     resourcesTimer = nil
     resourceList = ResourceList.loading
-  }
-
-  private func setConfiguration(_ configuration: Configuration?) async throws {
-    guard let configuration = configuration
-    else {
-      Log.warning("Tried to set configuration before it was initialized")
-      return
-    }
-
-    try await ipcClient().setConfiguration(configuration)
-    self.configuration = configuration
   }
 }

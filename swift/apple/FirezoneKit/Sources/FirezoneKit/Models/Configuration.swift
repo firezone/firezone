@@ -1,99 +1,165 @@
+//
+//  Configuration.swift
+//  (c) 2024 Firezone, Inc.
+//  LICENSE: Apache-2.0
+//
+//  A thin wrapper around UserDefaults for user and admin managed app configuration.
+
 import Foundation
 
-public class Configuration: Codable {
-#if DEBUG
-  public static let defaultAuthURL = "https://app.firez.one"
-  public static let defaultApiURL = "wss://api.firez.one"
-  public static let defaultLogFilter = "debug"
-#else
-  public static let defaultAuthURL = "https://app.firezone.dev"
-  public static let defaultApiURL = "wss://api.firezone.dev"
-  public static let defaultLogFilter = "info"
+#if os(macOS)
+import ServiceManagement
 #endif
 
-  public static let defaultAccountSlug = ""
-  public static let defaultConnectOnStart = true
-  public static let defaultStartOnLogin = false
-  public static let defaultDisableUpdateCheck = false
+@MainActor
+public class Configuration: ObservableObject {
+  static let shared = Configuration()
 
-  public struct Keys {
-    public static let authURL = "authURL"
-    public static let apiURL = "apiURL"
-    public static let logFilter = "logFilter"
-    public static let accountSlug = "accountSlug"
-    public static let internetResourceEnabled = "internetResourceEnabled"
-    public static let firezoneId = "firezoneId"
-    public static let hideAdminPortalMenuItem = "hideAdminPortalMenuItem"
-    public static let connectOnStart = "connectOnStart"
-    public static let startOnLogin = "startOnLogin"
-    public static let disableUpdateCheck = "disableUpdateCheck"
+  var isAuthURLForced: Bool { defaults.objectIsForced(forKey: Keys.authURL) }
+  var isApiURLForced: Bool { defaults.objectIsForced(forKey: Keys.apiURL) }
+  var isLogFilterForced: Bool { defaults.objectIsForced(forKey: Keys.logFilter) }
+  var isAccountSlugForced: Bool { defaults.objectIsForced(forKey: Keys.accountSlug) }
+  var isConnectOnStartForced: Bool { defaults.objectIsForced(forKey: Keys.connectOnStart) }
+  var isStartOnLoginForced: Bool { defaults.objectIsForced(forKey: Keys.startOnLogin) }
+  var isInternetResourceEnabledForced: Bool { defaults.objectIsForced(forKey: Keys.internetResourceEnabled) }
+
+  var authURL: String {
+    get { defaults.string(forKey: Keys.authURL) ?? Self.defaultAuthURL }
+    set { defaults.set(newValue, forKey: Keys.authURL) }
   }
 
-  public var authURL: String?
-  public var firezoneId: String?
-  public var apiURL: String?
-  public var logFilter: String?
-  public var accountSlug: String?
-  public var internetResourceEnabled: Bool?
-  public var hideAdminPortalMenuItem: Bool?
-  public var connectOnStart: Bool?
-  public var startOnLogin: Bool?
-  public var disableUpdateCheck: Bool?
-
-  private var overriddenKeys: Set<String> = []
-
-  public init(userDict: [String: Any?], managedDict: [String: Any?]) {
-    self.firezoneId = userDict[Keys.firezoneId] as? String
-
-    setValue(forKey: Keys.authURL, from: managedDict, and: userDict) { [weak self] in self?.authURL = $0 }
-    setValue(forKey: Keys.apiURL, from: managedDict, and: userDict) { [weak self] in self?.apiURL = $0 }
-    setValue(forKey: Keys.logFilter, from: managedDict, and: userDict) { [weak self] in self?.logFilter = $0 }
-    setValue(forKey: Keys.accountSlug, from: managedDict, and: userDict) { [weak self] in self?.accountSlug = $0 }
-    setValue(forKey: Keys.internetResourceEnabled, from: managedDict, and: userDict) { [weak self] in
-      self?.internetResourceEnabled = $0
-    }
-    setValue(forKey: Keys.hideAdminPortalMenuItem, from: managedDict, and: userDict) { [weak self] in
-      self?.hideAdminPortalMenuItem = $0
-    }
-    setValue(forKey: Keys.connectOnStart, from: managedDict, and: userDict) { [weak self] in
-      self?.connectOnStart = $0
-    }
-    setValue(forKey: Keys.startOnLogin, from: managedDict, and: userDict) { [weak self] in
-      self?.startOnLogin = $0
-    }
-    setValue(forKey: Keys.disableUpdateCheck, from: managedDict, and: userDict) { [weak self] in
-      self?.disableUpdateCheck = $0
-    }
+  var apiURL: String {
+    get { defaults.string(forKey: Keys.apiURL) ?? Self.defaultApiURL }
+    set { defaults.set(newValue, forKey: Keys.apiURL) }
   }
 
-  func isOverridden(_ key: String) -> Bool {
-    return overriddenKeys.contains(key)
+  var logFilter: String {
+    get { defaults.string(forKey: Keys.logFilter) ?? Self.defaultLogFilter }
+    set { defaults.set(newValue, forKey: Keys.logFilter) }
   }
 
-  func applySettings(_ settings: Settings) {
-    self.authURL = settings.authURL
-    self.apiURL = settings.apiURL
-    self.logFilter = settings.logFilter
-    self.accountSlug = settings.accountSlug
-    self.connectOnStart = settings.connectOnStart
-    self.startOnLogin = settings.startOnLogin
+  var accountSlug: String {
+    get { defaults.string(forKey: Keys.accountSlug) ?? Self.defaultAccountSlug }
+    set { defaults.set(newValue, forKey: Keys.accountSlug) }
   }
 
-  private func setValue<T>(
-    forKey key: String,
-    from managedDict: [String: Any?],
-    and userDict: [String: Any?],
-    setter: (T) -> Void
-  ) {
-    if let value = managedDict[key],
-       let typedValue = value as? T {
-      overriddenKeys.insert(key)
-      return setter(typedValue)
-    }
+  var internetResourceEnabled: Bool {
+    get { defaults.bool(forKey: Keys.internetResourceEnabled) }
+    set { defaults.set(newValue, forKey: Keys.internetResourceEnabled) }
+  }
 
-    if let value = userDict[key],
-       let typedValue = value as? T {
-      setter(typedValue)
+  var hideAdminPortalMenuItem: Bool {
+    get { defaults.bool(forKey: Keys.hideAdminPortalMenuItem) }
+    set { defaults.set(newValue, forKey: Keys.hideAdminPortalMenuItem) }
+  }
+
+  var connectOnStart: Bool {
+    get { defaults.bool(forKey: Keys.connectOnStart) }
+    set { defaults.set(newValue, forKey: Keys.connectOnStart) }
+  }
+
+  var startOnLogin: Bool {
+    get { defaults.bool(forKey: Keys.startOnLogin) }
+    set { defaults.set(newValue, forKey: Keys.startOnLogin) }
+  }
+
+  var disableUpdateCheck: Bool {
+    get { defaults.bool(forKey: Keys.disableUpdateCheck) }
+    set { defaults.set(newValue, forKey: Keys.disableUpdateCheck) }
+  }
+
+#if DEBUG
+  static let defaultAuthURL = "https://app.firez.one"
+  static let defaultApiURL = "wss://api.firez.one"
+  static let defaultLogFilter = "debug"
+#else
+  static let defaultAuthURL = "https://app.firezone.dev"
+  static let defaultApiURL = "wss://api.firezone.dev"
+  static let defaultLogFilter = "info"
+#endif
+
+  static let defaultAccountSlug = ""
+  static let defaultConnectOnStart = true
+  static let defaultStartOnLogin = false
+  static let defaultDisableUpdateCheck = false
+
+  private struct Keys {
+    static let authURL = "authURL"
+    static let apiURL = "apiURL"
+    static let logFilter = "logFilter"
+    static let accountSlug = "accountSlug"
+    static let internetResourceEnabled = "internetResourceEnabled"
+    static let hideAdminPortalMenuItem = "hideAdminPortalMenuItem"
+    static let connectOnStart = "connectOnStart"
+    static let startOnLogin = "startOnLogin"
+    static let disableUpdateCheck = "disableUpdateCheck"
+  }
+
+  private var defaults: UserDefaults
+
+  init(userDefaults: UserDefaults = UserDefaults.standard) {
+    defaults = userDefaults
+
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleUserDefaultsChanged),
+      name: UserDefaults.didChangeNotification,
+      object: userDefaults
+    )
+  }
+
+  deinit {
+    NotificationCenter.default.removeObserver(self, name: UserDefaults.didChangeNotification, object: defaults)
+  }
+
+  func toTunnelConfiguration() -> TunnelConfiguration {
+    return TunnelConfiguration(
+      apiURL: apiURL,
+      accountSlug: accountSlug,
+      logFilter: logFilter,
+      internetResourceEnabled: internetResourceEnabled
+    )
+  }
+
+#if os(macOS)
+  // Register / unregister our launch service based on configuration. This is a major pain to do on macOS 12 and below,
+  // so this feature only enabled for macOS 13 and higher given the tiny Firezone installbase for macOS 12.
+  func updateAppService() async throws {
+    if #available(macOS 13.0, *) {
+      if !startOnLogin, SMAppService.mainApp.status == .enabled {
+        try await SMAppService.mainApp.unregister()
+        return
+      }
+
+      if startOnLogin, SMAppService.mainApp.status != .enabled {
+        try SMAppService.mainApp.register()
+      }
     }
+  }
+#endif
+
+  // Perform side effects here
+  @objc private func handleUserDefaultsChanged(_ notification: Notification) {
+#if os(macOS)
+    // This is idempotent
+    Task { do { try await updateAppService() } }
+#endif
+
+    self.objectWillChange.send()
+  }
+}
+
+// Configuration does not conform to Decodable, so introduce a simpler type here to encode for IPC
+public struct TunnelConfiguration: Codable {
+  public let apiURL: String
+  public let accountSlug: String
+  public let logFilter: String
+  public let internetResourceEnabled: Bool
+
+  public init(apiURL: String, accountSlug: String, logFilter: String, internetResourceEnabled: Bool) {
+    self.apiURL = apiURL
+    self.accountSlug = accountSlug
+    self.logFilter = logFilter
+    self.internetResourceEnabled = internetResourceEnabled
   }
 }

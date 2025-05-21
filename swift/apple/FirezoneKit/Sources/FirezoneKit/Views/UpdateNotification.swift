@@ -4,7 +4,6 @@
 //  LICENSE: Apache-2.0
 //
 
-// Note: it should be easy to expand this module to iOS
 #if os(macOS)
 import Foundation
 import Combine
@@ -28,13 +27,15 @@ class UpdateChecker {
   private let notificationAdapter: NotificationAdapter = NotificationAdapter()
   private let versionCheckUrl: URL
   private let marketingVersion: SemanticVersion
-  private let store: Store
+  private let configuration: Configuration
 
   private var cancellables: Set<AnyCancellable> = []
 
   @Published private(set) var updateAvailable: Bool = false
 
-  init(store: Store) {
+  init(configuration: Configuration? = nil) {
+    self.configuration = configuration ?? Configuration.shared
+
     guard let versionCheckUrl = URL(string: "https://www.firezone.dev/api/releases"),
           let versionString = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
           let marketingVersion = try? SemanticVersion(versionString)
@@ -44,29 +45,6 @@ class UpdateChecker {
 
     self.versionCheckUrl = versionCheckUrl
     self.marketingVersion = marketingVersion
-
-    self.store = store
-
-    store.$configuration
-      .receive(on: RunLoop.main)
-      .sink { [weak self] _ in
-        self?.handleConfigurationChange()
-      }
-      .store(in: &cancellables)
-
-    handleConfigurationChange()
-  }
-
-  private func handleConfigurationChange() {
-    let disabled = (
-      store.configuration?.disableUpdateCheck ?? Configuration.defaultDisableUpdateCheck
-    ) || BundleHelper.isAppStore()
-
-    if disabled {
-      stopCheckingForUpdates()
-    } else {
-      startCheckingForUpdates()
-    }
   }
 
   private func startCheckingForUpdates() {
@@ -93,6 +71,10 @@ class UpdateChecker {
   }
 
   @objc private func checkForUpdates() {
+    if configuration.disableUpdateCheck {
+      return
+    }
+
     let task = URLSession.shared.dataTask(with: versionCheckUrl) { [weak self] data, _, error in
       guard let self = self else { return }
 

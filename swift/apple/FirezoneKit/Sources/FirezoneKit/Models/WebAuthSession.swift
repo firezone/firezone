@@ -15,11 +15,11 @@ struct WebAuthSession {
   private static let scheme = "firezone-fd0020211111"
   static let anchor = PresentationAnchor()
 
-  static func signIn(store: Store) async throws {
-    let accountSlug = store.configuration?.accountSlug ?? ""
+  static func signIn(store: Store, configuration: Configuration? = nil) async throws {
+    let configuration = configuration ?? Configuration.shared
 
-    guard let authURL = URL(string: store.configuration?.authURL ?? Configuration.defaultAuthURL),
-          let authClient = try? AuthClient(authURL: authURL.appendingPathComponent(accountSlug)),
+    guard let authURL = URL(string: configuration.authURL),
+          let authClient = try? AuthClient(authURL: authURL.appendingPathComponent(configuration.accountSlug)),
           let url = try? authClient.build()
     else {
       // Should never get here because we perform URL validation on input, but handle this just in case
