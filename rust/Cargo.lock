@@ -2136,7 +2136,6 @@ name = "firezone-gateway"
 version = "1.4.10"
 dependencies = [
  "anyhow",
- "async-trait",
  "backoff",
  "boringtun",
  "caps",
