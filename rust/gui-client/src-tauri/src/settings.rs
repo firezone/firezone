@@ -10,9 +10,8 @@ use std::time::Duration;
 use std::{collections::HashSet, path::PathBuf};
 use url::Url;
 
-use super::controller::{ControllerRequest, CtlrTx};
+use super::controller::ControllerRequest;
 
-/// Saves the settings to disk and then applies them in-memory (except for logging)
 #[tauri::command]
 pub(crate) async fn apply_advanced_settings(
     managed: tauri::State<'_, Managed>,
@@ -21,7 +20,10 @@ pub(crate) async fn apply_advanced_settings(
     if managed.inner().inject_faults {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
-    apply_inner(&managed.ctlr_tx, settings)
+
+    managed
+        .ctlr_tx
+        .send(ControllerRequest::ApplySettings(Box::new(settings)))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -33,20 +35,6 @@ pub(crate) async fn reset_advanced_settings(
     managed: tauri::State<'_, Managed>,
 ) -> Result<(), String> {
     apply_advanced_settings(managed, AdvancedSettings::default()).await?;
-
-    Ok(())
-}
-
-/// Saves the settings to disk and then tells `Controller` to apply them in-memory
-async fn apply_inner(ctlr_tx: &CtlrTx, settings: AdvancedSettings) -> Result<()> {
-    // TODO: Should this be done by the controller?
-    save(&settings).await?;
-
-    // TODO: Errors aren't handled here. But there isn't much that can go wrong
-    // since it's just applying a new `Settings` object in memory.
-    ctlr_tx
-        .send(ControllerRequest::ApplySettings(Box::new(settings)))
-        .await?;
 
     Ok(())
 }

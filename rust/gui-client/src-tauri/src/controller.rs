@@ -469,11 +469,16 @@ impl<I: GuiIntegration> Controller<I> {
 
                 self.advanced_settings = *settings;
 
+                // Save to disk
+                settings::save(&self.advanced_settings).await?;
+
+                // Tell tunnel about new log level
                 self.send_ipc(&service::ClientMsg::ApplyLogFilter {
                     directives: self.advanced_settings.log_filter.clone(),
                 })
                 .await?;
 
+                // Notify GUI that settings have changed
                 self.integration
                     .notify_settings_changed(&self.advanced_settings)?;
 
