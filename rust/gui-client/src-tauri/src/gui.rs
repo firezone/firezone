@@ -193,6 +193,10 @@ pub fn run(
     advanced_settings: AdvancedSettings,
     reloader: firezone_logging::FilterReloadHandle,
 ) -> Result<()> {
+    let mdm_settings = settings::load_mdm_settings()
+        .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
+        .unwrap_or_default();
+
     telemetry.start(
         advanced_settings.api_url.as_ref(),
         crate::RELEASE,
@@ -348,6 +352,7 @@ pub fn run(
             ctlr_tx,
             integration,
             ctlr_rx,
+            mdm_settings,
             advanced_settings,
             reloader,
             updates_rx,

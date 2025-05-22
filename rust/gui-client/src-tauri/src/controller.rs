@@ -3,7 +3,7 @@ use crate::{
     gui::{self, system_tray},
     ipc::{self, SocketId},
     logging, service,
-    settings::{self, AdvancedSettings},
+    settings::{self, AdvancedSettings, MdmSettings},
     updates, uptime,
 };
 use anyhow::{Context, Result, anyhow, bail};
@@ -32,6 +32,7 @@ mod ran_before;
 pub type CtlrTx = mpsc::Sender<ControllerRequest>;
 
 pub struct Controller<I: GuiIntegration> {
+    mdm_settings: MdmSettings,
     /// Debugging-only settings like API URL, auth URL, log filter
     advanced_settings: AdvancedSettings,
     // Sign-in state with the portal / deep links
@@ -205,10 +206,12 @@ enum EventloopTick {
 pub struct FailedToReceiveHello(anyhow::Error);
 
 impl<I: GuiIntegration> Controller<I> {
+    #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     pub(crate) async fn start(
         ctlr_tx: CtlrTx,
         integration: I,
         rx: mpsc::Receiver<ControllerRequest>,
+        mdm_settings: MdmSettings,
         advanced_settings: AdvancedSettings,
         log_filter_reloader: FilterReloadHandle,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
@@ -227,6 +230,7 @@ impl<I: GuiIntegration> Controller<I> {
         let network_notifier = new_network_notifier().await?.boxed();
 
         let controller = Controller {
+            mdm_settings,
             advanced_settings,
             auth: auth::Auth::new()?,
             clear_logs_callback: None,
