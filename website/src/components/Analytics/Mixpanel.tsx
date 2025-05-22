@@ -8,7 +8,7 @@ import { HubSpotSubmittedFormData } from "./types";
 function _Mixpanel() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const mpToken = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN || "";
+  const mpToken = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN || "dummy";
   const host = "https://t.firez.one";
 
   useEffect(() => {
