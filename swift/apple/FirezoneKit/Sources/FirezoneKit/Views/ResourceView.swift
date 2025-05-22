@@ -231,20 +231,17 @@ struct InternetResourceHeader: View {
   }
 }
 
-struct ToggleInternetResourceButton: View {
-  var resource: Resource
-  @EnvironmentObject var store: Store
-  @State private var enabled: Bool
-  @State private var forced: Bool
-
+@MainActor
+class ToggleInternetResourceButtonModel: ObservableObject {
   private var cancellables: Set<AnyCancellable> = []
+  private let configuration = Configuration.shared
 
-  init(resource: Resource) {
-    let configuration = Configuration.shared
+  @Published private(set) var enabled: Bool
+  @Published private(set) var forced: Bool
 
+  init() {
     self.enabled = configuration.internetResourceEnabled
     self.forced = configuration.isInternetResourceForced
-    self.resource = resource
 
     Publishers.CombineLatest(
       configuration.$publishedInternetResourceEnabled,
@@ -258,32 +255,37 @@ struct ToggleInternetResourceButton: View {
     .store(in: &cancellables)
   }
 
-  private func toggleResourceEnabledText() -> String {
+  func toggleInternetResource() {
+    configuration.internetResourceEnabled = !configuration.internetResourceEnabled
+  }
+
+  func toggleResourceEnabledText() -> String {
     if forced {
       return enabled ? "Managed: Enabled" : "Managed: Disabled"
     }
 
     return enabled ? "Disable this resource" : "Enable this resource"
   }
+}
 
-  private func toggleInternetResource() {
-    let configuration = Configuration.shared
-    configuration.internetResourceEnabled = !configuration.internetResourceEnabled
-  }
+struct ToggleInternetResourceButton: View {
+  var resource: Resource
+  @EnvironmentObject var store: Store
+  @StateObject var viewModel: ToggleInternetResourceButtonModel = .init()
 
   var body: some View {
     Button(
       action: {
-        toggleInternetResource()
+        viewModel.toggleInternetResource()
       },
       label: {
         HStack {
-          Text(toggleResourceEnabledText())
+          Text(viewModel.toggleResourceEnabledText())
           Spacer()
         }
       }
     )
-    .disabled(forced)
+    .disabled(viewModel.forced)
   }
 }
 
