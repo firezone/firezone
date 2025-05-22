@@ -13,6 +13,20 @@ use url::Url;
 
 use super::controller::ControllerRequest;
 
+#[cfg(target_os = "linux")]
+#[path = "settings/linux.rs"]
+pub(crate) mod mdm;
+
+#[cfg(target_os = "windows")]
+#[path = "settings/windows.rs"]
+pub(crate) mod mdm;
+
+#[cfg(target_os = "macos")]
+#[path = "settings/macos.rs"]
+pub(crate) mod mdm;
+
+pub use mdm::load_mdm_settings;
+
 #[tauri::command]
 pub(crate) async fn apply_advanced_settings(
     managed: tauri::State<'_, Managed>,
@@ -38,6 +52,23 @@ pub(crate) async fn reset_advanced_settings(
     apply_advanced_settings(managed, AdvancedSettings::default()).await?;
 
     Ok(())
+}
+
+/// Defines all configuration options settable via MDM policies.
+///
+/// Configuring Firezone via MDM is optional, therefore all of these are [`Option`]s.
+/// Some of the policies can simply be enabled but don't have a value themselves.
+/// Those are modelled as [`Option<()>`].
+#[derive(Clone, Default, Debug)]
+pub struct MdmSettings {
+    pub auth_url: Option<Url>,
+    pub api_url: Option<Url>,
+    pub log_filter: Option<String>,
+    pub account_slug: Option<String>,
+    pub hide_admin_portal_menu_item: Option<bool>,
+    pub connect_on_start: Option<bool>,
+    pub check_for_updates: Option<bool>,
+    pub support_url: Option<Url>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
