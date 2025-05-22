@@ -12,11 +12,12 @@ import ServiceManagement
 #endif
 
 @MainActor
-public class Configuration {
+public class Configuration: ObservableObject {
   static let shared = Configuration()
 
   @Published private(set) var publishedInternetResourceEnabled = false
   @Published private(set) var publishedInternetResourceForced = false
+  @Published private(set) var publishedHideAdminPortalMenuItem = false
 
   var isAuthURLForced: Bool { defaults.objectIsForced(forKey: Keys.authURL) }
   var isApiURLForced: Bool { defaults.objectIsForced(forKey: Keys.apiURL) }
@@ -105,12 +106,13 @@ public class Configuration {
 
     self.publishedInternetResourceEnabled = internetResourceEnabled
     self.publishedInternetResourceForced = isInternetResourceForced
+    self.publishedHideAdminPortalMenuItem = hideAdminPortalMenuItem
 
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(handleUserDefaultsChanged),
       name: UserDefaults.didChangeNotification,
-      object: userDefaults
+      object: defaults
     )
   }
 
@@ -153,6 +155,10 @@ public class Configuration {
     // Update published properties
     self.publishedInternetResourceEnabled = internetResourceEnabled
     self.publishedInternetResourceForced = isInternetResourceForced
+    self.publishedHideAdminPortalMenuItem = hideAdminPortalMenuItem
+
+    // Announce we changed
+    objectWillChange.send()
   }
 }
 

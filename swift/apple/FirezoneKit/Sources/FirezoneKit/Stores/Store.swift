@@ -40,6 +40,7 @@ public final class Store: ObservableObject {
   private var resourceUpdateTask: Task<Void, Never>?
   private var configuration: Configuration
   private var vpnConfigurationManager: VPNConfigurationManager?
+  private var cancellables: Set<AnyCancellable> = []
 
   public init(configuration: Configuration? = nil) {
     self.configuration = configuration ?? Configuration.shared
@@ -52,6 +53,19 @@ public final class Store: ObservableObject {
         do { try await WebAuthSession.signIn(store: self) } catch { Log.error(error) }
       }
     }
+
+    // We monitor for any configuration changes and tell the tunnel service about them
+    self.configuration.objectWillChange
+      .receive(on: DispatchQueue.main)
+      .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main) // These happen quite frequently
+      .sink(receiveValue: { [weak self] _ in
+        guard let self = self else { return }
+
+        if self.vpnConfigurationManager != nil {
+          Task { do { try await self.ipcClient().setConfiguration(self.configuration) } catch { Log.error(error) } }
+        }
+      })
+      .store(in: &cancellables)
 
     // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
     // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
@@ -191,6 +205,7 @@ public final class Store: ObservableObject {
     let accountSlug = authResponse.accountSlug
 
     // This is only shown in the GUI, cache it here
+    self.actorName = actorName
     UserDefaults.standard.set(actorName, forKey: "actorName")
 
     configuration.accountSlug = accountSlug
@@ -209,11 +224,6 @@ public final class Store: ObservableObject {
 
   func clearLogs() async throws {
     try await ipcClient().clearLogs()
-  }
-
-  func toggleInternetResource() async throws {
-    configuration.internetResourceEnabled = !configuration.internetResourceEnabled
-    try await ipcClient().setConfiguration(configuration)
   }
 
   // MARK: Private functions

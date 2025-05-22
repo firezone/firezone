@@ -266,16 +266,15 @@ struct ToggleInternetResourceButton: View {
     return enabled ? "Disable this resource" : "Enable this resource"
   }
 
+  private func toggleInternetResource() {
+    let configuration = Configuration.shared
+    configuration.internetResourceEnabled = !configuration.internetResourceEnabled
+  }
+
   var body: some View {
     Button(
       action: {
-        Task {
-          do {
-            try await store.toggleInternetResource()
-          } catch {
-            Log.error(error)
-          }
-        }
+        toggleInternetResource()
       },
       label: {
         HStack {

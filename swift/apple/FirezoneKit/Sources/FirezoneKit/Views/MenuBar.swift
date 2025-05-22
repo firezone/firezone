@@ -230,6 +230,13 @@ public final class MenuBar: NSObject, ObservableObject {
     })
     .store(in: &cancellables)
 
+    configuration.$publishedHideAdminPortalMenuItem
+      .receive(on: DispatchQueue.main)
+      .sink(receiveValue: { [weak self] newValue in
+        self?.updateConfigurableMenuItems(hideAdminPortalMenuItem: newValue)
+      })
+      .store(in: &cancellables)
+
     updateChecker.$updateAvailable
       .receive(on: DispatchQueue.main)
       .sink(receiveValue: { [weak self] _ in
@@ -426,6 +433,16 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
+  func updateConfigurableMenuItems(hideAdminPortalMenuItem: Bool) {
+    if hideAdminPortalMenuItem {
+      adminPortalMenuItem.isEnabled = false
+      adminPortalMenuItem.isHidden = true
+    } else {
+      adminPortalMenuItem.isEnabled = true
+      adminPortalMenuItem.isHidden = false
+    }
+  }
+
   // MARK: Menu object lifecycle helpers
 
   func createMenu() {
@@ -444,9 +461,7 @@ public final class MenuBar: NSObject, ObservableObject {
     }
 
     menu.addItem(aboutMenuItem)
-    if !(configuration.hideAdminPortalMenuItem) {
-      menu.addItem(adminPortalMenuItem)
-    }
+    menu.addItem(adminPortalMenuItem)
     menu.addItem(helpMenuItem)
     menu.addItem(settingsMenuItem)
     menu.addItem(NSMenuItem.separator())
@@ -811,15 +826,9 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc func internetResourceToggle(_ sender: NSMenuItem) {
-    Task {
-      do {
-        try await store.toggleInternetResource()
-      } catch {
-        Log.error(error)
-      }
+    configuration.internetResourceEnabled = !configuration.internetResourceEnabled
 
-      sender.title = internetResourceToggleTitle()
-    }
+    sender.title = internetResourceToggleTitle()
   }
 
   @objc func resourceURLTapped(_ sender: AnyObject?) {
