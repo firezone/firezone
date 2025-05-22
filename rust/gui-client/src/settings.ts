@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import "flowbite"
 
 // Custom types
@@ -98,26 +99,7 @@ async function resetAdvancedSettings() {
   lockAdvancedSettingsForm();
 
   try {
-    let settings = (await invoke("reset_advanced_settings")) as Settings;
-    authBaseUrlInput.value = settings.auth_base_url;
-    apiUrlInput.value = settings.api_url;
-    logFilterInput.value = settings.log_filter;
-  } catch (e) {
-    console.error(e);
-  } finally {
-    unlockAdvancedSettingsForm();
-  }
-}
-
-async function getAdvancedSettings() {
-  console.log("Getting advanced settings");
-  lockAdvancedSettingsForm();
-
-  try {
-    let settings = (await invoke("get_advanced_settings")) as Settings;
-    authBaseUrlInput.value = settings.auth_base_url;
-    apiUrlInput.value = settings.api_url;
-    logFilterInput.value = settings.log_filter;
+    await invoke("reset_advanced_settings")
   } catch (e) {
     console.error(e);
   } finally {
@@ -183,5 +165,10 @@ logsTabBtn.addEventListener("click", (_e) => {
   countLogs();
 });
 
-// Load settings
-getAdvancedSettings();
+listen<Settings>('settings_changed', (e) => {
+  let settings = e.payload;
+
+  authBaseUrlInput.value = settings.auth_base_url;
+  apiUrlInput.value = settings.api_url;
+  logFilterInput.value = settings.log_filter;
+})
