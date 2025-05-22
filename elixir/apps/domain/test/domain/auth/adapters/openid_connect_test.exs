@@ -318,7 +318,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
         Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
-          provider_identifier: sub
+          provider_identifier: sub,
+          email: Fixtures.Auth.email()
         )
 
       identity =

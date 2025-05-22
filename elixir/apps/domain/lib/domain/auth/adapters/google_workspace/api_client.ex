@@ -94,7 +94,17 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
         })
       )
 
-    list_all(uri, api_token, "users")
+    case list_all(uri, api_token, "users") do
+      {:ok, []} ->
+        Logger.warning("Google Workspace API returned 0 users")
+        {:ok, []}
+
+      {:ok, [_head | _tail] = list} ->
+        {:ok, list}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   def list_groups(api_token) do
@@ -111,7 +121,17 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
         })
       )
 
-    list_all(uri, api_token, "groups")
+    case list_all(uri, api_token, "groups") do
+      {:ok, []} ->
+        Logger.warning("Google Workspace API returned 0 groups")
+        {:ok, []}
+
+      {:ok, [_head | _tail] = list} ->
+        {:ok, list}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   # Note: this functions does not return root (`/`) org unit

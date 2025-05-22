@@ -356,7 +356,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
 
       groups = [
         %{"id" => "GROUP_ALL_ID", "displayName" => "All"},
-        %{"id" => "GROUP_ENGINEERING_ID", "displayName" => "Engineering"}
+        %{"id" => "GROUP_ENGINEERING_ID", "displayName" => "Engineering"},
+        %{"id" => "GROUP_FINANCE_ID", "displayName" => "Finance"}
       ]
 
       one_member = [
@@ -433,6 +434,13 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
           provider_identifier: "G:GROUP_ALL_ID"
         )
 
+      _finance_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_FINANCE_ID"
+        )
+
       deleted_group =
         Fixtures.Actors.create_group(
           account: account,
@@ -492,6 +500,13 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
         "GROUP_ENGINEERING_ID",
         200,
         Jason.encode!(%{"value" => one_member})
+      )
+
+      MicrosoftEntraDirectory.mock_group_members_list_endpoint(
+        bypass,
+        "GROUP_FINANCE_ID",
+        200,
+        Jason.encode!(%{"value" => []})
       )
 
       {:ok, pid} = Task.Supervisor.start_link()

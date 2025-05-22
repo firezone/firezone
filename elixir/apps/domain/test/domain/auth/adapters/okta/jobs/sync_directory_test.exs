@@ -501,6 +501,40 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
               "href" => "http://localhost:#{bypass.port}/api/v1/groups/00gezqfqxwa2ohLhp5d7/apps"
             }
           }
+        },
+        %{
+          "id" => "GROUP_FINANCE_ID",
+          "created" => "2024-02-07T05:30:49.000Z",
+          "lastUpdated" => "2024-02-07T05:30:49.000Z",
+          "lastMembershipUpdated" => "2024-02-07T05:32:23.000Z",
+          "objectClass" => [
+            "okta:user_group"
+          ],
+          "type" => "OKTA_GROUP",
+          "profile" => %{
+            "name" => "Finance",
+            "description" => "Finance Dept"
+          },
+          "_links" => %{
+            "logo" => [
+              %{
+                "name" => "medium",
+                "href" => "http://localhost/md/image.png",
+                "type" => "image/png"
+              },
+              %{
+                "name" => "large",
+                "href" => "http://localhost/lg/image.png",
+                "type" => "image/png"
+              }
+            ],
+            "users" => %{
+              "href" => "http://localhost:#{bypass.port}/api/v1/groups/00gezqfqxwa2ohLmp5d7/users"
+            },
+            "apps" => %{
+              "href" => "http://localhost:#{bypass.port}/api/v1/groups/00gezqfqxwa2ohLmp5d7/apps"
+            }
+          }
         }
       ]
 
@@ -642,6 +676,13 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
           provider_identifier: "G:GROUP_ENGINEERING_ID"
         )
 
+      _group2 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_FINANCE_ID"
+        )
+
       deleted_group =
         Fixtures.Actors.create_group(
           account: account,
@@ -692,6 +733,13 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         "GROUP_DEVOPS_ID",
         200,
         Jason.encode!(one_member)
+      )
+
+      OktaDirectory.mock_group_members_list_endpoint(
+        bypass,
+        "GROUP_FINANCE_ID",
+        200,
+        Jason.encode!([])
       )
 
       {:ok, pid} = Task.Supervisor.start_link()
