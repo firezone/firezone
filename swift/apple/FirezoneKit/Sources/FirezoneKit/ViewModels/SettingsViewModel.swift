@@ -44,6 +44,14 @@ class SettingsViewModel: ObservableObject {
     })
     .store(in: &cancellables)
 
+    self.configuration.objectWillChange
+      .receive(on: RunLoop.main)
+      .debounce(for: .seconds(0.3), scheduler: RunLoop.main)
+      .sink(receiveValue: { [weak self] _ in
+        self?.updateDerivedState()
+      })
+      .store(in: &cancellables)
+
     Publishers.MergeMany(
       $connectOnStart,
       $startOnLogin
@@ -58,12 +66,12 @@ class SettingsViewModel: ObservableObject {
   }
 
   func reset() {
-    authURL = Configuration.defaultAuthURL
-    apiURL = Configuration.defaultApiURL
-    logFilter = Configuration.defaultLogFilter
-    accountSlug = Configuration.defaultAccountSlug
-    connectOnStart = Configuration.defaultConnectOnStart
-    startOnLogin = Configuration.defaultStartOnLogin
+    if !configuration.isAuthURLForced { authURL = Configuration.defaultAuthURL }
+    if !configuration.isApiURLForced { apiURL = Configuration.defaultApiURL }
+    if !configuration.isLogFilterForced { logFilter = Configuration.defaultLogFilter }
+    if !configuration.isAccountSlugForced { accountSlug = Configuration.defaultAccountSlug }
+    if !configuration.isConnectOnStartForced { connectOnStart = Configuration.defaultConnectOnStart }
+    if !configuration.isStartOnLoginForced { startOnLogin = Configuration.defaultStartOnLogin }
 
     updateDerivedState()
   }
@@ -121,12 +129,12 @@ class SettingsViewModel: ObservableObject {
 
   func isDefault() -> Bool {
     return (
-      authURL == Configuration.defaultAuthURL &&
-      apiURL == Configuration.defaultApiURL &&
-      logFilter == Configuration.defaultLogFilter &&
-      accountSlug == Configuration.defaultAccountSlug &&
-      connectOnStart == Configuration.defaultConnectOnStart &&
-      startOnLogin == Configuration.defaultStartOnLogin
+      (configuration.isAuthURLForced || authURL == Configuration.defaultAuthURL) &&
+      (configuration.isApiURLForced || apiURL == Configuration.defaultApiURL) &&
+      (configuration.isLogFilterForced || logFilter == Configuration.defaultLogFilter) &&
+      (configuration.isAccountSlugForced || accountSlug == Configuration.defaultAccountSlug) &&
+      (configuration.isConnectOnStartForced || connectOnStart == Configuration.defaultConnectOnStart) &&
+      (configuration.isStartOnLoginForced || startOnLogin == Configuration.defaultStartOnLogin)
     )
   }
 

@@ -17,6 +17,8 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
 
   let content: Content
 
+  private let configuration = Configuration.shared
+
   init(@ViewBuilder content: () -> Content) {
     self.content = content()
   }
@@ -83,7 +85,7 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
       Divider()
       Button(
         action: {
-          openURL(URL(string: "https://www.firezone.dev/support?utm_source=ios-client")!)
+          supportButtonTapped()
         },
         label: {
           Label("Support...", systemImage: "safari")
@@ -134,6 +136,11 @@ struct iOSNavigationView<Content: View>: View { // swiftlint:disable:this type_n
         )
       }
     }
+  }
+
+  private func supportButtonTapped() {
+    let url = URL(string: configuration.supportURL) ?? URL(string: Configuration.defaultSupportURL)!
+    openURL(url)
   }
 }
 #endif

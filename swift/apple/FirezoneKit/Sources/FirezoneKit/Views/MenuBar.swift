@@ -802,7 +802,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc func supportButtonTapped() {
-    let url = URL(string: "https://www.firezone.dev/support?utm_source=macos-client")!
+    let url = URL(string: configuration.supportURL) ?? URL(string: Configuration.defaultSupportURL)!
 
     Task { await NSWorkspace.shared.openAsync(url) }
   }
