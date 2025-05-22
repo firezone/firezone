@@ -8,7 +8,6 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
-async-trait = { workspace = true }
 backoff = { workspace = true }
 boringtun = { workspace = true }
 chrono = { workspace = true }
@@ -49,7 +48,7 @@ uuid = { workspace = true, features = ["v4"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 caps = { workspace = true }
 jemallocator = { workspace = true }
-nix = { workspace = true }
+nix = { workspace = true, features = ["user"] }
 dns-lookup = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]

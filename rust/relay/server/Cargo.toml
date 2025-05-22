@@ -5,7 +5,7 @@ edition = { workspace = true }
 license = { workspace = true }
 
 [package.metadata.cargo-udeps.ignore]
-development = ["difference", "env_logger"]
+development = ["difference"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -57,7 +57,6 @@ jemallocator = { workspace = true }
 
 [dev-dependencies]
 difference = { workspace = true }
-env_logger = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing", "metrics"] }
 test-strategy = { workspace = true }
 tokio = { workspace = true, features = ["process", "macros", "net"] }
