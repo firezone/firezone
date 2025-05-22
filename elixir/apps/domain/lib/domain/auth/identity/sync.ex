@@ -94,7 +94,7 @@ defmodule Domain.Auth.Identity.Sync do
     cond do
       identities_length > 40 and delete_percentage >= 25 ->
         Logger.error("Refusing to mass delete identities",
-          groups_length: identities_length,
+          identities_length: identities_length,
           deletion_length: deletion_length,
           provider_id: provider.id
         )
@@ -103,7 +103,7 @@ defmodule Domain.Auth.Identity.Sync do
 
       identities_length <= 40 and delete_percentage >= 50 ->
         Logger.error("Refusing to mass delete identities",
-          groups_length: identities_length,
+          identities_length: identities_length,
           deletion_length: deletion_length,
           provider_id: provider.id
         )
