@@ -198,7 +198,11 @@ pub fn run(
         .unwrap_or_default();
 
     telemetry.start(
-        advanced_settings.api_url.as_ref(),
+        mdm_settings
+            .api_url
+            .as_ref()
+            .unwrap_or(&advanced_settings.api_url)
+            .as_str(),
         crate::RELEASE,
         firezone_telemetry::GUI_DSN,
     );
