@@ -269,11 +269,15 @@ impl<I: GuiIntegration> Controller<I> {
             .token()
             .context("Failed to load token from disk during app start")?
         {
-            self.start_session(token).await?;
+            // For backwards-compatibility prior to MDM-config, also call `start_session` if not configured.
+            if self.mdm_settings.connect_on_start.is_none_or(|c| c) {
+                self.start_session(token).await?;
+            }
         } else {
             tracing::info!("No token / actor_name on disk, starting in signed-out state");
-            self.refresh_system_tray_menu();
         }
+
+        self.refresh_system_tray_menu();
 
         if !ran_before::get().await? {
             self.integration
@@ -844,7 +848,9 @@ impl<I: GuiIntegration> Controller<I> {
         let connlib = if let Some(auth_session) = self.auth.session() {
             match &self.status {
                 Status::Disconnected => {
-                    tracing::error!("We have an auth session but no connlib session");
+                    // If we have an `auth_session` but no connlib session, we are most likely configured to
+                    // _not_ auto-connect on startup. Thus, we treat this the same as being signed out.
+
                     system_tray::ConnlibState::SignedOut
                 }
                 Status::Quitting => system_tray::ConnlibState::Quitting,
