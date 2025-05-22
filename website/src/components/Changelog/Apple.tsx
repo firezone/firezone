@@ -24,6 +24,30 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9204">
+          Adds a
+          <Link
+            href="/policy-templates/macos/profile-manifests/dev.firezone.firezone.plist"
+            className="text-accent-500 underline hover:no-underline"
+          >
+            profile manifest
+          </Link>
+          for easily generating managed configuration files for the macOS app
+          using the iMazing Profile Editor.
+        </ChangeItem>
+        <ChangeItem pull="9196">
+          Adds managed configuration support for the macOS application. This
+          allows applying using your MDM provider to configure the app on
+          managed devices using <code>mobileconfig</code> files.
+        </ChangeItem>
+        <ChangeItem pull="9168">
+          Adds a "Connect on start" setting, and another "Start on login"
+          setting specific to just the macOS app.
+        </ChangeItem>
+        <ChangeItem pull="9167">
+          Disables update checking and notifications for the App Store variant
+          of the macOS client.
+        </ChangeItem>
         <ChangeItem pull="9119">
           Automatically saves the account slug after the first sign in, and adds
           a new
@@ -42,8 +66,8 @@ export default function Apple() {
           while Firezone is connected.
         </ChangeItem>
         <ChangeItem pull="9147">
-          Fixes an issue where connections failed to establish on machines
-          with multiple valid egress IPs.
+          Fixes an issue where connections failed to establish on machines with
+          multiple valid egress IPs.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-02")}>
