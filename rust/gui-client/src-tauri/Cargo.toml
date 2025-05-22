@@ -75,6 +75,7 @@ sd-notify = { workspace = true }
 tauri-winrt-notification = "0.7.2"
 winreg = { workspace = true }
 windows-service = { workspace = true }
+admx-macro = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 workspace = true
