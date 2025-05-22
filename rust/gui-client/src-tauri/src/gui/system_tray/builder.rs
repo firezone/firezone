@@ -156,7 +156,7 @@ impl Menu {
 }
 
 impl Item {
-    fn disabled(mut self) -> Self {
+    pub(crate) fn disabled(mut self) -> Self {
         self.event = None;
         self
     }

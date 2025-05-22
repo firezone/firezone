@@ -114,12 +114,6 @@ impl Default for AdvancedSettings {
     }
 }
 
-impl AdvancedSettings {
-    pub fn internet_resource_enabled(&self) -> bool {
-        self.internet_resource_enabled.is_some_and(|v| v)
-    }
-}
-
 pub fn advanced_settings_path() -> Result<PathBuf> {
     Ok(known_dirs::settings()
         .context("`known_dirs::settings` failed")?

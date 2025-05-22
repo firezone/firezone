@@ -311,6 +311,7 @@ pub struct SignedIn {
     pub favorite_resources: HashSet<ResourceId>,
     pub resources: Vec<ResourceView>,
     pub internet_resource_enabled: Option<bool>,
+    pub internet_resource_force_enabled: bool,
 }
 
 impl SignedIn {
@@ -333,11 +334,17 @@ impl SignedIn {
 
         if res.is_internet_resource() {
             submenu.add_separator();
-            if self.is_internet_resource_enabled() {
-                submenu.add_item(item(Event::DisableInternetResource, DISABLE));
-            } else {
-                submenu.add_item(item(Event::EnableInternetResource, ENABLE));
-            }
+
+            let item = match (
+                self.internet_resource_force_enabled,
+                self.internet_resource_enabled,
+            ) {
+                (true, _) => item(None, DISABLE).disabled(),
+                (false, Some(true)) => item(Event::DisableInternetResource, DISABLE),
+                (false, None | Some(false)) => item(Event::EnableInternetResource, ENABLE),
+            };
+
+            submenu.add_item(item);
         }
 
         if !res.is_internet_resource() {
@@ -363,6 +370,10 @@ impl SignedIn {
     }
 
     fn is_internet_resource_enabled(&self) -> bool {
+        if self.internet_resource_force_enabled {
+            return true;
+        }
+
         self.internet_resource_enabled.unwrap_or_default()
     }
 }
@@ -403,7 +414,6 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         actor_name,
         favorite_resources,
         resources, // Make sure these are presented in the order we receive them
-        internet_resource_enabled,
         ..
     } = signed_in;
 
@@ -430,7 +440,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         {
             let mut name = res.name().to_string();
             if res.is_internet_resource() {
-                name = append_status(&name, internet_resource_enabled.unwrap_or_default());
+                name = append_status(&name, signed_in.is_internet_resource_enabled());
             }
 
             menu = menu.add_submenu(name, signed_in.resource_submenu(res));
@@ -443,7 +453,7 @@ fn signed_in(signed_in: &SignedIn) -> Menu {
         for res in resources {
             let mut name = res.name().to_string();
             if res.is_internet_resource() {
-                name = append_status(&name, internet_resource_enabled.unwrap_or_default());
+                name = append_status(&name, signed_in.is_internet_resource_enabled());
             }
 
             menu = menu.add_submenu(name, signed_in.resource_submenu(res));
@@ -563,6 +573,7 @@ mod tests {
         resources: Vec<ResourceView>,
         favorite_resources: HashSet<ResourceId>,
         internet_resource_enabled: Option<bool>,
+        internet_resource_force_enabled: bool,
     ) -> AppState {
         AppState {
             connlib: ConnlibState::SignedIn(SignedIn {
@@ -570,6 +581,7 @@ mod tests {
                 favorite_resources,
                 resources,
                 internet_resource_enabled,
+                internet_resource_force_enabled,
             }),
             release: None,
             hide_admin_portal_menu_item: false,
@@ -597,6 +609,21 @@ mod tests {
                 "sites": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
                 "status": "Online"
             },
+            {
+                "id": "1106047c-cd5d-4151-b679-96b93da7383b",
+                "type": "internet",
+                "name": "Internet Resource",
+                "address": "All internet addresses",
+                "sites": [{"name": "test", "id": "eb94482a-94f4-47cb-8127-14fb3afa5516"}],
+                "status": "Offline"
+            }
+        ]"#;
+
+        serde_json::from_str(s).unwrap()
+    }
+
+    fn internet_resource() -> Vec<ResourceView> {
+        let s = r#"[
             {
                 "id": "1106047c-cd5d-4151-b679-96b93da7383b",
                 "type": "internet",
@@ -685,7 +712,7 @@ mod tests {
 
     #[test]
     fn no_resources_no_favorites() {
-        let actual = signed_in(vec![], HashSet::default(), None).into_menu();
+        let actual = signed_in(vec![], HashSet::default(), None, false).into_menu();
 
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -704,8 +731,13 @@ mod tests {
 
     #[test]
     fn no_resources_invalid_favorite() {
-        let actual =
-            signed_in(vec![], HashSet::from([ResourceId::from_u128(42)]), None).into_menu();
+        let actual = signed_in(
+            vec![],
+            HashSet::from([ResourceId::from_u128(42)]),
+            None,
+            false,
+        )
+        .into_menu();
 
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -724,7 +756,7 @@ mod tests {
 
     #[test]
     fn some_resources_no_favorites() {
-        let actual = signed_in(resources(), HashSet::default(), None).into_menu();
+        let actual = signed_in(resources(), HashSet::default(), None, false).into_menu();
 
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
@@ -803,6 +835,7 @@ mod tests {
                 "03000143-e25e-45c7-aafb-144990e57dcd",
             )?]),
             None,
+            false,
         )
         .into_menu();
 
@@ -889,6 +922,7 @@ mod tests {
                 "00000000-0000-0000-0000-000000000000",
             )?]),
             None,
+            false,
         )
         .into_menu();
 
@@ -961,5 +995,65 @@ mod tests {
         );
 
         Ok(())
+    }
+
+    #[test]
+    fn forced_internet_resource_enabled() {
+        let actual = signed_in(internet_resource(), HashSet::default(), None, true).into_menu();
+
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, SIGN_OUT)
+            .separator()
+            .disabled(RESOURCES)
+            .add_submenu(
+                "<-> Internet Resource",
+                Menu::default()
+                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
+                    .separator()
+                    .disabled(DISABLE)
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(ALL_GATEWAYS_OFFLINE),
+            )
+            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap(),
+        );
+    }
+
+    #[test]
+    fn forced_internet_resource_disabled() {
+        let actual = signed_in(internet_resource(), HashSet::default(), None, false).into_menu();
+
+        let expected = Menu::default()
+            .disabled("Signed in as Jane Doe")
+            .item(Event::SignOut, SIGN_OUT)
+            .separator()
+            .disabled(RESOURCES)
+            .add_submenu(
+                "— Internet Resource",
+                Menu::default()
+                    .disabled(INTERNET_RESOURCE_DESCRIPTION)
+                    .separator()
+                    .item(Event::EnableInternetResource, ENABLE)
+                    .separator()
+                    .disabled("Site")
+                    .copyable("test")
+                    .copyable(ALL_GATEWAYS_OFFLINE),
+            )
+            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap(),
+        );
     }
 }

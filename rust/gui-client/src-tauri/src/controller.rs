@@ -817,7 +817,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         let mut disabled_resources = BTreeSet::new();
 
-        if !self.advanced_settings.internet_resource_enabled() {
+        if !self.internet_resource_enabled() {
             disabled_resources.insert(internet_resource.id());
         }
 
@@ -854,6 +854,10 @@ impl<I: GuiIntegration> Controller<I> {
                         actor_name: auth_session.actor_name.clone(),
                         favorite_resources: self.advanced_settings.favorite_resources.clone(),
                         internet_resource_enabled: self.advanced_settings.internet_resource_enabled,
+                        internet_resource_force_enabled: self
+                            .mdm_settings
+                            .internet_resource_enabled
+                            .is_some(),
                         resources: resources.clone(),
                     })
                 }
@@ -931,6 +935,16 @@ impl<I: GuiIntegration> Controller<I> {
             .api_url
             .as_ref()
             .unwrap_or(&self.advanced_settings.api_url)
+    }
+
+    fn internet_resource_enabled(&self) -> bool {
+        if self.mdm_settings.internet_resource_enabled.is_some() {
+            return true;
+        }
+
+        self.advanced_settings
+            .internet_resource_enabled
+            .is_some_and(|v| v)
     }
 }
 
