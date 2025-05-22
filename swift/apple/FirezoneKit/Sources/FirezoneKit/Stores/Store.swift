@@ -193,6 +193,7 @@ public final class Store: ObservableObject {
     // This is only shown in the GUI, cache it here
     UserDefaults.standard.set(actorName, forKey: "actorName")
 
+    configuration.accountSlug = accountSlug
     Telemetry.accountSlug = accountSlug
 
     try await manager().enable()
