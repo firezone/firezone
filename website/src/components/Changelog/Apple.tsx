@@ -1,3 +1,4 @@
+import { Route } from "next";
 import Link from "next/link";
 import Entry from "./Entry";
 import Entries from "./Entries";
@@ -27,7 +28,9 @@ export default function Apple() {
         <ChangeItem pull="9204">
           Adds a
           <Link
-            href={"/policy-templates/macos/profile-manifests/dev.firezone.firezone.plist" as Route}
+            href={
+              "/policy-templates/macos/profile-manifests/dev.firezone.firezone.plist" as Route
+            }
             className="text-accent-500 underline hover:no-underline"
           >
             profile manifest
