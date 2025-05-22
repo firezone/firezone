@@ -403,7 +403,7 @@ impl<I: GuiIntegration> Controller<I> {
             ))?,
         }
 
-        let api_url = self.advanced_settings.api_url.clone();
+        let api_url = self.api_url().clone();
         tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
         // Count the start instant from before we connect
@@ -429,7 +429,7 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     async fn update_telemetry_context(&mut self) -> Result<()> {
-        let environment = self.advanced_settings.api_url.to_string();
+        let environment = self.api_url().to_string();
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 
         if let Some(account_slug) = account_slug.clone() {
@@ -516,12 +516,13 @@ impl<I: GuiIntegration> Controller<I> {
             Fail(Failure::Error) => Err(anyhow!("Test error"))?,
             Fail(Failure::Panic) => panic!("Test panic"),
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
+                let auth_url = self.auth_url().clone();
                 let req = self
                     .auth
                     .start_sign_in()
                     .context("Couldn't start sign-in flow")?;
 
-                let url = req.to_url(&self.advanced_settings.auth_base_url);
+                let url = req.to_url(&auth_url, self.mdm_settings.account_slug.as_deref());
                 self.refresh_system_tray_menu();
                 self.integration
                     .open_url(url.expose_secret())
@@ -535,7 +536,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
             SystemTrayMenu(system_tray::Event::AdminPortal) => self
                 .integration
-                .open_url(&self.advanced_settings.auth_base_url)
+                .open_url(self.auth_url())
                 .context("Couldn't open auth page")?,
             SystemTrayMenu(system_tray::Event::Copy(s)) => arboard::Clipboard::new()
                 .context("Couldn't access clipboard")?
@@ -914,6 +915,20 @@ impl<I: GuiIntegration> Controller<I> {
             .send(msg)
             .await
             .context("Failed to send IPC message")
+    }
+
+    fn auth_url(&self) -> &Url {
+        self.mdm_settings
+            .auth_url
+            .as_ref()
+            .unwrap_or(&self.advanced_settings.auth_base_url)
+    }
+
+    fn api_url(&self) -> &Url {
+        self.mdm_settings
+            .api_url
+            .as_ref()
+            .unwrap_or(&self.advanced_settings.api_url)
     }
 }
 
