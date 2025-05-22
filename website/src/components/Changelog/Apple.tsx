@@ -27,7 +27,7 @@ export default function Apple() {
         <ChangeItem pull="9204">
           Adds a
           <Link
-            href="/policy-templates/macos/profile-manifests/dev.firezone.firezone.plist"
+            href={"/policy-templates/macos/profile-manifests/dev.firezone.firezone.plist" as Route}
             className="text-accent-500 underline hover:no-underline"
           >
             profile manifest
