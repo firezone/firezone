@@ -3,7 +3,7 @@ use crate::{
     gui::{self, system_tray},
     ipc::{self, SocketId},
     logging, service,
-    settings::{self, AdvancedSettings, GeneralSettings},
+    settings::{self, AdvancedSettings, GeneralSettings, MdmSettings},
     updates, uptime,
 };
 use anyhow::{Context, Result, anyhow, bail};
@@ -33,6 +33,7 @@ pub type CtlrTx = mpsc::Sender<ControllerRequest>;
 
 pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
+    mdm_settings: MdmSettings,
     advanced_settings: AdvancedSettings,
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
@@ -211,6 +212,7 @@ impl<I: GuiIntegration> Controller<I> {
         integration: I,
         rx: mpsc::Receiver<ControllerRequest>,
         general_settings: GeneralSettings,
+        mdm_settings: MdmSettings,
         advanced_settings: AdvancedSettings,
         log_filter_reloader: FilterReloadHandle,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
@@ -230,6 +232,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         let controller = Controller {
             general_settings,
+            mdm_settings,
             advanced_settings,
             auth: auth::Auth::new()?,
             clear_logs_callback: None,
