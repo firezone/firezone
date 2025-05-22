@@ -41,10 +41,6 @@ class IPCClient {
   // return them to callers when they haven't changed.
   var resourcesListCache: ResourceList = ResourceList.loading
 
-  // Cache the configuration on this side of the IPC barrier so we can return it to callers if it hasn't changed.
-  private var configurationHash = Data()
-  private var configurationCache: Configuration?
-
   init(session: NETunnelProviderSession) {
     self.session = session
   }
@@ -59,10 +55,9 @@ class IPCClient {
   }
 
   // Sign in
-  func start(token: String, accountSlug: String) throws {
+  func start(token: String) throws {
     let options: [String: NSObject] = [
-      "token": token as NSObject,
-      "accountSlug": accountSlug as NSObject
+      "token": token as NSObject
     ]
 
     try session().startTunnel(options: options)
@@ -86,38 +81,12 @@ class IPCClient {
   }
 #endif
 
-  func getConfiguration() async throws -> Configuration? {
-    return try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session().sendProviderMessage(
-          encoder.encode(ProviderMessage.getConfiguration(configurationHash))
-        ) { data in
-          guard let data = data
-          else {
-            // Configuration hasn't changed
-            continuation.resume(returning: self.configurationCache)
-            return
-          }
-
-          // Compute new hash
-          self.configurationHash = Data(SHA256.hash(data: data))
-
-          do {
-            let decoded = try self.decoder.decode(Configuration.self, from: data)
-            self.configurationCache = decoded
-            continuation.resume(returning: decoded)
-          } catch {
-            continuation.resume(throwing: error)
-          }
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
-  }
-
+  @MainActor
   func setConfiguration(_ configuration: Configuration) async throws {
-    try await sendMessageWithoutResponse(ProviderMessage.setConfiguration(configuration))
+    let tunnelConfiguration = configuration.toTunnelConfiguration()
+    let message = ProviderMessage.setConfiguration(tunnelConfiguration)
+
+    try await sendMessageWithoutResponse(message)
   }
 
   func fetchResources() async throws -> ResourceList {

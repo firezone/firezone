@@ -24,6 +24,7 @@ public final class MenuBar: NSObject, ObservableObject {
   var lastShownFavorites: [Resource] = []
   var lastShownOthers: [Resource] = []
   var wasInternetResourceEnabled: Bool?
+  var wasInternetResourceForced: Bool?
   var cancellables: Set<AnyCancellable> = []
   var updateChecker: UpdateChecker
   var updateMenuDisplayed: Bool = false
@@ -164,10 +165,13 @@ public final class MenuBar: NSObject, ObservableObject {
     return menuItem
   }()
 
-  public init(store: Store) {
+  private let configuration: Configuration
+
+  public init(store: Store, configuration: Configuration? = nil) {
+    self.configuration = configuration ?? Configuration.shared
     statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     self.store = store
-    self.updateChecker = UpdateChecker(store: store)
+    self.updateChecker = UpdateChecker()
     self.signedOutIcon = NSImage(named: "MenuBarIconSignedOut")
     self.signedInConnectedIcon = NSImage(named: "MenuBarIconSignedInConnected")
     self.signedOutIconNotification = NSImage(named: "MenuBarIconSignedOutNotification")
@@ -211,10 +215,25 @@ public final class MenuBar: NSObject, ObservableObject {
         self.handleStatusChanged()
       }).store(in: &cancellables)
 
-    store.$configuration
+    Publishers.CombineLatest(
+      configuration.$publishedInternetResourceEnabled,
+      configuration.$publishedInternetResourceForced
+    )
+    .receive(on: DispatchQueue.main)
+    .sink(receiveValue: { [weak self] newEnabled, newForced in
+      guard let self = self else { return }
+
+      if configuration.internetResourceEnabled != newEnabled
+          || configuration.isInternetResourceForced != newForced {
+        handleResourceListChanged()
+      }
+    })
+    .store(in: &cancellables)
+
+    configuration.$publishedHideAdminPortalMenuItem
       .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] _ in
-        self?.updateSignInMenuItems()
+      .sink(receiveValue: { [weak self] newValue in
+        self?.updateConfigurableMenuItems(hideAdminPortalMenuItem: newValue)
       })
       .store(in: &cancellables)
 
@@ -293,7 +312,8 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownFavorites = newFavorites
-    wasInternetResourceEnabled = store.configuration?.internetResourceEnabled
+    wasInternetResourceEnabled = configuration.internetResourceEnabled
+    wasInternetResourceForced = configuration.isInternetResourceForced
   }
 
   func populateOtherResourcesMenu(_ newOthers: [Resource]) {
@@ -321,7 +341,8 @@ public final class MenuBar: NSObject, ObservableObject {
       }
     }
     lastShownOthers = newOthers
-    wasInternetResourceEnabled = store.configuration?.internetResourceEnabled
+    wasInternetResourceEnabled = configuration.internetResourceEnabled
+    wasInternetResourceForced = configuration.isInternetResourceForced
   }
 
   func updateStatusItemIcon() {
@@ -365,11 +386,6 @@ public final class MenuBar: NSObject, ObservableObject {
       settingsMenuItem.target = self
     @unknown default:
       break
-    }
-
-    // Configuration must be initialized to manage settings
-    if store.configuration == nil {
-      settingsMenuItem.target = nil
     }
   }
 
@@ -417,6 +433,16 @@ public final class MenuBar: NSObject, ObservableObject {
     }
   }
 
+  func updateConfigurableMenuItems(hideAdminPortalMenuItem: Bool) {
+    if hideAdminPortalMenuItem {
+      adminPortalMenuItem.isEnabled = false
+      adminPortalMenuItem.isHidden = true
+    } else {
+      adminPortalMenuItem.isEnabled = true
+      adminPortalMenuItem.isHidden = false
+    }
+  }
+
   // MARK: Menu object lifecycle helpers
 
   func createMenu() {
@@ -435,9 +461,7 @@ public final class MenuBar: NSObject, ObservableObject {
     }
 
     menu.addItem(aboutMenuItem)
-    if !(store.configuration?.hideAdminPortalMenuItem ?? false) {
-      menu.addItem(adminPortalMenuItem)
-    }
+    menu.addItem(adminPortalMenuItem)
     menu.addItem(helpMenuItem)
     menu.addItem(settingsMenuItem)
     menu.addItem(NSMenuItem.separator())
@@ -482,7 +506,10 @@ public final class MenuBar: NSObject, ObservableObject {
       return false
     }
 
-    return wasInternetResourceEnabled != store.configuration?.internetResourceEnabled
+    return (
+      wasInternetResourceEnabled != configuration.internetResourceEnabled ||
+      wasInternetResourceForced != configuration.isInternetResourceForced
+    )
   }
 
   func refreshUpdateItem() {
@@ -518,7 +545,7 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   func internetResourceTitle(resource: Resource) -> String {
-    let status = store.configuration?.internetResourceEnabled == true ? StatusSymbol.enabled : StatusSymbol.disabled
+    let status = configuration.internetResourceEnabled ? StatusSymbol.enabled : StatusSymbol.disabled
 
     return status + " " + resource.name
   }
@@ -541,9 +568,9 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   func internetResourceToggleTitle() -> String {
-    let isEnabled = store.configuration?.internetResourceEnabled == true
+    let isEnabled = configuration.internetResourceEnabled
 
-    if store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false {
+    if configuration.isInternetResourceForced {
       return isEnabled ? "Managed: Enabled" : "Managed: Disabled"
     }
 
@@ -642,7 +669,7 @@ public final class MenuBar: NSObject, ObservableObject {
     enableToggle.title = internetResourceToggleTitle()
     enableToggle.target = self
 
-    if store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false {
+    if configuration.isInternetResourceForced {
       enableToggle.toolTip = "This setting is managed by your organization"
       enableToggle.isEnabled = false
       enableToggle.action = nil
@@ -752,13 +779,13 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc func adminPortalButtonTapped() {
-    guard let baseURL = URL(string: store.configuration?.authURL ?? Configuration.defaultAuthURL)
+    guard let baseURL = URL(string: configuration.authURL)
     else {
-      Log.warning("admin portal URL invalid: \(String(describing: store.configuration?.authURL))")
+      Log.warning("Admin portal URL invalid: \(configuration.authURL)")
       return
     }
 
-    let accountSlug = store.configuration?.accountSlug ?? ""
+    let accountSlug = configuration.accountSlug
     let authURL = baseURL.appendingPathComponent(accountSlug)
 
     Task { await NSWorkspace.shared.openAsync(authURL) }
@@ -799,15 +826,9 @@ public final class MenuBar: NSObject, ObservableObject {
   }
 
   @objc func internetResourceToggle(_ sender: NSMenuItem) {
-    Task {
-      do {
-        try await store.toggleInternetResource()
-      } catch {
-        Log.error(error)
-      }
+    configuration.internetResourceEnabled = !configuration.internetResourceEnabled
 
-      sender.title = internetResourceToggleTitle()
-    }
+    sender.title = internetResourceToggleTitle()
   }
 
   @objc func resourceURLTapped(_ sender: AnyObject?) {
