@@ -45,6 +45,7 @@ class UpdateChecker {
 
     self.versionCheckUrl = versionCheckUrl
     self.marketingVersion = marketingVersion
+    startCheckingForUpdates()
   }
 
   private func startCheckingForUpdates() {
