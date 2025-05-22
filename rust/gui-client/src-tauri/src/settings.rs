@@ -97,6 +97,34 @@ pub struct GeneralSettings {
     pub internet_resource_enabled: Option<bool>,
 }
 
+#[derive(Clone, Serialize)]
+pub struct AdvancedSettingsViewModel {
+    pub auth_url: Url,
+    pub auth_url_is_managed: bool,
+    pub api_url: Url,
+    pub api_url_is_managed: bool,
+    pub log_filter: String,
+    pub log_filter_is_managed: bool,
+}
+
+impl AdvancedSettingsViewModel {
+    pub fn new(mdm_settings: MdmSettings, advanced_settings: AdvancedSettings) -> Self {
+        Self {
+            auth_url_is_managed: mdm_settings.auth_url.is_some(),
+            api_url_is_managed: mdm_settings.api_url.is_some(),
+            log_filter_is_managed: mdm_settings.log_filter.is_some(),
+
+            auth_url: mdm_settings
+                .auth_url
+                .unwrap_or(advanced_settings.auth_base_url),
+            api_url: mdm_settings.api_url.unwrap_or(advanced_settings.api_url),
+            log_filter: mdm_settings
+                .log_filter
+                .unwrap_or(advanced_settings.log_filter),
+        }
+    }
+}
+
 #[cfg(debug_assertions)]
 mod defaults {
     pub(crate) const AUTH_BASE_URL: &str = "https://app.firez.one";

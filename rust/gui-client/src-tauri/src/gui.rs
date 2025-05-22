@@ -9,7 +9,9 @@ use crate::{
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
     logging,
-    settings::{self, AdvancedSettings, AdvancedSettingsLegacy},
+    settings::{
+        self, AdvancedSettings, AdvancedSettingsLegacy, AdvancedSettingsViewModel, MdmSettings,
+    },
     updates,
 };
 use anyhow::{Context, Result, bail};
@@ -120,9 +122,16 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
-    fn notify_settings_changed(&self, settings: &AdvancedSettings) -> Result<()> {
+    fn notify_settings_changed(
+        &self,
+        mdm_settings: MdmSettings,
+        advanced_settings: AdvancedSettings,
+    ) -> Result<()> {
         self.app
-            .emit("settings_changed", settings)
+            .emit(
+                "settings_changed",
+                AdvancedSettingsViewModel::new(mdm_settings, advanced_settings),
+            )
             .context("Failed to send `settings_changed` event")?;
 
         Ok(())
@@ -150,9 +159,13 @@ impl GuiIntegration for TauriIntegration {
         os::show_update_notification(&self.app, ctlr_tx, title, url)
     }
 
-    fn show_settings_window(&self, settings: &AdvancedSettings) -> Result<()> {
+    fn show_settings_window(
+        &self,
+        mdm_settings: MdmSettings,
+        advanced_settings: AdvancedSettings,
+    ) -> Result<()> {
         self.show_window("settings")?;
-        self.notify_settings_changed(settings)?; // Ensure settings are up to date in GUI.
+        self.notify_settings_changed(mdm_settings, advanced_settings)?; // Ensure settings are up to date in GUI.
 
         Ok(())
     }
