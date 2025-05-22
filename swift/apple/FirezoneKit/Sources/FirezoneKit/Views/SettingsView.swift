@@ -184,19 +184,16 @@ public struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .alert(
-          "Saving settings will sign you out",
+          "Some settings may not have been applied",
           isPresented: $isShowingConfirmationAlert,
           presenting: confirmationAlertContinueAction,
           actions: { confirmationAlertContinueAction in
-            Button("Cancel", role: .cancel) {
-              // Nothing to do
-            }
-            Button("Continue") {
+            Button("OK") {
               withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
             }
           },
           message: { _ in
-            Text("Changing settings will sign you out and disconnect you from resources")
+            Text("Some settings require signing out and in again before they take effect.")
           }
         )
       }
@@ -252,19 +249,16 @@ public struct SettingsView: View {
         Spacer()
       }
       .alert(
-        "Saving settings will sign you out",
+        "Some settings may not have been applied",
         isPresented: $isShowingConfirmationAlert,
         presenting: confirmationAlertContinueAction,
         actions: { confirmationAlertContinueAction in
-          Button("Cancel", role: .cancel) {
-            // Nothing to do
-          }
-          Button("Continue", role: .destructive) {
+          Button("OK", role: .destructive) {
             withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
           }
         },
         message: { _ in
-          Text("Changing settings will sign you out and disconnect you from resources")
+          Text("Some settings require signing out and in again before they take effect.")
         }
       )
     #else
@@ -687,11 +681,6 @@ public struct SettingsView: View {
 
   private func saveSettings() async throws {
     try await viewModel.save()
-
-    if [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
-      // TODO: Warn user instead of signing out
-      try await self.store.signOut()
-    }
   }
 
   // Calculates the total size of our logs by summing the size of the
