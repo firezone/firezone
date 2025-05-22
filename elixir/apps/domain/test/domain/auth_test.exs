@@ -1839,7 +1839,7 @@ defmodule Domain.AuthTest do
     end
 
     test "deletes removed identities", %{account: account, provider: provider} do
-      provider_identifiers = ["USER_ID1", "USER_ID2"]
+      provider_identifiers = ["USER_ID1", "USER_ID2", "USER_ID3", "USER_ID4", "USER_ID5"]
 
       deleted_identity_actor = Fixtures.Actors.create_actor(account: account)
 
@@ -1872,33 +1872,67 @@ defmodule Domain.AuthTest do
           token_id: deleted_identity_token.id
         )
 
-      Fixtures.Auth.create_identity(
-        account: account,
-        provider: provider,
-        provider_identifier: Enum.at(provider_identifiers, 1)
-      )
+      for n <- 1..4 do
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: Enum.at(provider_identifiers, n)
+        )
+      end
 
       :ok = Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{deleted_identity_token.id}")
       :ok = Domain.Flows.subscribe_to_flow_expiration_events(deleted_identity_flow)
 
-      attrs_list = []
+      attrs_list = [
+        %{
+          "actor" => %{
+            "name" => "Joe Smith",
+            "type" => "account_user"
+          },
+          "provider_identifier" => "USER_ID3"
+        },
+        %{
+          "actor" => %{
+            "name" => "Jennie Smith",
+            "type" => "account_user"
+          },
+          "provider_identifier" => "USER_ID4"
+        },
+        %{
+          "actor" => %{
+            "name" => "Jane Doe",
+            "type" => "account_admin_user"
+          },
+          "provider_identifier" => "USER_ID5"
+        }
+      ]
 
       assert {:ok,
               %{
-                identities: [_identity1, _identity2],
-                plan: {[], [], delete},
+                identities: [_id1, _id2, _id3, _id4, _id5],
+                plan: {[], ["USER_ID5", "USER_ID4", "USER_ID3"], delete},
                 deleted: [deleted_identity1, deleted_identity2],
                 inserted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)
 
-      assert Enum.all?(provider_identifiers, &(&1 in delete))
+      assert Enum.take(provider_identifiers, 2)
+             |> Enum.all?(&(&1 in delete))
+
       assert deleted_identity1.provider_identifier in delete
       assert deleted_identity2.provider_identifier in delete
-      assert Repo.aggregate(Auth.Identity, :count) == 9
-      assert Repo.aggregate(Auth.Identity.Query.not_deleted(), :count) == 7
 
-      assert Enum.empty?(actor_ids_by_provider_identifier)
+      assert Auth.Identity.Query.all()
+             |> Auth.Identity.Query.by_provider_id(provider.id)
+             |> Repo.aggregate(:count) == 5
+
+      assert Auth.Identity.Query.not_deleted()
+             |> Auth.Identity.Query.by_provider_id(provider.id)
+             |> Repo.aggregate(:count) == 3
+
+      assert actor_ids_by_provider_identifier
+             |> Map.keys()
+             |> length() == 3
 
       # Signs out users which identity has been deleted
       topic = "sessions:#{deleted_identity_token.id}"
@@ -1907,6 +1941,34 @@ defmodule Domain.AuthTest do
       # Expires flows for signed out user
       flow_id = deleted_identity_flow.id
       assert_receive {:expire_flow, ^flow_id, _client_id, _resource_id}
+    end
+
+    test "circuit breaker prevents mass deletions of identities", %{
+      account: account,
+      provider: provider
+    } do
+      provider_identifiers = ["USER_ID1", "USER_ID2", "USER_ID3", "USER_ID4", "USER_ID5"]
+
+      for n <- 0..4 do
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: Enum.at(provider_identifiers, n)
+        )
+      end
+
+      attrs_list = []
+
+      assert {:error, "Sync deletion of identities too large"} =
+               sync_provider_identities(provider, attrs_list)
+
+      assert Auth.Identity.Query.all()
+             |> Auth.Identity.Query.by_provider_id(provider.id)
+             |> Repo.aggregate(:count) == 5
+
+      assert Auth.Identity.Query.not_deleted()
+             |> Auth.Identity.Query.by_provider_id(provider.id)
+             |> Repo.aggregate(:count) == 5
     end
 
     test "ignores identities that are not synced from the provider", %{

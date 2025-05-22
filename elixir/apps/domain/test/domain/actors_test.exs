@@ -845,30 +845,58 @@ defmodule Domain.ActorsTest do
           provider_identifier: "OU:OU_ID1"
         )
 
+      group3 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID2"
+        )
+
+      group4 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID3"
+        )
+
+      group5 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID4"
+        )
+
       :ok = subscribe_to_membership_updates_for_actor(actor)
       :ok = Domain.Policies.subscribe_to_events_for_actor(actor)
       :ok = Domain.Policies.subscribe_to_events_for_actor_group(group1)
       :ok = Domain.Policies.subscribe_to_events_for_actor_group(group2)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group3)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group4)
+      :ok = Domain.Policies.subscribe_to_events_for_actor_group(group5)
       :ok = Domain.Flows.subscribe_to_flow_expiration_events(group1_flow)
 
-      attrs_list = []
+      attrs_list = [
+        %{"name" => "Group:Infrastructure", "provider_identifier" => "G:GROUP_ID2"},
+        %{"name" => "Group:Security", "provider_identifier" => "G:GROUP_ID3"},
+        %{"name" => "Group:Finance", "provider_identifier" => "G:GROUP_ID4"}
+      ]
 
       assert {:ok,
               %{
-                groups: [_group1, _group2],
-                plan: {[], delete},
+                groups: [_group1, _group2, _group3, _group4, _group5],
+                plan: {_upsert, delete},
                 deleted: [deleted_group1, deleted_group2],
-                upserted: [],
+                upserted: [_upserted_group3, _upserted_group4, _upserted_group5],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
               }} = sync_provider_groups(provider, attrs_list)
 
       assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in delete))
       assert deleted_group1.provider_identifier in ["G:GROUP_ID1", "OU:OU_ID1"]
       assert deleted_group2.provider_identifier in ["G:GROUP_ID1", "OU:OU_ID1"]
-      assert Repo.aggregate(Actors.Group, :count) == 2
-      assert Repo.aggregate(Actors.Group.Query.not_deleted(), :count) == 0
+      assert Repo.aggregate(Actors.Group, :count) == 5
+      assert Repo.aggregate(Actors.Group.Query.not_deleted(), :count) == 3
 
-      assert Enum.empty?(group_ids_by_provider_identifier)
+      assert Map.keys(group_ids_by_provider_identifier) |> length() == 3
 
       actor_id = actor.id
 
@@ -882,6 +910,54 @@ defmodule Domain.ActorsTest do
       group2_id = group2.id
       refute_receive {:delete_membership, _actor_id, ^group2_id}
       refute_receive {:reject_access, _policy_id, ^group2_id, _resource_id}
+    end
+
+    test "circuit breaker prevents mass deletion of groups", %{
+      account: account,
+      provider: provider
+    } do
+      _group1 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID1"
+        )
+
+      _group2 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "OU:OU_ID1"
+        )
+
+      _group3 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID2"
+        )
+
+      _group4 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID3"
+        )
+
+      _group5 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID4"
+        )
+
+      attrs_list = []
+
+      assert {:error, "Sync deletion of groups too large"} ==
+               sync_provider_groups(provider, attrs_list)
+
+      assert Repo.aggregate(Actors.Group, :count) == 5
+      assert Repo.aggregate(Actors.Group.Query.not_deleted(), :count) == 5
     end
 
     test "ignores groups that are not synced from the provider", %{

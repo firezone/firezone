@@ -3,6 +3,7 @@ defmodule Domain.Actors.Group.Sync do
   alias Domain.Auth
   alias Domain.Actors
   alias Domain.Actors.Group
+  require Logger
 
   def sync_provider_groups(%Auth.Provider{} = provider, attrs_list) do
     attrs_by_provider_identifier =
@@ -14,6 +15,7 @@ defmodule Domain.Actors.Group.Sync do
 
     with {:ok, groups} <- all_provider_groups(provider),
          {:ok, {upsert, delete}} <- plan_groups_update(groups, provider_identifiers),
+         :ok <- deletion_circuit_breaker(groups, delete, provider),
          {:ok, deleted} <- delete_groups(provider, delete),
          {:ok, upserted} <- upsert_groups(provider, attrs_by_provider_identifier, upsert) do
       group_ids_by_provider_identifier =
@@ -55,6 +57,47 @@ defmodule Domain.Actors.Group.Sync do
       end)
 
     {:ok, {upsert, delete}}
+  end
+
+  # Used to make sure we don't accidentally mass delete groups
+  # due to an error in the Identity Provider API (e.g. Google Admin SDK API)
+  defp deletion_circuit_breaker([], _groups_to_delete, _provider) do
+    # If there are no groups then there can't be anything to delete
+    :ok
+  end
+
+  defp deletion_circuit_breaker(_groups, [], _provider) do
+    :ok
+  end
+
+  defp deletion_circuit_breaker(groups, groups_to_delete, provider) do
+    groups_length = length(groups)
+    deletion_length = length(groups_to_delete)
+
+    delete_percentage = (deletion_length / groups_length * 100) |> round()
+
+    cond do
+      groups_length > 40 and delete_percentage >= 25 ->
+        Logger.error("Refusing to mass delete groups",
+          groups_length: groups_length,
+          deletion_length: deletion_length,
+          provider_id: provider.id
+        )
+
+        {:error, "Sync deletion of groups too large"}
+
+      groups_length <= 40 and delete_percentage >= 50 ->
+        Logger.error("Refusing to mass delete groups",
+          groups_length: groups_length,
+          deletion_length: deletion_length,
+          provider_id: provider.id
+        )
+
+        {:error, "Sync deletion of groups too large"}
+
+      true ->
+        :ok
+    end
   end
 
   defp delete_groups(provider, provider_identifiers_to_delete) do

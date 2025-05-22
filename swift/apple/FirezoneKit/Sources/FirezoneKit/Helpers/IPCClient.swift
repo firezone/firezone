@@ -13,15 +13,12 @@ import NetworkExtension
 
 class IPCClient {
   enum Error: Swift.Error {
-    case invalidNotification
     case decodeIPCDataFailed
     case noIPCData
     case invalidStatus(NEVPNStatus)
 
     var localizedDescription: String {
       switch self {
-      case .invalidNotification:
-        return "NEVPNStatusDidChange notification doesn't seem to be valid."
       case .decodeIPCDataFailed:
         return "Decoding IPC data failed."
       case .noIPCData:
@@ -232,7 +229,6 @@ class IPCClient {
       for await notification in NotificationCenter.default.notifications(named: .NEVPNStatusDidChange) {
         guard let session = notification.object as? NETunnelProviderSession
         else {
-          Log.error(Error.invalidNotification)
           return
         }
 

@@ -267,6 +267,18 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
         "raw_attributes" => %{}
       }
 
+      group_finance = %{
+        "id" => "GROUP_FINANCE_ID",
+        "object" => "directory_group",
+        "idp_id" => "finance",
+        "directory_id" => "dir_123",
+        "organization_id" => "org_123",
+        "name" => "Finance",
+        "created_at" => "2021-10-28 15:21:50.640958",
+        "updated_at" => "2021-12-14 12:15:45.531847",
+        "raw_attributes" => %{}
+      }
+
       users = [
         %{
           "id" => "workos_user_jdoe_id",
@@ -372,6 +384,13 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
           provider_identifier: "G:GROUP_ALL_ID"
         )
 
+      _group_finance =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_FINANCE_ID"
+        )
+
       deleted_group =
         Fixtures.Actors.create_group(
           account: account,
@@ -410,7 +429,12 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
       WorkOSDirectory.override_base_url("http://localhost:#{bypass.port}")
       WorkOSDirectory.mock_list_directories_endpoint(bypass)
       WorkOSDirectory.mock_list_users_endpoint(bypass, users)
-      WorkOSDirectory.mock_list_groups_endpoint(bypass, [group_all, group_engineering])
+
+      WorkOSDirectory.mock_list_groups_endpoint(bypass, [
+        group_all,
+        group_engineering,
+        group_finance
+      ])
 
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok
