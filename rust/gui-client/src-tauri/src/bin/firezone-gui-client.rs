@@ -28,24 +28,11 @@ fn main() -> ExitCode {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
-    let settings = settings::load_advanced_settings::<AdvancedSettingsLegacy>().unwrap_or_default();
-
     let mut telemetry = Telemetry::default();
-    telemetry.start(
-        settings.api_url.as_ref(),
-        firezone_gui_client::RELEASE,
-        firezone_telemetry::GUI_DSN,
-    );
-
-    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
-    // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
-    if let Ok(id) = firezone_bin_shared::device_id::get() {
-        Telemetry::set_firezone_id(id.id);
-    }
-
+    let settings = settings::load_advanced_settings::<AdvancedSettingsLegacy>().unwrap_or_default();
     let rt = tokio::runtime::Runtime::new().expect("Couldn't start Tokio runtime");
 
-    match try_main(cli, &rt, settings) {
+    match try_main(cli, &rt, &mut telemetry, settings) {
         Ok(()) => {
             rt.block_on(telemetry.stop());
 
@@ -64,6 +51,7 @@ fn main() -> ExitCode {
 fn try_main(
     cli: Cli,
     rt: &tokio::runtime::Runtime,
+    telemetry: &mut Telemetry,
     mut settings: AdvancedSettingsLegacy,
 ) -> Result<()> {
     let config = gui::RunConfig {
@@ -128,7 +116,7 @@ fn try_main(
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            gui::run(rt, config, settings, reloader)?;
+            gui::run(rt, telemetry, config, settings, reloader)?;
 
             return Ok(());
         }
@@ -136,7 +124,7 @@ fn try_main(
 
     // Happy-path: Run the GUI.
 
-    match gui::run(rt, config, settings, reloader) {
+    match gui::run(rt, telemetry, config, settings, reloader) {
         Ok(()) => {}
         Err(anyhow) => {
             if anyhow

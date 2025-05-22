@@ -14,6 +14,7 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use firezone_logging::err_with_src;
+use firezone_telemetry::Telemetry;
 use futures::SinkExt as _;
 use std::time::Duration;
 use tauri::{Emitter, Manager};
@@ -187,10 +188,23 @@ pub enum ServerMsg {
 #[instrument(skip_all)]
 pub fn run(
     rt: &tokio::runtime::Runtime,
+    telemetry: &mut Telemetry,
     config: RunConfig,
     advanced_settings: AdvancedSettingsLegacy,
     reloader: firezone_logging::FilterReloadHandle,
 ) -> Result<()> {
+    telemetry.start(
+        advanced_settings.api_url.as_ref(),
+        crate::RELEASE,
+        firezone_telemetry::GUI_DSN,
+    );
+
+    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
+    // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
+    if let Ok(id) = firezone_bin_shared::device_id::get() {
+        Telemetry::set_firezone_id(id.id);
+    }
+
     // Needed for the deep link server
     tauri::async_runtime::set(rt.handle().clone());
 
