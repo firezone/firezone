@@ -9,59 +9,68 @@
     tools:context=".features.permission.vpn.ui.VpnPermissionActivity"
     android:fitsSystemWindows="true">
 
-  <androidx.appcompat.widget.LinearLayoutCompat
-      android:id="@+id/llContainer"
-      android:layout_width="0dp"
+  <androidx.appcompat.widget.AppCompatImageView
+      android:id="@+id/ivLogo"
+      android:layout_width="@dimen/iv_logo_size"
+      android:layout_height="@dimen/iv_logo_size"
+      android:layout_marginTop="8dp"
+      android:src="@drawable/ic_firezone_logo"
+      app:layout_constraintEnd_toEndOf="parent"
+      app:layout_constraintHorizontal_bias="0.498"
+      app:layout_constraintStart_toStartOf="parent"
+      app:layout_constraintTop_toTopOf="parent" />
+
+  <com.google.android.material.textview.MaterialTextView
+      style="@style/AppTheme.Base.HeaderText"
+      android:layout_width="wrap_content"
       android:layout_height="wrap_content"
       android:gravity="center"
-      android:orientation="horizontal"
+      android:text="@string/app_short_name"
+      android:textSize="48sp"
+      app:fontFamily="@font/manrope_bold"
+      app:layout_constraintBottom_toTopOf="@+id/constraintLayout"
       app:layout_constraintEnd_toEndOf="parent"
       app:layout_constraintStart_toStartOf="parent"
-      app:layout_constraintTop_toTopOf="parent">
+      app:layout_constraintTop_toBottomOf="@+id/ivLogo" />
 
-    <androidx.appcompat.widget.AppCompatImageView
-        android:id="@+id/ivLogo"
-        android:layout_width="@dimen/iv_logo_size"
-        android:layout_height="@dimen/iv_logo_size"
-        android:src="@drawable/ic_firezone_logo" />
+  <androidx.constraintlayout.widget.ConstraintLayout
+      android:id="@+id/constraintLayout"
+      android:layout_width="match_parent"
+      android:layout_height="275dp"
+      android:padding="@dimen/spacing_medium"
+      app:layout_constraintBottom_toBottomOf="parent"
+      app:layout_constraintTop_toTopOf="parent"
+      tools:ignore="MissingConstraints"
+      tools:layout_editor_absoluteX="16dp">
 
     <com.google.android.material.textview.MaterialTextView
-        style="@style/AppTheme.Base.HeaderText"
-        android:layout_width="wrap_content"
+        android:id="@+id/tvHeaderTitle"
+        style="@style/AppTheme.Base.H5"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="@dimen/spacing_small"
-        android:gravity="center"
-        android:text="@string/app_short_name" />
+        android:layout_marginTop="36dp"
+        android:text="@string/enable_vpn_permission"
+        android:textAlignment="center"
+        app:layout_constraintStart_toStartOf="parent" />
 
-  </androidx.appcompat.widget.LinearLayoutCompat>
+    <com.google.android.material.textview.MaterialTextView
+        android:id="@+id/tvBody"
+        style="@style/AppTheme.Base.Body1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/vpn_permission_description"
+        android:textAlignment="center"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toTopOf="parent"
+        tools:layout_editor_absoluteX="16dp" />
 
-  <com.google.android.material.textview.MaterialTextView
-      android:id="@+id/tvHeaderTitle"
-      style="@style/AppTheme.Base.H5"
-      android:layout_width="match_parent"
-      android:layout_height="wrap_content"
-      android:layout_marginTop="32dp"
-      android:text="@string/enable_vpn_permission"
-      app:layout_constraintTop_toBottomOf="@id/llContainer"
-      app:layout_constraintStart_toStartOf="parent" />
-
-  <com.google.android.material.textview.MaterialTextView
-      android:id="@+id/tvBody"
-      style="@style/AppTheme.Base.Body1"
-      android:layout_width="match_parent"
-      android:layout_height="wrap_content"
-      android:layout_marginTop="12dp"
-      android:text="@string/vpn_permission_description"
-      app:layout_constraintTop_toBottomOf="@id/tvHeaderTitle"
-      app:layout_constraintStart_toStartOf="parent" />
-
-  <com.google.android.material.button.MaterialButton
-      android:id="@+id/btnRequest"
-      android:layout_width="0dp"
-      android:layout_height="wrap_content"
-      android:text="@string/request_permission"
-      app:layout_constraintBottom_toBottomOf="parent"
-      app:layout_constraintEnd_toEndOf="parent"
-      app:layout_constraintStart_toStartOf="parent" />
-
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnRequest"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="@string/request_permission"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+  </androidx.constraintlayout.widget.ConstraintLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>
