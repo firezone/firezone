@@ -24,6 +24,7 @@ public final class MenuBar: NSObject, ObservableObject {
   var lastShownFavorites: [Resource] = []
   var lastShownOthers: [Resource] = []
   var wasInternetResourceEnabled: Bool?
+  var wasInternetResourceForced: Bool?
   var cancellables: Set<AnyCancellable> = []
   var updateChecker: UpdateChecker
   var updateMenuDisplayed: Bool = false
@@ -214,13 +215,20 @@ public final class MenuBar: NSObject, ObservableObject {
         self.handleStatusChanged()
       }).store(in: &cancellables)
 
-    configuration.objectWillChange
-      .receive(on: DispatchQueue.main)
-      .sink(receiveValue: { [weak self] _ in
-        // Internet Resource updated status
-        self?.handleResourceListChanged()
-      })
-      .store(in: &cancellables)
+    Publishers.CombineLatest(
+      configuration.$publishedInternetResourceEnabled,
+      configuration.$publishedInternetResourceForced
+    )
+    .receive(on: DispatchQueue.main)
+    .sink(receiveValue: { [weak self] newEnabled, newForced in
+      guard let self = self else { return }
+
+      if configuration.internetResourceEnabled != newEnabled
+          || configuration.isInternetResourceForced != newForced {
+        handleResourceListChanged()
+      }
+    })
+    .store(in: &cancellables)
 
     updateChecker.$updateAvailable
       .receive(on: DispatchQueue.main)
@@ -298,6 +306,7 @@ public final class MenuBar: NSObject, ObservableObject {
     }
     lastShownFavorites = newFavorites
     wasInternetResourceEnabled = configuration.internetResourceEnabled
+    wasInternetResourceForced = configuration.isInternetResourceForced
   }
 
   func populateOtherResourcesMenu(_ newOthers: [Resource]) {
@@ -326,6 +335,7 @@ public final class MenuBar: NSObject, ObservableObject {
     }
     lastShownOthers = newOthers
     wasInternetResourceEnabled = configuration.internetResourceEnabled
+    wasInternetResourceForced = configuration.isInternetResourceForced
   }
 
   func updateStatusItemIcon() {
@@ -481,7 +491,10 @@ public final class MenuBar: NSObject, ObservableObject {
       return false
     }
 
-    return wasInternetResourceEnabled != configuration.internetResourceEnabled
+    return (
+      wasInternetResourceEnabled != configuration.internetResourceEnabled ||
+      wasInternetResourceForced != configuration.isInternetResourceForced
+    )
   }
 
   func refreshUpdateItem() {
@@ -542,7 +555,7 @@ public final class MenuBar: NSObject, ObservableObject {
   func internetResourceToggleTitle() -> String {
     let isEnabled = configuration.internetResourceEnabled
 
-    if configuration.isInternetResourceEnabledForced {
+    if configuration.isInternetResourceForced {
       return isEnabled ? "Managed: Enabled" : "Managed: Disabled"
     }
 
@@ -641,7 +654,7 @@ public final class MenuBar: NSObject, ObservableObject {
     enableToggle.title = internetResourceToggleTitle()
     enableToggle.target = self
 
-    if configuration.isInternetResourceEnabledForced {
+    if configuration.isInternetResourceForced {
       enableToggle.toolTip = "This setting is managed by your organization"
       enableToggle.isEnabled = false
       enableToggle.action = nil

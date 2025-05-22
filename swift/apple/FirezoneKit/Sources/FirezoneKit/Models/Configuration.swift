@@ -12,8 +12,11 @@ import ServiceManagement
 #endif
 
 @MainActor
-public class Configuration: ObservableObject {
+public class Configuration {
   static let shared = Configuration()
+
+  @Published private(set) var publishedInternetResourceEnabled = false
+  @Published private(set) var publishedInternetResourceForced = false
 
   var isAuthURLForced: Bool { defaults.objectIsForced(forKey: Keys.authURL) }
   var isApiURLForced: Bool { defaults.objectIsForced(forKey: Keys.apiURL) }
@@ -21,7 +24,7 @@ public class Configuration: ObservableObject {
   var isAccountSlugForced: Bool { defaults.objectIsForced(forKey: Keys.accountSlug) }
   var isConnectOnStartForced: Bool { defaults.objectIsForced(forKey: Keys.connectOnStart) }
   var isStartOnLoginForced: Bool { defaults.objectIsForced(forKey: Keys.startOnLogin) }
-  var isInternetResourceEnabledForced: Bool { defaults.objectIsForced(forKey: Keys.internetResourceEnabled) }
+  var isInternetResourceForced: Bool { defaults.objectIsForced(forKey: Keys.internetResourceEnabled) }
 
   var authURL: String {
     get { defaults.string(forKey: Keys.authURL) ?? Self.defaultAuthURL }
@@ -100,6 +103,9 @@ public class Configuration: ObservableObject {
   init(userDefaults: UserDefaults = UserDefaults.standard) {
     defaults = userDefaults
 
+    self.publishedInternetResourceEnabled = internetResourceEnabled
+    self.publishedInternetResourceForced = isInternetResourceForced
+
     NotificationCenter.default.addObserver(
       self,
       selector: #selector(handleUserDefaultsChanged),
@@ -138,14 +144,15 @@ public class Configuration: ObservableObject {
   }
 #endif
 
-  // Perform side effects here
   @objc private func handleUserDefaultsChanged(_ notification: Notification) {
 #if os(macOS)
     // This is idempotent
     Task { do { try await updateAppService() } }
 #endif
 
-    self.objectWillChange.send()
+    // Update published properties
+    self.publishedInternetResourceEnabled = internetResourceEnabled
+    self.publishedInternetResourceForced = isInternetResourceForced
   }
 }
 

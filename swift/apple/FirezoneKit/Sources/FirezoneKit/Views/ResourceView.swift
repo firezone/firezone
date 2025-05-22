@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 
 #if os(iOS)
 private func copyToClipboard(_ value: String) {
@@ -233,15 +234,36 @@ struct InternetResourceHeader: View {
 struct ToggleInternetResourceButton: View {
   var resource: Resource
   @EnvironmentObject var store: Store
+  @State private var enabled: Bool
+  @State private var forced: Bool
+
+  private var cancellables: Set<AnyCancellable> = []
+
+  init(resource: Resource) {
+    let configuration = Configuration.shared
+
+    self.enabled = configuration.internetResourceEnabled
+    self.forced = configuration.isInternetResourceForced
+    self.resource = resource
+
+    Publishers.CombineLatest(
+      configuration.$publishedInternetResourceEnabled,
+      configuration.$publishedInternetResourceForced
+    )
+    .receive(on: RunLoop.main)
+    .sink(receiveValue: { [self] enabled, forced in
+      self.enabled = enabled
+      self.forced = forced
+    })
+    .store(in: &cancellables)
+  }
 
   private func toggleResourceEnabledText() -> String {
-    let isEnabled = Configuration.shared.internetResourceEnabled
-
-    if Configuration.shared.isInternetResourceEnabledForced {
-      return isEnabled ? "Managed: Enabled" : "Managed: Disabled"
+    if forced {
+      return enabled ? "Managed: Enabled" : "Managed: Disabled"
     }
 
-    return isEnabled ? "Disable this resource" : "Enable this resource"
+    return enabled ? "Disable this resource" : "Enable this resource"
   }
 
   var body: some View {
@@ -262,7 +284,7 @@ struct ToggleInternetResourceButton: View {
         }
       }
     )
-    .disabled(Configuration.shared.isInternetResourceEnabledForced)
+    .disabled(forced)
   }
 }
 
