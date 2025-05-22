@@ -870,6 +870,11 @@ impl<I: GuiIntegration> Controller<I> {
         self.integration.set_tray_menu(system_tray::AppState {
             connlib,
             release: self.release.clone(),
+            hide_admin_portal_menu_item: self
+                .mdm_settings
+                .hide_admin_portal_menu_item
+                .is_some_and(|hide| hide),
+            support_url: self.mdm_settings.support_url.clone(),
         });
     }
 
