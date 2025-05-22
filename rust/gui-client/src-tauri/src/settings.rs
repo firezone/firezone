@@ -71,6 +71,12 @@ pub struct MdmSettings {
     pub support_url: Option<Url>,
 }
 
+impl MdmSettings {
+    pub fn check_for_updates(&self) -> bool {
+        self.disable_update_check.is_none()
+    }
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AdvancedSettings {
     pub auth_base_url: Url,
@@ -162,5 +168,18 @@ mod tests {
         assert_eq!(actual.auth_base_url.to_string(), "https://example.com/");
         assert_eq!(actual.api_url.to_string(), "wss://example.com/");
         assert_eq!(actual.log_filter, "info");
+    }
+
+    #[test]
+    fn check_for_updates() {
+        assert!(MdmSettings::default().check_for_updates());
+
+        assert!(
+            !MdmSettings {
+                disable_update_check: Some(()),
+                ..Default::default()
+            }
+            .check_for_updates()
+        );
     }
 }

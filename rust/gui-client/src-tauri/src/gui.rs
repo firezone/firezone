@@ -274,12 +274,16 @@ pub fn run(
 
         let (updates_tx, updates_rx) = mpsc::channel(1);
 
-        // Check for updates
-        tokio::spawn(async move {
-            if let Err(error) = updates::checker_task(updates_tx, config.debug_update_check).await {
-                tracing::error!("Error in updates::checker_task: {error:#}");
-            }
-        });
+        if mdm_settings.check_for_updates() {
+            // Check for updates
+            tokio::spawn(async move {
+                if let Err(error) = updates::checker_task(updates_tx, config.debug_update_check).await {
+                    tracing::error!("Error in updates::checker_task: {error:#}");
+                }
+            });
+        } else {
+            tracing::info!("Update checker disabled via MDM");
+        }
 
         if config.smoke_test {
             let ctlr_tx = ctlr_tx.clone();
