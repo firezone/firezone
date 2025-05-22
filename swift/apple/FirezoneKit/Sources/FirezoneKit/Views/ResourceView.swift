@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Combine
 
 #if os(iOS)
 private func copyToClipboard(_ value: String) {
@@ -230,39 +231,61 @@ struct InternetResourceHeader: View {
   }
 }
 
+@MainActor
+class ToggleInternetResourceButtonModel: ObservableObject {
+  private var cancellables: Set<AnyCancellable> = []
+  private let configuration = Configuration.shared
+
+  @Published private(set) var enabled: Bool
+  @Published private(set) var forced: Bool
+
+  init() {
+    self.enabled = configuration.internetResourceEnabled
+    self.forced = configuration.isInternetResourceForced
+
+    Publishers.CombineLatest(
+      configuration.$publishedInternetResourceEnabled,
+      configuration.$publishedInternetResourceForced
+    )
+    .receive(on: RunLoop.main)
+    .sink(receiveValue: { [self] enabled, forced in
+      self.enabled = enabled
+      self.forced = forced
+    })
+    .store(in: &cancellables)
+  }
+
+  func toggleInternetResource() {
+    configuration.internetResourceEnabled = !configuration.internetResourceEnabled
+  }
+
+  func toggleResourceEnabledText() -> String {
+    if forced {
+      return enabled ? "Managed: Enabled" : "Managed: Disabled"
+    }
+
+    return enabled ? "Disable this resource" : "Enable this resource"
+  }
+}
+
 struct ToggleInternetResourceButton: View {
   var resource: Resource
   @EnvironmentObject var store: Store
-
-  private func toggleResourceEnabledText() -> String {
-    let isEnabled = store.configuration?.internetResourceEnabled ?? false
-
-    if store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false {
-      return isEnabled ? "Managed: Enabled" : "Managed: Disabled"
-    }
-
-    return isEnabled ? "Disable this resource" : "Enable this resource"
-  }
+  @StateObject var viewModel: ToggleInternetResourceButtonModel = .init()
 
   var body: some View {
     Button(
       action: {
-        Task {
-          do {
-            try await store.toggleInternetResource()
-          } catch {
-            Log.error(error)
-          }
-        }
+        viewModel.toggleInternetResource()
       },
       label: {
         HStack {
-          Text(toggleResourceEnabledText())
+          Text(viewModel.toggleResourceEnabledText())
           Spacer()
         }
       }
     )
-    .disabled(store.configuration?.isOverridden(Configuration.Keys.internetResourceEnabled) ?? false)
+    .disabled(viewModel.forced)
   }
 }
 

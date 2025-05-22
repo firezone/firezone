@@ -10,9 +10,7 @@ import System
 import os
 
 enum PacketTunnelProviderError: Error {
-  case apiURLIsInvalid
-  case logFilterIsInvalid
-  case accountSlugIsInvalid
+  case tunnelConfigurationIsInvalid
   case firezoneIdIsInvalid
   case tokenNotFoundInKeychain
 }
@@ -26,15 +24,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   }
 
   private var logExportState: LogExportState = .idle
-  private var configuration: Configuration
+  private var tunnelConfiguration: TunnelConfiguration?
+  private let defaults = UserDefaults.standard
 
   override init() {
     // Initialize Telemetry as early as possible
     Telemetry.start()
 
-    self.configuration = ConfigurationManager.shared.toConfiguration()
-
     super.init()
+
+    migrateFirezoneId()
+    self.tunnelConfiguration = TunnelConfiguration.tryLoad()
   }
 
   override func startTunnel(
@@ -67,33 +67,25 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       do { try token.save() } catch { Log.error(error) }
 
       // The firezone id should be initialized by now
-      guard let id = configuration.firezoneId
+      guard let id = UserDefaults.standard.string(forKey: "firezoneId")
       else {
         throw PacketTunnelProviderError.firezoneIdIsInvalid
       }
 
-      // Now we should have a token, so continue connecting
-      let apiURL = legacyConfiguration?["apiURL"] ?? configuration.apiURL ?? Configuration.defaultApiURL
-
-      // Reconfigure our Telemetry environment now that we know the API URL
-      Telemetry.setEnvironmentOrClose(apiURL)
-
-      let logFilter = legacyConfiguration?["logFilter"] ?? configuration.logFilter ?? Configuration.defaultLogFilter
-
-      // Prioritize passed accountSlug, updating saved account slug for next connect
-      guard let accountSlug = options?["accountSlug"] as? String ??
-              legacyConfiguration?["accountSlug"] ??
-              configuration.accountSlug
+      guard let apiURL = legacyConfiguration?["apiURL"] ?? tunnelConfiguration?.apiURL,
+            let logFilter = legacyConfiguration?["logFilter"] ?? tunnelConfiguration?.logFilter,
+            let accountSlug = legacyConfiguration?["accountSlug"] ?? tunnelConfiguration?.accountSlug
       else {
-        throw PacketTunnelProviderError.accountSlugIsInvalid
+        throw PacketTunnelProviderError.tunnelConfigurationIsInvalid
       }
-      configuration.accountSlug = accountSlug
-      ConfigurationManager.shared.setConfiguration(configuration)
+
+      // Configure telemetry
+      Telemetry.setEnvironmentOrClose(apiURL)
       Telemetry.accountSlug = accountSlug
 
       let enabled = legacyConfiguration?["internetResourceEnabled"]
       let internetResourceEnabled =
-        enabled != nil ? enabled == "true" : (configuration.internetResourceEnabled ?? false)
+        enabled != nil ? enabled == "true" : (tunnelConfiguration?.internetResourceEnabled ?? false)
 
       let adapter = Adapter(
         apiURL: apiURL,
@@ -164,20 +156,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   // It would be helpful to be able to encapsulate Errors here. To do that
   // we need to update ProviderMessage to encode/decode Result to and from Data.
   // TODO: Move to a more abstract IPC protocol
-  // swiftlint:disable:next cyclomatic_complexity
   override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
     do {
       let providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
 
       switch providerMessage {
 
-      case .getConfiguration(let hash):
-        let configurationPayload = configuration.toDataIfChanged(hash: hash)
-        completionHandler?(configurationPayload)
-
-      case .setConfiguration(let configuration):
-        ConfigurationManager.shared.setConfiguration(configuration)
-        self.configuration = ConfigurationManager.shared.toConfiguration()
+      case .setConfiguration(let tunnelConfiguration):
+        tunnelConfiguration.save()
+        self.tunnelConfiguration = tunnelConfiguration
+        self.adapter?.setInternetResourceEnabled(tunnelConfiguration.internetResourceEnabled)
         completionHandler?(nil)
 
       case .signOut:
@@ -318,5 +306,68 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       .removeItem(at: SharedAccess.providerStopReasonURL)
 
     completionHandler(data)
+  }
+
+  // Firezone ID migration. Can be removed once most clients migrate past 1.4.15.
+  private func migrateFirezoneId() {
+    let filename = "firezone-id"
+    let key = "firezoneId"
+
+    // 1. Try to load from file, deleting it
+    if let containerURL = FileManager.default.containerURL(
+      forSecurityApplicationGroupIdentifier: BundleHelper.appGroupId),
+       let idFromFile = try? String(contentsOf: containerURL.appendingPathComponent(filename)) {
+      defaults.set(idFromFile, forKey: key)
+      try? FileManager.default.removeItem(at: containerURL.appendingPathComponent(filename))
+      return
+    }
+
+    // 2. Try to load from dict
+    if defaults.string(forKey: key) != nil {
+      return
+    }
+
+    // 3. Generate and save new one
+    defaults.set(UUID().uuidString, forKey: key)
+  }
+}
+
+// Increase usefulness of TunnelConfiguration now that we're over the IPC barrier
+extension TunnelConfiguration {
+  func save() {
+    let key = "configurationCache"
+
+    let dict: [String: Any] = [
+      "apiURL": apiURL,
+      "logFilter": logFilter,
+      "accountSlug": accountSlug,
+      "internetResourceEnabled": internetResourceEnabled
+    ]
+
+    UserDefaults.standard.set(dict, forKey: key)
+  }
+
+  static func tryLoad() -> TunnelConfiguration? {
+    let key = "configurationCache"
+
+    guard let dict = UserDefaults.standard.dictionary(forKey: key)
+    else {
+      return nil
+    }
+
+    guard let apiURL = dict["apiURL"] as? String,
+          let logFilter = dict["logFilter"] as? String,
+          let accountSlug = dict["accountSlug"] as? String,
+          let internetResourceEnabled = dict["internetResourceEnabled"] as? Bool
+    else {
+      return nil
+    }
+
+    return TunnelConfiguration(
+      apiURL: apiURL,
+      accountSlug: accountSlug,
+      logFilter: logFilter,
+      internetResourceEnabled: internetResourceEnabled
+    )
   }
 }

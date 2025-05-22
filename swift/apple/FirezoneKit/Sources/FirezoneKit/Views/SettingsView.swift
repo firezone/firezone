@@ -73,88 +73,6 @@ extension FileManager {
   }
 }
 
-@MainActor
-class SettingsViewModel: ObservableObject {
-  private let store: Store
-  private var cancellables = Set<AnyCancellable>()
-
-  @Published var settings: Settings
-
-  @Published private(set) var shouldDisableApplyButton = false
-  @Published private(set) var shouldDisableResetButton = false
-
-  init(store: Store) {
-    self.store = store
-
-    guard let configuration = store.configuration
-    else {
-      fatalError("Configuration must be initialized to view settings")
-    }
-
-    self.settings = Settings(from: configuration)
-    setupObservers()
-
-    // TODO: Handle updates to configuration while the SettingsView is open?
-  }
-
-  func reset() {
-    settings.reset()
-    objectWillChange.send()
-    updateDerivedState()
-  }
-
-  func save() async throws {
-    try await store.applySettingsToConfiguration(settings)
-
-    guard let configuration = store.configuration
-    else {
-      throw SettingsViewError.configurationNotInitialized
-    }
-
-    self.settings = Settings(from: configuration)
-    setupObservers()
-  }
-
-  private func setupObservers() {
-    // These all need to be the same underlying type
-    Publishers.MergeMany([
-      settings.$authURL,
-      settings.$apiURL,
-      settings.$accountSlug,
-      settings.$logFilter
-    ])
-    .receive(on: RunLoop.main)
-    .sink(receiveValue: { [weak self] _ in
-      self?.updateDerivedState()
-    })
-    .store(in: &cancellables)
-
-    Publishers.MergeMany([
-      settings.$connectOnStart,
-      settings.$startOnLogin
-    ])
-    .receive(on: RunLoop.main)
-    .sink(receiveValue: { [weak self] _ in
-      self?.updateDerivedState()
-    })
-    .store(in: &cancellables)
-  }
-
-  private func updateDerivedState() {
-    self.shouldDisableApplyButton = (
-      settings.areAllFieldsOverridden() ||
-      settings.isSaved() ||
-      !settings.isValid()
-    )
-
-    self.shouldDisableResetButton = (
-      settings.areAllFieldsOverridden() ||
-      settings.isDefault()
-    )
-  }
-
-}
-
 // TODO: Move business logic to ViewModel to remove dependency on Store and fix body length
 // swiftlint:disable:next type_body_length
 public struct SettingsView: View {
@@ -163,6 +81,7 @@ public struct SettingsView: View {
   @EnvironmentObject var errorHandler: GlobalErrorHandler
 
   private let store: Store
+  private let configuration: Configuration
 
   private enum ConfirmationAlertContinueAction: Int {
     case none
@@ -196,7 +115,7 @@ public struct SettingsView: View {
   #endif
 
   private struct PlaceholderText {
-    static let authBaseURL = "Admin portal base URL"
+    static let authURL = "Admin portal auth URL"
     static let apiURL = "Control plane WebSocket URL"
     static let logFilter = "RUST_LOG-style filter string"
     static let accountSlug = "Account slug or ID (optional)"
@@ -211,9 +130,10 @@ public struct SettingsView: View {
     )
   }
 
-  public init(store: Store) {
+  public init(store: Store, configuration: Configuration? = nil) {
     self.store = store
-    _viewModel = StateObject(wrappedValue: SettingsViewModel(store: store))
+    self.configuration = configuration ?? Configuration.shared
+    _viewModel = StateObject(wrappedValue: SettingsViewModel())
   }
 
   public var body: some View {
@@ -235,7 +155,7 @@ public struct SettingsView: View {
                 Image(systemName: "gearshape.2")
                 Text("Advanced")
               }
-              .badge(viewModel.settings.isValid() ? nil : "!")
+              .badge(viewModel.isValid() ? nil : "!")
             logsTab
               .tabItem {
                 Image(systemName: "doc.text")
@@ -264,19 +184,16 @@ public struct SettingsView: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .alert(
-          "Saving settings will sign you out",
+          "Some settings may not have been applied",
           isPresented: $isShowingConfirmationAlert,
           presenting: confirmationAlertContinueAction,
           actions: { confirmationAlertContinueAction in
-            Button("Cancel", role: .cancel) {
-              // Nothing to do
-            }
-            Button("Continue") {
+            Button("OK") {
               withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
             }
           },
           message: { _ in
-            Text("Changing settings will sign you out and disconnect you from resources")
+            Text("Some settings require signing out and in again before they take effect.")
           }
         )
       }
@@ -332,19 +249,16 @@ public struct SettingsView: View {
         Spacer()
       }
       .alert(
-        "Saving settings will sign you out",
+        "Some settings may not have been applied",
         isPresented: $isShowingConfirmationAlert,
         presenting: confirmationAlertContinueAction,
         actions: { confirmationAlertContinueAction in
-          Button("Cancel", role: .cancel) {
-            // Nothing to do
-          }
-          Button("Continue", role: .destructive) {
+          Button("OK", role: .destructive) {
             withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
           }
         },
         message: { _ in
-          Text("Changing settings will sign you out and disconnect you from resources")
+          Text("Some settings require signing out and in again before they take effect.")
         }
       )
     #else
@@ -364,25 +278,25 @@ public struct SettingsView: View {
               .frame(width: 150, alignment: .trailing)
             TextField(
               "",
-              text: $viewModel.settings.accountSlug,
+              text: $viewModel.accountSlug,
               prompt: Text(PlaceholderText.accountSlug)
             )
-            .disabled(viewModel.settings.isAccountSlugOverridden)
+            .disabled(configuration.isAccountSlugForced)
             .frame(width: 250)
           }
           .padding(.bottom, 10)
 
-          Toggle(isOn: $viewModel.settings.connectOnStart) {
+          Toggle(isOn: $viewModel.connectOnStart) {
             Text("Automatically connect when Firezone is launched")
           }
           .toggleStyle(.checkbox)
-          .disabled(viewModel.settings.isConnectOnStartOverridden)
+          .disabled(configuration.isConnectOnStartForced)
 
-          Toggle(isOn: $viewModel.settings.startOnLogin) {
+          Toggle(isOn: $viewModel.startOnLogin) {
             Text("Start Firezone when you sign into your Mac")
           }
           .toggleStyle(.checkbox)
-          .disabled(viewModel.settings.isStartOnLoginOverridden)
+          .disabled(configuration.isStartOnLoginForced)
         }
         .padding(10)
         Spacer()
@@ -400,21 +314,21 @@ public struct SettingsView: View {
                 .font(.caption)
               TextField(
                 PlaceholderText.accountSlug,
-                text: $viewModel.settings.accountSlug
+                text: $viewModel.accountSlug
               )
               .autocorrectionDisabled()
               .textInputAutocapitalization(.never)
               .submitLabel(.done)
-              .disabled(viewModel.settings.isAccountSlugOverridden)
+              .disabled(configuration.isAccountSlugForced)
               .padding(.bottom, 10)
 
               Spacer()
 
-              Toggle(isOn: $viewModel.settings.connectOnStart) {
+              Toggle(isOn: $viewModel.connectOnStart) {
                 Text("Automatically connect when Firezone is launched")
               }
               .toggleStyle(.switch)
-              .disabled(viewModel.settings.isConnectOnStartOverridden)
+              .disabled(configuration.isConnectOnStartForced)
             }
           },
           header: { Text("General Settings") },
@@ -450,10 +364,10 @@ public struct SettingsView: View {
               .frame(width: 150, alignment: .trailing)
             TextField(
               "",
-              text: $viewModel.settings.authURL,
-              prompt: Text(PlaceholderText.authBaseURL)
+              text: $viewModel.authURL,
+              prompt: Text(PlaceholderText.authURL)
             )
-            .disabled(viewModel.settings.isAuthURLOverridden)
+            .disabled(configuration.isAuthURLForced)
             .frame(width: 250)
           }
 
@@ -463,10 +377,10 @@ public struct SettingsView: View {
               .frame(width: 150, alignment: .trailing)
             TextField(
               "",
-              text: $viewModel.settings.apiURL,
+              text: $viewModel.apiURL,
               prompt: Text(PlaceholderText.apiURL)
             )
-            .disabled(viewModel.settings.isApiURLOverridden)
+            .disabled(configuration.isApiURLForced)
             .frame(width: 250)
           }
 
@@ -476,10 +390,10 @@ public struct SettingsView: View {
               .frame(width: 150, alignment: .trailing)
             TextField(
               "",
-              text: $viewModel.settings.logFilter,
+              text: $viewModel.logFilter,
               prompt: Text(PlaceholderText.logFilter)
             )
-            .disabled(viewModel.settings.isLogFilterOverridden)
+            .disabled(configuration.isLogFilterForced)
             .frame(width: 250)
           }
         }
@@ -499,13 +413,13 @@ public struct SettingsView: View {
                   .foregroundStyle(.secondary)
                   .font(.caption)
                 TextField(
-                  PlaceholderText.authBaseURL,
-                  text: $viewModel.settings.authURL
+                  PlaceholderText.authURL,
+                  text: $viewModel.authURL
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
-                .disabled(viewModel.settings.isAuthURLOverridden)
+                .disabled(configuration.isAuthURLForced)
               }
               VStack(alignment: .leading, spacing: 2) {
                 Text("API URL")
@@ -513,12 +427,12 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.apiURL,
-                  text: $viewModel.settings.apiURL
+                  text: $viewModel.apiURL
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
-                .disabled(viewModel.settings.isApiURLOverridden)
+                .disabled(configuration.isApiURLForced)
               }
               VStack(alignment: .leading, spacing: 2) {
                 Text("Log Filter")
@@ -526,12 +440,12 @@ public struct SettingsView: View {
                   .font(.caption)
                 TextField(
                   PlaceholderText.logFilter,
-                  text: $viewModel.settings.logFilter
+                  text: $viewModel.logFilter
                 )
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
                 .submitLabel(.done)
-                .disabled(viewModel.settings.isLogFilterOverridden)
+                .disabled(configuration.isLogFilterForced)
               }
               HStack {
                 Spacer()
@@ -767,11 +681,6 @@ public struct SettingsView: View {
 
   private func saveSettings() async throws {
     try await viewModel.save()
-
-    if [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
-      // TODO: Warn user instead of signing out
-      try await self.store.signOut()
-    }
   }
 
   // Calculates the total size of our logs by summing the size of the
