@@ -72,6 +72,11 @@ public class Configuration: ObservableObject {
     set { defaults.set(newValue, forKey: Keys.disableUpdateCheck) }
   }
 
+  var supportURL: String {
+    get { defaults.string(forKey: Keys.supportURL) ?? Self.defaultSupportURL }
+    set { defaults.set(newValue, forKey: Keys.supportURL) }
+  }
+
 #if DEBUG
   static let defaultAuthURL = "https://app.firez.one"
   static let defaultApiURL = "wss://api.firez.one"
@@ -86,6 +91,7 @@ public class Configuration: ObservableObject {
   static let defaultConnectOnStart = true
   static let defaultStartOnLogin = false
   static let defaultDisableUpdateCheck = false
+  static let defaultSupportURL = "https://firezone.dev/support"
 
   private struct Keys {
     static let authURL = "authURL"
@@ -97,6 +103,7 @@ public class Configuration: ObservableObject {
     static let connectOnStart = "connectOnStart"
     static let startOnLogin = "startOnLogin"
     static let disableUpdateCheck = "disableUpdateCheck"
+    static let supportURL = "supportURL"
   }
 
   private var defaults: UserDefaults
