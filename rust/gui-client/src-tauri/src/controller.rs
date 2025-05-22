@@ -327,7 +327,7 @@ impl<I: GuiIntegration> Controller<I> {
                     self.handle_update_notification(notification)?
                 }
                 EventloopTick::UpdateNotification(None) => {
-                    return Err(anyhow!("Update checker task stopped"));
+                    // Update task may be disabled by MDM, ignore if it stops / is not running.
                 }
                 EventloopTick::NewInstanceLaunched(None) => {
                     return Err(anyhow!("GUI IPC socket closed"));
