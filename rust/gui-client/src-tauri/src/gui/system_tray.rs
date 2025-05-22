@@ -589,11 +589,8 @@ mod tests {
 
     #[test]
     fn no_resources_no_favorites() {
-        let resources = vec![];
-        let favorites = Default::default();
-        let disabled_resources = Default::default();
-        let input = signed_in(resources, favorites, disabled_resources);
-        let actual = input.into_menu();
+        let actual = signed_in(vec![], HashSet::default(), None).into_menu();
+
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
@@ -611,11 +608,9 @@ mod tests {
 
     #[test]
     fn no_resources_invalid_favorite() {
-        let resources = vec![];
-        let favorites = HashSet::from([ResourceId::from_u128(42)]);
-        let disabled_resources = Default::default();
-        let input = signed_in(resources, favorites, disabled_resources);
-        let actual = input.into_menu();
+        let actual =
+            signed_in(vec![], HashSet::from([ResourceId::from_u128(42)]), None).into_menu();
+
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
@@ -633,11 +628,8 @@ mod tests {
 
     #[test]
     fn some_resources_no_favorites() {
-        let resources = resources();
-        let favorites = Default::default();
-        let disabled_resources = Default::default();
-        let input = signed_in(resources, favorites, disabled_resources);
-        let actual = input.into_menu();
+        let actual = signed_in(resources(), HashSet::default(), None).into_menu();
+
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
@@ -698,6 +690,7 @@ mod tests {
                     .copyable(ALL_GATEWAYS_OFFLINE),
             )
             .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+
         assert_eq!(
             actual,
             expected,
@@ -708,13 +701,15 @@ mod tests {
 
     #[test]
     fn some_resources_one_favorite() -> Result<()> {
-        let resources = resources();
-        let favorites = HashSet::from([ResourceId::from_str(
-            "03000143-e25e-45c7-aafb-144990e57dcd",
-        )?]);
-        let disabled_resources = Default::default();
-        let input = signed_in(resources, favorites, disabled_resources);
-        let actual = input.into_menu();
+        let actual = signed_in(
+            resources(),
+            HashSet::from([ResourceId::from_str(
+                "03000143-e25e-45c7-aafb-144990e57dcd",
+            )?]),
+            None,
+        )
+        .into_menu();
+
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
@@ -792,13 +787,15 @@ mod tests {
 
     #[test]
     fn some_resources_invalid_favorite() -> Result<()> {
-        let resources = resources();
-        let favorites = HashSet::from([ResourceId::from_str(
-            "00000000-0000-0000-0000-000000000000",
-        )?]);
-        let disabled_resources = Default::default();
-        let input = signed_in(resources, favorites, disabled_resources);
-        let actual = input.into_menu();
+        let actual = signed_in(
+            resources(),
+            HashSet::from([ResourceId::from_str(
+                "00000000-0000-0000-0000-000000000000",
+            )?]),
+            None,
+        )
+        .into_menu();
+
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
