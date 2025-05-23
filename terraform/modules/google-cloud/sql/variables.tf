@@ -28,7 +28,7 @@ variable "database_name" {
 
 variable "database_version" {
   description = "Version of the Cloud SQL database"
-  default     = "POSTGRES_15"
+  default     = "POSTGRES_17"
 }
 
 variable "database_highly_available" {
