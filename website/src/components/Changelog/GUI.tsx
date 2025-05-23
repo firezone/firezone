@@ -8,7 +8,14 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        {os === OS.Windows && (
+          <ChangeItem pull="9213">
+            Adds the Client to the winget repository. You can install it via
+            `winget install Firezone.Client.GUI`.
+          </ChangeItem>
+        )}
+      </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-21")}>
         <ChangeItem pull="9147">
           Fixes an issue where connections failed to establish on machines
