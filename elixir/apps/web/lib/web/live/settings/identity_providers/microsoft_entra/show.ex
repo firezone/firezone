@@ -198,7 +198,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
             <.vertical_table_row>
               <:label>Created</:label>
               <:value>
-                <.created_by account={@account} schema={@provider} />
+                <.created_by schema={@provider} />
               </:value>
             </.vertical_table_row>
           </.vertical_table>

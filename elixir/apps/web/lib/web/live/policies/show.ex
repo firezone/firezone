@@ -230,7 +230,7 @@ defmodule Web.Policies.Show do
               Created
             </:label>
             <:value>
-              <.created_by account={@account} schema={@policy} />
+              <.created_by schema={@policy} />
             </:value>
           </.vertical_table_row>
         </.vertical_table>

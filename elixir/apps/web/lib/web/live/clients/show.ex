@@ -274,7 +274,7 @@ defmodule Web.Clients.Show do
               </.popover>
             </:label>
             <:value>
-              <.verified_by account={@account} schema={@client} />
+              <.verified_by schema={@client} />
             </:value>
           </.vertical_table_row>
 

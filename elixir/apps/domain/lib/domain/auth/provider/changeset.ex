@@ -135,12 +135,4 @@ defmodule Domain.Auth.Provider.Changeset do
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())
   end
-
-  defp reset_created_by(changeset) do
-    changeset
-    |> put_change(:created_by, nil)
-    |> put_change(:created_by_identity_id, nil)
-    |> put_change(:created_by_actor_id, nil)
-    |> put_change(:created_by_subject, nil)
-  end
 end
