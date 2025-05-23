@@ -11,7 +11,7 @@ use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, elevation, gui, logging, settings};
 use firezone_telemetry::Telemetry;
-use settings::AdvancedSettings;
+use settings::AdvancedSettingsLegacy;
 use tracing_subscriber::EnvFilter;
 
 fn main() -> ExitCode {
@@ -28,7 +28,7 @@ fn main() -> ExitCode {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
-    let settings = settings::load_advanced_settings().unwrap_or_default();
+    let settings = settings::load_advanced_settings::<AdvancedSettingsLegacy>().unwrap_or_default();
 
     let mut telemetry = Telemetry::default();
     telemetry.start(
@@ -61,7 +61,11 @@ fn main() -> ExitCode {
     }
 }
 
-fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettings) -> Result<()> {
+fn try_main(
+    cli: Cli,
+    rt: &tokio::runtime::Runtime,
+    mut settings: AdvancedSettingsLegacy,
+) -> Result<()> {
     let config = gui::RunConfig {
         inject_faults: cli.inject_faults,
         debug_update_check: cli.debug_update_check,
@@ -186,11 +190,11 @@ fn try_main(cli: Cli, rt: &tokio::runtime::Runtime, mut settings: AdvancedSettin
 }
 
 /// Parse the log filter from settings, showing an error and fixing it if needed
-fn fix_log_filter(settings: &mut AdvancedSettings) -> Result<()> {
+fn fix_log_filter(settings: &mut AdvancedSettingsLegacy) -> Result<()> {
     if EnvFilter::try_new(&settings.log_filter).is_ok() {
         return Ok(());
     }
-    settings.log_filter = AdvancedSettings::default().log_filter;
+    settings.log_filter = AdvancedSettingsLegacy::default().log_filter;
 
     native_dialog::MessageDialog::new()
         .set_title("Log filter error")

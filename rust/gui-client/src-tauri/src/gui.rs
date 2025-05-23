@@ -9,7 +9,7 @@ use crate::{
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
     logging,
-    settings::{self, AdvancedSettings},
+    settings::{self, AdvancedSettings, AdvancedSettingsLegacy},
     updates,
 };
 use anyhow::{Context, Result, bail};
@@ -188,7 +188,7 @@ pub enum ServerMsg {
 pub fn run(
     rt: &tokio::runtime::Runtime,
     config: RunConfig,
-    advanced_settings: AdvancedSettings,
+    advanced_settings: AdvancedSettingsLegacy,
     reloader: firezone_logging::FilterReloadHandle,
 ) -> Result<()> {
     // Needed for the deep link server
@@ -204,6 +204,9 @@ pub fn run(
             return Err(anyhow::Error::new(AlreadyRunning));
         }
     };
+
+    let (general_settings, advanced_settings) =
+        rt.block_on(settings::migrate_legacy_settings(advanced_settings));
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
     let (ready_tx, mut ready_rx) = mpsc::channel::<tauri::AppHandle>(1);
@@ -329,11 +332,13 @@ pub fn run(
             tray,
         };
 
+
         // Spawn the controller
         let ctrl_task = tokio::spawn(Controller::start(
             ctlr_tx,
             integration,
             ctlr_rx,
+            general_settings,
             advanced_settings,
             reloader,
             updates_rx,
@@ -431,7 +436,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
     tokio::time::sleep_until(quit_time).await;
 
     // Write the settings so we can check the path for those
-    settings::save(&AdvancedSettings::default()).await?;
+    settings::save_advanced(&AdvancedSettings::default()).await?;
 
     // Check results of tests
     let zip_len = tokio::fs::metadata(&path)

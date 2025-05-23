@@ -3,7 +3,7 @@ use crate::{
     gui::{self, system_tray},
     ipc::{self, SocketId},
     logging, service,
-    settings::{self, AdvancedSettings},
+    settings::{self, AdvancedSettings, GeneralSettings},
     updates, uptime,
 };
 use anyhow::{Context, Result, anyhow, bail};
@@ -32,7 +32,7 @@ mod ran_before;
 pub type CtlrTx = mpsc::Sender<ControllerRequest>;
 
 pub struct Controller<I: GuiIntegration> {
-    /// Debugging-only settings like API URL, auth URL, log filter
+    general_settings: GeneralSettings,
     advanced_settings: AdvancedSettings,
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
@@ -205,10 +205,12 @@ enum EventloopTick {
 pub struct FailedToReceiveHello(anyhow::Error);
 
 impl<I: GuiIntegration> Controller<I> {
+    #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     pub(crate) async fn start(
         ctlr_tx: CtlrTx,
         integration: I,
         rx: mpsc::Receiver<ControllerRequest>,
+        general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
         log_filter_reloader: FilterReloadHandle,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
@@ -227,6 +229,7 @@ impl<I: GuiIntegration> Controller<I> {
         let network_notifier = new_network_notifier().await?.boxed();
 
         let controller = Controller {
+            general_settings,
             advanced_settings,
             auth: auth::Auth::new()?,
             clear_logs_callback: None,
@@ -470,7 +473,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.advanced_settings = *settings;
 
                 // Save to disk
-                settings::save(&self.advanced_settings).await?;
+                settings::save_advanced(&self.advanced_settings).await?;
 
                 // Tell tunnel about new log level
                 self.send_ipc(&service::ClientMsg::ApplyLogFilter {
@@ -524,9 +527,7 @@ impl<I: GuiIntegration> Controller<I> {
                     .set_welcome_window_visible(false, self.auth.session())?;
             }
             SystemTrayMenu(system_tray::Event::AddFavorite(resource_id)) => {
-                self.advanced_settings
-                    .favorite_resources
-                    .insert(resource_id);
+                self.general_settings.favorite_resources.insert(resource_id);
                 self.refresh_favorite_resources().await?;
             }
             SystemTrayMenu(system_tray::Event::AdminPortal) => self
@@ -556,7 +557,7 @@ impl<I: GuiIntegration> Controller<I> {
                 }
             },
             SystemTrayMenu(system_tray::Event::RemoveFavorite(resource_id)) => {
-                self.advanced_settings
+                self.general_settings
                     .favorite_resources
                     .remove(&resource_id);
                 self.refresh_favorite_resources().await?;
@@ -565,11 +566,11 @@ impl<I: GuiIntegration> Controller<I> {
                 self.try_retry_connection().await?
             }
             SystemTrayMenu(system_tray::Event::EnableInternetResource) => {
-                self.advanced_settings.internet_resource_enabled = Some(true);
+                self.general_settings.internet_resource_enabled = Some(true);
                 self.update_disabled_resources().await?;
             }
             SystemTrayMenu(system_tray::Event::DisableInternetResource) => {
-                self.advanced_settings.internet_resource_enabled = Some(false);
+                self.general_settings.internet_resource_enabled = Some(false);
                 self.update_disabled_resources().await?;
             }
             SystemTrayMenu(system_tray::Event::ShowWindow(window)) => {
@@ -804,7 +805,7 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     async fn update_disabled_resources(&mut self) -> Result<()> {
-        settings::save(&self.advanced_settings).await?;
+        settings::save_general(&self.general_settings).await?;
 
         let Some(internet_resource) = self.status.internet_resource() else {
             return Ok(());
@@ -812,7 +813,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         let mut disabled_resources = BTreeSet::new();
 
-        if !self.advanced_settings.internet_resource_enabled() {
+        if !self.general_settings.internet_resource_enabled() {
             disabled_resources.insert(internet_resource.id());
         }
 
@@ -827,7 +828,7 @@ impl<I: GuiIntegration> Controller<I> {
 
     /// Saves the current settings (including favorites) to disk and refreshes the tray menu
     async fn refresh_favorite_resources(&mut self) -> Result<()> {
-        settings::save(&self.advanced_settings).await?;
+        settings::save_general(&self.general_settings).await?;
         self.refresh_system_tray_menu();
         Ok(())
     }
@@ -847,8 +848,8 @@ impl<I: GuiIntegration> Controller<I> {
                 Status::TunnelReady { resources } => {
                     system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
                         actor_name: auth_session.actor_name.clone(),
-                        favorite_resources: self.advanced_settings.favorite_resources.clone(),
-                        internet_resource_enabled: self.advanced_settings.internet_resource_enabled,
+                        favorite_resources: self.general_settings.favorite_resources.clone(),
+                        internet_resource_enabled: self.general_settings.internet_resource_enabled,
                         resources: resources.clone(),
                     })
                 }
