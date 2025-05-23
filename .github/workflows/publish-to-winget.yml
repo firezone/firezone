@@ -1,0 +1,24 @@
+name: Publish to WinGet
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  publish:
+    name: Publish GUI Client to winget
+    runs-on: windows-latest
+    if: ${{ startsWith(github.event.release.name, gui-client) }}
+    steps:
+      - id: get-version
+        run: |
+          version=${{ github.event.release.name }}
+          version=${version#gui-client-}
+          echo "version=$version" >> $GITHUB_OUTPUT
+        shell: bash
+      - uses: vedantmgoyal9/winget-releaser@3e78d7ff0f525445bca5d6a989d31cdca383372e # main
+        with:
+          identifier: Firezone.Client.GUI
+          version: ${{ steps.get-version.outputs.version }}
+          token: ${{ secrets.WINGET_TOKEN }}
+          release-notes-url: https://firezone.dev/changelog
