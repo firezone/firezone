@@ -2,7 +2,7 @@ services:
   # Dependencies
   postgres:
     # TODO: Enable pgaudit on dev instance. See https://github.com/pgaudit/pgaudit/issues/44#issuecomment-455090262
-    image: postgres:15
+    image: postgres:17
     command: ["postgres", "-c", "wal_level=logical"]
     volumes:
       - postgres-data:/var/lib/postgresql/data
