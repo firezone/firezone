@@ -3,7 +3,7 @@ defmodule Domain.Repo.Migrations.MoveSitesFieldsToConfigurations do
 
   @doc """
   XXX: The following env vars are used to configure interface settings
-  on bootup and so we don't want to store them in the DB or update them
+  on boot-up and so we don't want to store them in the DB or update them
   at runtime. Leave them out of this migration.
 
   WIREGUARD_IPV4_ENABLED
