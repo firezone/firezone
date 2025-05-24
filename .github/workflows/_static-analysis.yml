@@ -8,6 +8,8 @@ jobs:
   pr-lint:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     permissions:
       pull-requests: read
     steps:
@@ -15,8 +17,11 @@ jobs:
         # Don't run for Dependabot PRs
         if: ${{ !contains(github.event.pull_request.head.label, 'dependabot') }}
         env:
-          PR_TITLE: "${{ github.event.pull_request.title }}"
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY_NAME: ${{ github.repository }}
         run: |
+          PR_TITLE=$(gh pr view $PULL_REQUEST_NUMBER --repo $REPOSITORY_NAME --json title -q '.title')
+
           pr_title_length=${#PR_TITLE}
 
           # 64 instead of 72 because GitHub adds the PR number to the title
@@ -25,8 +30,6 @@ jobs:
             exit 1
           fi
       - uses: amannn/action-semantic-pull-request@0723387faaf9b38adef4775cd42cfd5155ed6017 #v5.5.3
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   version-check:
     runs-on: ubuntu-22.04
