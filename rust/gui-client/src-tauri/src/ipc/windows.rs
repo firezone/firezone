@@ -166,7 +166,7 @@ fn ipc_path(id: SocketId) -> String {
 ///
 /// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
 ///
-/// Public because the GUI Client re-uses this for deep links. Eventually that code
+/// Public because the GUI Client reuses this for deep links. Eventually that code
 /// will be de-duped into this code.
 pub fn named_pipe_path(id: &str) -> String {
     format!(r"\\.\pipe\{}", id)
