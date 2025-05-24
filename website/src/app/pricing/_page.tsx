@@ -6,7 +6,7 @@ import { HiCheck } from "react-icons/hi2";
 import Link from "next/link";
 import PlanTable from "./plan_table";
 import { useState } from "react";
-import { Accordion } from "flowbite-react";
+import { Accordion, AccordionContent, AccordionPanel, AccordionTitle } from "flowbite-react";
 import { FaCheck, FaCircleCheck } from "react-icons/fa6";
 
 export default function _Page() {
@@ -324,11 +324,11 @@ export default function _Page() {
           </h2>
 
           <Accordion>
-            <Accordion.Panel>
-              <Accordion.Title>
+            <AccordionPanel>
+              <AccordionTitle>
                 How long does it take to set up Firezone?
-              </Accordion.Title>
-              <Accordion.Content>
+              </AccordionTitle>
+              <AccordionContent>
                 A simple deployment takes{" "}
                 <Link
                   href="/kb/quickstart"
@@ -355,11 +355,11 @@ export default function _Page() {
                   Visit our docs
                 </Link>{" "}
                 for more information and step by step instructions.
-              </Accordion.Content>
-            </Accordion.Panel>
-            <Accordion.Panel>
-              <Accordion.Title>Is there a self-hosted plan?</Accordion.Title>
-              <Accordion.Content>
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>Is there a self-hosted plan?</AccordionTitle>
+              <AccordionContent>
                 All of the source code for the entire Firezone product is
                 available at our{" "}
                 <Link
@@ -371,24 +371,24 @@ export default function _Page() {
                 , and you're free to self-host Firezone for your organization
                 without restriction. However, we don't offer documentation or
                 support for self-hosting Firezone at this time.
-              </Accordion.Content>
-            </Accordion.Panel>
-            <Accordion.Panel>
-              <Accordion.Title>
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>
                 Do I need to rip and replace my current VPN to use Firezone?
-              </Accordion.Title>
-              <Accordion.Content>
+              </AccordionTitle>
+              <AccordionContent>
                 No. As long they're set up to access different resources, you
                 can run Firezone alongside your existing remote access
                 solutions, and switch over whenever you’re ready. There’s no
                 need for any downtime or unnecessary disruptions.
-              </Accordion.Content>
-            </Accordion.Panel>
-            <Accordion.Panel>
-              <Accordion.Title>
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>
                 Can I try Firezone before I buy it?
-              </Accordion.Title>
-              <Accordion.Content>
+              </AccordionTitle>
+              <AccordionContent>
                 Yes. The Starter plan is free to use without limitation. No
                 credit card is required to get started. The Enterprise plan
                 includes a free pilot period to evaluate whether Firezone is a
@@ -400,13 +400,13 @@ export default function _Page() {
                   Contact sales
                 </Link>{" "}
                 to request a demo.
-              </Accordion.Content>
-            </Accordion.Panel>
-            <Accordion.Panel>
-              <Accordion.Title>
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>
                 My seat counts have changed. Can I adjust my plan?
-              </Accordion.Title>
-              <Accordion.Content>
+              </AccordionTitle>
+              <AccordionContent>
                 <p>Yes.</p>
                 <p className="mt-2">
                   For the <strong>Team</strong> plan, you can add or remove
@@ -426,26 +426,26 @@ export default function _Page() {
                   </strong>
                   .
                 </p>
-              </Accordion.Content>
-            </Accordion.Panel>
-            <Accordion.Panel>
-              <Accordion.Title>
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>
                 What happens to my data with Firezone enabled?
-              </Accordion.Title>
-              <Accordion.Content>
+              </AccordionTitle>
+              <AccordionContent>
                 Network traffic is always end-to-end encrypted, and by default,
                 routes directly to Gateways running on your infrastructure. In
                 rare circumstances, encrypted traffic can pass through our
                 global relay network if a direct connection cannot be
                 established. Firezone can never decrypt the contents of your
                 traffic.
-              </Accordion.Content>
-            </Accordion.Panel>
-            <Accordion.Panel>
-              <Accordion.Title>
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>
                 How do I cancel or change my plan?
-              </Accordion.Title>
-              <Accordion.Content>
+              </AccordionTitle>
+              <AccordionContent>
                 For Starter and Team plans, you can downgrade by going to your
                 Account settings in your Firezone admin portal. For Enterprise
                 plans, contact your account manager for subscription updates. If
@@ -457,31 +457,31 @@ export default function _Page() {
                   contact support
                 </Link>
                 .
-              </Accordion.Content>
-            </Accordion.Panel>
-            <Accordion.Panel>
-              <Accordion.Title>When will I be billed?</Accordion.Title>
-              <Accordion.Content>
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>When will I be billed?</AccordionTitle>
+              <AccordionContent>
                 The Team plan is billed monthly on the same day you start
                 service until canceled. Enterprise plans are billed annually.
-              </Accordion.Content>
-            </Accordion.Panel>
-            <Accordion.Panel>
-              <Accordion.Title>
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>
                 What payment methods are available?
-              </Accordion.Title>
-              <Accordion.Content>
+              </AccordionTitle>
+              <AccordionContent>
                 The Starter plan is free and does not require a credit card to
                 get started. Team and Enterprise plans can be paid via credit
                 card, ACH, or wire transfer.
-              </Accordion.Content>
-            </Accordion.Panel>
-            <Accordion.Panel>
-              <Accordion.Title>
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>
                 Do you offer special pricing for nonprofits and educational
                 institutions?
-              </Accordion.Title>
-              <Accordion.Content>
+              </AccordionTitle>
+              <AccordionContent>
                 Yes. Not-for-profit organizations and educational institutions
                 are eligible for a 50% discount.{" "}
                 <Link
@@ -491,18 +491,18 @@ export default function _Page() {
                   Contact sales
                 </Link>{" "}
                 to request the discount.
-              </Accordion.Content>
-            </Accordion.Panel>
-            <Accordion.Panel>
-              <Accordion.Title>
+              </AccordionContent>
+            </AccordionPanel>
+            <AccordionPanel>
+              <AccordionTitle>
                 What payment methods are available?
-              </Accordion.Title>
-              <Accordion.Content>
+              </AccordionTitle>
+              <AccordionContent>
                 The Starter plan is free and does not require a credit card to
                 get started. Team and Enterprise plans can be paid via credit
                 card, ACH, or wire transfer.
-              </Accordion.Content>
-            </Accordion.Panel>
+              </AccordionContent>
+            </AccordionPanel>
           </Accordion>
         </div>
       </section>
