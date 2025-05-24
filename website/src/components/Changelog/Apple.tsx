@@ -24,7 +24,8 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.15" date={new Date("2025-05-23")}>
         <ChangeItem pull="9204">
           Adds a
           <Link
@@ -72,7 +73,7 @@ export default function Apple() {
           Fixes an issue where connections failed to establish on machines with
           multiple valid egress IPs.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.14" date={new Date("2025-05-02")}>
         <ChangeItem pull="9005">
           Fixes an issue where the IP checksum was not updated when ECN bits
