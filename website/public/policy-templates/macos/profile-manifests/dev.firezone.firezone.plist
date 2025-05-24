@@ -129,7 +129,7 @@ A profile can consist of payloads with different version numbers. For example, c
 			<key>pfm_default</key>
 			<string>https://app.firezone.dev</string>
 			<key>pfm_description</key>
-			<string>The base URL to open when users sign in. The accountSlug will be appended to this. In most cases you shouldn't change this.</string>
+			<string>The base URL to open when users sign in. The accountSlug will be appended to this. In most cases you shouldn't change this. Setting this field will override the user's setting.</string>
 			<key>pfm_name</key>
 			<string>authURL</string>
 			<key>pfm_title</key>
@@ -141,7 +141,7 @@ A profile can consist of payloads with different version numbers. For example, c
 			<key>pfm_default</key>
 			<string>wss://api.firezone.dev</string>
 			<key>pfm_description</key>
-			<string>The control plane WebSocket URL that the network extension connects to. In most cases you shouldn't change this.</string>
+			<string>The control plane WebSocket URL that the network extension connects to. In most cases you shouldn't change this. Setting this field will override the user's setting.</string>
 			<key>pfm_name</key>
 			<string>apiURL</string>
 			<key>pfm_title</key>
@@ -153,7 +153,7 @@ A profile can consist of payloads with different version numbers. For example, c
 			<key>pfm_default</key>
 			<string>info</string>
 			<key>pfm_description</key>
-			<string>The RUST_LOG-style filter string to apply to the network extension for increasing log output to use for connectivity troubleshooting. In most cases you shouldn't change this.</string>
+			<string>The RUST_LOG-style filter string to apply to the network extension for increasing log output to use for connectivity troubleshooting. In most cases you shouldn't change this. Setting this field will override the user's setting.</string>
 			<key>pfm_name</key>
 			<string>logFilter</string>
 			<key>pfm_title</key>
@@ -163,7 +163,7 @@ A profile can consist of payloads with different version numbers. For example, c
 		</dict>
 		<dict>
 			<key>pfm_description</key>
-			<string>Your Firezone account ID or slug which will be appended to the authURL to form the complete sign in URL. Will be set automatically by the client after the first successful authentication.</string>
+			<string>Your Firezone account ID or slug which will be appended to the authURL to form the complete sign in URL. Will be set automatically by the client after the first successful authentication. Setting this field will override the user's setting.</string>
 			<key>pfm_name</key>
 			<string>accountSlug</string>
 			<key>pfm_title</key>
@@ -175,11 +175,11 @@ A profile can consist of payloads with different version numbers. For example, c
 			<key>pfm_default</key>
 			<false/>
 			<key>pfm_description</key>
-			<string>If set to true and you have the Internet Resource enabled for this user, enforces the use of the Internet Resource for this Mac while Firezone is signed in.</string>
+			<string>If set to true and you have the Internet Resource enabled for this user in the Firezone admin portal, enforces the use of the Internet Resource for this Mac while Firezone is signed in. If set to false, prevents the Internet Resource from being used. Setting this field will prevent the user from enabling or disabling the Internet Resource.</string>
 			<key>pfm_name</key>
 			<string>internetResourceEnabled</string>
 			<key>pfm_title</key>
-			<string>Enforce full-tunnel</string>
+			<string>Enforce full-tunnel on or off</string>
 			<key>pfm_type</key>
 			<string>boolean</string>
 		</dict>
@@ -199,7 +199,7 @@ A profile can consist of payloads with different version numbers. For example, c
 			<key>pfm_default</key>
 			<false/>
 			<key>pfm_description</key>
-			<string>Try to connect to Firezone using the saved token and configuration when the client application starts. If the authentication token is expired, the client will start in a disconnected state.</string>
+			<string>Try to connect to Firezone using the saved token and configuration when the client application starts. If the authentication token is expired, the client will start in a disconnected state. Setting this field will override the user's setting.</string>
 			<key>pfm_name</key>
 			<string>connectOnStart</string>
 			<key>pfm_title</key>
@@ -211,7 +211,7 @@ A profile can consist of payloads with different version numbers. For example, c
 			<key>pfm_default</key>
 			<false/>
 			<key>pfm_description</key>
-			<string>Start the Firezone client when the user logs into the machine. In some cases you may want to configure this using a Managed Login Items payload instead.</string>
+			<string>Start the Firezone client when the user logs into the machine. In many cases you probably want to configure this using a Managed Login Items payload instead. Requires the Firezone client to be running to take effect. Setting this field will override the user's setting.</string>
 			<key>pfm_name</key>
 			<string>startOnLogin</string>
 			<key>pfm_title</key>
@@ -223,7 +223,7 @@ A profile can consist of payloads with different version numbers. For example, c
 			<key>pfm_default</key>
 			<false/>
 			<key>pfm_description</key>
-			<string>Disables the update check and notification for the Standalone variant of the macOS client. App Store versions 1.4.15 and higher already have this disabled.</string>
+			<string>Disables the update check and notification for the standalone variant of the macOS client. App Store variant versions 1.4.15 and higher already have this disabled.</string>
 			<key>pfm_name</key>
 			<string>disableUpdateCheck</string>
 			<key>pfm_title</key>
