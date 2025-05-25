@@ -134,6 +134,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -154,6 +155,9 @@ android {
 }
 
 dependencies {
+    // Desugaring - needed for Java 8+ APIs on older Android versions
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+
     // AndroidX
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
@@ -177,7 +181,7 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.56.2")
     implementation("androidx.browser:browser:1.8.0")
     implementation("com.google.firebase:firebase-installations-ktx:18.0.0")
-    implementation("com.google.android.gms:play-services-tasks:18.2.1")
+    implementation("com.google.android.gms:play-services-tasks:18.3.0")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
     kapt("com.google.dagger:hilt-android-compiler:2.56.2")
     // Instrumented Tests
