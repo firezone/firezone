@@ -68,13 +68,13 @@ class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
 
                 is SettingsViewModel.ViewAction.FillSettings -> {
                     binding.etAuthBaseUrlInput.apply {
-                        setText(action.config.authBaseUrl)
+                        setText(action.userConfig.authBaseUrl)
                     }
                     binding.etApiUrlInput.apply {
-                        setText(action.config.apiUrl)
+                        setText(action.userConfig.apiUrl)
                     }
                     binding.etLogFilterInput.apply {
-                        setText(action.config.logFilter)
+                        setText(action.userConfig.logFilter)
                     }
                 }
             }

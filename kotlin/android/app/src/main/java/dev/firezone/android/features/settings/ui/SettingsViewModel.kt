@@ -11,7 +11,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.data.model.Config
+import dev.firezone.android.core.data.model.UserConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,7 +40,7 @@ internal class SettingsViewModel
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        private var config = Config(authBaseUrl = "", apiUrl = "", logFilter = "")
+        private var userConfig = UserConfig(authBaseUrl = "", apiUrl = "", logFilter = "")
 
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
@@ -71,7 +71,7 @@ internal class SettingsViewModel
 
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
-                repo.saveSettings(config).collect {
+                repo.saveSettings(userConfig).collect {
                     actionMutableLiveData.postValue(ViewAction.NavigateBack)
                 }
             }
@@ -82,17 +82,17 @@ internal class SettingsViewModel
         }
 
         fun onValidateAuthBaseUrl(authBaseUrl: String) {
-            this.config.authBaseUrl = authBaseUrl
+            this.userConfig.authBaseUrl = authBaseUrl
             onFieldUpdated()
         }
 
         fun onValidateApiUrl(apiUrl: String) {
-            this.config.apiUrl = apiUrl
+            this.userConfig.apiUrl = apiUrl
             onFieldUpdated()
         }
 
         fun onValidateLogFilter(logFilter: String) {
-            this.config.logFilter = logFilter
+            this.userConfig.logFilter = logFilter
             onFieldUpdated()
         }
 
@@ -148,11 +148,11 @@ internal class SettingsViewModel
         }
 
         fun resetSettingsToDefaults() {
-            config = repo.getDefaultConfigSync()
+            userConfig = repo.getDefaultConfigSync()
             repo.resetFavorites()
             onFieldUpdated()
             actionMutableLiveData.postValue(
-                ViewAction.FillSettings(config),
+                ViewAction.FillSettings(userConfig),
             )
         }
 
@@ -198,9 +198,9 @@ internal class SettingsViewModel
 
         private fun areFieldsValid(): Boolean {
             // This comes from the backend account slug validator at elixir/apps/domain/lib/domain/accounts/account/changeset.ex
-            return URLUtil.isValidUrl(config.authBaseUrl) &&
-                isUriValid(config.apiUrl) &&
-                config.logFilter.isNotBlank()
+            return URLUtil.isValidUrl(userConfig.authBaseUrl) &&
+                isUriValid(userConfig.apiUrl) &&
+                userConfig.logFilter.isNotBlank()
         }
 
         private fun isUriValid(uri: String): Boolean =
@@ -220,7 +220,7 @@ internal class SettingsViewModel
             data object NavigateBack : ViewAction()
 
             data class FillSettings(
-                val config: Config,
+                val userConfig: UserConfig,
             ) : ViewAction()
         }
     }

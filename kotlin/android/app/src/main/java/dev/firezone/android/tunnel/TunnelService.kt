@@ -121,7 +121,7 @@ class TunnelService : VpnService() {
                 routes4JSON: String,
                 routes6JSON: String,
             ) {
-                // init tunnel config
+                // init tunnel userConfig
                 tunnelDnsAddresses = moshi.adapter<MutableList<String>>().fromJson(dnsAddresses)!!
                 val routes4 = moshi.adapter<MutableList<Cidr>>().fromJson(routes4JSON)!!
                 val routes6 = moshi.adapter<MutableList<Cidr>>().fromJson(routes6JSON)!!

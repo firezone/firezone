@@ -7,7 +7,7 @@ import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import dev.firezone.android.BuildConfig
-import dev.firezone.android.core.data.model.Config
+import dev.firezone.android.core.data.model.UserConfig
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,8 +67,8 @@ internal class Repository
             MutableStateFlow(Favorites(HashSet(sharedPreferences.getStringSet(FAVORITE_RESOURCES_KEY, null).orEmpty())))
         val favorites = _favorites.asStateFlow()
 
-        fun getConfigSync(): Config =
-            Config(
+        fun getConfigSync(): UserConfig =
+            UserConfig(
                 sharedPreferences.getString(AUTH_BASE_URL_KEY, null)
                     ?: BuildConfig.AUTH_BASE_URL,
                 sharedPreferences.getString(API_URL_KEY, null)
@@ -77,24 +77,24 @@ internal class Repository
                     ?: BuildConfig.LOG_FILTER,
             )
 
-        fun getConfig(): Flow<Config> =
+        fun getConfig(): Flow<UserConfig> =
             flow {
                 emit(getConfigSync())
             }.flowOn(coroutineDispatcher)
 
-        fun getDefaultConfigSync(): Config =
-            Config(
+        fun getDefaultConfigSync(): UserConfig =
+            UserConfig(
                 BuildConfig.AUTH_BASE_URL,
                 BuildConfig.API_URL,
                 BuildConfig.LOG_FILTER,
             )
 
-        fun getDefaultConfig(): Flow<Config> =
+        fun getDefaultConfig(): Flow<UserConfig> =
             flow {
                 emit(getDefaultConfigSync())
             }.flowOn(coroutineDispatcher)
 
-        fun saveSettings(value: Config): Flow<Unit> =
+        fun saveSettings(value: UserConfig): Flow<Unit> =
             flow {
                 emit(
                     sharedPreferences
