@@ -36,7 +36,7 @@ internal class AuthViewModel
                         ViewAction.NavigateToSignIn
                     } else {
                         authFlowLaunched = true
-                        ViewAction.LaunchAuthFlow("${config.authBaseUrl}?state=$state&nonce=$nonce&as=client")
+                        ViewAction.LaunchAuthFlow("${config.authUrl}?state=$state&nonce=$nonce&as=client")
                     },
                 )
             }

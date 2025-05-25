@@ -40,7 +40,7 @@ internal class SettingsViewModel
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        private var userConfig = UserConfig(authBaseUrl = "", apiUrl = "", logFilter = "")
+        private var userConfig = UserConfig(authUrl = "", apiUrl = "", logFilter = "")
 
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
@@ -81,8 +81,8 @@ internal class SettingsViewModel
             actionMutableLiveData.postValue(ViewAction.NavigateBack)
         }
 
-        fun onValidateAuthBaseUrl(authBaseUrl: String) {
-            this.userConfig.authBaseUrl = authBaseUrl
+        fun onValidateAuthUrl(authUrl: String) {
+            this.userConfig.authUrl = authUrl
             onFieldUpdated()
         }
 
@@ -198,7 +198,7 @@ internal class SettingsViewModel
 
         private fun areFieldsValid(): Boolean {
             // This comes from the backend account slug validator at elixir/apps/domain/lib/domain/accounts/account/changeset.ex
-            return URLUtil.isValidUrl(userConfig.authBaseUrl) &&
+            return URLUtil.isValidUrl(userConfig.authUrl) &&
                 isUriValid(userConfig.apiUrl) &&
                 userConfig.logFilter.isNotBlank()
         }

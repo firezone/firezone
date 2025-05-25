@@ -10,7 +10,7 @@
 	<string name="save">Save</string>
 	<!-- Advanced Settings -->
 	<string name="advanced_settings_title">Advanced</string>
-	<string name="auth_base_url">Auth Base URL</string>
+	<string name="auth_url">Auth URL</string>
 	<string name="api_url">API URL</string>
 	<string name="log_filter">Log Filter</string>
 	<string name="button_reset_to_defaults">Reset to Defaults</string>

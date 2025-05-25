@@ -7,12 +7,12 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.Response
 
-internal class BaseUrlInterceptor(
+internal class UrlInterceptor(
     private val sharedPreferences: SharedPreferences,
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
-        val newUrl = BuildConfig.AUTH_BASE_URL.toHttpUrlOrNull()
+        val newUrl = BuildConfig.AUTH_URL.toHttpUrlOrNull()
 
         val newRequest =
             originalRequest

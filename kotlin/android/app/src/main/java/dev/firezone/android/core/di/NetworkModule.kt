@@ -8,7 +8,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
-import dev.firezone.android.core.BaseUrlInterceptor
+import dev.firezone.android.core.UrlInterceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -23,7 +23,7 @@ private const val NETWORK_TIMEOUT = 30L
 internal object NetworkModule {
     @Provides
     @Singleton
-    fun provideBaseUrlInterceptor(sharedPreferences: SharedPreferences): BaseUrlInterceptor = BaseUrlInterceptor(sharedPreferences)
+    fun provideBaseUrlInterceptor(sharedPreferences: SharedPreferences): UrlInterceptor = UrlInterceptor(sharedPreferences)
 
     @Singleton
     @Provides
@@ -35,7 +35,7 @@ internal object NetworkModule {
     @Singleton
     @Provides
     fun provideOkHttpClient(
-        baseUrlInterceptor: BaseUrlInterceptor,
+        urlInterceptor: UrlInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
     ) = OkHttpClient
         .Builder()
@@ -44,7 +44,7 @@ internal object NetworkModule {
         .readTimeout(NETWORK_TIMEOUT, TimeUnit.SECONDS)
         .writeTimeout(NETWORK_TIMEOUT, TimeUnit.SECONDS)
         .connectTimeout(NETWORK_TIMEOUT, TimeUnit.SECONDS)
-        .addInterceptor(baseUrlInterceptor)
+        .addInterceptor(urlInterceptor)
         .addInterceptor(loggingInterceptor)
         .build()
 

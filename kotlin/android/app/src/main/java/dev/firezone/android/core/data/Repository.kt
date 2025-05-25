@@ -69,8 +69,8 @@ internal class Repository
 
         fun getConfigSync(): UserConfig =
             UserConfig(
-                sharedPreferences.getString(AUTH_BASE_URL_KEY, null)
-                    ?: BuildConfig.AUTH_BASE_URL,
+                sharedPreferences.getString(AUTH_URL_KEY, null)
+                    ?: BuildConfig.AUTH_URL,
                 sharedPreferences.getString(API_URL_KEY, null)
                     ?: BuildConfig.API_URL,
                 sharedPreferences.getString(LOG_FILTER_KEY, null)
@@ -84,7 +84,7 @@ internal class Repository
 
         fun getDefaultConfigSync(): UserConfig =
             UserConfig(
-                BuildConfig.AUTH_BASE_URL,
+                BuildConfig.AUTH_URL,
                 BuildConfig.API_URL,
                 BuildConfig.LOG_FILTER,
             )
@@ -99,7 +99,7 @@ internal class Repository
                 emit(
                     sharedPreferences
                         .edit()
-                        .putString(AUTH_BASE_URL_KEY, value.authBaseUrl)
+                        .putString(AUTH_URL_KEY, value.authUrl)
                         .putString(API_URL_KEY, value.apiUrl)
                         .putString(LOG_FILTER_KEY, value.logFilter)
                         .apply(),
@@ -237,7 +237,7 @@ internal class Repository
         }
 
         companion object {
-            private const val AUTH_BASE_URL_KEY = "authBaseUrl"
+            private const val AUTH_URL_KEY = "authUrl"
             private const val ACTOR_NAME_KEY = "actorName"
             private const val API_URL_KEY = "apiUrl"
             private const val FAVORITE_RESOURCES_KEY = "favoriteResources"

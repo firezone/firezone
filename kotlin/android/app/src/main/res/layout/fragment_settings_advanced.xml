@@ -13,7 +13,7 @@
         android:layout_height="match_parent">
 
         <com.google.android.material.textfield.TextInputLayout
-            android:id="@+id/ilAuthBaseUrlInput"
+            android:id="@+id/ilAuthUrlInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:errorEnabled="true"
@@ -21,10 +21,10 @@
             app:layout_constraintTop_toTopOf="parent">
 
             <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etAuthBaseUrlInput"
+                android:id="@+id/etAuthUrlInput"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="@string/auth_base_url"
+                android:hint="@string/auth_url"
                 android:importantForAutofill="no"
                 android:inputType="text" />
 
@@ -37,7 +37,7 @@
             android:layout_marginTop="@dimen/spacing_1x"
             app:errorEnabled="true"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ilAuthBaseUrlInput">
+            app:layout_constraintTop_toBottomOf="@id/ilAuthUrlInput">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etApiUrlInput"

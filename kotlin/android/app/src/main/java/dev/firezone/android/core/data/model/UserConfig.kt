@@ -2,7 +2,7 @@
 package dev.firezone.android.core.data.model
 
 data class UserConfig(
-    var authBaseUrl: String,
+    var authUrl: String,
     var apiUrl: String,
     var logFilter: String,
 )

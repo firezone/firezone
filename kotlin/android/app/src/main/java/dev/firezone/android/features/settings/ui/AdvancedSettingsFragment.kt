@@ -30,11 +30,11 @@ class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
 
     private fun setupViews() {
         binding.apply {
-            etAuthBaseUrlInput.apply {
+            etAuthUrlInput.apply {
                 imeOptions = EditorInfo.IME_ACTION_DONE
                 setOnClickListener { isCursorVisible = true }
                 doOnTextChanged { text, _, _, _ ->
-                    viewModel.onValidateAuthBaseUrl(text.toString())
+                    viewModel.onValidateAuthUrl(text.toString())
                 }
             }
 
@@ -67,8 +67,8 @@ class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
                     requireActivity().finish()
 
                 is SettingsViewModel.ViewAction.FillSettings -> {
-                    binding.etAuthBaseUrlInput.apply {
-                        setText(action.userConfig.authBaseUrl)
+                    binding.etAuthUrlInput.apply {
+                        setText(action.userConfig.authUrl)
                     }
                     binding.etApiUrlInput.apply {
                         setText(action.userConfig.apiUrl)
