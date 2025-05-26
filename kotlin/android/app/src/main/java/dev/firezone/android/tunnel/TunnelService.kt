@@ -33,6 +33,8 @@ import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.isInternetResource
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.concurrent.Executors
@@ -236,6 +238,7 @@ class TunnelService : VpnService() {
                 // Only change VPN if appRestrictions have changed
                 val restrictionsManager = context.getSystemService(Context.RESTRICTIONS_SERVICE) as android.content.RestrictionsManager
                 val newAppRestrictions = restrictionsManager.applicationRestrictions
+                GlobalScope.launch { repo.saveManagedConfiguration(newAppRestrictions).collect {} }
                 val changed = MANAGED_CONFIGURATIONS.any { newAppRestrictions.getString(it) != appRestrictions.getString(it) }
                 if (!changed) {
                     return

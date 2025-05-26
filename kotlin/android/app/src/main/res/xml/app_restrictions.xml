@@ -24,4 +24,40 @@
         android:key="deviceName"
         android:restrictionType="string"
         android:title="@string/config_device_name_title" />
+
+    <restriction
+        android:description="@string/config_auth_url_description"
+        android:key="authUrl"
+        android:restrictionType="string"
+        android:title="@string/config_auth_url_title" />
+
+    <restriction
+        android:description="@string/config_api_url_description"
+        android:key="apiUrl"
+        android:restrictionType="string"
+        android:title="@string/config_api_url_title" />
+
+    <restriction
+        android:description="@string/config_log_filter_description"
+        android:key="logFilter"
+        android:restrictionType="string"
+        android:title="@string/config_log_filter_title" />
+
+    <restriction
+        android:description="@string/config_account_slug_description"
+        android:key="accountSlug"
+        android:restrictionType="string"
+        android:title="@string/config_account_slug_title" />
+
+    <restriction
+        android:description="@string/config_start_on_login_description"
+        android:key="startOnLogin"
+        android:restrictionType="bool"
+        android:title="@string/config_start_on_login_title" />
+
+    <restriction
+        android:description="@string/config_connect_on_start_description"
+        android:key="connectOnStart"
+        android:restrictionType="bool"
+        android:title="@string/config_connect_on_start_title" />
 </restrictions>
