@@ -53,7 +53,7 @@ class Favorites(
     val inner: HashSet<String>,
 )
 
-internal class Repository
+class Repository
     @Inject
     constructor(
         private val context: Context,
