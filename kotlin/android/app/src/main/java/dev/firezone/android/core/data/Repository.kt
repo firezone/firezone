@@ -75,6 +75,7 @@ internal class Repository
                     ?: BuildConfig.API_URL,
                 sharedPreferences.getString(LOG_FILTER_KEY, null)
                     ?: BuildConfig.LOG_FILTER,
+                connectOnStart = sharedPreferences.getBoolean(CONNECT_ON_START_KEY, false),
             )
 
         fun getConfig(): Flow<UserConfig> =
@@ -87,6 +88,7 @@ internal class Repository
                 BuildConfig.AUTH_URL,
                 BuildConfig.API_URL,
                 BuildConfig.LOG_FILTER,
+                connectOnStart = false,
             )
 
         fun getDefaultConfig(): Flow<UserConfig> =
@@ -102,6 +104,7 @@ internal class Repository
                         .putString(AUTH_URL_KEY, value.authUrl)
                         .putString(API_URL_KEY, value.apiUrl)
                         .putString(LOG_FILTER_KEY, value.logFilter)
+                        .putBoolean(CONNECT_ON_START_KEY, value.connectOnStart)
                         .apply(),
                 )
             }.flowOn(coroutineDispatcher)
@@ -242,6 +245,7 @@ internal class Repository
             private const val API_URL_KEY = "apiUrl"
             private const val FAVORITE_RESOURCES_KEY = "favoriteResources"
             private const val LOG_FILTER_KEY = "logFilter"
+            private const val CONNECT_ON_START_KEY = "connectOnStart"
             private const val TOKEN_KEY = "token"
             private const val NONCE_KEY = "nonce"
             private const val STATE_KEY = "state"

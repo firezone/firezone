@@ -40,7 +40,12 @@ internal class SettingsViewModel
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        private var userConfig = UserConfig(authUrl = "", apiUrl = "", logFilter = "")
+        private var userConfig = UserConfig(
+            authUrl = "",
+            apiUrl = "",
+            logFilter = "",
+            connectOnStart = false
+        )
 
         fun populateFieldsFromConfig() {
             viewModelScope.launch {

@@ -36,13 +36,15 @@ internal class SplashViewModel
                     actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
                 } else {
                     val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
-                    if (token.isNullOrBlank()) {
-                        actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
-                    } else {
+                    val connectOnStart = repo.getConfigSync().connectOnStart
+
+                    if (!token.isNullOrBlank() && connectOnStart) {
                         // token will be re-read by the TunnelService
                         if (!TunnelService.isRunning(context)) TunnelService.start(context)
 
                         actionMutableLiveData.postValue(ViewAction.NavigateToSession)
+                    } else {
+                        actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
                     }
                 }
             }
