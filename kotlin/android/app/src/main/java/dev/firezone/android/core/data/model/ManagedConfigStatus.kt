@@ -7,5 +7,5 @@ data class ManagedConfigStatus(
     val isLogFilterManaged: Boolean,
     val isAccountSlugManaged: Boolean,
     val isStartOnLoginManaged: Boolean,
-    val isConnectOnStartManaged: Boolean
+    val isConnectOnStartManaged: Boolean,
 )

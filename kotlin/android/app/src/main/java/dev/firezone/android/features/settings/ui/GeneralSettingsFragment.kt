@@ -61,18 +61,17 @@ class GeneralSettingsFragment : Fragment(R.layout.fragment_settings_general) {
                     requireActivity().finish()
 
                 is SettingsViewModel.ViewAction.FillSettings -> {
+                    binding.etAccountSlugInput.apply {
+                        setText(action.config.accountSlug)
+                    }
 
-                        binding.etAccountSlugInput.apply {
-                            setText(action.config.accountSlug)
-                        }
+                    binding.switchStartOnLogin.apply {
+                        isChecked = action.config.startOnLogin
+                    }
 
-                        binding.switchStartOnLogin.apply {
-                            isChecked = action.config.startOnLogin
-                        }
-
-                        binding.switchConnectOnStart.apply {
-                            isChecked = action.config.connectOnStart
-                        }
+                    binding.switchConnectOnStart.apply {
+                        isChecked = action.config.connectOnStart
+                    }
 
                     applyManagedStatus(action.managedStatus)
                 }
@@ -102,7 +101,11 @@ class GeneralSettingsFragment : Fragment(R.layout.fragment_settings_general) {
         }
     }
 
-    private fun setupTooltipForWrapper(view: View, isManaged: Boolean, tooltipMessage: String) {
+    private fun setupTooltipForWrapper(
+        view: View,
+        isManaged: Boolean,
+        tooltipMessage: String,
+    ) {
         if (isManaged) {
             view.isClickable = true
             view.isFocusable = true
@@ -120,7 +123,11 @@ class GeneralSettingsFragment : Fragment(R.layout.fragment_settings_general) {
         }
     }
 
-    private fun setupInfoIcon(infoIconView: View, isManaged: Boolean, tooltipMessage: String) {
+    private fun setupInfoIcon(
+        infoIconView: View,
+        isManaged: Boolean,
+        tooltipMessage: String,
+    ) {
         if (isManaged) {
             infoIconView.visibility = View.VISIBLE
             TooltipCompat.setTooltipText(infoIconView, tooltipMessage)

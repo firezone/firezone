@@ -9,7 +9,6 @@ import androidx.appcompat.widget.TooltipCompat
 import androidx.core.widget.doOnTextChanged
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
-import com.google.android.material.textfield.TextInputLayout
 import dev.firezone.android.R
 import dev.firezone.android.core.data.model.ManagedConfigStatus
 import dev.firezone.android.databinding.FragmentSettingsAdvancedBinding
@@ -71,18 +70,17 @@ class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
                     requireActivity().finish()
 
                 is SettingsViewModel.ViewAction.FillSettings -> {
-                        binding.etAuthUrlInput.apply {
-                            setText(action.config.authUrl)
-                        }
+                    binding.etAuthUrlInput.apply {
+                        setText(action.config.authUrl)
+                    }
 
-                        binding.etApiUrlInput.apply {
-                            setText(action.config.apiUrl)
-                        }
+                    binding.etApiUrlInput.apply {
+                        setText(action.config.apiUrl)
+                    }
 
-                        binding.etLogFilterInput.apply {
-                            setText(action.config.logFilter)
-                        }
-
+                    binding.etLogFilterInput.apply {
+                        setText(action.config.logFilter)
+                    }
 
                     applyManagedStatus(action.managedStatus)
                 }
@@ -117,11 +115,14 @@ class AdvancedSettingsFragment : Fragment(R.layout.fragment_settings_advanced) {
             ilLogFilterInput.isFocusable = !status.isLogFilterManaged
             ilLogFilterInput.isClickable = !status.isLogFilterManaged
             setupInfoIcon(ivLogFilterInfo, status.isLogFilterManaged, tooltipMessage)
-
         }
     }
 
-    private fun setupInfoIcon(infoIconView: View, isManaged: Boolean, tooltipMessage: String) {
+    private fun setupInfoIcon(
+        infoIconView: View,
+        isManaged: Boolean,
+        tooltipMessage: String,
+    ) {
         if (isManaged) {
             infoIconView.visibility = View.VISIBLE
             TooltipCompat.setTooltipText(infoIconView, tooltipMessage)

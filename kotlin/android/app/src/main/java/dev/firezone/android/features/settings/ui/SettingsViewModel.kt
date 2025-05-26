@@ -59,7 +59,7 @@ internal class SettingsViewModel
                     actionMutableLiveData.postValue(
                         ViewAction.FillSettings(
                             it,
-                            managedStatus = repo.getManagedStatus()
+                            managedStatus = repo.getManagedStatus(),
                         ),
                     )
                 }
@@ -181,7 +181,7 @@ internal class SettingsViewModel
             actionMutableLiveData.postValue(
                 ViewAction.FillSettings(
                     config = config,
-                    managedStatus = repo.getManagedStatus()
+                    managedStatus = repo.getManagedStatus(),
                 ),
             )
         }

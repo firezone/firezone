@@ -2,15 +2,15 @@
 package dev.firezone.android.core.presentation
 
 import android.content.Context
-import androidx.appcompat.app.AppCompatActivity
-import android.os.Bundle
-import dev.firezone.android.core.data.Repository
-import javax.inject.Inject
 import android.content.RestrictionsManager
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope // For launching coroutines
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
-import androidx.lifecycle.lifecycleScope // For launching coroutines
+import dev.firezone.android.core.data.Repository
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
 @AndroidEntryPoint
 internal class MainActivity : AppCompatActivity(R.layout.activity_main) {

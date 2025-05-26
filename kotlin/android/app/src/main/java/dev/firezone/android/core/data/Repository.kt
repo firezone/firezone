@@ -334,10 +334,15 @@ class Repository
             )
 
         fun isAuthUrlManaged(): Boolean = sharedPreferences.contains(MANAGED_AUTH_URL_KEY)
+
         fun isApiUrlManaged(): Boolean = sharedPreferences.contains(MANAGED_API_URL_KEY)
+
         fun isLogFilterManaged(): Boolean = sharedPreferences.contains(MANAGED_LOG_FILTER_KEY)
+
         fun isAccountSlugManaged(): Boolean = sharedPreferences.contains(MANAGED_ACCOUNT_SLUG_KEY)
+
         fun isStartOnLoginManaged(): Boolean = sharedPreferences.contains(MANAGED_START_ON_LOGIN_KEY)
+
         fun isConnectOnStartManaged(): Boolean = sharedPreferences.contains(MANAGED_CONNECT_ON_START_KEY)
 
         companion object {
