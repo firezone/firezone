@@ -146,6 +146,11 @@ internal class Repository
 
         fun getStateSync(): String? = sharedPreferences.getString(STATE_KEY, null)
 
+        fun getAccountSlug(): Flow<String?> =
+            flow {
+                emit(sharedPreferences.getString(ACCOUNT_SLUG_KEY, null))
+            }.flowOn(coroutineDispatcher)
+
         fun getActorName(): Flow<String?> =
             flow {
                 emit(getActorNameSync())
@@ -157,6 +162,16 @@ internal class Repository
             }
 
         fun getNonceSync(): String? = sharedPreferences.getString(NONCE_KEY, null)
+
+        fun saveAccountSlug(value: String): Flow<Unit> =
+            flow {
+                emit(
+                    sharedPreferences
+                        .edit()
+                        .putString(ACCOUNT_SLUG_KEY, value)
+                        .apply(),
+                )
+            }.flowOn(coroutineDispatcher)
 
         fun saveDeviceIdSync(value: String): Unit =
             sharedPreferences
