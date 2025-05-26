@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
+import dev.firezone.android.core.data.model.ManagedConfigStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,14 +41,25 @@ internal class SettingsViewModel
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        private var config = Config(authBaseUrl = "", apiUrl = "", logFilter = "")
+        private var config =
+            Config(
+                authUrl = "",
+                apiUrl = "",
+                logFilter = "",
+                accountSlug = "",
+                startOnLogin = false,
+                connectOnStart = false,
+            )
 
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
                 repo.getConfig().collect {
+                    config = it
+                    onFieldUpdated()
                     actionMutableLiveData.postValue(
                         ViewAction.FillSettings(
                             it,
+                            managedStatus = repo.getManagedStatus(),
                         ),
                     )
                 }
@@ -81,8 +93,8 @@ internal class SettingsViewModel
             actionMutableLiveData.postValue(ViewAction.NavigateBack)
         }
 
-        fun onValidateAuthBaseUrl(authBaseUrl: String) {
-            this.config.authBaseUrl = authBaseUrl
+        fun onValidateAuthUrl(authUrl: String) {
+            this.config.authUrl = authUrl
             onFieldUpdated()
         }
 
@@ -93,6 +105,21 @@ internal class SettingsViewModel
 
         fun onValidateLogFilter(logFilter: String) {
             this.config.logFilter = logFilter
+            onFieldUpdated()
+        }
+
+        fun onValidateAccountSlug(accountSlug: String) {
+            this.config.accountSlug = accountSlug
+            onFieldUpdated()
+        }
+
+        fun onStartOnLoginChanged(isChecked: Boolean) {
+            this.config.startOnLogin = isChecked
+            onFieldUpdated()
+        }
+
+        fun onConnectOnStartChanged(isChecked: Boolean) {
+            this.config.connectOnStart = isChecked
             onFieldUpdated()
         }
 
@@ -152,7 +179,10 @@ internal class SettingsViewModel
             repo.resetFavorites()
             onFieldUpdated()
             actionMutableLiveData.postValue(
-                ViewAction.FillSettings(config),
+                ViewAction.FillSettings(
+                    config = config,
+                    managedStatus = repo.getManagedStatus(),
+                ),
             )
         }
 
@@ -196,12 +226,10 @@ internal class SettingsViewModel
                 )
         }
 
-        private fun areFieldsValid(): Boolean {
-            // This comes from the backend account slug validator at elixir/apps/domain/lib/domain/accounts/account/changeset.ex
-            return URLUtil.isValidUrl(config.authBaseUrl) &&
+        private fun areFieldsValid(): Boolean =
+            URLUtil.isValidUrl(config.authUrl) &&
                 isUriValid(config.apiUrl) &&
                 config.logFilter.isNotBlank()
-        }
 
         private fun isUriValid(uri: String): Boolean =
             try {
@@ -221,6 +249,7 @@ internal class SettingsViewModel
 
             data class FillSettings(
                 val config: Config,
+                val managedStatus: ManagedConfigStatus,
             ) : ViewAction()
         }
     }
