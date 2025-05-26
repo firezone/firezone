@@ -78,12 +78,12 @@
 	</string>
 	<string name="config_auth_url_title">Auth URL</string>
 	<string name="config_auth_url_description">
-		The base URL used for authentication. If unset the default of https://app.firezone.dev will
+		The base URL used for authentication. If unset, the default of https://app.firezone.dev will
 		be used. The account slug will be appended to this URL.
 	</string>
 	<string name="config_api_url_title">API URL</string>
 	<string name="config_api_url_description">
-		The WebSocket URL used to connect to the Firezone control plane. If unset the default of
+		The WebSocket URL used to connect to the Firezone control plane. If unset, the default of
 	    wss://api.firezone.dev will be used.
 	</string>
 	<string name="config_log_filter_title">Log Filter</string>
@@ -94,7 +94,8 @@
 	<string name="config_account_slug_title">Account Slug</string>
 	<string name="config_account_slug_description">
 		The account ID or slug of the Firezone account to authenticate to. If unset, no account slug
-		will be used.
+		will be used, and the user will need to enter it manually on the first sign in attempt. Upon
+		subsequent sign ins, the account slug will be automatically populated.
 	</string>
 	<string name="config_start_on_login_title">Start on Boot</string>
 	<string name="config_start_on_login_description">
