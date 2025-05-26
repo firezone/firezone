@@ -106,7 +106,7 @@ function apple() {
 # 7. Commit the changes and open a PR.
 function android() {
     current_android_version="1.4.8"
-    next_android_version="1.4.9"
+    next_android_version="1.5.0"
 
     update_changelog "website/src/components/Changelog/Android.tsx" "$current_android_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_android_version}"'/g;}' {} \;
@@ -131,7 +131,7 @@ function android() {
 # 5. Commit the changes and open a PR.
 function gui() {
     current_gui_version="1.4.14"
-    next_gui_version="1.4.15"
+    next_gui_version="1.5.0"
 
     update_changelog "website/src/components/Changelog/GUI.tsx" "$current_gui_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_version}"'/g;}' {} \;
@@ -154,7 +154,7 @@ function gui() {
 # 4. Commit the changes and open a PR.
 function headless() {
     current_headless_version="1.4.8"
-    next_headless_version="1.4.9"
+    next_headless_version="1.5.0"
 
     update_changelog "website/src/components/Changelog/Headless.tsx" "$current_headless_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_version}"'/g;}' {} \;

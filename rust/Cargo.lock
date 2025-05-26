@@ -80,7 +80,7 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "android-client-ffi"
-version = "1.4.9"
+version = "1.5.0"
 dependencies = [
  "android_log-sys",
  "anyhow",
@@ -2181,7 +2181,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gui-client"
-version = "1.4.15"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -2246,7 +2246,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-headless-client"
-version = "1.4.9"
+version = "1.5.0"
 dependencies = [
  "anyhow",
  "backoff",
