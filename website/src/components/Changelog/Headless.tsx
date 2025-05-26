@@ -29,6 +29,12 @@ export default function Headless({ os }: { os: OS }) {
             Optimizes network change detection.
           </ChangeItem>
         )}
+        {os === OS.Windows && (
+          <ChangeItem pull="9213">
+            Adds the Client to the winget repository. You can install it via
+            `winget install Firezone.Client.Headless`.
+          </ChangeItem>
+        )}
       </Entry>
       <Entry version="1.4.7" date={new Date("2025-04-30")}>
         <ChangeItem pull="8798">

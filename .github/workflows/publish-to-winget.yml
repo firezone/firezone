@@ -1,0 +1,31 @@
+name: Publish to WinGet
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  publish_clients:
+    name: Publish ${{ matrix.identifier }} to winget
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - identifier: Firezone.Client.GUI
+            tag_prefix: gui-client
+          - identifier: Firezone.Client.Headless
+            tag_prefix: headless-client
+    if: ${{ startsWith(github.event.release.name, matrix.tag_prefix) }}
+    steps:
+      - id: get-version
+        run: |
+          version=${{ github.event.release.name }}
+          version=${version#${{ matrix.tag_prefix }}-}
+          echo "version=$version" >> $GITHUB_OUTPUT
+        shell: bash
+      - uses: vedantmgoyal9/winget-releaser@3e78d7ff0f525445bca5d6a989d31cdca383372e # main
+        with:
+          identifier: ${{ matrix.identifier }}
+          version: ${{ steps.get-version.outputs.version }}
+          token: ${{ secrets.WINGET_TOKEN }}
+          release-notes-url: https://firezone.dev/changelog
