@@ -25,6 +25,23 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased></Unreleased>
+      <Entry version="1.5.0" date={new Date("2025-05-26")}>
+        <ChangeItem pull="9230">
+          Finalizes the managed configuration support for the macOS client. For
+          details on how to configure this, see{" "}
+          <Link
+            href={"/kb/deploy/clients#provision-with-mdm" as Route}
+            className="text-accent-500 underline hover:no-underline"
+          >
+            the knowledge base article
+          </Link>
+          .
+        </ChangeItem>
+        <ChangeItem pull="9231">
+          Fixes a minor bug where the app would report a minor error in the
+          backend when quitting while signed out.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.4.15" date={new Date("2025-05-23")}>
         <ChangeItem pull="9204">
           Adds a
