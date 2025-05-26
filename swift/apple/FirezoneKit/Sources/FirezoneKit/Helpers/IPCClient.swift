@@ -68,7 +68,7 @@ class IPCClient {
   }
 
   func stop() throws {
-    try session([.connected, .connecting, .reasserting]).stopTunnel()
+    try session().stopTunnel()
   }
 
 #if os(macOS)
