@@ -82,7 +82,7 @@ defmodule Web.Settings.IdentityProviders.Index do
         </div>
 
         <div class="text-lg text-neutral-600 mb-4 px-1">
-          All identity providers
+          All Identity Providers
         </div>
         <.live_table
           id="providers"
