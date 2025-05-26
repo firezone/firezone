@@ -237,22 +237,16 @@ class ToggleInternetResourceButtonModel: ObservableObject {
   private let configuration = Configuration.shared
 
   @Published private(set) var enabled: Bool
-  @Published private(set) var forced: Bool
 
   init() {
     self.enabled = configuration.internetResourceEnabled
-    self.forced = configuration.isInternetResourceForced
 
-    Publishers.CombineLatest(
-      configuration.$publishedInternetResourceEnabled,
-      configuration.$publishedInternetResourceForced
-    )
-    .receive(on: RunLoop.main)
-    .sink(receiveValue: { [self] enabled, forced in
-      self.enabled = enabled
-      self.forced = forced
-    })
-    .store(in: &cancellables)
+    configuration.$publishedInternetResourceEnabled
+      .receive(on: RunLoop.main)
+      .sink(receiveValue: { [self] enabled in
+        self.enabled = enabled
+      })
+      .store(in: &cancellables)
   }
 
   func toggleInternetResource() {
@@ -260,10 +254,6 @@ class ToggleInternetResourceButtonModel: ObservableObject {
   }
 
   func toggleResourceEnabledText() -> String {
-    if forced {
-      return enabled ? "Managed: Enabled" : "Managed: Disabled"
-    }
-
     return enabled ? "Disable this resource" : "Enable this resource"
   }
 }
@@ -285,7 +275,6 @@ struct ToggleInternetResourceButton: View {
         }
       }
     )
-    .disabled(viewModel.forced)
   }
 }
 
