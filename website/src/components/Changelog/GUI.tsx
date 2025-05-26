@@ -40,6 +40,12 @@ export default function GUI({ os }: { os: OS }) {
             Increases minimum supported CentOS version to 10.
           </ChangeItem>
         )}
+        {os === OS.Windows && (
+          <ChangeItem pull="9213">
+            Adds the Client to the winget repository. You can install it via
+            `winget install Firezone.Client.GUI`.
+          </ChangeItem>
+        )}
       </Entry>
       <Entry version="1.4.13" date={new Date("2025-05-14")}>
         <ChangeItem pull="9014">
