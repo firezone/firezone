@@ -70,7 +70,7 @@ function update_changelog() {
 # 7. Commit the changes and open a PR.
 function apple() {
     current_apple_version="1.4.15"
-    next_apple_version="1.4.16"
+    next_apple_version="1.5.0"
 
     update_changelog "website/src/components/Changelog/Apple.tsx" "$current_apple_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_version}"'/g;}' {} \;
