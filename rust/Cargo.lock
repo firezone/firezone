@@ -5032,7 +5032,7 @@ dependencies = [
  "itertools 0.13.0",
  "libc",
  "os_info",
- "rand_core 0.6.4",
+ "rand_core 0.9.3",
  "secrecy",
  "serde",
  "serde_json",
