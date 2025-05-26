@@ -50,7 +50,7 @@ jobs:
           - release_name: gateway-1.4.10
             config_name: release-drafter-gateway.yml
           # mark:next-headless-version
-          - release_name: headless-client-1.4.9
+          - release_name: headless-client-1.5.0
             config_name: release-drafter-headless-client.yml
 
     steps:
