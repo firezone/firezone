@@ -13,12 +13,6 @@ export default function GUI({ os }: { os: OS }) {
           Fixes an issue where changing the Advanced settings would reset
           the favourited resources.
         </ChangeItem>
-        {os === OS.Windows && (
-          <ChangeItem pull="9213">
-            Adds the Client to the winget repository. You can install it via
-            `winget install Firezone.Client.GUI`.
-          </ChangeItem>
-        )}
       </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-21")}>
         <ChangeItem pull="9147">
@@ -44,6 +38,12 @@ export default function GUI({ os }: { os: OS }) {
         {os === OS.Linux && (
           <ChangeItem pull="9181">
             Increases minimum supported CentOS version to 10.
+          </ChangeItem>
+        )}
+        {os === OS.Windows && (
+          <ChangeItem pull="9213">
+            Adds the Client to the winget repository. You can install it via
+            `winget install Firezone.Client.GUI`.
           </ChangeItem>
         )}
       </Entry>

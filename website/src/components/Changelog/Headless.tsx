@@ -14,12 +14,6 @@ export default function Headless({ os }: { os: OS }) {
           Fixes an issue where connections failed to establish on machines
           with multiple valid egress IPs.
         </ChangeItem>
-        {os === OS.Windows && (
-          <ChangeItem pull="9213">
-            Adds the Client to the winget repository. You can install it via
-            `winget install Firezone.Client.Headless`.
-          </ChangeItem>
-        )}
       </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-05-14")}>
         <ChangeItem pull="9014">
@@ -33,6 +27,12 @@ export default function Headless({ os }: { os: OS }) {
         {os === OS.Windows && (
           <ChangeItem pull="9021">
             Optimizes network change detection.
+          </ChangeItem>
+        )}
+        {os === OS.Windows && (
+          <ChangeItem pull="9213">
+            Adds the Client to the winget repository. You can install it via
+            `winget install Firezone.Client.Headless`.
           </ChangeItem>
         )}
       </Entry>
