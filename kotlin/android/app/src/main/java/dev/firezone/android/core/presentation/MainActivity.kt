@@ -29,7 +29,7 @@ internal class MainActivity : AppCompatActivity(R.layout.activity_main) {
         val restrictionsManager = getSystemService(Context.RESTRICTIONS_SERVICE) as RestrictionsManager
         val appRestrictions: Bundle = restrictionsManager.applicationRestrictions
         lifecycleScope.launch {
-            repository.saveManagedConfiguration(appRestrictions)
+            repository.saveManagedConfiguration(appRestrictions).collect {}
         }
     }
 }
