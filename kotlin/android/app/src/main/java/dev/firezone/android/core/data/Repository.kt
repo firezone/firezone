@@ -9,6 +9,7 @@ import com.google.gson.annotations.SerializedName
 import com.google.gson.reflect.TypeToken
 import dev.firezone.android.BuildConfig
 import dev.firezone.android.core.data.model.Config
+import dev.firezone.android.core.data.model.ManagedConfigStatus
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -321,6 +322,23 @@ class Repository
                 apply()
             }
         }
+
+        fun getManagedStatus(): ManagedConfigStatus =
+            ManagedConfigStatus(
+                isAuthUrlManaged = isAuthUrlManaged(),
+                isApiUrlManaged = isApiUrlManaged(),
+                isLogFilterManaged = isLogFilterManaged(),
+                isAccountSlugManaged = isAccountSlugManaged(),
+                isStartOnLoginManaged = isStartOnLoginManaged(),
+                isConnectOnStartManaged = isConnectOnStartManaged(),
+            )
+
+        fun isAuthUrlManaged(): Boolean = sharedPreferences.contains(MANAGED_AUTH_URL_KEY)
+        fun isApiUrlManaged(): Boolean = sharedPreferences.contains(MANAGED_API_URL_KEY)
+        fun isLogFilterManaged(): Boolean = sharedPreferences.contains(MANAGED_LOG_FILTER_KEY)
+        fun isAccountSlugManaged(): Boolean = sharedPreferences.contains(MANAGED_ACCOUNT_SLUG_KEY)
+        fun isStartOnLoginManaged(): Boolean = sharedPreferences.contains(MANAGED_START_ON_LOGIN_KEY)
+        fun isConnectOnStartManaged(): Boolean = sharedPreferences.contains(MANAGED_CONNECT_ON_START_KEY)
 
         companion object {
             private const val AUTH_URL_KEY = "authUrl"

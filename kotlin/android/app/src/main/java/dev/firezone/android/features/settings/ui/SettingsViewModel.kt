@@ -12,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.model.Config
+import dev.firezone.android.core.data.model.ManagedConfigStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,7 +41,7 @@ internal class SettingsViewModel
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        private var userConfig =
+        private var config =
             Config(
                 authUrl = "",
                 apiUrl = "",
@@ -53,11 +54,12 @@ internal class SettingsViewModel
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
                 repo.getConfig().collect {
-                    userConfig = it
+                    config = it
                     onFieldUpdated()
                     actionMutableLiveData.postValue(
                         ViewAction.FillSettings(
                             it,
+                            managedStatus = repo.getManagedStatus()
                         ),
                     )
                 }
@@ -81,7 +83,7 @@ internal class SettingsViewModel
 
         fun onSaveSettingsCompleted() {
             viewModelScope.launch {
-                repo.saveSettings(userConfig).collect {
+                repo.saveSettings(config).collect {
                     actionMutableLiveData.postValue(ViewAction.NavigateBack)
                 }
             }
@@ -92,32 +94,32 @@ internal class SettingsViewModel
         }
 
         fun onValidateAuthUrl(authUrl: String) {
-            this.userConfig.authUrl = authUrl
+            this.config.authUrl = authUrl
             onFieldUpdated()
         }
 
         fun onValidateApiUrl(apiUrl: String) {
-            this.userConfig.apiUrl = apiUrl
+            this.config.apiUrl = apiUrl
             onFieldUpdated()
         }
 
         fun onValidateLogFilter(logFilter: String) {
-            this.userConfig.logFilter = logFilter
+            this.config.logFilter = logFilter
             onFieldUpdated()
         }
 
         fun onValidateAccountSlug(accountSlug: String) {
-            this.userConfig.accountSlug = accountSlug
+            this.config.accountSlug = accountSlug
             onFieldUpdated()
         }
 
         fun onStartOnLoginChanged(isChecked: Boolean) {
-            this.userConfig.startOnLogin = isChecked
+            this.config.startOnLogin = isChecked
             onFieldUpdated()
         }
 
         fun onConnectOnStartChanged(isChecked: Boolean) {
-            this.userConfig.connectOnStart = isChecked
+            this.config.connectOnStart = isChecked
             onFieldUpdated()
         }
 
@@ -173,11 +175,14 @@ internal class SettingsViewModel
         }
 
         fun resetSettingsToDefaults() {
-            userConfig = repo.getDefaultConfigSync()
+            config = repo.getDefaultConfigSync()
             repo.resetFavorites()
             onFieldUpdated()
             actionMutableLiveData.postValue(
-                ViewAction.FillSettings(userConfig),
+                ViewAction.FillSettings(
+                    config = config,
+                    managedStatus = repo.getManagedStatus()
+                ),
             )
         }
 
@@ -222,9 +227,9 @@ internal class SettingsViewModel
         }
 
         private fun areFieldsValid(): Boolean =
-            URLUtil.isValidUrl(userConfig.authUrl) &&
-                isUriValid(userConfig.apiUrl) &&
-                userConfig.logFilter.isNotBlank()
+            URLUtil.isValidUrl(config.authUrl) &&
+                isUriValid(config.apiUrl) &&
+                config.logFilter.isNotBlank()
 
         private fun isUriValid(uri: String): Boolean =
             try {
@@ -243,7 +248,8 @@ internal class SettingsViewModel
             data object NavigateBack : ViewAction()
 
             data class FillSettings(
-                val userConfig: Config,
+                val config: Config,
+                val managedStatus: ManagedConfigStatus,
             ) : ViewAction()
         }
     }

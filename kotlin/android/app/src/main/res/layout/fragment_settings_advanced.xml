@@ -14,30 +14,44 @@
 
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/ilAuthUrlInput"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             app:errorEnabled="true"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent">
-
-            <com.google.android.material.textfield.TextInputEditText
-                android:id="@+id/etAuthUrlInput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:hint="@string/auth_url"
-                android:importantForAutofill="no"
-                android:inputType="text" />
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/ivAuthUrlInfo"> <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etAuthUrlInput"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="@string/auth_url"
+            android:importantForAutofill="no"
+            android:inputType="text" />
 
         </com.google.android.material.textfield.TextInputLayout>
 
+        <ImageView
+            android:id="@+id/ivAuthUrlInfo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_small"
+            android:padding="@dimen/spacing_extra_small"
+            android:src="@drawable/info_24px"
+            android:contentDescription="@string/managed_setting_info_description"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/ilAuthUrlInput"
+            app:layout_constraintBottom_toBottomOf="@+id/ilAuthUrlInput" />
+
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/ilApiUrlInput"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/spacing_1x"
             app:errorEnabled="true"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ilAuthUrlInput">
+            app:layout_constraintTop_toBottomOf="@id/ilAuthUrlInput"
+            app:layout_constraintEnd_toStartOf="@id/ivApiUrlInfo">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etApiUrlInput"
@@ -49,14 +63,29 @@
 
         </com.google.android.material.textfield.TextInputLayout>
 
+        <ImageView
+            android:id="@+id/ivApiUrlInfo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_small"
+            android:padding="@dimen/spacing_extra_small"
+            android:src="@drawable/info_24px"
+            android:contentDescription="@string/managed_setting_info_description"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/ilApiUrlInput"
+            app:layout_constraintBottom_toBottomOf="@+id/ilApiUrlInput" />
+
+
         <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/ilLogFilterInput"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/spacing_1x"
             app:errorEnabled="true"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ilApiUrlInput">
+            app:layout_constraintTop_toBottomOf="@id/ilApiUrlInput"
+            app:layout_constraintEnd_toStartOf="@id/ivLogFilterInfo">
 
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etLogFilterInput"
@@ -67,6 +96,19 @@
                 android:inputType="text" />
 
         </com.google.android.material.textfield.TextInputLayout>
+
+        <ImageView
+            android:id="@+id/ivLogFilterInfo"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/spacing_small"
+            android:padding="@dimen/spacing_extra_small"
+            android:src="@drawable/info_24px"
+            android:contentDescription="@string/managed_setting_info_description"
+            android:visibility="gone"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="@+id/ilLogFilterInput"
+            app:layout_constraintBottom_toBottomOf="@+id/ilLogFilterInput" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btResetDefaults"
