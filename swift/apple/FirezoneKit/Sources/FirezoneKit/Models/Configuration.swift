@@ -16,7 +16,6 @@ public class Configuration: ObservableObject {
   static let shared = Configuration()
 
   @Published private(set) var publishedInternetResourceEnabled = false
-  @Published private(set) var publishedInternetResourceForced = false
   @Published private(set) var publishedHideAdminPortalMenuItem = false
 
   var isAuthURLForced: Bool { defaults.objectIsForced(forKey: Keys.authURL) }
@@ -25,7 +24,6 @@ public class Configuration: ObservableObject {
   var isAccountSlugForced: Bool { defaults.objectIsForced(forKey: Keys.accountSlug) }
   var isConnectOnStartForced: Bool { defaults.objectIsForced(forKey: Keys.connectOnStart) }
   var isStartOnLoginForced: Bool { defaults.objectIsForced(forKey: Keys.startOnLogin) }
-  var isInternetResourceForced: Bool { defaults.objectIsForced(forKey: Keys.internetResourceEnabled) }
 
   var authURL: String {
     get { defaults.string(forKey: Keys.authURL) ?? Self.defaultAuthURL }
@@ -45,11 +43,6 @@ public class Configuration: ObservableObject {
   var accountSlug: String {
     get { defaults.string(forKey: Keys.accountSlug) ?? Self.defaultAccountSlug }
     set { defaults.set(newValue, forKey: Keys.accountSlug) }
-  }
-
-  var internetResourceEnabled: Bool {
-    get { defaults.bool(forKey: Keys.internetResourceEnabled) }
-    set { defaults.set(newValue, forKey: Keys.internetResourceEnabled) }
   }
 
   var hideAdminPortalMenuItem: Bool {
@@ -77,6 +70,12 @@ public class Configuration: ObservableObject {
     set { defaults.set(newValue, forKey: Keys.supportURL) }
   }
 
+  // User-configurable only
+  var internetResourceEnabled: Bool {
+    get { defaults.bool(forKey: Keys.internetResourceEnabled) }
+    set { defaults.set(newValue, forKey: Keys.internetResourceEnabled) }
+  }
+
 #if DEBUG
   static let defaultAuthURL = "https://app.firez.one"
   static let defaultApiURL = "wss://api.firez.one"
@@ -88,10 +87,12 @@ public class Configuration: ObservableObject {
 #endif
 
   static let defaultAccountSlug = ""
-  static let defaultConnectOnStart = true
+  static let defaultSupportURL = "https://firezone.dev/support"
+
+  // Bools are always default false
+  static let defaultConnectOnStart = false
   static let defaultStartOnLogin = false
   static let defaultDisableUpdateCheck = false
-  static let defaultSupportURL = "https://firezone.dev/support"
 
   private struct Keys {
     static let authURL = "authURL"
@@ -112,7 +113,6 @@ public class Configuration: ObservableObject {
     defaults = userDefaults
 
     self.publishedInternetResourceEnabled = internetResourceEnabled
-    self.publishedInternetResourceForced = isInternetResourceForced
     self.publishedHideAdminPortalMenuItem = hideAdminPortalMenuItem
 
     NotificationCenter.default.addObserver(
@@ -161,7 +161,6 @@ public class Configuration: ObservableObject {
 
     // Update published properties
     self.publishedInternetResourceEnabled = internetResourceEnabled
-    self.publishedInternetResourceForced = isInternetResourceForced
     self.publishedHideAdminPortalMenuItem = hideAdminPortalMenuItem
 
     // Announce we changed

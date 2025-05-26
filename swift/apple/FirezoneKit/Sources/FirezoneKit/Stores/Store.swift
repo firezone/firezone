@@ -162,7 +162,7 @@ public final class Store: ObservableObject {
   }
 
   private func maybeAutoConnect() async throws {
-    if configuration.connectOnStart == true {
+    if configuration.connectOnStart {
       try await manager().enable()
       try ipcClient().start()
     }
