@@ -8,6 +8,11 @@
 	<!-- Settings -->
 	<string name="settings_title">Settings</string>
 	<string name="save">Save</string>
+	<!-- General Settings -->
+	<string name="general_settings_title">General</string>
+	<string name="account_slug">Account Slug</string>
+	<string name="start_on_boot">Start on Boot</string>
+	<string name="connect_on_start">Connect on Start</string>
 	<!-- Advanced Settings -->
 	<string name="advanced_settings_title">Advanced</string>
 	<string name="auth_url">Auth URL</string>
@@ -15,7 +20,7 @@
 	<string name="log_filter">Log Filter</string>
 	<string name="button_reset_to_defaults">Reset to Defaults</string>
 	<!-- Diagnostic Logs Settings -->
-	<string name="log_settings_title">Diagnostic Logs</string>
+	<string name="log_settings_title">Logs</string>
 	<string name="share_diagnostic_logs">Export Logs</string>
 	<string name="log_directory_size">Log directory size: %1$s</string>
 	<string name="clear_log_directory">Clear Log Directory</string>

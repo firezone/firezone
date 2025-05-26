@@ -5,5 +5,7 @@ data class UserConfig(
     var authUrl: String,
     var apiUrl: String,
     var logFilter: String,
+    var accountSlug: String,
+    var startOnBoot: Boolean,
     var connectOnStart: Boolean,
 )

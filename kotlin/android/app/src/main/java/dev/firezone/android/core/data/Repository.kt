@@ -75,6 +75,8 @@ internal class Repository
                     ?: BuildConfig.API_URL,
                 sharedPreferences.getString(LOG_FILTER_KEY, null)
                     ?: BuildConfig.LOG_FILTER,
+                accountSlug = sharedPreferences.getString(ACCOUNT_SLUG_KEY, "") ?: "",
+                startOnBoot = sharedPreferences.getBoolean(START_ON_BOOT_KEY, false),
                 connectOnStart = sharedPreferences.getBoolean(CONNECT_ON_START_KEY, false),
             )
 
@@ -88,6 +90,8 @@ internal class Repository
                 BuildConfig.AUTH_URL,
                 BuildConfig.API_URL,
                 BuildConfig.LOG_FILTER,
+                accountSlug = "",
+                startOnBoot = false,
                 connectOnStart = false,
             )
 
@@ -104,6 +108,8 @@ internal class Repository
                         .putString(AUTH_URL_KEY, value.authUrl)
                         .putString(API_URL_KEY, value.apiUrl)
                         .putString(LOG_FILTER_KEY, value.logFilter)
+                        .putString(ACCOUNT_SLUG_KEY, value.accountSlug)
+                        .putBoolean(START_ON_BOOT_KEY, value.startOnBoot)
                         .putBoolean(CONNECT_ON_START_KEY, value.connectOnStart)
                         .apply(),
                 )
@@ -245,6 +251,8 @@ internal class Repository
             private const val API_URL_KEY = "apiUrl"
             private const val FAVORITE_RESOURCES_KEY = "favoriteResources"
             private const val LOG_FILTER_KEY = "logFilter"
+            private const val ACCOUNT_SLUG_KEY = "accountSlug"
+            private const val START_ON_BOOT_KEY = "startOnBoot"
             private const val CONNECT_ON_START_KEY = "connectOnStart"
             private const val TOKEN_KEY = "token"
             private const val NONCE_KEY = "nonce"

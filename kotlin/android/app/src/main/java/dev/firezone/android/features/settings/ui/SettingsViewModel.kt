@@ -44,12 +44,16 @@ internal class SettingsViewModel
             authUrl = "",
             apiUrl = "",
             logFilter = "",
+            accountSlug = "",
+            startOnBoot = false,
             connectOnStart = false
         )
 
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
                 repo.getConfig().collect {
+                    userConfig = it
+                    onFieldUpdated()
                     actionMutableLiveData.postValue(
                         ViewAction.FillSettings(
                             it,
@@ -98,6 +102,21 @@ internal class SettingsViewModel
 
         fun onValidateLogFilter(logFilter: String) {
             this.userConfig.logFilter = logFilter
+            onFieldUpdated()
+        }
+
+        fun onValidateAccountSlug(accountSlug: String) {
+            this.userConfig.accountSlug = accountSlug
+            onFieldUpdated()
+        }
+
+        fun onStartOnBootChanged(isChecked: Boolean) {
+            this.userConfig.startOnBoot = isChecked
+            onFieldUpdated()
+        }
+
+        fun onConnectOnStartChanged(isChecked: Boolean) {
+            this.userConfig.connectOnStart = isChecked
             onFieldUpdated()
         }
 
@@ -202,7 +221,6 @@ internal class SettingsViewModel
         }
 
         private fun areFieldsValid(): Boolean {
-            // This comes from the backend account slug validator at elixir/apps/domain/lib/domain/accounts/account/changeset.ex
             return URLUtil.isValidUrl(userConfig.authUrl) &&
                 isUriValid(userConfig.apiUrl) &&
                 userConfig.logFilter.isNotBlank()

@@ -66,6 +66,12 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:icon="@drawable/rounded_discover_tune_black_24dp"
+            android:text="@string/general_settings_title" />
+
+        <com.google.android.material.tabs.TabItem
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:icon="@drawable/rounded_settings_black_24dp"
             android:text="@string/advanced_settings_title" />
 
         <com.google.android.material.tabs.TabItem

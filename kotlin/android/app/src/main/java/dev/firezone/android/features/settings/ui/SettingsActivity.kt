@@ -44,10 +44,15 @@ internal class SettingsActivity : AppCompatActivity() {
                 when (position) {
                     0 -> {
                         tab.setIcon(R.drawable.rounded_discover_tune_black_24dp)
-                        tab.setText("Advanced")
+                        tab.setText("General")
                     }
 
                     1 -> {
+                        tab.setIcon(R.drawable.rounded_settings_black_24dp)
+                        tab.setText("Advanced")
+                    }
+
+                    2 -> {
                         tab.setIcon(R.drawable.rounded_description_black_24dp)
                         tab.setText("Logs")
                     }
@@ -93,7 +98,7 @@ internal class SettingsActivity : AppCompatActivity() {
     private fun showSaveWarningDialog() {
         AlertDialog.Builder(this).apply {
             setTitle("Warning")
-            setMessage("Changed settings will not be applied until you sign out and sign back in.")
+            setMessage("Some changed settings will not be applied until you sign out and sign back in.")
             setPositiveButton("Okay") { _, _ ->
                 viewModel.onSaveSettingsCompleted()
             }
@@ -111,12 +116,13 @@ internal class SettingsActivity : AppCompatActivity() {
     private inner class SettingsPagerAdapter(
         activity: FragmentActivity,
     ) : FragmentStateAdapter(activity) {
-        override fun getItemCount(): Int = 2 // Two tabs
+        override fun getItemCount(): Int = 3 // Three tabs
 
         override fun createFragment(position: Int): Fragment =
             when (position) {
-                0 -> AdvancedSettingsFragment()
-                1 -> LogSettingsFragment()
+                0 -> GeneralSettingsFragment()
+                1 -> AdvancedSettingsFragment()
+                2 -> LogSettingsFragment()
                 else -> throw IllegalArgumentException("Invalid tab position: $position")
             }
     }
