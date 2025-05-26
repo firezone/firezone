@@ -11,7 +11,7 @@
 	<!-- General Settings -->
 	<string name="general_settings_title">General</string>
 	<string name="account_slug">Account Slug</string>
-	<string name="start_on_boot">Start on Boot</string>
+	<string name="start_on_login">Start on Boot</string>
 	<string name="connect_on_start">Connect on Start</string>
 	<!-- Advanced Settings -->
 	<string name="advanced_settings_title">Advanced</string>

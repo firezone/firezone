@@ -31,11 +31,11 @@
         </com.google.android.material.textfield.TextInputLayout>
 
         <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/switchStartOnBoot"
+            android:id="@+id/switchStartOnLogin"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/spacing_medium"
-            android:text="@string/start_on_boot"
+            android:text="@string/start_on_login"
             app:layout_constraintTop_toBottomOf="@id/ilAccountSlugInput"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
@@ -46,7 +46,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="@dimen/spacing_medium"
             android:text="@string/connect_on_start"
-            app:layout_constraintTop_toBottomOf="@id/switchStartOnBoot"
+            app:layout_constraintTop_toBottomOf="@id/switchStartOnLogin"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent" />
 

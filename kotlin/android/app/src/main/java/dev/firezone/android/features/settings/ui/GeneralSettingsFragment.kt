@@ -38,9 +38,9 @@ class GeneralSettingsFragment : Fragment(R.layout.fragment_settings_general) {
                 }
             }
 
-            switchStartOnBoot.apply {
+            switchStartOnLogin.apply {
                 setOnCheckedChangeListener { _, isChecked ->
-                    viewModel.onStartOnBootChanged(isChecked)
+                    viewModel.onStartOnLoginChanged(isChecked)
                 }
             }
 
@@ -62,8 +62,8 @@ class GeneralSettingsFragment : Fragment(R.layout.fragment_settings_general) {
                     binding.etAccountSlugInput.apply {
                         setText(action.userConfig.accountSlug)
                     }
-                    binding.switchStartOnBoot.apply {
-                        isChecked = action.userConfig.startOnBoot
+                    binding.switchStartOnLogin.apply {
+                        isChecked = action.userConfig.startOnLogin
                     }
                     binding.switchConnectOnStart.apply {
                         isChecked = action.userConfig.connectOnStart

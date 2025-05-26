@@ -236,6 +236,7 @@ class TunnelService : VpnService() {
                 // Only change VPN if appRestrictions have changed
                 val restrictionsManager = context.getSystemService(Context.RESTRICTIONS_SERVICE) as android.content.RestrictionsManager
                 val newAppRestrictions = restrictionsManager.applicationRestrictions
+                repo.saveManagedConfiguration(newAppRestrictions)
                 val changed = MANAGED_CONFIGURATIONS.any { newAppRestrictions.getString(it) != appRestrictions.getString(it) }
                 if (!changed) {
                     return

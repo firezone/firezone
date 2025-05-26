@@ -11,7 +11,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.data.Repository
-import dev.firezone.android.core.data.model.UserConfig
+import dev.firezone.android.core.data.model.Config
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,14 +40,15 @@ internal class SettingsViewModel
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        private var userConfig = UserConfig(
-            authUrl = "",
-            apiUrl = "",
-            logFilter = "",
-            accountSlug = "",
-            startOnBoot = false,
-            connectOnStart = false
-        )
+        private var userConfig =
+            Config(
+                authUrl = "",
+                apiUrl = "",
+                logFilter = "",
+                accountSlug = "",
+                startOnLogin = false,
+                connectOnStart = false,
+            )
 
         fun populateFieldsFromConfig() {
             viewModelScope.launch {
@@ -110,8 +111,8 @@ internal class SettingsViewModel
             onFieldUpdated()
         }
 
-        fun onStartOnBootChanged(isChecked: Boolean) {
-            this.userConfig.startOnBoot = isChecked
+        fun onStartOnLoginChanged(isChecked: Boolean) {
+            this.userConfig.startOnLogin = isChecked
             onFieldUpdated()
         }
 
@@ -220,11 +221,10 @@ internal class SettingsViewModel
                 )
         }
 
-        private fun areFieldsValid(): Boolean {
-            return URLUtil.isValidUrl(userConfig.authUrl) &&
+        private fun areFieldsValid(): Boolean =
+            URLUtil.isValidUrl(userConfig.authUrl) &&
                 isUriValid(userConfig.apiUrl) &&
                 userConfig.logFilter.isNotBlank()
-        }
 
         private fun isUriValid(uri: String): Boolean =
             try {
@@ -243,7 +243,7 @@ internal class SettingsViewModel
             data object NavigateBack : ViewAction()
 
             data class FillSettings(
-                val userConfig: UserConfig,
+                val userConfig: Config,
             ) : ViewAction()
         }
     }
