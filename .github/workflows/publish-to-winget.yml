@@ -5,38 +5,27 @@ on:
       - published
 
 jobs:
-  gui_client:
-    name: Publish GUI Client to winget
+  publish_clients:
+    name: Publish ${{ matrix.identifier }} to winget
     runs-on: windows-latest
-    if: ${{ startsWith(github.event.release.name, gui-client) }}
+    strategy:
+      matrix:
+        include:
+          - identifier: Firezone.Client.GUI
+            tag_prefix: gui-client
+          - identifier: Firezone.Client.Headless
+            tag_prefix: headless-client
+    if: ${{ startsWith(github.event.release.name, matrix.tag_prefix) }}
     steps:
       - id: get-version
         run: |
           version=${{ github.event.release.name }}
-          version=${version#gui-client-}
+          version=${version#${{ matrix.tag_prefix }}-}
           echo "version=$version" >> $GITHUB_OUTPUT
         shell: bash
       - uses: vedantmgoyal9/winget-releaser@3e78d7ff0f525445bca5d6a989d31cdca383372e # main
         with:
-          identifier: Firezone.Client.GUI
-          version: ${{ steps.get-version.outputs.version }}
-          token: ${{ secrets.WINGET_TOKEN }}
-          release-notes-url: https://firezone.dev/changelog
-
-  headless_client:
-    name: Publish Headless Client to winget
-    runs-on: windows-latest
-    if: ${{ startsWith(github.event.release.name, headless-client) }}
-    steps:
-      - id: get-version
-        run: |
-          version=${{ github.event.release.name }}
-          version=${version#headless-client-}
-          echo "version=$version" >> $GITHUB_OUTPUT
-        shell: bash
-      - uses: vedantmgoyal9/winget-releaser@3e78d7ff0f525445bca5d6a989d31cdca383372e # main
-        with:
-          identifier: Firezone.Client.Headless
+          identifier: ${{ matrix.identifier }}
           version: ${{ steps.get-version.outputs.version }}
           token: ${{ secrets.WINGET_TOKEN }}
           release-notes-url: https://firezone.dev/changelog
