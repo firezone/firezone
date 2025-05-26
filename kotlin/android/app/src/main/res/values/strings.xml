@@ -76,4 +76,32 @@
 		The name of the device. This is used to identify the device in the admin portal.
 		If unset, device\'s model name will be used.
 	</string>
+	<string name="config_auth_url_title">Auth URL</string>
+	<string name="config_auth_url_description">
+		The base URL used for authentication. If unset the default of https://app.firezone.dev will
+		be used. The account slug will be appended to this URL.
+	</string>
+	<string name="config_api_url_title">API URL</string>
+	<string name="config_api_url_description">
+		The WebSocket URL used to connect to the Firezone control plane. If unset the default of
+	    wss://api.firezone.dev will be used.
+	</string>
+	<string name="config_log_filter_title">Log Filter</string>
+	<string name="config_log_filter_description">
+		A RUST_LOG-formatted filter string used to control the verbosity of the connectivity library
+		logging. If unset, the default of "info" will be used.
+	</string>
+	<string name="config_account_slug_title">Account Slug</string>
+	<string name="config_account_slug_description">
+		The account ID or slug of the Firezone account to authenticate to. If unset, no account slug
+		will be used.
+	</string>
+	<string name="config_start_on_login_title">Start on Boot</string>
+	<string name="config_start_on_login_description">
+		Whether Firezone should automatically try to connect when the device boots up.
+	</string>
+	<string name="config_connect_on_start_title">Connect on Start</string>
+	<string name="config_connect_on_start_description">
+		Whether Firezone should automatically try to connect when the app is launched.
+	</string>
 </resources>
