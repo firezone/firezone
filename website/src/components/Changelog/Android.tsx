@@ -3,6 +3,7 @@ import Entries from "./Entries";
 import Entry from "./Entry";
 import Link from "next/link";
 import Unreleased from "./Unreleased";
+import { Route } from "next";
 
 export default function Android() {
   const downloadLinks = [
@@ -20,6 +21,17 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9227">
+          Adds full support for managed configurations to configure the client
+          using your organization's MDM solution. See the{" "}
+          <Link
+            href={"/kb/deploy/clients#provision-with-mdm" as Route}
+            className="text-accent-500 underline hover:no-underline"
+          >
+            knowledge base article
+          </Link>{" "}
+          for more details.
+        </ChangeItem>
         <ChangeItem pull="9014">
           Fixes an issue where idle connections would be slow (~60s) in
           detecting changes to network connectivity.
@@ -33,8 +45,8 @@ export default function Android() {
           while Firezone is connected.
         </ChangeItem>
         <ChangeItem pull="9147">
-          Fixes an issue where connections failed to establish on machines
-          with multiple valid egress IPs.
+          Fixes an issue where connections failed to establish on machines with
+          multiple valid egress IPs.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-04-30")}>
