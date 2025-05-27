@@ -27,15 +27,15 @@ defmodule Domain.Events.Event do
   ############
 
   defp process(:insert, "accounts", _old_data, data) do
-    Hooks.Accounts.insert(data)
+    Hooks.Accounts.on_insert(data)
   end
 
   defp process(:update, "accounts", old_data, data) do
-    Hooks.Accounts.update(old_data, data)
+    Hooks.Accounts.on_update(old_data, data)
   end
 
   defp process(:delete, "accounts", old_data, _data) do
-    Hooks.Accounts.delete(old_data)
+    Hooks.Accounts.on_delete(old_data)
   end
 
   ###########################
@@ -43,15 +43,15 @@ defmodule Domain.Events.Event do
   ###########################
 
   defp process(:insert, "actor_group_memberships", _old_data, data) do
-    Hooks.ActorGroupMemberships.insert(data)
+    Hooks.ActorGroupMemberships.on_insert(data)
   end
 
   defp process(:update, "actor_group_memberships", old_data, data) do
-    Hooks.ActorGroupMemberships.update(old_data, data)
+    Hooks.ActorGroupMemberships.on_update(old_data, data)
   end
 
   defp process(:delete, "actor_group_memberships", old_data, _data) do
-    Hooks.ActorGroupMemberships.delete(old_data)
+    Hooks.ActorGroupMemberships.on_delete(old_data)
   end
 
   ################
@@ -59,15 +59,15 @@ defmodule Domain.Events.Event do
   ################
 
   defp process(:insert, "actor_groups", _old_data, data) do
-    Hooks.ActorGroups.insert(data)
+    Hooks.ActorGroups.on_insert(data)
   end
 
   defp process(:update, "actor_groups", old_data, data) do
-    Hooks.ActorGroups.update(old_data, data)
+    Hooks.ActorGroups.on_update(old_data, data)
   end
 
   defp process(:delete, "actor_groups", old_data, _data) do
-    Hooks.ActorGroups.delete(old_data)
+    Hooks.ActorGroups.on_delete(old_data)
   end
 
   ##########
@@ -75,15 +75,15 @@ defmodule Domain.Events.Event do
   ##########
 
   defp process(:insert, "actors", _old_data, data) do
-    Hooks.Actors.insert(data)
+    Hooks.Actors.on_insert(data)
   end
 
   defp process(:update, "actors", old_data, data) do
-    Hooks.Actors.update(old_data, data)
+    Hooks.Actors.on_update(old_data, data)
   end
 
   defp process(:delete, "actors", old_data, _data) do
-    Hooks.Actors.delete(old_data)
+    Hooks.Actors.on_delete(old_data)
   end
 
   ###################
@@ -91,15 +91,15 @@ defmodule Domain.Events.Event do
   ###################
 
   defp process(:insert, "auth_identities", _old_data, data) do
-    Hooks.AuthIdentities.insert(data)
+    Hooks.AuthIdentities.on_insert(data)
   end
 
   defp process(:update, "auth_identities", old_data, data) do
-    Hooks.AuthIdentities.update(old_data, data)
+    Hooks.AuthIdentities.on_update(old_data, data)
   end
 
   defp process(:delete, "auth_identities", old_data, _data) do
-    Hooks.AuthIdentities.delete(old_data)
+    Hooks.AuthIdentities.on_delete(old_data)
   end
 
   ##################
@@ -107,15 +107,15 @@ defmodule Domain.Events.Event do
   ##################
 
   defp process(:insert, "auth_providers", _old_data, data) do
-    Hooks.AuthProviders.insert(data)
+    Hooks.AuthProviders.on_insert(data)
   end
 
   defp process(:update, "auth_providers", old_data, data) do
-    Hooks.AuthProviders.update(old_data, data)
+    Hooks.AuthProviders.on_update(old_data, data)
   end
 
   defp process(:delete, "auth_providers", old_data, _data) do
-    Hooks.AuthProviders.delete(old_data)
+    Hooks.AuthProviders.on_delete(old_data)
   end
 
   ###########
@@ -123,15 +123,15 @@ defmodule Domain.Events.Event do
   ###########
 
   defp process(:insert, "clients", _old_data, data) do
-    Hooks.Clients.insert(data)
+    Hooks.Clients.on_insert(data)
   end
 
   defp process(:update, "clients", old_data, data) do
-    Hooks.Clients.update(old_data, data)
+    Hooks.Clients.on_update(old_data, data)
   end
 
   defp process(:delete, "clients", old_data, _data) do
-    Hooks.Clients.delete(old_data)
+    Hooks.Clients.on_delete(old_data)
   end
 
   ###################
@@ -139,15 +139,15 @@ defmodule Domain.Events.Event do
   ###################
 
   defp process(:insert, "flow_activities", _old_data, data) do
-    Hooks.FlowActivities.insert(data)
+    Hooks.FlowActivities.on_insert(data)
   end
 
   defp process(:update, "flow_activities", old_data, data) do
-    Hooks.FlowActivities.update(old_data, data)
+    Hooks.FlowActivities.on_update(old_data, data)
   end
 
   defp process(:delete, "flow_activities", old_data, _data) do
-    Hooks.FlowActivities.delete(old_data)
+    Hooks.FlowActivities.on_delete(old_data)
   end
 
   #########
@@ -155,15 +155,15 @@ defmodule Domain.Events.Event do
   #########
 
   defp process(:insert, "flows", _old_data, data) do
-    Hooks.Flows.insert(data)
+    Hooks.Flows.on_insert(data)
   end
 
   defp process(:update, "flows", old_data, data) do
-    Hooks.Flows.update(old_data, data)
+    Hooks.Flows.on_update(old_data, data)
   end
 
   defp process(:delete, "flows", old_data, _data) do
-    Hooks.Flows.delete(old_data)
+    Hooks.Flows.on_delete(old_data)
   end
 
   ##################
@@ -171,15 +171,15 @@ defmodule Domain.Events.Event do
   ##################
 
   defp process(:insert, "gateway_groups", _old_data, data) do
-    Hooks.GatewayGroups.insert(data)
+    Hooks.GatewayGroups.on_insert(data)
   end
 
   defp process(:update, "gateway_groups", old_data, data) do
-    Hooks.GatewayGroups.update(old_data, data)
+    Hooks.GatewayGroups.on_update(old_data, data)
   end
 
   defp process(:delete, "gateway_groups", old_data, _data) do
-    Hooks.GatewayGroups.delete(old_data)
+    Hooks.GatewayGroups.on_delete(old_data)
   end
 
   ############
@@ -187,15 +187,15 @@ defmodule Domain.Events.Event do
   ############
 
   defp process(:insert, "gateways", _old_data, data) do
-    Hooks.Gateways.insert(data)
+    Hooks.Gateways.on_insert(data)
   end
 
   defp process(:update, "gateways", old_data, data) do
-    Hooks.Gateways.update(old_data, data)
+    Hooks.Gateways.on_update(old_data, data)
   end
 
   defp process(:delete, "gateways", old_data, _data) do
-    Hooks.Gateways.delete(old_data)
+    Hooks.Gateways.on_delete(old_data)
   end
 
   ############
@@ -203,15 +203,15 @@ defmodule Domain.Events.Event do
   ############
 
   defp process(:insert, "policies", _old_data, data) do
-    Hooks.Policies.insert(data)
+    Hooks.Policies.on_insert(data)
   end
 
   defp process(:update, "policies", old_data, data) do
-    Hooks.Policies.update(old_data, data)
+    Hooks.Policies.on_update(old_data, data)
   end
 
   defp process(:delete, "policies", old_data, _data) do
-    Hooks.Policies.delete(old_data)
+    Hooks.Policies.on_delete(old_data)
   end
 
   ################
@@ -219,15 +219,15 @@ defmodule Domain.Events.Event do
   ################
 
   defp process(:insert, "relay_groups", _old_data, data) do
-    Hooks.RelayGroups.insert(data)
+    Hooks.RelayGroups.on_insert(data)
   end
 
   defp process(:update, "relay_groups", old_data, data) do
-    Hooks.RelayGroups.update(old_data, data)
+    Hooks.RelayGroups.on_update(old_data, data)
   end
 
   defp process(:delete, "relay_groups", old_data, _data) do
-    Hooks.RelayGroups.delete(old_data)
+    Hooks.RelayGroups.on_delete(old_data)
   end
 
   ##########
@@ -235,15 +235,15 @@ defmodule Domain.Events.Event do
   ##########
 
   defp process(:insert, "relays", _old_data, data) do
-    Hooks.Relays.insert(data)
+    Hooks.Relays.on_insert(data)
   end
 
   defp process(:update, "relays", old_data, data) do
-    Hooks.Relays.update(old_data, data)
+    Hooks.Relays.on_update(old_data, data)
   end
 
   defp process(:delete, "relays", old_data, _data) do
-    Hooks.Relays.delete(old_data)
+    Hooks.Relays.on_delete(old_data)
   end
 
   ########################
@@ -251,15 +251,15 @@ defmodule Domain.Events.Event do
   ########################
 
   defp process(:insert, "resource_connections", _old_data, data) do
-    Hooks.ResourceConnections.insert(data)
+    Hooks.ResourceConnections.on_insert(data)
   end
 
   defp process(:update, "resource_connections", old_data, data) do
-    Hooks.ResourceConnections.update(old_data, data)
+    Hooks.ResourceConnections.on_update(old_data, data)
   end
 
   defp process(:delete, "resource_connections", old_data, _data) do
-    Hooks.ResourceConnections.delete(old_data)
+    Hooks.ResourceConnections.on_delete(old_data)
   end
 
   #############
@@ -267,15 +267,15 @@ defmodule Domain.Events.Event do
   #############
 
   defp process(:insert, "resources", _old_data, data) do
-    Hooks.Resources.insert(data)
+    Hooks.Resources.on_insert(data)
   end
 
   defp process(:update, "resources", old_data, data) do
-    Hooks.Resources.update(old_data, data)
+    Hooks.Resources.on_update(old_data, data)
   end
 
   defp process(:delete, "resources", old_data, _data) do
-    Hooks.Resources.delete(old_data)
+    Hooks.Resources.on_delete(old_data)
   end
 
   ##########
@@ -283,15 +283,15 @@ defmodule Domain.Events.Event do
   ##########
 
   defp process(:insert, "tokens", _old_data, data) do
-    Hooks.Tokens.insert(data)
+    Hooks.Tokens.on_insert(data)
   end
 
   defp process(:update, "tokens", old_data, data) do
-    Hooks.Tokens.update(old_data, data)
+    Hooks.Tokens.on_update(old_data, data)
   end
 
   defp process(:delete, "tokens", old_data, _data) do
-    Hooks.Tokens.delete(old_data)
+    Hooks.Tokens.on_delete(old_data)
   end
 
   #############
