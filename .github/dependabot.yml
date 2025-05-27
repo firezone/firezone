@@ -56,6 +56,10 @@ updates:
         patterns:
           - aya
           - aya-*
+      rand:
+        patterns:
+          - rand
+          - rand_*
   - package-ecosystem: gradle
     directory: kotlin/android/
     schedule:
