@@ -18,6 +18,7 @@ members = [
   "connlib/tun",
   "connlib/tunnel",
   "gateway",
+  "gui-client/src-admx-macro",
   "gui-client/src-tauri",
   "headless-client",
   "logging",
@@ -36,6 +37,7 @@ license = "Apache-2.0"
 edition = "2024"
 
 [workspace.dependencies]
+admx-macro = { path = "gui-client/src-admx-macro" }
 android-client-ffi = { path = "android-client-ffi" }
 anyhow = "1.0.98"
 apple-client-ffi = { path = "apple-client-ffi" }
@@ -117,9 +119,11 @@ output_vt100 = "0.1"
 parking_lot = "0.12.3"
 phoenix-channel = { path = "connlib/phoenix-channel" }
 png = "0.17.16"
+proc-macro2 = "1.0"
 proptest = "1.6.0"
 proptest-state-machine = "0.3.1"
 quinn-udp = { version = "0.5.12", features = ["fast-apple-datapath"] }
+quote = "1.0"
 rand = "0.8.5"
 rand_core = "0.6.4"
 rangemap = "1.5.1"
@@ -127,6 +131,7 @@ rayon = "1.10.0"
 reqwest = { version = "0.12.9", default-features = false }
 resolv-conf = "0.7.3"
 ringbuffer = "0.15.0"
+roxmltree = "0.20"
 rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.21", default-features = false, features = ["ring"] }
 sadness-generator = "0.6.0"
@@ -154,6 +159,7 @@ subtle = "2.5.0"
 supports-color = "3.0.2"
 swift-bridge = "0.1.57"
 swift-bridge-build = "0.1.57"
+syn = "2.0"
 tauri = "2.5.1"
 tauri-build = "2.1.0"
 tauri-plugin-dialog = "2.2.1"

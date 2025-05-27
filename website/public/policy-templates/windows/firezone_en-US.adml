@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<policyDefinitionResources revision="1.0" schemaVersion="1.0">
+  <displayName />
+  <description />
+  <resources>
+    <stringTable>
+      <string id="firezone">Firezone</string>
+      <string id="authURL">Authentication URL</string>
+      <string id="apiURL">WebSocket API URL</string>
+      <string id="logFilter">RUST_LOG filter string</string>
+      <string id="accountSlug">Account Slug</string>
+      <string id="hideAdminPortalMenuItem">Hide admin portal link</string>
+      <string id="connectOnStart">Connect on start</string>
+      <string id="checkForUpdates">Automatically check for updates</string>
+      <string id="supportURL">Support URL</string>
+
+      <string id="SUPPORTED_FZ_GUI_1_5_0">
+        Firezone GUI Client 1.5.0 or later
+      </string>
+
+      <string id="authURL_explain">
+        The base URL to open when users sign in. The accountSlug will be appended to this. In most cases you shouldn't change this. By default, the Client will use "https://app.firezone.dev".
+      </string>
+      <string id="apiURL_explain">
+        The control plane WebSocket URL that the Tunnel service connects to. In most cases you shouldn't change this. By default, the Client will use "https://api.firezone.dev".
+      </string>
+      <string id="logFilter_explain">
+        The RUST_LOG-style filter string to apply for increasing log output to use for connectivity troubleshooting. In most cases you shouldn't change this. By default, the Client will use "info".
+      </string>
+      <string id="accountSlug_explain">
+        Configures the account slug the Client will use to authenticate with Firezone. If this policy is set, the user will automatically be redirected to the login page for this account when signing into the Client.
+      </string>
+      <string id="hideAdminPortalMenuItem_explain">
+        Hide the Admin portal link in the Firezone menu in the taskbar. By default, the link to the admin portal is shown.
+      </string>
+      <string id="connectOnStart_explain">
+        Try to connect to Firezone using the saved token and configuration when the client application starts. If the authentication token is expired, the client will start in a disconnected state. By default, the Client connects if it has a token saved in the keychain.
+      </string>
+      <string id="checkForUpdates_explain">
+        Configures whether the Firezone Client will automatically check for updates of new versions. By default, the Client will check for and notify the user of new versions.
+      </string>
+      <string id="supportURL_explain">
+        The URL to which users will be taken to when clicking the Help -&gt; Support link in the tray menu. By default, the Client will use "https://www.firezone.dev/support".
+      </string>
+    </stringTable>
+    <presentationTable>
+      <presentation id="authURL">
+        <textBox refId="authURL">
+          <label>URL:</label>
+        </textBox>
+      </presentation>
+      <presentation id="apiURL">
+        <textBox refId="apiURL">
+          <label>URL:</label>
+        </textBox>
+      </presentation>
+      <presentation id="logFilter">
+        <textBox refId="logFilter">
+          <label>Log filter:</label>
+        </textBox>
+      </presentation>
+      <presentation id="accountSlug">
+        <textBox refId="accountSlug">
+          <label>Account slug:</label>
+        </textBox>
+      </presentation>
+      <presentation id="supportURL">
+        <textBox refId="supportURL">
+          <label>URL:</label>
+        </textBox>
+      </presentation>
+    </presentationTable>
+  </resources>
+</policyDefinitionResources>

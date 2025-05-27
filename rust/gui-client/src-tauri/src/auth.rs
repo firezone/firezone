@@ -59,8 +59,13 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn to_url(&self, auth_base_url: &Url) -> SecretString {
+    pub fn to_url(&self, auth_base_url: &Url, account_slug: Option<&str>) -> SecretString {
         let mut url = auth_base_url.clone();
+
+        if let Some(account_slug) = account_slug {
+            url.set_path(account_slug);
+        }
+
         url.query_pairs_mut()
             .append_pair("as", "client")
             .append_pair("nonce", self.nonce.expose_secret())
@@ -435,7 +440,7 @@ mod tests {
             state: bogus_secret("some_state"),
         };
         assert_eq!(
-            req.to_url(&auth_base_url).expose_secret(),
+            req.to_url(&auth_base_url, None).expose_secret(),
             "https://app.firez.one/?as=client&nonce=some_nonce&state=some_state"
         );
     }

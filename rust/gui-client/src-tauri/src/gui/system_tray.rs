@@ -249,6 +249,8 @@ fn build_item(app: &AppHandle, item: &Item) -> Result<Box<IsMenuItem>> {
 pub struct AppState {
     pub connlib: ConnlibState,
     pub release: Option<Release>,
+    pub hide_admin_portal_menu_item: bool,
+    pub support_url: Option<Url>,
 }
 
 impl Default for AppState {
@@ -256,6 +258,8 @@ impl Default for AppState {
         AppState {
             connlib: ConnlibState::Loading,
             release: None,
+            hide_admin_portal_menu_item: false,
+            support_url: None,
         }
     }
 }
@@ -282,7 +286,12 @@ impl AppState {
             ConnlibState::WaitingForPortal => signing_in("Connecting to Firezone Portal..."),
             ConnlibState::WaitingForTunnel => signing_in("Raising tunnel..."),
         };
-        menu.add_bottom_section(self.release, quit_text)
+        menu.add_bottom_section(
+            self.release,
+            quit_text,
+            !self.hide_admin_portal_menu_item,
+            self.support_url,
+        )
     }
 }
 
@@ -481,7 +490,13 @@ fn append_status(name: &str, enabled: bool) -> String {
 
 impl Menu {
     /// Appends things that always show, like About, Settings, Help, Quit, etc.
-    pub(crate) fn add_bottom_section(mut self, release: Option<Release>, quit_text: &str) -> Self {
+    pub(crate) fn add_bottom_section(
+        mut self,
+        release: Option<Release>,
+        quit_text: &str,
+        show_admin_portal_url: bool,
+        support_url: Option<Url>,
+    ) -> Self {
         self = self.separator();
         if let Some(release) = release {
             self = self.item(
@@ -490,23 +505,29 @@ impl Menu {
             )
         }
 
-        self.item(Event::ShowWindow(Window::About), "About Firezone")
-            .item(Event::AdminPortal, "Admin Portal...")
-            .add_submenu(
-                "Help",
-                Menu::default()
-                    .item(
-                        Event::Url(utm_url("https://www.firezone.dev/kb")),
-                        "Documentation...",
-                    )
-                    .item(
-                        Event::Url(utm_url("https://www.firezone.dev/support")),
-                        "Support...",
+        let mut item = self.item(Event::ShowWindow(Window::About), "About Firezone");
+
+        if show_admin_portal_url {
+            item = item.item(Event::AdminPortal, "Admin Portal...");
+        }
+
+        item.add_submenu(
+            "Help",
+            Menu::default()
+                .item(
+                    Event::Url(utm_url("https://www.firezone.dev/kb")),
+                    "Documentation...",
+                )
+                .item(
+                    Event::Url(
+                        support_url.unwrap_or_else(|| utm_url("https://www.firezone.dev/support")),
                     ),
-            )
-            .item(Event::ShowWindow(Window::Settings), "Settings")
-            .separator()
-            .item(Event::Quit, quit_text)
+                    "Support...",
+                ),
+        )
+        .item(Event::ShowWindow(Window::Settings), "Settings")
+        .separator()
+        .item(Event::Quit, quit_text)
     }
 }
 
@@ -551,6 +572,8 @@ mod tests {
                 internet_resource_enabled,
             }),
             release: None,
+            hide_admin_portal_menu_item: false,
+            support_url: None,
         }
     }
 
@@ -588,18 +611,88 @@ mod tests {
     }
 
     #[test]
+    fn can_remove_admin_portal_link() {
+        let actual = AppState {
+            hide_admin_portal_menu_item: true,
+            ..Default::default()
+        }
+        .into_menu();
+
+        let expected = Menu::default()
+            .disabled("Loading...")
+            .separator()
+            .item(Event::ShowWindow(Window::About), "About Firezone")
+            .add_submenu(
+                "Help",
+                Menu::default()
+                    .item(
+                        Event::Url(utm_url("https://www.firezone.dev/kb")),
+                        "Documentation...",
+                    )
+                    .item(
+                        Event::Url(utm_url("https://www.firezone.dev/support")),
+                        "Support...",
+                    ),
+            )
+            .item(Event::ShowWindow(Window::Settings), "Settings")
+            .separator()
+            .item(Event::Quit, QUIT_TEXT_SIGNED_OUT);
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap()
+        );
+    }
+
+    #[test]
+    fn can_change_support_url() {
+        let actual = AppState {
+            support_url: Some("https://example.com".parse().unwrap()),
+            ..Default::default()
+        }
+        .into_menu();
+
+        let expected = Menu::default()
+            .disabled("Loading...")
+            .separator()
+            .item(Event::ShowWindow(Window::About), "About Firezone")
+            .item(Event::AdminPortal, "Admin Portal...")
+            .add_submenu(
+                "Help",
+                Menu::default()
+                    .item(
+                        Event::Url(utm_url("https://www.firezone.dev/kb")),
+                        "Documentation...",
+                    )
+                    .item(
+                        Event::Url("https://example.com".parse().unwrap()),
+                        "Support...",
+                    ),
+            )
+            .item(Event::ShowWindow(Window::Settings), "Settings")
+            .separator()
+            .item(Event::Quit, QUIT_TEXT_SIGNED_OUT);
+
+        assert_eq!(
+            actual,
+            expected,
+            "{}",
+            serde_json::to_string_pretty(&actual).unwrap()
+        );
+    }
+
+    #[test]
     fn no_resources_no_favorites() {
-        let resources = vec![];
-        let favorites = Default::default();
-        let disabled_resources = Default::default();
-        let input = signed_in(resources, favorites, disabled_resources);
-        let actual = input.into_menu();
+        let actual = signed_in(vec![], HashSet::default(), None).into_menu();
+
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
             .separator()
             .disabled(RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -611,17 +704,15 @@ mod tests {
 
     #[test]
     fn no_resources_invalid_favorite() {
-        let resources = vec![];
-        let favorites = HashSet::from([ResourceId::from_u128(42)]);
-        let disabled_resources = Default::default();
-        let input = signed_in(resources, favorites, disabled_resources);
-        let actual = input.into_menu();
+        let actual =
+            signed_in(vec![], HashSet::from([ResourceId::from_u128(42)]), None).into_menu();
+
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
             .separator()
             .disabled(RESOURCES)
-            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -633,11 +724,8 @@ mod tests {
 
     #[test]
     fn some_resources_no_favorites() {
-        let resources = resources();
-        let favorites = Default::default();
-        let disabled_resources = Default::default();
-        let input = signed_in(resources, favorites, disabled_resources);
-        let actual = input.into_menu();
+        let actual = signed_in(resources(), HashSet::default(), None).into_menu();
+
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
@@ -697,7 +785,8 @@ mod tests {
                     .copyable("test")
                     .copyable(ALL_GATEWAYS_OFFLINE),
             )
-            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
+
         assert_eq!(
             actual,
             expected,
@@ -708,13 +797,15 @@ mod tests {
 
     #[test]
     fn some_resources_one_favorite() -> Result<()> {
-        let resources = resources();
-        let favorites = HashSet::from([ResourceId::from_str(
-            "03000143-e25e-45c7-aafb-144990e57dcd",
-        )?]);
-        let disabled_resources = Default::default();
-        let input = signed_in(resources, favorites, disabled_resources);
-        let actual = input.into_menu();
+        let actual = signed_in(
+            resources(),
+            HashSet::from([ResourceId::from_str(
+                "03000143-e25e-45c7-aafb-144990e57dcd",
+            )?]),
+            None,
+        )
+        .into_menu();
+
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
@@ -778,7 +869,7 @@ mod tests {
                         .copyable(NO_ACTIVITY),
                 ),
             )
-            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,
@@ -792,13 +883,15 @@ mod tests {
 
     #[test]
     fn some_resources_invalid_favorite() -> Result<()> {
-        let resources = resources();
-        let favorites = HashSet::from([ResourceId::from_str(
-            "00000000-0000-0000-0000-000000000000",
-        )?]);
-        let disabled_resources = Default::default();
-        let input = signed_in(resources, favorites, disabled_resources);
-        let actual = input.into_menu();
+        let actual = signed_in(
+            resources(),
+            HashSet::from([ResourceId::from_str(
+                "00000000-0000-0000-0000-000000000000",
+            )?]),
+            None,
+        )
+        .into_menu();
+
         let expected = Menu::default()
             .disabled("Signed in as Jane Doe")
             .item(Event::SignOut, SIGN_OUT)
@@ -858,7 +951,7 @@ mod tests {
                     .copyable("test")
                     .copyable(ALL_GATEWAYS_OFFLINE),
             )
-            .add_bottom_section(None, DISCONNECT_AND_QUIT); // Skip testing the bottom section, it's simple
+            .add_bottom_section(None, DISCONNECT_AND_QUIT, true, None); // Skip testing the bottom section, it's simple
 
         assert_eq!(
             actual,

@@ -3,6 +3,8 @@ import Entries, { DownloadLink } from "./Entries";
 import ChangeItem from "./ChangeItem";
 import Unreleased from "./Unreleased";
 import { OS } from ".";
+import Link from "next/link";
+import { Route } from "next";
 
 export default function GUI({ os }: { os: OS }) {
   return (
@@ -10,9 +12,22 @@ export default function GUI({ os }: { os: OS }) {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="9211">
-          Fixes an issue where changing the Advanced settings would reset
-          the favourited resources.
+          Fixes an issue where changing the Advanced settings would reset the
+          favourited resources.
         </ChangeItem>
+        {os === OS.Windows && (
+          <ChangeItem pull="9203">
+            Allows managing certain settings via an MDM provider such as
+            Microsoft Intune. For more details on how to do this, see the{" "}
+            <Link
+              href={"/kb/deploy/clients#provision-with-mdm" as Route}
+              className="text-accent-500 underline hover:no-underline"
+            >
+              the knowledge base article
+            </Link>
+            .
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-21")}>
         <ChangeItem pull="9147">
