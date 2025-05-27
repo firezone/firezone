@@ -18,8 +18,8 @@ importers:
         specifier: ^3.1.0
         version: 3.1.0(@types/react@18.3.11)(react@18.3.1)
       '@next/mdx':
-        specifier: ~15.3.1
-        version: 15.3.1(@mdx-js/loader@3.1.0(acorn@8.14.0)(webpack@5.92.0))(@mdx-js/react@3.1.0(@types/react@18.3.11)(react@18.3.1))
+        specifier: ~15.3.2
+        version: 15.3.2(@mdx-js/loader@3.1.0(acorn@8.14.0)(webpack@5.92.0))(@mdx-js/react@3.1.0(@types/react@18.3.11)(react@18.3.1))
       '@next/third-parties':
         specifier: ^15.3.2
         version: 15.3.2(next@14.2.26(react-dom@18.3.1(react@18.3.1))(react@18.3.1))(react@18.3.1)
@@ -308,8 +308,8 @@ packages:
   '@next/env@14.2.26':
     resolution: {integrity: sha512-vO//GJ/YBco+H7xdQhzJxF7ub3SUwft76jwaeOyVVQFHCi5DCnkP16WHB+JBylo4vOKPoZBlR94Z8xBxNBdNJA==}
 
-  '@next/mdx@15.3.1':
-    resolution: {integrity: sha512-dnpuJRfqqCPFfLDy2hIej41JAl424zk1JOgRd7jjWu2aTeX6oi0gXdcnMAK4lhf7Xl9zSkL2stzDc1YtlB1xyg==}
+  '@next/mdx@15.3.2':
+    resolution: {integrity: sha512-D6lSSbVzn1EiPwrBKG5QzXClcgdqiNCL8a3/6oROinzgZnYSxbVmnfs0UrqygtGSOmgW7sdJJSEOy555DoAwvw==}
     peerDependencies:
       '@mdx-js/loader': '>=0.15.0'
       '@mdx-js/react': '>=0.15.0'
@@ -1853,8 +1853,8 @@ packages:
       uglify-js:
         optional: true
 
-  terser@5.39.2:
-    resolution: {integrity: sha512-yEPUmWve+VA78bI71BW70Dh0TuV4HHd+I5SHOAfS1+QBOmvmCiiffgjR8ryyEd3KIfvPGFqoADt8LdQ6XpXIvg==}
+  terser@5.40.0:
+    resolution: {integrity: sha512-cfeKl/jjwSR5ar7d0FGmave9hFGJT8obyo0z+CrQOylLDbk7X81nPU6vq9VORa5jU30SkDnT2FXjLbR8HLP+xA==}
     engines: {node: '>=10'}
     hasBin: true
 
@@ -2219,7 +2219,7 @@ snapshots:
 
   '@next/env@14.2.26': {}
 
-  '@next/mdx@15.3.1(@mdx-js/loader@3.1.0(acorn@8.14.0)(webpack@5.92.0))(@mdx-js/react@3.1.0(@types/react@18.3.11)(react@18.3.1))':
+  '@next/mdx@15.3.2(@mdx-js/loader@3.1.0(acorn@8.14.0)(webpack@5.92.0))(@mdx-js/react@3.1.0(@types/react@18.3.11)(react@18.3.1))':
     dependencies:
       source-map: 0.7.4
     optionalDependencies:
@@ -4212,11 +4212,11 @@ snapshots:
       jest-worker: 27.5.1
       schema-utils: 4.3.2
       serialize-javascript: 6.0.2
-      terser: 5.39.2
+      terser: 5.40.0
       webpack: 5.92.0
     optional: true
 
-  terser@5.39.2:
+  terser@5.40.0:
     dependencies:
       '@jridgewell/source-map': 0.3.6
       acorn: 8.14.1
