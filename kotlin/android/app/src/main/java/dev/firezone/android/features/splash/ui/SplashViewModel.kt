@@ -41,36 +41,41 @@ internal class SplashViewModel
                 // Stay a while and enjoy the logo
                 delay(REQUEST_DELAY)
 
-                // If this is an 'initial launch' call, but we've already handled the
-                // initial launch logic for this ViewModel instance, then do nothing.
+                // We've already posted the initial action, so we can skip the rest of the checks
                 if (isInitialLaunch && hasPerformedInitialLaunchCheck) {
                     return@launch
                 }
 
+                if (isInitialLaunch) {
+                    hasPerformedInitialLaunchCheck = true
+                }
+
+                // If we don't have VPN permission, we can't continue.
                 if (!hasVpnPermissions(context) && applicationMode != ApplicationMode.TESTING) {
                     actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
-                } else {
-                    val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
-                    val connectOnStart = repo.getConfigSync().connectOnStart
-
-                    // Determine if the tunnel should connect:
-                    // 1. If it's an initial launch AND connectOnStart is true.
-                    // OR
-                    // 2. If it's NOT an initial launch (meaning it's a resume), always try to connect if a token exists.
-                    if (!token.isNullOrBlank() && (isInitialLaunch && connectOnStart || !isInitialLaunch)) {
-                        // token will be re-read by the TunnelService
-                        if (!TunnelService.isRunning(context)) TunnelService.start(context)
-
-                        actionMutableLiveData.postValue(ViewAction.NavigateToSession)
-                    } else {
-                        actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
-                    }
+                    return@launch
                 }
-            }
 
-            // Set the flag to true after the initial launch check is performed
-            if (isInitialLaunch) {
-                hasPerformedInitialLaunchCheck = true
+                val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
+                val connectOnStart = repo.getConfigSync().connectOnStart
+
+                // If we don't have a token, we can't connect.
+                if (token.isNullOrBlank()) {
+                    actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
+                    return@launch
+                }
+
+                // If it's the initial launch but connect on start isn't enabled, we navigate to sign in.
+                if (isInitialLaunch && !connectOnStart) {
+                    actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
+                    return@launch
+                }
+
+                // If we reach here, we have a token and should attempt to connect.
+                if (!TunnelService.isRunning(context)) {
+                    TunnelService.start(context)
+                }
+                actionMutableLiveData.postValue(ViewAction.NavigateToSession)
             }
         }
 
