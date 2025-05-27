@@ -196,8 +196,8 @@ dependencies {
     testImplementation("com.google.dagger:hilt-android-testing:2.56.2")
 
     // Retrofit 2
-    implementation("com.squareup.retrofit2:retrofit:2.11.0")
-    implementation("com.squareup.retrofit2:converter-moshi:2.11.0")
+    implementation("com.squareup.retrofit2:retrofit:3.0.0")
+    implementation("com.squareup.retrofit2:converter-moshi:3.0.0")
 
     // OkHttp
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
