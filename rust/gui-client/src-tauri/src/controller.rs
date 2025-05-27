@@ -3,7 +3,7 @@ use crate::{
     gui::{self, system_tray},
     ipc::{self, SocketId},
     logging, service,
-    settings::{self, AdvancedSettings, GeneralSettings},
+    settings::{self, AdvancedSettings, GeneralSettings, MdmSettings},
     updates, uptime,
 };
 use anyhow::{Context, Result, anyhow, bail};
@@ -33,6 +33,7 @@ pub type CtlrTx = mpsc::Sender<ControllerRequest>;
 
 pub struct Controller<I: GuiIntegration> {
     general_settings: GeneralSettings,
+    mdm_settings: MdmSettings,
     advanced_settings: AdvancedSettings,
     // Sign-in state with the portal / deep links
     auth: auth::Auth,
@@ -70,7 +71,11 @@ pub trait GuiIntegration {
 
     fn notify_signed_in(&self, session: &auth::Session) -> Result<()>;
     fn notify_signed_out(&self) -> Result<()>;
-    fn notify_settings_changed(&self, settings: &AdvancedSettings) -> Result<()>;
+    fn notify_settings_changed(
+        &self,
+        mdm_settings: MdmSettings,
+        advanced_settings: AdvancedSettings,
+    ) -> Result<()>;
 
     /// Also opens non-URLs
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
@@ -80,7 +85,11 @@ pub trait GuiIntegration {
     fn show_notification(&self, title: &str, body: &str) -> Result<()>;
     fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()>;
 
-    fn show_settings_window(&self, settings: &AdvancedSettings) -> Result<()>;
+    fn show_settings_window(
+        &self,
+        mdm_settings: MdmSettings,
+        advanced_settings: AdvancedSettings,
+    ) -> Result<()>;
     fn show_about_window(&self) -> Result<()>;
 }
 
@@ -211,6 +220,7 @@ impl<I: GuiIntegration> Controller<I> {
         integration: I,
         rx: mpsc::Receiver<ControllerRequest>,
         general_settings: GeneralSettings,
+        mdm_settings: MdmSettings,
         advanced_settings: AdvancedSettings,
         log_filter_reloader: FilterReloadHandle,
         updates_rx: mpsc::Receiver<Option<updates::Notification>>,
@@ -230,6 +240,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         let controller = Controller {
             general_settings,
+            mdm_settings,
             advanced_settings,
             auth: auth::Auth::new()?,
             clear_logs_callback: None,
@@ -266,11 +277,15 @@ impl<I: GuiIntegration> Controller<I> {
             .token()
             .context("Failed to load token from disk during app start")?
         {
-            self.start_session(token).await?;
+            // For backwards-compatibility prior to MDM-config, also call `start_session` if not configured.
+            if self.mdm_settings.connect_on_start.is_none_or(|c| c) {
+                self.start_session(token).await?;
+            }
         } else {
             tracing::info!("No token / actor_name on disk, starting in signed-out state");
-            self.refresh_system_tray_menu();
         }
+
+        self.refresh_system_tray_menu();
 
         if !ran_before::get().await? {
             self.integration
@@ -324,7 +339,7 @@ impl<I: GuiIntegration> Controller<I> {
                     self.handle_update_notification(notification)?
                 }
                 EventloopTick::UpdateNotification(None) => {
-                    return Err(anyhow!("Update checker task stopped"));
+                    // Update task may be disabled by MDM, ignore if it stops / is not running.
                 }
                 EventloopTick::NewInstanceLaunched(None) => {
                     return Err(anyhow!("GUI IPC socket closed"));
@@ -400,7 +415,7 @@ impl<I: GuiIntegration> Controller<I> {
             ))?,
         }
 
-        let api_url = self.advanced_settings.api_url.clone();
+        let api_url = self.api_url().clone();
         tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
         // Count the start instant from before we connect
@@ -426,7 +441,7 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     async fn update_telemetry_context(&mut self) -> Result<()> {
-        let environment = self.advanced_settings.api_url.to_string();
+        let environment = self.api_url().to_string();
         let account_slug = self.auth.session().map(|s| s.account_slug.to_owned());
 
         if let Some(account_slug) = account_slug.clone() {
@@ -482,8 +497,10 @@ impl<I: GuiIntegration> Controller<I> {
                 .await?;
 
                 // Notify GUI that settings have changed
-                self.integration
-                    .notify_settings_changed(&self.advanced_settings)?;
+                self.integration.notify_settings_changed(
+                    self.mdm_settings.clone(),
+                    self.advanced_settings.clone(),
+                )?;
 
                 tracing::debug!("Applied new settings. Log level will take effect immediately.");
 
@@ -513,12 +530,13 @@ impl<I: GuiIntegration> Controller<I> {
             Fail(Failure::Error) => Err(anyhow!("Test error"))?,
             Fail(Failure::Panic) => panic!("Test panic"),
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
+                let auth_url = self.auth_url().clone();
                 let req = self
                     .auth
                     .start_sign_in()
                     .context("Couldn't start sign-in flow")?;
 
-                let url = req.to_url(&self.advanced_settings.auth_base_url);
+                let url = req.to_url(&auth_url, self.mdm_settings.account_slug.as_deref());
                 self.refresh_system_tray_menu();
                 self.integration
                     .open_url(url.expose_secret())
@@ -532,7 +550,7 @@ impl<I: GuiIntegration> Controller<I> {
             }
             SystemTrayMenu(system_tray::Event::AdminPortal) => self
                 .integration
-                .open_url(&self.advanced_settings.auth_base_url)
+                .open_url(self.auth_url())
                 .context("Couldn't open auth page")?,
             SystemTrayMenu(system_tray::Event::Copy(s)) => arboard::Clipboard::new()
                 .context("Couldn't access clipboard")?
@@ -576,9 +594,10 @@ impl<I: GuiIntegration> Controller<I> {
             SystemTrayMenu(system_tray::Event::ShowWindow(window)) => {
                 match window {
                     system_tray::Window::About => self.integration.show_about_window()?,
-                    system_tray::Window::Settings => self
-                        .integration
-                        .show_settings_window(&self.advanced_settings)?,
+                    system_tray::Window::Settings => self.integration.show_settings_window(
+                        self.mdm_settings.clone(),
+                        self.advanced_settings.clone(),
+                    )?,
                 };
 
                 // When the About or Settings windows are hidden / shown, log the
@@ -840,7 +859,9 @@ impl<I: GuiIntegration> Controller<I> {
         let connlib = if let Some(auth_session) = self.auth.session() {
             match &self.status {
                 Status::Disconnected => {
-                    tracing::error!("We have an auth session but no connlib session");
+                    // If we have an `auth_session` but no connlib session, we are most likely configured to
+                    // _not_ auto-connect on startup. Thus, we treat this the same as being signed out.
+
                     system_tray::ConnlibState::SignedOut
                 }
                 Status::Quitting => system_tray::ConnlibState::Quitting,
@@ -866,6 +887,11 @@ impl<I: GuiIntegration> Controller<I> {
         self.integration.set_tray_menu(system_tray::AppState {
             connlib,
             release: self.release.clone(),
+            hide_admin_portal_menu_item: self
+                .mdm_settings
+                .hide_admin_portal_menu_item
+                .is_some_and(|hide| hide),
+            support_url: self.mdm_settings.support_url.clone(),
         });
     }
 
@@ -911,6 +937,20 @@ impl<I: GuiIntegration> Controller<I> {
             .send(msg)
             .await
             .context("Failed to send IPC message")
+    }
+
+    fn auth_url(&self) -> &Url {
+        self.mdm_settings
+            .auth_url
+            .as_ref()
+            .unwrap_or(&self.advanced_settings.auth_base_url)
+    }
+
+    fn api_url(&self) -> &Url {
+        self.mdm_settings
+            .api_url
+            .as_ref()
+            .unwrap_or(&self.advanced_settings.api_url)
     }
 }
 

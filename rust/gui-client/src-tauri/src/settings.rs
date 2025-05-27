@@ -13,6 +13,20 @@ use url::Url;
 
 use super::controller::ControllerRequest;
 
+#[cfg(target_os = "linux")]
+#[path = "settings/linux.rs"]
+pub(crate) mod mdm;
+
+#[cfg(target_os = "windows")]
+#[path = "settings/windows.rs"]
+pub(crate) mod mdm;
+
+#[cfg(target_os = "macos")]
+#[path = "settings/macos.rs"]
+pub(crate) mod mdm;
+
+pub use mdm::load_mdm_settings;
+
 #[tauri::command]
 pub(crate) async fn apply_advanced_settings(
     managed: tauri::State<'_, Managed>,
@@ -40,6 +54,23 @@ pub(crate) async fn reset_advanced_settings(
     Ok(())
 }
 
+/// Defines all configuration options settable via MDM policies.
+///
+/// Configuring Firezone via MDM is optional, therefore all of these are [`Option`]s.
+/// Some of the policies can simply be enabled but don't have a value themselves.
+/// Those are modelled as [`Option<()>`].
+#[derive(Clone, Default, Debug)]
+pub struct MdmSettings {
+    pub auth_url: Option<Url>,
+    pub api_url: Option<Url>,
+    pub log_filter: Option<String>,
+    pub account_slug: Option<String>,
+    pub hide_admin_portal_menu_item: Option<bool>,
+    pub connect_on_start: Option<bool>,
+    pub check_for_updates: Option<bool>,
+    pub support_url: Option<Url>,
+}
+
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AdvancedSettingsLegacy {
     pub auth_base_url: Url,
@@ -64,6 +95,34 @@ pub struct GeneralSettings {
     pub favorite_resources: HashSet<ResourceId>,
     #[serde(default)]
     pub internet_resource_enabled: Option<bool>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct AdvancedSettingsViewModel {
+    pub auth_url: Url,
+    pub auth_url_is_managed: bool,
+    pub api_url: Url,
+    pub api_url_is_managed: bool,
+    pub log_filter: String,
+    pub log_filter_is_managed: bool,
+}
+
+impl AdvancedSettingsViewModel {
+    pub fn new(mdm_settings: MdmSettings, advanced_settings: AdvancedSettings) -> Self {
+        Self {
+            auth_url_is_managed: mdm_settings.auth_url.is_some(),
+            api_url_is_managed: mdm_settings.api_url.is_some(),
+            log_filter_is_managed: mdm_settings.log_filter.is_some(),
+
+            auth_url: mdm_settings
+                .auth_url
+                .unwrap_or(advanced_settings.auth_base_url),
+            api_url: mdm_settings.api_url.unwrap_or(advanced_settings.api_url),
+            log_filter: mdm_settings
+                .log_filter
+                .unwrap_or(advanced_settings.log_filter),
+        }
+    }
 }
 
 #[cfg(debug_assertions)]

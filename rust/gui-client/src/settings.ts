@@ -4,9 +4,12 @@ import "flowbite"
 
 // Custom types
 interface Settings {
-  auth_base_url: string;
+  auth_url: string;
+  auth_url_is_managed: boolean;
   api_url: string;
+  api_url_is_managed: boolean;
   log_filter: string;
+  log_filter_is_managed: boolean;
 }
 
 interface FileCount {
@@ -168,7 +171,23 @@ logsTabBtn.addEventListener("click", (_e) => {
 listen<Settings>('settings_changed', (e) => {
   let settings = e.payload;
 
-  authBaseUrlInput.value = settings.auth_base_url;
+  authBaseUrlInput.value = settings.auth_url;
   apiUrlInput.value = settings.api_url;
   logFilterInput.value = settings.log_filter;
+
+  authBaseUrlInput.disabled = settings.auth_url_is_managed
+  apiUrlInput.disabled = settings.api_url_is_managed;
+  logFilterInput.disabled = settings.log_filter_is_managed;
+
+  if (settings.auth_url_is_managed) {
+    authBaseUrlInput.dataset['tip'] = "This setting is managed by your organization."
+  }
+
+  if (settings.api_url_is_managed) {
+    apiUrlInput.dataset['tip'] = "This setting is managed by your organization."
+  }
+
+  if (settings.log_filter_is_managed) {
+    logFilterInput.dataset['tip'] = "This setting is managed by your organization."
+  }
 })

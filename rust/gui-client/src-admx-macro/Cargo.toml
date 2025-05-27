@@ -1,0 +1,20 @@
+[package]
+name = "admx-macro"
+version = "0.1.0"
+edition = { workspace = true }
+description = "Proc macro to generate Windows registry loading code from ADMX policy templates"
+license = { workspace = true }
+
+[lib]
+path = "lib.rs"
+proc-macro = true
+test = false # Somehow buggy, tests don't compile on CI?
+
+[dependencies]
+proc-macro2 = { workspace = true }
+quote = { workspace = true }
+roxmltree = { workspace = true }
+syn = { workspace = true, features = ["full"] }
+
+[lints]
+workspace = true

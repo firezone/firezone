@@ -9,11 +9,14 @@ use crate::{
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
     logging,
-    settings::{self, AdvancedSettings, AdvancedSettingsLegacy},
+    settings::{
+        self, AdvancedSettings, AdvancedSettingsLegacy, AdvancedSettingsViewModel, MdmSettings,
+    },
     updates,
 };
 use anyhow::{Context, Result, bail};
 use firezone_logging::err_with_src;
+use firezone_telemetry::Telemetry;
 use futures::SinkExt as _;
 use std::time::Duration;
 use tauri::{Emitter, Manager};
@@ -119,9 +122,16 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
-    fn notify_settings_changed(&self, settings: &AdvancedSettings) -> Result<()> {
+    fn notify_settings_changed(
+        &self,
+        mdm_settings: MdmSettings,
+        advanced_settings: AdvancedSettings,
+    ) -> Result<()> {
         self.app
-            .emit("settings_changed", settings)
+            .emit(
+                "settings_changed",
+                AdvancedSettingsViewModel::new(mdm_settings, advanced_settings),
+            )
             .context("Failed to send `settings_changed` event")?;
 
         Ok(())
@@ -149,9 +159,13 @@ impl GuiIntegration for TauriIntegration {
         os::show_update_notification(&self.app, ctlr_tx, title, url)
     }
 
-    fn show_settings_window(&self, settings: &AdvancedSettings) -> Result<()> {
+    fn show_settings_window(
+        &self,
+        mdm_settings: MdmSettings,
+        advanced_settings: AdvancedSettings,
+    ) -> Result<()> {
         self.show_window("settings")?;
-        self.notify_settings_changed(settings)?; // Ensure settings are up to date in GUI.
+        self.notify_settings_changed(mdm_settings, advanced_settings)?; // Ensure settings are up to date in GUI.
 
         Ok(())
     }
@@ -187,10 +201,31 @@ pub enum ServerMsg {
 #[instrument(skip_all)]
 pub fn run(
     rt: &tokio::runtime::Runtime,
+    telemetry: &mut Telemetry,
     config: RunConfig,
     advanced_settings: AdvancedSettingsLegacy,
     reloader: firezone_logging::FilterReloadHandle,
 ) -> Result<()> {
+    let mdm_settings = settings::load_mdm_settings()
+        .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
+        .unwrap_or_default();
+
+    telemetry.start(
+        mdm_settings
+            .api_url
+            .as_ref()
+            .unwrap_or(&advanced_settings.api_url)
+            .as_str(),
+        crate::RELEASE,
+        firezone_telemetry::GUI_DSN,
+    );
+
+    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
+    // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
+    if let Ok(id) = firezone_bin_shared::device_id::get() {
+        Telemetry::set_firezone_id(id.id);
+    }
+
     // Needed for the deep link server
     tauri::async_runtime::set(rt.handle().clone());
 
@@ -259,12 +294,16 @@ pub fn run(
 
         let (updates_tx, updates_rx) = mpsc::channel(1);
 
-        // Check for updates
-        tokio::spawn(async move {
-            if let Err(error) = updates::checker_task(updates_tx, config.debug_update_check).await {
-                tracing::error!("Error in updates::checker_task: {error:#}");
-            }
-        });
+        if mdm_settings.check_for_updates.is_none_or(|check| check) {
+            // Check for updates
+            tokio::spawn(async move {
+                if let Err(error) = updates::checker_task(updates_tx, config.debug_update_check).await {
+                    tracing::error!("Error in updates::checker_task: {error:#}");
+                }
+            });
+        } else {
+            tracing::info!("Update checker disabled via MDM");
+        }
 
         if config.smoke_test {
             let ctlr_tx = ctlr_tx.clone();
@@ -339,6 +378,7 @@ pub fn run(
             integration,
             ctlr_rx,
             general_settings,
+            mdm_settings,
             advanced_settings,
             reloader,
             updates_rx,
