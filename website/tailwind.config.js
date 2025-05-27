@@ -1,5 +1,5 @@
 /** @type {import('tailwindcss').Config} */
-import flowbite from "flowbite-react/tailwind";
+const flowbiteReact = require("flowbite-react/plugin/tailwindcss");
 
 const firezoneColors = {
   // See our brand palette in Figma.
@@ -70,7 +70,7 @@ module.exports = {
     "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
-    flowbite.content(),
+    ".flowbite-react/class-list.json",
   ],
   theme: {
     extend: {
@@ -135,5 +135,6 @@ module.exports = {
       },
     },
   },
-  plugins: [flowbite.plugin(), require("flowbite-typography")],
+  plugins: [require("flowbite-typography"), flowbiteReact],
 };
+

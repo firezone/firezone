@@ -9,7 +9,8 @@
     "build": "next build",
     "postbuild": "next-sitemap",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "postinstall": "flowbite-react patch"
   },
   "dependencies": {
     "@docsearch/react": "^3.9.0",
@@ -27,7 +28,7 @@
     "asciinema-player": "^3.9.0",
     "autoprefixer": "10.4.21",
     "fast-xml-parser": "^5.2.1",
-    "flowbite-react": "^0.10.2",
+    "flowbite-react": "^0.11.7",
     "framer-motion": "^12.9.4",
     "highlight.js": "^11.11.1",
     "md5": "^2.3.0",
