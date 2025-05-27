@@ -24,6 +24,7 @@ updates:
       interval: monthly
   - package-ecosystem: cargo
     directory: rust/
+    open-pull-requests-limit: 20
     schedule:
       interval: weekly
     groups:
