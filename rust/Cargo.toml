@@ -62,7 +62,7 @@ client-shared = { path = "client-shared" }
 connlib-model = { path = "connlib/model" }
 derive_more = "1.0.0"
 difference = "2.0.0"
-dirs = "5.0.1"
+dirs = "6.0.0"
 divan = "0.1.21"
 dns-lookup = "2.0"
 dns-over-tcp = { path = "connlib/dns-over-tcp" }
