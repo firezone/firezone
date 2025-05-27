@@ -24,7 +24,13 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="9242">
+          Fixes a rare bug that could prevent certain IPv6 DNS upstream
+          resolvers from being used if they contained an interface scope
+          specifier.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.0" date={new Date("2025-05-26")}>
         <ChangeItem pull="9230">
           Finalizes the managed configuration support for the macOS client. For

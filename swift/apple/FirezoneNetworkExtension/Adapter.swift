@@ -448,7 +448,22 @@ extension Adapter: CallbackHandlerDelegate {
     let resolvers = resetToSystemDNSGettingBindResolvers()
 #endif
 
-    return resolvers
+    var parsedResolvers: [String] = []
+
+    // Normalize addresses to remove any possible scope suffixes
+    resolvers.forEach { stringAddress in
+      if let ipv4Address = IPv4Address(stringAddress) {
+        return parsedResolvers.append("\(ipv4Address)")
+      }
+
+      if let ipv6Address = IPv6Address(stringAddress) {
+        return parsedResolvers.append("\(ipv6Address)")
+      }
+
+      Log.warning("IP address \(stringAddress) did not parse as either IPv4 or IPv6")
+    }
+
+    return parsedResolvers
   }
 }
 
