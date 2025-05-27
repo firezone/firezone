@@ -1225,7 +1225,7 @@ version = "0.1.0"
 dependencies = [
  "boringtun",
  "ip_network",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "serde",
  "uuid",
 ]
@@ -2091,7 +2091,7 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "ipconfig",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "known-folders",
  "libc",
  "mutants",
@@ -2386,7 +2386,7 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "ip_network_table",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "l4-tcp-dns-server",
  "l4-udp-dns-server",
  "lru",
@@ -3553,15 +3553,6 @@ name = "itertools"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b1c173a5686ce8bfa551b3563d0c2170bf24ca44da99c7ca4bfdab5418c3fe57"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
 dependencies = [
  "either",
 ]
@@ -5019,7 +5010,7 @@ dependencies = [
  "futures",
  "hex",
  "hostname",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "libc",
  "os_info",
  "rand_core 0.6.4",
@@ -6501,7 +6492,7 @@ dependencies = [
  "hex",
  "hex-display",
  "ip-packet",
- "itertools 0.13.0",
+ "itertools 0.14.0",
  "once_cell",
  "rand 0.8.5",
  "ringbuffer",
