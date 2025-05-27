@@ -66,27 +66,22 @@ defmodule Domain.Policies do
     required_permissions = {:one_of, [Authorizer.manage_policies_permission()]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      queryable = Policy.Changeset.create(attrs, subject)
-
       Repo.transaction(fn ->
-        result =
-          queryable
-          |> Repo.insert()
-          # TODO: WAL
-          |> case do
-            {:ok, policy} ->
-              :ok = broadcast_policy_events(:create, policy)
-              {:ok, policy}
+        Policy.Changeset.create(attrs, subject)
+        |> Repo.insert()
+        # TODO: WAL
+        |> case do
+          {:ok, policy} ->
+            :ok = broadcast_policy_events(:create, policy)
 
-            {:error, reason} ->
-              {:error, reason}
-          end
+            query = Actors.Resource.Query.insert_for_policy_ids([policy.id])
+            Repo.insert_all(Actors.Resource, query, on_conflict: :nothing)
 
-        queryable
-        |> Domain.Actors.Resource.Query.insert_for_policies()
-        |> Repo.insert_all()
+            {:ok, policy}
 
-        result
+          {:error, reason} ->
+            {:error, reason}
+        end
       end)
     end
   end
@@ -110,6 +105,15 @@ defmodule Domain.Policies do
           {:ok, _flows} = Flows.expire_flows_for(policy, subject)
           :ok = broadcast_policy_events(:delete, policy)
           :ok = broadcast_policy_events(:create, updated_policy)
+
+          [policy.id]
+          |> Actors.Resource.Query.delete_for_policy_ids()
+          |> Repo.delete_all()
+
+          query = Actors.Resource.Query.insert_for_policy_ids([updated_policy.id])
+          Repo.insert_all(Actors.Resource, query, on_conflict: :nothing)
+
+          :ok
         end
       )
     end
@@ -117,27 +121,23 @@ defmodule Domain.Policies do
 
   def disable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
-      queryable =
+      Repo.transaction(fn ->
         Policy.Query.not_deleted()
         |> Policy.Query.by_id(policy.id)
         |> Authorizer.for_subject(subject)
-
-      Repo.transaction(fn ->
-        result =
-          queryable
-          |> Repo.fetch_and_update(Policy.Query,
-            with: &Policy.Changeset.disable(&1, subject),
-            # TODO: WAL
-            after_commit: &broadcast_policy_events(:disable, &1)
-          )
-
-        queryable
-        |> Domain.Actors.Resource.Query.by_policies()
-        |> Repo.delete_all()
-
-        case result do
+        |> Repo.fetch_and_update(Policy.Query,
+          with: &Policy.Changeset.disable(&1, subject),
+          # TODO: WAL
+          after_commit: &broadcast_policy_events(:disable, &1)
+        )
+        |> case do
           {:ok, policy} ->
             {:ok, _flows} = Flows.expire_flows_for(policy, subject)
+
+            [policy.id]
+            |> Actors.Resource.Query.delete_for_policy_ids()
+            |> Repo.delete_all()
+
             {:ok, policy}
 
           {:error, reason} ->
@@ -149,25 +149,25 @@ defmodule Domain.Policies do
 
   def enable_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_policies_permission()) do
-      queryable =
+      Repo.transaction(fn ->
         Policy.Query.not_deleted()
         |> Policy.Query.by_id(policy.id)
         |> Authorizer.for_subject(subject)
+        |> Repo.fetch_and_update(Policy.Query,
+          with: &Policy.Changeset.enable/1,
+          # TODO: WAL
+          after_commit: &broadcast_policy_events(:enable, &1)
+        )
+        |> case do
+          {:ok, policy} ->
+            query = Actors.Resource.Query.insert_for_policy_ids([policy.id])
+            Repo.insert_all(Actors.Resource, query, on_conflict: :nothing)
 
-      Repo.transaction(fn ->
-        result =
-          queryable
-          |> Repo.fetch_and_update(Policy.Query,
-            with: &Policy.Changeset.enable/1,
-            # TODO: WAL
-            after_commit: &broadcast_policy_events(:enable, &1)
-          )
+            {:ok, policy}
 
-        queryable
-        |> Domain.Actors.Resource.Query.insert_for_policies()
-        |> Repo.insert_all()
-
-        result
+          {:error, reason} ->
+            {:error, reason}
+        end
       end)
     end
   end
@@ -223,18 +223,23 @@ defmodule Domain.Policies do
     # TODO: This will only apply to resurrectable policy delete operations
     {_count, policies} =
       Repo.transaction(fn ->
-        queryable
-        |> Policy.Query.delete()
-        |> Repo.update_all([])
+        {count, policies} =
+          queryable
+          |> Policy.Query.delete()
+          |> Repo.update_all([])
 
-        Actors.Resource.Query.by_policies(queryable)
+        policies
+        |> Enum.map(& &1.id)
+        |> Actors.Resource.Query.delete_for_policy_ids()
         |> Repo.delete_all()
-      end)
 
-    # TODO: WAL
-    :ok =
-      Enum.each(policies, fn policy ->
-        :ok = broadcast_policy_events(:delete, policy)
+        # TODO: WAL
+        :ok =
+          Enum.each(policies, fn policy ->
+            :ok = broadcast_policy_events(:delete, policy)
+          end)
+
+        {count, policies}
       end)
 
     {:ok, policies}

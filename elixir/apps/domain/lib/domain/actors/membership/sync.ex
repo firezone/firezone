@@ -32,11 +32,17 @@ defmodule Domain.Actors.Membership.Sync do
           Actors.broadcast_membership_event(:create, actor_id, group_id)
         end)
 
+      query = Domain.Actors.Resource.Query.insert_for_memberships(provider.account_id, insert)
+      Repo.insert_all(Domain.Actors.Resource, query, on_conflict: :nothing)
+
       :ok =
         Enum.each(delete, fn {group_id, actor_id} ->
           # TODO: WAL
           Actors.broadcast_membership_event(:delete, actor_id, group_id)
         end)
+
+      Domain.Actors.Resource.Query.delete_for_memberships(provider.account_id, delete)
+      |> Repo.delete_all()
 
       {:ok,
        %{

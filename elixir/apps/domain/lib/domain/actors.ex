@@ -230,7 +230,10 @@ defmodule Domain.Actors do
           |> Group.Changeset.update(attrs)
         end,
         # TODO: WAL
-        after_commit: fn _actor, changeset -> broadcast_memberships_events(changeset) end
+        after_commit: fn _actor, changeset ->
+          broadcast_memberships_events(changeset)
+          update_actor_resources(changeset)
+        end
       )
     end
   end
@@ -257,6 +260,7 @@ defmodule Domain.Actors do
 
         # TODO: WAL
         :ok = broadcast_memberships_events(changeset)
+        :ok = update_actor_resources(changeset)
 
         group
       end)
@@ -280,6 +284,10 @@ defmodule Domain.Actors do
 
         # TODO: WAL
         :ok = broadcast_membership_removal_events(memberships)
+
+        [group.id]
+        |> Domain.Actors.Resource.Query.delete_for_actor_group_ids()
+        |> Repo.delete_all()
 
         {:ok, group}
 
@@ -309,6 +317,11 @@ defmodule Domain.Actors do
     # TODO: WAL
     :ok = broadcast_membership_removal_events(memberships)
 
+    tuples = Enum.map(memberships, &{&1.group_id, &1.actor_id})
+
+    Domain.Actors.Resource.Query.delete_for_memberships(provider.account_id, tuples)
+    |> Repo.delete_all()
+
     with {:ok, groups} <- delete_groups(queryable, subject) do
       {:ok, _policies} = Policies.delete_policies_for(provider, subject)
       {:ok, groups}
@@ -322,6 +335,10 @@ defmodule Domain.Actors do
         |> Authorizer.for_subject(subject)
         |> Group.Query.delete()
         |> Repo.update_all([])
+
+      Enum.map(groups, & &1.id)
+      |> Domain.Actors.Resource.Query.delete_for_actor_group_ids()
+      |> Repo.delete_all()
 
       {:ok, groups}
     end
@@ -347,6 +364,10 @@ defmodule Domain.Actors do
 
     # TODO: WAL
     :ok = broadcast_membership_removal_events(memberships)
+
+    Enum.map(groups, & &1.id)
+    |> Domain.Actors.Resource.Query.delete_for_actor_group_ids()
+    |> Repo.delete_all()
 
     {:ok, groups}
   end
@@ -530,7 +551,10 @@ defmodule Domain.Actors do
           end
         end,
         # TODO: WAL
-        after_commit: fn _actor, changeset -> broadcast_memberships_events(changeset) end
+        after_commit: fn _actor, changeset ->
+          broadcast_memberships_events(changeset)
+          update_actor_resources(changeset)
+        end
       )
     end
   end
@@ -618,6 +642,10 @@ defmodule Domain.Actors do
             :ok = broadcast_membership_removal_events(memberships)
             {:ok, _tokens} = Tokens.delete_tokens_for(actor, subject)
 
+            [actor.id]
+            |> Domain.Actors.Resource.Query.delete_for_actor_ids()
+            |> Repo.delete_all()
+
             Actor.Changeset.delete_actor(actor)
           else
             :cant_delete_the_last_admin
@@ -670,6 +698,76 @@ defmodule Domain.Actors do
 
   defp other_enabled_admins_exist?(%Actor{}) do
     false
+  end
+
+  ### Side Effects
+
+  # TODO: This will be changing once WAL broadcasting is implemented
+  defp update_actor_resources(changeset) do
+    if changeset.valid? and Ecto.Changeset.changed?(changeset, :memberships) do
+      case Ecto.Changeset.apply_action(changeset, :update) do
+        {:ok, %Actor{} = actor} ->
+          update_actor_resources_for_actor(actor, changeset)
+
+        {:ok, %Group{} = group} ->
+          update_actor_resources_for_group(group, changeset)
+
+        {:error, _reason} ->
+          :ok
+      end
+    else
+      :ok
+    end
+  end
+
+  defp update_actor_resources_for_group(%Group{} = group, changeset) do
+    previous_actor_ids =
+      Map.get(changeset.data, :memberships, [])
+      |> Enum.map(& &1.actor_id)
+      |> Enum.uniq()
+
+    current_actor_ids =
+      Map.get(group, :memberships, [])
+      |> Enum.map(& &1.actor_id)
+      |> Enum.uniq()
+
+    actor_ids_to_insert = current_actor_ids -- previous_actor_ids
+
+    query = Domain.Actors.Resource.Query.insert_for_actor_ids(actor_ids_to_insert)
+    Repo.insert_all(Actors.Resource, query, on_conflict: :nothing)
+
+    actor_ids_to_delete = previous_actor_ids -- current_actor_ids
+
+    actor_ids_to_delete
+    |> Domain.Actors.Resource.Query.delete_for_actor_ids()
+    |> Repo.delete_all()
+
+    :ok
+  end
+
+  defp update_actor_resources_for_actor(%Actor{} = actor, changeset) do
+    previous_group_ids =
+      Map.get(changeset.data, :memberships, [])
+      |> Enum.map(& &1.group_id)
+      |> Enum.uniq()
+
+    current_group_ids =
+      Map.get(actor, :memberships, [])
+      |> Enum.map(& &1.group_id)
+      |> Enum.uniq()
+
+    group_ids_to_insert = current_group_ids -- previous_group_ids
+
+    query = Domain.Actors.Resource.Query.insert_for_actor_group_ids(group_ids_to_insert)
+    Repo.insert_all(Actors.Resource, query, on_conflict: :nothing)
+
+    group_ids_to_delete = previous_group_ids -- current_group_ids
+
+    group_ids_to_delete
+    |> Domain.Actors.Resource.Query.delete_for_actor_group_ids()
+    |> Repo.delete_all()
+
+    :ok
   end
 
   ### PubSub

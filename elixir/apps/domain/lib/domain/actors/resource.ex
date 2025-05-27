@@ -16,5 +16,7 @@ defmodule Domain.Actors.Resource do
     belongs_to :account, Domain.Accounts.Account, primary_key: true
     belongs_to :actor, Domain.Actors.Actor, primary_key: true
     belongs_to :resource, Domain.Resources.Resource, primary_key: true
+
+    timestamps(type: :utc_datetime_usec, updated_at: false)
   end
 end
