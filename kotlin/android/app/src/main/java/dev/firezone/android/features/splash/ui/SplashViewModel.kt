@@ -28,17 +28,36 @@ internal class SplashViewModel
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        internal fun checkTunnelState(context: Context) {
+        // This flag is used to ensure that the initial launch check is only performed once, so
+        // that we can differentiate between a fresh launch and subsequent resumes for the connect
+        // on start logic.
+        private var hasPerformedInitialLaunchCheck = false
+
+        internal fun checkTunnelState(
+            context: Context,
+            isInitialLaunch: Boolean = false,
+        ) {
             viewModelScope.launch {
                 // Stay a while and enjoy the logo
                 delay(REQUEST_DELAY)
+
+                // If this is an 'initial launch' call, but we've already handled the
+                // initial launch logic for this ViewModel instance, then do nothing.
+                if (isInitialLaunch && hasPerformedInitialLaunchCheck) {
+                    return@launch
+                }
+
                 if (!hasVpnPermissions(context) && applicationMode != ApplicationMode.TESTING) {
                     actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
                 } else {
                     val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
                     val connectOnStart = repo.getConfigSync().connectOnStart
 
-                    if (!token.isNullOrBlank() && connectOnStart) {
+                    // Determine if the tunnel should connect:
+                    // 1. If it's an initial launch AND connectOnStart is true.
+                    // OR
+                    // 2. If it's NOT an initial launch (meaning it's a resume), always try to connect if a token exists.
+                    if (!token.isNullOrBlank() && (isInitialLaunch && connectOnStart || !isInitialLaunch)) {
                         // token will be re-read by the TunnelService
                         if (!TunnelService.isRunning(context)) TunnelService.start(context)
 
@@ -47,6 +66,11 @@ internal class SplashViewModel
                         actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
                     }
                 }
+            }
+
+            // Set the flag to true after the initial launch check is performed
+            if (isInitialLaunch) {
+                hasPerformedInitialLaunchCheck = true
             }
         }
 

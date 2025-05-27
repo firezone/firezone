@@ -25,11 +25,16 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
         binding = FragmentSplashBinding.bind(view)
 
         setupActionObservers()
+
+        if (savedInstanceState == null) {
+            // Trigger the initial check for tunnel state
+            viewModel.checkTunnelState(requireContext(), isInitialLaunch = true)
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        viewModel.checkTunnelState(requireContext())
+        viewModel.checkTunnelState(requireContext(), isInitialLaunch = false)
     }
 
     private fun setupActionObservers() {
