@@ -234,8 +234,6 @@ skip = [
   "core-graphics",
   "core-graphics-types",
   "derive_more",
-  "dirs",
-  "dirs-sys",
   "getrandom",
   "hashbrown",
   "heck",
