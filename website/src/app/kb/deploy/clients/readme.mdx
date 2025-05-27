@@ -200,6 +200,43 @@ Identifier:
 - [Hexnode](https://www.hexnode.com/mobile-device-management/help/how-to-configure-system-extensions-on-macos-devices/)
 - [InTune](https://learn.microsoft.com/en-us/mem/intune/configuration/kernel-extensions-overview-macos)
 
+
+## Configure Windows GUI client with MDM
+
+On Windows, Firezone supports a variety of MDM-based configuration values. These
+are all read from the registry key:
+`HKEY_CURRENT_USER\Software\Policies\Firezone` when the Client starts.
+
+In order for changes to the configuration to be picked up, users need to restart
+the Client.
+
+### Microsoft Intune
+
+To set a policy via Microsoft Intune, follow these steps:
+
+1. Download the Firezone policy template:
+
+- [Download admx](/policy-templates/windows/firezone.admx)
+- [Download adml (en_US)](/policy-templates/windows/firezone_en-US.adml)
+
+1. Go to the
+   [device configuration](https://intune.microsoft.com/#view/Microsoft_Intune_DeviceSettings/DevicesMenu/~/configuration)
+   in the Intune admin center.
+1. Select "Import ADMX" and import the downloaded template files.
+1. If you have previously imported the Firezone template, you'll need to remove
+   the current one first before uploading an updated one. This is a Microsoft
+   Intune limitation and might be resolved in the future. See
+   [this link](https://learn.microsoft.com/en-us/intune/intune-service/configuration/administrative-templates-import-custom#replace-existing-admx-files)
+   for details.
+1. Once successful, select the "Policies" tab and click on "Create" -> "New
+   policy"
+1. For "Platform" select "Windows 10 or later" and for "Profile type" select
+   "Templates".
+1. From the list, select "Imported Administrative templates (Preview)" as the
+   template name.
+1. Go through the wizard, you can select from all available configuration
+   settings for Firezone on the 2nd step.
+
 ## Headless mode operation
 
 The Firezone Client can run in headless mode on Windows, Linux, Android, and
