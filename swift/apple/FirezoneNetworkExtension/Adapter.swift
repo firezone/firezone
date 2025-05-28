@@ -431,7 +431,7 @@ extension Adapter: CallbackHandlerDelegate {
 
       // HACK: Define more connlib error types across the FFI so we can switch on them
       // directly and not parse error strings here.
-      if error.contains("401 Unauthorized") {
+      if error.contains("401 Unauthorized") || error.contains("Authentication token expired") {
         reason = .authenticationCanceled
       }
 
