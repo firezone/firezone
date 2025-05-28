@@ -6,23 +6,11 @@ defmodule Domain.Events.Hooks.Accounts do
     :ok
   end
 
-  def on_update(old_data, data) do
-    with {:ok, account_id} <- Map.fetch(data, "id"),
-         {:ok, old_config} <- Map.fetch(old_data, "config"),
-         {:ok, config} <- Map.fetch(data, "config") do
-      if old_config != config do
-        broadcast(account_id, :config_changed)
-      else
-        :ok
-      end
+  def on_update(%{"config" => old_config}, %{"config" => config, "id" => account_id}) do
+    if old_config != config do
+      broadcast(account_id, :config_changed)
     else
-      :error ->
-        Logger.error("Expected keys not found in data",
-          old_data: inspect(old_data),
-          data: inspect(data)
-        )
-
-        :ok
+      :ok
     end
   end
 
