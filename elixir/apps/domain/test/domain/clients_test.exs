@@ -1,7 +1,7 @@
 defmodule Domain.ClientsTest do
   use Domain.DataCase, async: true
   import Domain.Clients
-  alias Domain.Clients
+  alias Domain.{Clients, Events}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -117,7 +117,7 @@ defmodule Domain.ClientsTest do
       assert {:ok, client} = fetch_client_by_id(client.id, subject, preload: [:online?])
       assert client.online? == false
 
-      assert connect_client(client) == :ok
+      assert Events.Hooks.Clients.connect(client) == :ok
       assert {:ok, client} = fetch_client_by_id(client.id, subject, preload: [:online?])
       assert client.online? == true
     end
@@ -222,7 +222,7 @@ defmodule Domain.ClientsTest do
       assert client = fetch_client_by_id!(client.id, preload: [:online?])
       assert client.online? == false
 
-      assert connect_client(client) == :ok
+      assert Events.Hooks.Clients.connect(client) == :ok
       assert client = fetch_client_by_id!(client.id, preload: [:online?])
       assert client.online? == true
     end
@@ -281,7 +281,7 @@ defmodule Domain.ClientsTest do
       assert {:ok, [client], _metadata} = list_clients(subject, preload: [:online?])
       assert client.online? == false
 
-      assert connect_client(client) == :ok
+      assert Events.Hooks.Clients.connect(client) == :ok
       assert {:ok, [client], _metadata} = list_clients(subject, preload: [:online?])
       assert client.online? == true
     end
@@ -911,15 +911,12 @@ defmodule Domain.ClientsTest do
       unprivileged_subject: subject
     } do
       client = Fixtures.Clients.create_client(actor: actor)
-      :ok = Domain.PubSub.subscribe("clients:#{client.id}")
 
       attrs = %{name: "new name"}
 
       assert {:ok, client} = update_client(client, attrs, subject)
 
       assert client.name == attrs.name
-
-      assert_receive :updated
     end
 
     test "does not allow unprivileged actor to update other actors clients", %{
@@ -1013,15 +1010,12 @@ defmodule Domain.ClientsTest do
   describe "verify_client/2" do
     test "allows admin actor to verify clients", %{admin_actor: actor, admin_subject: subject} do
       client = Fixtures.Clients.create_client(actor: actor)
-      :ok = Domain.PubSub.subscribe("clients:#{client.id}")
 
       assert {:ok, client} = verify_client(client, subject)
       assert client.verified_at
       assert client.verified_by == :identity
       assert client.verified_by_actor_id == subject.actor.id
       assert client.verified_by_identity_id == subject.identity.id
-
-      assert_receive :updated
 
       assert {:ok, double_verified_client} = verify_client(client, subject)
       assert double_verified_client.verified_at == client.verified_at
@@ -1053,7 +1047,6 @@ defmodule Domain.ClientsTest do
       admin_subject: subject
     } do
       client = Fixtures.Clients.create_client(actor: actor)
-      :ok = Domain.PubSub.subscribe("clients:#{client.id}")
 
       assert {:ok, client} = verify_client(client, subject)
       assert {:ok, client} = remove_client_verification(client, subject)
@@ -1062,8 +1055,6 @@ defmodule Domain.ClientsTest do
       assert is_nil(client.verified_by)
       assert is_nil(client.verified_by_actor_id)
       assert is_nil(client.verified_by_identity_id)
-
-      assert_receive :updated
     end
 
     test "expires flows for the unverified client", %{
@@ -1241,47 +1232,6 @@ defmodule Domain.ClientsTest do
                 {:unauthorized,
                  reason: :missing_permissions,
                  missing_permissions: [Clients.Authorizer.manage_clients_permission()]}}
-    end
-  end
-
-  describe "connect_client/1" do
-    test "tracks client presence for account", %{account: account} do
-      client = Fixtures.Clients.create_client(account: account)
-      assert connect_client(client) == :ok
-
-      client = fetch_client_by_id!(client.id, preload: [:online?])
-      assert client.online? == true
-    end
-
-    test "tracks client presence for actor", %{account: account} do
-      actor = Fixtures.Actors.create_actor(account: account)
-      client = Fixtures.Clients.create_client(account: account, actor: actor)
-      assert connect_client(client) == :ok
-
-      assert broadcast_to_client(client, "test") == :ok
-
-      assert_receive "test"
-    end
-
-    test "subscribes to client events", %{account: account} do
-      actor = Fixtures.Actors.create_actor(account: account)
-      client = Fixtures.Clients.create_client(account: account, actor: actor)
-      assert connect_client(client) == :ok
-
-      assert disconnect_client(client) == :ok
-
-      assert_receive "disconnect"
-    end
-
-    test "subscribes to account events", %{account: account} do
-      actor = Fixtures.Actors.create_actor(account: account)
-      client = Fixtures.Clients.create_client(account: account, actor: actor)
-
-      assert connect_client(client) == :ok
-
-      assert disconnect_account_clients(account) == :ok
-
-      assert_receive "disconnect"
     end
   end
 end

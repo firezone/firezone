@@ -124,7 +124,7 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.after_join" do
-      :ok = Clients.connect_client(socket.assigns.client)
+      :ok = Events.Hooks.Clients.connect(socket.assigns.client)
 
       # Subscribe for account config updates
       :ok = Events.Hooks.Accounts.subscribe(socket.assigns.client.account_id)

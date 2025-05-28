@@ -60,7 +60,7 @@ defmodule Web.Live.Actors.IndexTest do
     admin_actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
     Fixtures.Actors.create_membership(account: account, actor: admin_actor)
     client = Fixtures.Clients.create_client(account: account, actor: admin_actor)
-    Domain.Clients.connect_client(client)
+    Domain.Events.Hooks.Clients.connect(client)
     admin_actor = Repo.preload(admin_actor, identities: [:provider], groups: [])
 
     user_actor = Fixtures.Actors.create_actor(account: account, type: :account_user)
