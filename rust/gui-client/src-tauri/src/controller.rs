@@ -63,12 +63,6 @@ pub struct Controller<I: GuiIntegration> {
 }
 
 pub trait GuiIntegration {
-    fn set_welcome_window_visible(
-        &self,
-        visible: bool,
-        current_session: Option<&auth::Session>,
-    ) -> Result<()>;
-
     fn notify_signed_in(&self, session: &auth::Session) -> Result<()>;
     fn notify_signed_out(&self) -> Result<()>;
     fn notify_settings_changed(
@@ -85,12 +79,14 @@ pub trait GuiIntegration {
     fn show_notification(&self, title: &str, body: &str) -> Result<()>;
     fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()>;
 
-    fn show_settings_window(
+    fn set_window_visible(&self, visible: bool) -> Result<()>;
+    fn show_overview_page(&self, current_session: Option<&auth::Session>) -> Result<()>;
+    fn show_settings_page(
         &self,
         mdm_settings: MdmSettings,
-        advanced_settings: AdvancedSettings,
+        settings: AdvancedSettings,
     ) -> Result<()>;
-    fn show_about_window(&self) -> Result<()>;
+    fn show_about_page(&self) -> Result<()>;
 }
 
 pub enum ControllerRequest {
@@ -289,8 +285,7 @@ impl<I: GuiIntegration> Controller<I> {
         self.refresh_system_tray_menu();
 
         if !ran_before::get().await? {
-            self.integration
-                .set_welcome_window_visible(true, self.auth.session())?;
+            self.integration.show_overview_page(self.auth.session())?;
         }
 
         while let Some(tick) = self.tick().await {
@@ -542,8 +537,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.integration
                     .open_url(url.expose_secret())
                     .context("Couldn't open auth page")?;
-                self.integration
-                    .set_welcome_window_visible(false, self.auth.session())?;
+                self.integration.set_window_visible(false)?;
             }
             SystemTrayMenu(system_tray::Event::AddFavorite(resource_id)) => {
                 self.general_settings.favorite_resources.insert(resource_id);
@@ -594,8 +588,8 @@ impl<I: GuiIntegration> Controller<I> {
             }
             SystemTrayMenu(system_tray::Event::ShowWindow(window)) => {
                 match window {
-                    system_tray::Window::About => self.integration.show_about_window()?,
-                    system_tray::Window::Settings => self.integration.show_settings_window(
+                    system_tray::Window::About => self.integration.show_about_page()?,
+                    system_tray::Window::Settings => self.integration.show_settings_page(
                         self.mdm_settings.clone(),
                         self.advanced_settings.clone(),
                     )?,
@@ -632,8 +626,10 @@ impl<I: GuiIntegration> Controller<I> {
                     .context("Couldn't open update page")?;
             }
             UpdateState => {
-                self.integration
-                    .notify_settings_changed(&self.advanced_settings)?;
+                self.integration.notify_settings_changed(
+                    self.mdm_settings.clone(),
+                    self.advanced_settings.clone(),
+                )?;
                 match self.auth.session() {
                     Some(session) => self.integration.notify_signed_in(session)?,
                     None => self.integration.notify_signed_out()?,
@@ -747,8 +743,7 @@ impl<I: GuiIntegration> Controller<I> {
                 }
             },
             gui::ClientMsg::NewInstance => {
-                self.integration
-                    .set_welcome_window_visible(true, self.auth.session())?;
+                self.integration.show_overview_page(self.auth.session())?;
             }
         }
 

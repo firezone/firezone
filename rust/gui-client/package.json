@@ -12,19 +12,29 @@
     "dev": "run-script-os",
     "dev:win32": "call dev.bat",
     "dev:darwin:linux": "./dev.sh",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "postinstall": "flowbite-react patch"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@tailwindcss/cli": "^4.1.7",
     "@tauri-apps/api": "^2.5.0",
-    "flowbite": "^3.1.2"
+    "@types/react": "^19.1.5",
+    "@types/react-dom": "^19.1.5",
+    "@vitejs/plugin-react": "^4.5.0",
+    "flowbite": "^3.1.2",
+    "flowbite-react": "^0.11.7",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "react-router": "^7.6.1"
   },
   "devDependencies": {
-    "@rollup/plugin-typescript": "^12.1.2",
     "@tailwindcss/vite": "^4.1.7",
     "@tauri-apps/cli": "^2.5.0",
     "@types/node": "^22.15.3",
-    "http-server": "^14.1.1",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.3.4",
     "run-script-os": "^1.1.6",
     "tailwindcss": "^4.1.7",
     "tslib": "^2.8.1",

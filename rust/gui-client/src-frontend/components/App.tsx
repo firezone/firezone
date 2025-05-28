@@ -1,0 +1,160 @@
+import {
+    BugAntIcon,
+    CogIcon,
+    HomeIcon,
+    InformationCircleIcon,
+    SwatchIcon,
+} from "@heroicons/react/24/solid";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { Sidebar, SidebarItem, SidebarItemGroup, SidebarItems } from "flowbite-react";
+import React, { useEffect, useState } from "react";
+import { NavLink, Route, Routes } from "react-router";
+import About from "./AboutPage";
+import ColorPalette from "./ColorPalettePage";
+import Diagnostics, { FileCount } from "./DiagnosticsPage";
+import Overview from "./OverviewPage";
+import SettingsPage, { Settings } from "./SettingsPage";
+
+export interface Session {
+  account_slug: string;
+  actor_name: string;
+}
+
+export default function App() {
+  let [session, setSession] = useState<Session | null>(null);
+  let [logCount, setLogCount] = useState<FileCount | null>(null);
+  let [appVersion, setAppVersion] = useState<string | null>(null);
+  let [gitVersion, setGitVersion] = useState<string | null>(null);
+  let [settings, setSettings] = useState<Settings | null>(null);
+
+  useEffect(() => {
+    const signedInUnlisten = listen<Session>("signed_in", (e) => {
+      let session = e.payload;
+
+      console.log("signed_in", { session })
+      setSession(session);
+    });
+    const signedOutUnlisten = listen<void>("signed_out", (_e) => {
+      console.log("signed_out")
+      setSession(null);
+    });
+    const settingsChangedUnlisten = listen<Settings>("settings_changed", (e) => {
+      let settings = e.payload;
+
+      console.log("settings_changed", { settings })
+      setSettings(settings);
+    });
+
+    invoke<FileCount>("count_logs").then(setLogCount);
+    invoke<string>("get_cargo_version").then((ver) => setAppVersion(ver));
+    invoke<string>("get_git_version").then((ver) => setGitVersion(ver));
+    invoke<void>("update_state");
+
+    return () => {
+      signedInUnlisten.then((unlistenFn) => unlistenFn());
+      signedOutUnlisten.then((unlistenFn) => unlistenFn());
+      settingsChangedUnlisten.then((unlistenFn) => unlistenFn());
+    };
+  }, []);
+
+  const isDev = import.meta.env.DEV;
+
+  return (
+    <div className="h-screen bg-neutral-100 flex flex-row">
+      <Sidebar
+        aria-label="Sidebar"
+        className="w-52 flex-shrink-0"
+        theme={{ root: { inner: "rounded-none" } }}
+      >
+        <SidebarItems>
+          <SidebarItemGroup>
+            <NavLink to="/overview">
+              {({ isActive }) => (
+                <SidebarItem active={isActive} icon={HomeIcon} as="div">
+                  Overview
+                </SidebarItem>
+              )}
+            </NavLink>
+            <NavLink to="/settings">
+              {({ isActive }) => (
+                <SidebarItem active={isActive} icon={CogIcon} as="div">
+                  Settings
+                </SidebarItem>
+              )}
+            </NavLink>
+            <NavLink to="/diagnostics">
+              {({ isActive }) => (
+                <SidebarItem active={isActive} icon={BugAntIcon} as="div">
+                  Diagnostics
+                </SidebarItem>
+              )}
+            </NavLink>
+            <NavLink to="/about">
+              {({ isActive }) => (
+                <SidebarItem active={isActive} icon={InformationCircleIcon} as="div">
+                  About
+                </SidebarItem>
+              )}
+            </NavLink>
+          </SidebarItemGroup>
+          {isDev && (
+            <SidebarItemGroup>
+              <NavLink to="/colour-palette">
+                {({ isActive }) => (
+                  <SidebarItem active={isActive} icon={SwatchIcon} as="div">
+                    Color Palette
+                  </SidebarItem>
+                )}
+              </NavLink>
+            </SidebarItemGroup>
+          )}
+        </SidebarItems>
+      </Sidebar>
+      <main className="flex-grow bg-neutral-100 overflow-auto">
+        <Routes>
+          <Route
+            path="/overview"
+            element={
+              <Overview
+                session={session}
+                signIn={() => invoke("sign_in")}
+                signOut={() => invoke("sign_out")}
+              />
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <SettingsPage
+                settings={settings}
+                saveSettings={(settings) => invoke("apply_advanced_settings", { settings })}
+                resetSettings={() => invoke("reset_advanced_settings")}
+              />
+            }
+          />
+          <Route
+            path="/diagnostics"
+            element={
+              <Diagnostics
+                logCount={logCount}
+                exportLogs={() => invoke("export_logs")}
+                clearLogs={async () => {
+                  await invoke("clear_logs");
+                  let logCount = await invoke<FileCount>("count_logs");
+
+                  setLogCount(logCount);
+                }}
+              />
+            }
+          />
+          <Route
+            path="/about"
+            element={<About appVersion={appVersion} gitVersion={gitVersion} />}
+          />
+          <Route path="/colour-palette" element={<ColorPalette />} />
+        </Routes>
+      </main>
+    </div>
+  );
+}

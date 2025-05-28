@@ -1,4 +1,6 @@
 @import "tailwindcss";
+@plugin "flowbite-react/plugin/tailwindcss";
+@source "../.flowbite-react/class-list.json";
 
 /*
  * This file serves as the main entry point for your Tailwind CSS installation.
@@ -7,6 +9,8 @@
  */
 
 @plugin 'flowbite/plugin';
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --color-primary-50: #fff9f5;
