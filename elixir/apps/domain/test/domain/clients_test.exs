@@ -1081,14 +1081,11 @@ defmodule Domain.ClientsTest do
           subject: subject
         )
 
-      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
-
       assert {:ok, client} = verify_client(client, subject)
-      assert {:ok, client} = remove_client_verification(client, subject)
+      assert {:ok, _client} = remove_client_verification(client, subject)
 
-      assert_received {:expire_flow, flow_id, flow_client_id, _flow_resource_id}
-      assert flow_id == flow.id
-      assert flow_client_id == client.id
+      flow = Repo.reload(flow)
+      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
     end
 
     test "returns error when subject has no permission to verify clients", %{

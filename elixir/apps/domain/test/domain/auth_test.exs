@@ -1881,7 +1881,6 @@ defmodule Domain.AuthTest do
       end
 
       :ok = Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{deleted_identity_token.id}")
-      :ok = Domain.Flows.subscribe_to_flow_expiration_events(deleted_identity_flow)
 
       attrs_list = [
         %{
@@ -1939,8 +1938,8 @@ defmodule Domain.AuthTest do
       assert_receive %Phoenix.Socket.Broadcast{topic: ^topic, event: "disconnect", payload: nil}
 
       # Expires flows for signed out user
-      flow_id = deleted_identity_flow.id
-      assert_receive {:expire_flow, ^flow_id, _client_id, _resource_id}
+      reloaded_flow = Repo.reload(deleted_identity_flow)
+      assert DateTime.compare(reloaded_flow.expires_at, DateTime.utc_now()) == :lt
     end
 
     test "circuit breaker prevents mass deletions of identities", %{

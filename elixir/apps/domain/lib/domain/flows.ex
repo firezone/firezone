@@ -1,5 +1,5 @@
 defmodule Domain.Flows do
-  alias Domain.{Repo, PubSub}
+  alias Domain.Repo
   alias Domain.{Auth, Accounts, Actors, Clients, Gateways, Resources, Policies, Tokens}
   alias Domain.Flows.{Authorizer, Flow, Activity}
   require Ecto.Query
@@ -242,32 +242,6 @@ defmodule Domain.Flows do
       |> Flow.Query.expire()
       |> Repo.update_all([])
 
-    # TODO: WAL
-    :ok =
-      Enum.each(flows, fn flow ->
-        :ok = broadcast_flow_expiration_event(flow)
-      end)
-
     {:ok, flows}
-  end
-
-  ### PubSub
-
-  defp flow_topic(%Flow{} = flow), do: flow_topic(flow.id)
-  defp flow_topic(flow_id), do: "flows:#{flow_id}"
-
-  def subscribe_to_flow_expiration_events(flow_or_id) do
-    flow_or_id |> flow_topic() |> PubSub.subscribe()
-  end
-
-  def unsubscribe_to_flow_expiration_events(flow_or_id) do
-    flow_or_id |> flow_topic() |> PubSub.subscribe()
-  end
-
-  # TODO: WAL
-  defp broadcast_flow_expiration_event(flow) do
-    flow
-    |> flow_topic()
-    |> PubSub.broadcast({:expire_flow, flow.id, flow.client_id, flow.resource_id})
   end
 end

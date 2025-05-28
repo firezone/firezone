@@ -635,8 +635,6 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       :ok = Domain.Policies.subscribe_to_events_for_actor(actor)
       :ok = Domain.Policies.subscribe_to_events_for_actor(other_actor)
       :ok = Domain.Policies.subscribe_to_events_for_actor_group(deleted_group)
-      :ok = Domain.Flows.subscribe_to_flow_expiration_events(deleted_group_flow)
-      :ok = Domain.Flows.subscribe_to_flow_expiration_events(deleted_identity_flow)
       :ok = Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{deleted_identity_token.id}")
 
       GoogleWorkspaceDirectory.override_endpoint_url("http://localhost:#{bypass.port}/")
@@ -735,19 +733,18 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
 
       # Deleted policies expire all flows authorized by them
-      flow_id = deleted_group_flow.id
-      assert_receive {:expire_flow, ^flow_id, _client_id, ^resource_id}
+      deleted_group_flow = Repo.reload(deleted_group_flow)
+      assert DateTime.compare(deleted_group_flow.expires_at, DateTime.utc_now()) == :lt
 
       # Expires flows for signed out user
-      flow_id = deleted_identity_flow.id
-      assert_receive {:expire_flow, ^flow_id, _client_id, _resource_id}
+      deleted_identity_flow = Repo.reload(deleted_identity_flow)
+      assert DateTime.compare(deleted_identity_flow.expires_at, DateTime.utc_now()) == :lt
 
       # Should not do anything else
       refute_receive {:create_membership, _actor_id, _group_id}
       refute_received {:remove_membership, _actor_id, _group_id}
       refute_received {:allow_access, _policy_id, _group_id, _resource_id}
       refute_received {:reject_access, _policy_id, _group_id, _resource_id}
-      refute_received {:expire_flow, _flow_id, _client_id, _resource_id}
     end
 
     test "resurrects deleted identities that reappear on the next sync", %{

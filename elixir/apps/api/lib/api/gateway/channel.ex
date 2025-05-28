@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Clients, Resources, Relays, Gateways, Flows}
+  alias Domain.{Clients, Events, Resources, Relays, Gateways, Flows}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -134,7 +134,7 @@ defmodule API.Gateway.Channel do
         client_id: client_id,
         resource_id: resource_id
       } do
-      :ok = Flows.unsubscribe_to_flow_expiration_events(flow_id)
+      :ok = Events.Hooks.Flows.unsubscribe(flow_id)
 
       push(socket, "reject_access", %{
         flow_id: flow_id,
@@ -307,7 +307,7 @@ defmodule API.Gateway.Channel do
     } = payload
 
     OpenTelemetry.Tracer.with_span "gateway.authorize_flow" do
-      :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
+      :ok = Events.Hooks.Flows.subscribe(flow_id)
 
       Logger.debug("Gateway authorizes a new network flow",
         flow_id: flow_id,
@@ -378,7 +378,7 @@ defmodule API.Gateway.Channel do
         client_id: client_id,
         resource_id: resource_id
       } do
-      :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
+      :ok = Events.Hooks.Flows.subscribe(flow_id)
 
       client = Clients.fetch_client_by_id!(client_id)
       resource = Resources.fetch_resource_by_id!(resource_id)
@@ -443,7 +443,7 @@ defmodule API.Gateway.Channel do
     } = attrs
 
     OpenTelemetry.Tracer.with_span "gateway.request_connection" do
-      :ok = Flows.subscribe_to_flow_expiration_events(flow_id)
+      :ok = Events.Hooks.Flows.subscribe(flow_id)
 
       Logger.debug("Gateway received connection request message",
         client_id: client_id,

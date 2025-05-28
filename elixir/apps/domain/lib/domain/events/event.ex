@@ -9,7 +9,7 @@ defmodule Domain.Events.Event do
   it to the appropriate hook module for processing.
   """
   def ingest(msg, relations) do
-    {op, tuple_data, old_tuple_data} = extract_msg_data(msg)
+    {op, old_tuple_data, tuple_data} = extract_msg_data(msg)
     {:ok, relation} = Map.fetch(relations, msg.relation_id)
 
     table = relation.name
@@ -308,7 +308,7 @@ defmodule Domain.Events.Event do
     {:insert, nil, data}
   end
 
-  defp extract_msg_data(%Decoder.Messages.Update{old_tuple_data: data, tuple_data: old}) do
+  defp extract_msg_data(%Decoder.Messages.Update{old_tuple_data: old, tuple_data: data}) do
     {:update, old, data}
   end
 
