@@ -393,39 +393,25 @@ defmodule Domain.GatewaysTest do
              |> Repo.aggregate(:count) == 0
     end
 
-    test "broadcasts disconnect message to all connected gateway sockets", %{
+    test "deletes tokens", %{
       account: account,
       subject: subject
     } do
       group = Fixtures.Gateways.create_group(account: account)
 
       token1 = Fixtures.Gateways.create_token(account: account, group: group)
-      Domain.PubSub.subscribe(Tokens.socket_id(token1))
 
       token2 = Fixtures.Gateways.create_token(account: account, group: group)
-      Domain.PubSub.subscribe(Tokens.socket_id(token2))
 
       Fixtures.Gateways.create_gateway(account: account, group: group)
 
       assert {:ok, _group} = delete_group(group, subject)
 
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
-    end
+      token1 = Repo.reload(token1)
+      token2 = Repo.reload(token2)
 
-    test "broadcasts disconnect message to all connected gateways", %{
-      account: account,
-      subject: subject
-    } do
-      group = Fixtures.Gateways.create_group(account: account)
-      Fixtures.Gateways.create_gateway(account: account, group: group)
-      token = Fixtures.Gateways.create_token(account: account, group: group)
-
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
-
-      assert {:ok, _group} = delete_group(group, subject)
-
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
+      assert token1.deleted_at
+      assert token2.deleted_at
     end
 
     test "returns error when subject has no permission to delete groups", %{

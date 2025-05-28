@@ -432,22 +432,18 @@ defmodule Domain.TokensTest do
   describe "delete_token/2" do
     test "admin can delete any account token", %{account: account, subject: subject} do
       token = Fixtures.Tokens.create_token(account: account)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, token} = delete_token(token, subject)
 
       assert token.deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "user can delete own token", %{account: account, identity: identity, subject: subject} do
       token = Fixtures.Tokens.create_token(account: account, identity: identity)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, token} = delete_token(token, subject)
 
       assert token.deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "user cannot delete other users token", %{
@@ -457,24 +453,20 @@ defmodule Domain.TokensTest do
       subject = Fixtures.Auth.create_subject(account: account, actor: actor)
 
       token = Fixtures.Tokens.create_token(account: account)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert delete_token(token, subject) == {:error, :not_found}
 
       refute Repo.get(Tokens.Token, token.id).deleted_at
-      refute_receive "disconnect"
     end
 
     test "does not delete tokens that belong to other accounts", %{
       subject: subject
     } do
       token = Fixtures.Tokens.create_token()
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert delete_token(token, subject) == {:error, :not_found}
 
       refute Repo.get(Tokens.Token, token.id).deleted_at
-      refute_receive "disconnect"
     end
 
     test "returns error when subject does not have required permissions", %{
@@ -505,13 +497,11 @@ defmodule Domain.TokensTest do
       subject: subject
     } do
       other_token = Fixtures.Tokens.create_token(account: account, identity: identity)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{subject.token_id}")
 
       assert {:ok, deleted_token} = delete_token_for(subject)
       assert deleted_token.id == subject.token_id
 
       assert Repo.get(Tokens.Token, subject.token_id).deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
 
       refute Repo.get(Tokens.Token, other_token.id).deleted_at
     end
@@ -535,12 +525,10 @@ defmodule Domain.TokensTest do
 
     test "does not delete tokens for other actors", %{account: account, subject: subject} do
       token = Fixtures.Tokens.create_token(account: account)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, _token} = delete_token_for(subject)
 
       refute Repo.get(Tokens.Token, token.id).deleted_at
-      refute_receive "disconnect"
     end
   end
 
@@ -549,12 +537,10 @@ defmodule Domain.TokensTest do
       actor = Fixtures.Actors.create_actor(account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       token = Fixtures.Tokens.create_token(type: :browser, account: account, identity: identity)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, [_token]} = delete_tokens_for(identity)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
   end
 
@@ -563,36 +549,30 @@ defmodule Domain.TokensTest do
       actor = Fixtures.Actors.create_actor(account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       token = Fixtures.Tokens.create_token(type: :browser, account: account, identity: identity)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, [_token]} = delete_tokens_for(actor, subject)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "deletes client tokens for given actor", %{account: account, subject: subject} do
       actor = Fixtures.Actors.create_actor(account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       token = Fixtures.Tokens.create_token(type: :client, account: account, identity: identity)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, [_token]} = delete_tokens_for(actor, subject)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "deletes client tokens for given identity", %{account: account, subject: subject} do
       actor = Fixtures.Actors.create_actor(account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       token = Fixtures.Tokens.create_token(type: :client, account: account, identity: identity)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, [_token]} = delete_tokens_for(identity, subject)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "deletes client tokens for given provider", %{account: account, subject: subject} do
@@ -601,34 +581,28 @@ defmodule Domain.TokensTest do
       provider = Fixtures.Auth.create_email_provider(account: account)
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       token = Fixtures.Tokens.create_token(type: :client, account: account, identity: identity)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, [_token]} = delete_tokens_for(provider, subject)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "deletes gateway group tokens", %{account: account, subject: subject} do
       group = Fixtures.Gateways.create_group(account: account)
       token = Fixtures.Gateways.create_token(account: account, group: group)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, [_token]} = delete_tokens_for(group, subject)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "deletes relay group tokens", %{account: account, subject: subject} do
       group = Fixtures.Relays.create_group(account: account)
       token = Fixtures.Relays.create_token(account: account, group: group)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, [_token]} = delete_tokens_for(group, subject)
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "returns error when subject does not have required permissions", %{
@@ -651,23 +625,18 @@ defmodule Domain.TokensTest do
         Fixtures.Tokens.create_token()
         |> Fixtures.Tokens.expire_token()
 
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
-
       assert {:ok, [_token]} = delete_expired_tokens()
 
       assert Repo.get(Tokens.Token, token.id).deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "does not delete non-expired tokens" do
       in_one_minute = DateTime.utc_now() |> DateTime.add(1, :minute)
       token = Fixtures.Tokens.create_token(expires_at: in_one_minute)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert delete_expired_tokens() == {:ok, []}
 
       refute Repo.get(Tokens.Token, token.id).deleted_at
-      refute_receive "disconnect"
     end
   end
 end

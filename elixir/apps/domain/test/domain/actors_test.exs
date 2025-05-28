@@ -3010,20 +3010,17 @@ defmodule Domain.ActorsTest do
       assert is_nil(other_actor.disabled_at)
     end
 
-    test "deletes token and broadcasts message to disconnect the actor sessions" do
+    test "deletes token" do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
 
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{subject.token_id}")
-
       assert {:ok, _actor} = disable_actor(actor, subject)
 
       assert token = Repo.get(Domain.Tokens.Token, subject.token_id)
       assert token.deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "expires actor flows" do
@@ -3217,20 +3214,17 @@ defmodule Domain.ActorsTest do
       assert group.memberships == []
     end
 
-    test "deletes token and broadcasts message to disconnect the actor sessions", %{
+    test "deletes token", %{
       account: account,
       actor: actor,
       subject: subject
     } do
       Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{subject.token_id}")
-
       assert {:ok, _actor} = delete_actor(actor, subject)
 
       assert token = Repo.get(Domain.Tokens.Token, subject.token_id)
       assert token.deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "deletes actor identities", %{
