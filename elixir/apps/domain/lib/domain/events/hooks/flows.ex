@@ -6,43 +6,33 @@ defmodule Domain.Events.Hooks.Flows do
     :ok
   end
 
-  def on_update(old_data, data) do
-    with {:ok, flow_id} <- Map.fetch(data, "id"),
-         {:ok, client_id} <- Map.fetch(data, "client_id"),
-         {:ok, resource_id} <- Map.fetch(data, "resource_id") do
-      if expired?(data) do
-        # Flow has become expired
-        broadcast(flow_id, {:expire_flow, flow_id, client_id, resource_id})
-      else
-        :ok
-      end
+  def on_update(
+        _old_data,
+        %{
+          "id" => flow_id,
+          "client_id" => client_id,
+          "resource_id" => resource_id,
+          "expires_at" => expires_at
+        } = _data
+      ) do
+    if expired?(expires_at) do
+      # Flow has become expired
+      broadcast(flow_id, {:expire_flow, flow_id, client_id, resource_id})
     else
-      :error ->
-        Logger.error("Expected keys not found in data",
-          old_data: inspect(old_data),
-          data: inspect(data)
-        )
-
-        :ok
+      :ok
     end
   end
 
   # During normal operation we don't expect to delete flows, however, this is implemented as a safeguard for cases
   # where we might manually clear flows in a migration or some other mechanism.
-  def on_delete(old_data) do
-    with {:ok, flow_id} <- Map.fetch(old_data, "id"),
-         {:ok, client_id} <- Map.fetch(old_data, "client_id"),
-         {:ok, resource_id} <- Map.fetch(old_data, "resource_id") do
-      # Sending a broadcast for an already-expired flow should be a no-op
-      broadcast(flow_id, {:expire_flow, flow_id, client_id, resource_id})
-    else
-      :error ->
-        Logger.error("Expected keys not found in old_data",
-          old_data: inspect(old_data)
-        )
-
-        :ok
-    end
+  def on_delete(
+        %{
+          "id" => flow_id,
+          "client_id" => client_id,
+          "resource_id" => resource_id
+        } = _old_data
+      ) do
+    broadcast(flow_id, {:expire_flow, flow_id, client_id, resource_id})
   end
 
   def subscribe(flow_id) do
@@ -57,9 +47,9 @@ defmodule Domain.Events.Hooks.Flows do
     |> PubSub.unsubscribe()
   end
 
-  defp expired?(%{"expires_at" => nil}), do: false
+  defp expired?(nil), do: false
 
-  defp expired?(%{"expires_at" => expires_at}) do
+  defp expired?(expires_at) do
     with {:ok, expires_at, _} <- DateTime.from_iso8601(expires_at) do
       DateTime.compare(DateTime.utc_now(), expires_at) == :gt
     else

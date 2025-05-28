@@ -13,10 +13,6 @@ defmodule Domain.Events.Hooks.FlowsTest do
   end
 
   describe "update/2" do
-    test "returns :ok", %{old_data: old_data, data: data} do
-      assert :ok == on_update(old_data, data)
-    end
-
     test "broadcasts expire_flow if flow is expired" do
       flow_id = "flow_123"
       client_id = "client_123"
@@ -77,10 +73,6 @@ defmodule Domain.Events.Hooks.FlowsTest do
   end
 
   describe "delete/1" do
-    test "returns :ok", %{old_data: old_data} do
-      assert :ok == on_delete(old_data)
-    end
-
     test "broadcasts expire_flow" do
       flow_id = "flow_123"
       client_id = "client_123"
