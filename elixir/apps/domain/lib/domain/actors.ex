@@ -754,6 +754,7 @@ defmodule Domain.Actors do
   end
 
   def broadcast_membership_event(action, actor_id, group_id) do
+    # TODO: WAL - this is an n+1 problem
     :ok = Policies.broadcast_access_events_for(action, actor_id, group_id)
 
     actor_id

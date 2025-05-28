@@ -400,8 +400,6 @@ defmodule Domain.AccountsTest do
         }
       }
 
-      :ok = subscribe_to_events_in_account(account)
-
       assert {:ok, account} = update_account(account, attrs, subject)
 
       assert account.name == attrs.name
@@ -424,8 +422,6 @@ defmodule Domain.AccountsTest do
                  address: "8.8.8.8"
                }
              ]
-
-      assert_receive :config_changed
     end
 
     test "returns an error when trying to update other account", %{
@@ -719,8 +715,6 @@ defmodule Domain.AccountsTest do
         }
       }
 
-      :ok = subscribe_to_events_in_account(account)
-
       assert {:ok, account} = update_account_by_id(account.id, attrs)
 
       assert account.name == attrs.name
@@ -750,8 +744,6 @@ defmodule Domain.AccountsTest do
                  address: "8.8.8.8"
                }
              ]
-
-      assert_receive :config_changed
     end
 
     test "broadcasts disconnect message for the clients when account is disabled", %{

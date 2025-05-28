@@ -1,6 +1,6 @@
 defmodule Domain.Accounts do
   alias Web.Settings.Account
-  alias Domain.{Repo, Config, PubSub}
+  alias Domain.{Repo, Config}
   alias Domain.{Auth, Billing}
   alias Domain.Accounts.{Account, Features, Authorizer}
 
@@ -109,13 +109,6 @@ defmodule Domain.Accounts do
 
   defp on_account_update(account, changeset) do
     :ok = Billing.on_account_update(account, changeset)
-
-    # TODO: WAL
-    if Ecto.Changeset.changed?(changeset, :config) do
-      broadcast_config_update_to_account(account)
-    else
-      :ok
-    end
   end
 
   for feature <- Features.__schema__(:fields) do
@@ -160,29 +153,5 @@ defmodule Domain.Accounts do
 
   def type(%Account{}) do
     "Starter"
-  end
-
-  ### PubSub
-
-  defp account_topic(%Account{} = account), do: account_topic(account.id)
-  defp account_topic(account_id), do: "accounts:#{account_id}"
-
-  def subscribe_to_events_in_account(account_or_id) do
-    account_or_id |> account_topic() |> PubSub.subscribe()
-  end
-
-  def unsubscribe_from_events_in_account(account_or_id) do
-    account_or_id |> account_topic() |> PubSub.unsubscribe()
-  end
-
-  # TODO: WAL
-  defp broadcast_config_update_to_account(%Account{} = account) do
-    broadcast_to_account(account.id, :config_changed)
-  end
-
-  defp broadcast_to_account(account_or_id, payload) do
-    account_or_id
-    |> account_topic()
-    |> PubSub.broadcast(payload)
   end
 end
