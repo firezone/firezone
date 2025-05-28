@@ -11,6 +11,7 @@ defmodule Domain.Auth.Identity.Changeset do
       ) do
     actor
     |> create_identity(provider, attrs)
+    |> reset_created_by()
     |> put_subject_trail(:created_by, subject)
   end
 

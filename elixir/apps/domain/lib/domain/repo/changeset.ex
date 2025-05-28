@@ -177,6 +177,14 @@ defmodule Domain.Repo.Changeset do
     |> put_default_value(:"#{field}_identity_id", subject.identity.id)
   end
 
+  def reset_created_by(changeset) do
+    changeset
+    |> put_change(:created_by, nil)
+    |> put_change(:created_by_identity_id, nil)
+    |> put_change(:created_by_actor_id, nil)
+    |> put_change(:created_by_subject, nil)
+  end
+
   # Validations
 
   def validate_list(

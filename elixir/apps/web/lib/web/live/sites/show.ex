@@ -206,7 +206,7 @@ defmodule Web.Sites.Show do
           <.vertical_table_row>
             <:label>Created</:label>
             <:value>
-              <.created_by account={@account} schema={@group} />
+              <.created_by schema={@group} />
             </:value>
           </.vertical_table_row>
         </.vertical_table>

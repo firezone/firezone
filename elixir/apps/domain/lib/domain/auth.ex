@@ -459,13 +459,23 @@ defmodule Domain.Auth do
   end
 
   def create_identity(
-        %Actors.Actor{} = actor,
+        %Actors.Actor{account_id: account_id} = actor,
         %Provider{} = provider,
         attrs,
         %Subject{} = subject
       ) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
-      create_identity(actor, provider, attrs)
+      Identity.Changeset.create_identity(actor, provider, attrs, subject)
+      |> Adapters.identity_changeset(provider)
+      |> Repo.insert()
+      |> case do
+        {:ok, identity} ->
+          {:ok, _groups} = Actors.update_dynamic_group_memberships(account_id)
+          {:ok, identity}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
     end
   end
 
