@@ -1,7 +1,7 @@
 defmodule API.Client.Channel do
   use API, :channel
   alias API.Client.Views
-  alias Domain.{Accounts, Clients, Actors, Resources, Gateways, Relays, Policies, Flows}
+  alias Domain.{Accounts, Clients, Actors, Events, Resources, Gateways, Relays, Policies, Flows}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -127,7 +127,7 @@ defmodule API.Client.Channel do
       :ok = Clients.connect_client(socket.assigns.client)
 
       # Subscribe for account config updates
-      :ok = Accounts.subscribe_to_events_in_account(socket.assigns.client.account_id)
+      :ok = Events.Hooks.Accounts.subscribe(socket.assigns.client.account_id)
 
       # We subscribe for membership updates for all actor groups the client is a member of,
       :ok = Actors.subscribe_to_membership_updates_for_actor(socket.assigns.subject.actor)
