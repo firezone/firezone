@@ -10,7 +10,91 @@ func __swift_bridge__CallbackHandler_on_update_resources (_ this: UnsafeMutableR
 
 @_cdecl("__swift_bridge__$CallbackHandler$on_disconnect")
 func __swift_bridge__CallbackHandler_on_disconnect (_ this: UnsafeMutableRawPointer, _ error: UnsafeMutableRawPointer) {
-    Unmanaged<CallbackHandler>.fromOpaque(this).takeUnretainedValue().onDisconnect(error: RustString(ptr: error))
+    Unmanaged<CallbackHandler>.fromOpaque(this).takeUnretainedValue().onDisconnect(error: DisconnectError(ptr: error))
+}
+
+
+public class DisconnectError: DisconnectErrorRefMut {
+    var isOwned: Bool = true
+
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+
+    deinit {
+        if isOwned {
+            __swift_bridge__$DisconnectError$_free(ptr)
+        }
+    }
+}
+public class DisconnectErrorRefMut: DisconnectErrorRef {
+    public override init(ptr: UnsafeMutableRawPointer) {
+        super.init(ptr: ptr)
+    }
+}
+public class DisconnectErrorRef {
+    var ptr: UnsafeMutableRawPointer
+
+    public init(ptr: UnsafeMutableRawPointer) {
+        self.ptr = ptr
+    }
+}
+extension DisconnectErrorRef {
+    public func isAuthenticationError() -> Bool {
+        __swift_bridge__$DisconnectError$is_authentication_error(ptr)
+    }
+
+    public func toString() -> RustString {
+        RustString(ptr: __swift_bridge__$DisconnectError$to_string(ptr))
+    }
+}
+extension DisconnectError: Vectorizable {
+    public static func vecOfSelfNew() -> UnsafeMutableRawPointer {
+        __swift_bridge__$Vec_DisconnectError$new()
+    }
+
+    public static func vecOfSelfFree(vecPtr: UnsafeMutableRawPointer) {
+        __swift_bridge__$Vec_DisconnectError$drop(vecPtr)
+    }
+
+    public static func vecOfSelfPush(vecPtr: UnsafeMutableRawPointer, value: DisconnectError) {
+        __swift_bridge__$Vec_DisconnectError$push(vecPtr, {value.isOwned = false; return value.ptr;}())
+    }
+
+    public static func vecOfSelfPop(vecPtr: UnsafeMutableRawPointer) -> Optional<Self> {
+        let pointer = __swift_bridge__$Vec_DisconnectError$pop(vecPtr)
+        if pointer == nil {
+            return nil
+        } else {
+            return (DisconnectError(ptr: pointer!) as! Self)
+        }
+    }
+
+    public static func vecOfSelfGet(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<DisconnectErrorRef> {
+        let pointer = __swift_bridge__$Vec_DisconnectError$get(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return DisconnectErrorRef(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfGetMut(vecPtr: UnsafeMutableRawPointer, index: UInt) -> Optional<DisconnectErrorRefMut> {
+        let pointer = __swift_bridge__$Vec_DisconnectError$get_mut(vecPtr, index)
+        if pointer == nil {
+            return nil
+        } else {
+            return DisconnectErrorRefMut(ptr: pointer!)
+        }
+    }
+
+    public static func vecOfSelfAsPtr(vecPtr: UnsafeMutableRawPointer) -> UnsafePointer<DisconnectErrorRef> {
+        UnsafePointer<DisconnectErrorRef>(OpaquePointer(__swift_bridge__$Vec_DisconnectError$as_ptr(vecPtr)))
+    }
+
+    public static func vecOfSelfLen(vecPtr: UnsafeMutableRawPointer) -> UInt {
+        __swift_bridge__$Vec_DisconnectError$len(vecPtr)
+    }
 }
 
 

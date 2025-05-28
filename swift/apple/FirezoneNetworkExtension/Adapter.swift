@@ -415,7 +415,7 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  func onDisconnect(error: String) {
+  func onDisconnect(error: DisconnectError) {
     // Immediately invalidate our session pointer to prevent workQueue items from trying to use it.
     // Assigning to `nil` will invoke `Drop` on the Rust side.
     session = nil
@@ -429,9 +429,7 @@ extension Adapter: CallbackHandlerDelegate {
       // different ways.
       var reason: NEProviderStopReason = .connectionFailed
 
-      // HACK: Define more connlib error types across the FFI so we can switch on them
-      // directly and not parse error strings here.
-      if error.contains("401 Unauthorized") {
+      if error.isAuthenticationError() {
         reason = .authenticationCanceled
       }
 
