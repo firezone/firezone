@@ -166,7 +166,7 @@ defmodule Web.Live.Groups.ShowTest do
            |> element("#group")
            |> render()
            |> vertical_table_to_map()
-           |> Map.fetch!("created") =~ "by #{provider.name} sync"
+           |> Map.fetch!("created") =~ "by Directory Sync"
   end
 
   test "renders group actors", %{

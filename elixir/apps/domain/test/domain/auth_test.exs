@@ -2431,6 +2431,12 @@ defmodule Domain.AuthTest do
       assert identity.provider_state == %{}
       assert identity.provider_virtual_state == %{}
       assert identity.account_id == provider.account_id
+
+      assert identity.created_by_subject == %{
+               "name" => subject.actor.name,
+               "email" => subject.identity.email
+             }
+
       assert is_nil(identity.deleted_at)
     end
 

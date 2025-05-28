@@ -1117,57 +1117,42 @@ defmodule Web.CoreComponents do
   @doc """
   Renders creation timestamp and entity.
   """
-  attr :account, :any, required: true
   attr :schema, :any, required: true
 
   def created_by(%{schema: %{created_by: :system}} = assigns) do
     ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} /> by system
+    <.relative_datetime datetime={@schema.inserted_at} /> by System
     """
   end
 
   def created_by(%{schema: %{created_by: :actor}} = assigns) do
     ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} /> by
-    <.actor_link account={@account} actor={@schema.created_by_actor} />
+    <.relative_datetime datetime={@schema.inserted_at} /> by {@schema.created_by_subject["name"]}
     """
   end
 
   def created_by(%{schema: %{created_by: :identity}} = assigns) do
     ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} /> by
-    <.link
-      class="text-accent-500 hover:underline"
-      navigate={~p"/#{@schema.account_id}/actors/#{@schema.created_by_identity.actor.id}"}
-    >
-      <%= assigns.schema.created_by_identity.actor.name %>
-    </.link>
+    <.relative_datetime datetime={@schema.inserted_at} /> by {@schema.created_by_subject["name"]}
     """
   end
 
   def created_by(%{schema: %{created_by: :provider}} = assigns) do
     ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} /> by
-    <.link
-      class="text-accent-500 hover:underline"
-      navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @schema.provider)}
-    >
-      <%= @schema.provider.name %>
-    </.link> sync
+    <.relative_datetime datetime={@schema.inserted_at} /> by Directory Sync
     """
   end
 
   @doc """
   Renders verification timestamp and entity.
   """
-  attr :account, :any, required: true
   attr :schema, :any, required: true
 
   def verified_by(%{schema: %{verified_by: :system}} = assigns) do
     ~H"""
     <div class="flex items-center gap-x-1">
       <.icon name="hero-shield-check" class="w-4 h-4" /> Verified
-      <.relative_datetime datetime={@schema.verified_at} /> by system
+      <.relative_datetime datetime={@schema.verified_at} /> by System
     </div>
     """
   end
@@ -1176,8 +1161,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <div class="flex items-center gap-x-1">
       <.icon name="hero-shield-check" class="w-4 h-4" /> Verified
-      <.relative_datetime datetime={@schema.verified_at} /> by
-      <.actor_link account={@account} actor={@schema.verified_by_actor} />
+      <.relative_datetime datetime={@schema.verified_at} /> by {@schema.verified_by_subject["name"]}
     </div>
     """
   end
@@ -1186,13 +1170,7 @@ defmodule Web.CoreComponents do
     ~H"""
     <div class="flex items-center gap-x-1">
       <.icon name="hero-shield-check" class="w-4 h-4" /> Verified
-      <.relative_datetime datetime={@schema.verified_at} /> by
-      <.link
-        class="text-accent-500 hover:underline"
-        navigate={~p"/#{@schema.account_id}/actors/#{@schema.verified_by_identity.actor_id}"}
-      >
-        {assigns.schema.verified_by_actor.name}
-      </.link>
+      <.relative_datetime datetime={@schema.verified_at} /> by {@schema.verified_by_subject["name"]}
     </div>
     """
   end

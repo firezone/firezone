@@ -269,7 +269,7 @@ defmodule Web.Actors.Show do
             <.identity_identifier account={@account} identity={identity} />
           </:col>
           <:col :let={identity} label="created">
-            <.created_by account={@account} schema={identity} />
+            <.created_by schema={identity} />
           </:col>
           <:col :let={identity} label="last signed in">
             <.relative_datetime datetime={identity.last_seen_at} />
@@ -415,7 +415,7 @@ defmodule Web.Actors.Show do
             {token.name}
           </:col>
           <:col :let={token} label="created" class="w-2/12">
-            <.created_by account={@account} schema={token} />
+            <.created_by schema={token} />
           </:col>
           <:col :let={token} label="expires" class="w-1/12">
             <%= if DateTime.compare(token.expires_at, DateTime.utc_now()) == :lt do %>

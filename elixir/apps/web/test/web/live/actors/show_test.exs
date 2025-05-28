@@ -322,7 +322,8 @@ defmodule Web.Live.Actors.ShowTest do
         Fixtures.Auth.create_identity(account: account, actor: actor)
         |> Ecto.Changeset.change(
           created_by: :identity,
-          created_by_identity_id: admin_identity.id
+          created_by_identity_id: admin_identity.id,
+          created_by_subject: %{"name" => actor.name, "email" => admin_identity.email}
         )
         |> Repo.update!()
 
@@ -367,7 +368,7 @@ defmodule Web.Live.Actors.ShowTest do
         "#{synced_identity.provider_identifier}",
         fn row ->
           refute row["actions"]
-          assert row["created"] =~ "by #{synced_identity.provider.name} sync"
+          assert row["created"] =~ "by Directory Sync"
           assert row["last signed in"] == "Never"
         end
       )

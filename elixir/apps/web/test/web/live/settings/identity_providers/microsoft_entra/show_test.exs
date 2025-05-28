@@ -142,7 +142,8 @@ defmodule Web.Live.Settings.IdentityProviders.MicrosoftEntra.ShowTest do
     provider
     |> Ecto.Changeset.change(
       created_by: :identity,
-      created_by_identity_id: identity.id
+      created_by_identity_id: identity.id,
+      created_by_subject: %{"name" => actor.name, "email" => identity.email}
     )
     |> Repo.update!()
 

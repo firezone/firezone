@@ -129,7 +129,7 @@ defmodule Web.Groups.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Created</:label>
-            <:value><.created_by account={@account} schema={@group} /></:value>
+            <:value><.created_by schema={@group} /></:value>
           </.vertical_table_row>
         </.vertical_table>
       </:content>
