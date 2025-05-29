@@ -290,21 +290,7 @@ defmodule Domain.Tokens do
       |> Token.Query.delete()
       |> Repo.update_all([])
 
-    # TODO: WAL
-    :ok = Enum.each(tokens, &broadcast_disconnect_message/1)
-
     {:ok, tokens}
-  end
-
-  # TODO: WAL
-  defp broadcast_disconnect_message(%{type: :email}) do
-    :ok
-  end
-
-  defp broadcast_disconnect_message(token) do
-    topic = socket_id(token)
-    payload = %Phoenix.Socket.Broadcast{topic: topic, event: "disconnect"}
-    Phoenix.PubSub.broadcast(Domain.PubSub, topic, payload)
   end
 
   defp fetch_config! do

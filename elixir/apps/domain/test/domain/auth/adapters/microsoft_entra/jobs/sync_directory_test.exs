@@ -472,7 +472,6 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       :ok = Domain.Policies.subscribe_to_events_for_actor(actor)
       :ok = Domain.Policies.subscribe_to_events_for_actor(other_actor)
       :ok = Domain.Policies.subscribe_to_events_for_actor_group(deleted_group)
-      :ok = Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{deleted_identity_token.id}")
 
       MicrosoftEntraDirectory.mock_groups_list_endpoint(
         bypass,
@@ -555,8 +554,8 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       assert_receive {:delete_membership, ^actor_id, ^group_id}
 
       # Signs out users which identity has been deleted
-      topic = "sessions:#{deleted_identity_token.id}"
-      assert_receive %Phoenix.Socket.Broadcast{topic: ^topic, event: "disconnect", payload: nil}
+      deleted_identity_token = Repo.reload(deleted_identity_token)
+      assert deleted_identity_token.deleted_at
 
       # Deleted group deletes all policies and broadcasts reject access events for them
       policy_id = deleted_policy.id

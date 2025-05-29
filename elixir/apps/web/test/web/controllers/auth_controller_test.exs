@@ -1262,7 +1262,7 @@ defmodule Web.AuthControllerTest do
       assert redirect_url =~ "post_logout_redirect_uri=#{post_redirect_url}"
     end
 
-    test "broadcasts to the given live_socket_id", %{conn: conn} do
+    test "deletes the token", %{conn: conn} do
       Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
       account = Fixtures.Accounts.create_account()
@@ -1279,7 +1279,8 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to(conn) =~ ~p"/#{account}"
 
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^live_socket_id}
+      token = Repo.get!(Domain.Tokens.Token, conn.assigns.subject.token_id)
+      assert token.deleted_at
     end
 
     test "works even if user is already logged out", %{conn: conn} do
