@@ -244,7 +244,7 @@ async fn clear_logs(path: &Path) -> Result<()> {
         if entry
             .file_name()
             .to_str()
-            .is_none_or(|name| !name.ends_with("log"))
+            .is_none_or(|name| !name.ends_with("log") && name != "latest")
         {
             continue;
         }
