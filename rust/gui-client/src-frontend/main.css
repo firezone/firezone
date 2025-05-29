@@ -1,14 +1,9 @@
 @import "tailwindcss";
+
 @plugin "flowbite-react/plugin/tailwindcss";
-@source "../.flowbite-react/class-list.json";
-
-/*
- * This file serves as the main entry point for your Tailwind CSS installation.
- * Generate the CSS from this with `pnpm tailwindcss -i src/input.css -o src/output.css`
- * This has been added to the build script in package.json for convenience.
- */
-
 @plugin 'flowbite/plugin';
+
+@source "../.flowbite-react/class-list.json";
 
 @custom-variant dark (&:where(.dark, .dark *));
 
