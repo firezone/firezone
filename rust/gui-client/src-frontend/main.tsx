@@ -12,4 +12,4 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   </StrictMode>
 );
 
-initThemeMode({ mode: "dark" });
+initThemeMode({ mode: "light" });

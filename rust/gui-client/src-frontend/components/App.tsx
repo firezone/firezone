@@ -74,7 +74,7 @@ export default function App() {
     <div className="h-screen bg-neutral-100 flex flex-row">
       <Sidebar
         aria-label="Sidebar"
-        className="w-52 flex-shrink-0"
+        className="w-52 flex-shrink-0 dark" // Force dark mode for sidebar, looks better.
         theme={{ root: { inner: "rounded-none" } }}
       >
         <SidebarItems>
