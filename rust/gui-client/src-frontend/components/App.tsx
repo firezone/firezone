@@ -1,13 +1,18 @@
 import {
-    BugAntIcon,
-    CogIcon,
-    HomeIcon,
-    InformationCircleIcon,
-    SwatchIcon,
+  BugAntIcon,
+  CogIcon,
+  HomeIcon,
+  InformationCircleIcon,
+  SwatchIcon,
 } from "@heroicons/react/24/solid";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Sidebar, SidebarItem, SidebarItemGroup, SidebarItems } from "flowbite-react";
+import {
+  Sidebar,
+  SidebarItem,
+  SidebarItemGroup,
+  SidebarItems,
+} from "flowbite-react";
 import React, { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router";
 import About from "./AboutPage";
@@ -30,23 +35,26 @@ export default function App() {
     const signedInUnlisten = listen<Session>("signed_in", (e) => {
       let session = e.payload;
 
-      console.log("signed_in", { session })
+      console.log("signed_in", { session });
       setSession(session);
     });
     const signedOutUnlisten = listen<void>("signed_out", (_e) => {
-      console.log("signed_out")
+      console.log("signed_out");
       setSession(null);
     });
-    const settingsChangedUnlisten = listen<Settings>("settings_changed", (e) => {
-      let settings = e.payload;
+    const settingsChangedUnlisten = listen<Settings>(
+      "settings_changed",
+      (e) => {
+        let settings = e.payload;
 
-      console.log("settings_changed", { settings })
-      setSettings(settings);
-    });
+        console.log("settings_changed", { settings });
+        setSettings(settings);
+      }
+    );
     const logsRecountedUnlisten = listen<FileCount>("logs_recounted", (e) => {
       let file_count = e.payload;
 
-      console.log("logs_recounted", { file_count })
+      console.log("logs_recounted", { file_count });
       setLogCount(file_count);
     });
 
@@ -94,7 +102,11 @@ export default function App() {
             </NavLink>
             <NavLink to="/about">
               {({ isActive }) => (
-                <SidebarItem active={isActive} icon={InformationCircleIcon} as="div">
+                <SidebarItem
+                  active={isActive}
+                  icon={InformationCircleIcon}
+                  as="div"
+                >
                   About
                 </SidebarItem>
               )}
@@ -130,7 +142,9 @@ export default function App() {
             element={
               <SettingsPage
                 settings={settings}
-                saveSettings={(settings) => invoke("apply_advanced_settings", { settings })}
+                saveSettings={(settings) =>
+                  invoke("apply_advanced_settings", { settings })
+                }
                 resetSettings={() => invoke("reset_advanced_settings")}
               />
             }
@@ -150,10 +164,7 @@ export default function App() {
               />
             }
           />
-          <Route
-            path="/about"
-            element={<About />}
-          />
+          <Route path="/about" element={<About />} />
           <Route path="/colour-palette" element={<ColorPalette />} />
         </Routes>
       </main>

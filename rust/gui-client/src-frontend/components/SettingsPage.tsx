@@ -30,20 +30,22 @@ export default function SettingsPage({
       auth_url: "",
       auth_url_is_managed: false,
       log_filter: "",
-      log_filter_is_managed: false
+      log_filter_is_managed: false,
     }
   );
 
   useEffect(() => {
-    setLocalSettings(settings ?? {
-      api_url: "",
-      api_url_is_managed: false,
-      auth_url: "",
-      auth_url_is_managed: false,
-      log_filter: "",
-      log_filter_is_managed: false
-    });
-  }, [settings])
+    setLocalSettings(
+      settings ?? {
+        api_url: "",
+        api_url_is_managed: false,
+        auth_url: "",
+        auth_url_is_managed: false,
+        log_filter: "",
+        log_filter_is_managed: false,
+      }
+    );
+  }, [settings]);
 
   return (
     <div className="container mx-auto p-4">
@@ -78,11 +80,7 @@ export default function SettingsPage({
               placeholder=" "
               required
             />
-            <Label
-              htmlFor="auth-base-url-input"
-            >
-              Auth Base URL
-            </Label>
+            <Label htmlFor="auth-base-url-input">Auth Base URL</Label>
           </div>
 
           <div className="relative z-0 w-full mb-5 group">
@@ -101,11 +99,7 @@ export default function SettingsPage({
               placeholder=" "
               required
             />
-            <Label
-              htmlFor="api-url-input"
-            >
-              API URL
-            </Label>
+            <Label htmlFor="api-url-input">API URL</Label>
           </div>
 
           <div className="relative z-0 w-full mb-5 group">
@@ -124,11 +118,7 @@ export default function SettingsPage({
               placeholder=" "
               required
             />
-            <Label
-              htmlFor="log-filter-input"
-            >
-              Log Filter
-            </Label>
+            <Label htmlFor="log-filter-input">Log Filter</Label>
           </div>
 
           <div className="inline-flex w-full justify-between">
