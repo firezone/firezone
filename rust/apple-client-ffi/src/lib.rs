@@ -51,6 +51,7 @@ const RELEASE: &str = concat!("connlib-apple@", env!("CARGO_PKG_VERSION"));
 mod ffi {
     extern "Rust" {
         type WrappedSession;
+        type DisconnectError;
 
         #[swift_bridge(associated_to = WrappedSession, return_with = err_to_string)]
         fn connect(
@@ -66,20 +67,29 @@ mod ffi {
             device_info: String,
         ) -> Result<WrappedSession, String>;
 
-        fn reset(&mut self);
+        fn reset(self: &mut WrappedSession);
 
         // Set system DNS resolvers
         //
         // `dns_servers` must not have any IPv6 scopes
         // <https://github.com/firezone/firezone/issues/4350>
         #[swift_bridge(swift_name = "setDns", return_with = err_to_string)]
-        fn set_dns(&mut self, dns_servers: String) -> Result<(), String>;
+        fn set_dns(self: &mut WrappedSession, dns_servers: String) -> Result<(), String>;
 
         #[swift_bridge(swift_name = "setDisabledResources", return_with = err_to_string)]
-        fn set_disabled_resources(&mut self, disabled_resources: String) -> Result<(), String>;
+        fn set_disabled_resources(
+            self: &mut WrappedSession,
+            disabled_resources: String,
+        ) -> Result<(), String>;
 
         #[swift_bridge(swift_name = "setLogDirectives", return_with = err_to_string)]
-        fn set_log_directives(&mut self, directives: String) -> Result<(), String>;
+        fn set_log_directives(self: &mut WrappedSession, directives: String) -> Result<(), String>;
+
+        #[swift_bridge(swift_name = "isAuthenticationError")]
+        fn is_authentication_error(self: &DisconnectError) -> bool;
+
+        #[swift_bridge(swift_name = "toString")]
+        fn to_string(self: &DisconnectError) -> String;
     }
 
     extern "Swift" {
@@ -100,7 +110,7 @@ mod ffi {
         fn on_update_resources(&self, resourceList: String);
 
         #[swift_bridge(swift_name = "onDisconnect")]
-        fn on_disconnect(&self, error: String);
+        fn on_disconnect(&self, error: DisconnectError);
     }
 }
 
@@ -173,7 +183,7 @@ impl Callbacks for CallbackHandler {
             tracing::error!("{error}")
         }
 
-        self.inner.on_disconnect(error.to_string());
+        self.inner.on_disconnect(error);
     }
 }
 
