@@ -1,5 +1,6 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase, async: true
+  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -1094,7 +1095,7 @@ defmodule API.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      :ok = Domain.Clients.connect_client(client)
+      :ok = Events.Hooks.Clients.connect(client)
       Domain.PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
 
       push(socket, "broadcast_ice_candidates", attrs)
@@ -1132,7 +1133,7 @@ defmodule API.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      :ok = Domain.Clients.connect_client(client)
+      :ok = Events.Hooks.Clients.connect(client)
       Domain.PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)

@@ -1,5 +1,6 @@
 defmodule Web.Live.Clients.ShowTest do
   use Web.ConnCase, async: true
+  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -116,7 +117,7 @@ defmodule Web.Live.Clients.ShowTest do
     identity: identity,
     conn: conn
   } do
-    :ok = Domain.Clients.connect_client(client)
+    :ok = Events.Hooks.Clients.connect(client)
 
     {:ok, lv, _html} =
       conn
@@ -144,8 +145,8 @@ defmodule Web.Live.Clients.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients/#{client}")
 
-    Domain.Clients.subscribe_to_clients_presence_for_actor(actor)
-    assert Domain.Clients.connect_client(client) == :ok
+    Events.Hooks.Actors.subscribe_to_clients_presence(actor.id)
+    assert Events.Hooks.Clients.connect(client) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
 
     wait_for(fn ->

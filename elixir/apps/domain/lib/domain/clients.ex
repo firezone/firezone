@@ -1,7 +1,7 @@
 defmodule Domain.Clients do
   use Supervisor
-  alias Domain.{Repo, Auth, PubSub}
-  alias Domain.{Accounts, Actors, Flows}
+  alias Domain.{Repo, Auth}
+  alias Domain.{Accounts, Actors, Events, Flows}
   alias Domain.Clients.{Client, Authorizer, Presence}
   require Ecto.Query
 
@@ -107,7 +107,7 @@ defmodule Domain.Clients do
   @doc false
   def preload_clients_presence([client]) do
     client.account_id
-    |> account_clients_presence_topic()
+    |> Events.Hooks.Accounts.clients_presence_topic()
     |> Presence.get_by_key(client.id)
     |> case do
       [] -> %{client | online?: false}
@@ -135,7 +135,7 @@ defmodule Domain.Clients do
 
   def online_client_ids(account_id) do
     account_id
-    |> account_clients_presence_topic()
+    |> Events.Hooks.Accounts.clients_presence_topic()
     |> Presence.list()
     |> Map.keys()
   end
@@ -188,15 +188,6 @@ defmodule Domain.Clients do
         with: &Client.Changeset.update(&1, attrs),
         preload: [:online?]
       )
-      # TODO: WAL
-      |> case do
-        {:ok, client} ->
-          :ok = broadcast_to_client(client, :updated)
-          {:ok, client}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
     end
   end
 
@@ -213,8 +204,6 @@ defmodule Domain.Clients do
       |> case do
         {:ok, client} ->
           client = Repo.preload(client, [:verified_by_actor, :verified_by_identity])
-          # TODO: WAL
-          :ok = broadcast_to_client(client, :updated)
           {:ok, client}
 
         {:error, reason} ->
@@ -236,8 +225,6 @@ defmodule Domain.Clients do
       |> case do
         {:ok, client} ->
           {:ok, _flows} = Flows.expire_flows_for(client)
-          # TODO: WAL
-          :ok = broadcast_to_client(client, :updated)
           {:ok, client}
 
         {:error, reason} ->
@@ -254,8 +241,6 @@ defmodule Domain.Clients do
     with :ok <- authorize_actor_client_management(client.actor_id, subject) do
       case delete_clients(queryable, subject) do
         {:ok, [client]} ->
-          # TODO: WAL
-          :ok = disconnect_client(client)
           {:ok, client}
 
         {:ok, []} ->
@@ -270,10 +255,8 @@ defmodule Domain.Clients do
       |> Client.Query.by_actor_id(actor.id)
       |> Client.Query.by_account_id(actor.account_id)
 
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission()),
-         {:ok, _clients} <- delete_clients(queryable, subject) do
-      # TODO: WAL
-      :ok = disconnect_actor_clients(actor)
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission()) do
+      {:ok, _clients} = delete_clients(queryable, subject)
       :ok
     end
   end
@@ -284,9 +267,6 @@ defmodule Domain.Clients do
       |> Authorizer.for_subject(subject)
       |> Client.Query.delete()
       |> Repo.update_all([])
-
-    # TODO: WAL
-    :ok = Enum.each(clients, &disconnect_client/1)
 
     {:ok, clients}
   end
@@ -301,87 +281,5 @@ defmodule Domain.Clients do
 
   defp authorize_actor_client_management(_actor_id, %Auth.Subject{} = subject) do
     Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission())
-  end
-
-  def connect_client(%Client{} = client) do
-    with {:ok, _} <-
-           Presence.track(self(), account_clients_presence_topic(client.account_id), client.id, %{
-             online_at: System.system_time(:second)
-           }),
-         {:ok, _} <-
-           Presence.track(self(), actor_clients_presence_topic(client.actor_id), client.id, %{}) do
-      :ok = PubSub.subscribe(client_topic(client))
-      # TODO: WAL
-      # :ok = PubSub.subscribe(actor_clients_topic(client.actor_id))
-      # :ok = PubSub.subscribe(identity_topic(client.actor_id))
-      :ok = PubSub.subscribe(account_clients_topic(client.account_id))
-      :ok
-    end
-  end
-
-  ### Presence
-
-  def account_clients_presence_topic(account_or_id),
-    do: "presences:#{account_clients_topic(account_or_id)}"
-
-  defp actor_clients_presence_topic(actor_or_id),
-    do: "presences:#{actor_clients_topic(actor_or_id)}"
-
-  ### PubSub
-
-  defp client_topic(%Client{} = client), do: client_topic(client.id)
-  defp client_topic(client_id), do: "clients:#{client_id}"
-
-  defp account_clients_topic(%Accounts.Account{} = account), do: account_clients_topic(account.id)
-  defp account_clients_topic(account_id), do: "account_clients:#{account_id}"
-
-  defp actor_clients_topic(%Actors.Actor{} = actor), do: actor_clients_topic(actor.id)
-  defp actor_clients_topic(actor_id), do: "actor_clients:#{actor_id}"
-
-  def subscribe_to_clients_presence_in_account(account_or_id) do
-    PubSub.subscribe(account_clients_presence_topic(account_or_id))
-  end
-
-  def unsubscribe_from_clients_presence_in_account(account_or_id) do
-    PubSub.unsubscribe(account_clients_presence_topic(account_or_id))
-  end
-
-  def subscribe_to_clients_presence_for_actor(actor_or_id) do
-    PubSub.subscribe(actor_clients_presence_topic(actor_or_id))
-  end
-
-  def unsubscribe_from_clients_presence_for_actor(actor_or_id) do
-    PubSub.unsubscribe(actor_clients_presence_topic(actor_or_id))
-  end
-
-  # TODO: WAL
-  def broadcast_to_account_clients(account_or_id, payload) do
-    account_or_id
-    |> account_clients_topic()
-    |> PubSub.broadcast(payload)
-  end
-
-  def broadcast_to_client(client_or_id, payload) do
-    client_or_id
-    |> client_topic()
-    |> PubSub.broadcast(payload)
-  end
-
-  defp broadcast_to_actor_clients(actor_or_id, payload) do
-    actor_or_id
-    |> actor_clients_topic()
-    |> PubSub.broadcast(payload)
-  end
-
-  def disconnect_client(client_or_id) do
-    broadcast_to_client(client_or_id, "disconnect")
-  end
-
-  def disconnect_actor_clients(actor_or_id) do
-    broadcast_to_actor_clients(actor_or_id, "disconnect")
-  end
-
-  def disconnect_account_clients(account_or_id) do
-    broadcast_to_account_clients(account_or_id, "disconnect")
   end
 end

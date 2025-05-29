@@ -746,18 +746,14 @@ defmodule Domain.AccountsTest do
              ]
     end
 
-    test "broadcasts disconnect message for the clients when account is disabled", %{
+    test "allows disabling an account", %{
       account: account
     } do
       attrs = %{
         disabled_at: DateTime.utc_now()
       }
 
-      :ok = Domain.PubSub.subscribe("account_clients:#{account.id}")
-
       assert {:ok, _account} = update_account_by_id(account.id, attrs)
-
-      assert_receive "disconnect"
     end
   end
 

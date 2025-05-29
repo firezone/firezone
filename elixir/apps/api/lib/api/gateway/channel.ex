@@ -599,7 +599,7 @@ defmodule API.Gateway.Channel do
 
       :ok =
         Enum.each(client_ids, fn client_id ->
-          Clients.broadcast_to_client(
+          Events.Hooks.Clients.broadcast(
             client_id,
             {:ice_candidates, socket.assigns.gateway.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}
@@ -624,7 +624,7 @@ defmodule API.Gateway.Channel do
 
       :ok =
         Enum.each(client_ids, fn client_id ->
-          Clients.broadcast_to_client(
+          Events.Hooks.Clients.broadcast(
             client_id,
             {:invalidate_ice_candidates, socket.assigns.gateway.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}

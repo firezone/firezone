@@ -1,5 +1,6 @@
 defmodule Web.Live.Clients.IndexTest do
   use Web.ConnCase, async: true
+  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -59,7 +60,7 @@ defmodule Web.Live.Clients.IndexTest do
     online_client = Fixtures.Clients.create_client(account: account)
     offline_client = Fixtures.Clients.create_client(account: account)
 
-    :ok = Domain.Clients.connect_client(online_client)
+    :ok = Events.Hooks.Clients.connect(online_client)
 
     {:ok, lv, _html} =
       conn
@@ -102,8 +103,8 @@ defmodule Web.Live.Clients.IndexTest do
       |> live(~p"/#{account}/clients")
 
     Domain.Config.put_env_override(:test_pid, self())
-    Domain.Clients.subscribe_to_clients_presence_for_actor(actor)
-    assert Domain.Clients.connect_client(client) == :ok
+    :ok = Events.Hooks.Actors.subscribe_to_clients_presence(client.actor_id)
+    assert Events.Hooks.Clients.connect(client) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
     assert_receive {:live_table_reloaded, "clients"}, 250
 
