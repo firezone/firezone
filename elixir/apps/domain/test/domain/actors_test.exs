@@ -873,7 +873,6 @@ defmodule Domain.ActorsTest do
       :ok = Domain.Policies.subscribe_to_events_for_actor_group(group3)
       :ok = Domain.Policies.subscribe_to_events_for_actor_group(group4)
       :ok = Domain.Policies.subscribe_to_events_for_actor_group(group5)
-      :ok = Domain.Flows.subscribe_to_flow_expiration_events(group1_flow)
 
       attrs_list = [
         %{"name" => "Group:Infrastructure", "provider_identifier" => "G:GROUP_ID2"},
@@ -902,10 +901,11 @@ defmodule Domain.ActorsTest do
 
       group1_id = group1.id
       group1_policy_id = group1_policy.id
-      group1_flow_id = group1_flow.id
       assert_receive {:delete_membership, ^actor_id, ^group1_id}
       assert_receive {:reject_access, ^group1_policy_id, ^group1_id, _resource_id}
-      assert_receive {:expire_flow, ^group1_flow_id, _client_id, _resource_id}
+
+      group1_flow = Repo.reload(group1_flow)
+      assert DateTime.compare(group1_flow.expires_at, DateTime.utc_now()) == :lt
 
       group2_id = group2.id
       refute_receive {:delete_membership, _actor_id, ^group2_id}
@@ -1233,7 +1233,6 @@ defmodule Domain.ActorsTest do
       :ok = Domain.Policies.subscribe_to_events_for_actor(identity2.actor_id)
       :ok = Domain.Policies.subscribe_to_events_for_actor_group(group1)
       :ok = Domain.Policies.subscribe_to_events_for_actor_group(group2)
-      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
 
       assert {:ok,
               %{
@@ -1264,8 +1263,8 @@ defmodule Domain.ActorsTest do
       assert_receive {:delete_membership, ^actor2_id, ^group2_id}
       assert_receive {:reject_access, _policy_id, ^group2_id, _resource_id}
 
-      flow_id = flow.id
-      assert_receive {:expire_flow, ^flow_id, _client_id, _resource_id}
+      flow = Repo.reload(flow)
+      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
     end
 
     test "deletes memberships of removed groups", %{

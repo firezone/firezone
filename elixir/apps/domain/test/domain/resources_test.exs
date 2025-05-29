@@ -1416,12 +1416,12 @@ defmodule Domain.ResourcesTest do
       subject: subject
     } do
       flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
-      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
 
       attrs = %{"name" => "foo"}
       assert {:updated, _resource} = update_resource(resource, attrs, subject)
 
-      refute_receive {:expire_flow, _flow_id, _client_id, _resource_id}
+      flow = Repo.reload(flow)
+      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :gt
     end
 
     test "allows to update connections", %{account: account, resource: resource, subject: subject} do
@@ -1436,7 +1436,6 @@ defmodule Domain.ResourcesTest do
       gateway2 = Fixtures.Gateways.create_gateway(account: account)
 
       flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
-      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
 
       attrs = %{
         "connections" => [
@@ -1454,9 +1453,8 @@ defmodule Domain.ResourcesTest do
       gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
       assert gateway_group_ids == [gateway2.group_id]
 
-      flow_id = flow.id
-      resource_id = resource.id
-      assert_receive {:expire_flow, ^flow_id, _client_id, ^resource_id}
+      flow = Repo.reload(flow)
+      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
     end
 
     test "does not allow to remove all connections", %{resource: resource, subject: subject} do
@@ -1484,7 +1482,6 @@ defmodule Domain.ResourcesTest do
       subject: subject
     } do
       flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
-      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
       :ok = subscribe_to_events_for_account(account)
 
       attrs = %{"address" => "foo"}
@@ -1494,12 +1491,13 @@ defmodule Domain.ResourcesTest do
 
       # Resource id doesn't change when updated, but for clarity we still test that we receive the
       # destructive events for the old resource id and the creation events for the new resource id.
-      flow_id = flow.id
       updated_resource_id = updated_resource.id
       resource_id = resource.id
-      assert_receive {:expire_flow, ^flow_id, _client_id, ^resource_id}
       assert_receive {:delete_resource, ^resource_id}
       assert_receive {:create_resource, ^updated_resource_id}
+
+      flow = Repo.reload(flow)
+      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
     end
 
     test "updates the resource when type is changed", %{resource: resource, subject: subject} do

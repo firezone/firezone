@@ -596,7 +596,6 @@ defmodule Domain.PoliciesTest do
 
       :ok = subscribe_to_events_for_policy(policy)
       :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
-      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
 
       attrs = %{resource_id: new_resource.id, actor_group_id: new_actor_group.id}
 
@@ -614,8 +613,8 @@ defmodule Domain.PoliciesTest do
       assert actor_group_id == policy.actor_group_id
       assert resource_id == policy.resource_id
 
-      assert_receive {:expire_flow, flow_id, _flow_client_id, _flow_resource_id}
-      assert flow_id == flow.id
+      flow = Repo.reload(flow)
+      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
     end
 
     test "returns error when subject has no permission to update policies", %{
@@ -694,15 +693,13 @@ defmodule Domain.PoliciesTest do
           policy: policy
         )
 
-      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
-
       assert {:ok, _policy} = disable_policy(policy, subject)
 
       expires_at = Repo.one(Domain.Flows.Flow).expires_at
       assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
 
-      assert_received {:expire_flow, flow_id, _flow_client_id, _flow_resource_id}
-      assert flow_id == flow.id
+      flow = Repo.reload(flow)
+      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
     end
 
     test "broadcasts an account message when policy is disabled", %{
@@ -900,15 +897,13 @@ defmodule Domain.PoliciesTest do
           policy: policy
         )
 
-      :ok = Domain.Flows.subscribe_to_flow_expiration_events(flow)
-
       assert {:ok, _policy} = delete_policy(policy, subject)
 
       expires_at = Repo.one(Domain.Flows.Flow).expires_at
       assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
 
-      assert_received {:expire_flow, flow_id, _flow_client_id, _flow_resource_id}
-      assert flow_id == flow.id
+      flow = Repo.reload(flow)
+      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
     end
 
     test "broadcasts an account message when policy is deleted", %{

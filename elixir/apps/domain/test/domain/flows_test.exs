@@ -1047,19 +1047,15 @@ defmodule Domain.FlowsTest do
       assert expired_flow.id == flow.id
     end
 
-    test "broadcast flow expiration events", %{
+    test "updates flow expiration expires_at", %{
       flow: flow,
       actor: actor,
       subject: subject
     } do
-      :ok = subscribe_to_flow_expiration_events(flow)
-
       assert {:ok, [_expired_flow]} = expire_flows_for(actor, subject)
 
-      assert_received {:expire_flow, flow_id, flow_client_id, flow_resource_id}
-      assert flow_id == flow.id
-      assert flow_client_id == flow.client_id
-      assert flow_resource_id == flow.resource_id
+      flow = Repo.reload(flow)
+      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
     end
 
     test "returns error when subject has no permission to expire flows", %{
