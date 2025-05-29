@@ -8,7 +8,6 @@ use tauri_plugin_dialog::DialogExt as _;
 use crate::{
     controller::{ControllerRequest, CtlrTx},
     gui::Managed,
-    logging::FileCount,
     settings::AdvancedSettings,
 };
 
@@ -17,7 +16,6 @@ pub fn generate_handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'stati
         get_cargo_version,
         get_git_version,
         clear_logs,
-        count_logs,
         export_logs,
         apply_advanced_settings,
         reset_advanced_settings,
@@ -56,13 +54,6 @@ async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), String> {
         return Err(error.to_string());
     }
     Ok(())
-}
-
-#[tauri::command]
-async fn count_logs() -> Result<FileCount, String> {
-    crate::logging::count_logs()
-        .await
-        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -45,8 +45,13 @@ export default function App() {
       console.log("settings_changed", { settings })
       setSettings(settings);
     });
+    const logsRecountedUnlisten = listen<FileCount>("logs_recounted", (e) => {
+      let file_count = e.payload;
 
-    invoke<FileCount>("count_logs").then(setLogCount);
+      console.log("logs_recounted", { file_count })
+      setLogCount(file_count);
+    });
+
     invoke<string>("get_cargo_version").then((ver) => setAppVersion(ver));
     invoke<string>("get_git_version").then((ver) => setGitVersion(ver));
     invoke<void>("update_state");
@@ -55,6 +60,7 @@ export default function App() {
       signedInUnlisten.then((unlistenFn) => unlistenFn());
       signedOutUnlisten.then((unlistenFn) => unlistenFn());
       settingsChangedUnlisten.then((unlistenFn) => unlistenFn());
+      logsRecountedUnlisten.then((unlistenFn) => unlistenFn());
     };
   }, []);
 

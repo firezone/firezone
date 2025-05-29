@@ -8,6 +8,7 @@ use crate::{
     controller::{Controller, ControllerRequest, CtlrTx, Failure, GuiIntegration},
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
+    logging::FileCount,
     settings::{
         self, AdvancedSettings, AdvancedSettingsLegacy, AdvancedSettingsViewModel, MdmSettings,
     },
@@ -108,6 +109,14 @@ impl GuiIntegration for TauriIntegration {
                 AdvancedSettingsViewModel::new(mdm_settings, advanced_settings),
             )
             .context("Failed to send `settings_changed` event")?;
+
+        Ok(())
+    }
+
+    fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
+        self.app
+            .emit("logs_recounted", file_count)
+            .context("Failed to send `logs_recounted` event")?;
 
         Ok(())
     }

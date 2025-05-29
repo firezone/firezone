@@ -2,7 +2,8 @@ use crate::{
     auth, deep_link,
     gui::{self, system_tray},
     ipc::{self, SocketId},
-    logging, service,
+    logging::{self, FileCount},
+    service,
     settings::{self, AdvancedSettings, GeneralSettings, MdmSettings},
     updates, uptime,
 };
@@ -70,6 +71,7 @@ pub trait GuiIntegration {
         mdm_settings: MdmSettings,
         advanced_settings: AdvancedSettings,
     ) -> Result<()>;
+    fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
 
     /// Also opens non-URLs
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
@@ -633,7 +635,10 @@ impl<I: GuiIntegration> Controller<I> {
                 match self.auth.session() {
                     Some(session) => self.integration.notify_signed_in(session)?,
                     None => self.integration.notify_signed_out()?,
-                }
+                };
+
+                let file_count = logging::count_logs().await?;
+                self.integration.notify_logs_recounted(&file_count)?;
             }
         }
         Ok(())
@@ -649,6 +654,9 @@ impl<I: GuiIntegration> Controller<I> {
                 };
                 tx.send(result)
                     .map_err(|_| anyhow!("Couldn't send `ClearLogs` result to Tauri task"))?;
+
+                let file_count = logging::count_logs().await?;
+                self.integration.notify_logs_recounted(&file_count)?;
             }
             service::ServerMsg::ConnectResult(result) => {
                 self.handle_connect_result(result).await?;
