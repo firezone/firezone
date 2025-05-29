@@ -53,6 +53,19 @@ defmodule Domain.Events.Hooks.AccountsTest do
       assert :ok == on_update(old_data, data)
       refute_receive :config_changed
     end
+
+    test "sends disconnect to clients if account is disabled" do
+      account_id = Fixtures.Accounts.create_account().id
+
+      old_data = %{"id" => account_id, "disabled_at" => nil}
+      data = %{"id" => account_id, "disabled_at" => DateTime.utc_now()}
+
+      :ok = subscribe_to_clients(account_id)
+
+      assert :ok == on_update(old_data, data)
+
+      assert_receive "disconnect"
+    end
   end
 
   describe "delete/1" do

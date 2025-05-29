@@ -4,6 +4,7 @@ defmodule Domain.ActorsTest do
   alias Domain.Auth
   alias Domain.Clients
   alias Domain.Actors
+  alias Domain.Events
 
   describe "fetch_groups_count_grouped_by_provider_id/1" do
     test "returns empty map when there are no groups" do
@@ -631,7 +632,7 @@ defmodule Domain.ActorsTest do
     } do
       actor = Fixtures.Actors.create_actor(account: account)
       client = Fixtures.Clients.create_client(account: account, actor: actor)
-      Domain.Clients.connect_client(client)
+      Events.Hooks.Clients.connect(client)
 
       assert {:ok, peek} = peek_actor_clients([actor], 3, subject)
       assert [%Clients.Client{} = client] = peek[actor.id].items

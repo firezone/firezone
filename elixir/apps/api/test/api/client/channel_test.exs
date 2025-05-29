@@ -1,5 +1,6 @@
 defmodule API.Client.ChannelTest do
   use API.ChannelCase, async: true
+  alias Domain.Events
 
   setup do
     account =
@@ -167,7 +168,7 @@ defmodule API.Client.ChannelTest do
   describe "join/3" do
     test "tracks presence after join", %{account: account, client: client} do
       presence =
-        Domain.Clients.Presence.list(Domain.Clients.account_clients_presence_topic(account))
+        Domain.Clients.Presence.list(Events.Hooks.Accounts.clients_presence_topic(account.id))
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, client.id)
       assert is_number(online_at)
@@ -499,7 +500,7 @@ defmodule API.Client.ChannelTest do
     } do
       assert_push "init", %{}
       Process.flag(:trap_exit, true)
-      Domain.Clients.broadcast_to_client(client, :token_expired)
+      Events.Hooks.Clients.broadcast(client.id, :token_expired)
       assert_push "disconnect", %{reason: :token_expired}, 250
     end
 
