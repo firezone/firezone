@@ -872,7 +872,7 @@ impl ClientState {
             self.disable_resource(*new_disabled_resource);
         }
 
-        self.maybe_update_cidr_resources();
+        self.active_cidr_resources = self.recalculate_active_cidr_resources();
         self.maybe_update_tun_routes()
     }
 
@@ -1354,18 +1354,6 @@ impl ClientState {
         self.maybe_update_tun_config(new_tun_config);
     }
 
-    fn maybe_update_cidr_resources(&mut self) {
-        let new_resources = self.recalculate_active_cidr_resources();
-
-        if self.active_cidr_resources == new_resources {
-            return;
-        }
-
-        tracing::info!(?self.active_cidr_resources, ?new_resources, "Re-calculated active CIDR resources");
-
-        self.active_cidr_resources = new_resources;
-    }
-
     fn recalculate_active_cidr_resources(&self) -> IpNetworkTable<CidrResource> {
         let mut active_cidr_resources = IpNetworkTable::<CidrResource>::new();
 
@@ -1550,7 +1538,7 @@ impl ClientState {
             self.add_resource(resource)
         }
 
-        self.maybe_update_cidr_resources();
+        self.active_cidr_resources = self.recalculate_active_cidr_resources();
         self.maybe_update_tun_routes();
         self.emit_resources_changed();
     }
@@ -1584,7 +1572,17 @@ impl ClientState {
                 let existing = self.active_cidr_resources.exact_match(cidr.address);
 
                 match existing {
-                    Some(existing) => existing.id != cidr.id,
+                    Some(existing) => {
+                        // If we are "activating" the same resource, don't print a log to avoid spam.
+                        let is_different = existing.id != cidr.id;
+
+                        // If the current resource is routing traffic, we don't update the routing table, so don't print a log either.
+                        // See `recalculate_active_cidr_resources` for details.
+                        let existing_is_not_connected =
+                            self.is_cidr_resource_connected(&existing.id);
+
+                        is_different && existing_is_not_connected
+                    }
                     None => true,
                 }
             }
@@ -1602,7 +1600,7 @@ impl ClientState {
         }
 
         if matches!(new_resource, Resource::Cidr(_)) {
-            self.maybe_update_cidr_resources();
+            self.active_cidr_resources = self.recalculate_active_cidr_resources();
         }
 
         self.maybe_update_tun_routes();
@@ -1618,7 +1616,7 @@ impl ClientState {
             .remove(&id)
             .is_some_and(|r| matches!(r, Resource::Cidr(_)))
         {
-            self.maybe_update_cidr_resources();
+            self.active_cidr_resources = self.recalculate_active_cidr_resources();
         };
 
         self.maybe_update_tun_routes();
