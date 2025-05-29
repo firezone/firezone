@@ -24,7 +24,6 @@ export interface Session {
 export default function App() {
   let [session, setSession] = useState<Session | null>(null);
   let [logCount, setLogCount] = useState<FileCount | null>(null);
-  let [gitVersion, setGitVersion] = useState<string | null>(null);
   let [settings, setSettings] = useState<Settings | null>(null);
 
   useEffect(() => {
@@ -51,8 +50,7 @@ export default function App() {
       setLogCount(file_count);
     });
 
-    invoke<string>("get_git_version").then((ver) => setGitVersion(ver));
-    invoke<void>("update_state");
+    invoke<void>("update_state"); // Let the backend know that we (re)-initialised
 
     return () => {
       signedInUnlisten.then((unlistenFn) => unlistenFn());
@@ -154,7 +152,7 @@ export default function App() {
           />
           <Route
             path="/about"
-            element={<About gitVersion={gitVersion} />}
+            element={<About />}
           />
           <Route path="/colour-palette" element={<ColorPalette />} />
         </Routes>

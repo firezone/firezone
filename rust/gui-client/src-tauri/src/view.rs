@@ -13,7 +13,6 @@ use crate::{
 
 pub fn generate_handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
-        get_git_version,
         clear_logs,
         export_logs,
         apply_advanced_settings,
@@ -22,11 +21,6 @@ pub fn generate_handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'stati
         sign_out,
         update_state,
     ]
-}
-
-#[tauri::command]
-fn get_git_version() -> String {
-    option_env!("GITHUB_SHA").unwrap_or("unknown").to_owned()
 }
 
 #[tauri::command]

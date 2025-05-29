@@ -3,8 +3,11 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import flowbiteReact from "flowbite-react/plugin/vite";
 import typescript from 'vite-plugin-typescript';
+import { execSync } from "child_process";
 
 const host = process.env.TAURI_DEV_HOST;
+const gitVersion = process.env.GITHUB_SHA ?? execSync('git rev-parse --short HEAD')
+    .toString();
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -13,6 +16,7 @@ export default defineConfig({
   define: {
     // mark:next-gui-version
     '__APP_VERSION__': JSON.stringify("1.5.0"),
+    '__GIT_VERSION__': JSON.stringify(gitVersion),
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
