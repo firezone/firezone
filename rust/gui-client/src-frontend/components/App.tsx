@@ -24,7 +24,6 @@ export interface Session {
 export default function App() {
   let [session, setSession] = useState<Session | null>(null);
   let [logCount, setLogCount] = useState<FileCount | null>(null);
-  let [appVersion, setAppVersion] = useState<string | null>(null);
   let [gitVersion, setGitVersion] = useState<string | null>(null);
   let [settings, setSettings] = useState<Settings | null>(null);
 
@@ -52,7 +51,6 @@ export default function App() {
       setLogCount(file_count);
     });
 
-    invoke<string>("get_cargo_version").then((ver) => setAppVersion(ver));
     invoke<string>("get_git_version").then((ver) => setGitVersion(ver));
     invoke<void>("update_state");
 
@@ -156,7 +154,7 @@ export default function App() {
           />
           <Route
             path="/about"
-            element={<About appVersion={appVersion} gitVersion={gitVersion} />}
+            element={<About gitVersion={gitVersion} />}
           />
           <Route path="/colour-palette" element={<ColorPalette />} />
         </Routes>

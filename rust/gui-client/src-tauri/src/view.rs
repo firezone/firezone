@@ -13,7 +13,6 @@ use crate::{
 
 pub fn generate_handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
-        get_cargo_version,
         get_git_version,
         clear_logs,
         export_logs,
@@ -23,11 +22,6 @@ pub fn generate_handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'stati
         sign_out,
         update_state,
     ]
-}
-
-#[tauri::command]
-fn get_cargo_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
 }
 
 #[tauri::command]
@@ -157,16 +151,4 @@ async fn update_state(managed: tauri::State<'_, Managed>) -> Result<(), String> 
         .map_err(|e| e.to_string())?;
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn version() {
-        let cargo = super::get_cargo_version();
-
-        assert!(cargo != "Unknown", "{}", cargo);
-        assert!(cargo.starts_with("1."));
-        assert!(cargo.len() >= 2, "{}", cargo);
-    }
 }
