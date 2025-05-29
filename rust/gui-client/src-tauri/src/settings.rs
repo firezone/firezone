@@ -1,17 +1,13 @@
 //! Everything related to the Settings window, including
 //! advanced settings and code for manipulating diagnostic logs.
 
-use crate::gui::Managed;
 use anyhow::{Context as _, Result};
 use connlib_model::ResourceId;
 use firezone_bin_shared::known_dirs;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use std::{collections::HashSet, path::PathBuf};
 use url::Url;
-
-use super::controller::ControllerRequest;
 
 #[cfg(target_os = "linux")]
 #[path = "settings/linux.rs"]
@@ -26,33 +22,6 @@ pub(crate) mod mdm;
 pub(crate) mod mdm;
 
 pub use mdm::load_mdm_settings;
-
-#[tauri::command]
-pub(crate) async fn apply_advanced_settings(
-    managed: tauri::State<'_, Managed>,
-    settings: AdvancedSettings,
-) -> Result<(), String> {
-    if managed.inner().inject_faults {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-
-    managed
-        .ctlr_tx
-        .send(ControllerRequest::ApplySettings(Box::new(settings)))
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-#[tauri::command]
-pub(crate) async fn reset_advanced_settings(
-    managed: tauri::State<'_, Managed>,
-) -> Result<(), String> {
-    apply_advanced_settings(managed, AdvancedSettings::default()).await?;
-
-    Ok(())
-}
 
 /// Defines all configuration options settable via MDM policies.
 ///

@@ -4,11 +4,10 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::{
-    about, auth,
+    auth,
     controller::{Controller, ControllerRequest, CtlrTx, Failure, GuiIntegration},
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
-    logging,
     settings::{
         self, AdvancedSettings, AdvancedSettingsLegacy, AdvancedSettingsViewModel, MdmSettings,
     },
@@ -265,17 +264,7 @@ pub fn run(
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![
-            about::get_cargo_version,
-            about::get_git_version,
-            logging::clear_logs,
-            logging::count_logs,
-            logging::export_logs,
-            settings::apply_advanced_settings,
-            settings::reset_advanced_settings,
-            crate::welcome::sign_in,
-            crate::welcome::sign_out,
-        ])
+        .invoke_handler(crate::view::generate_handler())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
