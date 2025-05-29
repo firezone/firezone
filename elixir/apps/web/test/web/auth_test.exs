@@ -528,13 +528,12 @@ defmodule Web.AuthTest do
       assert get_session(conn, :preferred_locale) == "uk_UA"
     end
 
-    test "broadcasts to the given live_socket_id", %{
+    test "deletes token", %{
       account: account,
       admin_subject: subject,
       conn: conn
     } do
-      live_socket_id = "sessions:#{subject.token_id}"
-      Web.Endpoint.subscribe(live_socket_id)
+      live_socket_id = Domain.Tokens.socket_id(subject.token_id)
 
       conn
       |> assign(:account, account)
@@ -543,7 +542,8 @@ defmodule Web.AuthTest do
       |> put_session(:live_socket_id, live_socket_id)
       |> sign_out(%{})
 
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect", topic: ^live_socket_id}
+      token = Repo.get!(Domain.Tokens.Token, subject.token_id)
+      assert token.deleted_at
     end
   end
 

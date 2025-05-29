@@ -1880,8 +1880,6 @@ defmodule Domain.AuthTest do
         )
       end
 
-      :ok = Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{deleted_identity_token.id}")
-
       attrs_list = [
         %{
           "actor" => %{
@@ -1934,8 +1932,8 @@ defmodule Domain.AuthTest do
              |> length() == 3
 
       # Signs out users which identity has been deleted
-      topic = "sessions:#{deleted_identity_token.id}"
-      assert_receive %Phoenix.Socket.Broadcast{topic: ^topic, event: "disconnect", payload: nil}
+      deleted_identity_token = Repo.reload(deleted_identity_token)
+      assert deleted_identity_token.deleted_at
 
       # Expires flows for signed out user
       reloaded_flow = Repo.reload(deleted_identity_flow)
@@ -2784,7 +2782,7 @@ defmodule Domain.AuthTest do
       assert membership.group_id == group.id
     end
 
-    test "deletes tokens of replaced identity and broadcasts disconnect message", %{
+    test "deletes tokens of replaced identity", %{
       account: account,
       identity: identity,
       provider: provider,
@@ -2798,13 +2796,11 @@ defmodule Domain.AuthTest do
       }
 
       token = Fixtures.Tokens.create_token(account: account, identity: identity)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, _new_identity} = replace_identity(identity, attrs, subject)
 
       assert token = Repo.get(Domain.Tokens.Token, token.id)
       assert token.deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "returns error when subject cannot delete identities", %{
@@ -2926,20 +2922,18 @@ defmodule Domain.AuthTest do
       assert Repo.get(Auth.Identity, identity.id).deleted_at
     end
 
-    test "deletes token and broadcasts message to disconnect the identity sessions", %{
+    test "deletes token", %{
       account: account,
       provider: provider,
       subject: subject
     } do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
       token = Fixtures.Tokens.create_token(account: account, identity: identity)
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
 
       assert {:ok, _deleted_identity} = delete_identity(identity, subject)
 
       assert token = Repo.get(Domain.Tokens.Token, token.id)
       assert token.deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "does not delete identity that belongs to another actor with manage_own permission", %{
@@ -3070,7 +3064,7 @@ defmodule Domain.AuthTest do
       assert Repo.aggregate(by_provider_id_query, :count) == 0
     end
 
-    test "deletes tokens and broadcasts message to disconnect the actor sessions", %{
+    test "deletes tokens", %{
       account: account,
       provider: provider,
       subject: subject
@@ -3079,13 +3073,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       token = Fixtures.Tokens.create_token(account: account, identity: identity)
 
-      Phoenix.PubSub.subscribe(Domain.PubSub, "sessions:#{token.id}")
-
       assert delete_identities_for(actor, subject) == :ok
 
       assert token = Repo.get(Domain.Tokens.Token, token.id)
       assert token.deleted_at
-      assert_receive %Phoenix.Socket.Broadcast{event: "disconnect"}
     end
 
     test "expires all flows created using deleted tokens", %{
