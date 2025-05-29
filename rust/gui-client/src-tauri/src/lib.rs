@@ -1,6 +1,5 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-mod clear_logs;
 mod updates;
 mod uptime;
 mod view;
@@ -15,8 +14,6 @@ pub mod ipc;
 pub mod logging;
 pub mod service;
 pub mod settings;
-
-pub use clear_logs::clear_logs;
 
 /// The Sentry "release" we are part of.
 ///

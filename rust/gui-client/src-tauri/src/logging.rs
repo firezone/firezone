@@ -210,15 +210,51 @@ pub struct FileCount {
     files: u64,
 }
 
-/// Delete all files in the logs directory.
-///
-/// This includes the current log file, so we won't write any more logs to disk
-/// until the file rolls over or the app restarts.
-///
-/// If we get an error while removing a file, we still try to remove all other
-/// files, then we return the most recent error.
 pub async fn clear_gui_logs() -> Result<()> {
-    crate::clear_logs(&known_dirs::logs().context("Can't compute GUI log dir")?).await
+    clear_logs(&known_dirs::logs().context("Can't compute GUI log dir")?).await
+}
+
+pub async fn clear_service_logs() -> Result<()> {
+    clear_logs(&known_dirs::tunnel_service_logs().context("Can't compute service logs dir")?).await
+}
+
+/// Deletes all `.log` files in `path`.
+async fn clear_logs(path: &Path) -> Result<()> {
+    let mut dir = match tokio::fs::read_dir(path).await {
+        Ok(x) => x,
+        Err(error) => {
+            if matches!(error.kind(), NotFound) {
+                // In smoke tests, the Tunnel service runs in debug mode, so it won't write any logs to disk. If the Tunnel service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
+                return Ok(());
+            }
+            // But any other error like permissions errors, should bubble.
+            return Err(error.into());
+        }
+    };
+
+    let mut result = Ok(());
+
+    // If we can't delete some files due to permission errors, just keep going
+    // and delete as much as we can, then return the most recent error
+    while let Some(entry) = dir
+        .next_entry()
+        .await
+        .context("Failed to read next dir entry")?
+    {
+        if entry
+            .file_name()
+            .to_str()
+            .is_none_or(|name| !name.ends_with("log"))
+        {
+            continue;
+        }
+
+        if let Err(e) = tokio::fs::remove_file(entry.path()).await {
+            result = Err(e);
+        }
+    }
+
+    result.context("Failed to delete at least one file")
 }
 
 /// Exports logs to a zip file
@@ -325,4 +361,25 @@ fn log_paths() -> Result<Vec<LogPath>> {
             dst: PathBuf::from("app"),
         },
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn only_deletes_log_files() {
+        let dir = tempfile::tempdir().unwrap();
+
+        std::fs::write(dir.path().join("first.log"), "log file 1").unwrap();
+        std::fs::write(dir.path().join("second.log"), "log file 1").unwrap();
+        std::fs::write(dir.path().join("not_a_logfile.tmp"), "something important").unwrap();
+
+        clear_logs(dir.path()).await.unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("not_a_logfile.tmp")).unwrap(),
+            "something important"
+        );
+    }
 }

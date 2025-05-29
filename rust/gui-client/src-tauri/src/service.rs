@@ -1,4 +1,7 @@
-use crate::ipc::{self, SocketId};
+use crate::{
+    ipc::{self, SocketId},
+    logging,
+};
 use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
@@ -362,11 +365,7 @@ impl<'a> Handler<'a> {
     async fn handle_ipc_msg(&mut self, msg: ClientMsg) -> Result<()> {
         match msg {
             ClientMsg::ClearLogs => {
-                let result = crate::clear_logs(
-                    &firezone_bin_shared::known_dirs::tunnel_service_logs()
-                        .context("Can't compute logs dir")?,
-                )
-                .await;
+                let result = logging::clear_service_logs().await;
                 self.send_ipc(ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
                     .await?
             }
@@ -528,7 +527,7 @@ impl<'a> Handler<'a> {
 }
 
 pub fn run_debug(dns_control: DnsControlMethod) -> Result<()> {
-    let log_filter_reloader = crate::logging::setup_stdout()?;
+    let log_filter_reloader = logging::setup_stdout()?;
     tracing::info!(
         arch = std::env::consts::ARCH,
         version = env!("CARGO_PKG_VERSION"),
@@ -555,7 +554,7 @@ pub fn run_smoke_test() -> Result<()> {
     use anyhow::{Context as _, bail};
     use firezone_bin_shared::{DnsController, device_id};
 
-    let log_filter_reloader = crate::logging::setup_stdout()?;
+    let log_filter_reloader = logging::setup_stdout()?;
     if !elevation_check()? {
         bail!("Tunnel service failed its elevation check, try running as admin / root");
     }
