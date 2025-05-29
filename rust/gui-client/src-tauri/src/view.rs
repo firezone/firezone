@@ -8,7 +8,7 @@ use tauri_plugin_dialog::DialogExt as _;
 use crate::{
     controller::{ControllerRequest, CtlrTx},
     gui::Managed,
-    logging::{FileCount, count_logs_imp},
+    logging::FileCount,
     settings::AdvancedSettings,
 };
 
@@ -59,7 +59,9 @@ async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), String> {
 
 #[tauri::command]
 async fn count_logs() -> Result<FileCount, String> {
-    count_logs_imp().await.map_err(|e| e.to_string())
+    crate::logging::count_logs()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

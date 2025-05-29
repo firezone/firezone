@@ -325,7 +325,7 @@ fn add_dir_to_zip(
 }
 
 /// Count log files and their sizes
-pub async fn count_logs_imp() -> Result<FileCount> {
+pub async fn count_logs() -> Result<FileCount> {
     // I spent about 5 minutes on this and couldn't get it to work with `Stream`
     let mut total_count = FileCount::default();
     for log_path in log_paths()? {
