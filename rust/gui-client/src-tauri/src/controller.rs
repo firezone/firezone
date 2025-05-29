@@ -106,6 +106,7 @@ pub enum ControllerRequest {
     Fail(Failure),
     SignIn,
     SignOut,
+    UpdateState,
     SystemTrayMenu(system_tray::Event),
     UpdateNotificationClicked(Url),
 }
@@ -629,6 +630,14 @@ impl<I: GuiIntegration> Controller<I> {
                 self.integration
                     .open_url(&download_url)
                     .context("Couldn't open update page")?;
+            }
+            UpdateState => {
+                self.integration
+                    .notify_settings_changed(&self.advanced_settings)?;
+                match self.auth.session() {
+                    Some(session) => self.integration.notify_signed_in(session)?,
+                    None => self.integration.notify_signed_out()?,
+                }
             }
         }
         Ok(())

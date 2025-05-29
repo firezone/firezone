@@ -23,6 +23,7 @@ pub fn generate_handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'stati
         reset_advanced_settings,
         sign_in,
         sign_out,
+        update_state,
     ]
 }
 
@@ -150,6 +151,18 @@ async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<(), String> {
         .send(ControllerRequest::SignOut)
         .await
         .context("Failed to send `SignOut` command")
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn update_state(managed: tauri::State<'_, Managed>) -> Result<(), String> {
+    managed
+        .ctlr_tx
+        .send(ControllerRequest::UpdateState)
+        .await
+        .context("Failed to send `UpdateState` command")
         .map_err(|e| e.to_string())?;
 
     Ok(())
