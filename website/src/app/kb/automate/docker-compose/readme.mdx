@@ -25,18 +25,18 @@ services:
     environment:
       # Use a unique ID for each Gateway in your Firezone account. If left blank,
       # the Gateway will generate a random ID saved in /var/lib/firezone
-      # - FIREZONE_ID=<id>
+      # FIREZONE_ID: <id>
 
       # REQUIRED. The token shown when deploying a Gateway in the admin portal.
-      - FIREZONE_TOKEN=<token>
+      FIREZONE_TOKEN: <token>
 
       # Configure log output. Other options are "trace", "debug", "info", "warn", "error", and "off".
       # See https://docs.rs/env_logger/latest/env_logger/ for more information.
-      - RUST_LOG=info
+      RUST_LOG: info
 
       # Human-friendly name to use for this Gateway in the admin portal.
       # $(hostname) is used by default if not set.
-      # - FIREZONE_NAME=<name-of-gateway>
+      # FIREZONE_NAME: <name-of-gateway>
     volumes:
       # Persist the FIREZONE_ID. Can be omitted if FIREZONE_ID is set above.
       - /var/lib/firezone:/var/lib/firezone
