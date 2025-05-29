@@ -13,7 +13,7 @@ defmodule Domain.Events.Hooks.Tokens do
     on_delete(old_data)
   end
 
-  # Regular update - not expected to happen in normal operation
+  # Regular update
   def on_update(_old_data, _new_data) do
     :ok
   end
