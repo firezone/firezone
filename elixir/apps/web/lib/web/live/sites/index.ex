@@ -1,11 +1,12 @@
 defmodule Web.Sites.Index do
   use Web, :live_view
   alias Domain.Gateways
+  alias Domain.Events
   require Logger
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      :ok = Gateways.subscribe_to_gateways_presence_in_account(socket.assigns.account)
+      :ok = Events.Hooks.Accounts.subscribe_to_gateways_presence(socket.assigns.account.id)
     end
 
     {:ok, managed_groups, _metadata} =

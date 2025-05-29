@@ -1,6 +1,7 @@
 defmodule Web.Sites.NewToken do
   use Web, :live_view
   alias Domain.Gateways
+  alias Domain.Events
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
@@ -12,7 +13,7 @@ defmodule Web.Sites.NewToken do
       {group, token, env} =
         if connected?(socket) do
           {:ok, token, encoded_token} = Gateways.create_token(group, %{}, socket.assigns.subject)
-          :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
+          :ok = Events.Hooks.GatewayGroups.subscribe_to_presence(group.id)
           {group, token, env(encoded_token)}
         else
           {group, nil, nil}

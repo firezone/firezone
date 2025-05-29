@@ -53,7 +53,9 @@ defmodule API.Gateway.ChannelTest do
   describe "join/3" do
     test "tracks presence after join", %{account: account, gateway: gateway} do
       presence =
-        Domain.Gateways.Presence.list(Domain.Gateways.account_gateways_presence_topic(account))
+        account.id
+        |> Events.Hooks.Accounts.gateways_presence_topic()
+        |> Domain.Gateways.Presence.list()
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, gateway.id)
       assert is_number(online_at)

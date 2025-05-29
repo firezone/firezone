@@ -1,7 +1,8 @@
 defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
-  alias Domain.ComponentVersions
   use Domain.DataCase, async: true
   import Domain.Notifications.Jobs.OutdatedGateways
+  alias Domain.ComponentVersions
+  alias Domain.Events
 
   describe "execute/1" do
     setup do
@@ -41,8 +42,8 @@ defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
       new_config = update_component_versions_config(gateway: new_version)
       Domain.Config.put_env_override(ComponentVersions, new_config)
 
-      :ok = Domain.Gateways.subscribe_to_gateways_presence_in_group(gateway_group)
-      :ok = Domain.Gateways.connect_gateway(gateway)
+      :ok = Events.Hooks.GatewayGroups.subscribe_to_presence(gateway_group.id)
+      :ok = Events.Hooks.Gateways.connect(gateway)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
       assert execute(%{}) == :ok
@@ -65,8 +66,8 @@ defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
       new_config = update_component_versions_config(gateway: version)
       Domain.Config.put_env_override(ComponentVersions, new_config)
 
-      :ok = Domain.Gateways.subscribe_to_gateways_presence_in_group(gateway_group)
-      :ok = Domain.Gateways.connect_gateway(gateway)
+      :ok = Events.Hooks.GatewayGroups.subscribe_to_presence(gateway_group.id)
+      :ok = Events.Hooks.Gateways.connect(gateway)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
       assert execute(%{}) == :ok
