@@ -1,5 +1,6 @@
 defmodule Web.Live.Sites.Gateways.IndexTest do
   use Web.ConnCase, async: true
+  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -95,8 +96,8 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{group}/gateways")
 
-    :ok = Domain.Gateways.subscribe_to_gateways_presence_in_group(group)
-    :ok = Domain.Gateways.connect_gateway(gateway)
+    :ok = Events.Hooks.GatewayGroups.subscribe_to_presence(group.id)
+    :ok = Events.Hooks.Gateways.connect(gateway)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
     wait_for(fn ->

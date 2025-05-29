@@ -89,8 +89,8 @@ defmodule API.Client.Channel do
         |> Enum.flat_map(& &1.gateway_groups)
         |> Enum.uniq()
         |> Enum.each(fn gateway_group ->
-          :ok = Gateways.unsubscribe_from_group_updates(gateway_group)
-          :ok = Gateways.subscribe_to_group_updates(gateway_group)
+          :ok = Events.Hooks.GatewayGroups.unsubscribe(gateway_group.id)
+          :ok = Events.Hooks.GatewayGroups.subscribe(gateway_group.id)
         end)
 
       # Return all connected relays for the account
@@ -638,8 +638,8 @@ defmodule API.Client.Channel do
         ice_credentials = generate_ice_credentials(socket.assigns.client, gateway)
 
         :ok =
-          Gateways.broadcast_to_gateway(
-            gateway,
+          Events.Hooks.Gateways.broadcast(
+            gateway.id,
             {:authorize_flow, {self(), socket_ref(socket)},
              %{
                client_id: socket.assigns.client.id,
@@ -781,8 +781,8 @@ defmodule API.Client.Channel do
         opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
         :ok =
-          Gateways.broadcast_to_gateway(
-            gateway,
+          Events.Hooks.Gateways.broadcast(
+            gateway.id,
             {:allow_access, {self(), socket_ref(socket)},
              %{
                client_id: socket.assigns.client.id,
@@ -843,8 +843,8 @@ defmodule API.Client.Channel do
         opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
         :ok =
-          Gateways.broadcast_to_gateway(
-            gateway,
+          Events.Hooks.Gateways.broadcast(
+            gateway.id,
             {:request_connection, {self(), socket_ref(socket)},
              %{
                client_id: socket.assigns.client.id,
@@ -890,7 +890,7 @@ defmodule API.Client.Channel do
 
       :ok =
         Enum.each(gateway_ids, fn gateway_id ->
-          Gateways.broadcast_to_gateway(
+          Events.Hooks.Gateways.broadcast(
             gateway_id,
             {:ice_candidates, socket.assigns.client.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}
@@ -915,7 +915,7 @@ defmodule API.Client.Channel do
 
       :ok =
         Enum.each(gateway_ids, fn gateway_id ->
-          Gateways.broadcast_to_gateway(
+          Events.Hooks.Gateways.broadcast(
             gateway_id,
             {:invalidate_ice_candidates, socket.assigns.client.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}

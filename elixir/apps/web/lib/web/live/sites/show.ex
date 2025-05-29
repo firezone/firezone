@@ -1,6 +1,6 @@
 defmodule Web.Sites.Show do
   use Web, :live_view
-  alias Domain.{Gateways, Resources, Policies, Flows, Tokens}
+  alias Domain.{Gateways, Resources, Policies, Events, Flows, Tokens}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
@@ -11,7 +11,7 @@ defmodule Web.Sites.Show do
              ]
            ) do
       if connected?(socket) do
-        :ok = Gateways.subscribe_to_gateways_presence_in_group(group)
+        :ok = Events.Hooks.GatewayGroups.subscribe_to_presence(group.id)
       end
 
       socket =

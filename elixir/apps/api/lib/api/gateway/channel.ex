@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Clients, Events, Resources, Relays, Gateways, Flows}
+  alias Domain.{Clients, Events, Resources, Relays, Flows}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -36,7 +36,7 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "gateway.after_join" do
-      :ok = Gateways.connect_gateway(socket.assigns.gateway)
+      :ok = Events.Hooks.Gateways.connect(socket.assigns.gateway)
 
       config = Domain.Config.fetch_env!(:domain, Domain.Gateways)
       ipv4_masquerade_enabled? = Keyword.fetch!(config, :gateway_ipv4_masquerade)
