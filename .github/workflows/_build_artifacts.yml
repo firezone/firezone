@@ -210,7 +210,7 @@ jobs:
               if [[ ! -x /tmp/toolchain/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc ]]; then
                 gcloud storage cp gs://firezone-ci-dependencies/aarch64-linux-musl-cross.tgz /tmp/
                 mkdir -p /tmp/toolchain
-                tar -xz /tmp/aarch64-linux-musl-cross.tgz -C /tmp/toolchain
+                tar -xzf /tmp/aarch64-linux-musl-cross.tgz -C /tmp/toolchain
               fi
 
               CC=/tmp/toolchain/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
@@ -226,7 +226,7 @@ jobs:
               if [[ ! -x /tmp/toolchain/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc ]]; then
                 gcloud storage cp gs://firezone-ci-dependencies/arm-linux-musleabihf-cross.tgz /tmp/
                 mkdir -p /tmp/toolchain
-                tar -xz /tmp/arm-linux-musleabihf-cross.tgz -C /tmp/toolchain
+                tar -xzf /tmp/arm-linux-musleabihf-cross.tgz -C /tmp/toolchain
               fi
 
               CC=/tmp/toolchain/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc
