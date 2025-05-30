@@ -1,6 +1,6 @@
 use crate::client::IpProvider;
 use anyhow::Result;
-use connlib_model::ResourceId;
+use connlib_model::{IpStack, ResourceId};
 use dns_types::{
     DomainName, DomainNameRef, OwnedRecordData, Query, RecordType, Response, ResponseBuilder,
     ResponseCode,
@@ -45,7 +45,7 @@ pub struct StubResolver {
 #[derive(Debug, Clone, Copy)]
 struct Resource {
     id: ResourceId,
-    enable_ipv6: bool,
+    ip_stack: IpStack,
 }
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
@@ -151,7 +151,7 @@ impl StubResolver {
         &mut self,
         id: ResourceId,
         pattern: String,
-        enable_ipv6: bool,
+        ip_stack: IpStack,
     ) -> bool {
         let parsed_pattern = match Pattern::new(&pattern) {
             Ok(p) => p,
@@ -163,7 +163,7 @@ impl StubResolver {
 
         let existing = self
             .dns_resources
-            .insert(parsed_pattern, Resource { id, enable_ipv6 });
+            .insert(parsed_pattern, Resource { id, ip_stack });
 
         existing.is_none()
     }
@@ -205,9 +205,14 @@ impl StubResolver {
             .fqdn_to_ips
             .entry((fqdn.clone(), resource.id))
             .or_insert_with(|| {
-                let mut ips = self.ip_provider.get_n_ipv4(4);
-                if resource.enable_ipv6 {
-                    ips.extend_from_slice(&self.ip_provider.get_n_ipv6(4));
+                let mut ips = Vec::with_capacity(8);
+
+                if resource.ip_stack.supports_ipv4() {
+                    ips.extend(self.ip_provider.get_n_ipv4(4));
+                }
+
+                if resource.ip_stack.supports_ipv6() {
+                    ips.extend(self.ip_provider.get_n_ipv6(4));
                 }
 
                 tracing::debug!(domain = %fqdn, ?ips, "Assigning proxy IPs");
@@ -656,8 +661,8 @@ mod tests {
         let wc = ResourceId::from_u128(0);
         let non_wc = ResourceId::from_u128(1);
 
-        resolver.add_resource(wc, "**.example.com".to_owned(), true);
-        resolver.add_resource(non_wc, "foo.example.com".to_owned(), true);
+        resolver.add_resource(wc, "**.example.com".to_owned(), IpStack::Dual);
+        resolver.add_resource(non_wc, "foo.example.com".to_owned(), IpStack::Dual);
 
         let resource = resolver
             .match_resource_linear(&"foo.example.com".parse().unwrap())
@@ -689,6 +694,52 @@ mod tests {
         assert_eq!(response.response_code(), ResponseCode::NXDOMAIN);
         assert_eq!(response.records().count(), 0);
     }
+
+    #[test]
+    fn a_query_for_ipv6_only_resource_yields_empty_set() {
+        let mut resolver = StubResolver::default();
+
+        resolver.add_resource(
+            ResourceId::from_u128(1),
+            "example.com".to_owned(),
+            IpStack::Ipv6Only,
+        );
+
+        let query = Query::new(
+            "example.com".parse::<dns_types::DomainName>().unwrap(),
+            RecordType::A,
+        );
+
+        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+            panic!("Unexpected result")
+        };
+
+        assert_eq!(response.response_code(), ResponseCode::NOERROR);
+        assert_eq!(response.records().count(), 0);
+    }
+
+    #[test]
+    fn aaaa_query_for_ipv4_only_resource_yields_empty_set() {
+        let mut resolver = StubResolver::default();
+
+        resolver.add_resource(
+            ResourceId::from_u128(1),
+            "example.com".to_owned(),
+            IpStack::Ipv4Only,
+        );
+
+        let query = Query::new(
+            "example.com".parse::<dns_types::DomainName>().unwrap(),
+            RecordType::AAAA,
+        );
+
+        let ResolveStrategy::LocalResponse(response) = resolver.handle(&query) else {
+            panic!("Unexpected result")
+        };
+
+        assert_eq!(response.response_code(), ResponseCode::NOERROR);
+        assert_eq!(response.records().count(), 0);
+    }
 }
 
 #[cfg(feature = "divan")]
@@ -707,7 +758,11 @@ mod benches {
                 let mut rng = rand::thread_rng();
 
                 for n in 0..NUM_RES {
-                    resolver.add_resource(ResourceId::from_u128(n), make_domain(&mut rng), true);
+                    resolver.add_resource(
+                        ResourceId::from_u128(n),
+                        make_domain(&mut rng),
+                        IpStack::Dual,
+                    );
                 }
 
                 let needle = resolver

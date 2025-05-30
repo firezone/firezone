@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use connlib_model::{
-    CidrResourceView, DnsResourceView, InternetResourceView, ResourceId, ResourceStatus,
+    CidrResourceView, DnsResourceView, InternetResourceView, IpStack, ResourceId, ResourceStatus,
     ResourceView, Site,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -36,7 +36,7 @@ pub struct DnsResource {
     pub address_description: Option<String>,
     pub sites: Vec<Site>,
 
-    pub enable_ipv6: bool,
+    pub ip_stack: IpStack,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -251,7 +251,7 @@ impl DnsResource {
             name: resource.name,
             address_description: resource.address_description,
             sites: resource.sites,
-            enable_ipv6: resource.enable_ipv6.is_none_or(|b| b),
+            ip_stack: resource.ip_stack.unwrap_or(IpStack::Dual),
         }
     }
 
@@ -274,7 +274,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn enable_ipv6_defaults_true() {
+    fn ip_stack_defaults_to_dual() {
         let resource_description_dns = ResourceDescriptionDns {
             id: ResourceId::from_u128(1),
             address: "example.com".to_owned(),
@@ -284,11 +284,11 @@ mod tests {
                 id: SiteId::from_u128(2),
                 name: "Example Site".to_owned(),
             }],
-            enable_ipv6: None,
+            ip_stack: None,
         };
 
         let resource = DnsResource::from_description(resource_description_dns);
 
-        assert!(resource.enable_ipv6);
+        assert_eq!(resource.ip_stack, IpStack::Dual);
     }
 }
