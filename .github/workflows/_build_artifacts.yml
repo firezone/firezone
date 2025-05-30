@@ -208,8 +208,9 @@ jobs:
               # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
               # Find some other way to keep these updated.
               if [[ ! -x /tmp/toolchain/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc ]]; then
+                gcloud storage cp gs://firezone-ci-dependencies/aarch64-linux-musl-cross.tgz /tmp/
                 mkdir -p /tmp/toolchain
-                wget -q -O- https://storage.cloud.google.com/firezone-ci-dependencies/aarch64-linux-musl-cross.tgz | tar -xz -C /tmp/toolchain
+                tar -xz /tmp/aarch64-linux-musl-cross.tgz -C /tmp/toolchain
               fi
 
               CC=/tmp/toolchain/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
@@ -223,8 +224,9 @@ jobs:
               # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
               # Find some other way to keep these updated.
               if [[ ! -x /tmp/toolchain/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc ]]; then
+                gcloud storage cp gs://firezone-ci-dependencies/arm-linux-musleabihf-cross.tgz /tmp/
                 mkdir -p /tmp/toolchain
-                wget -q -O- https://storage.cloud.google.com/firezone-ci-dependencies/arm-linux-musleabihf-cross.tgz | tar -xz -C /tmp/toolchain
+                tar -xz /tmp/arm-linux-musleabihf-cross.tgz -C /tmp/toolchain
               fi
 
               CC=/tmp/toolchain/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc
@@ -269,6 +271,8 @@ jobs:
         with:
           workload_identity_provider: "projects/85623168602/locations/global/workloadIdentityPools/github/providers/firezone-provider"
           service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+          export_environment_variables: true
+          create_credentials_file: true
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
