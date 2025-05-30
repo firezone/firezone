@@ -20,13 +20,20 @@ defmodule API.ResourceJSON do
   end
 
   defp data(%Resource{} = resource) do
+    ip_stack =
+      if is_nil(resource.ip_stack) do
+        %{}
+      else
+        %{ip_stack: resource.ip_stack}
+      end
+
     %{
       id: resource.id,
       name: resource.name,
       address: resource.address,
-      ip_stack: resource.ip_stack,
       address_description: resource.address_description,
       type: resource.type
     }
+    |> Map.merge(ip_stack)
   end
 end

@@ -162,8 +162,7 @@ defmodule API.ResourceControllerTest do
         "type" => "dns",
         "connections" => [
           %{"gateway_group_id" => gateway_group.id}
-        ],
-        "ip_stack" => "ipv4_only"
+        ]
       }
 
       conn =
@@ -178,7 +177,6 @@ defmodule API.ResourceControllerTest do
       assert resp["data"]["address_description"] == nil
       assert resp["data"]["name"] == attrs["name"]
       assert resp["data"]["type"] == attrs["type"]
-      assert resp["data"]["ip_stack"] == attrs["ip_stack"]
     end
   end
 
@@ -239,8 +237,6 @@ defmodule API.ResourceControllerTest do
       assert resp["data"]["address"] == resource.address
       assert resp["data"]["address_description"] == resource.address_description
       assert resp["data"]["name"] == attrs["name"]
-      assert resp["data"]["type"] == Atom.to_string(resource.type)
-      assert resp["data"]["ip_stack"] == Atom.to_string(resource.ip_stack)
     end
   end
 
@@ -266,8 +262,7 @@ defmodule API.ResourceControllerTest do
                  "address_description" => resource.address_description,
                  "id" => resource.id,
                  "name" => resource.name,
-                 "type" => Atom.to_string(resource.type),
-                 "ip_stack" => Atom.to_string(resource.ip_stack)
+                 "type" => Atom.to_string(resource.type)
                }
              }
 

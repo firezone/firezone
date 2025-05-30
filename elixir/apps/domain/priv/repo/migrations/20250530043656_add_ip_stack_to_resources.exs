@@ -3,7 +3,6 @@ defmodule Domain.Repo.Migrations.AddIpStackToResources do
 
   def up do
     alter table(:resources) do
-      # will add not null after populating these
       add(:ip_stack, :string)
     end
   end
