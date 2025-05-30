@@ -425,16 +425,24 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      // Set a default stop reason. In the future, we may have more to act upon in
-      // different ways.
-      var reason: NEProviderStopReason = .connectionFailed
-
+      // If auth expired/is invalid, delete stored token and save the reason why so the GUI can act upon it.
       if error.isAuthenticationError() {
-        reason = .authenticationCanceled
+        do {
+          try Token.delete()
+          let reason: NEProviderStopReason = .authenticationCanceled
+          try String(reason.rawValue).write(
+            to: SharedAccess.providerStopReasonURL, atomically: true, encoding: .utf8)
+        } catch {
+          Log.error(error)
+        }
+#if os(iOS)
+        // iOS notifications should be shown from the tunnel process
+        SessionNotification.showSignedOutNotificationiOS()
+#endif
       }
 
-      // Start the process of telling the system to shut us down
-      self.packetTunnelProvider?.stopTunnel(with: reason) {}
+      // Tell the system to shut us down
+      self.packetTunnelProvider?.cancelTunnelWithError(nil)
     }
   }
 
