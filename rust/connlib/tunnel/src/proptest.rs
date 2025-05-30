@@ -32,15 +32,17 @@ pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Va
         resource_name(),
         domain_name(2..4),
         address_description(),
+        any::<bool>(),
         sites,
     )
         .prop_map(
-            move |(id, name, address, address_description, sites)| DnsResource {
+            move |(id, name, address, address_description, enable_ipv6, sites)| DnsResource {
                 id,
                 address,
                 name,
                 sites,
                 address_description,
+                enable_ipv6,
             },
         )
 }

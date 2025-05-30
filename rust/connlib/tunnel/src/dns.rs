@@ -38,8 +38,14 @@ pub struct StubResolver {
     ips_to_fqdn: HashMap<IpAddr, (dns_types::DomainName, ResourceId)>,
     ip_provider: IpProvider,
     /// All DNS resources we know about, indexed by the glob pattern they match against.
-    dns_resources: BTreeMap<Pattern, ResourceId>,
+    dns_resources: BTreeMap<Pattern, Resource>,
     search_domain: Option<DomainName>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Resource {
+    id: ResourceId,
+    enable_ipv6: bool,
 }
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
@@ -141,7 +147,12 @@ impl StubResolver {
             .map(|((domain, resource), ips)| (domain, resource, ips))
     }
 
-    pub(crate) fn add_resource(&mut self, id: ResourceId, pattern: String) -> bool {
+    pub(crate) fn add_resource(
+        &mut self,
+        id: ResourceId,
+        pattern: String,
+        enable_ipv6: bool,
+    ) -> bool {
         let parsed_pattern = match Pattern::new(&pattern) {
             Ok(p) => p,
             Err(e) => {
@@ -150,21 +161,23 @@ impl StubResolver {
             }
         };
 
-        let existing = self.dns_resources.insert(parsed_pattern, id);
+        let existing = self
+            .dns_resources
+            .insert(parsed_pattern, Resource { id, enable_ipv6 });
 
         existing.is_none()
     }
 
     pub(crate) fn remove_resource(&mut self, id: ResourceId) {
-        self.dns_resources.retain(|_, r| *r != id);
+        self.dns_resources.retain(|_, r| r.id != id);
     }
 
     fn get_or_assign_a_records(
         &mut self,
         fqdn: dns_types::DomainName,
-        resource_id: ResourceId,
+        resource: Resource,
     ) -> Vec<OwnedRecordData> {
-        self.get_or_assign_ips(fqdn, resource_id)
+        self.get_or_assign_ips(fqdn, resource)
             .into_iter()
             .filter_map(get_v4)
             .map(dns_types::records::a)
@@ -174,9 +187,9 @@ impl StubResolver {
     fn get_or_assign_aaaa_records(
         &mut self,
         fqdn: dns_types::DomainName,
-        resource_id: ResourceId,
+        resource: Resource,
     ) -> Vec<OwnedRecordData> {
-        self.get_or_assign_ips(fqdn, resource_id)
+        self.get_or_assign_ips(fqdn, resource)
             .into_iter()
             .filter_map(get_v6)
             .map(dns_types::records::aaaa)
@@ -186,14 +199,16 @@ impl StubResolver {
     fn get_or_assign_ips(
         &mut self,
         fqdn: dns_types::DomainName,
-        resource_id: ResourceId,
+        resource: Resource,
     ) -> Vec<IpAddr> {
         let ips = self
             .fqdn_to_ips
-            .entry((fqdn.clone(), resource_id))
+            .entry((fqdn.clone(), resource.id))
             .or_insert_with(|| {
                 let mut ips = self.ip_provider.get_n_ipv4(4);
-                ips.extend_from_slice(&self.ip_provider.get_n_ipv6(4));
+                if resource.enable_ipv6 {
+                    ips.extend_from_slice(&self.ip_provider.get_n_ipv6(4));
+                }
 
                 tracing::debug!(domain = %fqdn, ?ips, "Assigning proxy IPs");
 
@@ -201,7 +216,7 @@ impl StubResolver {
             })
             .clone();
         for ip in &ips {
-            self.ips_to_fqdn.insert(*ip, (fqdn.clone(), resource_id));
+            self.ips_to_fqdn.insert(*ip, (fqdn.clone(), resource.id));
         }
 
         ips
@@ -210,16 +225,16 @@ impl StubResolver {
     /// Attempts to match the given domain against our list of possible patterns.
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
-    fn match_resource_linear(&self, domain: &dns_types::DomainName) -> Option<ResourceId> {
+    fn match_resource_linear(&self, domain: &dns_types::DomainName) -> Option<Resource> {
         let _span = telemetry_span!("match_resource_linear").entered();
 
         let name = Candidate::from_domain(domain);
 
-        for (pattern, id) in &self.dns_resources {
+        for (pattern, r) in &self.dns_resources {
             if pattern.matches(&name) {
-                tracing::trace!(%id, %pattern, %domain, "Matched resource");
+                tracing::trace!(id = %r.id, %pattern, %domain, "Matched resource");
 
-                return Some(*id);
+                return Some(*r);
             }
         }
 
@@ -265,9 +280,9 @@ impl StubResolver {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)
             }
             (RecordType::SRV | RecordType::TXT, Some(resource)) => {
-                tracing::debug!(%qtype, %resource, "Forwarding query for DNS resource to corresponding site");
+                tracing::debug!(%qtype, resource = %resource.id, "Forwarding query for DNS resource to corresponding site");
 
-                return ResolveStrategy::RecurseSite(resource);
+                return ResolveStrategy::RecurseSite(resource.id);
             }
             (RecordType::PTR, _) => {
                 let Some(fqdn) = self.resource_address_name_by_reservse_dns(&domain) else {
@@ -641,14 +656,14 @@ mod tests {
         let wc = ResourceId::from_u128(0);
         let non_wc = ResourceId::from_u128(1);
 
-        resolver.add_resource(wc, "**.example.com".to_owned());
-        resolver.add_resource(non_wc, "foo.example.com".to_owned());
+        resolver.add_resource(wc, "**.example.com".to_owned(), true);
+        resolver.add_resource(non_wc, "foo.example.com".to_owned(), true);
 
-        let resource_id = resolver
+        let resource = resolver
             .match_resource_linear(&"foo.example.com".parse().unwrap())
             .unwrap();
 
-        assert_eq!(resource_id, non_wc);
+        assert_eq!(resource.id, non_wc);
     }
 
     #[test]
@@ -692,7 +707,7 @@ mod benches {
                 let mut rng = rand::thread_rng();
 
                 for n in 0..NUM_RES {
-                    resolver.add_resource(ResourceId::from_u128(n), make_domain(&mut rng));
+                    resolver.add_resource(ResourceId::from_u128(n), make_domain(&mut rng), true);
                 }
 
                 let needle = resolver

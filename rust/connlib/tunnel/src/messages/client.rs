@@ -24,6 +24,10 @@ pub struct ResourceDescriptionDns {
     pub address_description: Option<String>,
     #[serde(rename = "gateway_groups")]
     pub sites: Vec<Site>,
+
+    /// Whether to enable IPv6 records for this resource.
+    #[serde(default)]
+    pub enable_ipv6: Option<bool>,
 }
 
 /// Description of a resource that maps to a CIDR.

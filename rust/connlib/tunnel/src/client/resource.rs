@@ -35,6 +35,8 @@ pub struct DnsResource {
 
     pub address_description: Option<String>,
     pub sites: Vec<Site>,
+
+    pub enable_ipv6: bool,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -249,6 +251,7 @@ impl DnsResource {
             name: resource.name,
             address_description: resource.address_description,
             sites: resource.sites,
+            enable_ipv6: resource.enable_ipv6.is_none_or(|b| b),
         }
     }
 
@@ -261,5 +264,31 @@ impl DnsResource {
             sites: self.sites,
             status,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use connlib_model::SiteId;
+
+    use super::*;
+
+    #[test]
+    fn enable_ipv6_defaults_true() {
+        let resource_description_dns = ResourceDescriptionDns {
+            id: ResourceId::from_u128(1),
+            address: "example.com".to_owned(),
+            name: "example.com".to_owned(),
+            address_description: None,
+            sites: vec![Site {
+                id: SiteId::from_u128(2),
+                name: "Example Site".to_owned(),
+            }],
+            enable_ipv6: None,
+        };
+
+        let resource = DnsResource::from_description(resource_description_dns);
+
+        assert!(resource.enable_ipv6);
     }
 }
