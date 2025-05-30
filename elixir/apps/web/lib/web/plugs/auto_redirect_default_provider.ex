@@ -2,13 +2,16 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
   use Phoenix.VerifiedRoutes, endpoint: Web.Endpoint, router: Web.Router
   import Plug.Conn
   import Phoenix.Controller, only: [redirect: 2]
-  alias Domain.Auth
+  alias Domain.{Auth, Accounts}
 
   def init(opts), do: opts
 
   # client sign in
-  def call(%{params: %{"as" => "client"}} = conn, _opts) do
-    with account <- conn.assigns.account,
+  def call(
+        %{params: %{"as" => "client", "account_id_or_slug" => account_id_or_slug}} = conn,
+        _opts
+      ) do
+    with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
          {:ok, provider} <- Auth.fetch_default_provider_for_account(account) do
       redirect_path = ~p"/#{account}/sign_in/providers/#{provider}/redirect"
 
