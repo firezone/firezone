@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/flowbite-react/schema.json",
   "components": [],
-  "dark": true,
+  "dark": false,
   "prefix": "",
   "path": "src-frontend/*",
   "tsx": true,
