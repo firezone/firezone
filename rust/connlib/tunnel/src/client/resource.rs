@@ -279,7 +279,7 @@ mod tests {
             "name": "example.com",
             "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
             "type": "dns",
-            "ip_stack": "ipv4-only"
+            "ip_stack": "ipv4_only"
         })))
         .unwrap();
 
@@ -298,7 +298,7 @@ mod tests {
             "name": "example.com",
             "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
             "type": "dns",
-            "ip_stack": "ipv6-only"
+            "ip_stack": "ipv6_only"
         })))
         .unwrap();
 

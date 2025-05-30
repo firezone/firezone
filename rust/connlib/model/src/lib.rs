@@ -187,7 +187,7 @@ impl fmt::Debug for SiteId {
 
 /// The IP stack of a DNS resource.
 #[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-#[serde(rename_all = "kebab-case")]
+#[serde(rename_all = "snake_case")]
 pub enum IpStack {
     Dual,
     Ipv4Only,
