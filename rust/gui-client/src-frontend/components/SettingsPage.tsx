@@ -61,15 +61,14 @@ export default function SettingsPage({
 
       <form
         onSubmit={() => saveSettings(localSettings)}
-        className="max-w-md mx-auto flex flex-col gap-2"
+        className="max-w mx-auto flex flex-col gap-2"
       >
         <div>
           <Label className="text-neutral-600" htmlFor="auth-base-url-input">Auth Base URL</Label>
-          <TextInputWithTooltipWhenDisabled
+          <ManagedTextInput
             name="auth_base_url"
             id="auth-base-url-input"
-            disabled={localSettings.auth_url_is_managed}
-            disabledTooltip="This setting is managed by your organisation."
+            managed={localSettings.auth_url_is_managed}
             value={localSettings.auth_url}
             onChange={(e) =>
               setLocalSettings({
@@ -84,11 +83,10 @@ export default function SettingsPage({
 
         <div>
           <Label className="text-neutral-600" htmlFor="api-url-input">API URL</Label>
-          <TextInputWithTooltipWhenDisabled
+          <ManagedTextInput
             name="api_url"
             id="api-url-input"
-            disabled={localSettings.api_url_is_managed}
-            disabledTooltip="This setting is managed by your organisation."
+            managed={localSettings.api_url_is_managed}
             value={localSettings.api_url}
             onChange={(e) =>
               setLocalSettings({
@@ -103,11 +101,10 @@ export default function SettingsPage({
 
         <div>
           <Label className="text-neutral-600" htmlFor="log-filter-input">Log Filter</Label>
-          <TextInputWithTooltipWhenDisabled
+          <ManagedTextInput
             name="log_filter"
             id="log-filter-input"
-            disabled={localSettings.log_filter_is_managed}
-            disabledTooltip="This setting is managed by your organisation."
+            managed={localSettings.log_filter_is_managed}
             value={localSettings.log_filter}
             onChange={(e) =>
               setLocalSettings({
@@ -136,12 +133,12 @@ export default function SettingsPage({
   );
 }
 
-function TextInputWithTooltipWhenDisabled(props: TextInputProps & { disabledTooltip: string }) {
-  let { disabledTooltip: tooltip, ...inputProps } = props;
+function ManagedTextInput(props: TextInputProps & { managed: boolean }) {
+  let { managed, ...inputProps } = props;
 
-  if (inputProps.disabled) {
-    return <Tooltip content={tooltip}>
-      <TextInput {...inputProps} />
+  if (managed) {
+    return <Tooltip content="This setting is managed by your organisation.">
+      <TextInput {...inputProps} disabled={true} />
     </Tooltip>
   } else {
     return <TextInput {...inputProps} />
