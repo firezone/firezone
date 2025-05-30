@@ -207,7 +207,9 @@ jobs:
             install_dependencies: |
               # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
               # Find some other way to keep these updated.
-              wget -q -O- https://storage.cloud.google.com/firezone-ci-dependencies/aarch64-linux-musl-cross.tgz | tar -xz -C /tmp
+              if ! -e /tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc; then
+                wget -q -O- https://storage.cloud.google.com/firezone-ci-dependencies/aarch64-linux-musl-cross.tgz | tar -xz -C /tmp
+              fi
 
               CC=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
 
@@ -219,7 +221,9 @@ jobs:
             install_dependencies: |
               # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
               # Find some other way to keep these updated.
-              wget -q -O- https://storage.cloud.google.com/firezone-ci-dependencies/arm-linux-musleabihf-cross.tgz | tar -xz -C /tmp
+              if ! -e /tmp/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc; then
+                wget -q -O- https://storage.cloud.google.com/firezone-ci-dependencies/arm-linux-musleabihf-cross.tgz | tar -xz -C /tmp
+              fi
 
               CC=/tmp/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc
 
@@ -266,6 +270,11 @@ jobs:
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
+      - name: Cache toolchain
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # 4.2.3
+        with:
+          path: /tmp/*-linux-musl-cross
+          key: ${{ runner.os }}-musl-cross
       - name: Install dependencies
         run: ${{ matrix.arch.install_dependencies }}
       - uses: taiki-e/install-action@84c20235bedc3797c7e1ddf685c574a4a6c666da # v2.52.2
