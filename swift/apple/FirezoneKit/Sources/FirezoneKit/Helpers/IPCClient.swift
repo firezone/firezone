@@ -65,6 +65,7 @@ class IPCClient {
 
   func signOut() async throws {
     try await sendMessageWithoutResponse(ProviderMessage.signOut)
+    try stop()
   }
 
   func stop() throws {

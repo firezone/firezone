@@ -25,6 +25,10 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9308">
+          Fixes a minor crash in the network extension that could occur when
+          viewing the Diagnostic Logs tab in app settings.
+        </ChangeItem>
         <ChangeItem pull="9242">
           Fixes a rare bug that could prevent certain IPv6 DNS upstream
           resolvers from being used if they contained an interface scope
