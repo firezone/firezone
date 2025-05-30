@@ -38,8 +38,7 @@ export default function Diagnostics({
         <div className="mt-8 flex justify-center gap-4">
           <Button
             onClick={exportLogs}
-            clearTheme={{ color: true }}
-            className="bg-neutral-400 hover:bg-neutral-700 font-medium rounded-md text-md px-5 py-1.5"
+            color="alternative"
           >
             <ShareIcon className="mr-2 h-5 w-5" />
             Export Logs
@@ -47,8 +46,7 @@ export default function Diagnostics({
 
           <Button
             onClick={clearLogs}
-            clearTheme={{ color: true }}
-            className="bg-neutral-400 hover:bg-neutral-700 font-medium rounded-md text-md px-5 py-1.5"
+            color="alternative"
           >
             <TrashIcon className="mr-2 h-5 w-5" />
             Clear Logs

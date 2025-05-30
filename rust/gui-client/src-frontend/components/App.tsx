@@ -1,6 +1,6 @@
 import {
-  BugAntIcon,
   CogIcon,
+  DocumentMagnifyingGlassIcon,
   HomeIcon,
   InformationCircleIcon,
   SwatchIcon,
@@ -71,11 +71,10 @@ export default function App() {
   const isDev = import.meta.env.DEV;
 
   return (
-    <div className="h-screen bg-neutral-100 flex flex-row">
+    <div className="h-screen bg-neutral-50 flex flex-row">
       <Sidebar
         aria-label="Sidebar"
-        className="w-52 flex-shrink-0 dark" // Force dark mode for sidebar, looks better.
-        theme={{ root: { inner: "rounded-none" } }}
+        className="w-52 flex-shrink-0 border-r border-neutral-200"
       >
         <SidebarItems>
           <SidebarItemGroup>
@@ -95,7 +94,7 @@ export default function App() {
             </NavLink>
             <NavLink to="/diagnostics">
               {({ isActive }) => (
-                <SidebarItem active={isActive} icon={BugAntIcon} as="div">
+                <SidebarItem active={isActive} icon={DocumentMagnifyingGlassIcon} as="div">
                   Diagnostics
                 </SidebarItem>
               )}
@@ -125,7 +124,7 @@ export default function App() {
           )}
         </SidebarItems>
       </Sidebar>
-      <main className="flex-grow bg-neutral-100 overflow-auto">
+      <main className="flex-grow overflow-auto">
         <Routes>
           <Route
             path="/overview"

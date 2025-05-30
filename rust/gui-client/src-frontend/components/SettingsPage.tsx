@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { Button, TextInput, Label, TextInputProps, Tooltip } from "flowbite-react";
-import PrimaryButton from "./PrimaryButton";
 
 export interface Settings {
   auth_url: string;
@@ -76,7 +75,6 @@ export default function SettingsPage({
                 auth_url: e.target.value,
               })
             }
-            placeholder=" "
             required
           />
         </div>
@@ -94,7 +92,6 @@ export default function SettingsPage({
                 api_url: e.target.value,
               })
             }
-            placeholder=" "
             required
           />
         </div>
@@ -112,7 +109,6 @@ export default function SettingsPage({
                 log_filter: e.target.value,
               })
             }
-            placeholder=" "
             required
           />
         </div>
@@ -121,12 +117,11 @@ export default function SettingsPage({
           <Button
             type="reset"
             onClick={resetSettings}
-            color=""
-            className="bg-neutral-400 hover:bg-neutral-700 font-medium rounded-md text-md px-5 py-1.5"
+            color="alternative"
           >
             Reset to Defaults
           </Button>
-          <PrimaryButton type="submit">Apply</PrimaryButton>
+          <Button type="submit">Apply</Button>
         </div>
       </form>
     </div>

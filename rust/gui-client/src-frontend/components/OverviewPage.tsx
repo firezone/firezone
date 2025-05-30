@@ -1,7 +1,7 @@
 import React from "react";
 import logo from "../logo.png";
-import PrimaryButton from "./PrimaryButton";
 import { Session } from "./App";
+import { Button } from "flowbite-react";
 
 interface OverviewPageProps {
   session: Session | null;
@@ -27,9 +27,9 @@ export default function Overview({
               You can sign in by clicking the Firezone icon in the taskbar or by
               clicking 'Sign in' below.
             </p>
-            <PrimaryButton id="sign-in" onClick={signIn}>
+            <Button id="sign-in" onClick={signIn}>
               Sign in
-            </PrimaryButton>
+            </Button>
             <p className="text-xs text-center">
               Firezone will continue running after this window is closed.
               <br />
@@ -53,9 +53,9 @@ export default function Overview({
               Click the Firezone icon in the taskbar to see the list of
               Resources.
             </p>
-            <PrimaryButton id="sign-out" onClick={signOut}>
+            <Button id="sign-out" onClick={signOut}>
               Sign out
-            </PrimaryButton>
+            </Button>
             <p className="text-xs text-center">
               Firezone will continue running in the taskbar after this window is
               closed.
