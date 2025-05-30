@@ -91,7 +91,7 @@ defmodule Web.Acceptance.AuthTest do
     {:ok, tokens} = Domain.Tokens.delete_tokens_for(identity)
 
     for token <- tokens do
-      assert token.deleted_at
+      assert %DateTime{} = token.deleted_at
       Domain.Events.Hooks.Tokens.on_delete(%{"id" => token.id})
     end
 
