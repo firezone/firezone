@@ -124,7 +124,6 @@ defmodule API.Schemas.Resource do
             "address" => "10.0.0.10",
             "address_description" => "Production Database",
             "type" => "ip",
-            "ip_stack" => "ipv4_only"
           },
           %{
             "id" => "3b9451c9-5616-48f8-827f-009ace22d015",
@@ -132,7 +131,6 @@ defmodule API.Schemas.Resource do
             "address" => "10.0.0.20",
             "address_description" => "Production Admin Dashboard",
             "type" => "ip",
-            "ip_stack" => "ipv4_only"
           }
         ],
         "metadata" => %{

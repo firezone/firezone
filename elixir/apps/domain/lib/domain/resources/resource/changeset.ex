@@ -36,7 +36,6 @@ defmodule Domain.Resources.Resource.Changeset do
     |> put_change(:account_id, account.id)
     |> update_change(:address, &String.trim/1)
     |> validate_address(account)
-    |> put_ip_stack()
     |> cast_assoc(:connections,
       with: &Connection.Changeset.changeset(account.id, &1, &2, subject),
       required: true
@@ -51,7 +50,6 @@ defmodule Domain.Resources.Resource.Changeset do
     |> validate_required(@required_fields)
     |> update_change(:address, &String.trim/1)
     |> validate_address(account)
-    |> put_ip_stack()
     |> put_change(:persistent_id, Ecto.UUID.generate())
     |> put_change(:account_id, account.id)
     |> put_subject_trail(:created_by, :system)
@@ -65,7 +63,6 @@ defmodule Domain.Resources.Resource.Changeset do
     |> cast(attrs, @update_fields)
     |> validate_required(@required_fields)
     |> validate_address(subject.account)
-    |> put_ip_stack()
     |> changeset()
     |> cast_assoc(:connections,
       with: &Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
@@ -273,28 +270,5 @@ defmodule Domain.Resources.Resource.Changeset do
     filter
     |> cast(attrs, [:protocol, :ports])
     |> validate_required([:protocol])
-  end
-
-  defp put_ip_stack(changeset) do
-    case fetch_field(changeset, :type) do
-      {_, :dns} ->
-        put_default_value(changeset, :ip_stack, :dual)
-
-      {_, :internet} ->
-        put_change(changeset, :ip_stack, :dual)
-
-      {_, _ip_or_cidr} ->
-        case fetch_field(changeset, :address) do
-          {_, nil} ->
-            changeset
-
-          {_, address} ->
-            if String.contains?(address, ".") do
-              put_change(changeset, :ip_stack, :ipv4_only)
-            else
-              put_change(changeset, :ip_stack, :ipv6_only)
-            end
-        end
-    end
   end
 end
