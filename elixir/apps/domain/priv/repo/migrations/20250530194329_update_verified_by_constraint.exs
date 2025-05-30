@@ -12,12 +12,14 @@ defmodule Domain.Repo.Migrations.UpdateVerifiedByConstraint do
         check: """
         (
           verified_at IS NULL
-          AND (verified_by IS NULL AND verified_by_subject IS NULL)
+          AND verified_by IS NULL
+          AND verified_by_subject IS NULL
         )
         OR
         (
           verified_at IS NOT NULL
-          AND (verified_by IS NOT NULL AND verified_by_subject IS NOT NULL)
+          AND verified_by IS NOT NULL
+          AND verified_by_subject IS NOT NULL
         )
         """
       )
