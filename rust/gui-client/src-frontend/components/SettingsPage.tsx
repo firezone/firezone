@@ -137,7 +137,7 @@ function ManagedTextInput(props: TextInputProps & { managed: boolean }) {
   let { managed, ...inputProps } = props;
 
   if (managed) {
-    return <Tooltip content="This setting is managed by your organisation.">
+    return <Tooltip content="This setting is managed by your organisation." clearTheme={{target: true}}>
       <TextInput {...inputProps} disabled={true} />
     </Tooltip>
   } else {
